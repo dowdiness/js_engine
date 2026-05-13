@@ -592,6 +592,80 @@ test "closure conversion reports unsupported delete unary" {
 }
 
 ///|
+test "closure conversion constructs function declarations" {
+  inspect(
+    run_script("function C(x) { this.x = x; } var o = new C(41); o.x + 1;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion constructs function expressions" {
+  inspect(
+    run_script("var o = new (function C(x) { this.x = x; })(41); o.x + 1;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion constructs with spread arguments" {
+  inspect(
+    run_script(
+      "function C(a, b) { this.x = a + b; } var args = [40, 1]; var o = new C(...args); o.x + 1;",
+    ),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion preserves constructor object return" {
+  inspect(
+    run_script(
+      "function C() { this.x = 1; return { x: 41 }; } var o = new C(); o.x + 1;",
+    ),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion preserves constructor primitive return" {
+  inspect(
+    run_script(
+      "function C() { this.x = 41; return 1; } var o = new C(); o.x + 1;",
+    ),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion keeps method shorthand non-constructable" {
+  inspect(
+    run_script_outcome("var o = { m() { return 1; } }; new o.m();").contains(
+      "TypeError",
+    ),
+    content="true",
+  )
+}
+
+///|
+test "closure conversion reports non-constructor errors" {
+  inspect(
+    run_script_outcome("new Math();").contains("TypeError"),
+    content="true",
+  )
+}
+
+///|
 test "closure conversion compiles closure factory program" {
   inspect(
     run_program(CLOSURE_FACTORY_PROGRAM),

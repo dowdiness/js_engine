@@ -114,6 +114,7 @@ pub fn compile_expr_to_closure(
         )
       }
     }
+    NewExpr(callee, args, loc) => compile_new(callee, args, loc)
     UpdateExpr(op, operand, prefix, loc) =>
       compile_update(op, operand, prefix, loc)
     Comma(left, right, _) => compile_comma(left, right)
@@ -229,14 +230,14 @@ fn compile_object_lit(
           compiled.push(
             ComputedData(
               compile_expr_to_closure(prop.key),
-              compile_expr_to_closure(prop.value),
+              compile_property_value(prop),
             ),
           )
         } else {
           compiled.push(
             StaticData(
               static_object_key(prop.key),
-              compile_expr_to_closure(prop.value),
+              compile_property_value(prop),
             ),
           )
         }
@@ -316,6 +317,21 @@ fn compile_object_lit(
       None => ()
     }
     home_object
+  }
+}
+
+///|
+fn compile_property_value(
+  prop : @ast.Property,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  if prop.is_method {
+    match prop.value {
+      FuncExpr(name, params, body, _) =>
+        compile_func_expr_with_constructable(name, params, body, false)
+      _ => compile_expr_to_closure(prop.value)
+    }
+  } else {
+    compile_expr_to_closure(prop.value)
   }
 }
 
@@ -779,10 +795,35 @@ fn compile_call(
 }
 
 ///|
+fn compile_new(
+  callee : @ast.Expr,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let callee_fn = compile_expr_to_closure(callee)
+  let compiled_args = compile_args(args)
+  fn(interp, ctx, env) raise {
+    let ctor = callee_fn(interp, ctx, env)
+    let values = eval_compiled_args(interp, ctx, env, compiled_args)
+    interp.construct_value(ctor, values, loc)
+  }
+}
+
+///|
 fn compile_func_expr(
   name : String?,
   params : Array[String],
   body : Array[@ast.Stmt],
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  compile_func_expr_with_constructable(name, params, body, true)
+}
+
+///|
+fn compile_func_expr_with_constructable(
+  name : String?,
+  params : Array[String],
+  body : Array[@ast.Stmt],
+  constructable : Bool,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   let compiled_body = compile_body(body)
   fn(_, ctx, env) raise {
@@ -793,6 +834,7 @@ fn compile_func_expr(
       env,
       ctx.strict || @runtime.has_use_strict(body),
       compiled_body,
+      constructable~,
     )
   }
 }
@@ -1087,18 +1129,123 @@ fn make_compiled_func(
   closure : Environment,
   strict : Bool,
   body : CompiledBody,
+  constructable? : Bool = true,
 ) -> Value {
+  let proto = if constructable {
+    Value::Object({
+      bag: PropertyBag::PropertyBag(),
+      prototype: @runtime.get_obj_proto(),
+      callable: None,
+      class_name: "Object",
+      extensible: true,
+    })
+  } else {
+    Value::Null
+  }
   let func_name = match name {
     Some(n) => n
     None => ""
   }
-  @runtime.make_interp_method_func(name=func_name, length=params.length(), fn(
-    interp,
-    this_val,
-    args,
-  ) raise {
-    call_compiled_func(interp, this_val, args, params, closure, strict, body)
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let func_props : Map[String, Value] = {}
+  let func_descs : Map[String, PropDescriptor] = {}
+  if constructable {
+    func_props["prototype"] = proto
+    func_descs["prototype"] = {
+      writable: true,
+      enumerable: false,
+      configurable: false,
+      getter: None,
+      setter: None,
+      is_accessor: false,
+    }
+  }
+  func_props["length"] = Value::Number(params.length().to_double())
+  func_props["name"] = Value::String_(func_name)
+  func_descs["length"] = nf_desc
+  func_descs["name"] = nf_desc
+  let func_obj = Value::Object({
+    bag: {
+      properties: func_props,
+      symbol_properties: {},
+      descriptors: func_descs,
+      symbol_descriptors: {},
+    },
+    prototype: @runtime.get_func_proto(),
+    callable: Some(
+      Callable::InterpreterCallable(func_name, fn(
+        interp,
+        this_val,
+        args,
+      ) raise {
+        if constructable && @runtime.is_constructing.val {
+          let new_obj = make_compiled_constructor_instance(proto)
+          let result = call_compiled_func(
+            interp, new_obj, args, params, closure, strict, body,
+          )
+          if is_constructor_return_object(result) {
+            result
+          } else {
+            new_obj
+          }
+        } else {
+          call_compiled_func(
+            interp, this_val, args, params, closure, strict, body,
+          )
+        }
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
   })
+  if constructable {
+    match proto {
+      Value::Object(proto_data) => {
+        proto_data.bag.properties["constructor"] = func_obj
+        proto_data.bag.descriptors["constructor"] = {
+          writable: true,
+          enumerable: false,
+          configurable: true,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        }
+      }
+      _ => ()
+    }
+  }
+  func_obj
+}
+
+///|
+fn make_compiled_constructor_instance(proto : Value) -> Value {
+  Value::Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: proto,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+  })
+}
+
+///|
+fn is_constructor_return_object(value : Value) -> Bool {
+  match value {
+    Value::Object(_)
+    | Value::Array(_)
+    | Value::Map(_)
+    | Value::Set(_)
+    | Value::Promise(_)
+    | Value::Proxy(_) => true
+    _ => false
+  }
 }
 
 ///|
