@@ -73,6 +73,10 @@ pub fn compile_expr_to_closure(
     ObjectLit(props, _) => compile_object_lit(props)
     ArrayLit(elements, _) => compile_array_lit(elements)
     Assign(name, value_expr, _) => compile_assign(name, value_expr)
+    MemberAssign(obj, prop, value, loc) =>
+      compile_member_assign(obj, prop, value, loc)
+    ComputedAssign(obj, key, value, loc) =>
+      compile_computed_assign(obj, key, value, loc)
     Grouping(inner, _) => compile_expr_to_closure(inner)
     Binary(op, left, right, loc) => {
       let left_fn = compile_expr_to_closure(left)
@@ -105,7 +109,8 @@ pub fn compile_expr_to_closure(
         )
       }
     }
-    UpdateExpr(op, operand, prefix, _) => compile_update(op, operand, prefix)
+    UpdateExpr(op, operand, prefix, loc) =>
+      compile_update(op, operand, prefix, loc)
     _ => unsupported_expr("expression kind")
   }
 }
@@ -347,16 +352,51 @@ fn compile_assign(
 }
 
 ///|
+fn compile_member_assign(
+  obj_expr : @ast.Expr,
+  prop : String,
+  value_expr : @ast.Expr,
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let obj_fn = compile_expr_to_closure(obj_expr)
+  let value_fn = compile_expr_to_closure(value_expr)
+  fn(interp, ctx, env) raise {
+    let obj = obj_fn(interp, ctx, env)
+    let value = value_fn(interp, ctx, env)
+    interp.set_property(obj, prop, value, loc, strict=ctx.strict)
+  }
+}
+
+///|
+fn compile_computed_assign(
+  obj_expr : @ast.Expr,
+  key_expr : @ast.Expr,
+  value_expr : @ast.Expr,
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let obj_fn = compile_expr_to_closure(obj_expr)
+  let key_fn = compile_expr_to_closure(key_expr)
+  let value_fn = compile_expr_to_closure(value_expr)
+  fn(interp, ctx, env) raise {
+    let obj = obj_fn(interp, ctx, env)
+    let key = key_fn(interp, ctx, env)
+    let value = value_fn(interp, ctx, env)
+    interp.set_computed_property(obj, key, value, loc, strict=ctx.strict)
+  }
+}
+
+///|
 fn compile_update(
   op : @ast.UpdateOp,
   operand : @ast.Expr,
   prefix : Bool,
+  loc : @token.Loc,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   match operand {
     Ident(name, _) =>
-      fn(_, _, env) raise {
+      fn(interp, _, env) raise {
         let old = env.get(name)
-        let old_num = @runtime.to_number(old)
+        let old_num = @runtime.to_number(old, interp=Some(interp))
         let new_value = match op {
           Increment => Value::Number(old_num + 1.0)
           Decrement => Value::Number(old_num - 1.0)
@@ -365,9 +405,60 @@ fn compile_update(
         if prefix {
           new_value
         } else {
-          old
+          Value::Number(old_num)
         }
       }
+    Member(obj_expr, prop, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let old = interp.get_property(obj, prop, member_loc)
+        let old_num = @runtime.to_number(old, interp=Some(interp))
+        let new_value = match op {
+          Increment => Value::Number(old_num + 1.0)
+          Decrement => Value::Number(old_num - 1.0)
+        }
+        let _ = interp.set_property(
+          obj,
+          prop,
+          new_value,
+          loc,
+          strict=ctx.strict,
+        )
+        if prefix {
+          new_value
+        } else {
+          Value::Number(old_num)
+        }
+      }
+    }
+    ComputedMember(obj_expr, key_expr, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      let key_fn = compile_expr_to_closure(key_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let key = key_fn(interp, ctx, env)
+        let prop_key = @runtime.to_property_key(key, interp=Some(interp))
+        let old = interp.get_computed_property(obj, prop_key, member_loc)
+        let old_num = @runtime.to_number(old, interp=Some(interp))
+        let new_value = match op {
+          Increment => Value::Number(old_num + 1.0)
+          Decrement => Value::Number(old_num - 1.0)
+        }
+        let _ = interp.set_computed_property(
+          obj,
+          prop_key,
+          new_value,
+          loc,
+          strict=ctx.strict,
+        )
+        if prefix {
+          new_value
+        } else {
+          Value::Number(old_num)
+        }
+      }
+    }
     _ => unsupported_expr("update target")
   }
 }

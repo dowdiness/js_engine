@@ -380,6 +380,76 @@ test "closure conversion reports unsupported object literal spread" {
 }
 
 ///|
+test "closure conversion assigns member properties" {
+  inspect(
+    run_script("var o = { x: 1 }; o.x = 41; o.x + 1;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion assigns computed properties" {
+  inspect(
+    run_script("var o = {}; o[\"x\"] = 41; o.x + 1;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion updates member properties" {
+  inspect(
+    run_script("var o = { x: 41 }; o.x++; o.x;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion preserves postfix member update result" {
+  inspect(
+    run_script("var o = { x: 41 }; var y = o.x++; y + o.x;"),
+    content=(
+      #|83
+    ),
+  )
+}
+
+///|
+test "closure conversion updates computed properties" {
+  inspect(
+    run_script("var o = { x: 41 }; ++o[\"x\"];"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion preserves numeric postfix result" {
+  inspect(
+    run_script("var x = \"41\"; var y = x++; y + x;"),
+    content=(
+      #|83
+    ),
+  )
+}
+
+///|
+test "closure conversion routes strict member assignment through setters" {
+  inspect(
+    run_script_outcome(
+      "\"use strict\"; var o = {}; Object.defineProperty(o, \"x\", { value: 1, writable: false }); o.x = 2;",
+    ).contains("TypeError"),
+    content="true",
+  )
+}
+
+///|
 test "closure conversion compiles closure factory program" {
   inspect(
     run_program(CLOSURE_FACTORY_PROGRAM),
