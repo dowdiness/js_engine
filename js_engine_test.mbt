@@ -10,6 +10,28 @@ fn[T : Show] fmt_opt(o : T?) -> String {
 }
 
 ///|
+fn run_outcome(src : String) -> String {
+  try {
+    let (_, result) = @js_engine.run(src)
+    "value:" + result
+  } catch {
+    @runtime.JsException(value) => "throw:" + value.to_string()
+    err => "error:" + err.to_string()
+  }
+}
+
+///|
+fn run_compiled_outcome(src : String) -> String {
+  try {
+    let (_, result) = @js_engine.run_compiled(src)
+    "value:" + result
+  } catch {
+    @runtime.JsException(value) => "throw:" + value.to_string()
+    err => "error:" + err.to_string()
+  }
+}
+
+///|
 test "run facade" {
   let (output, _result) = @js_engine.run("console.log(1 + 2)")
   json_inspect(output, content=["3"])
@@ -25,6 +47,79 @@ test "run fibonacci" {
     #|console.log(fib(10));
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["55"])
+}
+
+///|
+test "run_compiled facade closure factory" {
+  let src =
+    #|function makeCounter(start) {
+    #|  var count = start;
+    #|  return function() {
+    #|    count = count + 1;
+    #|    return count;
+    #|  };
+    #|}
+    #|var counters = [];
+    #|for (var i = 0; i < 5; i++) {
+    #|  counters.push(makeCounter(i));
+    #|}
+    #|var total = 0;
+    #|for (var i = 0; i < 5; i++) {
+    #|  total = total + counters[i]();
+    #|}
+    #|console.log(total);
+    #|total;
+  let (output, result) = @js_engine.run_compiled(src)
+  json_inspect(output, content=["15"])
+  inspect(result, content="15")
+}
+
+///|
+test "run_compiled facade constructor calls" {
+  let src =
+    #|function C(x) { this.x = x; }
+    #|var o = new C(41);
+    #|console.log(o.x + 1);
+    #|o.x + 1;
+  let (output, result) = @js_engine.run_compiled(src)
+  json_inspect(output, content=["42"])
+  inspect(result, content="42")
+}
+
+///|
+test "run_compiled facade loop control" {
+  let src =
+    #|var i = 0;
+    #|var total = 0;
+    #|while (i < 10) {
+    #|  i++;
+    #|  if (i % 2 === 0) { continue; }
+    #|  if (i > 7) { break; }
+    #|  total += i;
+    #|}
+    #|var once = 0;
+    #|do { once = once + 1; } while (false);
+    #|console.log(total + once);
+    #|total + once;
+  let (output, result) = @js_engine.run_compiled(src)
+  json_inspect(output, content=["17"])
+  inspect(result, content="17")
+}
+
+///|
+test "run_compiled facade thrown values match interpreter" {
+  let src = "function fail() { throw \"boom\"; } fail();"
+  inspect(run_compiled_outcome(src) == run_outcome(src), content="true")
+}
+
+///|
+test "run_compiled facade reports unsupported syntax clearly" {
+  inspect(
+    run_compiled_outcome("var o = { ...{ x: 1 } }; o.x;").contains(
+      "closure conversion prototype does not support object literal spread property",
+    ),
+    content="true",
+  )
 }
 
 ///|

@@ -51,6 +51,10 @@ fn main {
         "annex-b",
         about="Enable Annex B (web compat) semantics",
       ),
+      @argparse.FlagArg(
+        "closure-conversion",
+        about="Run scripts through the opt-in closure-conversion prototype",
+      ),
     ],
     options=[
       // Documented for --help only; the actual `--fixture <spec> <src>` triples
@@ -83,6 +87,10 @@ fn main {
     Some(true) => true
     _ => false
   }
+  let use_closure_conversion = match matches.flags.get("closure-conversion") {
+    Some(true) => true
+    _ => false
+  }
   let source : String? = match matches.values.get("source") {
     Some(arr) if arr.length() > 0 => Some(arr[0])
     _ => None
@@ -90,13 +98,18 @@ fn main {
   match source {
     None => {
       println(
-        "Usage: js_engine [--module] [--annex-b] [--fixture <spec> <src>]... <javascript-code>",
+        "Usage: js_engine [--module] [--annex-b] [--closure-conversion] [--fixture <spec> <src>]... <javascript-code>",
       )
       println("Example: js_engine 'console.log(1 + 2)'")
     }
     Some(src) =>
       try {
         if is_module {
+          if use_closure_conversion {
+            println("error: --closure-conversion does not support --module")
+            exit_with_error()
+            return
+          }
           // Run any fixture modules first (in dep order), then the main module.
           // run_modules registers each module's exports under its specifier so
           // the main test's `import` lookups succeed.
@@ -108,6 +121,14 @@ fn main {
           let (output, _) = @lib.run_modules(modules, annex_b~)
           for line in output {
             println(line)
+          }
+        } else if use_closure_conversion {
+          let (output, result) = @lib.run_compiled(src, annex_b~)
+          for line in output {
+            println(line)
+          }
+          if result != "undefined" {
+            println(result)
           }
         } else {
           let (output, result) = @lib.run(src, annex_b~)

@@ -12,6 +12,8 @@ pub fn has_pending_timers(@runtime.Interpreter) -> Bool
 
 pub fn run(String, annex_b? : Bool) -> (Array[String], String) raise
 
+pub fn run_compiled(String, annex_b? : Bool) -> (Array[String], String) raise
+
 pub fn run_microtask_checkpoint(@runtime.Interpreter) -> Bool raise
 
 pub fn run_module(String, annex_b? : Bool) -> (Array[String], Map[String, @runtime.Value]) raise
