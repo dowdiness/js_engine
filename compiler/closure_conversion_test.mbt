@@ -592,6 +592,37 @@ test "closure conversion reports unsupported delete unary" {
 }
 
 ///|
+test "closure conversion evaluates while break and continue" {
+  inspect(
+    run_script(
+      "var i = 0; var total = 0; while (i < 10) { i++; if (i % 2 === 0) { continue; } if (i > 7) { break; } total += i; } total;",
+    ),
+    content=(
+      #|16
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates do while before condition" {
+  inspect(
+    run_script("var i = 0; do { i = i + 1; } while (false); i + 41;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion propagates thrown values" {
+  let src = "function fail() { throw \"boom\"; } fail();"
+  inspect(
+    run_script_outcome(src) == run_interpreter_outcome(src),
+    content="true",
+  )
+}
+
+///|
 test "closure conversion constructs function declarations" {
   inspect(
     run_script("function C(x) { this.x = x; } var o = new C(41); o.x + 1;"),

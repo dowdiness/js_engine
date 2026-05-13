@@ -1011,6 +1011,69 @@ fn compile_stmt(
         }
       }
     }
+    WhileStmt(cond, body, _) => {
+      let cond_fn = compile_expr_to_closure(cond)
+      let body_fn = compile_stmt(body)
+      fn(interp, ctx, env) raise {
+        let mut completion = Value::Undefined
+        while true {
+          if !@runtime.is_truthy(cond_fn(interp, ctx, env)) {
+            break
+          }
+          match body_fn(interp, ctx, env) {
+            Signal::Normal(value) => completion = value
+            Signal::ReturnSignal(_) as sig => return sig
+            Signal::BreakSignal(value, None) => {
+              completion = value.unwrap_or(completion)
+              break
+            }
+            Signal::BreakSignal(_, Some(_)) as sig => return sig
+            Signal::ContinueSignal(value, None) => {
+              completion = value.unwrap_or(completion)
+              continue
+            }
+            Signal::ContinueSignal(_, Some(_)) as sig => return sig
+          }
+        }
+        Signal::Normal(completion)
+      }
+    }
+    DoWhileStmt(body, cond, _) => {
+      let body_fn = compile_stmt(body)
+      let cond_fn = compile_expr_to_closure(cond)
+      fn(interp, ctx, env) raise {
+        let mut completion = Value::Undefined
+        while true {
+          match body_fn(interp, ctx, env) {
+            Signal::Normal(value) => completion = value
+            Signal::ReturnSignal(_) as sig => return sig
+            Signal::BreakSignal(value, None) => {
+              completion = value.unwrap_or(completion)
+              break
+            }
+            Signal::BreakSignal(_, Some(_)) as sig => return sig
+            Signal::ContinueSignal(value, None) =>
+              completion = value.unwrap_or(completion)
+            Signal::ContinueSignal(_, Some(_)) as sig => return sig
+          }
+          if !@runtime.is_truthy(cond_fn(interp, ctx, env)) {
+            break
+          }
+        }
+        Signal::Normal(completion)
+      }
+    }
+    BreakStmt(label, _) => fn(_, _, _) { Signal::BreakSignal(None, label) }
+    ContinueStmt(label, _) =>
+      fn(_, _, _) { Signal::ContinueSignal(None, label) }
+    ThrowStmt(expr, _) => {
+      let expr_fn = compile_expr_to_closure(expr)
+      fn(interp, ctx, env) raise {
+        let value = expr_fn(interp, ctx, env)
+        @runtime.raise_js_exception(value)
+        Signal::Normal(Value::Undefined)
+      }
+    }
     Block(stmts, _) => {
       let body = compile_body(stmts)
       fn(interp, ctx, env) raise {
