@@ -2482,9 +2482,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       let has_map_fn = args.length() > 1 && !(args[1] is Undefined)
       let map_fn = if has_map_fn { args[1] } else { Undefined }
       if has_map_fn && !@runtime.is_callable(map_fn) {
-        raise @errors.TypeError(
-          message=@runtime.to_js_string(map_fn) + " is not a function",
-        )
+        raise @errors.TypeError(message="TypedArray.from mapFn is not callable")
       }
       let this_arg = if args.length() > 2 { args[2] } else { Undefined }
       let loc = @token.Loc::default()

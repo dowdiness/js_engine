@@ -12522,6 +12522,72 @@ test "TypedArray.from validates receiver before reading source" {
 }
 
 ///|
+test "TypedArray.from rejects non-callable mapFn without coercion" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var TypedArray = Object.getPrototypeOf(Int8Array);
+    #|var touched = false;
+    #|var mapFn = {
+    #|  toString: function() {
+    #|    touched = true;
+    #|    throw new MyError();
+    #|  }
+    #|};
+    #|try {
+    #|  TypedArray.from.call(Int8Array, [1], mapFn);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(touched);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "false"])
+}
+
+///|
+test "Weak collection constructors check adders before iterables" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var weakMapTouched = false;
+    #|var weakMapIterable = {};
+    #|Object.defineProperty(weakMapIterable, Symbol.iterator, {
+    #|  get: function() {
+    #|    weakMapTouched = true;
+    #|    throw new MyError();
+    #|  }
+    #|});
+    #|var originalWeakMapSet = WeakMap.prototype.set;
+    #|WeakMap.prototype.set = 1;
+    #|try {
+    #|  new WeakMap(weakMapIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(weakMapTouched);
+    #|}
+    #|WeakMap.prototype.set = originalWeakMapSet;
+    #|var weakSetTouched = false;
+    #|var weakSetIterable = {};
+    #|Object.defineProperty(weakSetIterable, Symbol.iterator, {
+    #|  get: function() {
+    #|    weakSetTouched = true;
+    #|    throw new MyError();
+    #|  }
+    #|});
+    #|var originalWeakSetAdd = WeakSet.prototype.add;
+    #|WeakSet.prototype.add = 1;
+    #|try {
+    #|  new WeakSet(weakSetIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(weakSetTouched);
+    #|}
+    #|WeakSet.prototype.add = originalWeakSetAdd;
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "false", "TypeError", "false"])
+}
+
+///|
 test "TypedArray constructor consumes iterable sources before reduce callbacks" {
   let src =
     #|function MyError() { this.name = "MyError"; }

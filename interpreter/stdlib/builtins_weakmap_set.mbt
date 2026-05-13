@@ -553,6 +553,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
         Undefined | Null => ()
         _ => {
           let loc = @token.Loc::default()
+          let adder = interp.get_property(wm_obj, "set", loc)
+          if !@runtime.is_callable(adder) {
+            raise @errors.TypeError(message="WeakMap adder is not callable")
+          }
           let iterator_sym = @runtime.get_iterator_symbol()
           let iterator_method = interp.get_computed_property(
             iterable,
@@ -572,10 +576,6 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               raise @errors.TypeError(
                 message="\{@runtime.type_of(iterable)} is not iterable",
               )
-          }
-          let adder = interp.get_property(wm_obj, "set", loc)
-          if !@runtime.is_callable(adder) {
-            raise @errors.TypeError(message="WeakMap adder is not callable")
           }
 
           while true {
@@ -840,6 +840,10 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
         Undefined | Null => ()
         _ => {
           let loc = @token.Loc::default()
+          let adder = interp.get_property(ws_obj, "add", loc)
+          if !@runtime.is_callable(adder) {
+            raise @errors.TypeError(message="WeakSet adder is not callable")
+          }
           let iterator_sym = @runtime.get_iterator_symbol()
           let iterator_method = interp.get_computed_property(
             iterable,
@@ -859,10 +863,6 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
               raise @errors.TypeError(
                 message="\{@runtime.type_of(iterable)} is not iterable",
               )
-          }
-          let adder = interp.get_property(ws_obj, "add", loc)
-          if !@runtime.is_callable(adder) {
-            raise @errors.TypeError(message="WeakSet adder is not callable")
           }
 
           while true {
