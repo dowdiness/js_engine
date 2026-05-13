@@ -154,6 +154,7 @@ pub fn run_component() -> Array[BenchResult] raise {
   [
     bench_array_map_filter(),
     bench_closure_factory(),
+    bench_arithmetic_loop(),
     bench_object_construction(),
     bench_string_ops(),
   ]
@@ -190,6 +191,7 @@ pub fn all_bench_names() -> Array[(String, String)] {
     ("exec/property_chain", "regression"),
     ("exec/array_map_filter", "component"),
     ("exec/closure_factory", "component"),
+    ("exec/arithmetic_loop", "component"),
     ("exec/object_construction", "component"),
     ("exec/string_ops", "component"),
     ("pipeline/parse_heavy", "workflow"),
