@@ -80,6 +80,7 @@ pub fn compile_expr_to_closure(
     CompoundAssign(op, target, value, loc) =>
       compile_compound_assign(op, target, value, loc)
     Grouping(inner, _) => compile_expr_to_closure(inner)
+    Unary(op, operand, loc) => compile_unary(op, operand, loc)
     Binary(op, left, right, loc) => {
       let left_fn = compile_expr_to_closure(left)
       let right_fn = compile_expr_to_closure(right)
@@ -87,6 +88,8 @@ pub fn compile_expr_to_closure(
         eval_compiled_binary(interp, ctx, env, op, left_fn, right_fn, loc)
       }
     }
+    Ternary(cond, then_expr, else_expr, _) =>
+      compile_ternary(cond, then_expr, else_expr)
     FuncExpr(name, params, body, _) => compile_func_expr(name, params, body)
     FuncExprExt(name, params, rest_param, body, _) =>
       compile_func_expr_ext(name, params, rest_param, body)
@@ -113,6 +116,7 @@ pub fn compile_expr_to_closure(
     }
     UpdateExpr(op, operand, prefix, loc) =>
       compile_update(op, operand, prefix, loc)
+    Comma(left, right, _) => compile_comma(left, right)
     _ => unsupported_expr("expression kind")
   }
 }
@@ -388,6 +392,69 @@ fn compile_computed_assign(
 }
 
 ///|
+fn compile_unary(
+  op : @ast.UnaryOp,
+  operand : @ast.Expr,
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  match op {
+    Delete => unsupported_expr("delete unary operator")
+    Typeof =>
+      match operand {
+        Ident(name, _) =>
+          fn(interp, _, env) raise {
+            if env.has(name) {
+              Value::String_(@runtime.type_of(env.get(name)))
+            } else {
+              match interp.global_this {
+                Value::Object(data) =>
+                  match data.bag.properties.get(name) {
+                    Some(value) => Value::String_(@runtime.type_of(value))
+                    None => Value::String_("undefined")
+                  }
+                _ => Value::String_("undefined")
+              }
+            }
+          }
+        _ => {
+          let operand_fn = compile_expr_to_closure(operand)
+          fn(interp, ctx, env) raise {
+            Value::String_(@runtime.type_of(operand_fn(interp, ctx, env)))
+          }
+        }
+      }
+    Void => {
+      let operand_fn = compile_expr_to_closure(operand)
+      fn(interp, ctx, env) raise {
+        let _ = operand_fn(interp, ctx, env)
+        Value::Undefined
+      }
+    }
+    Neg | Pos | Not | BitNot => {
+      let operand_fn = compile_expr_to_closure(operand)
+      fn(interp, ctx, env) raise {
+        let value = operand_fn(interp, ctx, env)
+        match op {
+          Neg => Value::Number(-@runtime.to_number(value, interp=Some(interp)))
+          Pos => Value::Number(@runtime.to_number(value, interp=Some(interp)))
+          Not => Value::Bool(!@runtime.is_truthy(value))
+          BitNot =>
+            Value::Number(
+              @runtime.to_int32(@runtime.to_number(value, interp=Some(interp)))
+              .lnot()
+              .to_double(),
+            )
+          _ =>
+            raise @errors.InternalError(
+              message="Unexpected unary operator at line \{loc.line}, col \{loc.col}",
+            )
+        }
+      }
+    }
+  }
+}
+
+///|
 fn compile_compound_assign(
   op : @ast.CompoundOp,
   target : @ast.Expr,
@@ -555,6 +622,37 @@ fn invalid_assignment_target(
     raise @errors.SyntaxError(
       message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
     )
+  }
+}
+
+///|
+fn compile_ternary(
+  cond : @ast.Expr,
+  then_expr : @ast.Expr,
+  else_expr : @ast.Expr,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let cond_fn = compile_expr_to_closure(cond)
+  let then_fn = compile_expr_to_closure(then_expr)
+  let else_fn = compile_expr_to_closure(else_expr)
+  fn(interp, ctx, env) raise {
+    if @runtime.is_truthy(cond_fn(interp, ctx, env)) {
+      then_fn(interp, ctx, env)
+    } else {
+      else_fn(interp, ctx, env)
+    }
+  }
+}
+
+///|
+fn compile_comma(
+  left : @ast.Expr,
+  right : @ast.Expr,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let left_fn = compile_expr_to_closure(left)
+  let right_fn = compile_expr_to_closure(right)
+  fn(interp, ctx, env) raise {
+    let _ = left_fn(interp, ctx, env)
+    right_fn(interp, ctx, env)
   }
 }
 

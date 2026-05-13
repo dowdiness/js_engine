@@ -532,6 +532,66 @@ test "closure conversion routes strict compound assignment through setters" {
 }
 
 ///|
+test "closure conversion evaluates unary numeric expressions" {
+  inspect(
+    run_script("var x = 1; -x + 43;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates typeof missing" {
+  inspect(
+    run_script("typeof missing;"),
+    content=(
+      #|undefined
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates void operand effects" {
+  inspect(
+    run_script("var x = 0; void (x = 42); x;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates ternary selected branch only" {
+  inspect(
+    run_script("function fail() { throw \"no\"; } var x = 0; x ? fail() : 42;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates comma expressions" {
+  inspect(
+    run_script("var x = 0; (x = 41, x + 1);"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion reports unsupported delete unary" {
+  inspect(
+    run_script_outcome("var o = { x: 1 }; delete o.x;").contains(
+      "delete unary operator",
+    ),
+    content="true",
+  )
+}
+
+///|
 test "closure conversion compiles closure factory program" {
   inspect(
     run_program(CLOSURE_FACTORY_PROGRAM),
