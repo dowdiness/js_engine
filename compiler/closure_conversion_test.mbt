@@ -181,12 +181,7 @@ test "closure conversion executes compiled function bodies" {
     [],
     @token.Loc::default(),
   )
-  inspect(
-    [first, second],
-    content=(
-      #|[41, 42]
-    ),
-  )
+  json_inspect([first.to_string(), second.to_string()], content=["41", "42"])
 }
 
 ///|
@@ -719,23 +714,17 @@ test "closure conversion compiles pipeline evaluate program" {
 ///|
 test "closure conversion script wrapper hoists function declarations" {
   let src = "var answer = f(); function f() { return 42; } answer;"
-  inspect(
-    [run_interpreter_outcome(src), run_script_outcome(src)],
-    content=(
-      #|["value:42", "value:42"]
-    ),
-  )
+  json_inspect([run_interpreter_outcome(src), run_script_outcome(src)], content=[
+    "value:42", "value:42",
+  ])
 }
 
 ///|
 test "closure conversion script wrapper preserves strict var hoisting" {
   let src = "\"use strict\"; answer = 41; var answer; answer + 1;"
-  inspect(
-    [run_interpreter_outcome(src), run_script_outcome(src)],
-    content=(
-      #|["value:42", "value:42"]
-    ),
-  )
+  json_inspect([run_interpreter_outcome(src), run_script_outcome(src)], content=[
+    "value:42", "value:42",
+  ])
 }
 
 ///|
