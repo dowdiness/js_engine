@@ -9,6 +9,8 @@ import {
 // Values
 pub fn compile_expr_to_closure(@ast.Expr) -> (@runtime.Interpreter, @runtime.ExecContext, @runtime.Environment) -> @runtime.Value raise
 
+pub fn compile_program_to_closure(Array[@ast.Stmt]) -> (@runtime.Interpreter, @runtime.ExecContext, @runtime.Environment) -> @runtime.Value raise
+
 // Errors
 
 // Types and methods

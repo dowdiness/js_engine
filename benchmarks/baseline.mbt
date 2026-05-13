@@ -153,6 +153,37 @@ test "baseline/closure_conversion/compiled_counter_factory" (b : @bench.T) {
 }
 
 ///|
+/// Opt-in closure-conversion whole-program closure factory.
+///
+/// What it measures: evaluating a pre-parsed, pre-compiled program closure for
+/// the same JavaScript source as baseline/exec/closure_factory.
+/// What it answers: whether whole-program closure conversion can move the
+/// primary closure_factory target, excluding frontend parse/compile cost.
+/// What it excludes: lexer/parser cost and closure-conversion compilation cost.
+test "baseline/closure_conversion/closure_factory" (b : @bench.T) {
+  let prog = @parser.parse(CLOSURE_FACTORY_SRC) catch {
+    _ => abort("parse raised")
+  }
+  let compiled = @compiler.compile_program_to_closure(prog.stmts)
+  let precheck_interp = @interpreter.new_interpreter()
+  let got = compiled(
+    precheck_interp,
+    default_exec_ctx(),
+    precheck_interp.global,
+  ) catch {
+    _ => abort("compiled program raised")
+  }
+  inspect(got.to_string(), content="500500")
+  b.bench(fn() {
+    let interp = @interpreter.new_interpreter()
+    let result = compiled(interp, default_exec_ctx(), interp.global) catch {
+      _ => abort("compiled closure_factory raised")
+    }
+    b.keep(result)
+  })
+}
+
+///|
 /// Property chain access in a 10,000-iteration JS loop.
 ///
 /// What it measures: own-property lookup cost on a stable five-segment chain

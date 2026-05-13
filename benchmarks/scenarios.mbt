@@ -104,6 +104,33 @@ pub fn bench_closure_factory() -> BenchResult raise {
 }
 
 ///|
+pub fn bench_closure_conversion_closure_factory() -> BenchResult raise {
+  verify(CLOSURE_FACTORY_SRC, "500500")
+  let prog = @parser.parse(CLOSURE_FACTORY_SRC)
+  let compiled = @compiler.compile_program_to_closure(prog.stmts)
+  let precheck_interp = @interpreter.new_interpreter()
+  let got = compiled(
+    precheck_interp,
+    default_exec_ctx(),
+    precheck_interp.global,
+  ).to_string()
+  if got != "500500" {
+    abort(
+      "bench correctness check failed\n  source:   CLOSURE_FACTORY_SRC compiled\n  expected: 500500\n  got:      \{got}",
+    )
+  }
+  run_bench(
+    "baseline/closure_conversion/closure_factory",
+    Component,
+    { warmup: 2, iterations: 10, group_size: 1 },
+    fn() raise {
+      let interp = @interpreter.new_interpreter()
+      let _ = compiled(interp, default_exec_ctx(), interp.global)
+    },
+  )
+}
+
+///|
 pub fn bench_object_construction() -> BenchResult raise {
   verify(OBJECT_CONSTRUCTION_SRC, "1000")
   run_bench(
@@ -170,6 +197,31 @@ pub fn bench_pipeline_exec_evaluate() -> BenchResult raise {
 }
 
 ///|
+pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise {
+  verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let prog = @parser.parse(PIPELINE_EXEC_SRC)
+  let compiled = @compiler.compile_program_to_closure(prog.stmts)
+  let precheck_interp = @interpreter.new_interpreter()
+  let got = compiled(
+    precheck_interp,
+    default_exec_ctx(),
+    precheck_interp.global,
+  ).to_string()
+  if got != PIPELINE_EXEC_EXPECTED {
+    abort(
+      "bench correctness check failed\n  source:   PIPELINE_EXEC_SRC compiled\n  expected: \{PIPELINE_EXEC_EXPECTED}\n  got:      \{got}",
+    )
+  }
+  let interp = @interpreter.new_interpreter()
+  run_bench(
+    "pipeline/closure_conversion/evaluate",
+    Workflow,
+    { warmup: 2, iterations: 10, group_size: 1 },
+    fn() raise { let _ = compiled(interp, default_exec_ctx(), interp.global) },
+  )
+}
+
+///|
 pub fn bench_parse_heavy() -> BenchResult raise {
   run_bench(
     "pipeline/parse_heavy",
@@ -198,6 +250,7 @@ pub fn run_component() -> Array[BenchResult] raise {
   [
     bench_array_map_filter(),
     bench_closure_factory(),
+    bench_closure_conversion_closure_factory(),
     bench_arithmetic_loop(),
     bench_object_construction(),
     bench_string_ops(),
@@ -210,6 +263,7 @@ pub fn run_workflow() -> Array[BenchResult] raise {
     bench_pipeline_exec_lex(),
     bench_pipeline_exec_parse(),
     bench_pipeline_exec_evaluate(),
+    bench_pipeline_closure_conversion_evaluate(),
     bench_parse_heavy(),
   ]
 }
@@ -240,12 +294,14 @@ pub fn all_bench_names() -> Array[(String, String)] {
     ("exec/property_chain", "regression"),
     ("exec/array_map_filter", "component"),
     ("exec/closure_factory", "component"),
+    ("baseline/closure_conversion/closure_factory", "component"),
     ("exec/arithmetic_loop", "component"),
     ("exec/object_construction", "component"),
     ("exec/string_ops", "component"),
     ("pipeline/exec/lex", "workflow"),
     ("pipeline/exec/parse", "workflow"),
     ("pipeline/exec/evaluate", "workflow"),
+    ("pipeline/closure_conversion/evaluate", "workflow"),
     ("pipeline/parse_heavy", "workflow"),
   ]
 }

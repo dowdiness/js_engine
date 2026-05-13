@@ -2,6 +2,46 @@
 using @runtime {type BindingKind, type Value}
 
 ///|
+const CLOSURE_FACTORY_PROGRAM : String =
+  #|function makeCounter(start) {
+  #|  var count = start;
+  #|  return function() {
+  #|    count = count + 1;
+  #|    return count;
+  #|  };
+  #|}
+  #|var counters = [];
+  #|for (var i = 0; i < 1000; i++) {
+  #|  counters.push(makeCounter(i));
+  #|}
+  #|var total = 0;
+  #|for (var i = 0; i < 1000; i++) {
+  #|  total = total + counters[i]();
+  #|}
+  #|total;
+
+///|
+const PIPELINE_EXEC_PROGRAM : String =
+  #|(function() {
+  #|  function makeCounter(start) {
+  #|    var count = start;
+  #|    return function() {
+  #|      count = count + 1;
+  #|      return count;
+  #|    };
+  #|  }
+  #|  var counters = [];
+  #|  for (var i = 0; i < 1000; i++) {
+  #|    counters.push(makeCounter(i));
+  #|  }
+  #|  var total = 0;
+  #|  for (var i = 0; i < 1000; i++) {
+  #|    total = total + counters[i]();
+  #|  }
+  #|  return total;
+  #|})();
+
+///|
 fn default_ctx() -> @runtime.ExecContext {
   { strict: false, current_generator: None }
 }
@@ -41,6 +81,14 @@ fn run_expr_with_ctx(
 ) -> Value raise Error {
   let compiled = compile_expr_to_closure(parse_expr(src))
   compiled(interp, ctx, env)
+}
+
+///|
+fn run_program(src : String) -> Value raise Error {
+  let prog = @parser.parse(src)
+  let interp = @interpreter.new_interpreter()
+  let compiled = compile_program_to_closure(prog.stmts)
+  compiled(interp, default_ctx(), interp.global)
 }
 
 ///|
@@ -235,6 +283,26 @@ test "closure conversion handles proxy rhs for instanceof" {
     result,
     content=(
       #|true
+    ),
+  )
+}
+
+///|
+test "closure conversion compiles closure factory program" {
+  inspect(
+    run_program(CLOSURE_FACTORY_PROGRAM),
+    content=(
+      #|500500
+    ),
+  )
+}
+
+///|
+test "closure conversion compiles pipeline evaluate program" {
+  inspect(
+    run_program(PIPELINE_EXEC_PROGRAM),
+    content=(
+      #|500500
     ),
   )
 }

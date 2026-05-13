@@ -40,11 +40,11 @@ priv struct CompiledBody(
 /// the returned closure, matching `FuncData.closure` in the normal interpreter
 /// path.
 ///
-/// Limitations: this is an expression-only prototype. It supports literals,
-/// identifiers, grouping, binary operators, functions, arrows, and bare calls.
-/// It intentionally does not compile statements, member-call receivers,
-/// assignment, object/array literals, `this`, classes, generators, or async
-/// functions yet.
+/// Limitations: this is a prototype for benchmark exploration. It supports the
+/// statement and expression subset needed by the closure-factory workloads, but
+/// it intentionally does not compile classes, generators, async functions,
+/// destructuring, object literals, `this`, or the full ECMAScript hoisting
+/// surface yet.
 pub fn compile_expr_to_closure(
   expr : @ast.Expr,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
@@ -55,6 +55,7 @@ pub fn compile_expr_to_closure(
     NullLit(_) => fn(_, _, _) { Value::Null }
     UndefinedLit(_) => fn(_, _, _) { Value::Undefined }
     Ident(name, _) => compile_ident(name)
+    ArrayLit(elements, _) => compile_array_lit(elements)
     Assign(name, value_expr, _) => compile_assign(name, value_expr)
     Grouping(inner, _) => compile_expr_to_closure(inner)
     Binary(op, left, right, loc) => {
@@ -70,22 +71,42 @@ pub fn compile_expr_to_closure(
     ArrowFunc(params, body, _) => compile_arrow_func(params, body)
     ArrowFuncExt(params, rest_param, body, _) =>
       compile_arrow_func_ext(params, rest_param, body)
-    Call(callee, args, loc) => {
-      let compiled_args = compile_args(args)
-      if is_direct_eval_callee(callee) {
-        fn(interp, ctx, env) raise {
-          eval_compiled_direct_eval(interp, ctx, env, compiled_args, loc)
-        }
-      } else {
-        let callee_fn = compile_expr_to_closure(callee)
-        fn(interp, ctx, env) raise {
-          let callee_value = callee_fn(interp, ctx, env)
-          let values = eval_compiled_args(interp, ctx, env, compiled_args)
-          interp.call_value(callee_value, Value::Undefined, values, loc)
-        }
+    Call(callee, args, loc) => compile_call(callee, args, loc)
+    Member(obj, prop, loc) => {
+      let obj_fn = compile_expr_to_closure(obj)
+      fn(interp, ctx, env) raise {
+        interp.get_property(obj_fn(interp, ctx, env), prop, loc)
       }
     }
+    ComputedMember(obj, key, loc) => {
+      let obj_fn = compile_expr_to_closure(obj)
+      let key_fn = compile_expr_to_closure(key)
+      fn(interp, ctx, env) raise {
+        interp.get_computed_property(
+          obj_fn(interp, ctx, env),
+          key_fn(interp, ctx, env),
+          loc,
+        )
+      }
+    }
+    UpdateExpr(op, operand, prefix, _) => compile_update(op, operand, prefix)
     _ => unsupported_expr("expression kind")
+  }
+}
+
+///|
+/// Compile a statement list into a reusable program closure.
+///
+/// This is intentionally opt-in for benchmarks. It does not replace
+/// `Interpreter::run`; callers choose a prepared `Interpreter`, `ExecContext`,
+/// and `Environment` so benchmark code can isolate parse, compile, and execute
+/// costs explicitly.
+pub fn compile_program_to_closure(
+  stmts : Array[@ast.Stmt],
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let body = compile_body(stmts)
+  fn(interp, ctx, env) raise {
+    reduce_program_signal((body.0)(interp, ctx, env))
   }
 }
 
@@ -111,6 +132,29 @@ fn compile_ident(
 }
 
 ///|
+fn compile_array_lit(
+  elements : Array[@ast.Expr],
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let compiled : Array[
+    (Interpreter, ExecContext, Environment) -> Value raise Error,
+  ] = []
+  for element in elements {
+    match element {
+      ArrayHole(_) => compiled.push(fn(_, _, _) { Value::Undefined })
+      SpreadExpr(_, _) => return unsupported_expr("array spread")
+      _ => compiled.push(compile_expr_to_closure(element))
+    }
+  }
+  fn(interp, ctx, env) raise {
+    let values : Array[Value] = []
+    for run in compiled {
+      values.push(run(interp, ctx, env))
+    }
+    @runtime.make_array(values)
+  }
+}
+
+///|
 fn compile_assign(
   name : String,
   value_expr : @ast.Expr,
@@ -128,6 +172,76 @@ fn compile_assign(
       other => raise other
     }
     value
+  }
+}
+
+///|
+fn compile_update(
+  op : @ast.UpdateOp,
+  operand : @ast.Expr,
+  prefix : Bool,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  match operand {
+    Ident(name, _) =>
+      fn(_, _, env) raise {
+        let old = env.get(name)
+        let old_num = @runtime.to_number(old)
+        let new_value = match op {
+          Increment => Value::Number(old_num + 1.0)
+          Decrement => Value::Number(old_num - 1.0)
+        }
+        env.assign(name, new_value)
+        if prefix {
+          new_value
+        } else {
+          old
+        }
+      }
+    _ => unsupported_expr("update target")
+  }
+}
+
+///|
+fn compile_call(
+  callee : @ast.Expr,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let compiled_args = compile_args(args)
+  match callee {
+    Member(obj_expr, prop, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let callee_value = interp.get_property(obj, prop, member_loc)
+        let values = eval_compiled_args(interp, ctx, env, compiled_args)
+        interp.call_value(callee_value, obj, values, loc)
+      }
+    }
+    ComputedMember(obj_expr, key_expr, member_loc) => {
+      let obj_fn = compile_expr_to_closure(obj_expr)
+      let key_fn = compile_expr_to_closure(key_expr)
+      fn(interp, ctx, env) raise {
+        let obj = obj_fn(interp, ctx, env)
+        let key = key_fn(interp, ctx, env)
+        let callee_value = interp.get_computed_property(obj, key, member_loc)
+        let values = eval_compiled_args(interp, ctx, env, compiled_args)
+        interp.call_value(callee_value, obj, values, loc)
+      }
+    }
+    _ =>
+      if is_direct_eval_callee(callee) {
+        fn(interp, ctx, env) raise {
+          eval_compiled_direct_eval(interp, ctx, env, compiled_args, loc)
+        }
+      } else {
+        let callee_fn = compile_expr_to_closure(callee)
+        fn(interp, ctx, env) raise {
+          let callee_value = callee_fn(interp, ctx, env)
+          let values = eval_compiled_args(interp, ctx, env, compiled_args)
+          interp.call_value(callee_value, Value::Undefined, values, loc)
+        }
+      }
   }
 }
 
@@ -333,6 +447,80 @@ fn compile_stmt(
       let body = compile_body(stmts)
       fn(interp, ctx, env) raise { (body.0)(interp, ctx, env) }
     }
+    FuncDecl(name, params, body, _) => {
+      let compiled_body = compile_body(body)
+      fn(_interp, ctx, env) raise {
+        @runtime.validate_function_signature(
+          ctx.strict,
+          Some(name),
+          params,
+          body,
+        )
+        let func = make_compiled_func(
+          Some(name),
+          params,
+          env,
+          ctx.strict || @runtime.has_use_strict(body),
+          compiled_body,
+        )
+        if env.bindings.contains(name) || env.has_var(name) {
+          env.assign_var(name, func)
+        } else {
+          env.def(name, func, BindingKind::VarBinding)
+        }
+        Signal::Normal(Value::Undefined)
+      }
+    }
+    ForStmt(init, cond, update, body, _) => {
+      let init_fn = match init {
+        Some(stmt) => Some(compile_stmt(stmt))
+        None => None
+      }
+      let cond_fn = match cond {
+        Some(expr) => Some(compile_expr_to_closure(expr))
+        None => None
+      }
+      let update_fn = match update {
+        Some(expr) => Some(compile_expr_to_closure(expr))
+        None => None
+      }
+      let body_fn = compile_stmt(body)
+      fn(interp, ctx, env) raise {
+        match init_fn {
+          Some(run) =>
+            match run(interp, ctx, env) {
+              Signal::Normal(_) => ()
+              sig => return sig
+            }
+          None => ()
+        }
+        let mut completion = Value::Undefined
+        while true {
+          match cond_fn {
+            Some(run) => if !@runtime.is_truthy(run(interp, ctx, env)) { break }
+            None => ()
+          }
+          match body_fn(interp, ctx, env) {
+            Signal::Normal(value) => completion = value
+            Signal::ReturnSignal(_) as sig => return sig
+            Signal::BreakSignal(value, None) => {
+              completion = value.unwrap_or(completion)
+              break
+            }
+            Signal::ContinueSignal(value, None) =>
+              completion = value.unwrap_or(completion)
+            sig => return sig
+          }
+          match update_fn {
+            Some(run) => {
+              let _ = run(interp, ctx, env)
+            }
+            None => ()
+          }
+        }
+        Signal::Normal(completion)
+      }
+    }
     _ => unsupported_stmt("statement kind")
   }
 }
@@ -482,6 +670,19 @@ fn reduce_body_signal(signal : Signal) -> Value raise Error {
   match signal {
     Signal::Normal(_) => Value::Undefined
     Signal::ReturnSignal(value) => value
+    Signal::BreakSignal(_, _) =>
+      raise @errors.SyntaxError(message="break statement outside of loop")
+    Signal::ContinueSignal(_, _) =>
+      raise @errors.SyntaxError(message="continue statement outside of loop")
+  }
+}
+
+///|
+fn reduce_program_signal(signal : Signal) -> Value raise Error {
+  match signal {
+    Signal::Normal(value) => value
+    Signal::ReturnSignal(_) =>
+      raise @errors.SyntaxError(message="return statement outside of function")
     Signal::BreakSignal(_, _) =>
       raise @errors.SyntaxError(message="break statement outside of loop")
     Signal::ContinueSignal(_, _) =>
