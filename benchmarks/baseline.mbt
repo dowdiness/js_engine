@@ -14,6 +14,9 @@
 // =============================================================================
 
 ///|
+using @runtime {type ExecContext, type Value}
+
+///|
 /// Loop-only arithmetic workload.
 ///
 /// Category: closure-conversion baseline
@@ -31,6 +34,20 @@ const BASELINE_ARITHMETIC_LOOP_SRC : String =
   #|sum;
 
 ///|
+/// Counter factory expression used by the opt-in closure-conversion prototype
+/// benchmark. The MoonBit harness performs the outer loop so this isolates the
+/// compiled function-expression and compiled function-body call path without
+/// requiring whole-program statement compilation yet.
+const COMPILED_COUNTER_FACTORY_EXPR : String =
+  #|(function(start) {
+  #|  var count = start;
+  #|  return function() {
+  #|    count = count + 1;
+  #|    return count;
+  #|  };
+  #|})
+
+///|
 fn keep_run_result(b : @bench.T, src : String) -> Unit {
   try {
     let (_, v) = @lib.run(src)
@@ -38,6 +55,49 @@ fn keep_run_result(b : @bench.T, src : String) -> Unit {
   } catch {
     _ => abort("run raised")
   }
+}
+
+///|
+fn parse_single_expr(src : String) -> @ast.Expr raise Error {
+  let prog = @parser.parse(src)
+  match prog.stmts {
+    [ExprStmt(expr, _)] => expr
+    _ => abort("expected a single expression statement")
+  }
+}
+
+///|
+fn default_exec_ctx() -> ExecContext {
+  { strict: false, current_generator: None }
+}
+
+///|
+fn run_compiled_counter_factory() -> Value raise Error {
+  let interp = @interpreter.new_interpreter()
+  let compiled = @compiler.compile_expr_to_closure(
+    parse_single_expr(COMPILED_COUNTER_FACTORY_EXPR),
+  )
+  let factory = compiled(interp, default_exec_ctx(), interp.global)
+  let counters : Array[Value] = []
+  for i = 0; i < 1000; i = i + 1 {
+    counters.push(
+      interp.call_value(
+        factory,
+        Value::Undefined,
+        [Value::Number(i.to_double())],
+        @token.Loc::default(),
+      ),
+    )
+  }
+  let mut total = 0.0
+  for counter in counters {
+    match
+      interp.call_value(counter, Value::Undefined, [], @token.Loc::default()) {
+      Value::Number(n) => total += n
+      other => abort("compiled counter returned \{other}")
+    }
+  }
+  Value::Number(total)
 }
 
 ///|
@@ -71,6 +131,25 @@ test "baseline/exec/fibonacci_30" (b : @bench.T) {
 test "baseline/exec/closure_factory" (b : @bench.T) {
   expect("baseline/exec/closure_factory", CLOSURE_FACTORY_SRC, "500500")
   b.bench(fn() { keep_run_result(b, CLOSURE_FACTORY_SRC) })
+}
+
+///|
+/// Opt-in closure-conversion prototype counter factory.
+///
+/// What it measures: the compiled function-expression and compiled function
+/// body path for the same captured-variable shape used by closure_factory.
+/// What it answers: whether the prototype call path is viable before wiring
+/// whole-program statement compilation into `pipeline/exec/evaluate`.
+/// What it excludes: JavaScript-level arrays, for-loops, function declarations,
+/// and member/computed calls, which still require statement compilation work.
+test "baseline/closure_conversion/compiled_counter_factory" (b : @bench.T) {
+  inspect(run_compiled_counter_factory().to_string(), content="500500")
+  b.bench(fn() {
+    let result = run_compiled_counter_factory() catch {
+      _ => abort("compiled counter factory raised")
+    }
+    b.keep(result)
+  })
 }
 
 ///|

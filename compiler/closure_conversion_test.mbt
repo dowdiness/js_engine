@@ -80,6 +80,40 @@ test "closure conversion captures function expression environment" {
 }
 
 ///|
+test "closure conversion executes compiled function bodies" {
+  let interp = @interpreter.new_interpreter()
+  let make_counter = run_expr(
+    "(function(start) { var count = start; return function() { count = count + 1; return count; }; })",
+    interp,
+    interp.global,
+  )
+  let counter = interp.call_value(
+    make_counter,
+    Value::Undefined,
+    [Value::Number(40.0)],
+    @token.Loc::default(),
+  )
+  let first = interp.call_value(
+    counter,
+    Value::Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  let second = interp.call_value(
+    counter,
+    Value::Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  inspect(
+    [first, second],
+    content=(
+      #|[41, 42]
+    ),
+  )
+}
+
+///|
 test "closure conversion creates callable arrow functions" {
   let interp = @interpreter.new_interpreter()
   let fn_value = run_expr("(x => x + 1)", interp, interp.global)

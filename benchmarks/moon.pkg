@@ -1,8 +1,12 @@
 import {
+  "dowdiness/js_engine/ast",
   "dowdiness/js_engine" @lib,
+  "dowdiness/js_engine/compiler",
   "dowdiness/js_engine/interpreter",
+  "dowdiness/js_engine/interpreter/runtime" @runtime,
   "dowdiness/js_engine/lexer",
   "dowdiness/js_engine/parser",
+  "dowdiness/js_engine/token",
   "moonbitlang/core/env",
   "moonbitlang/core/bench",
 }

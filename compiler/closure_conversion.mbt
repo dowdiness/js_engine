@@ -1,13 +1,14 @@
 ///|
 using @runtime {
+  type BindingKind,
   type Callable,
   type Environment,
   type ExecContext,
-  type FuncData,
   type FuncDataExt,
   type Interpreter,
   type PropDescriptor,
   type ProxyData,
+  type Signal,
   type Value,
 }
 
@@ -19,6 +20,11 @@ priv enum CompiledArg {
     @token.Loc
   )
 }
+
+///|
+priv struct CompiledBody(
+  (Interpreter, ExecContext, Environment) -> Signal raise Error
+)
 
 ///|
 /// Compile a supported expression into a MoonBit closure that evaluates that
@@ -49,6 +55,7 @@ pub fn compile_expr_to_closure(
     NullLit(_) => fn(_, _, _) { Value::Null }
     UndefinedLit(_) => fn(_, _, _) { Value::Undefined }
     Ident(name, _) => compile_ident(name)
+    Assign(name, value_expr, _) => compile_assign(name, value_expr)
     Grouping(inner, _) => compile_expr_to_closure(inner)
     Binary(op, left, right, loc) => {
       let left_fn = compile_expr_to_closure(left)
@@ -104,23 +111,42 @@ fn compile_ident(
 }
 
 ///|
+fn compile_assign(
+  name : String,
+  value_expr : @ast.Expr,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let value_fn = compile_expr_to_closure(value_expr)
+  fn(interp, ctx, env) raise {
+    let value = value_fn(interp, ctx, env)
+    env.assign(name, value) catch {
+      @errors.ReferenceError(_) =>
+        if ctx.strict {
+          raise @errors.ReferenceError(message="\{name} is not defined")
+        } else {
+          interp.global.def(name, value, BindingKind::VarBinding)
+        }
+      other => raise other
+    }
+    value
+  }
+}
+
+///|
 fn compile_func_expr(
   name : String?,
   params : Array[String],
   body : Array[@ast.Stmt],
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let compiled_body = compile_body(body)
   fn(_, ctx, env) raise {
     @runtime.validate_function_signature(ctx.strict, name, params, body)
-    let func_data : FuncData = {
+    make_compiled_func(
       name,
       params,
-      body,
-      closure: env,
-      strict: ctx.strict || @runtime.has_use_strict(body),
-      has_name_binding: name is Some(_),
-      is_method: false,
-    }
-    @runtime.make_func(func_data)
+      env,
+      ctx.strict || @runtime.has_use_strict(body),
+      compiled_body,
+    )
   }
 }
 
@@ -158,18 +184,15 @@ fn compile_arrow_func(
   params : Array[String],
   body : Array[@ast.Stmt],
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let compiled_body = compile_body(body)
   fn(_, ctx, env) raise {
     @runtime.validate_function_signature(ctx.strict, None, params, body)
-    let func_data : FuncData = {
-      name: None,
+    make_compiled_arrow_func(
       params,
-      body,
-      closure: env,
-      strict: ctx.strict || @runtime.has_use_strict(body),
-      has_name_binding: false,
-      is_method: false,
-    }
-    make_arrow_func(func_data, params.length())
+      env,
+      ctx.strict || @runtime.has_use_strict(body),
+      compiled_body,
+    )
   }
 }
 
@@ -215,6 +238,106 @@ fn compile_args(args : Array[@ast.Expr]) -> Array[CompiledArg] {
 }
 
 ///|
+fn compile_body(stmts : Array[@ast.Stmt]) -> CompiledBody {
+  let compiled : Array[
+    (Interpreter, ExecContext, Environment) -> Signal raise Error,
+  ] = []
+  for stmt in stmts {
+    compiled.push(compile_stmt(stmt))
+  }
+  CompiledBody(fn(interp, ctx, env) raise {
+    let mut last = Value::Undefined
+    for run in compiled {
+      match run(interp, ctx, env) {
+        Signal::Normal(value) => last = value
+        sig => return sig
+      }
+    }
+    Signal::Normal(last)
+  })
+}
+
+///|
+fn compile_stmt(
+  stmt : @ast.Stmt,
+) -> (Interpreter, ExecContext, Environment) -> Signal raise Error {
+  match stmt {
+    ExprStmt(expr, _) => {
+      let expr_fn = compile_expr_to_closure(expr)
+      fn(interp, ctx, env) raise { Signal::Normal(expr_fn(interp, ctx, env)) }
+    }
+    ReturnStmt(expr, _) => {
+      let value_fn = match expr {
+        Some(e) => compile_expr_to_closure(e)
+        None => fn(_, _, _) { Value::Undefined }
+      }
+      fn(interp, ctx, env) raise {
+        Signal::ReturnSignal(value_fn(interp, ctx, env))
+      }
+    }
+    VarDecl(kind, name, init, _) => {
+      let init_fn = match init {
+        Some(expr) => compile_expr_to_closure(expr)
+        None => fn(_, _, _) { Value::Undefined }
+      }
+      fn(interp, ctx, env) raise {
+        let binding_kind = match kind {
+          LetKind => BindingKind::LetBinding
+          ConstKind => BindingKind::ConstBinding
+          VarKind => BindingKind::VarBinding
+        }
+        let value = init_fn(interp, ctx, env)
+        if binding_kind == BindingKind::VarBinding &&
+          (env.bindings.contains(name) || env.has_var(name)) {
+          if init is Some(_) {
+            env.assign_var(name, value)
+          }
+        } else if (
+            binding_kind == BindingKind::LetBinding ||
+            binding_kind == BindingKind::ConstBinding
+          ) &&
+          env.bindings.contains(name) {
+          env.initialize(name, value)
+        } else {
+          env.def(name, value, binding_kind)
+        }
+        Signal::Normal(Value::Undefined)
+      }
+    }
+    IfStmt(cond, then_branch, else_branch, _) => {
+      let cond_fn = compile_expr_to_closure(cond)
+      let then_fn = compile_stmt(then_branch)
+      let else_fn = match else_branch {
+        Some(stmt) => Some(compile_stmt(stmt))
+        None => None
+      }
+      fn(interp, ctx, env) raise {
+        if @runtime.is_truthy(cond_fn(interp, ctx, env)) {
+          then_fn(interp, ctx, env)
+        } else {
+          match else_fn {
+            Some(run) => run(interp, ctx, env)
+            None => Signal::Normal(Value::Undefined)
+          }
+        }
+      }
+    }
+    Block(stmts, _) => {
+      let body = compile_body(stmts)
+      fn(interp, ctx, env) raise {
+        let block_env = Environment::new(parent=Some(env))
+        (body.0)(interp, ctx, block_env)
+      }
+    }
+    StmtList(stmts, _) => {
+      let body = compile_body(stmts)
+      fn(interp, ctx, env) raise { (body.0)(interp, ctx, env) }
+    }
+    _ => unsupported_stmt("statement kind")
+  }
+}
+
+///|
 fn eval_compiled_args(
   interp : Interpreter,
   ctx : ExecContext,
@@ -234,6 +357,136 @@ fn eval_compiled_args(
     }
   }
   values
+}
+
+///|
+fn make_compiled_func(
+  name : String?,
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  body : CompiledBody,
+) -> Value {
+  let func_name = match name {
+    Some(n) => n
+    None => ""
+  }
+  @runtime.make_interp_method_func(name=func_name, length=params.length(), fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    call_compiled_func(interp, this_val, args, params, closure, strict, body)
+  })
+}
+
+///|
+fn make_compiled_arrow_func(
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  body : CompiledBody,
+) -> Value {
+  @runtime.make_interp_method_func(name="", length=params.length(), fn(
+    interp,
+    _this_val,
+    args,
+  ) raise {
+    call_compiled_arrow_func(interp, args, params, closure, strict, body)
+  })
+}
+
+///|
+fn call_compiled_func(
+  interp : Interpreter,
+  this_val : Value,
+  args : Array[Value],
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  body : CompiledBody,
+) -> Value raise Error {
+  let saved_in_default = interp.in_nonarrow_param_default_eval
+  interp.in_nonarrow_param_default_eval = false
+  let result : Value = try {
+    let func_env = Environment::new(parent=Some(closure))
+    func_env.is_var_scope = true
+    let func_ctx : ExecContext = { strict, current_generator: None }
+    let effective_this = if strict {
+      this_val
+    } else {
+      match this_val {
+        Value::Undefined | Value::Null => interp.global_this
+        _ => this_val
+      }
+    }
+    func_env.def("this", effective_this, BindingKind::LetBinding)
+    func_env.def("<new.target>", Value::Undefined, BindingKind::LetBinding)
+    bind_simple_params(func_env, params, args)
+    reduce_body_signal((body.0)(interp, func_ctx, func_env))
+  } catch {
+    err => {
+      interp.in_nonarrow_param_default_eval = saved_in_default
+      raise err
+    }
+  }
+  interp.in_nonarrow_param_default_eval = saved_in_default
+  result
+}
+
+///|
+fn call_compiled_arrow_func(
+  interp : Interpreter,
+  args : Array[Value],
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  body : CompiledBody,
+) -> Value raise Error {
+  let saved_in_default = interp.in_nonarrow_param_default_eval
+  interp.in_nonarrow_param_default_eval = false
+  let result : Value = try {
+    let func_env = Environment::new(parent=Some(closure))
+    func_env.is_var_scope = true
+    let func_ctx : ExecContext = { strict, current_generator: None }
+    bind_simple_params(func_env, params, args)
+    reduce_body_signal((body.0)(interp, func_ctx, func_env))
+  } catch {
+    err => {
+      interp.in_nonarrow_param_default_eval = saved_in_default
+      raise err
+    }
+  }
+  interp.in_nonarrow_param_default_eval = saved_in_default
+  result
+}
+
+///|
+fn bind_simple_params(
+  env : Environment,
+  params : Array[String],
+  args : Array[Value],
+) -> Unit raise Error {
+  for i = 0; i < params.length(); i = i + 1 {
+    let value = if i < args.length() { args[i] } else { Value::Undefined }
+    if env.bindings.contains(params[i]) {
+      env.assign(params[i], value)
+    } else {
+      env.def_parameter(params[i], value)
+    }
+  }
+}
+
+///|
+fn reduce_body_signal(signal : Signal) -> Value raise Error {
+  match signal {
+    Signal::Normal(_) => Value::Undefined
+    Signal::ReturnSignal(value) => value
+    Signal::BreakSignal(_, _) =>
+      raise @errors.SyntaxError(message="break statement outside of loop")
+    Signal::ContinueSignal(_, _) =>
+      raise @errors.SyntaxError(message="continue statement outside of loop")
+  }
 }
 
 ///|
@@ -439,26 +692,6 @@ fn ordinary_compiled_instanceof(
 }
 
 ///|
-fn make_arrow_func(data : FuncData, length : Int) -> Value {
-  let nf_desc = non_writable_function_descriptor()
-  Value::Object({
-    bag: {
-      properties: {
-        "name": Value::String_(""),
-        "length": Value::Number(length.to_double()),
-      },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: @runtime.get_func_proto(),
-    callable: Some(Callable::ArrowFunc(data)),
-    class_name: "Function",
-    extensible: true,
-  })
-}
-
-///|
 fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
   let nf_desc = non_writable_function_descriptor()
   Value::Object({
@@ -506,6 +739,17 @@ fn arrow_ext_length(params : Array[@ast.Param]) -> Int {
 fn unsupported_expr(
   kind : String,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  fn(_, _, _) raise {
+    raise @errors.InternalError(
+      message="closure conversion prototype does not support \{kind}",
+    )
+  }
+}
+
+///|
+fn unsupported_stmt(
+  kind : String,
+) -> (Interpreter, ExecContext, Environment) -> Signal raise Error {
   fn(_, _, _) raise {
     raise @errors.InternalError(
       message="closure conversion prototype does not support \{kind}",
