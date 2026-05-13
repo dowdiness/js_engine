@@ -316,6 +316,70 @@ test "closure conversion handles proxy rhs for instanceof" {
 }
 
 ///|
+test "closure conversion evaluates basic object literals" {
+  inspect(
+    run_script("({ x: 41 }).x + 1;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion evaluates computed object keys" {
+  inspect(
+    run_script("({ [\"x\"]: 41 }).x + 1;"),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion binds this for object function properties" {
+  inspect(
+    run_script(
+      "var obj = { x: 41, getX: function() { return this.x; } }; obj.getX() + 1;",
+    ),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion binds this for object method shorthand" {
+  inspect(
+    run_script(
+      "var obj = { x: 41, getX() { return this.x; } }; obj.getX() + 1;",
+    ),
+    content=(
+      #|42
+    ),
+  )
+}
+
+///|
+test "closure conversion reports unsupported object literal accessors" {
+  inspect(
+    run_script_outcome("({ get x() { return 1; } }).x;").contains(
+      "object literal accessor property",
+    ),
+    content="true",
+  )
+}
+
+///|
+test "closure conversion reports unsupported object literal spread" {
+  inspect(
+    run_script_outcome("({ ...{ x: 1 } }).x;").contains(
+      "object literal spread property",
+    ),
+    content="true",
+  )
+}
+
+///|
 test "closure conversion compiles closure factory program" {
   inspect(
     run_program(CLOSURE_FACTORY_PROGRAM),

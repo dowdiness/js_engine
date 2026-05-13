@@ -6,7 +6,9 @@ using @runtime {
   type ExecContext,
   type FuncDataExt,
   type Interpreter,
+  type ObjectData,
   type PropDescriptor,
+  type PropertyBag,
   type ProxyData,
   type Signal,
   type Value,
@@ -27,6 +29,18 @@ priv struct CompiledBody(
 )
 
 ///|
+priv enum CompiledObjectProp {
+  StaticData(
+    String,
+    (Interpreter, ExecContext, Environment) -> Value raise Error
+  )
+  ComputedData(
+    (Interpreter, ExecContext, Environment) -> Value raise Error,
+    (Interpreter, ExecContext, Environment) -> Value raise Error
+  )
+}
+
+///|
 /// Compile a supported expression into a MoonBit closure that evaluates that
 /// expression against an interpreter, execution context, and lexical
 /// environment.
@@ -43,8 +57,8 @@ priv struct CompiledBody(
 /// Limitations: this is a prototype for benchmark exploration. It supports the
 /// statement and expression subset needed by the closure-factory workloads, but
 /// it intentionally does not compile classes, generators, async functions,
-/// destructuring, object literals, `this`, or the full ECMAScript hoisting
-/// surface yet.
+/// destructuring, object-literal accessors/spread, or the full ECMAScript
+/// hoisting surface yet.
 pub fn compile_expr_to_closure(
   expr : @ast.Expr,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
@@ -55,6 +69,8 @@ pub fn compile_expr_to_closure(
     NullLit(_) => fn(_, _, _) { Value::Null }
     UndefinedLit(_) => fn(_, _, _) { Value::Undefined }
     Ident(name, _) => compile_ident(name)
+    ThisExpr(_) => compile_this()
+    ObjectLit(props, _) => compile_object_lit(props)
     ArrayLit(elements, _) => compile_array_lit(elements)
     Assign(name, value_expr, _) => compile_assign(name, value_expr)
     Grouping(inner, _) => compile_expr_to_closure(inner)
@@ -151,6 +167,23 @@ fn compile_ident(
 }
 
 ///|
+fn compile_this() -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  fn(_, _, env) raise {
+    env.get("this") catch {
+      @errors.ReferenceError(message~) => {
+        if message.contains("before initialization") {
+          raise @errors.ReferenceError(
+            message="Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
+          )
+        }
+        Value::Undefined
+      }
+      other => raise other
+    }
+  }
+}
+
+///|
 fn compile_array_lit(
   elements : Array[@ast.Expr],
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
@@ -170,6 +203,125 @@ fn compile_array_lit(
       values.push(run(interp, ctx, env))
     }
     @runtime.make_array(values)
+  }
+}
+
+///|
+fn compile_object_lit(
+  props : Array[@ast.Property],
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let compiled : Array[CompiledObjectProp] = []
+  for prop in props {
+    match prop.kind {
+      Init =>
+        if prop.computed {
+          compiled.push(
+            ComputedData(
+              compile_expr_to_closure(prop.key),
+              compile_expr_to_closure(prop.value),
+            ),
+          )
+        } else {
+          compiled.push(
+            StaticData(
+              static_object_key(prop.key),
+              compile_expr_to_closure(prop.value),
+            ),
+          )
+        }
+      Get | Set => return unsupported_expr("object literal accessor property")
+      Spread => return unsupported_expr("object literal spread property")
+    }
+  }
+  fn(interp, ctx, env) raise {
+    let properties : Map[String, Value] = {}
+    let symbol_properties : Map[Int, Value] = {}
+    let descriptors : Map[String, PropDescriptor] = {}
+    let symbol_descriptors : Map[Int, PropDescriptor] = {}
+    let mut proto_override : Value? = None
+    let default_obj_proto = env.get("[[ObjectPrototype]]") catch {
+      _ => Value::Null
+    }
+    let bag : PropertyBag = {
+      properties,
+      symbol_properties,
+      descriptors,
+      symbol_descriptors,
+    }
+    let object_data : ObjectData = {
+      bag,
+      prototype: default_obj_proto,
+      callable: None,
+      class_name: "Object",
+      extensible: true,
+    }
+    let home_object = Value::Object(object_data)
+    let method_env = Environment::new(parent=Some(env))
+    method_env.def_builtin("[[HomeObject]]", home_object)
+    for prop in compiled {
+      match prop {
+        StaticData(key, value_fn) => {
+          let value = value_fn(interp, ctx, method_env)
+          if key == "__proto__" {
+            match value {
+              Value::Object(_)
+              | Value::Array(_)
+              | Value::Map(_)
+              | Value::Set(_) => proto_override = Some(value)
+              Value::Null => proto_override = Some(Value::Null)
+              _ => properties[key] = value
+            }
+          } else {
+            @runtime.set_function_name(value, key)
+            properties[key] = value
+          }
+        }
+        ComputedData(key_fn, value_fn) => {
+          let key = @runtime.to_property_key(
+            key_fn(interp, ctx, method_env),
+            interp=Some(interp),
+          )
+          let value = value_fn(interp, ctx, method_env)
+          match key {
+            Value::Symbol(sym) => {
+              let sym_name = match sym.description {
+                Some(d) => "[\{d}]"
+                None => ""
+              }
+              @runtime.set_function_name(value, sym_name)
+              symbol_properties[sym.id] = value
+            }
+            Value::String_(key_str) => {
+              @runtime.set_function_name(value, key_str)
+              properties[key_str] = value
+            }
+            _ => abort("to_property_key returned non-property key")
+          }
+        }
+      }
+    }
+    match proto_override {
+      Some(proto) => object_data.prototype = proto
+      None => ()
+    }
+    home_object
+  }
+}
+
+///|
+fn static_object_key(expr : @ast.Expr) -> String {
+  match expr {
+    StringLit(s, _, _, _) => s
+    Ident(name, _) => name
+    NumberLit(n, _, _) => {
+      let i = n.to_int()
+      if i.to_double() == n {
+        i.to_string()
+      } else {
+        n.to_string()
+      }
+    }
+    _ => ""
   }
 }
 
