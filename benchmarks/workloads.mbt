@@ -328,6 +328,45 @@ pub const STRING_OPS_SRC : String =
   #|result.length;
 
 // ---------------------------------------------------------------------------
+// Pipeline breakdown workload — same source measured at each frontend/runtime
+// stage: lex only, parse from tokens, evaluate from a pre-parsed AST.
+// ---------------------------------------------------------------------------
+
+///|
+/// Closure-heavy execution source for pipeline stage breakdown.
+///
+/// Category: Workflow
+/// Exercises: tokenization, parsing of function expressions and loops, closure
+///            creation, captured-variable lookup, array push/index access, and
+///            function calls. The script is wrapped in an IIFE so repeated
+///            execution from a pre-parsed AST does not leave top-level user
+///            bindings in the benchmark interpreter.
+///
+/// Expected result: "500500"
+pub const PIPELINE_EXEC_SRC : String =
+  #|(function() {
+  #|  function makeCounter(start) {
+  #|    var count = start;
+  #|    return function() {
+  #|      count = count + 1;
+  #|      return count;
+  #|    };
+  #|  }
+  #|  var counters = [];
+  #|  for (var i = 0; i < 1000; i++) {
+  #|    counters.push(makeCounter(i));
+  #|  }
+  #|  var total = 0;
+  #|  for (var i = 0; i < 1000; i++) {
+  #|    total = total + counters[i]();
+  #|  }
+  #|  return total;
+  #|})();
+
+///|
+pub const PIPELINE_EXEC_EXPECTED : String = "500500"
+
+// ---------------------------------------------------------------------------
 // Pipeline workload (parser only — not executed)
 // ---------------------------------------------------------------------------
 

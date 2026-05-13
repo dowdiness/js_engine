@@ -126,6 +126,50 @@ pub fn bench_string_ops() -> BenchResult raise {
 }
 
 ///|
+pub fn bench_pipeline_exec_lex() -> BenchResult raise {
+  verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  run_bench(
+    "pipeline/exec/lex",
+    Workflow,
+    { warmup: 3, iterations: 30, group_size: 500 },
+    fn() raise { let _ = @lexer.tokenize(PIPELINE_EXEC_SRC) },
+  )
+}
+
+///|
+pub fn bench_pipeline_exec_parse() -> BenchResult raise {
+  verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let tokens = @lexer.tokenize(PIPELINE_EXEC_SRC)
+  let _ = @parser.parse_tokens(tokens)
+  run_bench(
+    "pipeline/exec/parse",
+    Workflow,
+    { warmup: 3, iterations: 30, group_size: 500 },
+    fn() raise { let _ = @parser.parse_tokens(tokens) },
+  )
+}
+
+///|
+pub fn bench_pipeline_exec_evaluate() -> BenchResult raise {
+  verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let prog = @parser.parse(PIPELINE_EXEC_SRC)
+  let precheck_interp = @interpreter.new_interpreter()
+  let got = precheck_interp.run(prog.stmts).to_string()
+  if got != PIPELINE_EXEC_EXPECTED {
+    abort(
+      "bench correctness check failed\n  source:   PIPELINE_EXEC_SRC\n  expected: \{PIPELINE_EXEC_EXPECTED}\n  got:      \{got}",
+    )
+  }
+  let interp = @interpreter.new_interpreter()
+  run_bench(
+    "pipeline/exec/evaluate",
+    Workflow,
+    { warmup: 2, iterations: 10, group_size: 1 },
+    fn() raise { let _ = interp.run(prog.stmts) },
+  )
+}
+
+///|
 pub fn bench_parse_heavy() -> BenchResult raise {
   run_bench(
     "pipeline/parse_heavy",
@@ -162,7 +206,12 @@ pub fn run_component() -> Array[BenchResult] raise {
 
 ///|
 pub fn run_workflow() -> Array[BenchResult] raise {
-  [bench_parse_heavy()]
+  [
+    bench_pipeline_exec_lex(),
+    bench_pipeline_exec_parse(),
+    bench_pipeline_exec_evaluate(),
+    bench_parse_heavy(),
+  ]
 }
 
 ///|
@@ -194,6 +243,9 @@ pub fn all_bench_names() -> Array[(String, String)] {
     ("exec/arithmetic_loop", "component"),
     ("exec/object_construction", "component"),
     ("exec/string_ops", "component"),
+    ("pipeline/exec/lex", "workflow"),
+    ("pipeline/exec/parse", "workflow"),
+    ("pipeline/exec/evaluate", "workflow"),
     ("pipeline/parse_heavy", "workflow"),
   ]
 }

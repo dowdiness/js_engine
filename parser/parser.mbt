@@ -316,12 +316,17 @@ fn Parser::is_async_generator(self : Parser) -> Bool {
 }
 
 ///|
-pub fn parse(source : String) -> @ast.Program raise Error {
-  let tokens = @lexer.tokenize(source)
+pub fn parse_tokens(tokens : Array[@token.Token]) -> @ast.Program raise Error {
   let parser = Parser::new(tokens)
   let stmts : Array[@ast.Stmt] = []
   while !parser.at(EOF) {
     stmts.push(parser.parse_stmt())
   }
   { stmts, }
+}
+
+///|
+pub fn parse(source : String) -> @ast.Program raise Error {
+  let tokens = @lexer.tokenize(source)
+  parse_tokens(tokens)
 }

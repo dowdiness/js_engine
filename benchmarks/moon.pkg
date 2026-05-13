@@ -1,5 +1,6 @@
 import {
   "dowdiness/js_engine" @lib,
+  "dowdiness/js_engine/interpreter",
   "dowdiness/js_engine/lexer",
   "dowdiness/js_engine/parser",
   "moonbitlang/core/env",

@@ -9,6 +9,8 @@ import {
 // Values
 pub fn parse(String) -> @ast.Program raise
 
+pub fn parse_tokens(Array[@token.Token]) -> @ast.Program raise
+
 // Errors
 
 // Types and methods
