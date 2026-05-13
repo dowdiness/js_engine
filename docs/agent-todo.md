@@ -7,6 +7,28 @@ Completed tasks should be struck through and dated.
 
 ## Small follow-ups (2026-05-10)
 
+### Start bytecode/IR execution prototype
+
+**Source:** closure-conversion benchmark work and the decision recorded in
+[closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md).
+
+**Goal:** Add a minimal bytecode or IR prototype for the closure-factory and
+pipeline-evaluate benchmark subset. Keep `run` on the tree-walking interpreter;
+the prototype must remain opt-in until it has stronger correctness coverage.
+
+**Scope for the first patch:** define an instruction representation, a compiled
+function/program container, and a tiny interpreter loop. Support only constants,
+locals or lexical bindings, binary operations, jumps, calls, return, and the
+function/closure shape needed by the primary benchmarks.
+
+**Guardrail:** Reuse runtime helpers for JavaScript semantics. Do not duplicate
+property, call, construction, operator, or error rules in the bytecode compiler
+unless the runtime has no shared helper yet.
+
+**Verification:** Compare bytecode output against the tree-walking interpreter
+for each supported construct. Run `moon check`, `moon test`, JS-target tests,
+and the primary benchmark CSV command.
+
 ### Migrate remaining deprecated `inspect` snapshots
 
 **Source:** PR #109 CI follow-up after MoonBit `0.1.20260512` changed `Show` rendering for `Array[String]`.
