@@ -338,15 +338,15 @@ fn Parser::parse_params_ext(
       params.push({ name, default_val, pattern: None })
     }
     while self.eat(Comma) {
-      if self.at(RParen) {
-        break
-      } // trailing comma
       if rest_param is Some(_) {
         let t = self.peek()
         raise @errors.SyntaxError(
           message="Rest parameter must be last at line \{t.loc.line}, col \{t.loc.col}",
         )
       }
+      if self.at(RParen) {
+        break
+      } // trailing comma
       if self.eat(DotDotDot) {
         if self.at(LBrace) || self.at(LBracket) {
           let pat = self.parse_pattern()

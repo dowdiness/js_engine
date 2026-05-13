@@ -15,11 +15,13 @@ Completed tasks should be struck through and dated.
 
 **Fix:** Audit remaining `inspect` calls. Use `json_inspect` for structured data and arrays where JSON semantics are intended; use `inspect` only where the MoonBit `Show` rendering itself is the intended assertion.
 
+**Progress:** 2026-05-13 — migrated lexer token-kind array snapshots to `json_inspect` over token debug strings (`9299bab`).
+
 **Verification:** Run `moon check`, `moon test`, and, if available, repeat `moon test` with the current CI-installed MoonBit toolchain.
 
 ---
 
-### Reject trailing comma after rest parameter
+### ~~Reject trailing comma after rest parameter~~ — DONE (2026-05-13, `183363f`)
 
 **Source:** Codex review of PR #103 (trailing-comma in non-arrow params).
 
