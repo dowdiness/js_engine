@@ -41,7 +41,10 @@ Source: CI run 25488893622, tip `a199669`. Strict 91.3% / non-strict 90.2% P/E o
 
 **Verification rule:** Before opening any of these, sample 5–10 failing tests from the cluster's directory and confirm the shared root cause holds. The 04-21 TypeError drill is the template.
 
-### Cluster 4 — Over-throwing TypeError (smallest, highest signal)
+### ~~Cluster 4 — Over-throwing TypeError (smallest, highest signal)~~ — DONE (2026-05-13, PR #112)
+
+**Result:** Fixed abrupt-completion ordering in built-ins, including `%TypedArray%.from`
+receiver/map-function validation and WeakMap/WeakSet constructor adder checks.
 
 23 strict + 23 non-strict failures sharing reason `Test262Error: Expected a Test262Error but got a TypeError`. Likely one shared coercion or property-access helper throws `TypeError` in a path where the spec expects normal completion or a different error.
 
