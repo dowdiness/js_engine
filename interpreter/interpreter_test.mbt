@@ -12498,6 +12498,30 @@ test "TypedArray.from propagates source abrupt completions" {
 }
 
 ///|
+test "TypedArray.from validates receiver before reading source" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var TypedArray = Object.getPrototypeOf(Int8Array);
+    #|var touched = false;
+    #|var source = {};
+    #|Object.defineProperty(source, Symbol.iterator, {
+    #|  get: function() {
+    #|    touched = true;
+    #|    throw new MyError();
+    #|  }
+    #|});
+    #|try {
+    #|  TypedArray.from.call({}, source);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(touched);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "false"])
+}
+
+///|
 test "TypedArray constructor consumes iterable sources before reduce callbacks" {
   let src =
     #|function MyError() { this.name = "MyError"; }

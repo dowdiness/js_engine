@@ -2468,6 +2468,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="from",
     length=1,
     fn(interp, this_val, args) raise {
+      if !@runtime.is_constructor_value(this_val) {
+        raise @errors.TypeError(
+          message="TypedArray.from called on non-constructor",
+        )
+      }
       if args.length() == 0 {
         raise @errors.TypeError(
           message="TypedArray.from requires at least 1 argument",
