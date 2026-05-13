@@ -666,3 +666,19 @@ test "double comma in params is SyntaxError" {
   let result = Ok(@parser.parse("function f(a,,) {}")) catch { _ => Err(()) }
   inspect(result, content="Err(())")
 }
+
+///|
+test "trailing comma after rest param is SyntaxError" {
+  let result = Ok(@parser.parse("function f(...rest,) {}")) catch {
+    _ => Err(())
+  }
+  inspect(result, content="Err(())")
+}
+
+///|
+test "trailing comma after rest param with leading param is SyntaxError" {
+  let result = Ok(@parser.parse("function f(a, ...rest,) {}")) catch {
+    _ => Err(())
+  }
+  inspect(result, content="Err(())")
+}
