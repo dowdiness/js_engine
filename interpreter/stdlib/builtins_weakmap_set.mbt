@@ -102,6 +102,24 @@ fn weak_key_equal(a : Value, b : Value) -> Bool {
 }
 
 ///|
+fn close_weak_collection_iterator(
+  interp : Interpreter,
+  iterator : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let return_method = interp.get_property(iterator, "return", loc)
+  match return_method {
+    Undefined | Null => ()
+    _ =>
+      if @runtime.is_callable(return_method) {
+        let _ = interp.call_value(return_method, iterator, [], loc)
+      } else {
+        raise @errors.TypeError(message="Iterator return is not callable")
+      }
+  }
+}
+
+///|
 /// Get WeakMap.prototype method for a WeakMap instance
 pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
   // Check own properties first
@@ -535,6 +553,10 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
         Undefined | Null => ()
         _ => {
           let loc = @token.Loc::default()
+          let adder = interp.get_property(wm_obj, "set", loc)
+          if !@runtime.is_callable(adder) {
+            raise @errors.TypeError(message="WeakMap adder is not callable")
+          }
           let iterator_sym = @runtime.get_iterator_symbol()
           let iterator_method = interp.get_computed_property(
             iterable,
@@ -578,23 +600,13 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
               Value::Number(1.0),
               loc,
             )
-            if !is_valid_weak_key(key) {
-              raise @errors.TypeError(
-                message="Invalid value used as weak map key",
-              )
-            }
-            // Upsert
-            let mut found = false
-            for i = 0; i < entries.length(); i = i + 1 {
-              let (k, _) = entries[i]
-              if weak_key_equal(k, key) {
-                entries[i] = (key, val)
-                found = true
-                break
+            let _ = interp.call_value(adder, wm_obj, [key, val], loc) catch {
+              e => {
+                close_weak_collection_iterator(interp, iterator, loc) catch {
+                  _ => ()
+                }
+                raise e
               }
-            }
-            if !found {
-              entries.push((key, val))
             }
           }
         }
@@ -828,6 +840,10 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
         Undefined | Null => ()
         _ => {
           let loc = @token.Loc::default()
+          let adder = interp.get_property(ws_obj, "add", loc)
+          if !@runtime.is_callable(adder) {
+            raise @errors.TypeError(message="WeakSet adder is not callable")
+          }
           let iterator_sym = @runtime.get_iterator_symbol()
           let iterator_method = interp.get_computed_property(
             iterable,
@@ -860,19 +876,13 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
               break
             }
             let value = interp.get_property(result, "value", loc)
-            if !is_valid_weak_key(value) {
-              raise @errors.TypeError(message="Invalid value used in weak set")
-            }
-            // Add if not present
-            let mut found = false
-            for i = 0; i < values.length(); i = i + 1 {
-              if weak_key_equal(values[i], value) {
-                found = true
-                break
+            let _ = interp.call_value(adder, ws_obj, [value], loc) catch {
+              e => {
+                close_weak_collection_iterator(interp, iterator, loc) catch {
+                  _ => ()
+                }
+                raise e
               }
-            }
-            if !found {
-              values.push(value)
             }
           }
         }

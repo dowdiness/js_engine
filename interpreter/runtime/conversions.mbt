@@ -317,7 +317,7 @@ pub fn lookup_symbol_property_chain(
 ///|
 /// ToPrimitive(input, hint "number") - converts an object to a primitive value.
 /// Follows the ECMAScript spec: check @@toPrimitive, then valueOf, then toString.
-fn to_primitive_number(
+pub fn to_primitive_number(
   obj_val : Value,
   data : ObjectData,
   interp? : Interpreter? = None,

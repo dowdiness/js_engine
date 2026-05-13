@@ -1253,6 +1253,30 @@ test "Reflect.defineProperty" {
 }
 
 ///|
+test "Reflect property key abrupt completion precedes missing later args" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var key = {
+    #|  toString: function() {
+    #|    throw new MyError();
+    #|  }
+    #|};
+    #|try {
+    #|  Reflect.defineProperty({}, key);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  Reflect.set({}, key);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["MyError", "MyError"])
+}
+
+///|
 test "Reflect.setPrototypeOf" {
   let src =
     #|const obj = {};

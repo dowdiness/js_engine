@@ -90,11 +90,15 @@ pub fn setup_object_builtins(
     length=0,
     fn(interp, this_val, _args) raise { to_object(this_val, interp) },
   )
-  obj_proto_props["hasOwnProperty"] = @runtime.make_method_func(
+  obj_proto_props["hasOwnProperty"] = @runtime.make_interp_method_func(
     name="hasOwnProperty",
     length=1,
-    fn(this_val, args) raise {
-      // RequireObjectCoercible(this) - throw TypeError for null/undefined
+    fn(interp, this_val, args) raise {
+      let key_val = if args.length() > 0 { args[0] } else { Undefined }
+      // §20.1.3.2 step 1: ToPropertyKey runs before ToObject/ToObject-like
+      // receiver validation, so user coercion errors from the key win.
+      let prop_key = @runtime.to_property_key(key_val, interp=Some(interp))
+      // RequireObjectCoercible(this) - throw TypeError for null/undefined.
       match this_val {
         Null | Undefined =>
           raise @errors.TypeError(
@@ -102,29 +106,26 @@ pub fn setup_object_builtins(
           )
         _ => ()
       }
-      let key_val = if args.length() > 0 { args[0] } else { Undefined }
       match this_val {
         Object(data) =>
-          match key_val {
+          match prop_key {
             Value::Symbol(sym) =>
               Bool(
                 data.bag.symbol_properties.contains(sym.id) ||
                 data.bag.symbol_descriptors.contains(sym.id),
               )
-            _ => {
-              let key = @runtime.to_js_string(key_val)
+            Value::String_(key) =>
               Bool(
                 data.bag.properties.contains(key) ||
                 data.bag.descriptors.contains(key),
               )
-            }
+            _ => Value::Bool(false)
           }
         Value::Array(data) =>
-          match key_val {
+          match prop_key {
             Value::Symbol(sym) =>
               Bool(@runtime.get_array_symbol_prop(data, sym.id) is Some(_))
-            _ => {
-              let key = @runtime.to_js_string(key_val)
+            Value::String_(key) =>
               if key == "length" {
                 Value::Bool(true)
               } else {
@@ -140,17 +141,19 @@ pub fn setup_object_builtins(
                   Bool(@runtime.get_array_named_prop(data, key) is Some(_))
                 }
               }
-            }
+            _ => Value::Bool(false)
           }
-        Value::String_(s) => {
-          let key = @runtime.to_js_string(key_val)
-          if key == "length" {
-            Value::Bool(true)
-          } else {
-            let idx = @string.parse_int(key) catch { _ => -1 }
-            Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
+        Value::String_(s) =>
+          match prop_key {
+            Value::String_(key) =>
+              if key == "length" {
+                Value::Bool(true)
+              } else {
+                let idx = @string.parse_int(key) catch { _ => -1 }
+                Bool(idx >= 0 && idx.to_string() == key && idx < s.length())
+              }
+            _ => Value::Bool(false)
           }
-        }
         _ => Value::Bool(false)
       }
     },
@@ -1014,31 +1017,20 @@ pub fn setup_object_builtins(
                     // Regular objects have properties and descriptors
                     Object(src) => {
                       // Copy enumerable string properties
+                      let loc = @token.Loc::default()
                       src.bag.properties.each(fn(k, v) raise {
                         let enumerable = match src.bag.descriptors.get(k) {
                           Some(d) => d.enumerable
                           None => true
                         }
                         if enumerable {
-                          // Check writable on target property
-                          let can_write = match data.bag.descriptors.get(k) {
-                            Some(d) => d.writable
-                            None => true
-                          }
-                          // Check extensibility if property doesn't exist
-                          let exists = data.bag.properties.contains(k)
-                          // Per ECMAScript spec, Object.assign throws TypeError on Set failure
-                          if !can_write {
-                            raise @errors.TypeError(
-                              message="Cannot assign to read-only property '\{k}'",
-                            )
-                          }
-                          if !exists && !data.extensible {
-                            raise @errors.TypeError(
-                              message="Cannot add property '\{k}' to non-extensible object",
-                            )
-                          }
-                          data.bag.properties[k] = v
+                          let _ = interp.set_property(
+                            target,
+                            k,
+                            v,
+                            loc,
+                            strict=true,
+                          )
                         }
                       })
                       // Copy enumerable symbol properties
