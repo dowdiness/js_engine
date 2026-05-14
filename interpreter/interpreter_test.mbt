@@ -1331,7 +1331,7 @@ test "new Error" {
     #|var e = new Error("something went wrong");
     #|console.log(e.message);
   let out = run_output(src)
-  inspect(out[0], content="something went wrong")
+  expect_string(out[0], "something went wrong", "new Error message")
 }
 
 ///|
@@ -1340,7 +1340,7 @@ test "new TypeError" {
     #|var e = new TypeError("bad type");
     #|console.log(e.name);
   let out = run_output(src)
-  inspect(out[0], content="TypeError")
+  expect_string(out[0], "TypeError", "new TypeError name")
 }
 
 ///|
@@ -1349,7 +1349,7 @@ test "new RangeError" {
     #|var e = new RangeError("out of range");
     #|console.log(e.message);
   let out = run_output(src)
-  inspect(out[0], content="out of range")
+  expect_string(out[0], "out of range", "new RangeError message")
 }
 
 ///|
@@ -1361,7 +1361,7 @@ test "throw and catch Error" {
     #|  console.log(e.message);
     #|}
   let out = run_output(src)
-  inspect(out[0], content="oops")
+  expect_string(out[0], "oops", "throw and catch Error message")
 }
 
 ///|
@@ -1370,7 +1370,7 @@ test "Error name property" {
     #|var e = new Error("test");
     #|console.log(e.name);
   let out = run_output(src)
-  inspect(out[0], content="Error")
+  expect_string(out[0], "Error", "Error name property")
 }
 
 ///|
@@ -1379,7 +1379,7 @@ test "Error no args" {
     #|var e = new Error();
     #|console.log(e.message);
   let out = run_output(src)
-  inspect(out[0], content="")
+  expect_string(out[0], "", "Error no args message")
 }
 
 ///|
