@@ -336,6 +336,84 @@ test "exec: component comparison" (b : @bench.T) {
 // =============================================================================
 
 ///|
+/// Pipeline stage: lexing for an executable closure-heavy source.
+///
+/// What it measures: @lexer.tokenize() only.
+/// What it answers:  How much of full source execution is frontend lexing?
+/// What it excludes: parsing, AST validation, interpreter setup, evaluation.
+test "pipeline/exec/lex" (b : @bench.T) {
+  expect("pipeline/exec/lex", PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let tokens = @lexer.tokenize(PIPELINE_EXEC_SRC) catch {
+    _ => abort("pipeline/exec/lex: pre-check raised")
+  }
+  if tokens.length() <= 1 {
+    abort("pipeline/exec/lex: token stream was empty")
+  }
+  b.bench(fn() {
+    b.keep(@lexer.tokenize(PIPELINE_EXEC_SRC)) catch {
+      _ => abort("tokenize raised")
+    }
+  })
+}
+
+///|
+/// Pipeline stage: parsing an already-tokenized executable source.
+///
+/// What it measures: Parser::new(tokens) + statement parsing into AST.
+/// What it answers:  How much parser cost remains after tokenization is done?
+/// What it excludes: lexing, interpreter setup, evaluation.
+test "pipeline/exec/parse" (b : @bench.T) {
+  expect("pipeline/exec/parse", PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let tokens = @lexer.tokenize(PIPELINE_EXEC_SRC) catch {
+    _ => abort("pipeline/exec/parse: tokenize pre-check raised")
+  }
+  b.keep(@parser.parse_tokens(tokens)) catch {
+    _ => abort("pipeline/exec/parse: parse pre-check raised")
+  }
+  b.bench(fn() {
+    b.keep(@parser.parse_tokens(tokens)) catch {
+      _ => abort("parse raised")
+    }
+  })
+}
+
+///|
+/// Pipeline stage: evaluating a pre-parsed executable AST.
+///
+/// What it measures: Interpreter::run(stmts) on an already-built AST. The
+/// benchmark reuses one interpreter because PIPELINE_EXEC_SRC is wrapped in an
+/// IIFE and does not leave top-level user bindings behind between runs.
+/// What it answers:  How much runtime execution cost remains after lexing and
+/// parsing are removed?
+/// What it excludes: lexing, parsing, and interpreter construction.
+test "pipeline/exec/evaluate" (b : @bench.T) {
+  expect("pipeline/exec/evaluate", PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let prog = @parser.parse(PIPELINE_EXEC_SRC) catch {
+    _ => abort("pipeline/exec/evaluate: parse pre-check raised")
+  }
+  try {
+    let interp = @interpreter.new_interpreter()
+    let got = interp.run(prog.stmts).to_string()
+    if got != PIPELINE_EXEC_EXPECTED {
+      abort(
+        "[pipeline/exec/evaluate] bench correctness check failed\n  expected: \{PIPELINE_EXEC_EXPECTED}\n  got:      \{got}",
+      )
+    }
+  } catch {
+    _ => abort("pipeline/exec/evaluate: evaluation pre-check raised")
+  }
+  let interp = @interpreter.new_interpreter()
+  b.bench(fn() {
+    try {
+      let result = interp.run(prog.stmts)
+      b.keep(result)
+    } catch {
+      _ => abort("evaluation raised")
+    }
+  })
+}
+
+///|
 /// Lexer + parser combined throughput on a complex expression-heavy source.
 ///
 /// What it measures: @parser.parse() (which includes @lexer.tokenize())

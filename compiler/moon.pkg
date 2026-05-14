@@ -1,0 +1,11 @@
+import {
+  "dowdiness/js_engine/ast",
+  "dowdiness/js_engine/errors",
+  "dowdiness/js_engine/interpreter/runtime" @runtime,
+  "dowdiness/js_engine/token",
+}
+
+import {
+  "dowdiness/js_engine/interpreter",
+  "dowdiness/js_engine/parser",
+} for "test"

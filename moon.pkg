@@ -1,4 +1,9 @@
 import {
   "dowdiness/js_engine/parser",
   "dowdiness/js_engine/interpreter",
+  "dowdiness/js_engine/compiler",
 }
+
+import {
+  "dowdiness/js_engine/interpreter/runtime" @runtime,
+} for "test"

@@ -15,6 +15,25 @@ pub fn run(
 }
 
 ///|
+/// Run JavaScript source through the opt-in closure-conversion prototype.
+///
+/// The normal `run` facade remains the default interpreter path. This entry
+/// point parses once, compiles the supported script subset to executable
+/// closures, then runs it with the same event-loop drain behavior as `run`.
+pub fn run_compiled(
+  source : String,
+  annex_b? : Bool = false,
+) -> (Array[String], String) raise Error {
+  let interp = @interpreter.new_interpreter(annex_b~)
+  let prog = @parser.parse(source)
+  let compiled = @compiler.compile_script_to_closure(prog.stmts)
+  let result = compiled(interp)
+  interp.run_microtasks()
+  interp.run_timers()
+  (interp.host.output, result.to_string())
+}
+
+///|
 /// Run JavaScript source with event loop support
 /// This version allows the host to control microtask and timer execution timing
 pub fn run_with_event_loop(

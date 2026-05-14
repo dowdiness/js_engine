@@ -35,6 +35,8 @@ pub fn descriptor_to_value(PropDescriptor, Value) -> Value
 
 pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
 
+pub fn eval_binary_op(@ast.BinOp, Value, Value, @token.Loc) -> Value raise
+
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
 pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
@@ -275,6 +277,10 @@ pub fn utf16_length(String) -> Int
 
 pub fn validate_function_constructor_params(Bool, Array[String], String?, Array[@ast.Stmt]) -> Unit raise
 
+pub fn validate_function_signature(Bool, String?, Array[String], Array[@ast.Stmt]) -> Unit raise
+
+pub fn validate_function_signature_ext(Bool, String?, Array[@ast.Param], String?, Array[@ast.Stmt]) -> Unit raise
+
 pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
 
 pub let well_known_async_iterator_sym : @ref.Ref[SymbolData?]
@@ -499,13 +505,16 @@ pub fn Interpreter::has_property_key(Self, Value, Value) -> Bool raise
 pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], SymbolState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
 pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise
+pub fn Interpreter::perform_eval(Self, String, Environment, Bool, caller_strict? : Bool) -> Value raise
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
+pub fn Interpreter::run_compiled_script(Self, Array[@ast.Stmt], (ExecContext, Environment) -> Value raise) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
 pub fn Interpreter::run_module(Self, Array[@ast.Stmt]) -> Map[String, Value] raise
 pub fn Interpreter::run_timers(Self) -> Unit raise
 pub fn Interpreter::set_computed_property(Self, Value, Value, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
+pub fn Interpreter::spread_iterable(Self, Value, @token.Loc) -> Array[Value] raise
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise

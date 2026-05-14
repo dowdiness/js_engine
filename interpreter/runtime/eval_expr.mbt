@@ -1261,7 +1261,7 @@ fn Interpreter::eval_binary(
 }
 
 ///|
-fn eval_binary_op(
+pub fn eval_binary_op(
   op : @ast.BinOp,
   left : Value,
   right : Value,

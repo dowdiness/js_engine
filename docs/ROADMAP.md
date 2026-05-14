@@ -266,6 +266,14 @@ passed/executed/discovered.
 **Stage D — Realm hermeticity** — planned. Low direct test262 impact; keep
 queued behind any remaining Proxy/prototype semantic cleanup.
 
+## Execution Optimization Track
+
+Closure conversion is available as an opt-in prototype and benchmark path, but
+it should not be expanded into a second full interpreter. The next execution
+optimization direction is a compact bytecode or IR interpreter that keeps
+JavaScript semantics centralized in runtime helpers while reducing AST dispatch
+overhead. See [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md).
+
 ## Architecture
 
 For design principles, value model, control flow, and host integration, see [architecture.md](architecture.md). Completed restructuring analyses are in [archive/](archive/).
