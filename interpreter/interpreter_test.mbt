@@ -1642,7 +1642,7 @@ test "arrow function expression body" {
     #|var add = (a, b) => a + b;
     #|add(3, 4);
   let (_, result) = run_js(src)
-  inspect(result, content="7")
+  expect_value_string(result, "7", "arrow function expression body result")
 }
 
 ///|
@@ -1651,7 +1651,7 @@ test "arrow function block body" {
     #|var square = (x) => { return x * x; };
     #|square(5);
   let (_, result) = run_js(src)
-  inspect(result, content="25")
+  expect_value_string(result, "25", "arrow function block body result")
 }
 
 ///|
@@ -1660,7 +1660,9 @@ test "arrow function single param no parens" {
     #|var double = x => x * 2;
     #|double(7);
   let (_, result) = run_js(src)
-  inspect(result, content="14")
+  expect_value_string(
+    result, "14", "arrow function single param no parens result",
+  )
 }
 
 ///|
@@ -1669,7 +1671,7 @@ test "arrow function zero params" {
     #|var greet = () => "hello";
     #|greet();
   let (_, result) = run_js(src)
-  inspect(result, content="hello")
+  expect_value_string(result, "hello", "arrow function zero params result")
 }
 
 ///|
@@ -1692,7 +1694,7 @@ test "arrow function closure" {
     #|var add5 = make_adder(5);
     #|add5(3);
   let (_, result) = run_js(src)
-  inspect(result, content="8")
+  expect_value_string(result, "8", "arrow function closure result")
 }
 
 // ====== Phase 2: Prototype Chain ======
