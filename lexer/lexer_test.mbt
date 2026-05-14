@@ -28,6 +28,14 @@ fn expect_lex_form(
 }
 
 ///|
+fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
+  match result {
+    Ok(_) => fail("expected lexer error")
+    Err(_) => ()
+  }
+}
+
+///|
 test "lex arithmetic expression" {
   let kinds = tok_kinds("1 + 2 * 3")
   inspect_kinds(kinds, content=[
@@ -330,45 +338,25 @@ test "lex unicode escape supplementary plane in string" {
 test "lex unicode escape invalid identifier start" {
   // \u0031 is '1' — not valid at identifier start
   let result = Ok(@lexer.tokenize("\\u0031")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
 test "lex unicode escape invalid hex digits" {
   let result = Ok(@lexer.tokenize("\"\\u00GZ\"")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
 test "lex unicode escape empty braces" {
   let result = Ok(@lexer.tokenize("\"\\u{}\"")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
 test "lex unicode escape code point too large" {
   let result = Ok(@lexer.tokenize("\"\\u{110000}\"")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
@@ -434,31 +422,31 @@ test "lex numeric separator in octal" {
 ///|
 test "lex hex missing digits error" {
   let result = Ok(tok_kinds("0x")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex binary missing digits error" {
   let result = Ok(tok_kinds("0b")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex octal missing digits error" {
   let result = Ok(tok_kinds("0o")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex consecutive numeric separator error" {
   let result = Ok(tok_kinds("1__0")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex trailing numeric separator error" {
   let result = Ok(tok_kinds("1_")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
@@ -584,37 +572,37 @@ test "numeric 0.1e2 (single-zero exponent) is LexNormal" {
 ///|
 test "numeric 01.2 (LegacyOctal + fraction) is SyntaxError in all modes" {
   let result = Ok(tok_kinds("01.2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 01e2 (LegacyOctal + exponent) is SyntaxError in all modes" {
   let result = Ok(tok_kinds("01e2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 01E2 (LegacyOctal + uppercase exponent) is SyntaxError" {
   let result = Ok(tok_kinds("01E2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 00.5 (LegacyOctal + fraction) is SyntaxError" {
   let result = Ok(tok_kinds("00.5")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 001.2 (LegacyOctal + fraction) is SyntaxError" {
   let result = Ok(tok_kinds("001.2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 07.5 (LegacyOctal + fraction) is SyntaxError" {
   let result = Ok(tok_kinds("07.5")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|

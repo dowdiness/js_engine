@@ -14,6 +14,14 @@ fn expect_lex_form(
 }
 
 ///|
+fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
+  match result {
+    Ok(_) => fail("expected parser error")
+    Err(_) => ()
+  }
+}
+
+///|
 test "parse variable declaration" {
   let prog = @parser.parse("let x = 42;")
   inspect(
@@ -676,13 +684,13 @@ test "trailing comma in generator params" {
 ///|
 test "leading comma in params is SyntaxError" {
   let result = Ok(@parser.parse("function f(,) {}")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "double comma in params is SyntaxError" {
   let result = Ok(@parser.parse("function f(a,,) {}")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
@@ -690,7 +698,7 @@ test "trailing comma after rest param is SyntaxError" {
   let result = Ok(@parser.parse("function f(...rest,) {}")) catch {
     _ => Err(())
   }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
@@ -698,5 +706,5 @@ test "trailing comma after rest param with leading param is SyntaxError" {
   let result = Ok(@parser.parse("function f(a, ...rest,) {}")) catch {
     _ => Err(())
   }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
