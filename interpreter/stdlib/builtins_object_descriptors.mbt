@@ -305,7 +305,10 @@ fn collect_define_properties_pairs_from_keys(
     match interp.get_own_property(obj, key) {
       Some((own_desc, _)) =>
         if own_desc.enumerable {
-          let desc_val = interp.get_computed_property(obj, key, loc)
+          let desc_val = match key {
+            Symbol(_) => interp.get_computed_property(obj, key, loc)
+            _ => interp.get_property(obj, @runtime.to_js_string(key), loc)
+          }
           let partial = interp.partial_descriptor_from_attrs(desc_val, loc)
           pairs.push((key, partial))
         }

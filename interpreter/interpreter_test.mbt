@@ -5220,9 +5220,27 @@ test "descriptor builtins preserve user bracket keys and snapshot keys" {
       #|Object.defineProperties(snapTarget, arrayProps);
       #|console.log(snapTarget[0]);
       #|console.log(snapTarget.hasOwnProperty("1"));
+      #|
+      #|const mapProps = new Map();
+      #|Object.defineProperty(mapProps, "x", {
+      #|  value: { value: "map", enumerable: true },
+      #|  enumerable: true
+      #|});
+      #|const mapTarget = {};
+      #|Object.defineProperties(mapTarget, mapProps);
+      #|console.log(mapTarget.x);
+      #|
+      #|const setProps = new Set();
+      #|Object.defineProperty(setProps, "y", {
+      #|  value: { value: "set", enumerable: true },
+      #|  enumerable: true
+      #|});
+      #|const setTarget = {};
+      #|Object.defineProperties(setTarget, setProps);
+      #|console.log(setTarget.y);
     ),
   )
-  json_inspect(output, content=["7", "7/true", "first", "false"])
+  json_inspect(output, content=["7", "7/true", "first", "false", "map", "set"])
 }
 
 ///|
