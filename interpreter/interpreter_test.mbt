@@ -1385,49 +1385,49 @@ test "Error no args" {
 ///|
 test "parseInt with whitespace" {
   let (_, result) = run_js("parseInt(\"  42  \")")
-  inspect(result, content="42")
+  expect_value_string(result, "42", "parseInt with whitespace result")
 }
 
 ///|
 test "parseInt hex with radix 16" {
   let (_, result) = run_js("parseInt(\"ff\", 16)")
-  inspect(result, content="255")
+  expect_value_string(result, "255", "parseInt hex with radix 16 result")
 }
 
 ///|
 test "parseFloat negative" {
   let (_, result) = run_js("parseFloat(\"-3.14\")")
-  inspect(result, content="-3.14")
+  expect_value_string(result, "-3.14", "parseFloat negative result")
 }
 
 ///|
 test "typeof NaN" {
   let (_, result) = run_js("typeof NaN")
-  inspect(result, content="number")
+  expect_value_string(result, "number", "typeof NaN result")
 }
 
 ///|
 test "typeof Infinity" {
   let (_, result) = run_js("typeof Infinity")
-  inspect(result, content="number")
+  expect_value_string(result, "number", "typeof Infinity result")
 }
 
 ///|
 test "NaN not equal to itself" {
   let (_, result) = run_js("NaN === NaN")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "NaN not equal to itself result")
 }
 
 ///|
 test "Infinity arithmetic" {
   let out = run_output("console.log(Infinity + 1)")
-  inspect(out[0], content="Infinity")
+  expect_string(out[0], "Infinity", "Infinity arithmetic output")
 }
 
 ///|
 test "negative Infinity" {
   let out = run_output("console.log(-Infinity)")
-  inspect(out[0], content="-Infinity")
+  expect_string(out[0], "-Infinity", "negative Infinity output")
 }
 
 // ===== Phase 1 Known Issue Fixes =====
@@ -1437,19 +1437,19 @@ test "negative Infinity" {
 ///|
 test "to_int32 wrapping large positive" {
   let (_, result) = run_js("2147483648 | 0")
-  inspect(result, content="-2147483648")
+  expect_value_string(result, "-2147483648", "to_int32 large positive result")
 }
 
 ///|
 test "to_int32 wrapping large negative" {
   let (_, result) = run_js("-2147483649 | 0")
-  inspect(result, content="2147483647")
+  expect_value_string(result, "2147483647", "to_int32 large negative result")
 }
 
 ///|
 test "to_int32 wrapping 4294967296" {
   let (_, result) = run_js("4294967296 | 0")
-  inspect(result, content="0")
+  expect_value_string(result, "0", "to_int32 4294967296 result")
 }
 
 // Issue 5: parseFloat improvements
@@ -1457,25 +1457,27 @@ test "to_int32 wrapping 4294967296" {
 ///|
 test "parseFloat leading dot" {
   let (_, result) = run_js("parseFloat(\".5\")")
-  inspect(result, content="0.5")
+  expect_value_string(result, "0.5", "parseFloat leading dot result")
 }
 
 ///|
 test "parseFloat exponent" {
   let (_, result) = run_js("parseFloat(\"1e2\")")
-  inspect(result, content="100")
+  expect_value_string(result, "100", "parseFloat exponent result")
 }
 
 ///|
 test "parseFloat Infinity" {
   let (_, result) = run_js("parseFloat(\"Infinity\")")
-  inspect(result, content="Infinity")
+  expect_value_string(result, "Infinity", "parseFloat Infinity result")
 }
 
 ///|
 test "parseFloat negative Infinity" {
   let (_, result) = run_js("parseFloat(\"-Infinity\")")
-  inspect(result, content="-Infinity")
+  expect_value_string(
+    result, "-Infinity", "parseFloat negative Infinity result",
+  )
 }
 
 // Issue 2: Error prototype chain (instanceof)
@@ -1483,13 +1485,15 @@ test "parseFloat negative Infinity" {
 ///|
 test "new Error instanceof Error" {
   let (_, result) = run_js("new Error() instanceof Error")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "new Error instanceof Error result")
 }
 
 ///|
 test "new TypeError instanceof TypeError" {
   let (_, result) = run_js("new TypeError(\"bad\") instanceof TypeError")
-  inspect(result, content="true")
+  expect_value_string(
+    result, "true", "new TypeError instanceof TypeError result",
+  )
 }
 
 // Issue 3: for-in prototype chain
