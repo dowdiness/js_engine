@@ -853,49 +853,49 @@ test "logical and assign computed member Symbol key" {
 ///|
 test "bitwise AND" {
   let (_, result) = run_js("12 & 10")
-  inspect(result, content="8")
+  expect_value_string(result, "8", "bitwise AND result")
 }
 
 ///|
 test "bitwise OR" {
   let (_, result) = run_js("12 | 10")
-  inspect(result, content="14")
+  expect_value_string(result, "14", "bitwise OR result")
 }
 
 ///|
 test "bitwise XOR" {
   let (_, result) = run_js("12 ^ 10")
-  inspect(result, content="6")
+  expect_value_string(result, "6", "bitwise XOR result")
 }
 
 ///|
 test "bitwise NOT" {
   let (_, result) = run_js("~0")
-  inspect(result, content="-1")
+  expect_value_string(result, "-1", "bitwise NOT result")
 }
 
 ///|
 test "left shift" {
   let (_, result) = run_js("1 << 4")
-  inspect(result, content="16")
+  expect_value_string(result, "16", "left shift result")
 }
 
 ///|
 test "right shift" {
   let (_, result) = run_js("-16 >> 2")
-  inspect(result, content="-4")
+  expect_value_string(result, "-4", "right shift result")
 }
 
 ///|
 test "unsigned right shift" {
   let (_, result) = run_js("-1 >>> 0")
-  inspect(result, content="4294967295")
+  expect_value_string(result, "4294967295", "unsigned right shift result")
 }
 
 ///|
 test "void operator" {
   let (_, result) = run_js("void 0")
-  inspect(result, content="undefined")
+  expect_value_string(result, "undefined", "void operator result")
 }
 
 ///|
