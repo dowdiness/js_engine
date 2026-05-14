@@ -1036,13 +1036,13 @@ test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
 ///|
 test "comma expression" {
   let (_, result) = run_js("1, 2, 3")
-  inspect(result, content="3")
+  expect_value_string(result, "3", "comma expression result")
 }
 
 ///|
 test "typeof undeclared variable" {
   let (_, result) = run_js("typeof nonExistent")
-  inspect(result, content="undefined")
+  expect_value_string(result, "undefined", "typeof undeclared variable result")
 }
 
 ///|
@@ -1086,7 +1086,7 @@ test "method call this binding" {
 ///|
 test "string length" {
   let (_, result) = run_js("\"hello\".length")
-  inspect(result, content="5")
+  expect_value_string(result, "5", "string length result")
 }
 
 ///|
@@ -1110,7 +1110,7 @@ test "type coercion arithmetic" {
 ///|
 test "neg coercion" {
   let (_, result) = run_js("-true")
-  inspect(result, content="-1")
+  expect_value_string(result, "-1", "neg coercion result")
 }
 
 // ===== Task 1G: Built-in Globals =====
@@ -1118,211 +1118,211 @@ test "neg coercion" {
 ///|
 test "NaN global" {
   let out = run_output("console.log(NaN)")
-  inspect(out[0], content="NaN")
+  expect_string(out[0], "NaN", "NaN global output")
 }
 
 ///|
 test "Infinity global" {
   let out = run_output("console.log(Infinity)")
-  inspect(out[0], content="Infinity")
+  expect_string(out[0], "Infinity", "Infinity global output")
 }
 
 ///|
 test "undefined global" {
   let (_, result) = run_js("undefined")
-  inspect(result, content="undefined")
+  expect_value_string(result, "undefined", "undefined global result")
 }
 
 ///|
 test "isNaN true" {
   let (_, result) = run_js("isNaN(NaN)")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "isNaN true result")
 }
 
 ///|
 test "isNaN false" {
   let (_, result) = run_js("isNaN(42)")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "isNaN false result")
 }
 
 ///|
 test "isNaN string coercion" {
   let (_, result) = run_js("isNaN(\"hello\")")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "isNaN string coercion result")
 }
 
 ///|
 test "isNaN numeric string" {
   let (_, result) = run_js("isNaN(\"123\")")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "isNaN numeric string result")
 }
 
 ///|
 test "isFinite true" {
   let (_, result) = run_js("isFinite(42)")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "isFinite true result")
 }
 
 ///|
 test "isFinite infinity" {
   let (_, result) = run_js("isFinite(Infinity)")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "isFinite infinity result")
 }
 
 ///|
 test "isFinite NaN" {
   let (_, result) = run_js("isFinite(NaN)")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "isFinite NaN result")
 }
 
 ///|
 test "parseInt basic" {
   let (_, result) = run_js("parseInt(\"42\")")
-  inspect(result, content="42")
+  expect_value_string(result, "42", "parseInt basic result")
 }
 
 ///|
 test "parseInt with leading text stops" {
   let (_, result) = run_js("parseInt(\"123abc\")")
-  inspect(result, content="123")
+  expect_value_string(result, "123", "parseInt with leading text stops result")
 }
 
 ///|
 test "parseInt hex" {
   let (_, result) = run_js("parseInt(\"0xFF\")")
-  inspect(result, content="255")
+  expect_value_string(result, "255", "parseInt hex result")
 }
 
 ///|
 test "parseInt radix" {
   let (_, result) = run_js("parseInt(\"111\", 2)")
-  inspect(result, content="7")
+  expect_value_string(result, "7", "parseInt radix result")
 }
 
 ///|
 test "parseInt negative" {
   let (_, result) = run_js("parseInt(\"-42\")")
-  inspect(result, content="-42")
+  expect_value_string(result, "-42", "parseInt negative result")
 }
 
 ///|
 test "parseInt NaN for non-numeric" {
   let out = run_output("console.log(parseInt(\"hello\"))")
-  inspect(out[0], content="NaN")
+  expect_string(out[0], "NaN", "parseInt NaN for non-numeric output")
 }
 
 ///|
 test "parseInt empty string" {
   let out = run_output("console.log(parseInt(\"\"))")
-  inspect(out[0], content="NaN")
+  expect_string(out[0], "NaN", "parseInt empty string output")
 }
 
 ///|
 test "parseFloat basic" {
   let (_, result) = run_js("parseFloat(\"3.14\")")
-  inspect(result, content="3.14")
+  expect_value_string(result, "3.14", "parseFloat basic result")
 }
 
 ///|
 test "parseFloat integer" {
   let (_, result) = run_js("parseFloat(\"42\")")
-  inspect(result, content="42")
+  expect_value_string(result, "42", "parseFloat integer result")
 }
 
 ///|
 test "parseFloat with trailing text" {
   let (_, result) = run_js("parseFloat(\"3.14abc\")")
-  inspect(result, content="3.14")
+  expect_value_string(result, "3.14", "parseFloat with trailing text result")
 }
 
 ///|
 test "parseFloat NaN" {
   let out = run_output("console.log(parseFloat(\"hello\"))")
-  inspect(out[0], content="NaN")
+  expect_string(out[0], "NaN", "parseFloat NaN output")
 }
 
 ///|
 test "String conversion number" {
   let (_, result) = run_js("String(42)")
-  inspect(result, content="42")
+  expect_value_string(result, "42", "String conversion number result")
 }
 
 ///|
 test "String conversion bool" {
   let (_, result) = run_js("String(true)")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "String conversion bool result")
 }
 
 ///|
 test "String conversion null" {
   let (_, result) = run_js("String(null)")
-  inspect(result, content="null")
+  expect_value_string(result, "null", "String conversion null result")
 }
 
 ///|
 test "String conversion undefined" {
   let (_, result) = run_js("String(undefined)")
-  inspect(result, content="undefined")
+  expect_value_string(result, "undefined", "String conversion undefined result")
 }
 
 ///|
 test "Number conversion string" {
   let (_, result) = run_js("Number(\"42\")")
-  inspect(result, content="42")
+  expect_value_string(result, "42", "Number conversion string result")
 }
 
 ///|
 test "Number conversion true" {
   let (_, result) = run_js("Number(true)")
-  inspect(result, content="1")
+  expect_value_string(result, "1", "Number conversion true result")
 }
 
 ///|
 test "Number conversion false" {
   let (_, result) = run_js("Number(false)")
-  inspect(result, content="0")
+  expect_value_string(result, "0", "Number conversion false result")
 }
 
 ///|
 test "Number conversion null" {
   let (_, result) = run_js("Number(null)")
-  inspect(result, content="0")
+  expect_value_string(result, "0", "Number conversion null result")
 }
 
 ///|
 test "Number conversion non-numeric string" {
   let out = run_output("console.log(Number(\"hello\"))")
-  inspect(out[0], content="NaN")
+  expect_string(out[0], "NaN", "Number conversion non-numeric string output")
 }
 
 ///|
 test "Boolean truthy" {
   let (_, result) = run_js("Boolean(1)")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "Boolean truthy result")
 }
 
 ///|
 test "Boolean falsy zero" {
   let (_, result) = run_js("Boolean(0)")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "Boolean falsy zero result")
 }
 
 ///|
 test "Boolean empty string" {
   let (_, result) = run_js("Boolean(\"\")")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "Boolean empty string result")
 }
 
 ///|
 test "Boolean non-empty string" {
   let (_, result) = run_js("Boolean(\"hello\")")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "Boolean non-empty string result")
 }
 
 ///|
 test "Boolean null" {
   let (_, result) = run_js("Boolean(null)")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "Boolean null result")
 }
 
 ///|
