@@ -1741,7 +1741,7 @@ test "function call method" {
     #|var obj = { name: "Alice" };
     #|greet.call(obj);
   let (_, result) = run_js(src)
-  inspect(result, content="Hello, Alice")
+  expect_value_string(result, "Hello, Alice", "result")
 }
 
 ///|
@@ -1750,7 +1750,7 @@ test "function apply method" {
     #|function sum(a, b) { return a + b; }
     #|sum.apply(null, [10, 20]);
   let (_, result) = run_js(src)
-  inspect(result, content="30")
+  expect_value_string(result, "30", "result")
 }
 
 ///|
@@ -1760,7 +1760,7 @@ test "function apply method with array-like object" {
     #|var arrayLike = {0: "x", 1: "y", 2: "z", length: 3};
     #|join3.apply(null, arrayLike);
   let (_, result) = run_js(src)
-  inspect(result, content="x:y:z")
+  expect_value_string(result, "x:y:z", "result")
 }
 
 ///|
@@ -1770,7 +1770,7 @@ test "function apply method with arguments object" {
     #|function forward() { return add2.apply(null, arguments); }
     #|forward(40, 2);
   let (_, result) = run_js(src)
-  inspect(result, content="42")
+  expect_value_string(result, "42", "result")
 }
 
 ///|
@@ -1779,7 +1779,7 @@ test "function apply method with array-like length 0" {
     #|function count() { return arguments.length; }
     #|count.apply(null, {0: 99, length: 0});
   let (_, result) = run_js(src)
-  inspect(result, content="0")
+  expect_value_string(result, "0", "result")
 }
 
 ///|
@@ -1791,7 +1791,7 @@ test "function apply method with non-numeric length" {
     #|}
     #|firstOrNone.apply(null, {0: "x", length: "foo"});
   let (_, result) = run_js(src)
-  inspect(result, content="none")
+  expect_value_string(result, "none", "result")
 }
 
 ///|
@@ -1828,7 +1828,7 @@ test "function apply null argArray does not throw" {
     #|function fn() { return arguments.length; }
     #|fn.apply(null, null);
   let (_, result) = run_js(src)
-  inspect(result, content="0")
+  expect_value_string(result, "0", "result")
 }
 
 ///|
@@ -1837,7 +1837,7 @@ test "function apply array argArray passes args to callee" {
     #|function fn(a, b, c) { return a + b + c; }
     #|fn.apply(null, [1, 2, 3]);
   let (_, result) = run_js(src)
-  inspect(result, content="6")
+  expect_value_string(result, "6", "result")
 }
 
 ///|
@@ -1848,7 +1848,7 @@ test "function bind method" {
     #|var bound = greet.bind(obj);
     #|bound();
   let (_, result) = run_js(src)
-  inspect(result, content="Hi Bob")
+  expect_value_string(result, "Hi Bob", "result")
 }
 
 // ====== Promise Constructor/Species Regression Tests ======
@@ -1987,13 +1987,13 @@ test "array slice" {
 ///|
 test "array concat" {
   let (_, result) = run_js("[1, 2].concat([3, 4]).join(\",\")")
-  inspect(result, content="1,2,3,4")
+  expect_value_string(result, "1,2,3,4", "result")
 }
 
 ///|
 test "array reverse" {
   let (_, result) = run_js("[1, 2, 3].reverse().join(\",\")")
-  inspect(result, content="3,2,1")
+  expect_value_string(result, "3,2,1", "result")
 }
 
 ///|
@@ -2012,7 +2012,7 @@ test "array sort" {
   let (_, result) = run_js(
     "[\"banana\", \"apple\", \"cherry\"].sort().join(\",\")",
   )
-  inspect(result, content="apple,banana,cherry")
+  expect_value_string(result, "apple,banana,cherry", "result")
 }
 
 ///|
@@ -2028,7 +2028,7 @@ test "array isArray" {
 ///|
 test "array fill" {
   let (_, result) = run_js("[1, 2, 3, 4].fill(0, 1, 3).join(\",\")")
-  inspect(result, content="1,0,0,4")
+  expect_value_string(result, "1,0,0,4", "result")
 }
 
 // ====== Phase 2: String Methods ======
@@ -2095,7 +2095,7 @@ test "string toUpperCase toLowerCase" {
 ///|
 test "string trim" {
   let (_, result) = run_js("\"  hello  \".trim()")
-  inspect(result, content="hello")
+  expect_value_string(result, "hello", "result")
 }
 
 ///|
@@ -2111,7 +2111,7 @@ test "string split" {
 ///|
 test "string replace" {
   let (_, result) = run_js("\"hello world\".replace(\"world\", \"there\")")
-  inspect(result, content="hello there")
+  expect_value_string(result, "hello there", "result")
 }
 
 ///|
@@ -2127,7 +2127,7 @@ test "string startsWith endsWith" {
 ///|
 test "string repeat" {
   let (_, result) = run_js("\"ab\".repeat(3)")
-  inspect(result, content="ababab")
+  expect_value_string(result, "ababab", "result")
 }
 
 ///|
@@ -2142,7 +2142,7 @@ test "string padStart padEnd" {
 ///|
 test "string substring" {
   let (_, result) = run_js("\"hello\".substring(1, 4)")
-  inspect(result, content="ell")
+  expect_value_string(result, "ell", "result")
 }
 
 // ====== Phase 2: Object Methods ======
@@ -2325,12 +2325,9 @@ test "bound function propagates runtime error" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "other error"
   }
-  inspect(
-    err_msg.contains("Cannot read property"),
-    content=(
-      #|false
-    ),
-  )
+  guard !err_msg.contains("Cannot read property") else {
+    fail("error message unexpectedly contained Cannot read property")
+  }
 }
 
 // ====== Regression: hasOwnProperty on inherited objects ======
@@ -2628,13 +2625,13 @@ test "var hoisting does not overwrite" {
 ///|
 test "String.fromCharCode basic" {
   let (_, result) = run_js("String.fromCharCode(72, 101, 108, 108, 111)")
-  inspect(result, content="Hello")
+  expect_value_string(result, "Hello", "result")
 }
 
 ///|
 test "String.fromCharCode single" {
   let (_, result) = run_js("String.fromCharCode(65)")
-  inspect(result, content="A")
+  expect_value_string(result, "A", "result")
 }
 
 // ====== Phase 3A: Number builtins ======
@@ -2672,7 +2669,7 @@ test "Number.isInteger" {
 ///|
 test "Number.MAX_SAFE_INTEGER" {
   let (_, result) = run_js("Number.MAX_SAFE_INTEGER")
-  inspect(result, content="9007199254740991")
+  expect_value_string(result, "9007199254740991", "result")
 }
 
 ///|
@@ -2779,7 +2776,7 @@ test "JSON.stringify basic" {
     #|var obj = {a: 1, b: "hello"};
     #|console.log(JSON.stringify(obj));
   let output = run_output(src)
-  inspect(output[0], content="{\"a\":1,\"b\":\"hello\"}")
+  expect_string(output[0], "{\"a\":1,\"b\":\"hello\"}", "output[0]")
 }
 
 ///|
@@ -2807,7 +2804,7 @@ test "JSON.stringify skips functions" {
     #|var obj = {a: 1, b: function() {}};
     #|console.log(JSON.stringify(obj));
   let output = run_output(src)
-  inspect(output[0], content="{\"a\":1}")
+  expect_string(output[0], "{\"a\":1}", "output[0]")
 }
 
 // ====== Phase 3B: Array Higher-Order Functions ======
@@ -2966,7 +2963,7 @@ test "JSON.parse then stringify roundtrip" {
     #|var obj = JSON.parse(str);
     #|console.log(JSON.stringify(obj));
   let output = run_output(src)
-  inspect(output[0], content="{\"x\":1,\"y\":[2,3]}")
+  expect_string(output[0], "{\"x\":1,\"y\":[2,3]}", "output[0]")
 }
 
 // ============================================================
@@ -4530,7 +4527,7 @@ test "instanceof with custom Symbol.hasInstance - returns true" {
     #|const obj = { isMyClass: true };
     #|obj instanceof MyClass;
   let (_, result) = run_js(src)
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
@@ -4544,7 +4541,7 @@ test "instanceof with custom Symbol.hasInstance - returns false" {
     #|const obj = { isMyClass: false };
     #|obj instanceof MyClass;
   let (_, result) = run_js(src)
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -4557,7 +4554,7 @@ test "instanceof Symbol.hasInstance with null check" {
     #|};
     #|null instanceof MyClass;
   let (_, result) = run_js(src)
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -4570,7 +4567,7 @@ test "instanceof Symbol.hasInstance converts result to boolean" {
     #|};
     #|({}) instanceof MyClass;
   let (_, result) = run_js(src)
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
@@ -4583,7 +4580,7 @@ test "instanceof Symbol.hasInstance returns falsy value" {
     #|};
     #|({}) instanceof MyClass;
   let (_, result) = run_js(src)
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -4596,7 +4593,7 @@ test "instanceof Symbol.hasInstance on class static method" {
     #|}
     #|[1, 2, 3] instanceof MyArray;
   let (_, result) = run_js(src)
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
@@ -4607,19 +4604,19 @@ test "instanceof falls back to prototype chain when no Symbol.hasInstance" {
     #|const dog = new Dog();
     #|dog instanceof Animal;
   let (_, result) = run_js(src)
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
 test "instanceof Array works for array values" {
   let (_, result) = run_js("[1, 2, 3] instanceof Array")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
 test "instanceof Object works for array values" {
   let (_, result) = run_js("[1, 2, 3] instanceof Object")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
@@ -4636,7 +4633,7 @@ test "instanceof Symbol.hasInstance receives correct argument" {
     #|testObj instanceof Checker;
     #|receivedArg.x;
   let (_, result) = run_js(src)
-  inspect(result, content="42")
+  expect_value_string(result, "42", "result")
 }
 
 ///|
@@ -4649,7 +4646,7 @@ test "instanceof throws TypeError for non-callable RHS without Symbol.hasInstanc
     #|  (e instanceof TypeError) ? "caught" : String(e);
     #|}
   let (_, result) = run_js(src)
-  inspect(result, content="caught")
+  expect_value_string(result, "caught", "result")
 }
 
 ///|
@@ -4663,7 +4660,7 @@ test "instanceof with Symbol.hasInstance inherited from prototype" {
     #|const Constructor = Object.create(proto);
     #|({ special: true }) instanceof Constructor;
   let (_, result) = run_js(src)
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
@@ -4674,7 +4671,7 @@ test "instanceof with bound function returns false (no own prototype)" {
     #|// Bound functions don't have own prototype, should return false per spec
     #|({}) instanceof boundFoo;
   let (_, result) = run_js(src)
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 // =============================================================================
@@ -7305,9 +7302,8 @@ test "block: lexical and var redeclaration throws SyntaxError" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'f' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'f' has already been declared", "error message",
   )
 }
 
@@ -7320,9 +7316,8 @@ test "script: let and function redeclaration throws SyntaxError" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'f' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'f' has already been declared", "error message",
   )
 }
 
@@ -7343,9 +7338,8 @@ test "block: function body lexical and nested var redeclaration throws SyntaxErr
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'x' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'x' has already been declared", "error message",
   )
 }
 
@@ -7377,9 +7371,9 @@ test "syntax: function declaration as while body throws SyntaxError" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Function declaration in statement position is not allowed",
+  expect_string(
+    err_msg, "SyntaxError: Function declaration in statement position is not allowed",
+    "error message",
   )
 }
 
@@ -7393,9 +7387,9 @@ test "syntax: function declaration as for body throws SyntaxError" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Function declaration in statement position is not allowed",
+  expect_string(
+    err_msg, "SyntaxError: Function declaration in statement position is not allowed",
+    "error message",
   )
 }
 
@@ -7409,9 +7403,9 @@ test "syntax: function declaration as do-while body throws SyntaxError" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Function declaration in statement position is not allowed",
+  expect_string(
+    err_msg, "SyntaxError: Function declaration in statement position is not allowed",
+    "error message",
   )
 }
 
@@ -7586,9 +7580,10 @@ test "strict: assignment to eval throws SyntaxError" {
   let src =
     #|"use strict";
     #|eval = 42;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7600,9 +7595,10 @@ test "strict: assignment to arguments throws SyntaxError" {
     #|  arguments = [1, 2];
     #|}
     #|f();
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7611,9 +7607,10 @@ test "strict: ++eval throws SyntaxError" {
   let src =
     #|"use strict";
     #|++eval;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7622,9 +7619,10 @@ test "strict: eval += 1 throws SyntaxError" {
   let src =
     #|"use strict";
     #|eval += 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7642,9 +7640,10 @@ test "strict: var eval declaration throws SyntaxError" {
   let src =
     #|"use strict";
     #|var eval = 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7653,9 +7652,10 @@ test "strict: var arguments declaration throws SyntaxError" {
   let src =
     #|"use strict";
     #|var arguments = 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7664,9 +7664,10 @@ test "strict: destructuring assignment to eval throws SyntaxError" {
   let src =
     #|"use strict";
     #|({x: eval} = {x: 1});
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7743,9 +7744,9 @@ test "strict: duplicate parameters abort script before later statements" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  expect_string(
+    err_msg, "SyntaxError: Duplicate parameter name not allowed in this context",
+    "error message",
   )
 }
 
@@ -7831,9 +7832,10 @@ test "strict: reserved word 'implements' as var name throws SyntaxError" {
   let src =
     #|"use strict";
     #|var implements = 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected strict mode reserved word",
+    "SyntaxError: Unexpected strict mode reserved word",
+    "error display",
   )
 }
 
@@ -7842,9 +7844,10 @@ test "strict: reserved word 'interface' as var name throws SyntaxError" {
   let src =
     #|"use strict";
     #|var interface = 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected strict mode reserved word",
+    "SyntaxError: Unexpected strict mode reserved word",
+    "error display",
   )
 }
 
@@ -7853,9 +7856,10 @@ test "strict: reserved word 'private' as var name throws SyntaxError" {
   let src =
     #|"use strict";
     #|var private = 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected strict mode reserved word",
+    "SyntaxError: Unexpected strict mode reserved word",
+    "error display",
   )
 }
 
@@ -7881,9 +7885,10 @@ test "strict: reserved word 'public' as parameter name throws SyntaxError" {
     #|"use strict";
     #|function f(public) { return public; }
     #|f(1);
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected strict mode reserved word",
+    "SyntaxError: Unexpected strict mode reserved word",
+    "error display",
   )
 }
 
@@ -7892,9 +7897,10 @@ test "strict: reserved word 'package' as var name throws SyntaxError" {
   let src =
     #|"use strict";
     #|var package = 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected strict mode reserved word",
+    "SyntaxError: Unexpected strict mode reserved word",
+    "error display",
   )
 }
 
@@ -7966,9 +7972,10 @@ test "strict: function-level strict mode with eval assignment" {
     #|  eval = 1;
     #|}
     #|f();
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+    "SyntaxError: Unexpected eval or arguments in strict mode",
+    "error display",
   )
 }
 
@@ -7977,9 +7984,10 @@ test "strict: yield as binding name throws SyntaxError" {
   let src =
     #|"use strict";
     #|var yield = 1;
-  inspect(
+  expect_string(
     run_error_display(src),
-    content="SyntaxError: Unexpected strict mode reserved word",
+    "SyntaxError: Unexpected strict mode reserved word",
+    "error display",
   )
 }
 
@@ -8026,7 +8034,9 @@ test "future reserved: static is sloppy identifier and strict reserved" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  expect_string(
+    err_msg, "SyntaxError: Unexpected strict mode reserved word", "error message",
+  )
   let strict_reference =
     #|"use strict";
     #|static;
@@ -8037,7 +8047,9 @@ test "future reserved: static is sloppy identifier and strict reserved" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  expect_string(
+    err_msg, "SyntaxError: Unexpected strict mode reserved word", "error message",
+  )
   let strict_assignment =
     #|"use strict";
     #|static = 1;
@@ -8048,7 +8060,9 @@ test "future reserved: static is sloppy identifier and strict reserved" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  expect_string(
+    err_msg, "SyntaxError: Unexpected strict mode reserved word", "error message",
+  )
   let strict_typeof =
     #|"use strict";
     #|typeof static;
@@ -8059,7 +8073,9 @@ test "future reserved: static is sloppy identifier and strict reserved" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  expect_string(
+    err_msg, "SyntaxError: Unexpected strict mode reserved word", "error message",
+  )
   let strict_unreachable_reference =
     #|"use strict";
     #|if (false) { static; }
@@ -8070,7 +8086,9 @@ test "future reserved: static is sloppy identifier and strict reserved" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  expect_string(
+    err_msg, "SyntaxError: Unexpected strict mode reserved word", "error message",
+  )
   let strict_unreachable_binding =
     #|"use strict";
     #|if (false) { var static; }
@@ -8081,7 +8099,9 @@ test "future reserved: static is sloppy identifier and strict reserved" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="SyntaxError: Unexpected strict mode reserved word")
+  expect_string(
+    err_msg, "SyntaxError: Unexpected strict mode reserved word", "error message",
+  )
 }
 
 ///|
@@ -10087,9 +10107,8 @@ test "§19.2.1.3 probe: eval(var arguments) in default + body var arguments thro
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'arguments' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'arguments' has already been declared", "error message",
   )
 }
 
@@ -10117,9 +10136,8 @@ test "§19.2.1.3 probe: eval(var arguments) in default + body function arguments
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'arguments' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'arguments' has already been declared", "error message",
   )
 }
 
@@ -10147,9 +10165,8 @@ test "§19.2.1.3 probe: eval(var arguments) in default + body let arguments thro
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'arguments' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'arguments' has already been declared", "error message",
   )
 }
 
@@ -10170,9 +10187,8 @@ test "§19.2.1.3 probe: eval(var arguments) in default + empty body throws Synta
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'arguments' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'arguments' has already been declared", "error message",
   )
 }
 
@@ -10193,9 +10209,8 @@ test "§19.2.1.3 probe: preceding arguments param + eval(var arguments) in later
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'arguments' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'arguments' has already been declared", "error message",
   )
 }
 
@@ -10216,9 +10231,8 @@ test "§19.2.1.3 probe: eval(var arguments) in default + following arguments par
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(
-    err_msg,
-    content="SyntaxError: Identifier 'arguments' has already been declared",
+  expect_string(
+    err_msg, "SyntaxError: Identifier 'arguments' has already been declared", "error message",
   )
 }
 
@@ -10499,9 +10513,9 @@ test "instanceof throws TypeError when prototype is a string" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(
-    err_msg,
-    content="TypeError: Function has non-object prototype in instanceof check",
+  expect_string(
+    err_msg, "TypeError: Function has non-object prototype in instanceof check",
+    "error message",
   )
 }
 
@@ -10514,16 +10528,16 @@ test "instanceof throws TypeError when prototype is a number" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(
-    err_msg,
-    content="TypeError: Function has non-object prototype in instanceof check",
+  expect_string(
+    err_msg, "TypeError: Function has non-object prototype in instanceof check",
+    "error message",
   )
 }
 
 ///|
 test "instanceof does not throw when prototype is a normal object" {
   let (_, result) = run_js("function F() {} [] instanceof F")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -10533,7 +10547,7 @@ test "instanceof does not throw when prototype is a normal object" {
 /// language/expressions/instanceof/primitive-prototype-with-primitive.js.
 test "instanceof returns false for primitive LHS with non-object prototype (number LHS)" {
   let (_, result) = run_js("function F() {} F.prototype = true; 0 instanceof F")
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -10541,7 +10555,7 @@ test "instanceof returns false for primitive LHS with non-object prototype (stri
   let (_, result) = run_js(
     "function F() {} F.prototype = 42; \"s\" instanceof F",
   )
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -10552,7 +10566,7 @@ test "instanceof with Array as prototype walks chain" {
   let (_, result) = run_js(
     "function F() {} F.prototype = []; ({}) instanceof F",
   )
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -10560,7 +10574,7 @@ test "instanceof with Map as prototype walks chain" {
   let (_, result) = run_js(
     "function F() {} F.prototype = new Map(); ({}) instanceof F",
   )
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -10570,7 +10584,7 @@ test "instanceof fallback path with Array prototype" {
   let (_, result) = run_js(
     "function F() {} F[Symbol.hasInstance] = undefined; F.prototype = []; ({}) instanceof F",
   )
-  inspect(result, content="false")
+  expect_value_string(result, "false", "result")
 }
 
 ///|
@@ -10580,7 +10594,7 @@ test "apply with Proxy argArray does not throw" {
   let (_, result) = run_js(
     "var called = false; function f(){ called = true; } f.apply(null, new Proxy({length: 0}, {})); called",
   )
-  inspect(result, content="true")
+  expect_value_string(result, "true", "result")
 }
 
 ///|
@@ -10588,7 +10602,7 @@ test "apply with Map argArray does not throw" {
   let (_, result) = run_js(
     "var n = -1; function f(){ n = arguments.length; } f.apply(null, new Map()); n",
   )
-  inspect(result, content="0")
+  expect_value_string(result, "0", "result")
 }
 
 ///|
@@ -10608,7 +10622,7 @@ test "apply with Proxy length+index traps delivers argument" {
       #|got
     ),
   )
-  inspect(result, content="42")
+  expect_value_string(result, "42", "result")
 }
 
 ///|
@@ -10625,7 +10639,7 @@ test "Reflect.apply with Proxy length+index traps delivers argument" {
       #|out
     ),
   )
-  inspect(result, content="ab")
+  expect_value_string(result, "ab", "result")
 }
 
 ///|
@@ -10642,7 +10656,7 @@ test "apply with Object inheriting length from prototype" {
       #|got
     ),
   )
-  inspect(result, content="99")
+  expect_value_string(result, "99", "result")
 }
 
 ///|
@@ -11606,9 +11620,9 @@ test "strict legacy octal: \\1 in string literal" {
   let src =
     #|"use strict"; "\1";
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11617,9 +11631,9 @@ test "strict legacy octal: 0777 numeric literal" {
   let src =
     #|"use strict"; 0777;
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal literals are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Octal literals are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11628,9 +11642,9 @@ test "strict legacy octal: 08 numeric literal" {
   let src =
     #|"use strict"; 08;
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11639,7 +11653,7 @@ test "non-strict legacy octal: \\1 is allowed" {
   let src =
     #|"\1"
   let result = run(src)
-  inspect(result.to_string(), content="\u{0001}")
+  expect_string(result.to_string(), "\u{0001}", "result")
 }
 
 ///|
@@ -11647,7 +11661,7 @@ test "non-strict legacy octal: 0777 evaluates to 511" {
   let src =
     #|0777
   let result = run(src)
-  inspect(result.to_string(), content="511")
+  expect_string(result.to_string(), "511", "result")
 }
 
 ///|
@@ -11655,9 +11669,9 @@ test "strict NonOctalDecimal + fraction: 08.1 rejected" {
   let src =
     #|"use strict"; 08.1;
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11666,9 +11680,9 @@ test "strict NonOctalDecimal + exponent: 08e2 rejected" {
   let src =
     #|"use strict"; 08e2;
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11677,7 +11691,7 @@ test "non-strict NonOctalDecimal + fraction: 08.1 evaluates to 8.1" {
   let src =
     #|08.1
   let result = run(src)
-  inspect(result.to_string(), content="8.1")
+  expect_string(result.to_string(), "8.1", "result")
 }
 
 ///|
@@ -11685,7 +11699,7 @@ test "non-strict NonOctalDecimal + exponent: 08e2 evaluates to 800" {
   let src =
     #|08e2
   let result = run(src)
-  inspect(result.to_string(), content="800")
+  expect_string(result.to_string(), "800", "result")
 }
 
 ///|
@@ -11693,7 +11707,7 @@ test "single-zero fractional 0.5 valid in strict" {
   let src =
     #|"use strict"; 0.5
   let result = run(src)
-  inspect(result.to_string(), content="0.5")
+  expect_string(result.to_string(), "0.5", "result")
 }
 
 ///|
@@ -11701,7 +11715,7 @@ test "single-zero exponent 0.1e2 valid in strict" {
   let src =
     #|"use strict"; 0.1e2
   let result = run(src)
-  inspect(result.to_string(), content="10")
+  expect_string(result.to_string(), "10", "result")
 }
 
 ///|
@@ -11709,9 +11723,9 @@ test "LegacyOctal + fraction 01.2 is SyntaxError in non-strict" {
   let src =
     #|01.2
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
+  expect_string(
+    result, "SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
+    "result",
   )
 }
 
@@ -11720,9 +11734,9 @@ test "LegacyOctal + exponent 01e2 is SyntaxError in non-strict" {
   let src =
     #|01e2
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by an exponent\")",
+  expect_string(
+    result, "SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by an exponent\")",
+    "result",
   )
 }
 
@@ -11731,9 +11745,9 @@ test "LegacyOctal + fraction 07.5 is SyntaxError in non-strict" {
   let src =
     #|07.5
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
+  expect_string(
+    result, "SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
+    "result",
   )
 }
 
@@ -11742,7 +11756,7 @@ test "LegacyOctal member access 01.toString() valid in non-strict" {
   let src =
     #|01.toString()
   let result = run(src)
-  inspect(result.to_string(), content="1")
+  expect_string(result.to_string(), "1", "result")
 }
 
 ///|
@@ -11750,7 +11764,7 @@ test "LegacyOctal member access 07.toString() returns string of value" {
   let src =
     #|07.toString()
   let result = run(src)
-  inspect(result.to_string(), content="7")
+  expect_string(result.to_string(), "7", "result")
 }
 
 ///|
@@ -11758,7 +11772,7 @@ test "LegacyOctal member access 01.constructor is Number" {
   let src =
     #|01.constructor === Number
   let result = run(src)
-  inspect(result.to_string(), content="true")
+  expect_string(result.to_string(), "true", "result")
 }
 
 ///|
@@ -11766,7 +11780,7 @@ test "bare \\0 NUL is allowed in strict" {
   let src =
     #|"use strict"; "\0".charCodeAt(0)
   let result = run(src)
-  inspect(result.to_string(), content="0")
+  expect_string(result.to_string(), "0", "result")
 }
 
 ///|
@@ -11774,9 +11788,9 @@ test "strict legacy octal: \\8 (NonOctalDecimalEscape) rejected" {
   let src =
     #|"use strict"; "\8";
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11785,9 +11799,9 @@ test "strict legacy octal: \\9 (NonOctalDecimalEscape) rejected" {
   let src =
     #|"use strict"; "\9";
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11796,9 +11810,9 @@ test "strict legacy octal: \\01 (\\0 followed by digit) rejected" {
   let src =
     #|"use strict"; "\01";
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
+    "result",
   )
 }
 
@@ -11807,7 +11821,7 @@ test "non-strict: \\8 evaluates to literal '8'" {
   let src =
     #|"\8"
   let result = run(src)
-  inspect(result.to_string(), content="8")
+  expect_string(result.to_string(), "8", "result")
 }
 
 ///|
@@ -11815,7 +11829,7 @@ test "non-strict: \\9 evaluates to literal '9'" {
   let src =
     #|"\9"
   let result = run(src)
-  inspect(result.to_string(), content="9")
+  expect_string(result.to_string(), "9", "result")
 }
 
 ///|
@@ -11823,9 +11837,9 @@ test "strict legacy octal: \\1 nested in dead branch still errors" {
   let src =
     #|"use strict"; if (false) { "\1"; }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 28",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 28",
+    "result",
   )
 }
 
@@ -11835,9 +11849,9 @@ test "strict legacy octal: never-called function still errors" {
     #|"use strict";
     #|function f() { "\1"; }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 16",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 16",
+    "result",
   )
 }
 
@@ -11847,9 +11861,9 @@ test "strict legacy octal: yield expression argument" {
     #|"use strict";
     #|function* g() { yield "\1"; }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 23",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 23",
+    "result",
   )
 }
 
@@ -11859,9 +11873,9 @@ test "strict legacy octal: yield* delegate argument" {
     #|"use strict";
     #|function* g() { yield* ["\1"]; }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 25",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 25",
+    "result",
   )
 }
 
@@ -11871,9 +11885,9 @@ test "strict legacy octal: super(args) call argument" {
     #|class B {}
     #|class C extends B { constructor() { super("\1"); } }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 43",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 43",
+    "result",
   )
 }
 
@@ -11883,9 +11897,9 @@ test "strict legacy octal: class superclass expression" {
     #|"use strict";
     #|class C extends ("\1", Object) {}
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 18",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 18",
+    "result",
   )
 }
 
@@ -11896,9 +11910,9 @@ test "class superclass expression is strict even without 'use strict' (ClassDecl
   let src =
     #|class C extends ("\1", Object) {}
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 18",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 18",
+    "result",
   )
 }
 
@@ -11907,9 +11921,9 @@ test "class expression superclass is strict even without 'use strict' (ClassExpr
   let src =
     #|var C = (class extends ("\1", Object) {});
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 25",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 25",
+    "result",
   )
 }
 
@@ -11918,9 +11932,9 @@ test "class method with legacy octal escape key" {
   let src =
     #|class C { "\1"() {} }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 11",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 11",
+    "result",
   )
 }
 
@@ -11929,9 +11943,9 @@ test "class method with legacy octal numeric key" {
   let src =
     #|class C { 0777() {} }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal literals are not allowed in strict mode at line 1, col 11",
+  expect_string(
+    result, "SyntaxError: Octal literals are not allowed in strict mode at line 1, col 11",
+    "result",
   )
 }
 
@@ -11940,9 +11954,9 @@ test "class field with legacy octal numeric key" {
   let src =
     #|class C { 08 = 1; }
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 11",
+  expect_string(
+    result, "SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 11",
+    "result",
   )
 }
 
@@ -11951,11 +11965,9 @@ test "destructuring pattern key with legacy octal escape" {
   let src =
     #|"use strict"; let { "\1": x } = {};
   let result = run_throws(src)
-  inspect(
-    result,
-    content=(
-      #|SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 21
-    ),
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 21",
+    "result",
   )
 }
 
@@ -11964,11 +11976,9 @@ test "destructuring pattern key with non-octal-decimal" {
   let src =
     #|"use strict"; let { 08: x } = {};
   let result = run_throws(src)
-  inspect(
-    result,
-    content=(
-      #|SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 21
-    ),
+  expect_string(
+    result, "SyntaxError: Decimals with leading zeros are not allowed in strict mode at line 1, col 21",
+    "result",
   )
 }
 
@@ -11977,9 +11987,9 @@ test "new Function with strict directive and legacy octal" {
   let src =
     #|new Function('"use strict"; "\\1"');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+    "result",
   )
 }
 
@@ -11989,9 +11999,9 @@ test "new GeneratorFunction with strict directive and legacy octal" {
     #|let GF = (function*(){}).constructor;
     #|new GF('"use strict"; "\\1"');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+    "result",
   )
 }
 
@@ -12001,9 +12011,9 @@ test "new AsyncFunction with strict directive and legacy octal" {
     #|let AF = (async function(){}).constructor;
     #|new AF('"use strict"; "\\1"');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+  expect_string(
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+    "result",
   )
 }
 
@@ -12012,9 +12022,9 @@ test "new Function rejects duplicate params under strict directive" {
   let src =
     #|new Function('a', 'a', '"use strict";');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  expect_string(
+    result, "SyntaxError: Duplicate parameter name not allowed in this context",
+    "result",
   )
 }
 
@@ -12023,9 +12033,8 @@ test "new Function rejects 'eval' param under strict directive" {
   let src =
     #|new Function('eval', '"use strict"; return eval;');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  expect_string(
+    result, "SyntaxError: Unexpected eval or arguments in strict mode", "result",
   )
 }
 
@@ -12034,9 +12043,8 @@ test "new Function rejects 'arguments' param under strict directive" {
   let src =
     #|new Function('arguments', '"use strict"; return arguments;');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  expect_string(
+    result, "SyntaxError: Unexpected eval or arguments in strict mode", "result",
   )
 }
 
@@ -12045,9 +12053,9 @@ test "new Function rejects 'use strict' with non-simple params (default)" {
   let src =
     #|new Function('a = 1', '"use strict";');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+  expect_string(
+    result, "SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+    "result",
   )
 }
 
@@ -12056,9 +12064,9 @@ test "new Function rejects 'use strict' with non-simple params (rest)" {
   let src =
     #|new Function('...a', '"use strict";');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+  expect_string(
+    result, "SyntaxError: Illegal 'use strict' directive in function with non-simple parameter list",
+    "result",
   )
 }
 
@@ -12068,9 +12076,9 @@ test "new GeneratorFunction rejects duplicate params under strict" {
     #|let GF = (function*(){}).constructor;
     #|new GF('a', 'a', '"use strict";');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Duplicate parameter name not allowed in this context",
+  expect_string(
+    result, "SyntaxError: Duplicate parameter name not allowed in this context",
+    "result",
   )
 }
 
@@ -12080,9 +12088,8 @@ test "new AsyncFunction rejects 'eval' param under strict" {
     #|let AF = (async function(){}).constructor;
     #|new AF('eval', '"use strict";');
   let result = run_throws(src)
-  inspect(
-    result,
-    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  expect_string(
+    result, "SyntaxError: Unexpected eval or arguments in strict mode", "result",
   )
 }
 
@@ -12110,7 +12117,7 @@ test "direct eval in non-derived function: super() rejected" {
     #|try { f(); } catch (e) { /* expected */ }
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12121,7 +12128,7 @@ test "direct eval in plain function: super.x rejected" {
     #|try { f(); } catch (e) {}
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12133,7 +12140,7 @@ test "direct eval in derived constructor: super() allowed" {
     #|}
     #|new D().tag
   let result = run(src)
-  inspect(result.to_string(), content="B")
+  expect_string(result.to_string(), "B", "result")
 }
 
 ///|
@@ -12145,7 +12152,7 @@ test "direct eval in method: super.x allowed" {
     #|}
     #|new D().bar()
   let result = run(src)
-  inspect(result.to_string(), content="B.foo")
+  expect_string(result.to_string(), "B.foo", "result")
 }
 
 ///|
@@ -12156,7 +12163,7 @@ test "direct eval in class field initializer: arguments rejected" {
     #|try { new C(); } catch (e) {}
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12166,7 +12173,7 @@ test "direct eval in class field initializer: super.x allowed" {
     #|class D extends B { x = eval("super.foo()"); }
     #|new D().x
   let result = run(src)
-  inspect(result.to_string(), content="B.foo")
+  expect_string(result.to_string(), "B.foo", "result")
 }
 
 ///|
@@ -12178,7 +12185,7 @@ test "direct eval in class field initializer: super() rejected" {
     #|try { new D(); } catch (e) {}
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12187,7 +12194,7 @@ test "direct eval in class field initializer: new.target allowed (returns undefi
     #|class C { x = eval("new.target === undefined"); }
     #|new C().x
   let result = run(src)
-  inspect(result.to_string(), content="true")
+  expect_string(result.to_string(), "true", "result")
 }
 
 ///|
@@ -12197,7 +12204,7 @@ test "direct eval at top-level: new.target rejected" {
     #|try { eval("executed = true; new.target;"); } catch (e) {}
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12211,7 +12218,7 @@ test "indirect eval: super() rejected" {
     #|new D();
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12224,7 +12231,7 @@ test "indirect eval: arguments OK (no class-field context)" {
     #|try { (0, eval)("arguments"); } catch (e) { caught = e.constructor.name; }
     #|caught
   let result = run(src)
-  inspect(result.to_string(), content="ReferenceError")
+  expect_string(result.to_string(), "ReferenceError", "result")
 }
 
 ///|
@@ -12235,7 +12242,7 @@ test "direct eval: arguments inside regular function is fine" {
     #|function f() { return eval("arguments[0]"); }
     #|f(42)
   let result = run(src)
-  inspect(result.to_string(), content="42")
+  expect_string(result.to_string(), "42", "result")
 }
 
 ///|
@@ -12250,7 +12257,7 @@ test "eval source containing super() inside a nested function does NOT trigger" 
     #|f();
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="true")
+  expect_string(result.to_string(), "true", "result")
 }
 
 ///|
@@ -12265,7 +12272,7 @@ test "eval source: super.x inside a nested arrow IS visible (transparent)" {
     #|f();
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 // Regression coverage for Codex P2 (PR #100): arrow PARAMETER defaults
@@ -12283,7 +12290,7 @@ test "eval source: super.x in arrow param default rejected (Codex catch)" {
     #|f();
     #|executed
   let result = run(src)
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12300,7 +12307,7 @@ test "eval source: arguments in arrow param default rejected in field init" {
   // field init.) Top-level executed should remain false because the
   // SyntaxError fires before the eval body runs.
   let result = run(src + "\nexecuted")
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12313,7 +12320,7 @@ test "eval source: arguments in destructuring arrow default rejected in field in
     #|  return 1;
     #|})(); }
   let result = run(src + "\nexecuted")
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12325,7 +12332,7 @@ test "eval source: arguments in array destructuring arrow default rejected" {
     #|  return 1;
     #|})(); }
   let result = run(src + "\nexecuted")
-  inspect(result.to_string(), content="false")
+  expect_string(result.to_string(), "false", "result")
 }
 
 ///|
@@ -12335,7 +12342,7 @@ test "eval source: arrow param default with no forbidden refs is fine" {
     #|function f() { return eval("((x = 42) => x)()") }
     #|f()
   let result = run(src)
-  inspect(result.to_string(), content="42")
+  expect_string(result.to_string(), "42", "result")
 }
 
 ///|
