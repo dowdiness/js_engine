@@ -101,6 +101,16 @@ fn run_compiled_counter_factory() -> Value raise Error {
 }
 
 ///|
+fn expect_value_string(name : String, actual : Value, want : String) -> Unit {
+  let got = actual.to_string()
+  guard got == want else {
+    abort(
+      "[\{name}] bench correctness check failed\n  expected: \{want}\n  got:      \{got}",
+    )
+  }
+}
+
+///|
 /// Recursive function calls: fib(30).
 ///
 /// What it measures: function invocation and return through the full
@@ -143,7 +153,12 @@ test "baseline/exec/closure_factory" (b : @bench.T) {
 /// What it excludes: JavaScript-level arrays, for-loops, function declarations,
 /// and member/computed calls, which still require statement compilation work.
 test "baseline/closure_conversion/compiled_counter_factory" (b : @bench.T) {
-  inspect(run_compiled_counter_factory().to_string(), content="500500")
+  let precheck = run_compiled_counter_factory() catch {
+    _ => abort("compiled counter factory precheck raised")
+  }
+  expect_value_string(
+    "baseline/closure_conversion/compiled_counter_factory", precheck, "500500",
+  )
   b.bench(fn() {
     let result = run_compiled_counter_factory() catch {
       _ => abort("compiled counter factory raised")
@@ -170,7 +185,9 @@ test "baseline/closure_conversion/closure_factory" (b : @bench.T) {
   let got = compiled(precheck_interp) catch {
     _ => abort("compiled program raised")
   }
-  inspect(got.to_string(), content="500500")
+  expect_value_string(
+    "baseline/closure_conversion/closure_factory", got, "500500",
+  )
   b.bench(fn() {
     let interp = @interpreter.new_interpreter()
     let result = compiled(interp) catch {
