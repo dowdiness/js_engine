@@ -1,4 +1,97 @@
 ///|
+fn expect_int(actual : Int, expected : Int, label : String) -> Unit raise Error {
+  guard actual == expected else {
+    fail(
+      label +
+      ": expected " +
+      expected.to_string() +
+      ", got " +
+      actual.to_string(),
+    )
+  }
+}
+
+///|
+fn expect_double(
+  actual : Double,
+  expected : Double,
+  label : String,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(
+      label +
+      ": expected " +
+      expected.to_string() +
+      ", got " +
+      actual.to_string(),
+    )
+  }
+}
+
+///|
+fn expect_string(
+  actual : String,
+  expected : String,
+  label : String,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(label + ": expected " + expected + ", got " + actual)
+  }
+}
+
+///|
+fn expect_true(actual : Bool, label : String) -> Unit raise Error {
+  guard actual else { fail(label) }
+}
+
+///|
+fn expect_var_kind(
+  actual : @ast.VarKind,
+  expected : @ast.VarKind,
+  label : String,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(
+      label +
+      ": expected " +
+      expected.to_string() +
+      ", got " +
+      actual.to_string(),
+    )
+  }
+}
+
+///|
+fn expect_bin_op(
+  actual : @ast.BinOp,
+  expected : @ast.BinOp,
+  label : String,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(
+      label +
+      ": expected " +
+      expected.to_string() +
+      ", got " +
+      actual.to_string(),
+    )
+  }
+}
+
+///|
+fn expect_loc(
+  actual : @token.Loc,
+  line : Int,
+  col : Int,
+  offset : Int,
+  label : String,
+) -> Unit raise Error {
+  expect_int(actual.line, line, label + " line")
+  expect_int(actual.col, col, label + " col")
+  expect_int(actual.offset, offset, label + " offset")
+}
+
+///|
 fn expect_lex_form(
   actual : @token.LexForm,
   expected : @token.LexForm,
@@ -14,6 +107,25 @@ fn expect_lex_form(
 }
 
 ///|
+fn expect_number_lit(
+  actual : @ast.Expr,
+  expected : Double,
+  line : Int,
+  col : Int,
+  offset : Int,
+  label : String,
+) -> Unit raise Error {
+  match actual {
+    NumberLit(value, lex_form, loc) => {
+      expect_double(value, expected, label + " value")
+      expect_lex_form(lex_form, @token.LexForm::LexNormal)
+      expect_loc(loc, line, col, offset, label + " loc")
+    }
+    _ => fail(label + ": expected NumberLit")
+  }
+}
+
+///|
 fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
   match result {
     Ok(_) => fail("expected parser error")
@@ -24,60 +136,50 @@ fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
 ///|
 test "parse variable declaration" {
   let prog = @parser.parse("let x = 42;")
-  inspect(
-    prog.stmts[0],
-    content=(
-      #|VarDecl(
-      #|  LetKind,
-      #|  "x",
-      #|  Some(NumberLit(42, LexNormal, { line: 1, col: 9, offset: 8 })),
-      #|  { line: 1, col: 1, offset: 0 },
-      #|)
-    ),
-  )
+  match prog.stmts[0] {
+    VarDecl(kind, name, init, loc) => {
+      expect_var_kind(kind, @ast.VarKind::LetKind, "declaration kind")
+      expect_string(name, "x", "declaration name")
+      expect_loc(loc, 1, 1, 0, "declaration loc")
+      match init {
+        Some(expr) => expect_number_lit(expr, 42.0, 1, 9, 8, "initializer")
+        None => fail("Expected initializer")
+      }
+    }
+    _ => fail("Expected VarDecl")
+  }
 }
 
 ///|
 test "parse binary precedence" {
   let prog = @parser.parse("1 + 2 * 3")
-  inspect(
-    prog.stmts[0],
-    content=(
-      #|ExprStmt(
-      #|  Binary(
-      #|    Add,
-      #|    NumberLit(1, LexNormal, { line: 1, col: 1, offset: 0 }),
-      #|    Binary(
-      #|      Mul,
-      #|      NumberLit(2, LexNormal, { line: 1, col: 5, offset: 4 }),
-      #|      NumberLit(3, LexNormal, { line: 1, col: 9, offset: 8 }),
-      #|      { line: 1, col: 7, offset: 6 },
-      #|    ),
-      #|    { line: 1, col: 3, offset: 2 },
-      #|  ),
-      #|  { line: 1, col: 1, offset: 0 },
-      #|)
-    ),
-  )
+  match prog.stmts[0] {
+    ExprStmt(Binary(op, left, right, op_loc), stmt_loc) => {
+      expect_bin_op(op, @ast.BinOp::Add, "outer operator")
+      expect_number_lit(left, 1.0, 1, 1, 0, "left operand")
+      expect_loc(op_loc, 1, 3, 2, "outer operator loc")
+      expect_loc(stmt_loc, 1, 1, 0, "statement loc")
+      match right {
+        Binary(inner_op, inner_left, inner_right, inner_loc) => {
+          expect_bin_op(inner_op, @ast.BinOp::Mul, "inner operator")
+          expect_number_lit(inner_left, 2.0, 1, 5, 4, "inner left operand")
+          expect_number_lit(inner_right, 3.0, 1, 9, 8, "inner right operand")
+          expect_loc(inner_loc, 1, 7, 6, "inner operator loc")
+        }
+        _ => fail("Expected right operand Binary")
+      }
+    }
+    _ => fail("Expected ExprStmt(Binary)")
+  }
 }
 
 ///|
 test "parse function declaration" {
   let prog = @parser.parse("function add(a, b) { return a + b; }")
-  inspect(
-    prog.stmts.length(),
-    content=(
-      #|1
-    ),
-  )
+  expect_int(prog.stmts.length(), 1, "statement count")
   match prog.stmts[0] {
     FuncDecl(name, params, _, _) => {
-      inspect(
-        name,
-        content=(
-          #|add
-        ),
-      )
+      expect_string(name, "add", "function name")
       json_inspect(params, content=["a", "b"])
     }
     _ => fail("Expected FuncDecl")
@@ -89,12 +191,7 @@ test "parse if/else" {
   let prog = @parser.parse("if (x > 0) { 1; } else { 2; }")
   match prog.stmts[0] {
     IfStmt(_, _, else_branch, _) =>
-      inspect(
-        !(else_branch is None),
-        content=(
-          #|true
-        ),
-      )
+      expect_true(!(else_branch is None), "expected else branch")
     _ => fail("Expected IfStmt")
   }
 }
@@ -104,24 +201,9 @@ test "parse for loop" {
   let prog = @parser.parse("for (let i = 0; i < 10; i = i + 1) { }")
   match prog.stmts[0] {
     ForStmt(init, cond, update, _, _) => {
-      inspect(
-        !(init is None),
-        content=(
-          #|true
-        ),
-      )
-      inspect(
-        !(cond is None),
-        content=(
-          #|true
-        ),
-      )
-      inspect(
-        !(update is None),
-        content=(
-          #|true
-        ),
-      )
+      expect_true(!(init is None), "expected for initializer")
+      expect_true(!(cond is None), "expected for condition")
+      expect_true(!(update is None), "expected for update")
     }
     _ => fail("Expected ForStmt")
   }
@@ -132,12 +214,7 @@ test "parse call expression" {
   let prog = @parser.parse("foo(1, 2)")
   match prog.stmts[0] {
     ExprStmt(Call(_, args, _), _) =>
-      inspect(
-        args.length(),
-        content=(
-          #|2
-        ),
-      )
+      expect_int(args.length(), 2, "call argument count")
     _ => fail("Expected Call")
   }
 }
@@ -147,18 +224,8 @@ test "parse member expression" {
   let prog = @parser.parse("console.log(x)")
   match prog.stmts[0] {
     ExprStmt(Call(Member(Ident(obj, _), prop, _), _, _), _) => {
-      inspect(
-        obj,
-        content=(
-          #|console
-        ),
-      )
-      inspect(
-        prop,
-        content=(
-          #|log
-        ),
-      )
+      expect_string(obj, "console", "member object")
+      expect_string(prop, "log", "member property")
     }
     _ => fail("Expected member call")
   }
@@ -208,12 +275,7 @@ test "parse switch statement" {
   )
   match prog.stmts[0] {
     SwitchStmt(_, cases, _) =>
-      inspect(
-        cases.length(),
-        content=(
-          #|3
-        ),
-      )
+      expect_int(cases.length(), 3, "switch case count")
     _ => fail("Expected SwitchStmt")
   }
 }
@@ -232,12 +294,7 @@ test "parse for-in with var" {
   let prog = @parser.parse("for (let k in obj) { }")
   match prog.stmts[0] {
     ForInStmt(Some(LetKind), name, _, _, _) =>
-      inspect(
-        name,
-        content=(
-          #|k
-        ),
-      )
+      expect_string(name, "k", "for-in binding")
     _ => fail("Expected ForInStmt with let")
   }
 }
@@ -246,13 +303,7 @@ test "parse for-in with var" {
 test "parse for-in bare" {
   let prog = @parser.parse("for (k in obj) { }")
   match prog.stmts[0] {
-    ForInStmt(None, name, _, _, _) =>
-      inspect(
-        name,
-        content=(
-          #|k
-        ),
-      )
+    ForInStmt(None, name, _, _, _) => expect_string(name, "k", "for-in binding")
     _ => fail("Expected ForInStmt bare")
   }
 }
@@ -261,13 +312,7 @@ test "parse for-in bare" {
 test "parse labeled statement" {
   let prog = @parser.parse("outer: for (let i = 0; i < 3; i = i + 1) { }")
   match prog.stmts[0] {
-    LabeledStmt(label, _, _) =>
-      inspect(
-        label,
-        content=(
-          #|outer
-        ),
-      )
+    LabeledStmt(label, _, _) => expect_string(label, "outer", "label")
     _ => fail("Expected LabeledStmt")
   }
 }
@@ -277,24 +322,14 @@ test "parse break label only on same line" {
   let prog = @parser.parse("while (true) { break\nfoo(); }")
   match prog.stmts[0] {
     WhileStmt(_, Block(body, _), _) => {
-      inspect(
-        body.length(),
-        content=(
-          #|2
-        ),
-      )
+      expect_int(body.length(), 2, "while body count")
       match body[0] {
         BreakStmt(None, _) => ()
         _ => fail("Expected unlabeled break")
       }
       match body[1] {
         ExprStmt(Call(Ident(name, _), _, _), _) =>
-          inspect(
-            name,
-            content=(
-              #|foo
-            ),
-          )
+          expect_string(name, "foo", "call name")
         _ => fail("Expected foo() call")
       }
     }
@@ -307,24 +342,14 @@ test "parse continue label only on same line" {
   let prog = @parser.parse("while (true) { continue\nfoo(); }")
   match prog.stmts[0] {
     WhileStmt(_, Block(body, _), _) => {
-      inspect(
-        body.length(),
-        content=(
-          #|2
-        ),
-      )
+      expect_int(body.length(), 2, "while body count")
       match body[0] {
         ContinueStmt(None, _) => ()
         _ => fail("Expected unlabeled continue")
       }
       match body[1] {
         ExprStmt(Call(Ident(name, _), _, _), _) =>
-          inspect(
-            name,
-            content=(
-              #|foo
-            ),
-          )
+          expect_string(name, "foo", "call name")
         _ => fail("Expected foo() call")
       }
     }
@@ -337,12 +362,7 @@ test "parse object literal" {
   let prog = @parser.parse("let o = { a: 1, b: 2 };")
   match prog.stmts[0] {
     VarDecl(_, _, Some(ObjectLit(props, _)), _) =>
-      inspect(
-        props.length(),
-        content=(
-          #|2
-        ),
-      )
+      expect_int(props.length(), 2, "object property count")
     _ => fail("Expected ObjectLit")
   }
 }
@@ -352,12 +372,7 @@ test "parse array literal" {
   let prog = @parser.parse("let a = [1, 2, 3];")
   match prog.stmts[0] {
     VarDecl(_, _, Some(ArrayLit(elems, _)), _) =>
-      inspect(
-        elems.length(),
-        content=(
-          #|3
-        ),
-      )
+      expect_int(elems.length(), 3, "array element count")
     _ => fail("Expected ArrayLit")
   }
 }
@@ -367,12 +382,7 @@ test "parse computed member" {
   let prog = @parser.parse("a[0]")
   match prog.stmts[0] {
     ExprStmt(ComputedMember(Ident(name, _), _, _), _) =>
-      inspect(
-        name,
-        content=(
-          #|a
-        ),
-      )
+      expect_string(name, "a", "computed member object")
     _ => fail("Expected ComputedMember")
   }
 }
@@ -382,18 +392,8 @@ test "parse new expression" {
   let prog = @parser.parse("new Foo(1, 2)")
   match prog.stmts[0] {
     ExprStmt(NewExpr(Ident(name, _), args, _), _) => {
-      inspect(
-        name,
-        content=(
-          #|Foo
-        ),
-      )
-      inspect(
-        args.length(),
-        content=(
-          #|2
-        ),
-      )
+      expect_string(name, "Foo", "constructor name")
+      expect_int(args.length(), 2, "constructor argument count")
     }
     _ => fail("Expected NewExpr")
   }
@@ -404,12 +404,7 @@ test "parse this expression" {
   let prog = @parser.parse("this.x")
   match prog.stmts[0] {
     ExprStmt(Member(ThisExpr(_), prop, _), _) =>
-      inspect(
-        prop,
-        content=(
-          #|x
-        ),
-      )
+      expect_string(prop, "x", "this member property")
     _ => fail("Expected this.x")
   }
 }
@@ -500,12 +495,7 @@ test "parse member assign" {
   let prog = @parser.parse("obj.x = 5")
   match prog.stmts[0] {
     ExprStmt(MemberAssign(_, prop, _, _), _) =>
-      inspect(
-        prop,
-        content=(
-          #|x
-        ),
-      )
+      expect_string(prop, "x", "assigned member property")
     _ => fail("Expected MemberAssign")
   }
 }
@@ -644,7 +634,7 @@ test "trailing comma in named function params (single)" {
   let prog = @parser.parse("function f(a,) {}")
   match prog.stmts[0] {
     FuncDecl(name, params, _, _) => {
-      inspect(name, content="f")
+      expect_string(name, "f", "function name")
       json_inspect(params, content=["a"])
     }
     _ => fail("Expected FuncDecl")
@@ -656,7 +646,7 @@ test "trailing comma in named function params (multiple)" {
   let prog = @parser.parse("function f(a, b,) {}")
   match prog.stmts[0] {
     FuncDecl(name, params, _, _) => {
-      inspect(name, content="f")
+      expect_string(name, "f", "function name")
       json_inspect(params, content=["a", "b"])
     }
     _ => fail("Expected FuncDecl")
@@ -666,7 +656,7 @@ test "trailing comma in named function params (multiple)" {
 ///|
 test "trailing comma in nameless function expression params" {
   let prog = @parser.parse("(function (a,) {})")
-  inspect(prog.stmts.length(), content="1")
+  expect_int(prog.stmts.length(), 1, "statement count")
 }
 
 ///|
@@ -674,7 +664,7 @@ test "trailing comma in generator params" {
   let prog = @parser.parse("function* g(a, b,) { yield a; }")
   match prog.stmts[0] {
     GeneratorDecl(name, params, _, _) => {
-      inspect(name, content="g")
+      expect_string(name, "g", "generator name")
       json_inspect(params, content=["a", "b"])
     }
     _ => fail("Expected GeneratorDecl")
