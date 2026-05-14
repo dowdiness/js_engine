@@ -77,7 +77,14 @@ receiver/map-function validation and WeakMap/WeakSet constructor adder checks.
 - Inspect 5 of them, locate the common throw site.
 - Single fix; expect ~46 tests recovered.
 
-### Cluster 2 — Object descriptor metadata round-trip (~95 each mode)
+### ~~Cluster 2 — Object descriptor metadata round-trip~~ — DONE (2026-05-15, PR #115, `894105b`)
+
+**Result:** Fixed Object descriptor metadata round-trip behavior across
+`Object.create`, `Object.defineProperties`, and
+`Object.getOwnPropertyDescriptors`, including descriptor source key
+snapshotting, user `[[...]]` property names, Map/Set expando descriptor
+sources, array length truncation failure metadata, and built-in function /
+RegExp prototype descriptor attributes.
 
 Reasons: `obj['…'] descriptor should be configurable` (54/56), `should not be writable` (15), `Cannot redefine property: 0` (13 NS), `newObj.prop Expected SameValue(undefined, "…")` (11). Pattern: `Object.defineProperty` doesn't preserve attribute bits on round-trip, especially on integer-indexed properties.
 
