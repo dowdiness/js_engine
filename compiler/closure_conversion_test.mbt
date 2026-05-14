@@ -120,16 +120,47 @@ fn run_script_outcome(src : String) -> String {
 }
 
 ///|
+fn expect_string(
+  actual : String,
+  expected : String,
+  label : String,
+) -> Unit raise Error {
+  if actual != expected {
+    fail(label + ": expected " + expected + ", got " + actual)
+  }
+}
+
+///|
+fn expect_value(
+  actual : Value,
+  expected : String,
+  label : String,
+) -> Unit raise Error {
+  expect_string(actual.to_string(), expected, label)
+}
+
+///|
+fn expect_script_value(
+  src : String,
+  expected : String,
+  label : String,
+) -> Unit raise Error {
+  expect_value(run_script(src), expected, label)
+}
+
+///|
+fn expect_true(actual : Bool, label : String) -> Unit raise Error {
+  if !actual {
+    fail(label + ": expected true")
+  }
+}
+
+///|
 test "closure conversion evaluates identifiers and binary expressions" {
   let interp = @interpreter.new_interpreter()
   interp.global.def("x", Value::Number(41.0), BindingKind::VarBinding)
   let result = run_expr("x + 1", interp, interp.global)
-  inspect(
-    result,
-    content=(
-      #|42
-    ),
-  )
+  expect_value(result, "42", "identifier binary expression result")
 }
 
 ///|
@@ -147,12 +178,7 @@ test "closure conversion captures function expression environment" {
     [Value::Number(2.0)],
     @token.Loc::default(),
   )
-  inspect(
-    result,
-    content=(
-      #|42
-    ),
-  )
+  expect_value(result, "42", "captured function expression result")
 }
 
 ///|
@@ -194,12 +220,7 @@ test "closure conversion creates callable arrow functions" {
     [Value::Number(41.0)],
     @token.Loc::default(),
   )
-  inspect(
-    result,
-    content=(
-      #|42
-    ),
-  )
+  expect_value(result, "42", "arrow function call result")
 }
 
 ///|
@@ -210,12 +231,7 @@ test "closure conversion evaluates bare calls" {
     interp,
     interp.global,
   )
-  inspect(
-    result,
-    content=(
-      #|42
-    ),
-  )
+  expect_value(result, "42", "bare call result")
 }
 
 ///|
@@ -232,12 +248,7 @@ test "closure conversion expands spread call arguments" {
     BindingKind::VarBinding,
   )
   let result = run_expr("sum(...args)", interp, interp.global)
-  inspect(
-    result,
-    content=(
-      #|42
-    ),
-  )
+  expect_value(result, "42", "spread call result")
 }
 
 ///|
@@ -247,12 +258,7 @@ test "closure conversion preserves direct eval lexical scope" {
   let lexical_env = @runtime.Environment::new(parent=Some(interp.global))
   lexical_env.def("x", Value::Number(42.0), BindingKind::VarBinding)
   let result = run_expr("eval(\"x\")", interp, lexical_env)
-  inspect(
-    result,
-    content=(
-      #|42
-    ),
-  )
+  expect_value(result, "42", "direct eval lexical result")
 }
 
 ///|
@@ -267,12 +273,7 @@ test "closure conversion preserves direct eval caller strictness" {
     @errors.SyntaxError(_) => Value::String_("syntax")
     _ => Value::String_("other")
   }
-  inspect(
-    result,
-    content=(
-      #|syntax
-    ),
-  )
+  expect_value(result, "syntax", "direct eval strictness error")
 }
 
 ///|
@@ -286,12 +287,7 @@ test "closure conversion validates strict function signatures" {
     @errors.SyntaxError(_) => Value::String_("syntax")
     _ => Value::String_("other")
   }
-  inspect(
-    result,
-    content=(
-      #|syntax
-    ),
-  )
+  expect_value(result, "syntax", "strict function signature error")
 }
 
 ///|
@@ -302,412 +298,295 @@ test "closure conversion handles proxy rhs for instanceof" {
   )
   let _ = interp.run(setup.stmts)
   let result = run_expr("obj instanceof proxyCtor", interp, interp.global)
-  inspect(
-    result,
-    content=(
-      #|true
-    ),
-  )
+  expect_value(result, "true", "proxy instanceof result")
 }
 
 ///|
 test "closure conversion evaluates basic object literals" {
-  inspect(
-    run_script("({ x: 41 }).x + 1;"),
-    content=(
-      #|42
-    ),
-  )
+  expect_script_value("({ x: 41 }).x + 1;", "42", "basic object literal")
 }
 
 ///|
 test "closure conversion evaluates computed object keys" {
-  inspect(
-    run_script("({ [\"x\"]: 41 }).x + 1;"),
-    content=(
-      #|42
-    ),
-  )
+  expect_script_value("({ [\"x\"]: 41 }).x + 1;", "42", "computed object key")
 }
 
 ///|
 test "closure conversion binds this for object function properties" {
-  inspect(
-    run_script(
-      "var obj = { x: 41, getX: function() { return this.x; } }; obj.getX() + 1;",
-    ),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var obj = { x: 41, getX: function() { return this.x; } }; obj.getX() + 1;",
+    "42", "object function property this binding",
   )
 }
 
 ///|
 test "closure conversion binds this for object method shorthand" {
-  inspect(
-    run_script(
-      "var obj = { x: 41, getX() { return this.x; } }; obj.getX() + 1;",
-    ),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var obj = { x: 41, getX() { return this.x; } }; obj.getX() + 1;", "42", "object method shorthand this binding",
   )
 }
 
 ///|
 test "closure conversion reports unsupported object literal accessors" {
-  inspect(
+  expect_true(
     run_script_outcome("({ get x() { return 1; } }).x;").contains(
       "object literal accessor property",
     ),
-    content="true",
+    "object literal accessor diagnostic",
   )
 }
 
 ///|
 test "closure conversion reports unsupported object literal spread" {
-  inspect(
+  expect_true(
     run_script_outcome("({ ...{ x: 1 } }).x;").contains(
       "object literal spread property",
     ),
-    content="true",
+    "object literal spread diagnostic",
   )
 }
 
 ///|
 test "closure conversion assigns member properties" {
-  inspect(
-    run_script("var o = { x: 1 }; o.x = 41; o.x + 1;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var o = { x: 1 }; o.x = 41; o.x + 1;", "42", "member property assignment",
   )
 }
 
 ///|
 test "closure conversion assigns computed properties" {
-  inspect(
-    run_script("var o = {}; o[\"x\"] = 41; o.x + 1;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var o = {}; o[\"x\"] = 41; o.x + 1;", "42", "computed property assignment",
   )
 }
 
 ///|
 test "closure conversion updates member properties" {
-  inspect(
-    run_script("var o = { x: 41 }; o.x++; o.x;"),
-    content=(
-      #|42
-    ),
-  )
+  expect_script_value("var o = { x: 41 }; o.x++; o.x;", "42", "member update")
 }
 
 ///|
 test "closure conversion preserves postfix member update result" {
-  inspect(
-    run_script("var o = { x: 41 }; var y = o.x++; y + o.x;"),
-    content=(
-      #|83
-    ),
+  expect_script_value(
+    "var o = { x: 41 }; var y = o.x++; y + o.x;", "83", "postfix member update result",
   )
 }
 
 ///|
 test "closure conversion updates computed properties" {
-  inspect(
-    run_script("var o = { x: 41 }; ++o[\"x\"];"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var o = { x: 41 }; ++o[\"x\"];", "42", "computed property update",
   )
 }
 
 ///|
 test "closure conversion preserves numeric postfix result" {
-  inspect(
-    run_script("var x = \"41\"; var y = x++; y + x;"),
-    content=(
-      #|83
-    ),
+  expect_script_value(
+    "var x = \"41\"; var y = x++; y + x;", "83", "numeric postfix result",
   )
 }
 
 ///|
 test "closure conversion routes strict member assignment through setters" {
-  inspect(
+  expect_true(
     run_script_outcome(
       "\"use strict\"; var o = {}; Object.defineProperty(o, \"x\", { value: 1, writable: false }); o.x = 2;",
     ).contains("TypeError"),
-    content="true",
+    "strict member assignment setter error",
   )
 }
 
 ///|
 test "closure conversion evaluates identifier compound assignment" {
-  inspect(
-    run_script("var x = 40; x += 2; x;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var x = 40; x += 2; x;", "42", "identifier compound assignment",
   )
 }
 
 ///|
 test "closure conversion evaluates member compound assignment" {
-  inspect(
-    run_script("var o = { x: 40 }; o.x += 2; o.x;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var o = { x: 40 }; o.x += 2; o.x;", "42", "member compound assignment",
   )
 }
 
 ///|
 test "closure conversion evaluates computed compound assignment" {
-  inspect(
-    run_script("var o = { x: 40 }; o[\"x\"] += 2; o.x;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var o = { x: 40 }; o[\"x\"] += 2; o.x;", "42", "computed compound assignment",
   )
 }
 
 ///|
 test "closure conversion evaluates logical assignment" {
-  inspect(
-    run_script("var x = 0; x ||= 42; x;"),
-    content=(
-      #|42
-    ),
-  )
+  expect_script_value("var x = 0; x ||= 42; x;", "42", "logical assignment")
 }
 
 ///|
 test "closure conversion preserves logical assignment short circuit" {
-  inspect(
-    run_script("function fail() { throw \"no\"; } var x = 1; x ||= fail(); x;"),
-    content=(
-      #|1
-    ),
+  expect_script_value(
+    "function fail() { throw \"no\"; } var x = 1; x ||= fail(); x;", "1", "logical assignment short circuit",
   )
 }
 
 ///|
 test "closure conversion evaluates member nullish assignment" {
-  inspect(
-    run_script("var o = { x: null }; o.x ??= 42; o.x;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var o = { x: null }; o.x ??= 42; o.x;", "42", "member nullish assignment",
   )
 }
 
 ///|
 test "closure conversion preserves computed logical assignment short circuit" {
-  inspect(
-    run_script(
-      "function fail() { throw \"no\"; } var o = { x: 0 }; o[\"x\"] &&= fail(); o.x;",
-    ),
-    content=(
-      #|0
-    ),
+  expect_script_value(
+    "function fail() { throw \"no\"; } var o = { x: 0 }; o[\"x\"] &&= fail(); o.x;",
+    "0", "computed logical assignment short circuit",
   )
 }
 
 ///|
 test "closure conversion routes strict compound assignment through setters" {
-  inspect(
+  expect_true(
     run_script_outcome(
       "\"use strict\"; var o = {}; Object.defineProperty(o, \"x\", { value: 1, writable: false }); o.x += 1;",
     ).contains("TypeError"),
-    content="true",
+    "strict compound assignment setter error",
   )
 }
 
 ///|
 test "closure conversion evaluates unary numeric expressions" {
-  inspect(
-    run_script("var x = 1; -x + 43;"),
-    content=(
-      #|42
-    ),
-  )
+  expect_script_value("var x = 1; -x + 43;", "42", "unary numeric expression")
 }
 
 ///|
 test "closure conversion evaluates typeof missing" {
-  inspect(
-    run_script("typeof missing;"),
-    content=(
-      #|undefined
-    ),
-  )
+  expect_script_value("typeof missing;", "undefined", "typeof missing")
 }
 
 ///|
 test "closure conversion evaluates void operand effects" {
-  inspect(
-    run_script("var x = 0; void (x = 42); x;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var x = 0; void (x = 42); x;", "42", "void operand effects",
   )
 }
 
 ///|
 test "closure conversion evaluates ternary selected branch only" {
-  inspect(
-    run_script("function fail() { throw \"no\"; } var x = 0; x ? fail() : 42;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "function fail() { throw \"no\"; } var x = 0; x ? fail() : 42;", "42", "ternary selected branch",
   )
 }
 
 ///|
 test "closure conversion evaluates comma expressions" {
-  inspect(
-    run_script("var x = 0; (x = 41, x + 1);"),
-    content=(
-      #|42
-    ),
-  )
+  expect_script_value("var x = 0; (x = 41, x + 1);", "42", "comma expression")
 }
 
 ///|
 test "closure conversion reports unsupported delete unary" {
-  inspect(
+  expect_true(
     run_script_outcome("var o = { x: 1 }; delete o.x;").contains(
       "delete unary operator",
     ),
-    content="true",
+    "delete unary diagnostic",
   )
 }
 
 ///|
 test "closure conversion evaluates while break and continue" {
-  inspect(
-    run_script(
-      "var i = 0; var total = 0; while (i < 10) { i++; if (i % 2 === 0) { continue; } if (i > 7) { break; } total += i; } total;",
-    ),
-    content=(
-      #|16
-    ),
+  expect_script_value(
+    "var i = 0; var total = 0; while (i < 10) { i++; if (i % 2 === 0) { continue; } if (i > 7) { break; } total += i; } total;",
+    "16", "while break continue",
   )
 }
 
 ///|
 test "closure conversion evaluates do while before condition" {
-  inspect(
-    run_script("var i = 0; do { i = i + 1; } while (false); i + 41;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var i = 0; do { i = i + 1; } while (false); i + 41;", "42", "do while before condition",
   )
 }
 
 ///|
 test "closure conversion propagates thrown values" {
   let src = "function fail() { throw \"boom\"; } fail();"
-  inspect(
+  expect_true(
     run_script_outcome(src) == run_interpreter_outcome(src),
-    content="true",
+    "thrown value outcome",
   )
 }
 
 ///|
 test "closure conversion constructs function declarations" {
-  inspect(
-    run_script("function C(x) { this.x = x; } var o = new C(41); o.x + 1;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "function C(x) { this.x = x; } var o = new C(41); o.x + 1;", "42", "function declaration construct",
   )
 }
 
 ///|
 test "closure conversion constructs function expressions" {
-  inspect(
-    run_script("var o = new (function C(x) { this.x = x; })(41); o.x + 1;"),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "var o = new (function C(x) { this.x = x; })(41); o.x + 1;", "42", "function expression construct",
   )
 }
 
 ///|
 test "closure conversion constructs with spread arguments" {
-  inspect(
-    run_script(
-      "function C(a, b) { this.x = a + b; } var args = [40, 1]; var o = new C(...args); o.x + 1;",
-    ),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "function C(a, b) { this.x = a + b; } var args = [40, 1]; var o = new C(...args); o.x + 1;",
+    "42", "construct spread arguments",
   )
 }
 
 ///|
 test "closure conversion preserves constructor object return" {
-  inspect(
-    run_script(
-      "function C() { this.x = 1; return { x: 41 }; } var o = new C(); o.x + 1;",
-    ),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "function C() { this.x = 1; return { x: 41 }; } var o = new C(); o.x + 1;", "42",
+    "constructor object return",
   )
 }
 
 ///|
 test "closure conversion preserves constructor primitive return" {
-  inspect(
-    run_script(
-      "function C() { this.x = 41; return 1; } var o = new C(); o.x + 1;",
-    ),
-    content=(
-      #|42
-    ),
+  expect_script_value(
+    "function C() { this.x = 41; return 1; } var o = new C(); o.x + 1;", "42", "constructor primitive return",
   )
 }
 
 ///|
 test "closure conversion keeps method shorthand non-constructable" {
-  inspect(
+  expect_true(
     run_script_outcome("var o = { m() { return 1; } }; new o.m();").contains(
       "TypeError",
     ),
-    content="true",
+    "method shorthand construct error",
   )
 }
 
 ///|
 test "closure conversion reports non-constructor errors" {
-  inspect(
+  expect_true(
     run_script_outcome("new Math();").contains("TypeError"),
-    content="true",
+    "non-constructor diagnostic",
   )
 }
 
 ///|
 test "closure conversion compiles closure factory program" {
-  inspect(
+  expect_value(
     run_program(CLOSURE_FACTORY_PROGRAM),
-    content=(
-      #|500500
-    ),
+    "500500",
+    "closure factory program",
   )
 }
 
 ///|
 test "closure conversion compiles pipeline evaluate program" {
-  inspect(
+  expect_value(
     run_program(PIPELINE_EXEC_PROGRAM),
-    content=(
-      #|500500
-    ),
+    "500500",
+    "pipeline evaluate program",
   )
 }
 
@@ -730,9 +609,9 @@ test "closure conversion script wrapper preserves strict var hoisting" {
 ///|
 test "closure conversion script wrapper validates strict declarations" {
   let src = "\"use strict\"; function f(a, a) { return a; } f(1, 2);"
-  inspect(
+  expect_true(
     run_script_outcome(src) == run_interpreter_outcome(src),
-    content="true",
+    "script wrapper strict declaration outcome",
   )
 }
 
@@ -748,20 +627,14 @@ test "closure conversion script wrapper installs current interpreter" {
   interp.global.def("obj", obj, BindingKind::VarBinding)
   let prog = @parser.parse("obj + 1;")
   let compiled = compile_script_to_closure(prog.stmts)
-  inspect(
-    compiled(interp),
-    content=(
-      #|42
-    ),
-  )
+  expect_value(compiled(interp), "42", "script wrapper interpreter install")
 }
 
 ///|
 test "closure conversion script wrapper wraps top-level engine errors" {
-  inspect(
+  expect_string(
     run_script_outcome("missing;"),
-    content=(
-      #|throw:ReferenceError: missing is not defined
-    ),
+    "throw:ReferenceError: missing is not defined",
+    "script wrapper top-level error",
   )
 }
