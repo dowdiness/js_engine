@@ -1,6 +1,5 @@
 ///|
-// Helper functions (to_object, validate_accessor, get_value_property,
-// apply_property_descriptor, validate_non_configurable) live in
+// Helper functions (to_object and descriptor object builders) live in
 // builtins_object_helpers.mbt.
 //
 // Integrity/utility factory functions (make_freeze_func, make_seal_func, …)
@@ -755,7 +754,8 @@ pub fn setup_object_builtins(
               }
             },
           ),
-          "create": @runtime.make_native_func(name="create", length=2, fn(
+          "create": @runtime.make_interp_static_func(name="create", length=2, fn(
+            interp,
             args,
           ) raise {
             let proto = if args.length() > 0 { args[0] } else { Null }
@@ -785,72 +785,14 @@ pub fn setup_object_builtins(
             if args.length() > 1 {
               match args[1] {
                 Undefined => ()
-                // Per ECMAScript spec, only Object with properties field accepted
-                // Arrays, Maps, Sets don't have properties field in our implementation
-                Value::Proxy(proxy_data) =>
-                  // Unwrap Proxy and use target's properties as descriptors
-                  match proxy_data.target {
-                    Some(Object(desc_obj)) =>
-                      match obj {
-                        Object(data) =>
-                          desc_obj.bag.properties.each(fn(
-                            prop_name,
-                            desc_val,
-                          ) raise {
-                            match desc_val {
-                              Object(desc) =>
-                                apply_property_descriptor(data, prop_name, desc)
-                              _ => ()
-                            }
-                          })
-                        _ => ()
-                      }
-                    _ =>
-                      raise @errors.TypeError(
-                        message="Property descriptors must be an object",
-                      )
-                  }
-                Null
-                | Value::String_(_)
-                | Value::Number(_)
-                | Bool(_)
-                | Symbol(_)
-                | Array(_)
-                | Map(_)
-                | Set(_) =>
-                  raise @errors.TypeError(
-                    message="Property descriptors must be an object",
+                descs =>
+                  define_properties_from_value(
+                    interp,
+                    obj,
+                    descs,
+                    sym_state,
+                    @token.Loc::default(),
                   )
-                Object(desc_obj) =>
-                  match obj {
-                    Object(data) =>
-                      desc_obj.bag.properties.each(fn(
-                        prop_name,
-                        desc_val,
-                      ) raise {
-                        match desc_val {
-                          Object(desc) =>
-                            apply_property_descriptor(data, prop_name, desc)
-                          _ => ()
-                        }
-                      })
-                    _ => ()
-                  }
-                Promise(desc_obj) =>
-                  match obj {
-                    Object(data) =>
-                      desc_obj.bag.properties.each(fn(
-                        prop_name,
-                        desc_val,
-                      ) raise {
-                        match desc_val {
-                          Object(desc) =>
-                            apply_property_descriptor(data, prop_name, desc)
-                          _ => ()
-                        }
-                      })
-                    _ => ()
-                  }
               }
             }
             obj
@@ -1227,7 +1169,9 @@ pub fn setup_object_builtins(
           ),
           "getOwnPropertyNames": make_get_own_property_names_func(),
           "getOwnPropertySymbols": make_get_own_property_symbols_func(sym_state),
-          "getOwnPropertyDescriptors": make_get_own_property_descriptors_func(),
+          "getOwnPropertyDescriptors": make_get_own_property_descriptors_func(
+            sym_state,
+          ),
           "defineProperty": make_define_property_func(),
           "getOwnPropertyDescriptor": make_get_own_property_descriptor_func(),
           "freeze": make_freeze_func(),
