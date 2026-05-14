@@ -102,21 +102,41 @@ fn error_display(val : Value) -> String {
 }
 
 ///|
+fn expect_string(
+  actual : String,
+  expected : String,
+  label : String,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(label + ": expected " + expected + ", got " + actual)
+  }
+}
+
+///|
+fn expect_value_string(
+  actual : Value,
+  expected : String,
+  label : String,
+) -> Unit raise Error {
+  expect_string(actual.to_string(), expected, label)
+}
+
+///|
 test "arithmetic" {
   let (_, result) = run_js("1 + 2 * 3")
-  inspect(result, content="7")
+  expect_value_string(result, "7", "arithmetic result")
 }
 
 ///|
 test "variables" {
   let (_, result) = run_js("let x = 10; let y = 20; x + y")
-  inspect(result, content="30")
+  expect_value_string(result, "30", "variables result")
 }
 
 ///|
 test "string concatenation" {
   let (_, result) = run_js("\"hello\" + \" \" + \"world\"")
-  inspect(result, content="hello world")
+  expect_value_string(result, "hello world", "string concatenation result")
 }
 
 ///|
@@ -128,13 +148,13 @@ test "console.log" {
 ///|
 test "if/else true" {
   let (_, result) = run_js("let x = 10; if (x > 5) { 1 } else { 2 }")
-  inspect(result, content="1")
+  expect_value_string(result, "1", "if/else true result")
 }
 
 ///|
 test "if/else false" {
   let (_, result) = run_js("let x = 3; if (x > 5) { 1 } else { 2 }")
-  inspect(result, content="2")
+  expect_value_string(result, "2", "if/else false result")
 }
 
 ///|
@@ -156,7 +176,7 @@ test "for loop" {
 ///|
 test "function declaration and call" {
   let (_, result) = run_js("function add(a, b) { return a + b; } add(3, 4)")
-  inspect(result, content="7")
+  expect_value_string(result, "7", "function declaration result")
 }
 
 ///|
@@ -189,7 +209,7 @@ test "recursive fibonacci" {
 ///|
 test "ternary expression" {
   let (_, result) = run_js("let x = 5; x > 3 ? \"big\" : \"small\"")
-  inspect(result, content="big")
+  expect_value_string(result, "big", "ternary expression result")
 }
 
 ///|
@@ -235,7 +255,9 @@ test "const assignment error" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected error"
   }
-  inspect(err_msg, content="TypeError: Assignment to constant variable 'x'")
+  expect_string(
+    err_msg, "TypeError: Assignment to constant variable 'x'", "const assignment error",
+  )
 }
 
 ///|
@@ -265,13 +287,13 @@ test "logical operators short-circuit" {
 ///|
 test "unary not" {
   let (_, result) = run_js("!false")
-  inspect(result, content="true")
+  expect_value_string(result, "true", "unary not result")
 }
 
 ///|
 test "unary minus" {
   let (_, result) = run_js("-5 + 3")
-  inspect(result, content="-2")
+  expect_value_string(result, "-2", "unary minus result")
 }
 
 ///|
@@ -293,13 +315,13 @@ test "nested function scope" {
 ///|
 test "string and number concatenation" {
   let (_, result) = run_js("\"value: \" + 42")
-  inspect(result, content="value: 42")
+  expect_value_string(result, "value: 42", "string and number concatenation")
 }
 
 ///|
 test "modulo operator" {
   let (_, result) = run_js("10 % 3")
-  inspect(result, content="1")
+  expect_value_string(result, "1", "modulo operator result")
 }
 
 ///|
@@ -460,7 +482,7 @@ test "uncaught throw is error" {
     @runtime.JsException(val) => err_msg = error_display(val)
     _ => err_msg = "unexpected"
   }
-  inspect(err_msg, content="uncaught")
+  expect_string(err_msg, "uncaught", "uncaught throw error")
 }
 
 ///|
