@@ -1137,7 +1137,13 @@ pub fn Interpreter::array_set_length(
   while i >= new_len {
     // Per §10.4.2.4 step 14.b: if element is non-configurable, stop.
     match arr.bag.descriptors.get(i.to_string()) {
-      Some(desc) => if !desc.configurable { return false }
+      Some(desc) =>
+        if !desc.configurable {
+          if lock_after {
+            arr.length_writable = false
+          }
+          return false
+        }
       None => ()
     }
     let _removed = arr.elements.pop()

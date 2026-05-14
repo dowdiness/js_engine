@@ -259,9 +259,7 @@ fn Interpreter::eval_logical_assign_or(
   loc : @token.Loc,
 ) -> Value raise Error {
   // x ||= y: assign y when x is falsy
-  self.eval_logical_assign(
-    ctx, target, value_expr, env, loc, v => !is_truthy(v),
-  )
+  self.eval_logical_assign(ctx, target, value_expr, env, loc, v => !is_truthy(v))
 }
 
 ///|
@@ -274,7 +272,7 @@ fn Interpreter::eval_nullish_assign(
   loc : @token.Loc,
 ) -> Value raise Error {
   // x ??= y: assign y when x is null or undefined
-  self.eval_logical_assign(
-    ctx, target, value_expr, env, loc, v => v is Null || v is Undefined,
-  )
+  self.eval_logical_assign(ctx, target, value_expr, env, loc, v => {
+    v is Null || v is Undefined
+  })
 }

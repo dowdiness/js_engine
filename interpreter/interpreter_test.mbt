@@ -5049,6 +5049,78 @@ test "Object.create with accessor descriptor" {
 }
 
 ///|
+test "Object.create applies enumerable Properties through descriptor pipeline" {
+  let output = run_output(
+    (
+      #|const props = {};
+      #|Object.defineProperty(props, 'hidden', {
+      #|  value: { value: 'hidden', enumerable: true },
+      #|  enumerable: false
+      #|});
+      #|const proto = {};
+      #|Object.defineProperty(proto, 'value', {
+      #|  get: function() { return 'inherited'; }
+      #|});
+      #|const desc = Object.create(proto);
+      #|Object.defineProperty(desc, 'value', {
+      #|  get: function() { return 'own'; }
+      #|});
+      #|desc.enumerable = true;
+      #|props.visible = desc;
+      #|const obj = Object.create({}, props);
+      #|console.log(obj.hasOwnProperty('hidden'));
+      #|console.log(obj.visible);
+      #|console.log(Object.keys(obj).join(','));
+    ),
+  )
+  json_inspect(output, content=["false", "own", "visible"])
+}
+
+///|
+test "Object.create reads descriptor attributes from array objects" {
+  let output = run_output(
+    (
+      #|const desc = [1, 2, 3];
+      #|desc.get = function() { return 'from-array'; };
+      #|desc.enumerable = true;
+      #|const obj = Object.create({}, { prop: desc });
+      #|console.log(obj.hasOwnProperty('prop'));
+      #|console.log(obj.prop);
+      #|console.log(Object.keys(obj).join(','));
+    ),
+  )
+  json_inspect(output, content=["true", "from-array", "prop"])
+}
+
+///|
+test "Object.create accepts array and primitive Properties inputs" {
+  let output = run_output(
+    (
+      #|let getterThisIsArray = false;
+      #|const props = [];
+      #|Object.defineProperty(props, 'prop', {
+      #|  get: function() {
+      #|    getterThisIsArray = this instanceof Array;
+      #|    return { value: 'array-props', enumerable: true };
+      #|  },
+      #|  enumerable: true
+      #|});
+      #|const obj = Object.create({}, props);
+      #|console.log(getterThisIsArray);
+      #|console.log(obj.prop);
+      #|console.log(Object.getOwnPropertyNames(Object.create({}, true)).length);
+      #|try {
+      #|  Object.create({}, 'hello');
+      #|  console.log('no error');
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "array-props", "0", "true"])
+}
+
+///|
 test "defineProperties with accessor" {
   let output = run_output(
     (
@@ -5091,6 +5163,101 @@ test "getOwnPropertyDescriptors with accessor" {
     ),
   )
   json_inspect(output, content=["function", "undefined", "2", "true"])
+}
+
+///|
+test "getOwnPropertyDescriptors uses own-key and descriptor dispatch" {
+  let output = run_output(
+    (
+      #|let log = "";
+      #|const target = { a: 1, b: 2 };
+      #|Object.defineProperty(target, "c", { value: 3 });
+      #|const proxy = new Proxy(target, {
+      #|  ownKeys: function(t) {
+      #|    log += "|ownKeys";
+      #|    return ["a", "b", "c"];
+      #|  },
+      #|  getOwnPropertyDescriptor: function(t, k) {
+      #|    log += "|getOwnPropertyDescriptor:" + k;
+      #|    return Object.getOwnPropertyDescriptor(t, k);
+      #|  }
+      #|});
+      #|const proxyDescs = Object.getOwnPropertyDescriptors(proxy);
+      #|const stringDescs = Object.getOwnPropertyDescriptors("abc");
+      #|console.log(log);
+      #|console.log(proxyDescs.a.value + "/" + proxyDescs.c.enumerable);
+      #|console.log(Object.keys(stringDescs).join(","));
+      #|console.log(stringDescs[0].value + "/" + stringDescs.length.writable + "/" + stringDescs.length.enumerable + "/" + stringDescs.length.configurable);
+    ),
+  )
+  json_inspect(output, content=[
+    "|ownKeys|getOwnPropertyDescriptor:a|getOwnPropertyDescriptor:b|getOwnPropertyDescriptor:c",
+    "1/false", "0,1,2,length", "a/false/false/false",
+  ])
+}
+
+///|
+test "descriptor builtins preserve user bracket keys and snapshot keys" {
+  let output = run_output(
+    (
+      #|const descSource = {};
+      #|descSource["[[x]]"] = { value: 7, enumerable: true };
+      #|const target = {};
+      #|Object.defineProperties(target, descSource);
+      #|console.log(target["[[x]]"]);
+      #|const descs = Object.getOwnPropertyDescriptors(target);
+      #|console.log(descs["[[x]]"].value + "/" + descs["[[x]]"].enumerable);
+      #|
+      #|const arrayProps = [];
+      #|Object.defineProperty(arrayProps, "0", {
+      #|  enumerable: true,
+      #|  get: function() {
+      #|    arrayProps[1] = { value: "late", enumerable: true };
+      #|    return { value: "first", enumerable: true };
+      #|  }
+      #|});
+      #|const snapTarget = {};
+      #|Object.defineProperties(snapTarget, arrayProps);
+      #|console.log(snapTarget[0]);
+      #|console.log(snapTarget.hasOwnProperty("1"));
+      #|
+      #|const mapProps = new Map();
+      #|Object.defineProperty(mapProps, "x", {
+      #|  value: { value: "map", enumerable: true },
+      #|  enumerable: true
+      #|});
+      #|const mapTarget = {};
+      #|Object.defineProperties(mapTarget, mapProps);
+      #|console.log(mapTarget.x);
+      #|
+      #|const setProps = new Set();
+      #|Object.defineProperty(setProps, "y", {
+      #|  value: { value: "set", enumerable: true },
+      #|  enumerable: true
+      #|});
+      #|const setTarget = {};
+      #|Object.defineProperties(setTarget, setProps);
+      #|console.log(setTarget.y);
+    ),
+  )
+  json_inspect(output, content=["7", "7/true", "first", "false", "map", "set"])
+}
+
+///|
+test "built-in function prototype and length descriptor metadata" {
+  let output = run_output(
+    (
+      #|const functionProto = Object.getOwnPropertyDescriptor(Function, "prototype");
+      #|const generatedLength = Object.getOwnPropertyDescriptor(Function("return 42;"), "length");
+      #|const regexpProto = Object.getOwnPropertyDescriptor(RegExp, "prototype");
+      #|console.log(functionProto.writable + "/" + functionProto.enumerable + "/" + functionProto.configurable);
+      #|console.log(generatedLength.writable + "/" + generatedLength.enumerable + "/" + generatedLength.configurable);
+      #|console.log(regexpProto.writable + "/" + regexpProto.enumerable + "/" + regexpProto.configurable);
+    ),
+  )
+  json_inspect(output, content=[
+    "false/false/false", "false/false/true", "false/false/false",
+  ])
 }
 
 ///|
@@ -11051,6 +11218,26 @@ test "B.2: Array length partial-truncate and lock writable in one step" {
     #|console.log(arr.length);
   let output = run_output(src)
   json_inspect(output, content=["2", "sloppy-silent", "2"])
+}
+
+///|
+/// §10.4.2.4: failed truncation still applies a requested length writable:false.
+test "B.2: Failed Array length truncation locks writable" {
+  let src =
+    #|var arr = [0, 1, 2];
+    #|Object.defineProperty(arr, "1", { configurable: false });
+    #|try {
+    #|  Object.defineProperties(arr, { length: { value: 0, writable: false } });
+    #|  console.log("ok");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var d = Object.getOwnPropertyDescriptor(arr, "length");
+    #|console.log(arr.length);
+    #|console.log(d.writable);
+    #|console.log(arr.hasOwnProperty("1"));
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "2", "false", "true"])
 }
 
 ///|

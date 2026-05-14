@@ -309,6 +309,14 @@ fn setup_function_builtins(env : Environment) -> Unit {
   func_ctor_props["prototype"] = func_proto
   func_ctor_props["length"] = Value::Number(1.0)
   func_ctor_props["name"] = Value::String_("Function")
+  let prototype_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
 
   // Create a single Function constructor object.
   // Function(p1, p2, ..., body) parses the body string and creates a real function.
@@ -316,7 +324,11 @@ fn setup_function_builtins(env : Environment) -> Unit {
     bag: {
       properties: func_ctor_props,
       symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": prototype_desc,
+      },
       symbol_descriptors: {},
     },
     prototype: Null,
@@ -369,7 +381,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                 bag: {
                   properties: fn_props,
                   symbol_properties: {},
-                  descriptors: {},
+                  descriptors: { "length": nf_desc },
                   symbol_descriptors: {},
                 },
                 prototype: func_proto,
@@ -403,7 +415,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
                 bag: {
                   properties: fn_props,
                   symbol_properties: {},
-                  descriptors: {},
+                  descriptors: { "length": nf_desc },
                   symbol_descriptors: {},
                 },
                 prototype: func_proto,

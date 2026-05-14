@@ -1572,8 +1572,17 @@ pub fn setup_builtins(
       match env.bindings.get("RegExp") {
         Some(b) =>
           match b.value {
-            Object(ctor_data) =>
+            Object(ctor_data) => {
               ctor_data.bag.properties["prototype"] = regexp_proto
+              ctor_data.bag.descriptors["prototype"] = {
+                writable: false,
+                enumerable: false,
+                configurable: false,
+                getter: None,
+                setter: None,
+                is_accessor: false,
+              }
+            }
             _ => ()
           }
         None => ()
