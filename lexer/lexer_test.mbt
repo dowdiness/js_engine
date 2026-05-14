@@ -13,6 +13,29 @@ fn inspect_kinds(
 }
 
 ///|
+fn expect_lex_form(
+  actual : @token.LexForm,
+  expected : @token.LexForm,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(
+      "expected lex_form " +
+      expected.to_string() +
+      ", got " +
+      actual.to_string(),
+    )
+  }
+}
+
+///|
+fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
+  match result {
+    Ok(_) => fail("expected lexer error")
+    Err(_) => ()
+  }
+}
+
+///|
 test "lex arithmetic expression" {
   let kinds = tok_kinds("1 + 2 * 3")
   inspect_kinds(kinds, content=[
@@ -315,45 +338,25 @@ test "lex unicode escape supplementary plane in string" {
 test "lex unicode escape invalid identifier start" {
   // \u0031 is '1' — not valid at identifier start
   let result = Ok(@lexer.tokenize("\\u0031")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
 test "lex unicode escape invalid hex digits" {
   let result = Ok(@lexer.tokenize("\"\\u00GZ\"")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
 test "lex unicode escape empty braces" {
   let result = Ok(@lexer.tokenize("\"\\u{}\"")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
 test "lex unicode escape code point too large" {
   let result = Ok(@lexer.tokenize("\"\\u{110000}\"")) catch { _ => Err(()) }
-  inspect(
-    result,
-    content=(
-      #|Err(())
-    ),
-  )
+  expect_err(result)
 }
 
 ///|
@@ -419,127 +422,127 @@ test "lex numeric separator in octal" {
 ///|
 test "lex hex missing digits error" {
   let result = Ok(tok_kinds("0x")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex binary missing digits error" {
   let result = Ok(tok_kinds("0b")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex octal missing digits error" {
   let result = Ok(tok_kinds("0o")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex consecutive numeric separator error" {
   let result = Ok(tok_kinds("1__0")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "lex trailing numeric separator error" {
   let result = Ok(tok_kinds("1_")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "legacy octal escape: bare digit tags token" {
   let toks = @lexer.tokenize("\"\\1\"")
-  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::StringLegacyOctalEscape)
 }
 
 ///|
 test "legacy octal escape: \\7 tags" {
   let toks = @lexer.tokenize("\"\\7\"")
-  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::StringLegacyOctalEscape)
 }
 
 ///|
 test "non-octal decimal escape: \\8 tags" {
   let toks = @lexer.tokenize("\"\\8\"")
-  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::StringLegacyOctalEscape)
 }
 
 ///|
 test "non-octal decimal escape: \\9 tags" {
   let toks = @lexer.tokenize("\"\\9\"")
-  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::StringLegacyOctalEscape)
 }
 
 ///|
 test "bare \\0 (no following digit) does NOT tag" {
   let toks = @lexer.tokenize("\"\\0\"")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
 
 ///|
 test "bare \\0 followed by digit DOES tag" {
   let toks = @lexer.tokenize("\"\\08\"")
-  inspect(toks[0].lex_form, content="StringLegacyOctalEscape")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::StringLegacyOctalEscape)
 }
 
 ///|
 test "plain string is LexNormal" {
   let toks = @lexer.tokenize("\"hello\"")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
 
 ///|
 test "string with \\n escape is LexNormal" {
   let toks = @lexer.tokenize("\"a\\nb\"")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
 
 ///|
 test "numeric 0777 tags as NumberLegacyOctalInt" {
   let toks = @lexer.tokenize("0777")
-  inspect(toks[0].lex_form, content="NumberLegacyOctalInt")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::NumberLegacyOctalInt)
 }
 
 ///|
 test "numeric 08 tags as NumberNonOctalDecimalInt" {
   let toks = @lexer.tokenize("08")
-  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::NumberNonOctalDecimalInt)
 }
 
 ///|
 test "numeric 09 tags as NumberNonOctalDecimalInt" {
   let toks = @lexer.tokenize("09")
-  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::NumberNonOctalDecimalInt)
 }
 
 ///|
 test "numeric 0o777 (modern octal) is LexNormal" {
   let toks = @lexer.tokenize("0o777")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
 
 ///|
 test "plain numeric 100 is LexNormal" {
   let toks = @lexer.tokenize("100")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
 
 ///|
 test "numeric 08.1 (NonOctalDecimal + fraction) tags NumberNonOctalDecimalInt" {
   let toks = @lexer.tokenize("08.1")
-  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::NumberNonOctalDecimalInt)
 }
 
 ///|
 test "numeric 08e2 (NonOctalDecimal + exponent) tags NumberNonOctalDecimalInt" {
   let toks = @lexer.tokenize("08e2")
-  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::NumberNonOctalDecimalInt)
 }
 
 ///|
 test "numeric 09.5 (NonOctalDecimal + fraction) tags NumberNonOctalDecimalInt" {
   let toks = @lexer.tokenize("09.5")
-  inspect(toks[0].lex_form, content="NumberNonOctalDecimalInt")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::NumberNonOctalDecimalInt)
 }
 
 ///|
@@ -557,49 +560,49 @@ test "numeric 08e2 has decimal value 800" {
 ///|
 test "numeric 0.5 (single-zero fractional) is LexNormal" {
   let toks = @lexer.tokenize("0.5")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
 
 ///|
 test "numeric 0.1e2 (single-zero exponent) is LexNormal" {
   let toks = @lexer.tokenize("0.1e2")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
 
 ///|
 test "numeric 01.2 (LegacyOctal + fraction) is SyntaxError in all modes" {
   let result = Ok(tok_kinds("01.2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 01e2 (LegacyOctal + exponent) is SyntaxError in all modes" {
   let result = Ok(tok_kinds("01e2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 01E2 (LegacyOctal + uppercase exponent) is SyntaxError" {
   let result = Ok(tok_kinds("01E2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 00.5 (LegacyOctal + fraction) is SyntaxError" {
   let result = Ok(tok_kinds("00.5")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 001.2 (LegacyOctal + fraction) is SyntaxError" {
   let result = Ok(tok_kinds("001.2")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
 test "numeric 07.5 (LegacyOctal + fraction) is SyntaxError" {
   let result = Ok(tok_kinds("07.5")) catch { _ => Err(()) }
-  inspect(result, content="Err(())")
+  expect_err(result)
 }
 
 ///|
@@ -638,5 +641,5 @@ test "LegacyOctal whitespace dot: 01 .toString tokenizes correctly" {
 ///|
 test "numeric 0 is LexNormal" {
   let toks = @lexer.tokenize("0")
-  inspect(toks[0].lex_form, content="LexNormal")
+  expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }

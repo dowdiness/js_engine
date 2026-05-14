@@ -34,7 +34,9 @@ More sample programs live in [`example/`](example/).
 test "README run facade" {
   let (output, result) = @js_engine.run("console.log(1 + 2)")
   json_inspect(output, content=["3"])
-  inspect(result, content="undefined")
+  guard result == "undefined" else {
+    fail("result: expected undefined, got " + result)
+  }
 }
 ```
 

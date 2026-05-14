@@ -29,7 +29,7 @@ unless the runtime has no shared helper yet.
 for each supported construct. Run `moon check`, `moon test`, JS-target tests,
 and the primary benchmark CSV command.
 
-### Migrate remaining deprecated `inspect` snapshots
+### ~~Migrate remaining deprecated `inspect` snapshots~~ — DONE (2026-05-14)
 
 **Source:** PR #109 CI follow-up after MoonBit `0.1.20260512` changed `Show` rendering for `Array[String]`.
 
@@ -37,7 +37,10 @@ and the primary benchmark CSV command.
 
 **Fix:** Audit remaining `inspect` calls. Use `json_inspect` for structured data and arrays where JSON semantics are intended; use `inspect` only where the MoonBit `Show` rendering itself is the intended assertion.
 
-**Progress:** 2026-05-13 — migrated lexer token-kind array snapshots to `json_inspect` over token debug strings (`9299bab`).
+**Progress:** 2026-05-13 — migrated lexer token-kind array snapshots to
+`json_inspect` over token debug strings (`9299bab`). 2026-05-14 — migrated
+the remaining plain `inspect` assertions to direct string/value checks or
+`json_inspect`; no plain `inspect(` calls remain in `.mbt` or `.mbt.md` files.
 
 **Verification:** Run `moon check`, `moon test`, and, if available, repeat `moon test` with the current CI-installed MoonBit toolchain.
 

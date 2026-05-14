@@ -1,11 +1,42 @@
 ///|
-/// Format an Option as "Some(val)" or "None" without using the deprecated
-/// Show impl for Option itself. The element type must implement Show.
-/// Used by inspect() snapshot assertions on map exports.
-fn[T : Show] fmt_opt(o : T?) -> String {
-  match o {
-    None => "None"
-    Some(v) => "Some(" + v.to_string() + ")"
+/// Assertion helpers avoid deprecated Show-format snapshots while keeping
+/// facade failures focused on the value being checked.
+fn expect_string(
+  actual : String,
+  expected : String,
+  label : String,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(label + ": expected " + expected + ", got " + actual)
+  }
+}
+
+///|
+fn expect_bool(
+  actual : Bool,
+  expected : Bool,
+  label : String,
+) -> Unit raise Error {
+  guard actual == expected else {
+    fail(
+      label +
+      ": expected " +
+      expected.to_string() +
+      ", got " +
+      actual.to_string(),
+    )
+  }
+}
+
+///|
+fn expect_export_value(
+  exports : Map[String, @runtime.Value],
+  name : String,
+  expected : String,
+) -> Unit raise Error {
+  match exports.get(name) {
+    Some(value) => expect_string(value.to_string(), expected, "export " + name)
+    None => fail("missing export " + name)
   }
 }
 
@@ -71,7 +102,7 @@ test "run_compiled facade closure factory" {
     #|total;
   let (output, result) = @js_engine.run_compiled(src)
   json_inspect(output, content=["15"])
-  inspect(result, content="15")
+  expect_string(result, "15", "compiled result")
 }
 
 ///|
@@ -83,7 +114,7 @@ test "run_compiled facade constructor calls" {
     #|o.x + 1;
   let (output, result) = @js_engine.run_compiled(src)
   json_inspect(output, content=["42"])
-  inspect(result, content="42")
+  expect_string(result, "42", "compiled result")
 }
 
 ///|
@@ -103,22 +134,27 @@ test "run_compiled facade loop control" {
     #|total + once;
   let (output, result) = @js_engine.run_compiled(src)
   json_inspect(output, content=["17"])
-  inspect(result, content="17")
+  expect_string(result, "17", "compiled result")
 }
 
 ///|
 test "run_compiled facade thrown values match interpreter" {
   let src = "function fail() { throw \"boom\"; } fail();"
-  inspect(run_compiled_outcome(src) == run_outcome(src), content="true")
+  expect_bool(
+    run_compiled_outcome(src) == run_outcome(src),
+    true,
+    "compiled thrown outcome should match interpreter",
+  )
 }
 
 ///|
 test "run_compiled facade reports unsupported syntax clearly" {
-  inspect(
+  expect_bool(
     run_compiled_outcome("var o = { ...{ x: 1 } }; o.x;").contains(
       "closure conversion prototype does not support object literal spread property",
     ),
-    content="true",
+    true,
+    "unsupported syntax diagnostic",
   )
 }
 
@@ -531,8 +567,8 @@ test "ES module: export named declaration" {
     ),
   )
   json_inspect(output, content=["42 hello"])
-  inspect(fmt_opt(exports.get("x")), content="Some(42)")
-  inspect(fmt_opt(exports.get("y")), content="Some(hello)")
+  expect_export_value(exports, "x", "42")
+  expect_export_value(exports, "y", "hello")
 }
 
 ///|
@@ -542,7 +578,7 @@ test "ES module: export function declaration" {
       #|export function add(a, b) { return a + b; }
     ),
   )
-  inspect(exports.contains("add"), content="true")
+  expect_bool(exports.contains("add"), true, "export add")
 }
 
 ///|
@@ -552,7 +588,7 @@ test "ES module: export default expression" {
       #|export default 42;
     ),
   )
-  inspect(fmt_opt(exports.get("default")), content="Some(42)")
+  expect_export_value(exports, "default", "42")
 }
 
 ///|
@@ -562,7 +598,7 @@ test "ES module: export default function" {
       #|export default function greet() { return "hi"; }
     ),
   )
-  inspect(exports.contains("default"), content="true")
+  expect_bool(exports.contains("default"), true, "default export")
 }
 
 ///|
@@ -572,7 +608,7 @@ test "ES module: export default class" {
       #|export default class Foo { constructor() { this.x = 1; } }
     ),
   )
-  inspect(exports.contains("default"), content="true")
+  expect_bool(exports.contains("default"), true, "default export")
 }
 
 ///|
@@ -584,8 +620,8 @@ test "ES module: export named specifiers" {
       #|export { a, b };
     ),
   )
-  inspect(fmt_opt(exports.get("a")), content="Some(1)")
-  inspect(fmt_opt(exports.get("b")), content="Some(2)")
+  expect_export_value(exports, "a", "1")
+  expect_export_value(exports, "b", "2")
 }
 
 ///|
@@ -596,8 +632,8 @@ test "ES module: export named with alias" {
       #|export { x as myX };
     ),
   )
-  inspect(fmt_opt(exports.get("myX")), content="Some(10)")
-  inspect(exports.contains("x"), content="false")
+  expect_export_value(exports, "myX", "10")
+  expect_bool(exports.contains("x"), false, "unaliased export x")
 }
 
 ///|
@@ -609,7 +645,7 @@ test "ES module: export class declaration" {
       #|}
     ),
   )
-  inspect(exports.contains("MyClass"), content="true")
+  expect_bool(exports.contains("MyClass"), true, "export MyClass")
 }
 
 ///|
@@ -836,7 +872,7 @@ test "ES module: export var declaration" {
       #|export var count = 0;
     ),
   )
-  inspect(fmt_opt(exports.get("count")), content="Some(0)")
+  expect_export_value(exports, "count", "0")
 }
 
 ///|
@@ -848,9 +884,9 @@ test "ES module: mixed exports" {
       #|export default "default_value";
     ),
   )
-  inspect(fmt_opt(exports.get("X")), content="Some(1)")
-  inspect(exports.contains("getX"), content="true")
-  inspect(fmt_opt(exports.get("default")), content="Some(default_value)")
+  expect_export_value(exports, "X", "1")
+  expect_bool(exports.contains("getX"), true, "export getX")
+  expect_export_value(exports, "default", "default_value")
 }
 
 ///|
@@ -927,7 +963,7 @@ test "ES module: live bindings - export let mutation within module" {
   )
   // Without live bindings, x would be 1 (snapshot at declaration time)
   // With live bindings, x should be 3 (resolved at end of module execution)
-  inspect(fmt_opt(exports.get("x")), content="Some(3)")
+  expect_export_value(exports, "x", "3")
 }
 
 ///|
@@ -939,7 +975,7 @@ test "ES module: live bindings - export { x } deferred" {
       #|// x is exported after all statements run
     ),
   )
-  inspect(fmt_opt(exports.get("x")), content="Some(1)")
+  expect_export_value(exports, "x", "1")
 }
 
 ///|
@@ -1832,11 +1868,12 @@ test "module: \\1 in module body is SyntaxError" {
   let src =
     #|"\1";
   let result = run_module_throws(src)
-  inspect(
+  expect_string(
     result,
-    content=(
+    (
       #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 1")
     ),
+    "legacy octal module body error",
   )
 }
 
@@ -1845,11 +1882,12 @@ test "module: import with legacy octal source string is SyntaxError" {
   let src =
     #|import x from "\1";
   let result = run_module_throws(src)
-  inspect(
+  expect_string(
     result,
-    content=(
+    (
       #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 15")
     ),
+    "legacy octal import source error",
   )
 }
 
@@ -1878,11 +1916,12 @@ test "run_modules: legacy octal in import source rejected by loader" {
   } catch {
     e => e.to_string()
   }
-  inspect(
+  expect_string(
     result,
-    content=(
+    (
       #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 15")
     ),
+    "legacy octal loader source error",
   )
 }
 
@@ -1902,10 +1941,11 @@ test "run_modules: legacy octal escape in module body rejected" {
   } catch {
     e => e.to_string()
   }
-  inspect(
+  expect_string(
     result,
-    content=(
+    (
       #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 1")
     ),
+    "legacy octal loader body error",
   )
 }
