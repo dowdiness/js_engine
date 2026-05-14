@@ -1573,25 +1573,31 @@ test "labeled continue" {
 ///|
 test "template literal no interpolation" {
   let (_, result) = run_js("`hello world`")
-  inspect(result, content="hello world")
+  expect_value_string(
+    result, "hello world", "template literal no interpolation result",
+  )
 }
 
 ///|
 test "template literal with interpolation" {
   let (_, result) = run_js("let x = 42; `the answer is ${x}`")
-  inspect(result, content="the answer is 42")
+  expect_value_string(
+    result, "the answer is 42", "template literal interpolation result",
+  )
 }
 
 ///|
 test "template literal multiple interpolations" {
   let (_, result) = run_js("let a = 1; let b = 2; `${a} + ${b} = ${a + b}`")
-  inspect(result, content="1 + 2 = 3")
+  expect_value_string(
+    result, "1 + 2 = 3", "template literal multiple interpolation result",
+  )
 }
 
 ///|
 test "template literal with expressions" {
   let (_, result) = run_js("`result: ${2 * 3 + 1}`")
-  inspect(result, content="result: 7")
+  expect_value_string(result, "result: 7", "template literal expression result")
 }
 
 ///|
@@ -1600,19 +1606,23 @@ test "template literal nested braces" {
     #|var obj = {a: 1};
     #|`value: ${obj.a}`
   let (_, result) = run_js(src)
-  inspect(result, content="value: 1")
+  expect_value_string(
+    result, "value: 1", "template literal nested braces result",
+  )
 }
 
 ///|
 test "template literal escape sequences" {
   let (_, result) = run_js("`line1\\nline2`")
-  inspect(result, content="line1\nline2")
+  expect_value_string(
+    result, "line1\nline2", "template literal escape sequence result",
+  )
 }
 
 ///|
 test "template literal empty" {
   let (_, result) = run_js("``")
-  inspect(result, content="")
+  expect_value_string(result, "", "template literal empty result")
 }
 
 ///|
