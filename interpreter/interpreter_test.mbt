@@ -9616,6 +9616,182 @@ test "test262: DataView constructor rejects detached ArrayBuffer" {
 }
 
 ///|
+/// §22.2.3.9 %TypedArray%.prototype.filter step 10 invokes
+/// TypedArraySpeciesCreate(O, « captured »). Per §7.3.20 SpeciesConstructor
+/// step 4, if `Get(O, "constructor")` is a non-Object non-undefined value,
+/// throw TypeError. Pinned for filter; same invariant on map/slice/subarray.
+test "test262: TypedArray.prototype.filter throws when constructor is non-Object" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|sample.constructor = 42;
+      #|try {
+      #|  sample.filter(function() { return true; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.map throws when constructor is non-Object" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|sample.constructor = "string";
+      #|try {
+      #|  sample.map(function(x) { return x; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.slice throws when constructor is non-Object" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|sample.constructor = null === sample.constructor ? Int8Array : 42;
+      #|try {
+      #|  sample.slice(0, 2);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.subarray throws when constructor is non-Object" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|sample.constructor = false;
+      #|try {
+      #|  sample.subarray(0, 2);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// §22.2.4.7 TypedArraySpeciesCreate step 3 + §7.3.20 step 6: if
+/// `C[@@species]` is null/undefined, fall back to the default constructor.
+/// Verifies the spec-required fast path: setting `sample.constructor` to
+/// undefined should NOT throw — it just uses the default Int8Array ctor.
+test "test262: TypedArray.prototype.filter uses default ctor when constructor is undefined" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3, 4]);
+      #|sample.constructor = undefined;
+      #|var result = sample.filter(function(x) { return x % 2 === 0; });
+      #|console.log(result instanceof Int8Array, result.length);
+    ),
+  )
+  json_inspect(output, content=["true 2"])
+}
+
+///|
+/// §22.2.4.7 step 5: if `S[@@species]` is callable, use it to construct
+/// the result. Pinned positive test: custom species ctor returns the
+/// correct type (here Uint8Array instead of the default Int8Array).
+test "test262: TypedArray.prototype.map honors custom @@species" {
+  let output = run_output(
+    (
+      #|var Ctor = function Ctor() {};
+      #|Ctor[Symbol.species] = Uint8Array;
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|sample.constructor = Ctor;
+      #|var result = sample.map(function(x) { return x * 2; });
+      #|console.log(result instanceof Uint8Array, result.length, result[0]);
+    ),
+  )
+  json_inspect(output, content=["true 3 2"])
+}
+
+///|
+/// Codex P2 (PR B review): `sample.constructor = []` must NOT throw — Array
+/// is an Object per spec Type(C), and our runtime has Array as a distinct
+/// Value variant from Object (six object-typed variants total). Initial
+/// implementation matched `Object(_)` only and spuriously rejected this.
+/// The fix uses `is_object_value` for the Type(C) check.
+test "test262: TypedArray.prototype.filter accepts Array-variant as constructor" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|sample.constructor = [];
+      #|var result = sample.filter(function(x) { return x > 1; });
+      #|console.log(result instanceof Int8Array, result.length);
+    ),
+  )
+  // `[]` is an Object with no own constructor.[@@species]; falls back to
+  // default Int8Array ctor.
+  json_inspect(output, content=["true 2"])
+}
+
+///|
+/// Codex P1 (PR B review): if a custom species constructor detaches
+/// `sample.buffer` as a side effect, slice must re-validate the SOURCE
+/// before copying. Without the re-validate, `typedarray_get_index` silently
+/// returns `Undefined`, producing a zero-filled result instead of the
+/// spec-required TypeError. Mirrors test262's
+/// `detached-buffer-custom-ctor-{same,other}-targettype.js` fixtures.
+test "test262: TypedArray.prototype.slice throws when species detaches source" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3, 4]);
+      #|function CustomCtor(n) {
+      #|  $262.detachArrayBuffer(sample.buffer);
+      #|  return new Int8Array(n);
+      #|}
+      #|CustomCtor[Symbol.species] = CustomCtor;
+      #|sample.constructor = CustomCtor;
+      #|try {
+      #|  sample.slice(0, 2);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// §7.3.20 step 7: if `C[@@species]` is non-callable (e.g. a string), throw
+/// TypeError. Pinned for map; structurally identical for filter/slice/subarray.
+test "test262: TypedArray.prototype.map throws when @@species is non-callable" {
+  let output = run_output(
+    (
+      #|var Ctor = function Ctor() {};
+      #|Ctor[Symbol.species] = "not a constructor";
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|sample.constructor = Ctor;
+      #|try {
+      #|  sample.map(function(x) { return x; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 /// §22.2.3.5.1 ValidateTypedArray: every %TypedArray%.prototype method must
 /// throw TypeError at entry if the underlying buffer is detached. Pinned
 /// per-method tests below mirror test262's

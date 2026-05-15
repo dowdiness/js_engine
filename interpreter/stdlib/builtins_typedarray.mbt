@@ -428,6 +428,108 @@ pub fn validate_typed_array(
 }
 
 ///|
+/// §7.3.20 SpeciesConstructor(O, defaultConstructor) specialised for the
+/// %TypedArray% family. Mirrors the spec-correct shape used by Promise's
+/// `get_promise_species_constructor` (see `builtins_promise.mbt`).
+///
+/// Steps (per spec):
+/// 1. Let C be Get(O, "constructor").
+/// 2. If C is undefined, return defaultConstructor.
+/// 3. If Type(C) is not Object, throw TypeError.
+/// 4. Let S be Get(C, @@species).
+/// 5. If S is null or undefined, return defaultConstructor.
+/// 6. If IsConstructor(S) is true, return S. Else throw TypeError.
+///
+/// `default_ctor` should be the concrete TA constructor that matches the
+/// receiver's [[TypedArrayName]] (Int8Array for Int8Array, etc.). Callers
+/// resolve it via `interp.global.get(<class_name>)`.
+fn typed_array_species_constructor(
+  interp : @runtime.Interpreter,
+  this_val : Value,
+  default_ctor : Value,
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  let c = interp.get_property(this_val, "constructor", loc)
+  // §7.3.20 step 3: "If C is undefined, return defaultConstructor."
+  if c is Undefined {
+    return default_ctor
+  }
+  // §7.3.20 step 4: "If Type(C) is not Object, throw a TypeError exception."
+  // IMPORTANT: this runtime has six object-typed Value variants (Object,
+  // Array, Map, Set, Promise, Proxy — see
+  // `feedback_value_model_six_variants.md`). Gating on `Object(_)` alone
+  // would spuriously reject `sample.constructor = []` or
+  // `sample.constructor = new Proxy(..., {})`, which are valid per spec.
+  if !@runtime.is_object_value(c) {
+    raise @errors.TypeError(message="TypedArray constructor is not an object")
+  }
+  let species_sym = @runtime.get_species_symbol()
+  let s = interp.get_computed_property(c, Symbol(species_sym), loc)
+  // §7.3.20 step 6: "If S is either undefined or null, return defaultConstructor."
+  match s {
+    Undefined | Null => default_ctor
+    _ =>
+      // §7.3.20 step 7: "If IsConstructor(S) is true, return S. Else throw."
+      // `is_constructor_value` handles all six object variants uniformly.
+      if @runtime.is_constructor_value(s) {
+        s
+      } else {
+        raise @errors.TypeError(
+          message="TypedArray species is not a constructor",
+        )
+      }
+  }
+}
+
+///|
+/// §22.2.4.7 TypedArraySpeciesCreate(exemplar, argumentList).
+/// Constructs a new TypedArray using the species constructor resolved from
+/// `exemplar`. Validates the result is itself a non-detached TypedArray, and
+/// (if argumentList is a single-element length argument) that the resulting
+/// length is at least that value.
+///
+/// Out of scope for this engine: ContentType check (spec step 7) — this
+/// engine doesn't yet implement BigInt64Array / BigUint64Array, so all
+/// TypedArrays have ContentType "Number" and the check is vacuous.
+pub fn typed_array_species_create(
+  interp : @runtime.Interpreter,
+  exemplar : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  let (data, _) = validate_typed_array(exemplar, "species create")
+  let class_name = data.class_name
+  let default_ctor = interp.global.get(class_name) catch { _ => Undefined }
+  let ctor = typed_array_species_constructor(interp, exemplar, default_ctor)
+  let loc = @token.Loc::default()
+  let result = interp.construct_value(ctor, args, loc)
+  // Result must itself be a TypedArray with non-detached buffer.
+  let (result_data, _) = validate_typed_array(
+    result, "species create result",
+  )
+  // §22.2.4.7 step 8: if argumentList is « length », the result's length must
+  // be at least that length. This catches a malicious species constructor
+  // that ignores its argument or returns a shorter TA.
+  if args.length() == 1 {
+    match args[0] {
+      Value::Number(n) => {
+        let requested = n.to_int()
+        let actual = match result_data.bag.properties.get("[[ArrayLength]]") {
+          Some(Value::Number(m)) => m.to_int()
+          _ => 0
+        }
+        if actual < requested {
+          raise @errors.TypeError(
+            message="TypedArray species result is too short",
+          )
+        }
+      }
+      _ => ()
+    }
+  }
+  result
+}
+
+///|
 /// Get a typed element from a TypedArray object at the given index.
 pub fn typedarray_get_index(data : ObjectData, index : Int) -> Value {
   let length = match data.bag.properties.get("[[ArrayLength]]") {
@@ -712,10 +814,10 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   })
 
   // subarray(begin, end)
-  ta_proto_props["subarray"] = @runtime.make_method_func(
+  ta_proto_props["subarray"] = @runtime.make_interp_method_func(
     name="subarray",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "subarray")
       let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -773,24 +875,24 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       }
       let bpe = typed_array_bytes_per_element(data.class_name)
       let new_offset = cur_offset + begin_index * bpe
-      // Get the prototype for this typed array type
-      let proto = data.prototype
-      make_typedarray_from_buffer(
-        data.class_name,
+      // §22.2.3.27 step 22: TypedArraySpeciesCreate(O, « buffer, byteOffset,
+      // newLength »). The species constructor receives the underlying buffer
+      // + offset + length and is responsible for creating a view; the
+      // default %TypedArray% constructor's three-arg form does exactly this.
+      typed_array_species_create(interp, this_val, [
         buffer,
-        new_offset,
-        new_length,
-        proto,
-      )
+        Value::Number(new_offset.to_double()),
+        Value::Number(new_length.to_double()),
+      ])
     },
   )
 
   // slice(begin, end)
-  ta_proto_props["slice"] = @runtime.make_method_func(name="slice", length=2, fn(
-    this_val,
-    args,
-  ) raise {
-    let (data, _) = validate_typed_array(this_val, "slice")
+  ta_proto_props["slice"] = @runtime.make_interp_method_func(
+    name="slice",
+    length=2,
+    fn(interp, this_val, args) raise {
+      let (data, _) = validate_typed_array(this_val, "slice")
     let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
       Some(Value::Number(n)) => n.to_int()
       _ => 0
@@ -837,8 +939,21 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     } else {
       0
     }
-    let proto = data.prototype
-    let new_ta = make_typedarray_object(data.class_name, new_length, proto, env)
+    // §22.2.3.24 step 18: TypedArraySpeciesCreate(O, « count »). Unlike
+    // subarray, slice's result has its OWN buffer (per spec: a copy, not a
+    // view), so the species ctor is given just the length argument.
+    let new_ta = typed_array_species_create(
+      interp,
+      this_val,
+      [Value::Number(new_length.to_double())],
+    )
+    // §22.2.3.24 step 19: re-validate the SOURCE after species construction.
+    // A user-supplied species ctor can detach `sample.buffer` as a side
+    // effect (test262 `detached-buffer-custom-ctor-*` fixtures). If we
+    // proceeded into the copy loop, `typedarray_get_index` would silently
+    // return `Undefined` (which coerces to 0), producing a zero-filled wrong
+    // result instead of the spec-required TypeError.
+    let _ = validate_typed_array(this_val, "slice")
     match new_ta {
       Object(new_data) =>
         for i = 0; i < new_length; i = i + 1 {
@@ -852,7 +967,8 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       _ => ()
     }
     new_ta
-  })
+    },
+  )
 
   // copyWithin(target, start [, end])
   ta_proto_props["copyWithin"] = @runtime.make_method_func(
@@ -1635,11 +1751,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         _ => 0
       }
       let loc = @token.Loc::default()
-      let result = make_typedarray_object(
-        data.class_name,
-        len,
-        data.prototype,
-        env,
+      // §22.2.3.20 step 6: TypedArraySpeciesCreate(O, « len »).
+      let result = typed_array_species_create(
+        interp,
+        this_val,
+        [Value::Number(len.to_double())],
       )
       match result {
         Object(result_data) =>
@@ -1692,11 +1808,16 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
           }
         }
       }
-      let result = make_typedarray_object(
-        data.class_name,
-        kept.length(),
-        data.prototype,
-        env,
+      // §22.2.3.9 step 10: TypedArraySpeciesCreate(O, « kept_length »).
+      // Resolves the species constructor (may differ from `data.class_name`
+      // if user sets `sample.constructor[@@species]` to a custom ctor) and
+      // validates the result. The fast-path `make_typedarray_object` is
+      // unsafe here — it ignores `@@species` and would silently bypass the
+      // §7.3.20 conflict checks.
+      let result = typed_array_species_create(
+        interp,
+        this_val,
+        [Value::Number(kept.length().to_double())],
       )
       match result {
         Object(result_data) =>
@@ -2362,6 +2483,31 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         setter: None,
         is_accessor: false,
       }
+    }
+    _ => ()
+  }
+  // §22.2.5.4 %TypedArray%[@@species]: getter returning `this`. Each concrete
+  // TypedArray constructor (Int8Array, Float64Array, …) has %TypedArray% as
+  // its [[Prototype]] (set at line ~2567 below), so they all inherit this
+  // getter via the prototype chain — no need to attach @@species to each.
+  let ta_species_getter = @runtime.make_method_func(
+    name="get [Symbol.species]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
+  let ta_species_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(ta_species_getter),
+    setter: None,
+    is_accessor: true,
+  }
+  match ta_ctor {
+    Object(ctor_data) => {
+      let sp_sym = @runtime.get_species_symbol()
+      ctor_data.bag.symbol_properties[sp_sym.id] = Undefined
+      ctor_data.bag.symbol_descriptors[sp_sym.id] = ta_species_desc
     }
     _ => ()
   }
