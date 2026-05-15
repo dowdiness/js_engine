@@ -9682,6 +9682,43 @@ test "Function.prototype.toString distinguishes async functions" {
   ])
 }
 
+// ES262 §10.2.4 ExpectedArgumentCount: function `length` reports the
+// count of parameters before the first one with a default initializer
+// (or rest). Non-async siblings already handle this; PR #103
+// (trailing-comma in non-arrow params) exposed that async function /
+// method / arrow factories were still using the raw param count.
+
+///|
+test "async function length: default param stops count" {
+  let src =
+    #|console.log((async function (a, b = 39) {}).length);
+    #|console.log((async function (a, b = 39,) {}).length);
+    #|console.log((async function (a, b, c = 1) {}).length);
+    #|console.log((async function (a, b, c) {}).length);
+    #|console.log((async function () {}).length);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "1", "2", "3", "0"])
+}
+
+///|
+test "async function length: covers async-statement, arrow, methods" {
+  let src =
+    #|async function af(a, b = 1,) {}
+    #|console.log(af.length);
+    #|let arrow = async (a, b = 1,) => {};
+    #|console.log(arrow.length);
+    #|let obj = { async m(a, b = 1,) {} };
+    #|console.log(obj.m.length);
+    #|class C {
+    #|  async m(a, b = 1,) {}
+    #|  static async sm(a, b = 1,) {}
+    #|}
+    #|console.log(new C().m.length);
+    #|console.log(C.sm.length);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "1", "1", "1", "1"])
+}
+
 // Engine-thrown error shape (agent-todo #13 + rebinding regression).
 // Invariant: an engine-raised native error must always report a defined
 // `.name` matching its error type, even when user code rebinds the native
