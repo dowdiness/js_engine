@@ -51,10 +51,7 @@ fn Interpreter::bind_function_decl_value(
   if self.annex_b && !ctx.strict && !env.is_var_scope {
     let var_env = env.find_var_env()
     match var_env.bindings.get(name) {
-      Some(binding) =>
-        if binding.annex_b_hoisted {
-          binding.value = func_val
-        }
+      Some(binding) => if binding.annex_b_hoisted { binding.value = func_val }
       None => ()
     }
   }
