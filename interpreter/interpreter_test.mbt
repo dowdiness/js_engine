@@ -10166,6 +10166,50 @@ test "annex-b eval: if-branch FuncDeclExt (default-param) ignored by conflict ch
 }
 
 ///|
+/// Self-review follow-up (PR #119): pin the LabeledStmt semantics in
+/// `collect_eval_var_names_from_stmt`. Per ES262 §B.3.2 + §B.3.4, a labeled
+/// FunctionDeclaration at eval script top participates in
+/// `TopLevelVarDeclaredNames`, so it DOES collide with a sibling `let` —
+/// this is the one §B.3.4 case where the FuncDecl is NOT block-scoped. The
+/// walker mirrors the caller's `in_block` flag (rather than forcing
+/// `=true`) precisely to keep this collision detectable.
+///
+/// Companion to the if-branch / try-block / switch-case tests above, which
+/// assert the OPPOSITE direction (FuncDecl hidden, no collision).
+test "annex-b eval: labeled function at eval top still conflicts with sibling let" {
+  let display = run_error_display(
+    (
+      #|eval("label: function f() {}; let f = 1");
+    ),
+  )
+  inspect(display, content="SyntaxError: Identifier 'f' has already been declared")
+}
+
+///|
+/// Self-review follow-up (PR #119): the `Some(_) => ()` no-op branch in
+/// `bind_function_decl_value` was originally exercised by `let f` and
+/// `const f` conflicts only. Class declarations bind as `LetBinding` in
+/// this engine (see exec_stmt.mbt `ClassDecl` arm), so this test
+/// completes the §B.3.3.3 conflict-skip coverage across all three lex
+/// binding kinds documented in the helper's docstring (let / const / class).
+test "annex-b eval: class conflicts with if-branch FunctionDeclaration are skipped" {
+  let src =
+    #|var observed;
+    #|(function() {
+    #|  eval(
+    #|    "class f {};" +
+    #|    "if (true) function f() {};" +
+    #|    "observed = typeof f;"
+    #|  );
+    #|}());
+    #|console.log(observed);
+  let output = run_output_annex_b(src)
+  // The Annex B var-promotion is suppressed → outer `class f` stays bound,
+  // and `typeof class` is "function".
+  json_inspect(output, content=["function"])
+}
+
+///|
 /// §B.3.3.3 + LabeledStmt: in sloppy mode, `{ label: function f(){} }`
 /// should reinit the outer `function f` var binding on block entry.
 /// `hoist_block_func_declarations` recurses through LabeledStmt but has no
