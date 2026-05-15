@@ -1,4 +1,66 @@
 ///|
+/// Returns true when a FunctionDeclaration's name is already present as a
+/// `VarBinding` in the current var scope — meaning the hoisting pass already
+/// bound the function value into the variable environment, so the
+/// FunctionDeclaration's *execution* step is a no-op.
+fn function_decl_is_hoisted_noop(env : Environment, name : String) -> Bool {
+  env.is_var_scope &&
+  (match env.bindings.get(name) {
+    Some(binding) => binding.kind == VarBinding
+    None => false
+  })
+}
+
+///|
+/// Bind a FunctionDeclaration's value into `env` per §B.3.3.3 step 2.b.i and
+/// the runtime side of §10.2 FunctionDeclarationInstantiation, then propagate
+/// the value to the outer var scope when Annex B hoisting tagged it.
+///
+/// The kind-gated match enforces the §B.3.3.3 conflict-skip invariant: a
+/// block-level FunctionDeclaration whose name already binds a `let`, `const`,
+/// or `class` in the surrounding scope must NOT overwrite that binding. The
+/// hoist pass suppresses the Annex B var-promotion in that case; the runtime
+/// must remain a no-op so `let f = 1; if (true) function f(){}` keeps
+/// `f === 1`. Shared by FuncDecl and FuncDeclExt — keep it that way so the
+/// next bug fix lands once, not twice (see PR #119 Codex review).
+fn Interpreter::bind_function_decl_value(
+  self : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+  func_val : Value,
+) -> Unit raise Error {
+  let existing_kind = match env.bindings.get(name) {
+    Some(b) => Some(b.kind)
+    None => None
+  }
+  match existing_kind {
+    Some(VarBinding) => env.assign(name, func_val)
+    Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
+    None =>
+      if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, func_val)
+      } else {
+        env.def(name, func_val, VarBinding)
+      }
+  }
+  // Annex B §B.3.3.3: propagate block-level function to outer var scope when
+  // the hoist pass tagged the binding `annex_b_hoisted`. The tag is only set
+  // on reusable slots (param/var bindings), so genuine lex bindings in the
+  // outer scope are never touched here.
+  if self.annex_b && !ctx.strict && !env.is_var_scope {
+    let var_env = env.find_var_env()
+    match var_env.bindings.get(name) {
+      Some(binding) =>
+        if binding.annex_b_hoisted {
+          binding.value = func_val
+        }
+      None => ()
+    }
+  }
+}
+
+///|
 fn Interpreter::exec_stmt(
   self : Interpreter,
   ctx : ExecContext,
@@ -273,15 +335,10 @@ fn Interpreter::exec_stmt(
     }
     FuncDecl(name, params, body, _) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
-      // Check if this was already hoisted - if so, don't re-create the function.
-      // Function declarations at the top level (var scope) are fully handled
-      // during hoisting and should be no-ops during execution.
-      let already_hoisted = match env.bindings.get(name) {
-        Some(binding) => binding.kind == VarBinding
-        None => false
-      }
-      if already_hoisted && env.is_var_scope {
-        // Function was hoisted; no-op during execution
+      // FunctionDeclaration at the top of a var scope is fully handled during
+      // hoisting (the func value was already bound there); execution is a
+      // no-op. See `function_decl_is_hoisted_noop` + `bind_function_decl_value`.
+      if function_decl_is_hoisted_noop(env, name) {
         Normal(Undefined)
       } else {
         let func_data : FuncData = {
@@ -296,29 +353,7 @@ fn Interpreter::exec_stmt(
           is_method: false,
         }
         let func_val = make_func(func_data)
-        // For non-strict eval execution, function declarations are hoisted into
-        // var_env but executed in exec_env. Reconcile assignment back to var_env.
-        if env.bindings.contains(name) {
-          env.assign(name, func_val)
-        } else if should_reconcile_eval_function_decl(env, name) {
-          env.assign_var(name, func_val)
-        } else {
-          env.def(name, func_val, VarBinding)
-        }
-        // Annex B §B.3.3.3: propagate block-level function to outer var scope.
-        // The binding is updated only when the hoist pass tagged it — which
-        // permits updating reused param/var bindings while leaving genuine
-        // lex bindings untouched.
-        if self.annex_b && !ctx.strict && !env.is_var_scope {
-          let var_env = env.find_var_env()
-          match var_env.bindings.get(name) {
-            Some(binding) =>
-              if binding.annex_b_hoisted {
-                binding.value = func_val
-              }
-            None => ()
-          }
-        }
+        self.bind_function_decl_value(ctx, env, name, func_val)
         Normal(Undefined)
       }
     }
@@ -1198,12 +1233,7 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
-      // Same hoisting optimization as FuncDecl
-      let already_hoisted = match env.bindings.get(name) {
-        Some(binding) => binding.kind == VarBinding
-        None => false
-      }
-      if already_hoisted && env.is_var_scope {
+      if function_decl_is_hoisted_noop(env, name) {
         Normal(Undefined)
       } else {
         let func_data : FuncDataExt = {
@@ -1217,24 +1247,7 @@ fn Interpreter::exec_stmt(
           is_method: false,
         }
         let func_val = make_func_ext(func_data)
-        if env.bindings.contains(name) {
-          env.assign(name, func_val)
-        } else if should_reconcile_eval_function_decl(env, name) {
-          env.assign_var(name, func_val)
-        } else {
-          env.def(name, func_val, VarBinding)
-        }
-        // Annex B §B.3.3.3: see matching comment on the FuncDecl arm.
-        if self.annex_b && !ctx.strict && !env.is_var_scope {
-          let var_env = env.find_var_env()
-          match var_env.bindings.get(name) {
-            Some(binding) =>
-              if binding.annex_b_hoisted {
-                binding.value = func_val
-              }
-            None => ()
-          }
-        }
+        self.bind_function_decl_value(ctx, env, name, func_val)
         Normal(Undefined)
       }
     }
