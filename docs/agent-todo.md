@@ -46,31 +46,45 @@ the remaining plain `inspect` assertions to direct string/value checks or
 
 ---
 
-### Mirror ExpectedArgumentCount in dynamic `Function(...)` constructor
+### ~~Mirror ExpectedArgumentCount in dynamic `Function(...)` constructor~~ — DONE (2026-05-15, PR #117)
 
-**Source:** Adjacent finding from async-fn length fix (2026-05-15).
-
-**Bug:** `interpreter/stdlib/builtins_function.mbt:406` (the `FuncDeclExt` branch of `new Function(...)`) writes `fn_props["length"] = Number(params.length().to_double())` — same bug as the async-fn pre-fix, ignoring default initializers.
-
-**Cause:** Identical to async.mbt:92 fix: missing ES262 §10.2.4 ExpectedArgumentCount loop. Pattern is already in `interpreter/runtime/factories.mbt:85-91`, `generator.mbt:473-480`, and now `async.mbt`.
-
-**Fix size:** ~5 lines (the loop) + 1-2 unit tests at `new Function("a", "b=1", "")`. ~10 minutes.
-
-**Out of scope for the async-fn length PR** — different test262 cohort (`built-ins/Function/length` rather than `language/{expressions,statements}/async-function/*`). Bundle with future Function-constructor work or pick up as a quick win.
+Function() constructor `FuncDeclExt` branch at `interpreter/stdlib/builtins_function.mbt:404+` now mirrors the ES262 §10.2.4 ExpectedArgumentCount loop.
 
 ---
 
-### Complete ExpectedArgumentCount: stop on rest parameter across all factories
+### ~~Complete ExpectedArgumentCount: stop on rest parameter across all factories~~ — DONE (2026-05-15, PR #117)
 
-**Source:** Codex review of async-fn length fix (2026-05-15).
+Rest-param check added across `factories.mbt`, `generator.mbt`, `eval_expr.mbt` (ArrowFuncExt arm), `async.mbt`, `class.mbt` class-constructor loop, and the new `builtins_function.mbt` loop. Convention is name-equality (`rest_param is Some(rn) && p.name == rn`), consistent with existing runtime sites at `call.mbt:277` and `construct.mbt:553`. See next item for the structural follow-up.
 
-**Bug:** All four `_ext` factories — `factories.mbt:85-91` (`make_func_ext`), `generator.mbt:473-480` (`make_generator_function_ext`), the `ArrowFuncExt` arm at `eval_expr.mbt:712-719`, and post-fix `async.mbt` (`make_async_function_ext`) — only break on `default_val is Some(_)`. Per ES262 §10.2.4, the count must ALSO stop on a FunctionRestParameter.
+---
 
-**Why it's latent:** Named rest is passed separately as `rest_param : String?`, so it's correctly absent from `params`. But destructuring rest (`function f(a, ...[b]) {}`) is represented at `parser/stmt.mbt:314, :353` as BOTH `rest_param = Some("$rest")` AND a synthetic `Param { name: "$rest", default_val: None, pattern: Some(pat) }` pushed into `params`. The loop then counts the rest pattern as a non-default param.
+### Structural fix: identify destructuring-rest by flag, not name
 
-**Fix:** In each of the 4 factories, the loop should also break when `rest_param is Some(rn) && p.name == rn`. Same 1-line condition added to each `if` inside the loop.
+**Source:** Codex review of PR #117 (2026-05-15).
 
-**Why this PR doesn't fix it:** Zero test262 failures today from destructuring-rest length (no cohort tests it). Bundling expands the diff to 4 factories with no measurable test262 delta. Better as a single "complete ExpectedArgumentCount" PR that fixes all factories consistently and adds targeted unit tests.
+**Bug:** The codebase identifies destructuring-rest Params by name equality with `rest_param` (`call.mbt:277`, `construct.mbt:553`, plus the five length-loops touched in PR #117). Codex's example: `function f({a}, ...$0) {}` — the parser assigns the destructuring `{a}` a synth name `"$" + synth_idx.to_string()` = `"$0"`, but the user's rest param is *also* named `$0`. Length-loops and runtime parameter binding both treat the destructuring `{a}` as the rest pattern.
+
+No test262 cohort exercises this — `$0` is a valid but unusual identifier — but the runtime binding is observably wrong: the user's `a` would bind to the first element of the rest array instead of the first argument.
+
+**Fix:** Add an explicit `is_rest_pattern : Bool` field to `@ast.Param`. Parser sets it to `true` only at the two destructuring-rest sites (`parser/stmt.mbt:316, :355`). All consumers — five length-loops, `call.mbt:277`, `construct.mbt:553`, plus the `Function`/`AsyncFunction`/`GeneratorFunction` dynamic-constructor duplicate-name validator — check the flag instead of comparing names.
+
+**Co-fixes needed in the same PR:**
+- The dynamic `Function(...)`, `AsyncFunction(...)`, and `GeneratorFunction(...)` constructors trip `validate_function_constructor_params` with "Duplicate parameter name" for any destructuring-rest source (e.g. `new Function("a", "...[b]", "")`) because they pass `params.map(p => p.name)` to the validator while `rest_param` is also `"$rest"`. The validator should skip Params marked `is_rest_pattern`.
+- Class constructor destructuring rest hits the same validator bug (`class C { constructor(a, ...[b]) {} }` fails to parse). Same fix unblocks it.
+
+**Estimated scope:** ~11 Param construction sites in parser + AST struct update + ~7 consumer sites. Larger than PR #117 alone but eliminates the entire ambiguity, not patches one symptom.
+
+---
+
+### Async generator length / name (latent gap)
+
+**Source:** Codex review of PR #117 (2026-05-15).
+
+**Bug:** `make_async_gen_function_inner` at `interpreter/runtime/async.mbt:424` doesn't set `length` or `name` on async generator function objects (the `fn_props` map only has `"prototype"`). Both `make_async_generator_function` (simple) and `make_async_generator_function_ext` (with defaults) delegate to it.
+
+No test262 impact today because async-iteration is skipped via the feature flag. When async-iteration is unlocked, async generator function length and name will be wrong.
+
+**Fix:** Mirror the length-and-name install logic from `make_generator_function_ext` into `make_async_gen_function_inner`, including the rest-param check. Branch on `params_ext is Some(_)` to choose simple-vs-ext counting.
 
 ---
 

@@ -9719,6 +9719,55 @@ test "async function length: covers async-statement, arrow, methods" {
   json_inspect(output, content=["1", "1", "1", "1", "1"])
 }
 
+// ES262 §10.2.4 ExpectedArgumentCount: the count also stops at a
+// FunctionRestParameter. Named rest is passed separately and not in the
+// params array, so the original loop only checked `default_val`. But
+// destructuring rest (`...[b]`) is represented in this codebase as both
+// `rest_param = Some("$rest")` AND a synthetic Param pushed into `params`
+// (parser/stmt.mbt:314, :353), so without an explicit rest-name check the
+// loop overcounts.
+
+///|
+test "function length: destructuring rest halts count across factories" {
+  let src =
+    #|function f(a, ...[b]) {}
+    #|console.log(f.length);
+    #|function* g(a, ...[b]) {}
+    #|console.log(g.length);
+    #|const arrow = (a, ...[b]) => {};
+    #|console.log(arrow.length);
+    #|async function af(a, ...[b]) {}
+    #|console.log(af.length);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "1", "1", "1"])
+}
+
+///|
+test "class constructor length: stops at first default" {
+  let src =
+    #|class A { constructor(a, b = 1) {} }
+    #|console.log(A.length);
+    #|class B { constructor(a, b, c = 1) {} }
+    #|console.log(B.length);
+    #|class C { constructor(a, b, c) {} }
+    #|console.log(C.length);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "2", "3"])
+}
+
+// Function() constructor mirrors the same ExpectedArgumentCount logic
+// when the source it parses uses default parameters.
+
+///|
+test "Function constructor length: stops at first default" {
+  let src =
+    #|console.log(new Function("a", "b=1", "").length);
+    #|console.log(new Function("a", "b", "c=2", "").length);
+    #|console.log(new Function("a", "b", "c", "").length);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "2", "3"])
+}
+
 // Engine-thrown error shape (agent-todo #13 + rebinding regression).
 // Invariant: an engine-raised native error must always report a defined
 // `.name` matching its error type, even when user code rebinds the native
