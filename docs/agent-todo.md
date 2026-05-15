@@ -134,12 +134,16 @@ Reasons: `obj['…'] descriptor should be configurable` (54/56), `should not be 
 - Check whether `defineProperty` with a partial descriptor merges correctly with existing descriptor.
 - Verify the integer-key path (Cluster 1 overlap — likely Array-element defineProperty).
 
-### Cluster 5 — Unicode IdentifierStart/Part lexing (~35 each mode)
+### ~~Cluster 5 — Unicode IdentifierStart/Part lexing (~35 each mode)~~ — DONE (2026-05-09, PR #93, `24d7498`)
 
-`SyntaxError: Unexpected character '…' at line N, col 5/6` × 35. Lexer rejects valid Unicode identifier code points (e.g., letters from non-Latin scripts).
-
-- Import the Unicode `ID_Start` / `ID_Continue` tables (or use the `\p{ID_Start}` regex form if available).
-- Single PR, lexer-only.
+**Result:** Generated `lexer/unicode_id.mbt` from `DerivedCoreProperties.txt`
+(Unicode 17.0) with ECMAScript §11.6 `ID_Start` / `ID_Continue` range tables
+and binary-search lookup. Replaced the prior "any non-ASCII non-whitespace
+is ID-start" heuristic that mis-tokenized punctuation like `©` (U+00A9).
+Closure verified 2026-05-15: `language/identifier` 100% pass; zero
+"Unexpected character" failures in CI artifacts apart from one Stage 3
+import-defer test using private-field `#` (separate `class-fields-private`
+feature, not Unicode-ID).
 
 ### Cluster 1 — Array internals post-Stage-C audit
 
