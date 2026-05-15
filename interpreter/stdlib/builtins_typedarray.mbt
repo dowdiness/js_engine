@@ -442,7 +442,8 @@ pub fn validate_typed_array(
 ///
 /// `default_ctor` should be the concrete TA constructor that matches the
 /// receiver's [[TypedArrayName]] (Int8Array for Int8Array, etc.). Callers
-/// resolve it via `interp.global.get(<class_name>)`.
+/// resolve it via the intrinsic slot `[[<class_name>Constructor]]`, not the
+/// mutable global, so user reassignments don't shift the species default.
 fn typed_array_species_constructor(
   interp : @runtime.Interpreter,
   this_val : Value,
@@ -498,7 +499,15 @@ pub fn typed_array_species_create(
 ) -> Value raise Error {
   let (data, _) = validate_typed_array(exemplar, "species create")
   let class_name = data.class_name
-  let default_ctor = interp.global.get(class_name) catch { _ => Undefined }
+  // §22.2.4.7 step 2: defaultConstructor is the *intrinsic* TA constructor
+  // for the exemplar's [[TypedArrayName]], not the mutable global binding.
+  // Reading `interp.global.get("Int8Array")` would let user code reassign
+  // `Int8Array = Uint8Array` (or any non-constructable value) and silently
+  // poison the default species path. The intrinsic slot is registered under
+  // a name JS source cannot rebind.
+  let default_ctor = interp.global.get("[[\{class_name}Constructor]]") catch {
+    _ => Undefined
+  }
   let ctor = typed_array_species_constructor(interp, exemplar, default_ctor)
   let loc = @token.Loc::default()
   let result = interp.construct_value(ctor, args, loc)
@@ -2940,5 +2949,11 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
 
     env.def_builtin(type_name, ctor)
     env.def_builtin("[[\{type_name}Prototype]]", per_proto)
+    // §22.2.4.7 TypedArraySpeciesCreate uses the *intrinsic* TA constructor as
+    // its default — independent of the writable global binding. Stash a
+    // reference under a name that JS source cannot reach (the `[[…]]`
+    // brackets aren't valid identifier characters), so user code reassigning
+    // `Int8Array = Uint8Array` doesn't drift the species default.
+    env.def_builtin("[[\{type_name}Constructor]]", ctor)
   }
 }

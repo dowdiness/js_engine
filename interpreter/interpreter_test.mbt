@@ -9819,6 +9819,29 @@ test "test262: TypedArray.prototype.map throws when @@species is non-callable" {
 }
 
 ///|
+/// Codex bot P1 (PR #121 review): §22.2.4.7 step 2 says defaultConstructor is
+/// the *intrinsic* TA constructor for the exemplar's [[TypedArrayName]], not
+/// the mutable global binding. If user code reassigns `Int8Array = Uint8Array`,
+/// `sample.map(...)` on an Int8Array (with default species path) must still
+/// build an Int8Array — the writable global must not poison species default.
+test "test262: TypedArray species default uses intrinsic, not reassigned global" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|var OriginalInt8 = sample.constructor;
+      #|Int8Array = Uint8Array;
+      #|var result = sample.map(function(x) { return x; });
+      #|console.log(result instanceof OriginalInt8, result.constructor === OriginalInt8);
+    ),
+  )
+  // Default species path runs because `sample.constructor` is the intrinsic
+  // (not reassigned) and its @@species is the same intrinsic. The result
+  // must come from the *intrinsic* Int8Array slot, untouched by the global
+  // reassignment.
+  json_inspect(output, content=["true true"])
+}
+
+///|
 /// §22.2.3.5.1 ValidateTypedArray: every %TypedArray%.prototype method must
 /// throw TypeError at entry if the underlying buffer is detached. Pinned
 /// per-method tests below mirror test262's
