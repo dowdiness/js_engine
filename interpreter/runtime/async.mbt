@@ -85,11 +85,19 @@ fn Interpreter::make_async_function_ext(
     is_accessor: false,
   }
   let async_proto = get_function_prototype(self)
+  // ES262 §10.2.4 ExpectedArgumentCount: count params before first default.
+  let mut func_length = 0
+  for p in params {
+    if p.default_val is Some(_) {
+      break
+    }
+    func_length += 1
+  }
   Object({
     bag: {
       properties: {
         "name": String_(func_name),
-        "length": Number(params.length().to_double()),
+        "length": Number(func_length.to_double()),
       },
       symbol_properties: {},
       descriptors: { "name": nf_desc, "length": nf_desc },

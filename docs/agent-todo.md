@@ -46,6 +46,34 @@ the remaining plain `inspect` assertions to direct string/value checks or
 
 ---
 
+### Mirror ExpectedArgumentCount in dynamic `Function(...)` constructor
+
+**Source:** Adjacent finding from async-fn length fix (2026-05-15).
+
+**Bug:** `interpreter/stdlib/builtins_function.mbt:406` (the `FuncDeclExt` branch of `new Function(...)`) writes `fn_props["length"] = Number(params.length().to_double())` — same bug as the async-fn pre-fix, ignoring default initializers.
+
+**Cause:** Identical to async.mbt:92 fix: missing ES262 §10.2.4 ExpectedArgumentCount loop. Pattern is already in `interpreter/runtime/factories.mbt:85-91`, `generator.mbt:473-480`, and now `async.mbt`.
+
+**Fix size:** ~5 lines (the loop) + 1-2 unit tests at `new Function("a", "b=1", "")`. ~10 minutes.
+
+**Out of scope for the async-fn length PR** — different test262 cohort (`built-ins/Function/length` rather than `language/{expressions,statements}/async-function/*`). Bundle with future Function-constructor work or pick up as a quick win.
+
+---
+
+### Complete ExpectedArgumentCount: stop on rest parameter across all factories
+
+**Source:** Codex review of async-fn length fix (2026-05-15).
+
+**Bug:** All four `_ext` factories — `factories.mbt:85-91` (`make_func_ext`), `generator.mbt:473-480` (`make_generator_function_ext`), the `ArrowFuncExt` arm at `eval_expr.mbt:712-719`, and post-fix `async.mbt` (`make_async_function_ext`) — only break on `default_val is Some(_)`. Per ES262 §10.2.4, the count must ALSO stop on a FunctionRestParameter.
+
+**Why it's latent:** Named rest is passed separately as `rest_param : String?`, so it's correctly absent from `params`. But destructuring rest (`function f(a, ...[b]) {}`) is represented at `parser/stmt.mbt:314, :353` as BOTH `rest_param = Some("$rest")` AND a synthetic `Param { name: "$rest", default_val: None, pattern: Some(pat) }` pushed into `params`. The loop then counts the rest pattern as a non-default param.
+
+**Fix:** In each of the 4 factories, the loop should also break when `rest_param is Some(rn) && p.name == rn`. Same 1-line condition added to each `if` inside the loop.
+
+**Why this PR doesn't fix it:** Zero test262 failures today from destructuring-rest length (no cohort tests it). Bundling expands the diff to 4 factories with no measurable test262 delta. Better as a single "complete ExpectedArgumentCount" PR that fixes all factories consistently and adds targeted unit tests.
+
+---
+
 ### ~~Reject trailing comma after rest parameter~~ — DONE (2026-05-13, `183363f`)
 
 **Source:** Codex review of PR #103 (trailing-comma in non-arrow params).
