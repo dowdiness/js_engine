@@ -9743,6 +9743,33 @@ test "test262: TypedArray.prototype.filter accepts Array-variant as constructor"
 }
 
 ///|
+/// Codex bot P1 (PR #121 review): same hazard as slice, but for map. After
+/// `typed_array_species_create` returns, the per-element loop reads from
+/// the source `data` — if the species ctor detached the source buffer mid-
+/// construction, those reads would silently produce zeros. The fix mirrors
+/// slice: re-validate the source post-species, pre-loop.
+test "test262: TypedArray.prototype.map throws when species detaches source" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3, 4]);
+      #|function CustomCtor(n) {
+      #|  $262.detachArrayBuffer(sample.buffer);
+      #|  return new Int8Array(n);
+      #|}
+      #|CustomCtor[Symbol.species] = CustomCtor;
+      #|sample.constructor = CustomCtor;
+      #|try {
+      #|  sample.map(function(x) { return x * 2; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 /// Codex P1 (PR B review): if a custom species constructor detaches
 /// `sample.buffer` as a side effect, slice must re-validate the SOURCE
 /// before copying. Without the re-validate, `typedarray_get_index` silently

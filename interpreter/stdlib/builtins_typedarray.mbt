@@ -1757,6 +1757,13 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
         this_val,
         [Value::Number(len.to_double())],
       )
+      // §22.2.3.20 step 7: re-validate the SOURCE after species construction.
+      // A user-supplied species ctor can detach `sample.buffer` as a side
+      // effect; without this re-check, the loop below would silently read
+      // `Undefined` from `typedarray_get_index` and write coerced zeros.
+      // Same hazard already fixed for `slice` (PR B Codex P1) — Codex bot
+      // review on PR #121 caught the parallel miss on `map`.
+      let _ = validate_typed_array(this_val, "map")
       match result {
         Object(result_data) =>
           for i = 0; i < len; i = i + 1 {
