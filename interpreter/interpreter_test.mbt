@@ -9616,6 +9616,521 @@ test "test262: DataView constructor rejects detached ArrayBuffer" {
 }
 
 ///|
+/// §22.2.3.5.1 ValidateTypedArray: every %TypedArray%.prototype method must
+/// throw TypeError at entry if the underlying buffer is detached. Pinned
+/// per-method tests below mirror test262's
+/// `built-ins/TypedArray/prototype/<method>/detached-buffer.js` fixtures,
+/// which previously failed because methods skipped the validate step.
+test "test262: TypedArray.prototype.reverse detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.reverse();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.copyWithin detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.copyWithin(0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.fill detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.fill(0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.slice detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.slice();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.subarray detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.subarray();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.set detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.set([0, 0]);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.map detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.map(function() {});
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.filter detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.filter(function() {});
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.forEach detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.forEach(function() {});
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.every detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.every(function() {});
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.some detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.some(function() {});
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.find detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.find(function() { return true; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.findIndex detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.findIndex(function() { return true; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.findLast detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.findLast(function() { return true; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.findLastIndex detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.findLastIndex(function() { return true; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.reduce detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.reduce(function(a, b) { return a; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.reduceRight detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.reduceRight(function(a, b) { return a; });
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.indexOf detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.indexOf(0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.lastIndexOf detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.lastIndexOf(0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.includes detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.includes(0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.join detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.join();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.toString detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.toString();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.at detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.at(0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.keys detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.keys();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.values detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.values();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.entries detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.entries();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.sort detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.sort();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.toReversed detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.toReversed();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.toSorted detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.toSorted();
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray.prototype.with detached throws" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(2);
+      #|$262.detachArrayBuffer(sample.buffer);
+      #|try {
+      #|  sample.with(0, 0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "class fields on Map subclass" {
   let output = run_output(
     (
@@ -10098,7 +10613,10 @@ test "annex-b eval: top-level let f + top-level function f still throws" {
       #|eval("let f = 1; function f() {}");
     ),
   )
-  inspect(display, content="SyntaxError: Identifier 'f' has already been declared")
+  inspect(
+    display,
+    content="SyntaxError: Identifier 'f' has already been declared",
+  )
 }
 
 ///|
@@ -10182,7 +10700,10 @@ test "annex-b eval: labeled function at eval top still conflicts with sibling le
       #|eval("label: function f() {}; let f = 1");
     ),
   )
-  inspect(display, content="SyntaxError: Identifier 'f' has already been declared")
+  inspect(
+    display,
+    content="SyntaxError: Identifier 'f' has already been declared",
+  )
 }
 
 ///|

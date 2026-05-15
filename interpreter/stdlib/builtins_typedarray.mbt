@@ -381,6 +381,53 @@ pub fn typedarray_is_valid_index(data : ObjectData, index : Int) -> Bool {
 }
 
 ///|
+/// §22.2.3.5.1 ValidateTypedArray(O): the entry guard required at the top of
+/// every %TypedArray%.prototype method's algorithm. Two failure modes:
+///
+/// 1. `this` is not a TypedArray (RequireInternalSlot fails) → TypeError
+///    "<method> called on non-TypedArray".
+/// 2. The underlying ArrayBuffer is detached (IsDetachedBuffer is true) →
+///    TypeError "Cannot perform <method> on a detached ArrayBuffer".
+///
+/// Returns `(data, buf_id)` so the caller doesn't re-read them. `buf_id` is
+/// guaranteed `>= 0` and non-detached when this returns normally.
+///
+/// All ~30 prototype methods (reverse, copyWithin, fill, slice, subarray,
+/// set, map, filter, find*, indexOf, includes, join, sort, toSorted, ...)
+/// must call this at entry. Mid-method re-validation (for tests like
+/// `coerced-values-end-detached.js` where argument coercion detaches the
+/// buffer) is a separate follow-up — this helper covers entry-validation
+/// only.
+pub fn validate_typed_array(
+  this_val : Value,
+  method_name : String,
+) -> (ObjectData, Int) raise Error {
+  let data = match this_val {
+    Object(d) =>
+      if is_typedarray_class(d.class_name) {
+        d
+      } else {
+        raise @errors.TypeError(
+          message="\{method_name} called on non-TypedArray",
+        )
+      }
+    _ =>
+      raise @errors.TypeError(message="\{method_name} called on non-TypedArray")
+  }
+  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+    Some(Value::Number(n)) => n.to_int()
+    _ =>
+      raise @errors.TypeError(message="\{method_name} called on non-TypedArray")
+  }
+  if is_arraybuffer_detached(buf_id) {
+    raise @errors.TypeError(
+      message="Cannot perform \{method_name} on a detached ArrayBuffer",
+    )
+  }
+  (data, buf_id)
+}
+
+///|
 /// Get a typed element from a TypedArray object at the given index.
 pub fn typedarray_get_index(data : ObjectData, index : Int) -> Value {
   let length = match data.bag.properties.get("[[ArrayLength]]") {
@@ -582,98 +629,85 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     this_val,
     args,
   ) raise {
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          if args.length() == 0 {
-            raise @errors.TypeError(
-              message="TypedArray.prototype.set requires at least 1 argument",
-            )
-          }
-          let target_offset = if args.length() > 1 {
-            @runtime.to_number(args[1]).to_int()
-          } else {
-            0
-          }
-          let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-          match args[0] {
-            // Source is a TypedArray
-            Object(src_data) if is_typedarray_class(src_data.class_name) => {
-              let src_len = match
-                src_data.bag.properties.get("[[ArrayLength]]") {
-                Some(Value::Number(n)) => n.to_int()
-                _ => 0
-              }
-              if target_offset + src_len > ta_length {
-                raise @errors.RangeError(message="Source is too large")
-              }
-              // Buffer all source elements first to handle overlapping ArrayBuffers
-              let temp : Array[Double] = []
-              for i = 0; i < src_len; i = i + 1 {
-                let val = typedarray_get_index(src_data, i)
-                match val {
-                  Value::Number(n) => temp.push(n)
-                  _ => temp.push(0.0)
-                }
-              }
-              for i = 0; i < src_len; i = i + 1 {
-                typedarray_set_index(data, target_offset + i, temp[i])
-              }
-              Undefined
-            }
-            // Source is an array-like
-            Array(arr_data) => {
-              let src_len = arr_data.elements.length()
-              if target_offset + src_len > ta_length {
-                raise @errors.RangeError(message="Source is too large")
-              }
-              for i = 0; i < src_len; i = i + 1 {
-                let val = arr_data.elements[i]
-                let num = @runtime.to_number(val)
-                typedarray_set_index(data, target_offset + i, num)
-              }
-              Undefined
-            }
-            src => {
-              // Generic array-like with length property
-              let src_len = match src {
-                Object(src_obj) =>
-                  match src_obj.bag.properties.get("length") {
-                    Some(v) => @runtime.to_number(v).to_int()
-                    _ => 0
-                  }
-                _ => 0
-              }
-              if target_offset + src_len > ta_length {
-                raise @errors.RangeError(message="Source is too large")
-              }
-              for i = 0; i < src_len; i = i + 1 {
-                let val = match src {
-                  Object(src_obj) =>
-                    match src_obj.bag.properties.get(i.to_string()) {
-                      Some(v) => v
-                      _ => Undefined
-                    }
-                  _ => Undefined
-                }
-                let num = @runtime.to_number(val)
-                typedarray_set_index(data, target_offset + i, num)
-              }
-              Undefined
-            }
-          }
-        } else {
-          raise @errors.TypeError(
-            message="TypedArray.prototype.set called on non-TypedArray",
-          )
+    let (data, _) = validate_typed_array(this_val, "TypedArray.prototype.set")
+    if args.length() == 0 {
+      raise @errors.TypeError(
+        message="TypedArray.prototype.set requires at least 1 argument",
+      )
+    }
+    let target_offset = if args.length() > 1 {
+      @runtime.to_number(args[1]).to_int()
+    } else {
+      0
+    }
+    let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+      Some(Value::Number(n)) => n.to_int()
+      _ => 0
+    }
+    match args[0] {
+      // Source is a TypedArray
+      Object(src_data) if is_typedarray_class(src_data.class_name) => {
+        let src_len = match src_data.bag.properties.get("[[ArrayLength]]") {
+          Some(Value::Number(n)) => n.to_int()
+          _ => 0
         }
-      _ =>
-        raise @errors.TypeError(
-          message="TypedArray.prototype.set called on non-TypedArray",
-        )
+        if target_offset + src_len > ta_length {
+          raise @errors.RangeError(message="Source is too large")
+        }
+        // Buffer all source elements first to handle overlapping ArrayBuffers
+        let temp : Array[Double] = []
+        for i = 0; i < src_len; i = i + 1 {
+          let val = typedarray_get_index(src_data, i)
+          match val {
+            Value::Number(n) => temp.push(n)
+            _ => temp.push(0.0)
+          }
+        }
+        for i = 0; i < src_len; i = i + 1 {
+          typedarray_set_index(data, target_offset + i, temp[i])
+        }
+        Undefined
+      }
+      // Source is an array-like
+      Array(arr_data) => {
+        let src_len = arr_data.elements.length()
+        if target_offset + src_len > ta_length {
+          raise @errors.RangeError(message="Source is too large")
+        }
+        for i = 0; i < src_len; i = i + 1 {
+          let val = arr_data.elements[i]
+          let num = @runtime.to_number(val)
+          typedarray_set_index(data, target_offset + i, num)
+        }
+        Undefined
+      }
+      src => {
+        // Generic array-like with length property
+        let src_len = match src {
+          Object(src_obj) =>
+            match src_obj.bag.properties.get("length") {
+              Some(v) => @runtime.to_number(v).to_int()
+              _ => 0
+            }
+          _ => 0
+        }
+        if target_offset + src_len > ta_length {
+          raise @errors.RangeError(message="Source is too large")
+        }
+        for i = 0; i < src_len; i = i + 1 {
+          let val = match src {
+            Object(src_obj) =>
+              match src_obj.bag.properties.get(i.to_string()) {
+                Some(v) => v
+                _ => Undefined
+              }
+            _ => Undefined
+          }
+          let num = @runtime.to_number(val)
+          typedarray_set_index(data, target_offset + i, num)
+        }
+        Undefined
+      }
     }
   })
 
@@ -682,82 +716,72 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="subarray",
     length=2,
     fn(this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let relative_begin = if args.length() > 0 {
-              @runtime.to_number(args[0]).to_int()
-            } else {
-              0
-            }
-            let begin_index = if relative_begin < 0 {
-              let b = ta_length + relative_begin
-              if b < 0 {
-                0
-              } else {
-                b
-              }
-            } else if relative_begin > ta_length {
-              ta_length
-            } else {
-              relative_begin
-            }
-            let relative_end = if args.length() > 1 {
-              match args[1] {
-                Undefined => ta_length
-                _ => @runtime.to_number(args[1]).to_int()
-              }
-            } else {
-              ta_length
-            }
-            let end_index = if relative_end < 0 {
-              let e = ta_length + relative_end
-              if e < 0 {
-                0
-              } else {
-                e
-              }
-            } else if relative_end > ta_length {
-              ta_length
-            } else {
-              relative_end
-            }
-            let new_length = if end_index > begin_index {
-              end_index - begin_index
-            } else {
-              0
-            }
-            let buffer = match
-              data.bag.properties.get("[[ViewedArrayBuffer]]") {
-              Some(buf) => buf
-              None =>
-                raise @errors.TypeError(message="TypedArray has no buffer")
-            }
-            let cur_offset = match data.bag.properties.get("[[ByteOffset]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let bpe = typed_array_bytes_per_element(data.class_name)
-            let new_offset = cur_offset + begin_index * bpe
-            // Get the prototype for this typed array type
-            let proto = data.prototype
-            make_typedarray_from_buffer(
-              data.class_name,
-              buffer,
-              new_offset,
-              new_length,
-              proto,
-            )
-          } else {
-            raise @errors.TypeError(message="subarray called on non-TypedArray")
-          }
-        _ =>
-          raise @errors.TypeError(message="subarray called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "subarray")
+      let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      let relative_begin = if args.length() > 0 {
+        @runtime.to_number(args[0]).to_int()
+      } else {
+        0
+      }
+      let begin_index = if relative_begin < 0 {
+        let b = ta_length + relative_begin
+        if b < 0 {
+          0
+        } else {
+          b
+        }
+      } else if relative_begin > ta_length {
+        ta_length
+      } else {
+        relative_begin
+      }
+      let relative_end = if args.length() > 1 {
+        match args[1] {
+          Undefined => ta_length
+          _ => @runtime.to_number(args[1]).to_int()
+        }
+      } else {
+        ta_length
+      }
+      let end_index = if relative_end < 0 {
+        let e = ta_length + relative_end
+        if e < 0 {
+          0
+        } else {
+          e
+        }
+      } else if relative_end > ta_length {
+        ta_length
+      } else {
+        relative_end
+      }
+      let new_length = if end_index > begin_index {
+        end_index - begin_index
+      } else {
+        0
+      }
+      let buffer = match data.bag.properties.get("[[ViewedArrayBuffer]]") {
+        Some(buf) => buf
+        None => raise @errors.TypeError(message="TypedArray has no buffer")
+      }
+      let cur_offset = match data.bag.properties.get("[[ByteOffset]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let bpe = typed_array_bytes_per_element(data.class_name)
+      let new_offset = cur_offset + begin_index * bpe
+      // Get the prototype for this typed array type
+      let proto = data.prototype
+      make_typedarray_from_buffer(
+        data.class_name,
+        buffer,
+        new_offset,
+        new_length,
+        proto,
+      )
     },
   )
 
@@ -766,80 +790,68 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     this_val,
     args,
   ) raise {
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-          let relative_begin = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
-          } else {
-            0
-          }
-          let begin_index = if relative_begin < 0 {
-            let b = ta_length + relative_begin
-            if b < 0 {
-              0
-            } else {
-              b
-            }
-          } else if relative_begin > ta_length {
-            ta_length
-          } else {
-            relative_begin
-          }
-          let relative_end = if args.length() > 1 {
-            match args[1] {
-              Undefined => ta_length
-              _ => @runtime.to_number(args[1]).to_int()
-            }
-          } else {
-            ta_length
-          }
-          let end_index = if relative_end < 0 {
-            let e = ta_length + relative_end
-            if e < 0 {
-              0
-            } else {
-              e
-            }
-          } else if relative_end > ta_length {
-            ta_length
-          } else {
-            relative_end
-          }
-          let new_length = if end_index > begin_index {
-            end_index - begin_index
-          } else {
-            0
-          }
-          let proto = data.prototype
-          let new_ta = make_typedarray_object(
-            data.class_name,
-            new_length,
-            proto,
-            env,
-          )
-          match new_ta {
-            Object(new_data) =>
-              for i = 0; i < new_length; i = i + 1 {
-                let val = typedarray_get_index(data, begin_index + i)
-                let num = match val {
-                  Value::Number(n) => n
-                  _ => 0.0
-                }
-                typedarray_set_index(new_data, i, num)
-              }
-            _ => ()
-          }
-          new_ta
-        } else {
-          raise @errors.TypeError(message="slice called on non-TypedArray")
-        }
-      _ => raise @errors.TypeError(message="slice called on non-TypedArray")
+    let (data, _) = validate_typed_array(this_val, "slice")
+    let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+      Some(Value::Number(n)) => n.to_int()
+      _ => 0
     }
+    let relative_begin = if args.length() > 0 {
+      @runtime.to_number(args[0]).to_int()
+    } else {
+      0
+    }
+    let begin_index = if relative_begin < 0 {
+      let b = ta_length + relative_begin
+      if b < 0 {
+        0
+      } else {
+        b
+      }
+    } else if relative_begin > ta_length {
+      ta_length
+    } else {
+      relative_begin
+    }
+    let relative_end = if args.length() > 1 {
+      match args[1] {
+        Undefined => ta_length
+        _ => @runtime.to_number(args[1]).to_int()
+      }
+    } else {
+      ta_length
+    }
+    let end_index = if relative_end < 0 {
+      let e = ta_length + relative_end
+      if e < 0 {
+        0
+      } else {
+        e
+      }
+    } else if relative_end > ta_length {
+      ta_length
+    } else {
+      relative_end
+    }
+    let new_length = if end_index > begin_index {
+      end_index - begin_index
+    } else {
+      0
+    }
+    let proto = data.prototype
+    let new_ta = make_typedarray_object(data.class_name, new_length, proto, env)
+    match new_ta {
+      Object(new_data) =>
+        for i = 0; i < new_length; i = i + 1 {
+          let val = typedarray_get_index(data, begin_index + i)
+          let num = match val {
+            Value::Number(n) => n
+            _ => 0.0
+          }
+          typedarray_set_index(new_data, i, num)
+        }
+      _ => ()
+    }
+    new_ta
   })
 
   // copyWithin(target, start [, end])
@@ -847,101 +859,91 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="copyWithin",
     length=2,
     fn(this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let target_idx = if args.length() > 0 {
-              let t = @runtime.to_number(args[0]).to_int()
-              if t < 0 {
-                let r = len + t
-                if r < 0 {
-                  0
-                } else {
-                  r
-                }
-              } else if t > len {
-                len
-              } else {
-                t
-              }
-            } else {
-              0
-            }
-            let start_idx = if args.length() > 1 {
-              let s = @runtime.to_number(args[1]).to_int()
-              if s < 0 {
-                let r = len + s
-                if r < 0 {
-                  0
-                } else {
-                  r
-                }
-              } else if s > len {
-                len
-              } else {
-                s
-              }
-            } else {
-              0
-            }
-            let end_idx = if args.length() > 2 {
-              match args[2] {
-                Undefined => len
-                _ => {
-                  let e = @runtime.to_number(args[2]).to_int()
-                  if e < 0 {
-                    let r = len + e
-                    if r < 0 {
-                      0
-                    } else {
-                      r
-                    }
-                  } else if e > len {
-                    len
-                  } else {
-                    e
-                  }
-                }
-              }
-            } else {
-              len
-            }
-            let count = {
-              let c1 = end_idx - start_idx
-              let c2 = len - target_idx
-              if c1 < c2 {
-                c1
-              } else {
-                c2
-              }
-            }
-            if count > 0 {
-              // Read all source values first to handle overlapping
-              let temp : Array[Double] = []
-              for i = 0; i < count; i = i + 1 {
-                let val = typedarray_get_index(data, start_idx + i)
-                match val {
-                  Value::Number(n) => temp.push(n)
-                  _ => temp.push(0.0)
-                }
-              }
-              for i = 0; i < count; i = i + 1 {
-                typedarray_set_index(data, target_idx + i, temp[i])
-              }
-            }
-            this_val
-          } else {
-            raise @errors.TypeError(
-              message="copyWithin called on non-TypedArray",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(message="copyWithin called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "copyWithin")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      let target_idx = if args.length() > 0 {
+        let t = @runtime.to_number(args[0]).to_int()
+        if t < 0 {
+          let r = len + t
+          if r < 0 {
+            0
+          } else {
+            r
+          }
+        } else if t > len {
+          len
+        } else {
+          t
+        }
+      } else {
+        0
+      }
+      let start_idx = if args.length() > 1 {
+        let s = @runtime.to_number(args[1]).to_int()
+        if s < 0 {
+          let r = len + s
+          if r < 0 {
+            0
+          } else {
+            r
+          }
+        } else if s > len {
+          len
+        } else {
+          s
+        }
+      } else {
+        0
+      }
+      let end_idx = if args.length() > 2 {
+        match args[2] {
+          Undefined => len
+          _ => {
+            let e = @runtime.to_number(args[2]).to_int()
+            if e < 0 {
+              let r = len + e
+              if r < 0 {
+                0
+              } else {
+                r
+              }
+            } else if e > len {
+              len
+            } else {
+              e
+            }
+          }
+        }
+      } else {
+        len
+      }
+      let count = {
+        let c1 = end_idx - start_idx
+        let c2 = len - target_idx
+        if c1 < c2 {
+          c1
+        } else {
+          c2
+        }
+      }
+      if count > 0 {
+        // Read all source values first to handle overlapping
+        let temp : Array[Double] = []
+        for i = 0; i < count; i = i + 1 {
+          let val = typedarray_get_index(data, start_idx + i)
+          match val {
+            Value::Number(n) => temp.push(n)
+            _ => temp.push(0.0)
+          }
+        }
+        for i = 0; i < count; i = i + 1 {
+          typedarray_set_index(data, target_idx + i, temp[i])
+        }
+      }
+      this_val
     },
   )
 
@@ -950,66 +952,59 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     this_val,
     args,
   ) raise {
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          let len = match data.bag.properties.get("[[ArrayLength]]") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-          let fill_val = if args.length() > 0 {
-            @runtime.to_number(args[0])
-          } else {
-            0.0
-          }
-          let start_idx = if args.length() > 1 {
-            let s = @runtime.to_number(args[1]).to_int()
-            if s < 0 {
-              let r = len + s
-              if r < 0 {
-                0
-              } else {
-                r
-              }
-            } else if s > len {
-              len
-            } else {
-              s
-            }
-          } else {
-            0
-          }
-          let end_idx = if args.length() > 2 {
-            match args[2] {
-              Undefined => len
-              _ => {
-                let e = @runtime.to_number(args[2]).to_int()
-                if e < 0 {
-                  let r = len + e
-                  if r < 0 {
-                    0
-                  } else {
-                    r
-                  }
-                } else if e > len {
-                  len
-                } else {
-                  e
-                }
-              }
-            }
-          } else {
-            len
-          }
-          for i = start_idx; i < end_idx; i = i + 1 {
-            typedarray_set_index(data, i, fill_val)
-          }
-          this_val
-        } else {
-          raise @errors.TypeError(message="fill called on non-TypedArray")
-        }
-      _ => raise @errors.TypeError(message="fill called on non-TypedArray")
+    let (data, _) = validate_typed_array(this_val, "fill")
+    let len = match data.bag.properties.get("[[ArrayLength]]") {
+      Some(Value::Number(n)) => n.to_int()
+      _ => 0
     }
+    let fill_val = if args.length() > 0 {
+      @runtime.to_number(args[0])
+    } else {
+      0.0
+    }
+    let start_idx = if args.length() > 1 {
+      let s = @runtime.to_number(args[1]).to_int()
+      if s < 0 {
+        let r = len + s
+        if r < 0 {
+          0
+        } else {
+          r
+        }
+      } else if s > len {
+        len
+      } else {
+        s
+      }
+    } else {
+      0
+    }
+    let end_idx = if args.length() > 2 {
+      match args[2] {
+        Undefined => len
+        _ => {
+          let e = @runtime.to_number(args[2]).to_int()
+          if e < 0 {
+            let r = len + e
+            if r < 0 {
+              0
+            } else {
+              r
+            }
+          } else if e > len {
+            len
+          } else {
+            e
+          }
+        }
+      }
+    } else {
+      len
+    }
+    for i = start_idx; i < end_idx; i = i + 1 {
+      typedarray_set_index(data, i, fill_val)
+    }
+    this_val
   })
 
   // indexOf(searchElement [, fromIndex])
@@ -1017,48 +1012,41 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="indexOf",
     length=1,
     fn(this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            if len == 0 || args.length() == 0 {
-              return Value::Number(-1.0)
-            }
-            let search_val = @runtime.to_number(args[0])
-            let from_idx = if args.length() > 1 {
-              let f = @runtime.to_number(args[1]).to_int()
-              if f < 0 {
-                let r = len + f
-                if r < 0 {
-                  0
-                } else {
-                  r
-                }
-              } else {
-                f
-              }
-            } else {
-              0
-            }
-            for i = from_idx; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              match elem {
-                Value::Number(n) =>
-                  if n == search_val {
-                    return Value::Number(i.to_double())
-                  }
-                _ => ()
-              }
-            }
-            Value::Number(-1.0)
-          } else {
-            Value::Number(-1.0)
-          }
-        _ => Value::Number(-1.0)
+      let (data, _) = validate_typed_array(this_val, "indexOf")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      if len == 0 || args.length() == 0 {
+        return Value::Number(-1.0)
+      }
+      let search_val = @runtime.to_number(args[0])
+      let from_idx = if args.length() > 1 {
+        let f = @runtime.to_number(args[1]).to_int()
+        if f < 0 {
+          let r = len + f
+          if r < 0 {
+            0
+          } else {
+            r
+          }
+        } else {
+          f
+        }
+      } else {
+        0
+      }
+      for i = from_idx; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        match elem {
+          Value::Number(n) =>
+            if n == search_val {
+              return Value::Number(i.to_double())
+            }
+          _ => ()
+        }
+      }
+      Value::Number(-1.0)
     },
   )
 
@@ -1067,45 +1055,38 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="lastIndexOf",
     length=1,
     fn(this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            if len == 0 || args.length() == 0 {
-              return Value::Number(-1.0)
-            }
-            let search_val = @runtime.to_number(args[0])
-            let from_idx = if args.length() > 1 {
-              let f = @runtime.to_number(args[1]).to_int()
-              if f < 0 {
-                len + f
-              } else if f >= len {
-                len - 1
-              } else {
-                f
-              }
-            } else {
-              len - 1
-            }
-            for i = from_idx; i >= 0; i = i - 1 {
-              let elem = typedarray_get_index(data, i)
-              match elem {
-                Value::Number(n) =>
-                  if n == search_val {
-                    return Value::Number(i.to_double())
-                  }
-                _ => ()
-              }
-            }
-            Value::Number(-1.0)
-          } else {
-            Value::Number(-1.0)
-          }
-        _ => Value::Number(-1.0)
+      let (data, _) = validate_typed_array(this_val, "lastIndexOf")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      if len == 0 || args.length() == 0 {
+        return Value::Number(-1.0)
+      }
+      let search_val = @runtime.to_number(args[0])
+      let from_idx = if args.length() > 1 {
+        let f = @runtime.to_number(args[1]).to_int()
+        if f < 0 {
+          len + f
+        } else if f >= len {
+          len - 1
+        } else {
+          f
+        }
+      } else {
+        len - 1
+      }
+      for i = from_idx; i >= 0; i = i - 1 {
+        let elem = typedarray_get_index(data, i)
+        match elem {
+          Value::Number(n) =>
+            if n == search_val {
+              return Value::Number(i.to_double())
+            }
+          _ => ()
+        }
+      }
+      Value::Number(-1.0)
     },
   )
 
@@ -1114,48 +1095,41 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="includes",
     length=1,
     fn(this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            if len == 0 || args.length() == 0 {
-              return Value::Bool(false)
-            }
-            let search_val = @runtime.to_number(args[0])
-            let from_idx = if args.length() > 1 {
-              let f = @runtime.to_number(args[1]).to_int()
-              if f < 0 {
-                let r = len + f
-                if r < 0 {
-                  0
-                } else {
-                  r
-                }
-              } else {
-                f
-              }
-            } else {
-              0
-            }
-            for i = from_idx; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              match elem {
-                Value::Number(n) =>
-                  if n == search_val || (n.is_nan() && search_val.is_nan()) {
-                    return Value::Bool(true)
-                  }
-                _ => ()
-              }
-            }
-            Value::Bool(false)
-          } else {
-            Value::Bool(false)
-          }
-        _ => Value::Bool(false)
+      let (data, _) = validate_typed_array(this_val, "includes")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      if len == 0 || args.length() == 0 {
+        return Value::Bool(false)
+      }
+      let search_val = @runtime.to_number(args[0])
+      let from_idx = if args.length() > 1 {
+        let f = @runtime.to_number(args[1]).to_int()
+        if f < 0 {
+          let r = len + f
+          if r < 0 {
+            0
+          } else {
+            r
+          }
+        } else {
+          f
+        }
+      } else {
+        0
+      }
+      for i = from_idx; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        match elem {
+          Value::Number(n) =>
+            if n == search_val || (n.is_nan() && search_val.is_nan()) {
+              return Value::Bool(true)
+            }
+          _ => ()
+        }
+      }
+      Value::Bool(false)
     },
   )
 
@@ -1163,64 +1137,50 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   ta_proto_props["join"] = @runtime.make_method_func(name="join", length=1, fn(
     this_val,
     args,
-  ) {
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          let len = match data.bag.properties.get("[[ArrayLength]]") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-          let sep = if args.length() > 0 {
-            match args[0] {
-              Undefined => ","
-              _ => args[0].to_string()
-            }
-          } else {
-            ","
-          }
-          let buf = StringBuilder::new()
-          for i = 0; i < len; i = i + 1 {
-            if i > 0 {
-              buf.write_string(sep)
-            }
-            let elem = typedarray_get_index(data, i)
-            buf.write_string(elem.to_string())
-          }
-          Value::String_(buf.to_string())
-        } else {
-          Value::String_("")
-        }
-      _ => Value::String_("")
+  ) raise {
+    let (data, _) = validate_typed_array(this_val, "join")
+    let len = match data.bag.properties.get("[[ArrayLength]]") {
+      Some(Value::Number(n)) => n.to_int()
+      _ => 0
     }
+    let sep = if args.length() > 0 {
+      match args[0] {
+        Undefined => ","
+        _ => args[0].to_string()
+      }
+    } else {
+      ","
+    }
+    let buf = StringBuilder::new()
+    for i = 0; i < len; i = i + 1 {
+      if i > 0 {
+        buf.write_string(sep)
+      }
+      let elem = typedarray_get_index(data, i)
+      buf.write_string(elem.to_string())
+    }
+    Value::String_(buf.to_string())
   })
 
   // toString - delegates to join
   ta_proto_props["toString"] = @runtime.make_method_func(
     name="toString",
     length=0,
-    fn(this_val, _args) {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let buf = StringBuilder::new()
-            for i = 0; i < len; i = i + 1 {
-              if i > 0 {
-                buf.write_string(",")
-              }
-              let elem = typedarray_get_index(data, i)
-              buf.write_string(elem.to_string())
-            }
-            Value::String_(buf.to_string())
-          } else {
-            Value::String_("[object Object]")
-          }
-        _ => Value::String_("[object Object]")
+    fn(this_val, _args) raise {
+      let (data, _) = validate_typed_array(this_val, "toString")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      let buf = StringBuilder::new()
+      for i = 0; i < len; i = i + 1 {
+        if i > 0 {
+          buf.write_string(",")
+        }
+        let elem = typedarray_get_index(data, i)
+        buf.write_string(elem.to_string())
+      }
+      Value::String_(buf.to_string())
     },
   )
 
@@ -1228,38 +1188,31 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   ta_proto_props["reverse"] = @runtime.make_method_func(
     name="reverse",
     length=0,
-    fn(this_val, _args) {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let mut lo = 0
-            let mut hi = len - 1
-            while lo < hi {
-              let lo_val = typedarray_get_index(data, lo)
-              let hi_val = typedarray_get_index(data, hi)
-              let lo_num = match lo_val {
-                Value::Number(n) => n
-                _ => 0.0
-              }
-              let hi_num = match hi_val {
-                Value::Number(n) => n
-                _ => 0.0
-              }
-              typedarray_set_index(data, lo, hi_num)
-              typedarray_set_index(data, hi, lo_num)
-              lo = lo + 1
-              hi = hi - 1
-            }
-            this_val
-          } else {
-            this_val
-          }
-        _ => this_val
+    fn(this_val, _args) raise {
+      let (data, _) = validate_typed_array(this_val, "reverse")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      let mut lo = 0
+      let mut hi = len - 1
+      while lo < hi {
+        let lo_val = typedarray_get_index(data, lo)
+        let hi_val = typedarray_get_index(data, hi)
+        let lo_num = match lo_val {
+          Value::Number(n) => n
+          _ => 0.0
+        }
+        let hi_num = match hi_val {
+          Value::Number(n) => n
+          _ => 0.0
+        }
+        typedarray_set_index(data, lo, hi_num)
+        typedarray_set_index(data, hi, lo_num)
+        lo = lo + 1
+        hi = hi - 1
+      }
+      this_val
     },
   )
 
@@ -1268,105 +1221,98 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="sort",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            // Read all elements into temp array
-            let temp : Array[Double] = []
-            for i = 0; i < len; i = i + 1 {
-              let val = typedarray_get_index(data, i)
-              match val {
-                Value::Number(n) => temp.push(n)
-                _ => temp.push(0.0)
-              }
-            }
-            let has_comparefn = args.length() > 0 && !(args[0] is Undefined)
-            let mut caught_error : Error? = None
-            if has_comparefn {
-              let comparefn = args[0]
-              let loc = @token.Loc::default()
-              temp.sort_by(fn(a, b) {
-                if caught_error is Some(_) {
-                  return 0
-                }
-                let result = interp.call_value(
-                  comparefn,
-                  Undefined,
-                  [Value::Number(a), Value::Number(b)],
-                  loc,
-                ) catch {
-                  e => {
-                    caught_error = Some(e)
-                    return 0
-                  }
-                }
-                let cmp = @runtime.to_number(result) catch {
-                  e => {
-                    caught_error = Some(e)
-                    return 0
-                  }
-                }
-                if cmp.is_nan() {
-                  0
-                } else if cmp < 0.0 {
-                  -1
-                } else if cmp > 0.0 {
-                  1
-                } else {
-                  0
-                }
-              })
-            } else {
-              // Default numeric sort per spec: NaN sorts last, -0 < +0
-              temp.sort_by(fn(a, b) {
-                if a.is_nan() && b.is_nan() {
-                  return 0
-                }
-                if a.is_nan() {
-                  return 1
-                }
-                if b.is_nan() {
-                  return -1
-                }
-                if a == 0.0 && b == 0.0 {
-                  // Distinguish -0 and +0: -0 < +0
-                  let a_neg = 1.0 / a < 0.0
-                  let b_neg = 1.0 / b < 0.0
-                  if a_neg && !b_neg {
-                    return -1
-                  }
-                  if !a_neg && b_neg {
-                    return 1
-                  }
-                  return 0
-                }
-                if a < b {
-                  -1
-                } else if a > b {
-                  1
-                } else {
-                  0
-                }
-              })
-            }
-            match caught_error {
-              Some(e) => raise e
-              None => ()
-            }
-            // Write sorted elements back
-            for i = 0; i < len; i = i + 1 {
-              typedarray_set_index(data, i, temp[i])
-            }
-            this_val
-          } else {
-            this_val
-          }
-        _ => this_val
+      let (data, _) = validate_typed_array(this_val, "sort")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      // Read all elements into temp array
+      let temp : Array[Double] = []
+      for i = 0; i < len; i = i + 1 {
+        let val = typedarray_get_index(data, i)
+        match val {
+          Value::Number(n) => temp.push(n)
+          _ => temp.push(0.0)
+        }
+      }
+      let has_comparefn = args.length() > 0 && !(args[0] is Undefined)
+      let mut caught_error : Error? = None
+      if has_comparefn {
+        let comparefn = args[0]
+        let loc = @token.Loc::default()
+        temp.sort_by(fn(a, b) {
+          if caught_error is Some(_) {
+            return 0
+          }
+          let result = interp.call_value(
+            comparefn,
+            Undefined,
+            [Value::Number(a), Value::Number(b)],
+            loc,
+          ) catch {
+            e => {
+              caught_error = Some(e)
+              return 0
+            }
+          }
+          let cmp = @runtime.to_number(result) catch {
+            e => {
+              caught_error = Some(e)
+              return 0
+            }
+          }
+          if cmp.is_nan() {
+            0
+          } else if cmp < 0.0 {
+            -1
+          } else if cmp > 0.0 {
+            1
+          } else {
+            0
+          }
+        })
+      } else {
+        // Default numeric sort per spec: NaN sorts last, -0 < +0
+        temp.sort_by(fn(a, b) {
+          if a.is_nan() && b.is_nan() {
+            return 0
+          }
+          if a.is_nan() {
+            return 1
+          }
+          if b.is_nan() {
+            return -1
+          }
+          if a == 0.0 && b == 0.0 {
+            // Distinguish -0 and +0: -0 < +0
+            let a_neg = 1.0 / a < 0.0
+            let b_neg = 1.0 / b < 0.0
+            if a_neg && !b_neg {
+              return -1
+            }
+            if !a_neg && b_neg {
+              return 1
+            }
+            return 0
+          }
+          if a < b {
+            -1
+          } else if a > b {
+            1
+          } else {
+            0
+          }
+        })
+      }
+      match caught_error {
+        Some(e) => raise e
+        None => ()
+      }
+      // Write sorted elements back
+      for i = 0; i < len; i = i + 1 {
+        typedarray_set_index(data, i, temp[i])
+      }
+      this_val
     },
   )
 
@@ -1375,28 +1321,21 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     this_val,
     args,
   ) raise {
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          let len = match data.bag.properties.get("[[ArrayLength]]") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-          let idx = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
-          } else {
-            0
-          }
-          let actual_idx = if idx < 0 { len + idx } else { idx }
-          if actual_idx < 0 || actual_idx >= len {
-            Undefined
-          } else {
-            typedarray_get_index(data, actual_idx)
-          }
-        } else {
-          Undefined
-        }
-      _ => Undefined
+    let (data, _) = validate_typed_array(this_val, "at")
+    let len = match data.bag.properties.get("[[ArrayLength]]") {
+      Some(Value::Number(n)) => n.to_int()
+      _ => 0
+    }
+    let idx = if args.length() > 0 {
+      @runtime.to_number(args[0]).to_int()
+    } else {
+      0
+    }
+    let actual_idx = if idx < 0 { len + idx } else { idx }
+    if actual_idx < 0 || actual_idx >= len {
+      Undefined
+    } else {
+      typedarray_get_index(data, actual_idx)
     }
   })
 
@@ -1404,98 +1343,84 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   ta_proto_props["entries"] = @runtime.make_method_func(
     name="entries",
     length=0,
-    fn(this_val, _args) {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let index_ref : Ref[Int] = { val: 0 }
-            let next_method = @runtime.make_native_func(name="next", fn(
-              _a,
-            ) raise {
-              // Re-check detachment and length on each next() call per spec
-              let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
-                Some(Value::Number(n)) => n.to_int()
-                _ => -1
-              }
-              if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
-                raise @errors.TypeError(
-                  message="Cannot iterate over a detached ArrayBuffer",
-                )
-              }
-              let len = match data.bag.properties.get("[[ArrayLength]]") {
-                Some(Value::Number(n)) => n.to_int()
-                _ => 0
-              }
-              let idx = index_ref.val
-              if idx < len {
-                let value = typedarray_get_index(data, idx)
-                index_ref.val = idx + 1
-                let pair = @runtime.make_array([
-                  Value::Number(idx.to_double()),
-                  value,
-                ])
-                let result_props : Map[String, Value] = {}
-                result_props["value"] = pair
-                result_props["done"] = Value::Bool(false)
-                Value::Object({
-                  bag: {
-                    properties: result_props,
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
-                  },
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  extensible: true,
-                })
-              } else {
-                let result_props : Map[String, Value] = {}
-                result_props["value"] = Undefined
-                result_props["done"] = Value::Bool(true)
-                Value::Object({
-                  bag: {
-                    properties: result_props,
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
-                  },
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  extensible: true,
-                })
-              }
-            })
-            let iter_props : Map[String, Value] = {}
-            iter_props["next"] = next_method
-            let iter_sym_props : Map[Int, Value] = {}
-            iter_sym_props[iterator_sym.id] = Value::Object({
-              bag: @runtime.PropertyBag(),
-              prototype: Null,
-              callable: Some(
-                MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
-              ),
-              class_name: "Function",
-              extensible: true,
-            })
-            Value::Object({
-              bag: {
-                properties: iter_props,
-                symbol_properties: iter_sym_props,
-                descriptors: {},
-                symbol_descriptors: {},
-              },
-              prototype: Null,
-              callable: None,
-              class_name: "Array Iterator",
-              extensible: true,
-            })
-          } else {
-            Undefined
-          }
-        _ => Undefined
-      }
+    fn(this_val, _args) raise {
+      let (data, _) = validate_typed_array(this_val, "entries")
+      let index_ref : Ref[Int] = { val: 0 }
+      let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
+        // Re-check detachment and length on each next() call per spec
+        let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+          Some(Value::Number(n)) => n.to_int()
+          _ => -1
+        }
+        if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+          raise @errors.TypeError(
+            message="Cannot iterate over a detached ArrayBuffer",
+          )
+        }
+        let len = match data.bag.properties.get("[[ArrayLength]]") {
+          Some(Value::Number(n)) => n.to_int()
+          _ => 0
+        }
+        let idx = index_ref.val
+        if idx < len {
+          let value = typedarray_get_index(data, idx)
+          index_ref.val = idx + 1
+          let pair = @runtime.make_array([Value::Number(idx.to_double()), value])
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = pair
+          result_props["done"] = Value::Bool(false)
+          Value::Object({
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            extensible: true,
+          })
+        } else {
+          let result_props : Map[String, Value] = {}
+          result_props["value"] = Undefined
+          result_props["done"] = Value::Bool(true)
+          Value::Object({
+            bag: {
+              properties: result_props,
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            extensible: true,
+          })
+        }
+      })
+      let iter_props : Map[String, Value] = {}
+      iter_props["next"] = next_method
+      let iter_sym_props : Map[Int, Value] = {}
+      iter_sym_props[iterator_sym.id] = Value::Object({
+        bag: @runtime.PropertyBag(),
+        prototype: Null,
+        callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
+        class_name: "Function",
+        extensible: true,
+      })
+      Value::Object({
+        bag: {
+          properties: iter_props,
+          symbol_properties: iter_sym_props,
+          descriptors: {},
+          symbol_descriptors: {},
+        },
+        prototype: Null,
+        callable: None,
+        class_name: "Array Iterator",
+        extensible: true,
+      })
     },
   )
 
@@ -1503,187 +1428,165 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   ta_proto_props["keys"] = @runtime.make_method_func(name="keys", length=0, fn(
     this_val,
     _args,
-  ) {
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          let index_ref : Ref[Int] = { val: 0 }
-          let next_method = @runtime.make_native_func(name="next", fn(
-            _a,
-          ) raise {
-            // Re-check detachment and length on each next() call per spec
-            let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => -1
-            }
-            if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
-              raise @errors.TypeError(
-                message="Cannot iterate over a detached ArrayBuffer",
-              )
-            }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let idx = index_ref.val
-            if idx < len {
-              index_ref.val = idx + 1
-              let result_props : Map[String, Value] = {}
-              result_props["value"] = Value::Number(idx.to_double())
-              result_props["done"] = Value::Bool(false)
-              Value::Object({
-                bag: {
-                  properties: result_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                },
-                prototype: Null,
-                callable: None,
-                class_name: "Object",
-                extensible: true,
-              })
-            } else {
-              let result_props : Map[String, Value] = {}
-              result_props["value"] = Undefined
-              result_props["done"] = Value::Bool(true)
-              Value::Object({
-                bag: {
-                  properties: result_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                },
-                prototype: Null,
-                callable: None,
-                class_name: "Object",
-                extensible: true,
-              })
-            }
-          })
-          let iter_props : Map[String, Value] = {}
-          iter_props["next"] = next_method
-          let iter_sym_props : Map[Int, Value] = {}
-          iter_sym_props[iterator_sym.id] = Value::Object({
-            bag: @runtime.PropertyBag(),
-            prototype: Null,
-            callable: Some(
-              MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
-            ),
-            class_name: "Function",
-            extensible: true,
-          })
-          Value::Object({
-            bag: {
-              properties: iter_props,
-              symbol_properties: iter_sym_props,
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Array Iterator",
-            extensible: true,
-          })
-        } else {
-          Undefined
-        }
-      _ => Undefined
-    }
+  ) raise {
+    let (data, _) = validate_typed_array(this_val, "keys")
+    let index_ref : Ref[Int] = { val: 0 }
+    let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
+      // Re-check detachment and length on each next() call per spec
+      let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => -1
+      }
+      if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+        raise @errors.TypeError(
+          message="Cannot iterate over a detached ArrayBuffer",
+        )
+      }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let idx = index_ref.val
+      if idx < len {
+        index_ref.val = idx + 1
+        let result_props : Map[String, Value] = {}
+        result_props["value"] = Value::Number(idx.to_double())
+        result_props["done"] = Value::Bool(false)
+        Value::Object({
+          bag: {
+            properties: result_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          extensible: true,
+        })
+      } else {
+        let result_props : Map[String, Value] = {}
+        result_props["value"] = Undefined
+        result_props["done"] = Value::Bool(true)
+        Value::Object({
+          bag: {
+            properties: result_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          extensible: true,
+        })
+      }
+    })
+    let iter_props : Map[String, Value] = {}
+    iter_props["next"] = next_method
+    let iter_sym_props : Map[Int, Value] = {}
+    iter_sym_props[iterator_sym.id] = Value::Object({
+      bag: @runtime.PropertyBag(),
+      prototype: Null,
+      callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
+      class_name: "Function",
+      extensible: true,
+    })
+    Value::Object({
+      bag: {
+        properties: iter_props,
+        symbol_properties: iter_sym_props,
+        descriptors: {},
+        symbol_descriptors: {},
+      },
+      prototype: Null,
+      callable: None,
+      class_name: "Array Iterator",
+      extensible: true,
+    })
   })
 
   // values() - returns an iterator of values (same as [Symbol.iterator])
   let values_fn = @runtime.make_method_func(name="values", length=0, fn(
     this_val,
     _args,
-  ) {
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          let index_ref : Ref[Int] = { val: 0 }
-          let next_method = @runtime.make_native_func(name="next", fn(
-            _a,
-          ) raise {
-            // Re-check detachment and length on each next() call per spec
-            let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => -1
-            }
-            if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
-              raise @errors.TypeError(
-                message="Cannot iterate over a detached ArrayBuffer",
-              )
-            }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let idx = index_ref.val
-            if idx < len {
-              let value = typedarray_get_index(data, idx)
-              index_ref.val = idx + 1
-              let result_props : Map[String, Value] = {}
-              result_props["value"] = value
-              result_props["done"] = Value::Bool(false)
-              Value::Object({
-                bag: {
-                  properties: result_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                },
-                prototype: Null,
-                callable: None,
-                class_name: "Object",
-                extensible: true,
-              })
-            } else {
-              let result_props : Map[String, Value] = {}
-              result_props["value"] = Undefined
-              result_props["done"] = Value::Bool(true)
-              Value::Object({
-                bag: {
-                  properties: result_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                },
-                prototype: Null,
-                callable: None,
-                class_name: "Object",
-                extensible: true,
-              })
-            }
-          })
-          let iter_props : Map[String, Value] = {}
-          iter_props["next"] = next_method
-          let iter_sym_props : Map[Int, Value] = {}
-          iter_sym_props[iterator_sym.id] = Value::Object({
-            bag: @runtime.PropertyBag(),
-            prototype: Null,
-            callable: Some(
-              MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv }),
-            ),
-            class_name: "Function",
-            extensible: true,
-          })
-          Value::Object({
-            bag: {
-              properties: iter_props,
-              symbol_properties: iter_sym_props,
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Array Iterator",
-            extensible: true,
-          })
-        } else {
-          Undefined
-        }
-      _ => Undefined
-    }
+  ) raise {
+    let (data, _) = validate_typed_array(this_val, "values")
+    let index_ref : Ref[Int] = { val: 0 }
+    let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
+      // Re-check detachment and length on each next() call per spec
+      let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => -1
+      }
+      if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+        raise @errors.TypeError(
+          message="Cannot iterate over a detached ArrayBuffer",
+        )
+      }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let idx = index_ref.val
+      if idx < len {
+        let value = typedarray_get_index(data, idx)
+        index_ref.val = idx + 1
+        let result_props : Map[String, Value] = {}
+        result_props["value"] = value
+        result_props["done"] = Value::Bool(false)
+        Value::Object({
+          bag: {
+            properties: result_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          extensible: true,
+        })
+      } else {
+        let result_props : Map[String, Value] = {}
+        result_props["value"] = Undefined
+        result_props["done"] = Value::Bool(true)
+        Value::Object({
+          bag: {
+            properties: result_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
+          prototype: Null,
+          callable: None,
+          class_name: "Object",
+          extensible: true,
+        })
+      }
+    })
+    let iter_props : Map[String, Value] = {}
+    iter_props["next"] = next_method
+    let iter_sym_props : Map[Int, Value] = {}
+    iter_sym_props[iterator_sym.id] = Value::Object({
+      bag: @runtime.PropertyBag(),
+      prototype: Null,
+      callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
+      class_name: "Function",
+      extensible: true,
+    })
+    Value::Object({
+      bag: {
+        properties: iter_props,
+        symbol_properties: iter_sym_props,
+        descriptors: {},
+        symbol_descriptors: {},
+      },
+      prototype: Null,
+      callable: None,
+      class_name: "Array Iterator",
+      extensible: true,
+    })
   })
   ta_proto_props["values"] = values_fn
 
@@ -1692,37 +1595,27 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="forEach",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="forEach requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            for i = 0; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              let _ = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-            }
-            Undefined
-          } else {
-            raise @errors.TypeError(message="forEach called on non-TypedArray")
-          }
-        _ => raise @errors.TypeError(message="forEach called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "forEach")
+      if args.length() == 0 {
+        raise @errors.TypeError(message="forEach requires a callback function")
       }
+      let callback = args[0]
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      for i = 0; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        let _ = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+      }
+      Undefined
     },
   )
 
@@ -1731,49 +1624,39 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="map",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="map requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            let result = make_typedarray_object(
-              data.class_name,
-              len,
-              data.prototype,
-              env,
-            )
-            match result {
-              Object(result_data) =>
-                for i = 0; i < len; i = i + 1 {
-                  let elem = typedarray_get_index(data, i)
-                  let mapped = interp.call_value(
-                    callback,
-                    this_arg,
-                    [elem, Value::Number(i.to_double()), this_val],
-                    loc,
-                  )
-                  let num = @runtime.to_number(mapped)
-                  typedarray_set_index(result_data, i, num)
-                }
-              _ => ()
-            }
-            result
-          } else {
-            raise @errors.TypeError(message="map called on non-TypedArray")
-          }
-        _ => raise @errors.TypeError(message="map called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "map")
+      if args.length() == 0 {
+        raise @errors.TypeError(message="map requires a callback function")
       }
+      let callback = args[0]
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      let result = make_typedarray_object(
+        data.class_name,
+        len,
+        data.prototype,
+        env,
+      )
+      match result {
+        Object(result_data) =>
+          for i = 0; i < len; i = i + 1 {
+            let elem = typedarray_get_index(data, i)
+            let mapped = interp.call_value(
+              callback,
+              this_arg,
+              [elem, Value::Number(i.to_double()), this_val],
+              loc,
+            )
+            let num = @runtime.to_number(mapped)
+            typedarray_set_index(result_data, i, num)
+          }
+        _ => ()
+      }
+      result
     },
   )
 
@@ -1782,57 +1665,47 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="filter",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="filter requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            let kept : Array[Double] = []
-            for i = 0; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              let result = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-              if @runtime.is_truthy(result) {
-                match elem {
-                  Value::Number(n) => kept.push(n)
-                  _ => kept.push(0.0)
-                }
-              }
-            }
-            let result = make_typedarray_object(
-              data.class_name,
-              kept.length(),
-              data.prototype,
-              env,
-            )
-            match result {
-              Object(result_data) =>
-                for i = 0; i < kept.length(); i = i + 1 {
-                  typedarray_set_index(result_data, i, kept[i])
-                }
-              _ => ()
-            }
-            result
-          } else {
-            raise @errors.TypeError(message="filter called on non-TypedArray")
-          }
-        _ => raise @errors.TypeError(message="filter called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "filter")
+      if args.length() == 0 {
+        raise @errors.TypeError(message="filter requires a callback function")
       }
+      let callback = args[0]
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      let kept : Array[Double] = []
+      for i = 0; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        let result = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+        if @runtime.is_truthy(result) {
+          match elem {
+            Value::Number(n) => kept.push(n)
+            _ => kept.push(0.0)
+          }
+        }
+      }
+      let result = make_typedarray_object(
+        data.class_name,
+        kept.length(),
+        data.prototype,
+        env,
+      )
+      match result {
+        Object(result_data) =>
+          for i = 0; i < kept.length(); i = i + 1 {
+            typedarray_set_index(result_data, i, kept[i])
+          }
+        _ => ()
+      }
+      result
     },
   )
 
@@ -1841,49 +1714,39 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="reduce",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="reduce requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            let mut accumulator : Value = Undefined
-            let mut start_idx = 0
-            if args.length() > 1 {
-              accumulator = args[1]
-            } else {
-              if len == 0 {
-                raise @errors.TypeError(
-                  message="Reduce of empty array with no initial value",
-                )
-              }
-              accumulator = typedarray_get_index(data, 0)
-              start_idx = 1
-            }
-            for i = start_idx; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              accumulator = interp.call_value(
-                callback,
-                Undefined,
-                [accumulator, elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-            }
-            accumulator
-          } else {
-            raise @errors.TypeError(message="reduce called on non-TypedArray")
-          }
-        _ => raise @errors.TypeError(message="reduce called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "reduce")
+      if args.length() == 0 {
+        raise @errors.TypeError(message="reduce requires a callback function")
       }
+      let callback = args[0]
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      let mut accumulator : Value = Undefined
+      let mut start_idx = 0
+      if args.length() > 1 {
+        accumulator = args[1]
+      } else {
+        if len == 0 {
+          raise @errors.TypeError(
+            message="Reduce of empty array with no initial value",
+          )
+        }
+        accumulator = typedarray_get_index(data, 0)
+        start_idx = 1
+      }
+      for i = start_idx; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        accumulator = interp.call_value(
+          callback,
+          Undefined,
+          [accumulator, elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+      }
+      accumulator
     },
   )
 
@@ -1892,54 +1755,41 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="reduceRight",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="reduceRight requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            let mut accumulator : Value = Undefined
-            let mut start_idx = len - 1
-            if args.length() > 1 {
-              accumulator = args[1]
-            } else {
-              if len == 0 {
-                raise @errors.TypeError(
-                  message="Reduce of empty array with no initial value",
-                )
-              }
-              accumulator = typedarray_get_index(data, len - 1)
-              start_idx = len - 2
-            }
-            for i = start_idx; i >= 0; i = i - 1 {
-              let elem = typedarray_get_index(data, i)
-              accumulator = interp.call_value(
-                callback,
-                Undefined,
-                [accumulator, elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-            }
-            accumulator
-          } else {
-            raise @errors.TypeError(
-              message="reduceRight called on non-TypedArray",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="reduceRight called on non-TypedArray",
-          )
+      let (data, _) = validate_typed_array(this_val, "reduceRight")
+      if args.length() == 0 {
+        raise @errors.TypeError(
+          message="reduceRight requires a callback function",
+        )
       }
+      let callback = args[0]
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      let mut accumulator : Value = Undefined
+      let mut start_idx = len - 1
+      if args.length() > 1 {
+        accumulator = args[1]
+      } else {
+        if len == 0 {
+          raise @errors.TypeError(
+            message="Reduce of empty array with no initial value",
+          )
+        }
+        accumulator = typedarray_get_index(data, len - 1)
+        start_idx = len - 2
+      }
+      for i = start_idx; i >= 0; i = i - 1 {
+        let elem = typedarray_get_index(data, i)
+        accumulator = interp.call_value(
+          callback,
+          Undefined,
+          [accumulator, elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+      }
+      accumulator
     },
   )
 
@@ -1948,40 +1798,30 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="every",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="every requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            for i = 0; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              let result = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-              if !@runtime.is_truthy(result) {
-                return Value::Bool(false)
-              }
-            }
-            Value::Bool(true)
-          } else {
-            raise @errors.TypeError(message="every called on non-TypedArray")
-          }
-        _ => raise @errors.TypeError(message="every called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "every")
+      if args.length() == 0 {
+        raise @errors.TypeError(message="every requires a callback function")
       }
+      let callback = args[0]
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      for i = 0; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        let result = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+        if !@runtime.is_truthy(result) {
+          return Value::Bool(false)
+        }
+      }
+      Value::Bool(true)
     },
   )
 
@@ -1990,40 +1830,30 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="some",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="some requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            for i = 0; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              let result = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-              if @runtime.is_truthy(result) {
-                return Value::Bool(true)
-              }
-            }
-            Value::Bool(false)
-          } else {
-            raise @errors.TypeError(message="some called on non-TypedArray")
-          }
-        _ => raise @errors.TypeError(message="some called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "some")
+      if args.length() == 0 {
+        raise @errors.TypeError(message="some requires a callback function")
       }
+      let callback = args[0]
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      for i = 0; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        let result = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+        if @runtime.is_truthy(result) {
+          return Value::Bool(true)
+        }
+      }
+      Value::Bool(false)
     },
   )
 
@@ -2032,40 +1862,30 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="find",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="find requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            for i = 0; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              let result = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-              if @runtime.is_truthy(result) {
-                return elem
-              }
-            }
-            Undefined
-          } else {
-            raise @errors.TypeError(message="find called on non-TypedArray")
-          }
-        _ => raise @errors.TypeError(message="find called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "find")
+      if args.length() == 0 {
+        raise @errors.TypeError(message="find requires a callback function")
       }
+      let callback = args[0]
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      for i = 0; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        let result = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+        if @runtime.is_truthy(result) {
+          return elem
+        }
+      }
+      Undefined
     },
   )
 
@@ -2074,43 +1894,32 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     name="findIndex",
     length=1,
     fn(interp, this_val, args) raise {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            validate_typedarray_buffer(data)
-            if args.length() == 0 {
-              raise @errors.TypeError(
-                message="findIndex requires a callback function",
-              )
-            }
-            let callback = args[0]
-            let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let loc = @token.Loc::default()
-            for i = 0; i < len; i = i + 1 {
-              let elem = typedarray_get_index(data, i)
-              let result = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-              if @runtime.is_truthy(result) {
-                return Value::Number(i.to_double())
-              }
-            }
-            Value::Number(-1.0)
-          } else {
-            raise @errors.TypeError(
-              message="findIndex called on non-TypedArray",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(message="findIndex called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "findIndex")
+      if args.length() == 0 {
+        raise @errors.TypeError(
+          message="findIndex requires a callback function",
+        )
       }
+      let callback = args[0]
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let loc = @token.Loc::default()
+      for i = 0; i < len; i = i + 1 {
+        let elem = typedarray_get_index(data, i)
+        let result = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+        if @runtime.is_truthy(result) {
+          return Value::Number(i.to_double())
+        }
+      }
+      Value::Number(-1.0)
     },
   )
 
@@ -2121,32 +1930,24 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       let callback = if args.length() > 0 { args[0] } else { Undefined }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            for i = len - 1; i >= 0; i = i - 1 {
-              let elem = typedarray_get_index(data, i)
-              let result = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-              if @runtime.is_truthy(result) {
-                return elem
-              }
-            }
-            Undefined
-          } else {
-            raise @errors.TypeError(message="findLast called on non-TypedArray")
-          }
-        _ =>
-          raise @errors.TypeError(message="findLast called on non-TypedArray")
+      let (data, _) = validate_typed_array(this_val, "findLast")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      for i = len - 1; i >= 0; i = i - 1 {
+        let elem = typedarray_get_index(data, i)
+        let result = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+        if @runtime.is_truthy(result) {
+          return elem
+        }
+      }
+      Undefined
     },
   )
 
@@ -2157,75 +1958,51 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       let callback = if args.length() > 0 { args[0] } else { Undefined }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            for i = len - 1; i >= 0; i = i - 1 {
-              let elem = typedarray_get_index(data, i)
-              let result = interp.call_value(
-                callback,
-                this_arg,
-                [elem, Value::Number(i.to_double()), this_val],
-                loc,
-              )
-              if @runtime.is_truthy(result) {
-                return Value::Number(i.to_double())
-              }
-            }
-            Value::Number(-1.0)
-          } else {
-            raise @errors.TypeError(
-              message="findLastIndex called on non-TypedArray",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="findLastIndex called on non-TypedArray",
-          )
+      let (data, _) = validate_typed_array(this_val, "findLastIndex")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      for i = len - 1; i >= 0; i = i - 1 {
+        let elem = typedarray_get_index(data, i)
+        let result = interp.call_value(
+          callback,
+          this_arg,
+          [elem, Value::Number(i.to_double()), this_val],
+          loc,
+        )
+        if @runtime.is_truthy(result) {
+          return Value::Number(i.to_double())
+        }
+      }
+      Value::Number(-1.0)
     },
   )
 
   ta_proto_props["toReversed"] = @runtime.make_method_func(
     name="toReversed",
     length=0,
-    fn(this_val, _args) {
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
-              _ => 0
-            }
-            let proto = data.prototype
-            let new_ta = make_typedarray_object(
-              data.class_name,
-              len,
-              proto,
-              env,
-            )
-            match new_ta {
-              Object(new_data) =>
-                for i = 0; i < len; i = i + 1 {
-                  let val = typedarray_get_index(data, len - 1 - i)
-                  let num = match val {
-                    Value::Number(n) => n
-                    _ => 0.0
-                  }
-                  typedarray_set_index(new_data, i, num)
-                }
-              _ => ()
-            }
-            new_ta
-          } else {
-            Undefined
-          }
-        _ => Undefined
+    fn(this_val, _args) raise {
+      let (data, _) = validate_typed_array(this_val, "toReversed")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
+      let proto = data.prototype
+      let new_ta = make_typedarray_object(data.class_name, len, proto, env)
+      match new_ta {
+        Object(new_data) =>
+          for i = 0; i < len; i = i + 1 {
+            let val = typedarray_get_index(data, len - 1 - i)
+            let num = match val {
+              Value::Number(n) => n
+              _ => 0.0
+            }
+            typedarray_set_index(new_data, i, num)
+          }
+        _ => ()
+      }
+      new_ta
     },
   )
 
@@ -2241,78 +2018,65 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       } else {
         None
       }
-      match this_val {
-        Object(data) =>
-          if is_typedarray_class(data.class_name) {
-            let len = match data.bag.properties.get("[[ArrayLength]]") {
-              Some(Value::Number(n)) => n.to_int()
+      let (data, _) = validate_typed_array(this_val, "toSorted")
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      // Collect elements
+      let elements : Array[Double] = []
+      for i = 0; i < len; i = i + 1 {
+        let val = typedarray_get_index(data, i)
+        match val {
+          Value::Number(n) => elements.push(n)
+          _ => elements.push(0.0)
+        }
+      }
+      let loc = @token.Loc::default()
+      match comparefn {
+        Some(cmp_fn) =>
+          elements.sort_by(fn(a, b) {
+            let result = interp.call_value(
+              cmp_fn,
+              Undefined,
+              [Value::Number(a), Value::Number(b)],
+              loc,
+            ) catch {
+              _ => Value::Number(0.0)
+            }
+            match result {
+              Value::Number(n) =>
+                if n < 0.0 {
+                  -1
+                } else if n > 0.0 {
+                  1
+                } else {
+                  0
+                }
               _ => 0
             }
-            // Collect elements
-            let elements : Array[Double] = []
-            for i = 0; i < len; i = i + 1 {
-              let val = typedarray_get_index(data, i)
-              match val {
-                Value::Number(n) => elements.push(n)
-                _ => elements.push(0.0)
-              }
+          })
+        None =>
+          elements.sort_by(fn(a, b) {
+            if a < b {
+              -1
+            } else if a > b {
+              1
+            } else {
+              0
             }
-            let loc = @token.Loc::default()
-            match comparefn {
-              Some(cmp_fn) =>
-                elements.sort_by(fn(a, b) {
-                  let result = interp.call_value(
-                    cmp_fn,
-                    Undefined,
-                    [Value::Number(a), Value::Number(b)],
-                    loc,
-                  ) catch {
-                    _ => Value::Number(0.0)
-                  }
-                  match result {
-                    Value::Number(n) =>
-                      if n < 0.0 {
-                        -1
-                      } else if n > 0.0 {
-                        1
-                      } else {
-                        0
-                      }
-                    _ => 0
-                  }
-                })
-              None =>
-                elements.sort_by(fn(a, b) {
-                  if a < b {
-                    -1
-                  } else if a > b {
-                    1
-                  } else {
-                    0
-                  }
-                })
-            }
-            let proto = data.prototype
-            let new_ta = make_typedarray_object(
-              data.class_name,
-              len,
-              proto,
-              env,
-            )
-            match new_ta {
-              Object(new_data) =>
-                for i = 0; i < len; i = i + 1 {
-                  typedarray_set_index(new_data, i, elements[i])
-                }
-              _ => ()
-            }
-            new_ta
-          } else {
-            raise @errors.TypeError(message="toSorted called on non-TypedArray")
-          }
-        _ =>
-          raise @errors.TypeError(message="toSorted called on non-TypedArray")
+          })
       }
+      let proto = data.prototype
+      let new_ta = make_typedarray_object(data.class_name, len, proto, env)
+      match new_ta {
+        Object(new_data) =>
+          for i = 0; i < len; i = i + 1 {
+            typedarray_set_index(new_data, i, elements[i])
+          }
+        _ => ()
+      }
+      new_ta
     },
   )
 
@@ -2322,44 +2086,37 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   ) raise {
     let index_val = if args.length() > 0 { args[0] } else { Undefined }
     let value_val = if args.length() > 1 { args[1] } else { Undefined }
-    match this_val {
-      Object(data) =>
-        if is_typedarray_class(data.class_name) {
-          let len = match data.bag.properties.get("[[ArrayLength]]") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-          let mut idx = @runtime.to_number(index_val).to_int()
-          if idx < 0 {
-            idx = len + idx
-          }
-          if idx < 0 || idx >= len {
-            raise @errors.RangeError(
-              message="Invalid index for TypedArray.prototype.with",
-            )
-          }
-          let proto = data.prototype
-          let new_ta = make_typedarray_object(data.class_name, len, proto, env)
-          match new_ta {
-            Object(new_data) => {
-              for i = 0; i < len; i = i + 1 {
-                let val = typedarray_get_index(data, i)
-                let num = match val {
-                  Value::Number(n) => n
-                  _ => 0.0
-                }
-                typedarray_set_index(new_data, i, num)
-              }
-              typedarray_set_index(new_data, idx, @runtime.to_number(value_val))
-            }
-            _ => ()
-          }
-          new_ta
-        } else {
-          raise @errors.TypeError(message="with called on non-TypedArray")
-        }
-      _ => raise @errors.TypeError(message="with called on non-TypedArray")
+    let (data, _) = validate_typed_array(this_val, "with")
+    let len = match data.bag.properties.get("[[ArrayLength]]") {
+      Some(Value::Number(n)) => n.to_int()
+      _ => 0
     }
+    let mut idx = @runtime.to_number(index_val).to_int()
+    if idx < 0 {
+      idx = len + idx
+    }
+    if idx < 0 || idx >= len {
+      raise @errors.RangeError(
+        message="Invalid index for TypedArray.prototype.with",
+      )
+    }
+    let proto = data.prototype
+    let new_ta = make_typedarray_object(data.class_name, len, proto, env)
+    match new_ta {
+      Object(new_data) => {
+        for i = 0; i < len; i = i + 1 {
+          let val = typedarray_get_index(data, i)
+          let num = match val {
+            Value::Number(n) => n
+            _ => 0.0
+          }
+          typedarray_set_index(new_data, i, num)
+        }
+        typedarray_set_index(new_data, idx, @runtime.to_number(value_val))
+      }
+      _ => ()
+    }
+    new_ta
   })
 
   // Mark all prototype methods as non-enumerable (per spec)
