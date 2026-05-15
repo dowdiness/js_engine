@@ -262,12 +262,21 @@ fn collect_block_var_decl_names_from_stmt(
           in_block~,
         )
       }
+    // ES262 §8.2.10 + §B.3.3: a FunctionDeclaration nested under control-flow
+    // (if, while, for, switch case, try/catch/finally, with, labeled-statement)
+    // is in a block-like context — per §B.3.4 each `if (...) FunctionDeclaration`
+    // parses as if it were `{ FunctionDeclaration }`. So nested FuncDecls count
+    // as LEXICAL bindings of that nested scope, NOT as var-declared names of
+    // the enclosing StatementList. We force `in_block=true` here regardless of
+    // the caller's flag so a top-level walk doesn't slip nested FuncDecls into
+    // var_names, which would spuriously collide with sibling `let`/`const`
+    // declarations during the lex/var conflict check.
     IfStmt(_, then_branch, else_branch, _) => {
       collect_block_var_decl_names_from_stmt(
         then_branch,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
       match else_branch {
         Some(eb) =>
@@ -275,7 +284,7 @@ fn collect_block_var_decl_names_from_stmt(
             eb,
             var_names,
             include_function_decls~,
-            in_block~,
+            in_block=true,
           )
         None => ()
       }
@@ -285,14 +294,14 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     DoWhileStmt(body, _, _) =>
       collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     ForStmt(init, _, _, body, _) => {
       match init {
@@ -301,7 +310,7 @@ fn collect_block_var_decl_names_from_stmt(
             init_stmt,
             var_names,
             include_function_decls~,
-            in_block~,
+            in_block=true,
           )
         None => ()
       }
@@ -309,7 +318,7 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     }
     ForInStmt(kind, name, _, body, _) => {
@@ -320,7 +329,7 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     }
     ForOfStmt(kind, name, _, body, _) => {
@@ -331,7 +340,7 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
@@ -342,7 +351,7 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     }
     ForOfStmtPat(kind, pattern, _, body, _) => {
@@ -353,7 +362,7 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     }
     ForInExpr(_, _, body, _) =>
@@ -361,15 +370,22 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     ForOfExpr(_, _, body, _) =>
       collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
+    // §B.3.2 LabelledStatement: a top-level `label: function f(){}` is the
+    // one §B.3.4 case where a labeled FunctionDeclaration is *allowed* and
+    // STILL participates in top-level VarDeclaredNames (so `function f`
+    // hoists out of the label). Mirror caller's `in_block` so a label
+    // sitting at the script top level keeps its FuncDecl counted, while a
+    // label inside a nested block stays block-scoped. The Annex B walker
+    // (`walk_eval_annex_b_stmt`) handles labeled FuncDecls separately.
     LabeledStmt(_, inner, _) =>
       collect_block_var_decl_names_from_stmt(
         inner,
@@ -384,7 +400,7 @@ fn collect_block_var_decl_names_from_stmt(
             inner,
             var_names,
             include_function_decls~,
-            in_block~,
+            in_block=true,
           )
         }
       }
@@ -394,7 +410,7 @@ fn collect_block_var_decl_names_from_stmt(
           inner,
           var_names,
           include_function_decls~,
-          in_block~,
+          in_block=true,
         )
       }
       match catch_body {
@@ -404,7 +420,7 @@ fn collect_block_var_decl_names_from_stmt(
               inner,
               var_names,
               include_function_decls~,
-              in_block~,
+              in_block=true,
             )
           }
         None => ()
@@ -416,7 +432,7 @@ fn collect_block_var_decl_names_from_stmt(
               inner,
               var_names,
               include_function_decls~,
-              in_block~,
+              in_block=true,
             )
           }
         None => ()
@@ -427,7 +443,7 @@ fn collect_block_var_decl_names_from_stmt(
         body,
         var_names,
         include_function_decls~,
-        in_block~,
+        in_block=true,
       )
     ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_block_var_decl_names_from_stmt(
@@ -1131,75 +1147,83 @@ fn collect_eval_var_names_from_stmt(
         None => ()
       }
     }
+    // §B.3.3.3 + §B.3.4: parallel to `collect_block_var_decl_names_from_stmt`,
+    // nested FuncDecls inside any control-flow body parse as if wrapped in
+    // `{ ... }` and therefore do NOT contribute to the eval source's
+    // var-declared-names walk. Force `in_block=true` regardless of caller.
     WhileStmt(_, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     DoWhileStmt(body, _, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     ForStmt(init, _, _, body, _) => {
       match init {
         Some(init_stmt) =>
-          collect_eval_var_names_from_stmt(init_stmt, names, in_block~)
+          collect_eval_var_names_from_stmt(init_stmt, names, in_block=true)
         None => ()
       }
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     }
     ForInStmt(kind, name, _, body, _) => {
       if kind == Some(VarKind) {
         names.push(name)
       }
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     }
     ForOfStmt(kind, name, _, body, _) => {
       if kind == Some(VarKind) {
         names.push(name)
       }
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
         collect_pattern_var_names(pattern, names)
       }
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     }
     ForOfStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
         collect_pattern_var_names(pattern, names)
       }
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     }
     ForInExpr(_, _, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     ForOfExpr(_, _, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
+    // §B.3.2 LabelledStatement: a top-level labeled FuncDecl participates in
+    // VarDeclaredNames per §B.3.4. Mirror caller's `in_block` flag so a label
+    // sitting at eval-script-top keeps its FuncDecl counted, while a label
+    // inside a nested block stays block-scoped.
     LabeledStmt(_, inner, _) =>
-      collect_eval_var_names_from_stmt(inner, names, in_block=true)
+      collect_eval_var_names_from_stmt(inner, names, in_block~)
     SwitchStmt(_, cases, _) =>
       for case_ in cases {
         for inner in case_.body {
-          collect_eval_var_names_from_stmt(inner, names, in_block~)
+          collect_eval_var_names_from_stmt(inner, names, in_block=true)
         }
       }
     TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
       for inner in try_body {
-        collect_eval_var_names_from_stmt(inner, names, in_block~)
+        collect_eval_var_names_from_stmt(inner, names, in_block=true)
       }
       match catch_body {
         Some(cb) =>
           for inner in cb {
-            collect_eval_var_names_from_stmt(inner, names, in_block~)
+            collect_eval_var_names_from_stmt(inner, names, in_block=true)
           }
         None => ()
       }
       match finally_body {
         Some(fb) =>
           for inner in fb {
-            collect_eval_var_names_from_stmt(inner, names, in_block~)
+            collect_eval_var_names_from_stmt(inner, names, in_block=true)
           }
         None => ()
       }
     }
     WithStmt(_, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block~)
+      collect_eval_var_names_from_stmt(body, names, in_block=true)
     ExportNamedDecl(Some(decl), _, _, _, _) =>
       collect_eval_var_names_from_stmt(decl, names, in_block~)
     _ => ()
@@ -1722,9 +1746,17 @@ fn walk_eval_annex_b_stmt(
       }
       let _ = stack.pop()
     }
-    // Per §B.3.4, the catch parameter is transparent for eval conflict
-    // checks — so try / catch-body / finally are each just nested Blocks.
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+    // §B.3.5 splits catch parameters in two: a simple BindingIdentifier
+    // `catch (f) { var f; }` is exempt and lets `f` flow through to the
+    // surrounding var scope, but a destructuring pattern like
+    // `catch ({ f }) { ... }` does NOT get the exemption — replacing the
+    // candidate `function f(){}` with `var f` would be a §B.3.5 SyntaxError,
+    // so §B.3.3.3 step 2.c.i requires we skip the extension. Push the
+    // catch's bound names as a lex frame around the catch body ONLY when
+    // the parameter is destructuring; an IdentPat catch param stays
+    // transparent. try-body and finally-body are always unaffected — only
+    // catch-body inherits the parameter binding.
+    TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
       walk_stmt_list_in_own_frame(
         interp,
         try_body,
@@ -1734,7 +1766,15 @@ fn walk_eval_annex_b_stmt(
         excluded~,
       )
       match catch_body {
-        Some(cb) =>
+        Some(cb) => {
+          let catch_frame : Map[String, Bool] = {}
+          match catch_param {
+            Some(IdentPat(_)) => () // §B.3.5 exemption: stay transparent
+            Some(pat) =>
+              walk_pattern_idents(pat, name => catch_frame[name] = true)
+            None => ()
+          }
+          stack.push(catch_frame)
           walk_stmt_list_in_own_frame(
             interp,
             cb,
@@ -1743,6 +1783,8 @@ fn walk_eval_annex_b_stmt(
             stack,
             excluded~,
           )
+          let _ = stack.pop()
+        }
         None => ()
       }
       match finally_body {

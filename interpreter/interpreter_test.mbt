@@ -10023,6 +10023,149 @@ test "annex-b eval: if-clause FunctionDeclaration hoists via B.3.4" {
 }
 
 ///|
+/// §B.3.3.3 step ii + §8.2.10: a FunctionDeclaration inside `if (...)` is
+/// in a block-like context (per §B.3.4 it parses as `{ FunctionDeclaration }`).
+/// At the eval top level, the FuncDecl in the if-branch must NOT count as a
+/// var-declared name for the lex/var conflict check — otherwise `let f =
+/// 123; if (true) function f() {}` raises a spurious "Identifier 'f' has
+/// already been declared". Cohort:
+/// `annexB/language/eval-code/direct/func-if-{decl,stmt}-*-eval-func-skip-early-err.js`
+/// (54 non-strict failures pre-fix).
+test "annex-b eval: if-branch FunctionDeclaration ignored by lex/var conflict check" {
+  let src =
+    #|var init, after;
+    #|(function() {
+    #|  eval(
+    #|    "let f = 123;" +
+    #|    "init = f;" +
+    #|    "if (true) function f() {} else function _f() {};" +
+    #|    "after = f;"
+    #|  );
+    #|}());
+    #|console.log(init, after);
+  let output = run_output_annex_b(src)
+  json_inspect(output, content=["123 123"])
+}
+
+///|
+/// Same shape, `const f` (no initializer-overwrite issue) — the early-error
+/// check must skip the if-branch FuncDecl whether the outer lexical is
+/// `let`, `const`, or `class`.
+test "annex-b eval: const conflicts with if-branch FunctionDeclaration are skipped" {
+  let src =
+    #|var observed;
+    #|(function() {
+    #|  eval(
+    #|    "const f = 'outer';" +
+    #|    "if (true) function f() {};" +
+    #|    "observed = f;"
+    #|  );
+    #|}());
+    #|console.log(observed);
+  let output = run_output_annex_b(src)
+  json_inspect(output, content=["outer"])
+}
+
+///|
+/// §8.2.10 + §B.3.4: a `try { function f(){} }` block sits at the eval top
+/// level under control-flow. Its `function f` must be hidden from the
+/// surrounding StatementList's VarDeclaredNames so a sibling `let f` does
+/// not spuriously collide. Defensive coverage: confirms the
+/// `collect_block_var_decl_names_from_stmt` fix flowed through TryCatchStmt
+/// too, not only IfStmt.
+test "annex-b eval: try-block FunctionDeclaration ignored by lex/var conflict check" {
+  let src =
+    #|var observed;
+    #|(function() {
+    #|  eval(
+    #|    "let f = 1;" +
+    #|    "try { function f() {} } catch (e) {};" +
+    #|    "observed = f;"
+    #|  );
+    #|}());
+    #|console.log(observed);
+  let output = run_output_annex_b(src)
+  json_inspect(output, content=["1"])
+}
+
+///|
+/// Confirmation that the top-level FunctionDeclaration path still works:
+/// `let f` collides with a SIBLING top-level `function f` (NOT under any
+/// nested control flow), which is a real var/lex conflict.
+test "annex-b eval: top-level let f + top-level function f still throws" {
+  let display = run_error_display(
+    (
+      #|eval("let f = 1; function f() {}");
+    ),
+  )
+  inspect(display, content="SyntaxError: Identifier 'f' has already been declared")
+}
+
+///|
+/// Codex-found gap (P2): `collect_eval_var_names_from_stmt` walks the eval
+/// source up through any enclosing caller-scope `let`/`const`/`class`
+/// bindings to check the var/lex conflict. The walker's IfStmt arm already
+/// used `in_block=true`, but Try/Switch/While/For arms still mirrored
+/// caller's `in_block`. The cohort-canonical fixture only covers `if`, so
+/// these companion tests pin try/switch and ensure the walker fix doesn't
+/// regress when the FuncDecl lives in an alternate control-flow body.
+test "annex-b eval: caller let f + nested-eval try-block function f is skipped" {
+  let src =
+    #|var observed;
+    #|(function() {
+    #|  let f;
+    #|  eval(
+    #|    "try { function f() {} } catch (e) {};" +
+    #|    "observed = typeof f;"
+    #|  );
+    #|}());
+    #|console.log(observed);
+  let output = run_output_annex_b(src)
+  // Outer `let f` is in caller TDZ at observation time, but the eval body
+  // has no top-level binding for `f` (Annex B extension was skipped), so
+  // `typeof f` reads the outer slot via the var-environment chain → "undefined".
+  json_inspect(output, content=["undefined"])
+}
+
+///|
+/// Companion to the try-block test — switch-case is also a §B.3.4 block-like
+/// context. `case 0: function f(){}` must not leak `f` into VarDeclaredNames.
+test "annex-b eval: caller let f + nested-eval switch-case function f is skipped" {
+  let src =
+    #|var observed;
+    #|(function() {
+    #|  let f;
+    #|  eval(
+    #|    "switch (0) { case 0: function f() {} };" +
+    #|    "observed = typeof f;"
+    #|  );
+    #|}());
+    #|console.log(observed);
+  let output = run_output_annex_b(src)
+  json_inspect(output, content=["undefined"])
+}
+
+///|
+/// Codex-found gap (P1): `FuncDeclExt` (FuncDecl with default/rest/destructured
+/// params) shared the same unconditional `env.assign` bug as plain `FuncDecl`.
+/// The cohort-canonical fixture uses zero-arg FuncDecls; this test pins the
+/// param-bearing flavor so a regression would be caught locally.
+test "annex-b eval: if-branch FuncDeclExt (default-param) ignored by conflict check" {
+  let src =
+    #|var observed;
+    #|(function() {
+    #|  eval(
+    #|    "let f = 7;" +
+    #|    "if (true) function f(a = 0) {} else function _f() {};" +
+    #|    "observed = f;"
+    #|  );
+    #|}());
+    #|console.log(observed);
+  let output = run_output_annex_b(src)
+  json_inspect(output, content=["7"])
+}
+
+///|
 /// §B.3.3.3 + LabeledStmt: in sloppy mode, `{ label: function f(){} }`
 /// should reinit the outer `function f` var binding on block entry.
 /// `hoist_block_func_declarations` recurses through LabeledStmt but has no

@@ -298,12 +298,27 @@ fn Interpreter::exec_stmt(
         let func_val = make_func(func_data)
         // For non-strict eval execution, function declarations are hoisted into
         // var_env but executed in exec_env. Reconcile assignment back to var_env.
-        if env.bindings.contains(name) {
-          env.assign(name, func_val)
-        } else if should_reconcile_eval_function_decl(env, name) {
-          env.assign_var(name, func_val)
-        } else {
-          env.def(name, func_val, VarBinding)
+        //
+        // §B.3.3.3 conflict path: when a block-level FunctionDeclaration's name
+        // already names a `let`/`const`/`class` binding in the surrounding scope,
+        // the Annex B var-promotion is suppressed at hoist time. The runtime
+        // must not "fix" that by overwriting the lex binding with the function
+        // value — `let f = 1; if (true) function f(){}` keeps `f === 1`. So
+        // only the VarBinding case (hoisted FuncDecl refresh) reuses the slot
+        // via `assign`; existing lex bindings are left untouched.
+        let existing_kind = match env.bindings.get(name) {
+          Some(b) => Some(b.kind)
+          None => None
+        }
+        match existing_kind {
+          Some(VarBinding) => env.assign(name, func_val)
+          Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
+          None =>
+            if should_reconcile_eval_function_decl(env, name) {
+              env.assign_var(name, func_val)
+            } else {
+              env.def(name, func_val, VarBinding)
+            }
         }
         // Annex B §B.3.3.3: propagate block-level function to outer var scope.
         // The binding is updated only when the hoist pass tagged it — which
@@ -1217,12 +1232,23 @@ fn Interpreter::exec_stmt(
           is_method: false,
         }
         let func_val = make_func_ext(func_data)
-        if env.bindings.contains(name) {
-          env.assign(name, func_val)
-        } else if should_reconcile_eval_function_decl(env, name) {
-          env.assign_var(name, func_val)
-        } else {
-          env.def(name, func_val, VarBinding)
+        // §B.3.3.3 conflict path — mirror FuncDecl arm. A block-level
+        // FuncDeclExt whose name collides with an outer lex binding must not
+        // overwrite that binding; the Annex B var-promotion was suppressed at
+        // hoist time, so the runtime here must stay a no-op for lex slots.
+        let existing_kind = match env.bindings.get(name) {
+          Some(b) => Some(b.kind)
+          None => None
+        }
+        match existing_kind {
+          Some(VarBinding) => env.assign(name, func_val)
+          Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
+          None =>
+            if should_reconcile_eval_function_decl(env, name) {
+              env.assign_var(name, func_val)
+            } else {
+              env.def(name, func_val, VarBinding)
+            }
         }
         // Annex B §B.3.3.3: see matching comment on the FuncDecl arm.
         if self.annex_b && !ctx.strict && !env.is_var_scope {
