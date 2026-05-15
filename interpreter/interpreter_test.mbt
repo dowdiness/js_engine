@@ -9743,12 +9743,13 @@ test "test262: TypedArray.prototype.filter accepts Array-variant as constructor"
 }
 
 ///|
-/// Codex bot P1 (PR #121 review): same hazard as slice, but for map. After
-/// `typed_array_species_create` returns, the per-element loop reads from
-/// the source `data` — if the species ctor detached the source buffer mid-
-/// construction, those reads would silently produce zeros. The fix mirrors
-/// slice: re-validate the source post-species, pre-loop.
-test "test262: TypedArray.prototype.map throws when species detaches source" {
+/// Codex (post-PR-#121 review, second pass): §22.2.3.20 map has NO post-
+/// species source-detach validation. If a species ctor detaches the source
+/// mid-construction, `Get(O, Pk)` returns Undefined per IntegerIndexedElement
+/// Get, the callback observes it, and the result holds coerced values. The
+/// initial Codex-bot P1 pattern-matched off slice (which DOES validate, but
+/// only when count > 0); that fix was spec-incorrect and reverted.
+test "test262: TypedArray.prototype.map does NOT throw when species detaches source" {
   let output = run_output(
     (
       #|var sample = new Int8Array([1, 2, 3, 4]);
@@ -9758,15 +9759,14 @@ test "test262: TypedArray.prototype.map throws when species detaches source" {
       #|}
       #|CustomCtor[Symbol.species] = CustomCtor;
       #|sample.constructor = CustomCtor;
-      #|try {
-      #|  sample.map(function(x) { return x * 2; });
-      #|  console.log("no error");
-      #|} catch(e) {
-      #|  console.log(e instanceof TypeError);
-      #|}
+      #|var result = sample.map(function(x) { return x; });
+      #|// Result is an Int8Array of length 4, filled with zeros because
+      #|// Get on a detached source returns undefined → ToNumber → NaN →
+      #|// Int8 coerced 0.
+      #|console.log(result instanceof Int8Array, result.length, result[0], result[3]);
     ),
   )
-  json_inspect(output, content=["true"])
+  json_inspect(output, content=["true 4 0 0"])
 }
 
 ///|
@@ -9839,6 +9839,104 @@ test "test262: TypedArray species default uses intrinsic, not reassigned global"
   // must come from the *intrinsic* Int8Array slot, untouched by the global
   // reassignment.
   json_inspect(output, content=["true true"])
+}
+
+///|
+/// Codex finding 1 (post-PR-#121, second pass): §22.2.3.20 step 4 says
+/// IsCallable(callbackfn) check runs BEFORE TypedArraySpeciesCreate. A
+/// numeric (non-callable) callback must throw without invoking @@species —
+/// otherwise observable species side effects leak. Pinned: `@@species` getter
+/// counts invocations; a TypeError before species means count stays 0.
+test "test262: TypedArray.prototype.map non-callable throws before species" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|var speciesCalls = 0;
+      #|var Ctor = function Ctor() {};
+      #|Object.defineProperty(Ctor, Symbol.species, {
+      #|  get: function() { speciesCalls++; return Int8Array; }
+      #|});
+      #|sample.constructor = Ctor;
+      #|try {
+      #|  sample.map(1);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError, speciesCalls);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true 0"])
+}
+
+///|
+/// Same as the map test above, but for filter (§22.2.3.9 step 4).
+test "test262: TypedArray.prototype.filter non-callable throws before species" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3]);
+      #|var speciesCalls = 0;
+      #|var Ctor = function Ctor() {};
+      #|Object.defineProperty(Ctor, Symbol.species, {
+      #|  get: function() { speciesCalls++; return Int8Array; }
+      #|});
+      #|sample.constructor = Ctor;
+      #|try {
+      #|  sample.filter("not a function");
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError, speciesCalls);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true 0"])
+}
+
+///|
+/// Codex finding 2 (post-PR-#121, second pass): §22.2.3.27 slice step 14
+/// guards source re-validation on `count > 0`. A zero-count slice with a
+/// species ctor that detaches the source must NOT throw — it returns an
+/// empty TA of the species type. Without the guard, my initial fix threw
+/// too eagerly.
+test "test262: TypedArray.prototype.slice with zero count tolerates source detach" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array([1, 2, 3, 4]);
+      #|function CustomCtor(n) {
+      #|  $262.detachArrayBuffer(sample.buffer);
+      #|  return new Int8Array(n);
+      #|}
+      #|CustomCtor[Symbol.species] = CustomCtor;
+      #|sample.constructor = CustomCtor;
+      #|var result = sample.slice(0, 0);
+      #|console.log(result instanceof Int8Array, result.length);
+    ),
+  )
+  // count = 0, so the spec's step 14 detach check is skipped entirely. The
+  // species ctor's detach side effect is allowed; the result is an empty TA.
+  json_inspect(output, content=["true 0"])
+}
+
+///|
+/// Length-zero variant of the map / species-detaches test: spec has no
+/// detach check, and the loop doesn't run, so the result is an empty TA
+/// of the species type. Forcing function — an implementation that
+/// (incorrectly) re-validates source post-species would fail this even
+/// though the loop body is unreachable.
+test "test262: TypedArray.prototype.map with zero length tolerates source detach" {
+  let output = run_output(
+    (
+      #|var sample = new Int8Array(0);
+      #|function CustomCtor(n) {
+      #|  $262.detachArrayBuffer(sample.buffer);
+      #|  return new Int8Array(n);
+      #|}
+      #|CustomCtor[Symbol.species] = CustomCtor;
+      #|sample.constructor = CustomCtor;
+      #|var result = sample.map(function(x) { return x; });
+      #|console.log(result instanceof Int8Array, result.length);
+    ),
+  )
+  json_inspect(output, content=["true 0"])
 }
 
 ///|

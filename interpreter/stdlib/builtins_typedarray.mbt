@@ -497,8 +497,20 @@ pub fn typed_array_species_create(
   exemplar : Value,
   args : Array[Value],
 ) -> Value raise Error {
-  let (data, _) = validate_typed_array(exemplar, "species create")
-  let class_name = data.class_name
+  // ES2024 §22.2.4.7 derives the default constructor purely from the
+  // exemplar's [[TypedArrayName]] — it does NOT call ValidateTypedArray on
+  // the exemplar. Source-detach checks belong at the call site's
+  // spec-mandated point (e.g. slice's `if count > 0` guard). Re-validating
+  // here would throw too early when argument coercion detached the buffer
+  // between method entry and species_create — pre-empting the `Get(O,
+  // "constructor")` / @@species path the spec requires.
+  let class_name = match exemplar {
+    Object(data) => data.class_name
+    _ =>
+      raise @errors.InternalError(
+        message="typed_array_species_create called with non-Object exemplar — entry ValidateTypedArray should have rejected",
+      )
+  }
   // §22.2.4.7 step 2: defaultConstructor is the *intrinsic* TA constructor
   // for the exemplar's [[TypedArrayName]], not the mutable global binding.
   // Reading `interp.global.get("Int8Array")` would let user code reassign
@@ -948,7 +960,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     } else {
       0
     }
-    // §22.2.3.24 step 18: TypedArraySpeciesCreate(O, « count »). Unlike
+    // §22.2.3.27 step 13: TypedArraySpeciesCreate(O, « count »). Unlike
     // subarray, slice's result has its OWN buffer (per spec: a copy, not a
     // view), so the species ctor is given just the length argument.
     let new_ta = typed_array_species_create(
@@ -956,24 +968,25 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       this_val,
       [Value::Number(new_length.to_double())],
     )
-    // §22.2.3.24 step 19: re-validate the SOURCE after species construction.
-    // A user-supplied species ctor can detach `sample.buffer` as a side
-    // effect (test262 `detached-buffer-custom-ctor-*` fixtures). If we
-    // proceeded into the copy loop, `typedarray_get_index` would silently
-    // return `Undefined` (which coerces to 0), producing a zero-filled wrong
-    // result instead of the spec-required TypeError.
-    let _ = validate_typed_array(this_val, "slice")
-    match new_ta {
-      Object(new_data) =>
-        for i = 0; i < new_length; i = i + 1 {
-          let val = typedarray_get_index(data, begin_index + i)
-          let num = match val {
-            Value::Number(n) => n
-            _ => 0.0
+    // §22.2.3.27 step 14: ONLY if count > 0, validate that the source's
+    // buffer is still attached. A species ctor that detaches the source is
+    // allowed when count == 0 — `ta.slice(0, 0)` must still return an empty
+    // TA even if the species ctor (or arg coercion before species) detached
+    // `ta.buffer`. Without this guard, we'd throw too eagerly.
+    if new_length > 0 {
+      let _ = validate_typed_array(this_val, "slice")
+      match new_ta {
+        Object(new_data) =>
+          for i = 0; i < new_length; i = i + 1 {
+            let val = typedarray_get_index(data, begin_index + i)
+            let num = match val {
+              Value::Number(n) => n
+              _ => 0.0
+            }
+            typedarray_set_index(new_data, i, num)
           }
-          typedarray_set_index(new_data, i, num)
-        }
-      _ => ()
+        _ => ()
+      }
     }
     new_ta
     },
@@ -1750,29 +1763,33 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "map")
-      if args.length() == 0 {
-        raise @errors.TypeError(message="map requires a callback function")
+      // §22.2.3.20 step 4: IsCallable(callbackfn) check happens BEFORE
+      // species lookup. A non-callable callback must throw without any
+      // observable species side effects (e.g. without invoking @@species).
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(
+          message="map callback is not callable",
+        )
       }
-      let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
       let loc = @token.Loc::default()
-      // §22.2.3.20 step 6: TypedArraySpeciesCreate(O, « len »).
+      // §22.2.3.20 step 5: TypedArraySpeciesCreate(O, « len »).
+      // Note: §22.2.3.20 has NO post-species source-detach validation. If a
+      // user-supplied species ctor detaches the source mid-construction,
+      // `typedarray_get_index` returns `Undefined`, the callback observes
+      // it, and the result holds coerced values — that's spec-correct, not
+      // a hazard. (Cf. §22.2.3.27 slice, which DOES validate, but only
+      // when count > 0; the asymmetry is deliberate.)
       let result = typed_array_species_create(
         interp,
         this_val,
         [Value::Number(len.to_double())],
       )
-      // §22.2.3.20 step 7: re-validate the SOURCE after species construction.
-      // A user-supplied species ctor can detach `sample.buffer` as a side
-      // effect; without this re-check, the loop below would silently read
-      // `Undefined` from `typedarray_get_index` and write coerced zeros.
-      // Same hazard already fixed for `slice` (PR B Codex P1) — Codex bot
-      // review on PR #121 caught the parallel miss on `map`.
-      let _ = validate_typed_array(this_val, "map")
       match result {
         Object(result_data) =>
           for i = 0; i < len; i = i + 1 {
@@ -1798,10 +1815,14 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "filter")
-      if args.length() == 0 {
-        raise @errors.TypeError(message="filter requires a callback function")
+      // §22.2.3.9 step 4: IsCallable(callbackfn) check happens BEFORE the
+      // selection loop. A non-callable callback must throw immediately.
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(
+          message="filter callback is not callable",
+        )
       }
-      let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
