@@ -188,10 +188,15 @@ fn Interpreter::create_class(
                 strict_body,
               )
               ctor_fn = Some((params, rest, strict_body))
-              // Length = number of params before the first one with a default
+              // ES262 §10.2.4 ExpectedArgumentCount: count params before
+              // first default or rest. See factories.mbt for the
+              // destructuring-rest note.
               let mut count = 0
               for p in params {
                 if p.default_val is Some(_) {
+                  break
+                }
+                if rest is Some(rn) && p.name == rn {
                   break
                 }
                 count += 1

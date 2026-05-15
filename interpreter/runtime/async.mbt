@@ -85,10 +85,14 @@ fn Interpreter::make_async_function_ext(
     is_accessor: false,
   }
   let async_proto = get_function_prototype(self)
-  // ES262 §10.2.4 ExpectedArgumentCount: count params before first default.
+  // ES262 §10.2.4 ExpectedArgumentCount: count params before first
+  // default or rest. See factories.mbt for the destructuring-rest note.
   let mut func_length = 0
   for p in params {
     if p.default_val is Some(_) {
+      break
+    }
+    if rest_param is Some(rn) && p.name == rn {
       break
     }
     func_length += 1
