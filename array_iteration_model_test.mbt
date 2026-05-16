@@ -119,3 +119,20 @@ test "phase3: Array(n) creates a hole-bearing array" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["false,5,inherited"])
 }
+
+///|
+test "phase3: a.length = N extension marks new indices as holes" {
+  // After length extension, new indices have no own property; 'in' walks the
+  // prototype chain so 3 in a is true when Array.prototype[3] is set.
+  // The value at a[3] is inherited from Array.prototype, not undefined.
+  let src =
+    #|var a = [1, 2];
+    #|a.length = 5;
+    #|Array.prototype[3] = "inherited";
+    #|var v3 = a[3];
+    #|var has3 = (3 in a);
+    #|delete Array.prototype[3];
+    #|console.log(has3 + "," + v3);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["true,inherited"])
+}

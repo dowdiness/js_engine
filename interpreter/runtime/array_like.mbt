@@ -366,7 +366,9 @@ pub fn set_array_like_length(val : Value, len : Int) -> Unit {
   match val {
     Array(data) =>
       while data.elements.length() < len {
+        let new_idx = data.elements.length()
         data.elements.push(Undefined)
+        data.holes[new_idx] = ()
       }
     Object(data) => data.bag.properties["length"] = Number(len.to_double())
     _ => ()
