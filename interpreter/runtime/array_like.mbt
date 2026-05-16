@@ -1,4 +1,46 @@
 ///|
+/// Classification of an array-indexed lookup per ES2024 §10.1.5
+/// OrdinaryGetOwnProperty. `Present` subsumes both "dense element, no
+/// descriptor" and "own data descriptor" — data descriptors store
+/// their value in `data.elements[i]`, not in the descriptor itself
+/// (verified via `array_define_own_property:920`).
+priv enum ArrayIndexHit {
+  Present(Value)
+  Hole
+  OutOfRange
+  OwnAccessor(Value?)
+}
+
+///|
+/// Classify an array-indexed lookup without invoking any getter or
+/// walking the prototype chain. Caller decides what to do with each
+/// case (see `get_array_like_element_interp`, `has_array_like_element`,
+/// and `Interpreter::get_property`).
+fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
+  let key = i.to_string()
+  match data.bag.descriptors.get(key) {
+    Some(desc) =>
+      if desc.is_accessor {
+        OwnAccessor(desc.getter)
+      } else if i >= 0 && i < data.elements.length() {
+        Present(data.elements[i])
+      } else {
+        OutOfRange
+      }
+    None =>
+      if i < 0 {
+        OutOfRange
+      } else if data.holes.contains(i) {
+        Hole
+      } else if i < data.elements.length() {
+        Present(data.elements[i])
+      } else {
+        OutOfRange
+      }
+  }
+}
+
+///|
 pub fn flatten_array_val(
   elements : Array[Value],
   depth : Int,
