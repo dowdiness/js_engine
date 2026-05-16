@@ -123,16 +123,9 @@ test "phase3: Array(n) creates a hole-bearing array" {
 ///|
 test "phase3: sparse CreateDataPropertyOrThrow target leaves padding as holes" {
   let src =
-    #|// Array.from with iterator that yields only at index 3 — exercises
-    #|// the sparse-pad-then-set branch of create_data_property_or_throw.
-    #|var iter = { i: 0, [Symbol.iterator]() { return this; },
-    #|             next() {
-    #|               if (this.i === 0) { this.i = 4; return { value: 9, done: false }; }
-    #|               return { value: undefined, done: true };
-    #|             } };
-    #|// Avoid iterator path that fills sequentially; use Array.of with explicit gaps via length+set.
+    #|// Sparse write through set_property: indices 0..2 must remain holes.
     #|var a = [];
-    #|a[3] = 9;  // exercises set_property; verify hole status of 0..2.
+    #|a[3] = 9;
     #|console.log((0 in a) + "," + (1 in a) + "," + (2 in a) + "," + a.length);
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["false,false,false,4"])
@@ -163,6 +156,54 @@ test "phase3: defineProperty OOB index raises length and marks gap as holes" {
     #|console.log(a.length + "," + (3 in a) + "," + (4 in a) + "," + (5 in a) + "," + a[5]);
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["6,false,false,true,7"])
+}
+
+///|
+test "review P1-A: sort over hole-bearing array (stale-holes guard)" {
+  // Regression test for the Codex P1-A finding: sort() reorders
+  // `data.elements` in place but doesn't touch `data.holes`, so a real
+  // value reordered into a hole-marked slot would (without the
+  // defensive read) leak through as Hole and walk the prototype.
+  // Spec §23.1.3.30: defined values sorted first (1, 3 at indices 0,1)
+  // followed by holes (index 2). (1 in a) must be true.
+  let src =
+    #|var a = [3, , 1];
+    #|a.sort();
+    #|console.log(a[0] + "," + a[1] + "," + a[2] + "," + (1 in a));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["1,3,undefined,true"])
+}
+
+///|
+test "review P2: Object-branch HasProperty walks past Array prototype holes" {
+  // A non-array object whose prototype is an Array — the Array node's
+  // hole at the queried index must NOT terminate the walk; the parent
+  // Object.prototype property should be found. Codex+CodeRabbit PR-#122
+  // review regression test.
+  let src =
+    #|var ap = [10, 20, 30];
+    #|delete ap[1];
+    #|Object.prototype["1"] = "inherited";
+    #|var child = Object.create(ap);
+    #|var seen = (1 in child);
+    #|delete Object.prototype["1"];
+    #|console.log(seen);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "review P1-B: custom prototype shadows built-in Array method for arr[s]" {
+  // Object.setPrototypeOf(arr, { map: 42 }); arr["map"] must resolve to 42
+  // (custom prototype) rather than the built-in Array.prototype.map. Codex
+  // PR-#122 review regression test — guards against the method shortcut
+  // being consulted before an explicit prototype override.
+  let src =
+    #|var arr = [1, 2, 3];
+    #|Object.setPrototypeOf(arr, { map: 42 });
+    #|console.log(arr["map"] + "," + (arr.map === 42));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["42,true"])
 }
 
 ///|

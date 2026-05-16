@@ -1349,18 +1349,16 @@ pub fn Interpreter::get_computed_property(
             // Check bag-backed named properties, then prototype chain / methods.
             match get_array_named_prop(data, s) {
               Some(v) => v
-              None => {
-                let array_method = (self.stdlib_hooks.get_array_method_with_interp)(
-                  data, s,
-                )
-                match array_method {
-                  Undefined => {
-                    let proto = get_array_prototype(self.global, data)
+              None =>
+                // Prototype override (explicit Object.setPrototypeOf) must be
+                // consulted before the built-in method shortcut so that, e.g.,
+                // Object.setPrototypeOf(arr, { map: 42 }); arr["map"] === 42.
+                match get_array_prototype_override(data) {
+                  Some(proto) =>
                     self.get_property_from_prototype(obj, proto, s, loc)
-                  }
-                  _ => array_method
+                  None =>
+                    (self.stdlib_hooks.get_array_method_with_interp)(data, s)
                 }
-              }
             }
           }
         }

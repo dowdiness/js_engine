@@ -30,10 +30,22 @@ fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
     None =>
       if i < 0 {
         OutOfRange
+      } else if i < data.elements.length() {
+        // Defensive read: `data.holes` is authoritative only when the
+        // dense slot itself is `Undefined` (Phase 3 padding semantics
+        // — Array(n), a.length=N, sparse assignment). A non-Undefined
+        // value here means a reordering builtin (sort, copyWithin,
+        // reverse, …) wrote to the slot without updating holes; trust
+        // the value rather than the stale marker. Audit follow-up:
+        // teach those builtins to maintain the invariant directly.
+        let v = data.elements[i]
+        if data.holes.contains(i) && v is Undefined {
+          Hole
+        } else {
+          Present(v)
+        }
       } else if data.holes.contains(i) {
         Hole
-      } else if i < data.elements.length() {
-        Present(data.elements[i])
       } else {
         OutOfRange
       }
@@ -342,9 +354,14 @@ pub fn has_array_like_element(
             current = proto_data.prototype
           }
           Array(arr_data) =>
-            return match array_index_lookup_result(arr_data, index) {
-              Present(_) | OwnAccessor(_) => true
-              Hole | OutOfRange => false
+            // Don't terminate the walk on Hole/OutOfRange — an array used
+            // as a prototype only owns its dense slots; missing indices
+            // must fall through to the next prototype (typically
+            // Array.prototype, then Object.prototype).
+            match array_index_lookup_result(arr_data, index) {
+              Present(_) | OwnAccessor(_) => return true
+              Hole | OutOfRange =>
+                current = get_array_prototype(interp.global, arr_data)
             }
           _ => break
         }
