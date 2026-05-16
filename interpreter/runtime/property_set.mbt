@@ -1241,7 +1241,9 @@ pub fn Interpreter::set_computed_property(
             let new_len_int = n64.to_int()
             let hole_keys : Array[Int] = []
             data.holes.each(fn(k, _) {
-              if k >= new_len_int { hole_keys.push(k) }
+              if k >= new_len_int {
+                hole_keys.push(k)
+              }
             })
             for k in hole_keys {
               data.holes.remove(k)

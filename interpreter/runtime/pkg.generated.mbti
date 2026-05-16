@@ -117,7 +117,7 @@ pub fn get_tostringtag_value(ObjectData) -> String? raise
 
 pub fn get_unscopables_symbol() -> SymbolData
 
-pub fn has_array_like_element(Value, Int) -> Bool
+pub fn has_array_like_element(Interpreter, Value, Int) -> Bool
 
 pub fn has_parameter_expressions(Array[@ast.Param]) -> Bool
 

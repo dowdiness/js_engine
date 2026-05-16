@@ -250,7 +250,10 @@ pub fn get_array_like_element_interp(
         Hole | OutOfRange => {
           let proto = get_array_prototype(interp.global, data)
           interp.get_property_from_prototype(
-            val, proto, index.to_string(), @token.Loc::default(),
+            val,
+            proto,
+            index.to_string(),
+            @token.Loc::default(),
           )
         }
       }

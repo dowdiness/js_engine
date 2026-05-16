@@ -1282,7 +1282,10 @@ pub fn Interpreter::get_computed_property(
               Hole | OutOfRange => {
                 let proto = get_array_prototype(self.global, data)
                 return self.get_property_from_prototype(
-                  obj, proto, i.to_string(), loc,
+                  obj,
+                  proto,
+                  i.to_string(),
+                  loc,
                 )
               }
             }
