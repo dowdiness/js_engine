@@ -43,7 +43,7 @@ fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
         // slot, we still report Hole. Fixing this requires either a
         // distinct empty-slot sentinel in `data.elements` or
         // spec-conformant mutators that maintain `data.holes` per
-        // §23.1.3.30. Both are tracked as the Phase-4 follow-up.
+        // §23.1.3.30. Tracked as issue #123.
         let v = data.elements[i]
         if data.holes.contains(i) && v is Undefined {
           Hole
@@ -376,6 +376,30 @@ pub fn has_array_like_element(
     }
     String_(s) => index >= 0 && index < s.length()
     _ => false
+  }
+}
+
+///|
+/// Drop hole entries at indices >= `new_len` after a length shrink.
+/// Used by both `Interpreter::set_property` and
+/// `Interpreter::set_computed_property` length-set paths to avoid the
+/// near-identical 12-line block being kept in sync by hand.
+///
+/// Hole keys are `Int` (≤ 2^31-1); if `new_len` exceeds Int range, no
+/// in-range hole can be out-of-range, so the cleanup is a no-op — we
+/// skip it to avoid an overflowing Int64→Int cast.
+pub fn cleanup_holes_above_length(
+  holes : Map[Int, Unit],
+  new_len : Int64,
+) -> Unit {
+  if new_len > 0x7FFFFFFFL {
+    return
+  }
+  let new_len_int = new_len.to_int()
+  let stale : Array[Int] = []
+  holes.each(fn(k, _) { if k >= new_len_int { stale.push(k) } })
+  for k in stale {
+    holes.remove(k)
   }
 }
 
