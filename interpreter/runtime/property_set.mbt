@@ -202,9 +202,15 @@ pub fn Interpreter::set_property(
         while data.elements.length().to_int64() > n64 {
           let _ = data.elements.pop()
         }
+        // Drop hole entries that fell out of range with the shrink.
+        cleanup_holes_above_length(data.holes, n64)
         let cur_elem_len = data.elements.length().to_int64()
-        // Expand elements if the gap is small enough to materialise
-        if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
+        // Expand elements if the gap is small enough to materialise. The
+        // 100000 cap plus the explicit Int-range guard below keeps the
+        // n64→Int cast safe.
+        if n64 > cur_elem_len &&
+          n64 - cur_elem_len <= 100000L &&
+          n64 <= 0x7FFFFFFFL {
           let prev_len = data.elements.length()
           let target = n64.to_int()
           while data.elements.length() < target {
@@ -1230,9 +1236,13 @@ pub fn Interpreter::set_computed_property(
             while data.elements.length().to_int64() > n64 {
               let _ = data.elements.pop()
             }
+            // Drop hole entries that fell out of range with the shrink.
+            cleanup_holes_above_length(data.holes, n64)
             // Expand elements if gap is small enough to materialise.
             let cur_elem_len = data.elements.length().to_int64()
-            if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
+            if n64 > cur_elem_len &&
+              n64 - cur_elem_len <= 100000L &&
+              n64 <= 0x7FFFFFFFL {
               let prev_len = data.elements.length()
               let target = n64.to_int()
               while data.elements.length() < target {

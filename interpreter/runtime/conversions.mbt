@@ -899,11 +899,14 @@ fn Interpreter::has_array_property(
         return true
       }
       let idx = @string.parse_int(name) catch { _ => -1 }
-      if idx >= 0 &&
-        idx.to_string() == name &&
-        idx < data.elements.length() &&
-        !data.holes.contains(idx) {
-        return true
+      if idx >= 0 && idx.to_string() == name {
+        // Route through the central index classifier so accessor
+        // descriptors and the Phase-3 hole / stale-marker semantics
+        // stay consistent with `array_index_lookup_result` callers.
+        match array_index_lookup_result(data, idx) {
+          Present(_) | OwnAccessor(_) => return true
+          Hole | OutOfRange => ()
+        }
       }
       if data.bag.properties.contains(name) ||
         data.bag.descriptors.contains(name) {

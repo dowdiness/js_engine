@@ -1,4 +1,31 @@
 ///|
+/// Spec [[Get]] for an integer index on an Array exotic object.
+/// Centralises the descriptor / dense / hole / OOB dispatch and the
+/// receiver-preserving prototype walk so every [[Get]] entry point
+/// (`get_property` and both `get_computed_property` index branches)
+/// stays in lockstep. The prototype-walk loop in
+/// `get_property_from_prototype` keeps its own in-line dispatch
+/// because it must `continue` the walk, not recurse.
+fn Interpreter::array_get_indexed(
+  self : Interpreter,
+  obj : Value,
+  data : ArrayData,
+  index : Int,
+  key : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match array_index_lookup_result(data, index) {
+    Present(v) => v
+    OwnAccessor(Some(getter)) => self.call_value(getter, obj, [], loc)
+    OwnAccessor(None) => Undefined
+    Hole | OutOfRange => {
+      let proto = get_array_prototype(self.global, data)
+      self.get_property_from_prototype(obj, proto, key, loc)
+    }
+  }
+}
+
+///|
 pub fn Interpreter::get_property(
   self : Interpreter,
   obj : Value,
@@ -17,18 +44,8 @@ pub fn Interpreter::get_property(
       } else {
         // Check numeric index access first
         let num_idx = @string.parse_int(prop) catch { _ => -1 }
-        if num_idx >= 0 &&
-          num_idx < data.elements.length() &&
-          num_idx.to_string() == prop {
-          match data.bag.descriptors.get(prop) {
-            Some(desc) =>
-              match desc.getter {
-                Some(getter) => return self.call_value(getter, obj, [], loc)
-                None => if desc.setter is Some(_) { return Undefined }
-              }
-            None => ()
-          }
-          data.elements[num_idx]
+        if num_idx >= 0 && num_idx.to_string() == prop {
+          self.array_get_indexed(obj, data, num_idx, prop, loc)
         } else {
           // Check named properties (e.g., index, input on exec results)
           match data.bag.descriptors.get(prop) {
@@ -202,19 +219,20 @@ fn Interpreter::get_property_from_prototype(
           }
         }
         let num_idx = @string.parse_int(prop) catch { _ => -1 }
-        if num_idx >= 0 &&
-          num_idx < data.elements.length() &&
-          num_idx.to_string() == prop {
-          match data.bag.descriptors.get(prop) {
-            Some(desc) =>
-              match desc.getter {
-                Some(getter) =>
-                  return self.call_value(getter, receiver, [], loc)
-                None => if desc.setter is Some(_) { return Undefined }
-              }
-            None => ()
+        if num_idx >= 0 && num_idx.to_string() == prop {
+          // Inside a prototype walk, an Array(data) node still needs spec
+          // [[Get]] semantics: own descriptor / dense vs hole / fall through.
+          match array_index_lookup_result(data, num_idx) {
+            Present(v) => return v
+            OwnAccessor(Some(getter)) =>
+              return self.call_value(getter, receiver, [], loc)
+            OwnAccessor(None) => return Undefined
+            Hole | OutOfRange => {
+              // Continue the chain via this array's own prototype.
+              current = get_array_prototype(self.global, data)
+              continue
+            }
           }
-          return data.elements[num_idx]
         }
         match data.bag.descriptors.get(prop) {
           Some(desc) =>
@@ -1269,23 +1287,14 @@ pub fn Interpreter::get_computed_property(
         Number(n) => {
           // Use Int64 to avoid overflow for indices >= 2^31.
           let i64 = n.to_int64()
-          if n >= 0.0 &&
-            n == i64.to_double() &&
-            i64 < data.elements.length().to_int64() {
+          if n >= 0.0 && n == i64.to_double() && i64 <= 0x7FFFFFFFL {
             let i = i64.to_int()
-            let key_str = i.to_string()
-            match data.bag.descriptors.get(key_str) {
-              Some(desc) =>
-                match desc.getter {
-                  Some(getter) => return self.call_value(getter, obj, [], loc)
-                  None => if desc.setter is Some(_) { return Undefined }
-                }
-              None => ()
-            }
-            data.elements[i]
+            self.array_get_indexed(obj, data, i, i.to_string(), loc)
           } else {
-            // Out-of-range or non-integer: check the bag (large indices or
-            // properties set via Object.defineProperty with a Number key).
+            // Non-integer or very-large key: not handled by the dense
+            // index path. Check own descriptors / named-prop bag first,
+            // then fall through to prototype walk so inherited indexed
+            // and non-indexed numeric keys are resolved per spec.
             let key_str = to_js_string(Number(n))
             match data.bag.descriptors.get(key_str) {
               Some(desc) =>
@@ -1297,7 +1306,10 @@ pub fn Interpreter::get_computed_property(
             }
             match get_array_named_prop(data, key_str) {
               Some(v) => v
-              None => Undefined
+              None => {
+                let proto = get_array_prototype(self.global, data)
+                self.get_property_from_prototype(obj, proto, key_str, loc)
+              }
             }
           }
         }
@@ -1307,52 +1319,65 @@ pub fn Interpreter::get_computed_property(
             None => Number(data.elements.length().to_double())
           }
         String_(s) => {
-          // Canonical numeric index string check: parseDouble(s).toString() === s
-          let mut numeric_result : Value? = None
+          // Canonical numeric index string check: parseDouble(s).toString() === s.
+          // Mirror the Number(n) branch's Int-range discipline so large
+          // numeric strings like "3000000000" (valid array length but
+          // outside Int) flow into the non-index path and walk the
+          // prototype, rather than overflowing `n.to_int()`.
+          let mut is_index : Bool = false
+          let mut idx : Int = -1
           try {
             let n = @string.parse_double(s)
-            if n.to_string() == s {
-              let idx = n.to_int()
-              if idx.to_double() == n &&
-                idx >= 0 &&
-                idx < data.elements.length() {
-                match data.bag.descriptors.get(s) {
-                  Some(desc) =>
-                    match desc.getter {
-                      Some(getter) =>
-                        return self.call_value(getter, obj, [], loc)
-                      None => if desc.setter is Some(_) { return Undefined }
-                    }
-                  None => ()
-                }
-                numeric_result = Some(data.elements[idx])
+            if n >= 0.0 && n.to_string() == s {
+              let i64 = n.to_int64()
+              if i64.to_double() == n && i64 <= 0x7FFFFFFFL {
+                is_index = true
+                idx = i64.to_int()
               }
             }
           } catch {
             _ => () // Not a numeric string
           }
-          match numeric_result {
-            Some(v) => v
-            None => {
-              match data.bag.descriptors.get(s) {
-                Some(desc) =>
-                  match desc.getter {
-                    Some(getter) => return self.call_value(getter, obj, [], loc)
-                    None => if desc.setter is Some(_) { return Undefined }
+          if is_index {
+            self.array_get_indexed(obj, data, idx, s, loc)
+          } else {
+            // Non-index string key: own descriptor → method dispatch → prototype.
+            match data.bag.descriptors.get(s) {
+              Some(desc) =>
+                match desc.getter {
+                  Some(getter) => return self.call_value(getter, obj, [], loc)
+                  None => if desc.setter is Some(_) { return Undefined }
+                }
+              None => ()
+            }
+            // Check bag-backed named properties, then prototype chain / methods.
+            match get_array_named_prop(data, s) {
+              Some(v) => v
+              None =>
+                // Prototype override (explicit Object.setPrototypeOf) must be
+                // consulted before the built-in method shortcut so that, e.g.,
+                // Object.setPrototypeOf(arr, { map: 42 }); arr["map"] === 42.
+                match get_array_prototype_override(data) {
+                  Some(proto) =>
+                    self.get_property_from_prototype(obj, proto, s, loc)
+                  None => {
+                    // Mirror the `Interpreter::get_property` pattern: many
+                    // built-in methods (map/filter/forEach/…) are delegated
+                    // to the live `Array.prototype` and return Undefined
+                    // from the shortcut. Fall through to the actual
+                    // %Array.prototype% walk so `arr["map"]` resolves the
+                    // built-in (and so non-index numeric strings keep
+                    // ascending to `Object.prototype`).
+                    let result = (self.stdlib_hooks.get_array_method_with_interp)(
+                      data, s,
+                    )
+                    match result {
+                      Undefined =>
+                        lookup_builtin_proto(self, obj, "Array", s, loc)
+                      _ => result
+                    }
                   }
-                None => ()
-              }
-              // Check bag-backed named properties, then prototype chain / methods.
-              match get_array_named_prop(data, s) {
-                Some(v) => v
-                None =>
-                  match get_array_prototype_override(data) {
-                    Some(proto) =>
-                      self.get_property_from_prototype(obj, proto, s, loc)
-                    None =>
-                      (self.stdlib_hooks.get_array_method_with_interp)(data, s)
-                  }
-              }
+                }
             }
           }
         }

@@ -1,4 +1,64 @@
 ///|
+/// Classification of an array-indexed lookup per ES2024 §10.1.5
+/// OrdinaryGetOwnProperty. `Present` subsumes both "dense element, no
+/// descriptor" and "own data descriptor" — data descriptors store
+/// their value in `data.elements[i]`, not in the descriptor itself
+/// (verified via `array_define_own_property:920`).
+priv enum ArrayIndexHit {
+  Present(Value)
+  Hole
+  OutOfRange
+  OwnAccessor(Value?)
+}
+
+///|
+/// Classify an array-indexed lookup without invoking any getter or
+/// walking the prototype chain. Caller decides what to do with each
+/// case (see `get_array_like_element_interp`, `has_array_like_element`,
+/// and `Interpreter::get_property`).
+fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
+  let key = i.to_string()
+  match data.bag.descriptors.get(key) {
+    Some(desc) =>
+      if desc.is_accessor {
+        OwnAccessor(desc.getter)
+      } else if i >= 0 && i < data.elements.length() {
+        Present(data.elements[i])
+      } else {
+        OutOfRange
+      }
+    None =>
+      if i < 0 {
+        OutOfRange
+      } else if i < data.elements.length() {
+        // Defensive read: `data.holes` is authoritative only when the
+        // dense slot itself is `Undefined` (Phase 3 padding semantics
+        // — Array(n), a.length=N, sparse assignment). A non-Undefined
+        // value here means a reordering builtin (sort, copyWithin,
+        // reverse, …) wrote to the slot without updating holes; trust
+        // the value rather than the stale marker.
+        //
+        // Known residual gap (Codex PR-#122 review): when a reordering
+        // builtin moves an *explicit* `undefined` into a hole-marked
+        // slot, we still report Hole. Fixing this requires either a
+        // distinct empty-slot sentinel in `data.elements` or
+        // spec-conformant mutators that maintain `data.holes` per
+        // §23.1.3.30. Tracked as issue #123.
+        let v = data.elements[i]
+        if data.holes.contains(i) && v is Undefined {
+          Hole
+        } else {
+          Present(v)
+        }
+      } else if data.holes.contains(i) {
+        Hole
+      } else {
+        OutOfRange
+      }
+  }
+}
+
+///|
 pub fn flatten_array_val(
   elements : Array[Value],
   depth : Int,
@@ -200,21 +260,82 @@ pub fn get_array_like_element_interp(
 ) -> Value raise {
   match val {
     Array(data) =>
-      if index >= 0 && index < data.elements.length() {
-        data.elements[index]
-      } else {
-        Undefined
+      match array_index_lookup_result(data, index) {
+        Present(v) => v
+        OwnAccessor(Some(getter)) =>
+          interp.call_value(getter, val, [], @token.Loc::default())
+        OwnAccessor(None) => Undefined
+        Hole | OutOfRange => {
+          let proto = get_array_prototype(interp.global, data)
+          interp.get_property_from_prototype(
+            val,
+            proto,
+            index.to_string(),
+            @token.Loc::default(),
+          )
+        }
       }
     _ => interp.get_property(val, index.to_string(), @token.Loc::default())
   }
 }
 
 ///|
-/// Check if array-like value has indexed property
-pub fn has_array_like_element(val : Value, index : Int) -> Bool {
+/// Non-raising HasProperty walk along an explicit prototype chain for an
+/// indexed key. Returns true if any reachable object has an own data or
+/// accessor property at the given key. Does NOT invoke Proxy traps
+/// (would require raising); Proxy-as-prototype is out of scope per the
+/// iteration-model spec v5.
+fn proto_chain_has_index(
+  interp : Interpreter,
+  proto : Value,
+  key : String,
+  index : Int,
+) -> Bool {
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) => {
+        if proto_data.bag.properties.contains(key) {
+          return true
+        }
+        match proto_data.bag.descriptors.get(key) {
+          Some(_) => return true
+          None => current = proto_data.prototype
+        }
+      }
+      Array(arr_data) =>
+        match array_index_lookup_result(arr_data, index) {
+          Present(_) | OwnAccessor(_) => return true
+          Hole | OutOfRange =>
+            // Array-as-prototype: continue walking via the array's own
+            // prototype so inherited indices on Object.prototype are seen.
+            current = get_array_prototype(interp.global, arr_data)
+        }
+      _ => return false
+    }
+  }
+  false
+}
+
+///|
+/// Check if array-like value has indexed property.
+/// `interp` is required so the Array branch can resolve `%Array.prototype%`
+/// via `get_array_prototype(interp.global, data)`.
+pub fn has_array_like_element(
+  interp : Interpreter,
+  val : Value,
+  index : Int,
+) -> Bool {
   let key = index.to_string()
   match val {
-    Array(data) => index >= 0 && index < data.elements.length()
+    Array(data) =>
+      match array_index_lookup_result(data, index) {
+        Present(_) | OwnAccessor(_) => true
+        Hole | OutOfRange => {
+          let proto = get_array_prototype(interp.global, data)
+          proto_chain_has_index(interp, proto, key, index)
+        }
+      }
     Object(data) => {
       if data.bag.properties.contains(key) {
         return true
@@ -239,7 +360,15 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
             current = proto_data.prototype
           }
           Array(arr_data) =>
-            return index >= 0 && index < arr_data.elements.length()
+            // Don't terminate the walk on Hole/OutOfRange — an array used
+            // as a prototype only owns its dense slots; missing indices
+            // must fall through to the next prototype (typically
+            // Array.prototype, then Object.prototype).
+            match array_index_lookup_result(arr_data, index) {
+              Present(_) | OwnAccessor(_) => return true
+              Hole | OutOfRange =>
+                current = get_array_prototype(interp.global, arr_data)
+            }
           _ => break
         }
       }
@@ -251,6 +380,30 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
 }
 
 ///|
+/// Drop hole entries at indices >= `new_len` after a length shrink.
+/// Used by both `Interpreter::set_property` and
+/// `Interpreter::set_computed_property` length-set paths to avoid the
+/// near-identical 12-line block being kept in sync by hand.
+///
+/// Hole keys are `Int` (≤ 2^31-1); if `new_len` exceeds Int range, no
+/// in-range hole can be out-of-range, so the cleanup is a no-op — we
+/// skip it to avoid an overflowing Int64→Int cast.
+pub fn cleanup_holes_above_length(
+  holes : Map[Int, Unit],
+  new_len : Int64,
+) -> Unit {
+  if new_len > 0x7FFFFFFFL {
+    return
+  }
+  let new_len_int = new_len.to_int()
+  let stale : Array[Int] = []
+  holes.each(fn(k, _) { if k >= new_len_int { stale.push(k) } })
+  for k in stale {
+    holes.remove(k)
+  }
+}
+
+///|
 /// Set indexed element on array-like value
 pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
   let key = index.to_string()
@@ -258,6 +411,7 @@ pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
     Array(data) =>
       if index >= 0 && index < data.elements.length() {
         data.elements[index] = value
+        data.holes.remove(index)
       }
     Object(data) => data.bag.properties[key] = value
     _ => ()
@@ -270,7 +424,9 @@ pub fn set_array_like_length(val : Value, len : Int) -> Unit {
   match val {
     Array(data) =>
       while data.elements.length() < len {
+        let new_idx = data.elements.length()
         data.elements.push(Undefined)
+        data.holes[new_idx] = ()
       }
     Object(data) => data.bag.properties["length"] = Number(len.to_double())
     _ => ()
@@ -298,18 +454,23 @@ pub fn create_data_property_or_throw(
   value : Value,
 ) -> Unit raise {
   match target {
-    Array(data) =>
+    Array(data) => {
       if index == data.elements.length() {
         data.elements.push(value)
       } else if index >= 0 && index < data.elements.length() {
         data.elements[index] = value
       } else {
-        // Sparse case: pad with Undefined up to index, then set
+        // Sparse case: pad with Undefined up to index (these are holes),
+        // then set value at the target index (not a hole).
         while data.elements.length() < index {
+          let pad_idx = data.elements.length()
           data.elements.push(Undefined)
+          data.holes[pad_idx] = ()
         }
         data.elements.push(value)
       }
+      data.holes.remove(index)
+    }
     _ => {
       let _ = interp.set_property(
         target,
