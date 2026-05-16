@@ -299,7 +299,7 @@ pub fn create_data_property_or_throw(
   value : Value,
 ) -> Unit raise {
   match target {
-    Array(data) =>
+    Array(data) => {
       if index == data.elements.length() {
         data.elements.push(value)
       } else if index >= 0 && index < data.elements.length() {
@@ -311,6 +311,8 @@ pub fn create_data_property_or_throw(
         }
         data.elements.push(value)
       }
+      data.holes.remove(index)
+    }
     _ => {
       let _ = interp.set_property(
         target,

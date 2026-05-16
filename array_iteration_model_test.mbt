@@ -10,3 +10,12 @@ test "phase1: write to hole clears the hole flag (fill case)" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["true,true,10"])
 }
+
+///|
+test "phase1: Array.from materializes a hole-free array" {
+  let src =
+    #|var a = Array.from([, , 9]);
+    #|console.log((0 in a) + "," + (1 in a) + "," + (2 in a) + "," + a[2]);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["true,true,true,9"])
+}
