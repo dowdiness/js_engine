@@ -878,7 +878,14 @@ pub fn Interpreter::array_define_own_property(
         if !had_index && !arr.extensible {
           return false
         }
-        // Grow elements to idx+1 with Undefined filler.
+        // Grow elements to idx+1 with Undefined filler. Intermediate indices
+        // (old_length..idx) become spec-level holes; the target index `idx`
+        // is real and has its hole flag cleared below.
+        while arr.elements.length() < idx {
+          let pad_idx = arr.elements.length()
+          arr.elements.push(Undefined)
+          arr.holes[pad_idx] = ()
+        }
         while arr.elements.length() <= idx {
           arr.elements.push(Undefined)
         }

@@ -154,3 +154,13 @@ test "phase3: a.length = N extension marks new indices as holes" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["true,inherited"])
 }
+
+///|
+test "phase3: defineProperty OOB index raises length and marks gap as holes" {
+  let src =
+    #|var a = [10, 20, 30];
+    #|Object.defineProperty(a, "5", { value: 7, writable: true, enumerable: true, configurable: true });
+    #|console.log(a.length + "," + (3 in a) + "," + (4 in a) + "," + (5 in a) + "," + a[5]);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["6,false,false,true,7"])
+}
