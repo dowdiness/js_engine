@@ -83,3 +83,27 @@ test "phase2: forEach visits inherited prototype index at a hole position" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["0:0|1:99|2:2"])
 }
+
+///|
+test "phase2: direct arr[i] read walks Array.prototype for OOB index" {
+  let src =
+    #|var arr = [0, 1, 2];
+    #|Array.prototype[5] = "inherited";
+    #|var val = arr[5];
+    #|delete Array.prototype[5];
+    #|console.log(val);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["inherited"])
+}
+
+///|
+test "phase2: direct arr[i] read walks Array.prototype for hole" {
+  let src =
+    #|var arr = [0, , 2];
+    #|Array.prototype[1] = "inherited";
+    #|var val = arr[1];
+    #|delete Array.prototype[1];
+    #|console.log(val);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["inherited"])
+}

@@ -17,18 +17,18 @@ pub fn Interpreter::get_property(
       } else {
         // Check numeric index access first
         let num_idx = @string.parse_int(prop) catch { _ => -1 }
-        if num_idx >= 0 &&
-          num_idx < data.elements.length() &&
-          num_idx.to_string() == prop {
-          match data.bag.descriptors.get(prop) {
-            Some(desc) =>
-              match desc.getter {
-                Some(getter) => return self.call_value(getter, obj, [], loc)
-                None => if desc.setter is Some(_) { return Undefined }
-              }
-            None => ()
+        if num_idx >= 0 && num_idx.to_string() == prop {
+          // Dispatch via array_index_lookup_result for spec [[Get]] semantics.
+          match array_index_lookup_result(data, num_idx) {
+            Present(v) => v
+            OwnAccessor(Some(getter)) =>
+              return self.call_value(getter, obj, [], loc)
+            OwnAccessor(None) => Undefined
+            Hole | OutOfRange => {
+              let proto = get_array_prototype(self.global, data)
+              return self.get_property_from_prototype(obj, proto, prop, loc)
+            }
           }
-          data.elements[num_idx]
         } else {
           // Check named properties (e.g., index, input on exec results)
           match data.bag.descriptors.get(prop) {
@@ -1269,23 +1269,26 @@ pub fn Interpreter::get_computed_property(
         Number(n) => {
           // Use Int64 to avoid overflow for indices >= 2^31.
           let i64 = n.to_int64()
-          if n >= 0.0 &&
-            n == i64.to_double() &&
-            i64 < data.elements.length().to_int64() {
+          if n >= 0.0 && n == i64.to_double() && i64 <= 0x7FFFFFFFL {
             let i = i64.to_int()
-            let key_str = i.to_string()
-            match data.bag.descriptors.get(key_str) {
-              Some(desc) =>
-                match desc.getter {
-                  Some(getter) => return self.call_value(getter, obj, [], loc)
-                  None => if desc.setter is Some(_) { return Undefined }
-                }
-              None => ()
+            // Dispatch via array_index_lookup_result for spec [[Get]]
+            // semantics on Array indices: Present/OwnAccessor short-circuit,
+            // Hole/OutOfRange walk the resolved prototype.
+            match array_index_lookup_result(data, i) {
+              Present(v) => v
+              OwnAccessor(Some(getter)) =>
+                return self.call_value(getter, obj, [], loc)
+              OwnAccessor(None) => Undefined
+              Hole | OutOfRange => {
+                let proto = get_array_prototype(self.global, data)
+                return self.get_property_from_prototype(
+                  obj, proto, i.to_string(), loc,
+                )
+              }
             }
-            data.elements[i]
           } else {
-            // Out-of-range or non-integer: check the bag (large indices or
-            // properties set via Object.defineProperty with a Number key).
+            // Non-integer or very-large key: not an array index; check
+            // the bag (Object.defineProperty with Number key, etc.).
             let key_str = to_js_string(Number(n))
             match data.bag.descriptors.get(key_str) {
               Some(desc) =>
@@ -1308,51 +1311,52 @@ pub fn Interpreter::get_computed_property(
           }
         String_(s) => {
           // Canonical numeric index string check: parseDouble(s).toString() === s
-          let mut numeric_result : Value? = None
+          let mut is_index : Bool = false
+          let mut idx : Int = -1
           try {
             let n = @string.parse_double(s)
             if n.to_string() == s {
-              let idx = n.to_int()
-              if idx.to_double() == n &&
-                idx >= 0 &&
-                idx < data.elements.length() {
-                match data.bag.descriptors.get(s) {
-                  Some(desc) =>
-                    match desc.getter {
-                      Some(getter) =>
-                        return self.call_value(getter, obj, [], loc)
-                      None => if desc.setter is Some(_) { return Undefined }
-                    }
-                  None => ()
-                }
-                numeric_result = Some(data.elements[idx])
+              let i = n.to_int()
+              if i.to_double() == n && i >= 0 {
+                is_index = true
+                idx = i
               }
             }
           } catch {
             _ => () // Not a numeric string
           }
-          match numeric_result {
-            Some(v) => v
-            None => {
-              match data.bag.descriptors.get(s) {
-                Some(desc) =>
-                  match desc.getter {
-                    Some(getter) => return self.call_value(getter, obj, [], loc)
-                    None => if desc.setter is Some(_) { return Undefined }
-                  }
-                None => ()
+          if is_index {
+            // Dispatch via array_index_lookup_result for spec [[Get]] semantics.
+            match array_index_lookup_result(data, idx) {
+              Present(v) => v
+              OwnAccessor(Some(getter)) =>
+                return self.call_value(getter, obj, [], loc)
+              OwnAccessor(None) => Undefined
+              Hole | OutOfRange => {
+                let proto = get_array_prototype(self.global, data)
+                return self.get_property_from_prototype(obj, proto, s, loc)
               }
-              // Check bag-backed named properties, then prototype chain / methods.
-              match get_array_named_prop(data, s) {
-                Some(v) => v
-                None =>
-                  match get_array_prototype_override(data) {
-                    Some(proto) =>
-                      self.get_property_from_prototype(obj, proto, s, loc)
-                    None =>
-                      (self.stdlib_hooks.get_array_method_with_interp)(data, s)
-                  }
-              }
+            }
+          } else {
+            // Non-index string key: own descriptor → method dispatch → prototype.
+            match data.bag.descriptors.get(s) {
+              Some(desc) =>
+                match desc.getter {
+                  Some(getter) => return self.call_value(getter, obj, [], loc)
+                  None => if desc.setter is Some(_) { return Undefined }
+                }
+              None => ()
+            }
+            // Check bag-backed named properties, then prototype chain / methods.
+            match get_array_named_prop(data, s) {
+              Some(v) => v
+              None =>
+                match get_array_prototype_override(data) {
+                  Some(proto) =>
+                    self.get_property_from_prototype(obj, proto, s, loc)
+                  None =>
+                    (self.stdlib_hooks.get_array_method_with_interp)(data, s)
+                }
             }
           }
         }
