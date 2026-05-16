@@ -1319,16 +1319,20 @@ pub fn Interpreter::get_computed_property(
             None => Number(data.elements.length().to_double())
           }
         String_(s) => {
-          // Canonical numeric index string check: parseDouble(s).toString() === s
+          // Canonical numeric index string check: parseDouble(s).toString() === s.
+          // Mirror the Number(n) branch's Int-range discipline so large
+          // numeric strings like "3000000000" (valid array length but
+          // outside Int) flow into the non-index path and walk the
+          // prototype, rather than overflowing `n.to_int()`.
           let mut is_index : Bool = false
           let mut idx : Int = -1
           try {
             let n = @string.parse_double(s)
-            if n.to_string() == s {
-              let i = n.to_int()
-              if i.to_double() == n && i >= 0 {
+            if n >= 0.0 && n.to_string() == s {
+              let i64 = n.to_int64()
+              if i64.to_double() == n && i64 <= 0x7FFFFFFFL {
                 is_index = true
-                idx = i
+                idx = i64.to_int()
               }
             }
           } catch {
@@ -1356,8 +1360,23 @@ pub fn Interpreter::get_computed_property(
                 match get_array_prototype_override(data) {
                   Some(proto) =>
                     self.get_property_from_prototype(obj, proto, s, loc)
-                  None =>
-                    (self.stdlib_hooks.get_array_method_with_interp)(data, s)
+                  None => {
+                    // Mirror the `Interpreter::get_property` pattern: many
+                    // built-in methods (map/filter/forEach/…) are delegated
+                    // to the live `Array.prototype` and return Undefined
+                    // from the shortcut. Fall through to the actual
+                    // %Array.prototype% walk so `arr["map"]` resolves the
+                    // built-in (and so non-index numeric strings keep
+                    // ascending to `Object.prototype`).
+                    let result = (self.stdlib_hooks.get_array_method_with_interp)(
+                      data, s,
+                    )
+                    match result {
+                      Undefined =>
+                        lookup_builtin_proto(self, obj, "Array", s, loc)
+                      _ => result
+                    }
+                  }
                 }
             }
           }

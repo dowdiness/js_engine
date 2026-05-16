@@ -159,6 +159,36 @@ test "phase3: defineProperty OOB index raises length and marks gap as holes" {
 }
 
 ///|
+test "review F1: arr[s] falls through to %Array.prototype% walk on shortcut miss" {
+  // PR-#122 follow-up review: when no prototype override is set, the
+  // get_computed_property String_ branch's built-in-method shortcut
+  // returns Undefined for ES5 methods delegated to Array.prototype
+  // (map/filter/forEach/…). The fall-through to lookup_builtin_proto
+  // must fire so `arr["map"]` matches `arr.map`.
+  let src =
+    #|var a = [1, 2, 3];
+    #|console.log(typeof a["map"] + "," + (a["map"] === a.map));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["function,true"])
+}
+
+///|
+test "review F2: large numeric string key walks the prototype chain" {
+  // PR-#122 follow-up review: "3000000000" is a valid array-like key
+  // per spec but >= 2^31. The String_ branch must mirror Number's
+  // Int-range discipline (i64-and-bound, not bare `n.to_int()`) so the
+  // key flows into the non-index path and ascends to Object.prototype.
+  let src =
+    #|var a = [10, 20, 30];
+    #|Object.prototype["3000000000"] = "from-proto";
+    #|var v = a["3000000000"];
+    #|delete Object.prototype["3000000000"];
+    #|console.log(v);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["from-proto"])
+}
+
+///|
 test "review P1-A: sort over hole-bearing array (stale-holes guard)" {
   // Regression test for the Codex P1-A finding: sort() reorders
   // `data.elements` in place but doesn't touch `data.holes`, so a real
