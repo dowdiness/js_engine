@@ -19,3 +19,14 @@ test "phase1: Array.from materializes a hole-free array" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["true,true,true,9"])
 }
+
+///|
+test "phase1: shrink-then-push does not leak holes above new length" {
+  let src =
+    #|var a = [, 2, 3];
+    #|a.length = 1;
+    #|a.push(9);
+    #|console.log(a.length + "," + (1 in a) + "," + a[1]);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["2,true,9"])
+}

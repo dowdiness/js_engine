@@ -202,6 +202,13 @@ pub fn Interpreter::set_property(
         while data.elements.length().to_int64() > n64 {
           let _ = data.elements.pop()
         }
+        // Drop hole entries that fell out of range with the shrink.
+        let new_len_int = n64.to_int()
+        let hole_keys : Array[Int] = []
+        data.holes.each(fn(k, _) { if k >= new_len_int { hole_keys.push(k) } })
+        for k in hole_keys {
+          data.holes.remove(k)
+        }
         let cur_elem_len = data.elements.length().to_int64()
         // Expand elements if the gap is small enough to materialise
         if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
@@ -1229,6 +1236,15 @@ pub fn Interpreter::set_computed_property(
             // Truncate array if new length is shorter.
             while data.elements.length().to_int64() > n64 {
               let _ = data.elements.pop()
+            }
+            // Drop hole entries that fell out of range with the shrink.
+            let new_len_int = n64.to_int()
+            let hole_keys : Array[Int] = []
+            data.holes.each(fn(k, _) {
+              if k >= new_len_int { hole_keys.push(k) }
+            })
+            for k in hole_keys {
+              data.holes.remove(k)
             }
             // Expand elements if gap is small enough to materialise.
             let cur_elem_len = data.elements.length().to_int64()
