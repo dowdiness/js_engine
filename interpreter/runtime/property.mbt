@@ -1,4 +1,31 @@
 ///|
+/// Spec [[Get]] for an integer index on an Array exotic object.
+/// Centralises the descriptor / dense / hole / OOB dispatch and the
+/// receiver-preserving prototype walk so every [[Get]] entry point
+/// (`get_property` and both `get_computed_property` index branches)
+/// stays in lockstep. The prototype-walk loop in
+/// `get_property_from_prototype` keeps its own in-line dispatch
+/// because it must `continue` the walk, not recurse.
+fn Interpreter::array_get_indexed(
+  self : Interpreter,
+  obj : Value,
+  data : ArrayData,
+  index : Int,
+  key : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match array_index_lookup_result(data, index) {
+    Present(v) => v
+    OwnAccessor(Some(getter)) => self.call_value(getter, obj, [], loc)
+    OwnAccessor(None) => Undefined
+    Hole | OutOfRange => {
+      let proto = get_array_prototype(self.global, data)
+      self.get_property_from_prototype(obj, proto, key, loc)
+    }
+  }
+}
+
+///|
 pub fn Interpreter::get_property(
   self : Interpreter,
   obj : Value,
@@ -18,17 +45,7 @@ pub fn Interpreter::get_property(
         // Check numeric index access first
         let num_idx = @string.parse_int(prop) catch { _ => -1 }
         if num_idx >= 0 && num_idx.to_string() == prop {
-          // Dispatch via array_index_lookup_result for spec [[Get]] semantics.
-          match array_index_lookup_result(data, num_idx) {
-            Present(v) => v
-            OwnAccessor(Some(getter)) =>
-              return self.call_value(getter, obj, [], loc)
-            OwnAccessor(None) => Undefined
-            Hole | OutOfRange => {
-              let proto = get_array_prototype(self.global, data)
-              return self.get_property_from_prototype(obj, proto, prop, loc)
-            }
-          }
+          self.array_get_indexed(obj, data, num_idx, prop, loc)
         } else {
           // Check named properties (e.g., index, input on exec results)
           match data.bag.descriptors.get(prop) {
@@ -1272,24 +1289,7 @@ pub fn Interpreter::get_computed_property(
           let i64 = n.to_int64()
           if n >= 0.0 && n == i64.to_double() && i64 <= 0x7FFFFFFFL {
             let i = i64.to_int()
-            // Dispatch via array_index_lookup_result for spec [[Get]]
-            // semantics on Array indices: Present/OwnAccessor short-circuit,
-            // Hole/OutOfRange walk the resolved prototype.
-            match array_index_lookup_result(data, i) {
-              Present(v) => v
-              OwnAccessor(Some(getter)) =>
-                return self.call_value(getter, obj, [], loc)
-              OwnAccessor(None) => Undefined
-              Hole | OutOfRange => {
-                let proto = get_array_prototype(self.global, data)
-                return self.get_property_from_prototype(
-                  obj,
-                  proto,
-                  i.to_string(),
-                  loc,
-                )
-              }
-            }
+            self.array_get_indexed(obj, data, i, i.to_string(), loc)
           } else {
             // Non-integer or very-large key: not handled by the dense
             // index path. Check own descriptors / named-prop bag first,
@@ -1335,17 +1335,7 @@ pub fn Interpreter::get_computed_property(
             _ => () // Not a numeric string
           }
           if is_index {
-            // Dispatch via array_index_lookup_result for spec [[Get]] semantics.
-            match array_index_lookup_result(data, idx) {
-              Present(v) => v
-              OwnAccessor(Some(getter)) =>
-                return self.call_value(getter, obj, [], loc)
-              OwnAccessor(None) => Undefined
-              Hole | OutOfRange => {
-                let proto = get_array_prototype(self.global, data)
-                return self.get_property_from_prototype(obj, proto, s, loc)
-              }
-            }
+            self.array_get_indexed(obj, data, idx, s, loc)
           } else {
             // Non-index string key: own descriptor → method dispatch → prototype.
             match data.bag.descriptors.get(s) {
