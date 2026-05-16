@@ -206,7 +206,7 @@ fn setup_array_builtins(
         from_idx
       }
       for i = start; i < len; i = i + 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           if strict_equal_val(
               @runtime.get_array_like_element_interp(interp, o, i),
               search,
@@ -238,7 +238,7 @@ fn setup_array_builtins(
         start
       }
       for i = from; i >= 0; i = i - 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           if strict_equal_val(
               @runtime.get_array_like_element_interp(interp, o, i),
               search,
@@ -321,7 +321,7 @@ fn setup_array_builtins(
       let a = @runtime.array_species_create(interp, o, count)
       let mut n = 0
       for i = start; i < end; i = i + 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           @runtime.create_data_property_or_throw(
             interp,
             a,
@@ -393,7 +393,7 @@ fn setup_array_builtins(
         if spreadable {
           let len = @runtime.to_array_like_length_interp(item, interp)
           for i = 0; i < len; i = i + 1 {
-            if @runtime.has_array_like_element(item, i) {
+            if @runtime.has_array_like_element(interp, item, i) {
               @runtime.create_data_property_or_throw(
                 interp,
                 a,
@@ -571,7 +571,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           let _ = interp.call_value(
             callback,
             this_arg,
@@ -603,7 +603,7 @@ fn setup_array_builtins(
       let loc = @token.Loc::default()
       let a = @runtime.array_species_create(interp, o, len)
       for i = 0; i < len; i = i + 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
             this_arg,
@@ -638,7 +638,7 @@ fn setup_array_builtins(
       let a = @runtime.array_species_create(interp, o, 0)
       let mut to = 0
       for i = 0; i < len; i = i + 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           let el = @runtime.get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
             callback,
@@ -676,7 +676,7 @@ fn setup_array_builtins(
         // Per spec: find first present element as initial value
         let mut k_present = false
         while k < len {
-          if @runtime.has_array_like_element(o, k) {
+          if @runtime.has_array_like_element(interp, o, k) {
             acc = @runtime.get_array_like_element_interp(interp, o, k)
             k = k + 1
             k_present = true
@@ -691,7 +691,7 @@ fn setup_array_builtins(
         }
       }
       while k < len {
-        if @runtime.has_array_like_element(o, k) {
+        if @runtime.has_array_like_element(interp, o, k) {
           acc = interp.call_value(
             callback,
             Undefined,
@@ -730,7 +730,7 @@ fn setup_array_builtins(
         // Per spec: find last present element as initial value (searching right to left)
         let mut k_present = false
         while k >= 0 {
-          if @runtime.has_array_like_element(o, k) {
+          if @runtime.has_array_like_element(interp, o, k) {
             acc = @runtime.get_array_like_element_interp(interp, o, k)
             k = k - 1
             k_present = true
@@ -745,7 +745,7 @@ fn setup_array_builtins(
         }
       }
       while k >= 0 {
-        if @runtime.has_array_like_element(o, k) {
+        if @runtime.has_array_like_element(interp, o, k) {
           acc = interp.call_value(
             callback,
             Undefined,
@@ -894,7 +894,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
             this_arg,
@@ -928,7 +928,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
-        if @runtime.has_array_like_element(o, i) {
+        if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
             this_arg,
@@ -1175,7 +1175,7 @@ fn setup_array_builtins(
       }
       let removed = @runtime.array_species_create(interp, o, del_count)
       for i = 0; i < del_count; i = i + 1 {
-        if @runtime.has_array_like_element(o, start + i) {
+        if @runtime.has_array_like_element(interp, o, start + i) {
           @runtime.create_data_property_or_throw(
             interp,
             removed,

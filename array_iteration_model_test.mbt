@@ -57,3 +57,29 @@ test "phase2: indexOf walks Array.prototype for hole indices" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["1"])
 }
+
+///|
+test "phase2: forEach skips own holes when prototype has nothing at that index" {
+  // Per ES2024 §22.1.3.10 step 6.b.i, forEach calls the callback only when
+  // HasProperty(O, Pk) is true. A hole with no inherited prototype
+  // property must NOT be visited — exercises has_array_like_element.
+  let src =
+    #|var seen = [];
+    #|[0, , 2].forEach(function(v, i) { seen.push(i + ":" + v); });
+    #|console.log(seen.join("|"));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["0:0|2:2"])
+}
+
+///|
+test "phase2: forEach visits inherited prototype index at a hole position" {
+  let src =
+    #|var arr = [0, , 2];
+    #|Array.prototype[1] = 99;
+    #|var seen = [];
+    #|arr.forEach(function(v, i) { seen.push(i + ":" + v); });
+    #|delete Array.prototype[1];
+    #|console.log(seen.join("|"));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["0:0|1:99|2:2"])
+}

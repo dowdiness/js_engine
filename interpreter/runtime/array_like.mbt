@@ -259,11 +259,54 @@ pub fn get_array_like_element_interp(
 }
 
 ///|
-/// Check if array-like value has indexed property
-pub fn has_array_like_element(val : Value, index : Int) -> Bool {
+/// Non-raising HasProperty walk along an explicit prototype chain for an
+/// indexed key. Returns true if any reachable object has an own data or
+/// accessor property at the given key. Does NOT invoke Proxy traps
+/// (would require raising); Proxy-as-prototype is out of scope per the
+/// iteration-model spec v5.
+fn proto_chain_has_index(proto : Value, key : String, index : Int) -> Bool {
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) => {
+        if proto_data.bag.properties.contains(key) {
+          return true
+        }
+        match proto_data.bag.descriptors.get(key) {
+          Some(_) => return true
+          None => current = proto_data.prototype
+        }
+      }
+      Array(arr_data) =>
+        return match array_index_lookup_result(arr_data, index) {
+          Present(_) | OwnAccessor(_) => true
+          Hole | OutOfRange => false
+        }
+      _ => return false
+    }
+  }
+  false
+}
+
+///|
+/// Check if array-like value has indexed property.
+/// `interp` is required so the Array branch can resolve `%Array.prototype%`
+/// via `get_array_prototype(interp.global, data)`.
+pub fn has_array_like_element(
+  interp : Interpreter,
+  val : Value,
+  index : Int,
+) -> Bool {
   let key = index.to_string()
   match val {
-    Array(data) => index >= 0 && index < data.elements.length()
+    Array(data) =>
+      match array_index_lookup_result(data, index) {
+        Present(_) | OwnAccessor(_) => true
+        Hole | OutOfRange => {
+          let proto = get_array_prototype(interp.global, data)
+          proto_chain_has_index(proto, key, index)
+        }
+      }
     Object(data) => {
       if data.bag.properties.contains(key) {
         return true
@@ -288,7 +331,10 @@ pub fn has_array_like_element(val : Value, index : Int) -> Bool {
             current = proto_data.prototype
           }
           Array(arr_data) =>
-            return index >= 0 && index < arr_data.elements.length()
+            return match array_index_lookup_result(arr_data, index) {
+              Present(_) | OwnAccessor(_) => true
+              Hole | OutOfRange => false
+            }
           _ => break
         }
       }
