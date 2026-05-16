@@ -267,7 +267,12 @@ pub fn get_array_like_element_interp(
 /// accessor property at the given key. Does NOT invoke Proxy traps
 /// (would require raising); Proxy-as-prototype is out of scope per the
 /// iteration-model spec v5.
-fn proto_chain_has_index(proto : Value, key : String, index : Int) -> Bool {
+fn proto_chain_has_index(
+  interp : Interpreter,
+  proto : Value,
+  key : String,
+  index : Int,
+) -> Bool {
   let mut current = proto
   while true {
     match current {
@@ -281,9 +286,12 @@ fn proto_chain_has_index(proto : Value, key : String, index : Int) -> Bool {
         }
       }
       Array(arr_data) =>
-        return match array_index_lookup_result(arr_data, index) {
-          Present(_) | OwnAccessor(_) => true
-          Hole | OutOfRange => false
+        match array_index_lookup_result(arr_data, index) {
+          Present(_) | OwnAccessor(_) => return true
+          Hole | OutOfRange =>
+            // Array-as-prototype: continue walking via the array's own
+            // prototype so inherited indices on Object.prototype are seen.
+            current = get_array_prototype(interp.global, arr_data)
         }
       _ => return false
     }
@@ -307,7 +315,7 @@ pub fn has_array_like_element(
         Present(_) | OwnAccessor(_) => true
         Hole | OutOfRange => {
           let proto = get_array_prototype(interp.global, data)
-          proto_chain_has_index(proto, key, index)
+          proto_chain_has_index(interp, proto, key, index)
         }
       }
     Object(data) => {

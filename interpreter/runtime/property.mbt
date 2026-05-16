@@ -202,19 +202,20 @@ fn Interpreter::get_property_from_prototype(
           }
         }
         let num_idx = @string.parse_int(prop) catch { _ => -1 }
-        if num_idx >= 0 &&
-          num_idx < data.elements.length() &&
-          num_idx.to_string() == prop {
-          match data.bag.descriptors.get(prop) {
-            Some(desc) =>
-              match desc.getter {
-                Some(getter) =>
-                  return self.call_value(getter, receiver, [], loc)
-                None => if desc.setter is Some(_) { return Undefined }
-              }
-            None => ()
+        if num_idx >= 0 && num_idx.to_string() == prop {
+          // Inside a prototype walk, an Array(data) node still needs spec
+          // [[Get]] semantics: own descriptor / dense vs hole / fall through.
+          match array_index_lookup_result(data, num_idx) {
+            Present(v) => return v
+            OwnAccessor(Some(getter)) =>
+              return self.call_value(getter, receiver, [], loc)
+            OwnAccessor(None) => return Undefined
+            Hole | OutOfRange => {
+              // Continue the chain via this array's own prototype.
+              current = get_array_prototype(self.global, data)
+              continue
+            }
           }
-          return data.elements[num_idx]
         }
         match data.bag.descriptors.get(prop) {
           Some(desc) =>
@@ -1290,8 +1291,10 @@ pub fn Interpreter::get_computed_property(
               }
             }
           } else {
-            // Non-integer or very-large key: not an array index; check
-            // the bag (Object.defineProperty with Number key, etc.).
+            // Non-integer or very-large key: not handled by the dense
+            // index path. Check own descriptors / named-prop bag first,
+            // then fall through to prototype walk so inherited indexed
+            // and non-indexed numeric keys are resolved per spec.
             let key_str = to_js_string(Number(n))
             match data.bag.descriptors.get(key_str) {
               Some(desc) =>
@@ -1303,7 +1306,10 @@ pub fn Interpreter::get_computed_property(
             }
             match get_array_named_prop(data, key_str) {
               Some(v) => v
-              None => Undefined
+              None => {
+                let proto = get_array_prototype(self.global, data)
+                self.get_property_from_prototype(obj, proto, key_str, loc)
+              }
             }
           }
         }
@@ -1353,13 +1359,18 @@ pub fn Interpreter::get_computed_property(
             // Check bag-backed named properties, then prototype chain / methods.
             match get_array_named_prop(data, s) {
               Some(v) => v
-              None =>
-                match get_array_prototype_override(data) {
-                  Some(proto) =>
+              None => {
+                let array_method = (self.stdlib_hooks.get_array_method_with_interp)(
+                  data, s,
+                )
+                match array_method {
+                  Undefined => {
+                    let proto = get_array_prototype(self.global, data)
                     self.get_property_from_prototype(obj, proto, s, loc)
-                  None =>
-                    (self.stdlib_hooks.get_array_method_with_interp)(data, s)
+                  }
+                  _ => array_method
                 }
+              }
             }
           }
         }

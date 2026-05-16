@@ -164,3 +164,20 @@ test "phase3: defineProperty OOB index raises length and marks gap as holes" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["6,false,false,true,7"])
 }
+
+///|
+test "phase2 P1: prototype-chain walk continues through Array nodes" {
+  // Object.setPrototypeOf with an Array as prototype: a hole at the
+  // child's index should fall through to the prototype's prototype
+  // (in this case Object.prototype) — Codex v3 P1 regression test.
+  let src =
+    #|var ap = [];
+    #|Object.prototype["7"] = "from-object";
+    #|var child = Object.create(ap);
+    #|child.length = 8;
+    #|var seen = child[7];
+    #|delete Object.prototype["7"];
+    #|console.log(seen);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["from-object"])
+}
