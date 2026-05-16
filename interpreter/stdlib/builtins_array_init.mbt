@@ -1902,6 +1902,11 @@ fn setup_array_builtins(
                   holes: {},
                   extensible: true,
                 }
+                // Mark materialized indices as holes — Array(n) creates an exotic
+                // array of length n with no own properties (§22.1.1.1 step 5.c).
+                for i in 0..<arr_data.elements.length() {
+                  arr_data.holes[i] = ()
+                }
                 if len64 > arr_data.elements.length().to_int64() {
                   @runtime.set_array_length_override(arr_data, len64)
                 }

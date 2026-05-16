@@ -107,3 +107,15 @@ test "phase2: direct arr[i] read walks Array.prototype for hole" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["inherited"])
 }
+
+///|
+test "phase3: Array(n) creates a hole-bearing array" {
+  let src =
+    #|var a = Array(5);
+    #|Array.prototype[2] = "inherited";
+    #|var v = a[2];
+    #|delete Array.prototype[2];
+    #|console.log((0 in a) + "," + a.length + "," + v);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["false,5,inherited"])
+}
