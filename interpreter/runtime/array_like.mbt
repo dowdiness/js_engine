@@ -402,9 +402,12 @@ pub fn create_data_property_or_throw(
       } else if index >= 0 && index < data.elements.length() {
         data.elements[index] = value
       } else {
-        // Sparse case: pad with Undefined up to index, then set
+        // Sparse case: pad with Undefined up to index (these are holes),
+        // then set value at the target index (not a hole).
         while data.elements.length() < index {
+          let pad_idx = data.elements.length()
           data.elements.push(Undefined)
+          data.holes[pad_idx] = ()
         }
         data.elements.push(value)
       }
