@@ -203,15 +203,24 @@ pub fn Interpreter::set_property(
           let _ = data.elements.pop()
         }
         // Drop hole entries that fell out of range with the shrink.
-        let new_len_int = n64.to_int()
-        let hole_keys : Array[Int] = []
-        data.holes.each(fn(k, _) { if k >= new_len_int { hole_keys.push(k) } })
-        for k in hole_keys {
-          data.holes.remove(k)
+        // Hole keys are Int (≤ 2^31-1); if the new length exceeds Int
+        // range, no in-range hole can be out-of-range, so the cleanup
+        // is a no-op — skip it to avoid an overflowing Int64→Int cast.
+        if n64 <= 0x7FFFFFFFL {
+          let new_len_int = n64.to_int()
+          let hole_keys : Array[Int] = []
+          data.holes.each(fn(k, _) { if k >= new_len_int { hole_keys.push(k) } })
+          for k in hole_keys {
+            data.holes.remove(k)
+          }
         }
         let cur_elem_len = data.elements.length().to_int64()
-        // Expand elements if the gap is small enough to materialise
-        if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
+        // Expand elements if the gap is small enough to materialise. The
+        // 100000 cap plus the explicit Int-range guard below keeps the
+        // n64→Int cast safe.
+        if n64 > cur_elem_len &&
+          n64 - cur_elem_len <= 100000L &&
+          n64 <= 0x7FFFFFFFL {
           let prev_len = data.elements.length()
           let target = n64.to_int()
           while data.elements.length() < target {
@@ -1238,19 +1247,26 @@ pub fn Interpreter::set_computed_property(
               let _ = data.elements.pop()
             }
             // Drop hole entries that fell out of range with the shrink.
-            let new_len_int = n64.to_int()
-            let hole_keys : Array[Int] = []
-            data.holes.each(fn(k, _) {
-              if k >= new_len_int {
-                hole_keys.push(k)
+            // Same Int-range guard as the `Interpreter::set_property`
+            // length path — hole keys are Int (≤ 2^31-1), so an
+            // out-of-Int-range new length cannot leave any hole stale.
+            if n64 <= 0x7FFFFFFFL {
+              let new_len_int = n64.to_int()
+              let hole_keys : Array[Int] = []
+              data.holes.each(fn(k, _) {
+                if k >= new_len_int {
+                  hole_keys.push(k)
+                }
+              })
+              for k in hole_keys {
+                data.holes.remove(k)
               }
-            })
-            for k in hole_keys {
-              data.holes.remove(k)
             }
             // Expand elements if gap is small enough to materialise.
             let cur_elem_len = data.elements.length().to_int64()
-            if n64 > cur_elem_len && n64 - cur_elem_len <= 100000L {
+            if n64 > cur_elem_len &&
+              n64 - cur_elem_len <= 100000L &&
+              n64 <= 0x7FFFFFFFL {
               let prev_len = data.elements.length()
               let target = n64.to_int()
               while data.elements.length() < target {

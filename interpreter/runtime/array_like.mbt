@@ -36,8 +36,14 @@ fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
         // — Array(n), a.length=N, sparse assignment). A non-Undefined
         // value here means a reordering builtin (sort, copyWithin,
         // reverse, …) wrote to the slot without updating holes; trust
-        // the value rather than the stale marker. Audit follow-up:
-        // teach those builtins to maintain the invariant directly.
+        // the value rather than the stale marker.
+        //
+        // Known residual gap (Codex PR-#122 review): when a reordering
+        // builtin moves an *explicit* `undefined` into a hole-marked
+        // slot, we still report Hole. Fixing this requires either a
+        // distinct empty-slot sentinel in `data.elements` or
+        // spec-conformant mutators that maintain `data.holes` per
+        // §23.1.3.30. Both are tracked as the Phase-4 follow-up.
         let v = data.elements[i]
         if data.holes.contains(i) && v is Undefined {
           Hole
