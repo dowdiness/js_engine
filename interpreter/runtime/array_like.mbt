@@ -242,10 +242,17 @@ pub fn get_array_like_element_interp(
 ) -> Value raise {
   match val {
     Array(data) =>
-      if index >= 0 && index < data.elements.length() {
-        data.elements[index]
-      } else {
-        Undefined
+      match array_index_lookup_result(data, index) {
+        Present(v) => v
+        OwnAccessor(Some(getter)) =>
+          interp.call_value(getter, val, [], @token.Loc::default())
+        OwnAccessor(None) => Undefined
+        Hole | OutOfRange => {
+          let proto = get_array_prototype(interp.global, data)
+          interp.get_property_from_prototype(
+            val, proto, index.to_string(), @token.Loc::default(),
+          )
+        }
       }
     _ => interp.get_property(val, index.to_string(), @token.Loc::default())
   }

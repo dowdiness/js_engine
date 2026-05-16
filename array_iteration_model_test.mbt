@@ -30,3 +30,30 @@ test "phase1: shrink-then-push does not leak holes above new length" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=["2,true,9"])
 }
+
+///|
+test "phase2: forEach observes own accessor side effect" {
+  let src =
+    #|var arr = [, 1, 2];
+    #|var observed = "none";
+    #|Object.defineProperty(arr, "0", {
+    #|  get: function() { return 99; },
+    #|  configurable: true,
+    #|});
+    #|arr.forEach(function(v, i) { if (i === 0) observed = v; });
+    #|console.log(observed);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["99"])
+}
+
+///|
+test "phase2: indexOf walks Array.prototype for hole indices" {
+  let src =
+    #|var arr = [0, , 2];
+    #|Array.prototype[1] = 6.99;
+    #|var idx = arr.indexOf(6.99);
+    #|delete Array.prototype[1];
+    #|console.log(idx);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["1"])
+}
