@@ -258,6 +258,7 @@ pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
     Array(data) =>
       if index >= 0 && index < data.elements.length() {
         data.elements[index] = value
+        data.holes.remove(index)
       }
     Object(data) => data.bag.properties[key] = value
     _ => ()
