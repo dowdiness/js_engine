@@ -17,6 +17,17 @@ pub fn is_truthy(val : Value) -> Bool {
 }
 
 ///|
+/// Returns true for Value variants that are JS object types (not primitives).
+/// Used to detect when ToPrimitive returns a non-primitive, which is a TypeError.
+/// Update here if new object-like Value variants are added.
+fn is_js_object(val : Value) -> Bool {
+  match val {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
+    _ => false
+  }
+}
+
+///|
 /// Global ref to current interpreter, set during execution so that
 /// ToPrimitive can call user-defined valueOf/toString/@@toPrimitive
 /// from NativeCallable builtins that do not receive an explicit interpreter.
@@ -338,13 +349,12 @@ pub fn to_primitive_number(
         interp~,
       )
       // If result is an object, throw TypeError
-      match result {
-        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-          raise @errors.TypeError(
-            message="Cannot convert object to primitive value",
-          )
-        _ => return result
+      if is_js_object(result) {
+        raise @errors.TypeError(
+          message="Cannot convert object to primitive value",
+        )
       }
+      return result
     }
   }
   // Step 2: OrdinaryToPrimitive with hint "number"
@@ -382,9 +392,8 @@ fn ordinary_to_primitive_number(
     Some(vo_fn) =>
       if is_callable(vo_fn) {
         let result = call_callable_direct(vo_fn, obj_val, [], interp~)
-        match result {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => () // result is object, try toString next
-          _ => return result
+        if !is_js_object(result) {
+          return result
         }
       }
     None => ()
@@ -409,13 +418,12 @@ fn ordinary_to_primitive_number(
     Some(ts_fn) =>
       if is_callable(ts_fn) {
         let result = call_callable_direct(ts_fn, obj_val, [], interp~)
-        match result {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-            raise @errors.TypeError(
-              message="Cannot convert object to primitive value",
-            )
-          _ => return result
+        if is_js_object(result) {
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
         }
+        return result
       }
     None => ()
   }
@@ -445,13 +453,12 @@ pub fn to_primitive_default(
         [String_("default")],
         interp~,
       )
-      match result {
-        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-          raise @errors.TypeError(
-            message="Cannot convert object to primitive value",
-          )
-        _ => return result
+      if is_js_object(result) {
+        raise @errors.TypeError(
+          message="Cannot convert object to primitive value",
+        )
       }
+      return result
     }
   }
   // Step 2: OrdinaryToPrimitive with hint "number" (default falls through to number behavior).
@@ -659,13 +666,12 @@ fn to_primitive_string(
         [String_("string")],
         interp~,
       )
-      match result {
-        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-          raise @errors.TypeError(
-            message="Cannot convert object to primitive value",
-          )
-        _ => return result
+      if is_js_object(result) {
+        raise @errors.TypeError(
+          message="Cannot convert object to primitive value",
+        )
       }
+      return result
     }
   }
   // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
@@ -691,9 +697,8 @@ fn to_primitive_string(
     Some(ts_fn) =>
       if is_callable(ts_fn) {
         let result = call_callable_direct(ts_fn, obj_val, [], interp~)
-        match result {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => () // result is object, try valueOf next
-          _ => return result
+        if !is_js_object(result) {
+          return result
         }
       }
     None => ()
@@ -718,13 +723,12 @@ fn to_primitive_string(
     Some(vo_fn) =>
       if is_callable(vo_fn) {
         let result = call_callable_direct(vo_fn, obj_val, [], interp~)
-        match result {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-            raise @errors.TypeError(
-              message="Cannot convert object to primitive value",
-            )
-          _ => return result
+        if is_js_object(result) {
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
         }
+        return result
       }
     None => ()
   }
