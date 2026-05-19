@@ -362,7 +362,7 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
           @runtime.proxy_own_property_keys(interp, proxy_data)
         Object(_) | Value::Array(_) =>
           @runtime.make_array(
-            @runtime.collect_target_own_keys(target, interp.symbols),
+            @runtime.collect_target_own_keys(target, interp.realm_state.symbols),
           )
         _ =>
           raise @errors.TypeError(

@@ -484,6 +484,7 @@ pub(all) struct Interpreter {
   global : Environment
   global_this : Value
   annex_b : Bool
+  realm_state : RealmState
   module_registry : Map[String, Map[String, Value]]
   mut module_exports : Map[String, Value]
   mut module_export_bindings : Array[(String, String)]
@@ -609,6 +610,11 @@ pub(all) struct ProxyData {
   mut handler : Value?
   is_callable : Bool
 }
+
+pub(all) struct RealmState {
+  symbols : SymbolState
+}
+pub fn RealmState::new() -> Self
 
 pub(all) enum ResumeAction {
   NextAction

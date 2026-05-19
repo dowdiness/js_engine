@@ -89,6 +89,7 @@ pub(all) struct Interpreter {
   global : Environment
   global_this : Value
   annex_b : Bool // Enable Annex B legacy features (--annex-b flag)
+  realm_state : RealmState // Per-realm mutable engine state owner
   // ES Modules support
   module_registry : Map[String, Map[String, Value]] // module specifier -> exports namespace
   mut module_exports : Map[String, Value] // current module's exports being built
@@ -96,7 +97,7 @@ pub(all) struct Interpreter {
   // Generator runtime state
   generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
   gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
-  // Per-interpreter symbol state (ID counter, all-symbols table, Symbol.for registry)
+  // Compatibility access to realm_state.symbols for existing runtime/stdlib code.
   symbols : SymbolState
   // Stdlib dispatch hooks — populated by the wiring layer in the root package
   mut stdlib_hooks : StdlibHooks
@@ -137,7 +138,8 @@ pub fn Interpreter::new(
     class_name: "global",
     extensible: true,
   })
-  let symbols = SymbolState::new()
+  let realm_state = RealmState::new()
+  let symbols = realm_state.symbols
   setup_builtins(global, output, symbols, annex_b)
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
@@ -216,6 +218,7 @@ pub fn Interpreter::new(
     global,
     global_this,
     annex_b,
+    realm_state,
     module_registry: {},
     module_exports: {},
     module_export_bindings: [],
