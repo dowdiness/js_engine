@@ -90,16 +90,16 @@ The rest of this file is project-agnostic MoonBit conventions. Inlined here so t
 | Bail out early             | `guard`                             | `if ... { return }`           |
 | Branch on variants         | `match`                             | chained `if/else`             |
 | Simple boolean             | `if/else`                           |                               |
-| Struct construction        | custom `fn new()` inside body       | bare `{ field: value }`       |
+| Struct construction        | `fn Type::Type(...)` constructor    | old `fn new()` inside body    |
 | Empty callback body        | `() => ()`                          | `() => {}` (map literal!)     |
 | Tuple field access         | `.0`                                | `._` (deprecated)             |
 | Fallible return type       | `T!Error` with `!` propagation      | `try?` (won't catch abort)    |
 | Iteration                  | `for .. in`                         | `loop` (deprecated)           |
 | Visibility default         | `pub`                               | `pub(all)` unless needed      |
 | Re-export from dependency    | `pub using @pkg { type T }`       | manual wrapper functions      |
-| Foreign trait + foreign type | newtype wrapper                   | direct impl (orphan rule)     |
+| Foreign trait + foreign type | tuple-struct wrapper              | direct impl (orphan rule)     |
 | Unimplemented placeholder  | `...`                               | leaving in committed code     |
-| Debugging derive           | `derive(Debug)` + manual `impl Show` for `inspect` | `derive(Show)` warns [0027] |
+| Debug snapshots            | `derive(Debug)` + `debug_inspect`/`to_repr` | container `Show` output |
 | Regex matching             | `s =~ re"pattern"`                  | `lexmatch`/`lexmatch?` (deprecated) |
 | Reduce nesting in DSLs     | `<\|` reverse pipeline              | deeply nested parentheses     |
 
@@ -243,46 +243,43 @@ grep -rn '() => {}' <pkg>/*.mbt                      # Empty callback anti-patte
 ## Functions & Types
 
 - **Arrow functions:** `() => expr` (zero params, single expression), `() => { stmts }` (multi-statement), `x => expr` (one param), `(x, y) => expr` (multiple params). Empty body: `() => ()` — not `() => {}` which MoonBit parses as a map literal. Named functions (`pub fn`, `fn name(...)`) are unaffected.
-- **Custom constructors for structs:** Declare a custom constructor via `fn new(...)` inside the struct body. This enables `StructName(args)` construction syntax with labelled/optional parameters, validation, and defaults. Applies regardless of visibility — `pub`, `pub(all)`, and `priv` structs all benefit from consistent call syntax and future-proof validation hooks. Prefer this over bare struct literals `{ field: value }`.
+- **Custom constructors for structs:** Define a constructor method named after the type, `fn Type::Type(...) -> Type`. This enables `Type(...)` construction syntax with labelled/optional parameters, validation, and defaults without repeating a signature inside the struct body. Applies regardless of visibility — `pub`, `pub(all)`, and `priv` structs all benefit from consistent call syntax and future-proof validation hooks. Prefer this over bare struct literals `{ field: value }`.
 
   ```moonbit
   struct MyStruct {
     x : Int
     y : Int
-
-    fn new(x~ : Int, y? : Int) -> MyStruct  // declaration inside struct
   } derive(Debug)
 
-  fn MyStruct::new(x~ : Int, y? : Int = x) -> MyStruct {  // implementation
+  fn MyStruct::MyStruct(x~ : Int, y? : Int = x) -> MyStruct {
     { x, y }
   }
 
   let s = MyStruct(x=1)  // usage — like enum constructors
   ```
 
-  **Generic structs** use `fn[T, U] new(...)` inside the body — type params on the `fn` keyword. Precedent: `@ref.Ref[T]` in MoonBit core (`core/ref/ref.mbt`).
+  If a public API already exposes `Type::new`, preserve compatibility with `#alias(new)` on the constructor method, or use `#alias(new, deprecated="message")` when intentionally migrating callers.
 
   ```moonbit
-  pub(all) struct Ref[T] {
-    mut val : T
-
-    fn[T] new(value : T) -> Ref[T]  // generic: type params on `fn`
+  pub(all) struct Box[T] {
+    val : T
   }
 
-  fn[T] Ref::new(value : T) -> Ref[T] { { val: value } }
+  #alias(new)
+  fn[T] Box::Box(value : T) -> Box[T] { { val: value } }
 
-  let r : Ref[Int] = Ref(42)
+  let b : Box[Int] = Box(42)
   ```
 
 - **Trait impl:** `pub impl Trait for Type with method(self) { ... }` — one method per impl block.
-- **Orphan rule** (error 4061): can't impl foreign trait for foreign type — use a private newtype wrapper.
+- **Orphan rule** (error 4061): can't impl foreign trait for foreign type — use a private tuple-struct wrapper.
 - **Error handling:** use `Unit!Error` or `T!Error` for fallible return types. Normal calls auto-propagate errors (zero syntax cost). `try?` converts to `Result[T, E]` (preserves concrete `E`). `abort` is NOT catchable — prefer `fail("msg")` for defect detection (catchable + source location).
 - **TODO syntax:** `...` is a placeholder for unimplemented code. It type-checks as any type but aborts at runtime. Do not leave `...` in committed code.
 
 ## Testing
 
 - **Files:** `*_test.mbt` (blackbox), `*_wbtest.mbt` (whitebox), `*_benchmark.mbt`.
-- **Assertions:** Use `inspect` for snapshots, `@qc` for properties.
+- **Assertions:** Use `json_inspect` for JSON/data snapshots, `debug_inspect` for Debug snapshots, `inspect` only when `Show` output itself is the behavior under test, and `@qc` for properties.
 - **Panic tests:** name starts with `"panic "` — test runner expects `abort()`.
 - **Blackbox tests** cannot construct internal structs — use whitebox tests or expose constructors.
 - **Block-style:** Code organized in `///|` separated blocks.
@@ -291,6 +288,7 @@ grep -rn '() => {}' <pkg>/*.mbt                      # Empty callback anti-patte
 ## Pitfalls
 
 - `._` syntax is deprecated — use `.0` for tuple access.
+- Old newtype syntax `type T UnderlyingType` is removed — use `struct T(UnderlyingType)`.
 - `ref` is a reserved keyword — do not use as variable/field names.
 - `() => {}` is a map literal, not an empty function body — use `() => ()`.
 - `loop` keyword is deprecated — use `for .. in`.
