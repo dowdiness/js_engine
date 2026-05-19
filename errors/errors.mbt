@@ -1,16 +1,4 @@
-///| JavaScript Engine Error Types
-
-///|
-
-///| Comprehensive error handling for lexer, parser, and interpreter.
-
-///| Pattern inspired by: https://github.com/dowdiness/event-graph-walker
-
-///| See: https://tc39.es/ecma262/#sec-native-error-types-used-in-this-standard
-
-//==============================================================================
-// Core JavaScript Error Type (unified enum-style suberror)
-//==============================================================================
+// See: https://tc39.es/ecma262/#sec-native-error-types-used-in-this-standard
 
 ///|
 /// JsError - Unified error type for all JavaScript errors
@@ -46,12 +34,7 @@ pub impl Show for JsError with output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
-//==============================================================================
-// Error helper methods
-//==============================================================================
-
 ///|
-/// Get the error type name as a string
 pub fn JsError::name(self : JsError) -> String {
   match self {
     TypeError(_) => "TypeError"
@@ -66,7 +49,6 @@ pub fn JsError::name(self : JsError) -> String {
 }
 
 ///|
-/// Get the error message
 pub fn JsError::get_message(self : JsError) -> String {
   match self {
     TypeError(message~)
