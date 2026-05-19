@@ -162,6 +162,8 @@ Implemented guardrail:
   module-level mutable `Ref`, `Map`, and `Array` bindings against the
   2026-05-19 migration inventory. The classified globals are still debt; the
   guardrail prevents new ambient mutable state from appearing silently.
+- CI runs the audit in the fast unit-test job so new runtime/stdlib ambient
+  mutable state cannot bypass review by relying on local-only checks.
 
 What stays the same:
 
@@ -188,6 +190,14 @@ What changes:
 - Thread this state through setup and lookup paths where new code can use it.
 - Keep old globals temporarily as compatibility shims where immediate removal
   would be risky.
+
+First slice:
+
+- Introduce the state owner and threading point only.
+- Do not move ArrayBuffer, WeakMap / WeakSet, prototype-cache, or well-known
+  symbol storage in the same patch.
+- Use the Stage 0 tests and audit as the compatibility boundary while the old
+  globals remain in place.
 
 What stays the same:
 
