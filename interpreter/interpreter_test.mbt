@@ -64,6 +64,20 @@ fn run_output_async(source : String) -> Array[String] raise Error {
 }
 
 ///|
+test "realm_state symbols share legacy interpreter symbols compatibility field" {
+  let interp = new_interpreter()
+  let sym = interp.realm_state.symbols.new_symbol(Some("stage1"))
+  match interp.symbols.get_symbol_by_id(sym.id) {
+    Some(found) =>
+      if found.description != Some("stage1") {
+        fail("expected symbol visible through legacy Interpreter.symbols field")
+      }
+    None =>
+      fail("expected legacy Interpreter.symbols to share RealmState symbols")
+  }
+}
+
+///|
 fn lookup_own_or_proto(val : Value, key : String) -> String {
   let mut cur = val
   for _ in 0..<16 {

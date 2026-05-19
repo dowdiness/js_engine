@@ -872,7 +872,10 @@ pub fn proxy_own_property_keys(
       match target {
         Value::Proxy(inner_proxy) =>
           return proxy_own_property_keys(interp, inner_proxy)
-        _ => return make_array(collect_target_own_keys(target, interp.symbols))
+        _ =>
+          return make_array(
+            collect_target_own_keys(target, interp.realm_state.symbols),
+          )
       }
     _ => ()
   }
@@ -946,7 +949,7 @@ pub fn proxy_own_property_keys(
   // Step 10: Get extensibleTarget
   let extensible_target = target_is_extensible(target)
   // Step 11-12: Get target keys, split into non-configurable and configurable
-  let target_keys = collect_target_own_keys(target, interp.symbols)
+  let target_keys = collect_target_own_keys(target, interp.realm_state.symbols)
   let target_nonconfigurable_keys : Array[Value] = []
   let target_configurable_keys : Array[Value] = []
   for key in target_keys {

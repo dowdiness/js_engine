@@ -5,7 +5,7 @@ Completed tasks should be struck through and dated.
 
 ---
 
-## Stage 1 RealmState seed
+## ~~Stage 1 RealmState seed~~ — DONE (2026-05-19, branch `codex/stage1-realmstate-seed`)
 
 **Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
 after Stage 0 guardrails landed in PR #126.
@@ -30,6 +30,11 @@ WeakMap/WeakSet, well-known symbols, or prototype caches.
 
 **Explicit non-goals:** Do not combine this with semantic fixes, public runtime
 surface reduction, storage migration, or compiler-path cleanup.
+
+**Result:** Seeded the interpreter-owned realm-state container and initial
+threading point while preserving compatibility with existing interpreter symbol
+access. No ArrayBuffer, WeakMap/WeakSet, well-known-symbol, or prototype-cache
+storage moved in this slice.
 
 ---
 
