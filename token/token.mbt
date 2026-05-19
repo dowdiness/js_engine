@@ -11,7 +11,7 @@ pub impl Show for Loc with output(self, logger) {
 }
 
 ///|
-pub fn Loc::default() -> Loc {
+pub fn Loc::default() -> Loc noraise {
   { line: 1, col: 1, offset: 0 }
 }
 
@@ -181,7 +181,7 @@ pub fn Token::Token(
   loc : Loc,
   raw : String,
   lex_form? : LexForm = LexNormal,
-) -> Token {
+) -> Token noraise {
   { kind, loc, raw, lex_form }
 }
 
@@ -191,11 +191,11 @@ pub fn Token::new(
   loc : Loc,
   raw : String,
   lex_form? : LexForm = LexNormal,
-) -> Token {
+) -> Token noraise {
   Token(kind, loc, raw, lex_form~)
 }
 
 ///|
-pub fn Token::eof(loc : Loc) -> Token {
+pub fn Token::eof(loc : Loc) -> Token noraise {
   Token(EOF, loc, "")
 }
