@@ -263,8 +263,12 @@ Local verification: unit suite 1005/1005, `language/reserved-words` 53/53
 passed/executed/discovered, and `language/future-reserved-words` 85/85
 passed/executed/discovered.
 
-**Stage D — Realm hermeticity** — planned. Low direct test262 impact; keep
-queued behind any remaining Proxy/prototype semantic cleanup.
+**Stage D — Realm hermeticity / state ownership** — planned. The 2026-05-19
+architecture review re-scoped this from general cleanup into a concrete
+interpreter-owned `RealmState` direction: move mutable well-known-symbol,
+prototype-cache, ArrayBuffer, WeakMap/WeakSet, and construction-context state
+out of module globals before reducing the runtime public surface. See
+[architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md).
 
 ## Execution Optimization Track
 

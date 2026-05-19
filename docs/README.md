@@ -24,6 +24,7 @@ Long-form research and design analysis. Read these for *why* the engine looks th
 
 - [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md) — closure-conversion prototype status, research notes, and bytecode/IR direction
 - [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) — self-hosting analysis (compiling the engine to JS)
+- [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — current redesign findings for realm state ownership, runtime public-surface containment, and execution-boundary clarity
 - [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md) — pressures and sizing probes for the next round of restructuring (exploratory, not yet executed)
 
 ## Historical / archived
