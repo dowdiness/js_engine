@@ -13008,7 +13008,7 @@ test "LegacyOctal + fraction 01.2 is SyntaxError in non-strict" {
   let src =
     #|01.2
   expect_throw(
-    src, "SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
+    src, "SyntaxError: Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part",
   )
 }
 
@@ -13017,7 +13017,7 @@ test "LegacyOctal + exponent 01e2 is SyntaxError in non-strict" {
   let src =
     #|01e2
   expect_throw(
-    src, "SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by an exponent\")",
+    src, "SyntaxError: Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by an exponent",
   )
 }
 
@@ -13026,7 +13026,7 @@ test "LegacyOctal + fraction 07.5 is SyntaxError in non-strict" {
   let src =
     #|07.5
   expect_throw(
-    src, "SyntaxError(message=\"Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part\")",
+    src, "SyntaxError: Invalid number literal at line 1, col 1: leading-zero octal-style integer cannot be followed by a fractional part",
   )
 }
 

@@ -31,7 +31,9 @@ pub(all) suberror JsError {
 
 ///|
 pub impl Show for JsError with output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write_string(self.name())
+  logger.write_string(": ")
+  logger.write_string(self.get_message())
 }
 
 ///|
@@ -63,9 +65,9 @@ pub fn JsError::get_message(self : JsError) -> String {
 }
 
 ///|
-/// Format as "ErrorType: message" (for stack traces)
+/// Format as "ErrorType: message" (for stack traces). Equivalent to to_string().
 pub fn JsError::format(self : JsError) -> String {
-  self.name() + ": " + self.get_message()
+  self.to_string()
 }
 
 ///|
