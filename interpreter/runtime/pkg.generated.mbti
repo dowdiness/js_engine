@@ -614,7 +614,8 @@ pub(all) struct ProxyData {
 pub(all) struct RealmState {
   symbols : SymbolState
 }
-pub fn RealmState::new() -> Self
+#alias(new)
+pub fn RealmState::RealmState() -> Self
 
 pub(all) enum ResumeAction {
   NextAction

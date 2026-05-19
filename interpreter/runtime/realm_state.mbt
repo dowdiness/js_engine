@@ -9,6 +9,7 @@ pub(all) struct RealmState {
 }
 
 ///|
-pub fn RealmState::new() -> RealmState {
+#alias(new)
+pub fn RealmState::RealmState() -> RealmState {
   { symbols: SymbolState::new() }
 }

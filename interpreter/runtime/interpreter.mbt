@@ -138,7 +138,7 @@ pub fn Interpreter::new(
     class_name: "global",
     extensible: true,
   })
-  let realm_state = RealmState::new()
+  let realm_state = RealmState()
   let symbols = realm_state.symbols
   setup_builtins(global, output, symbols, annex_b)
   // Bind 'this' and 'globalThis' in global scope

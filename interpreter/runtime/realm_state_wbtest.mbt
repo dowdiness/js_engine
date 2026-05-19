@@ -2,7 +2,7 @@
 
 ///|
 test "realm_state owns symbol state" {
-  let realm_state = RealmState::new()
+  let realm_state = RealmState()
   let sym = realm_state.symbols.new_symbol(Some("stage1"))
   match realm_state.symbols.get_symbol_by_id(sym.id) {
     Some(found) =>
@@ -15,8 +15,8 @@ test "realm_state owns symbol state" {
 
 ///|
 test "realm_state symbols are isolated between realm states" {
-  let realm_a = RealmState::new()
-  let realm_b = RealmState::new()
+  let realm_a = RealmState()
+  let realm_b = RealmState()
   let sym_a = realm_a.symbols.new_symbol(Some("a"))
   match realm_b.symbols.get_symbol_by_id(sym_a.id) {
     None => ()
