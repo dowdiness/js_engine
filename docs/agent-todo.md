@@ -5,6 +5,42 @@ Completed tasks should be struck through and dated.
 
 ---
 
+## ~~`conversions.mbt` incremental refactor~~ — DONE (2026-05-19, PR #124)
+
+**Branch:** `claude/ecstatic-hopper-2xoZA`
+
+**Goal:** Reduce duplication and increase test coverage in
+`interpreter/runtime/conversions.mbt` without rewriting logic or touching
+observable behaviour.
+
+**Changes:**
+
+1. **`is_js_object` helper** (`04dcbf4`) — extracted from 7 identical
+   `Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_)` match
+   arms scattered across `to_primitive_*` and `call_callable_direct`.
+   All 7 sites replaced with `is_js_object(v)`.
+
+2. **43 new whitebox tests** (`e0a38df`) — `conversions_wbtest.mbt` now
+   covers `is_truthy`, `to_number`, and `to_js_string` with edge-case
+   assertions: negative-zero falsy (`-0` → false), numeric-separator
+   rejection (`"1_000"` → NaN), `String(-0)` → `"0"`, Symbol TypeError
+   for both `to_number` and `to_js_string`.
+
+3. **`lookup_ordinary_method` helper** (`112b3ce`) — named the 4×-repeated
+   15-line method-lookup block (prototype chain walk + interpreter fallback).
+   `ordinary_to_primitive_number` and `to_primitive_string` shrank by ~36
+   lines combined.
+
+4. **`call_symbol_to_primitive` helper** (`6318824`) — named the 3×-repeated
+   @@toPrimitive preamble (symbol lookup → callability check → hint call →
+   object-result rejection). Each of `to_primitive_number`,
+   `to_primitive_default`, and `to_primitive_string` reduced to a 4-line
+   body. ~22 lines removed.
+
+**Verification:** `moon check && moon test` green after each commit.
+
+---
+
 ## Small follow-ups (2026-05-10)
 
 ### Start bytecode/IR execution prototype

@@ -524,9 +524,7 @@ pub fn typed_array_species_create(
   let loc = @token.Loc::default()
   let result = interp.construct_value(ctor, args, loc)
   // Result must itself be a TypedArray with non-detached buffer.
-  let (result_data, _) = validate_typed_array(
-    result, "species create result",
-  )
+  let (result_data, _) = validate_typed_array(result, "species create result")
   // §22.2.4.7 step 8: if argumentList is « length », the result's length must
   // be at least that length. This catches a malicious species constructor
   // that ignores its argument or returns a shorter TA.
@@ -914,81 +912,79 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
     length=2,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "slice")
-    let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
-      Some(Value::Number(n)) => n.to_int()
-      _ => 0
-    }
-    let relative_begin = if args.length() > 0 {
-      @runtime.to_number(args[0]).to_int()
-    } else {
-      0
-    }
-    let begin_index = if relative_begin < 0 {
-      let b = ta_length + relative_begin
-      if b < 0 {
-        0
+      let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let relative_begin = if args.length() > 0 {
+        @runtime.to_number(args[0]).to_int()
       } else {
-        b
-      }
-    } else if relative_begin > ta_length {
-      ta_length
-    } else {
-      relative_begin
-    }
-    let relative_end = if args.length() > 1 {
-      match args[1] {
-        Undefined => ta_length
-        _ => @runtime.to_number(args[1]).to_int()
-      }
-    } else {
-      ta_length
-    }
-    let end_index = if relative_end < 0 {
-      let e = ta_length + relative_end
-      if e < 0 {
         0
-      } else {
-        e
       }
-    } else if relative_end > ta_length {
-      ta_length
-    } else {
-      relative_end
-    }
-    let new_length = if end_index > begin_index {
-      end_index - begin_index
-    } else {
-      0
-    }
-    // §22.2.3.27 step 13: TypedArraySpeciesCreate(O, « count »). Unlike
-    // subarray, slice's result has its OWN buffer (per spec: a copy, not a
-    // view), so the species ctor is given just the length argument.
-    let new_ta = typed_array_species_create(
-      interp,
-      this_val,
-      [Value::Number(new_length.to_double())],
-    )
-    // §22.2.3.27 step 14: ONLY if count > 0, validate that the source's
-    // buffer is still attached. A species ctor that detaches the source is
-    // allowed when count == 0 — `ta.slice(0, 0)` must still return an empty
-    // TA even if the species ctor (or arg coercion before species) detached
-    // `ta.buffer`. Without this guard, we'd throw too eagerly.
-    if new_length > 0 {
-      let _ = validate_typed_array(this_val, "slice")
-      match new_ta {
-        Object(new_data) =>
-          for i = 0; i < new_length; i = i + 1 {
-            let val = typedarray_get_index(data, begin_index + i)
-            let num = match val {
-              Value::Number(n) => n
-              _ => 0.0
+      let begin_index = if relative_begin < 0 {
+        let b = ta_length + relative_begin
+        if b < 0 {
+          0
+        } else {
+          b
+        }
+      } else if relative_begin > ta_length {
+        ta_length
+      } else {
+        relative_begin
+      }
+      let relative_end = if args.length() > 1 {
+        match args[1] {
+          Undefined => ta_length
+          _ => @runtime.to_number(args[1]).to_int()
+        }
+      } else {
+        ta_length
+      }
+      let end_index = if relative_end < 0 {
+        let e = ta_length + relative_end
+        if e < 0 {
+          0
+        } else {
+          e
+        }
+      } else if relative_end > ta_length {
+        ta_length
+      } else {
+        relative_end
+      }
+      let new_length = if end_index > begin_index {
+        end_index - begin_index
+      } else {
+        0
+      }
+      // §22.2.3.27 step 13: TypedArraySpeciesCreate(O, « count »). Unlike
+      // subarray, slice's result has its OWN buffer (per spec: a copy, not a
+      // view), so the species ctor is given just the length argument.
+      let new_ta = typed_array_species_create(interp, this_val, [
+        Value::Number(new_length.to_double()),
+      ])
+      // §22.2.3.27 step 14: ONLY if count > 0, validate that the source's
+      // buffer is still attached. A species ctor that detaches the source is
+      // allowed when count == 0 — `ta.slice(0, 0)` must still return an empty
+      // TA even if the species ctor (or arg coercion before species) detached
+      // `ta.buffer`. Without this guard, we'd throw too eagerly.
+      if new_length > 0 {
+        let _ = validate_typed_array(this_val, "slice")
+        match new_ta {
+          Object(new_data) =>
+            for i = 0; i < new_length; i = i + 1 {
+              let val = typedarray_get_index(data, begin_index + i)
+              let num = match val {
+                Value::Number(n) => n
+                _ => 0.0
+              }
+              typedarray_set_index(new_data, i, num)
             }
-            typedarray_set_index(new_data, i, num)
-          }
-        _ => ()
+          _ => ()
+        }
       }
-    }
-    new_ta
+      new_ta
     },
   )
 
@@ -1768,9 +1764,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       // observable species side effects (e.g. without invoking @@species).
       let callback = if args.length() > 0 { args[0] } else { Undefined }
       if !@runtime.is_callable(callback) {
-        raise @errors.TypeError(
-          message="map callback is not callable",
-        )
+        raise @errors.TypeError(message="map callback is not callable")
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
@@ -1785,11 +1779,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       // it, and the result holds coerced values — that's spec-correct, not
       // a hazard. (Cf. §22.2.3.27 slice, which DOES validate, but only
       // when count > 0; the asymmetry is deliberate.)
-      let result = typed_array_species_create(
-        interp,
-        this_val,
-        [Value::Number(len.to_double())],
-      )
+      let result = typed_array_species_create(interp, this_val, [
+        Value::Number(len.to_double()),
+      ])
       match result {
         Object(result_data) =>
           for i = 0; i < len; i = i + 1 {
@@ -1819,9 +1811,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       // selection loop. A non-callable callback must throw immediately.
       let callback = if args.length() > 0 { args[0] } else { Undefined }
       if !@runtime.is_callable(callback) {
-        raise @errors.TypeError(
-          message="filter callback is not callable",
-        )
+        raise @errors.TypeError(message="filter callback is not callable")
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
@@ -1851,11 +1841,9 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       // validates the result. The fast-path `make_typedarray_object` is
       // unsafe here — it ignores `@@species` and would silently bypass the
       // §7.3.20 conflict checks.
-      let result = typed_array_species_create(
-        interp,
-        this_val,
-        [Value::Number(kept.length().to_double())],
-      )
+      let result = typed_array_species_create(interp, this_val, [
+        Value::Number(kept.length().to_double()),
+      ])
       match result {
         Object(result_data) =>
           for i = 0; i < kept.length(); i = i + 1 {
