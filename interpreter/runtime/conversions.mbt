@@ -362,23 +362,26 @@ pub fn to_primitive_number(
 }
 
 ///|
-/// OrdinaryToPrimitive(O, "number") - try valueOf first, then toString.
-/// Extracted so callers (to_primitive_default, to_primitive_number) can run
-/// the ordinary lookup without re-entering the @@toPrimitive check.
-fn ordinary_to_primitive_number(
+/// Locate a named method on an object for OrdinaryToPrimitive.
+/// Mirrors ES Get(O, name):
+///   1. Walk the prototype chain (handles descriptors/getters).
+///   2. If not found there, fall back to the interpreter's get_property
+///      (reaches synthetic props that live on the global, e.g. Function.prototype).
+/// Chain-path values are returned as-is; callers check is_callable before invoking.
+/// Fallback-path values are filtered: only callable results become Some.
+fn lookup_ordinary_method(
   obj_val : Value,
   data : ObjectData,
+  method_name : String,
   interp? : Interpreter? = None,
-) -> Value raise Error {
-  // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
+) -> Value? raise Error {
   let effective = resolve_effective_interp(interp)
-  let value_of_fn : Value? = match
-    lookup_property_chain(obj_val, data, "valueOf", interp~) {
+  match lookup_property_chain(obj_val, data, method_name, interp~) {
     Some(f) => Some(f)
     None =>
       match effective {
         Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
+          let v = ip.get_property(obj_val, method_name, @token.Loc::default())
           if is_callable(v) {
             Some(v)
           } else {
@@ -388,7 +391,18 @@ fn ordinary_to_primitive_number(
         None => None
       }
   }
-  match value_of_fn {
+}
+
+///|
+/// OrdinaryToPrimitive(O, "number") - try valueOf first, then toString.
+/// Extracted so callers (to_primitive_default, to_primitive_number) can run
+/// the ordinary lookup without re-entering the @@toPrimitive check.
+fn ordinary_to_primitive_number(
+  obj_val : Value,
+  data : ObjectData,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  match lookup_ordinary_method(obj_val, data, "valueOf", interp~) {
     Some(vo_fn) =>
       if is_callable(vo_fn) {
         let result = call_callable_direct(vo_fn, obj_val, [], interp~)
@@ -398,23 +412,7 @@ fn ordinary_to_primitive_number(
       }
     None => ()
   }
-  let to_string_fn : Value? = match
-    lookup_property_chain(obj_val, data, "toString", interp~) {
-    Some(f) => Some(f)
-    None =>
-      match effective {
-        Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
-          if is_callable(v) {
-            Some(v)
-          } else {
-            None
-          }
-        }
-        None => None
-      }
-  }
-  match to_string_fn {
+  match lookup_ordinary_method(obj_val, data, "toString", interp~) {
     Some(ts_fn) =>
       if is_callable(ts_fn) {
         let result = call_callable_direct(ts_fn, obj_val, [], interp~)
@@ -675,25 +673,7 @@ fn to_primitive_string(
     }
   }
   // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
-  // Use interpreter for property lookup if available (handles synthetic props on functions etc.)
-  let effective = resolve_effective_interp(interp)
-  let to_string_fn : Value? = match
-    lookup_property_chain(obj_val, data, "toString", interp~) {
-    Some(f) => Some(f)
-    None =>
-      match effective {
-        Some(ip) => {
-          let v = ip.get_property(obj_val, "toString", @token.Loc::default())
-          if is_callable(v) {
-            Some(v)
-          } else {
-            None
-          }
-        }
-        None => None
-      }
-  }
-  match to_string_fn {
+  match lookup_ordinary_method(obj_val, data, "toString", interp~) {
     Some(ts_fn) =>
       if is_callable(ts_fn) {
         let result = call_callable_direct(ts_fn, obj_val, [], interp~)
@@ -703,23 +683,7 @@ fn to_primitive_string(
       }
     None => ()
   }
-  let value_of_fn : Value? = match
-    lookup_property_chain(obj_val, data, "valueOf", interp~) {
-    Some(f) => Some(f)
-    None =>
-      match effective {
-        Some(ip) => {
-          let v = ip.get_property(obj_val, "valueOf", @token.Loc::default())
-          if is_callable(v) {
-            Some(v)
-          } else {
-            None
-          }
-        }
-        None => None
-      }
-  }
-  match value_of_fn {
+  match lookup_ordinary_method(obj_val, data, "valueOf", interp~) {
     Some(vo_fn) =>
       if is_callable(vo_fn) {
         let result = call_callable_direct(vo_fn, obj_val, [], interp~)
