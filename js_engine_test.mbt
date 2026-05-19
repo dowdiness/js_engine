@@ -1869,10 +1869,7 @@ test "module: \\1 in module body is SyntaxError" {
     #|"\1";
   let result = run_module_throws(src)
   expect_string(
-    result,
-    (
-      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 1")
-    ),
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 1",
     "legacy octal module body error",
   )
 }
@@ -1883,10 +1880,7 @@ test "module: import with legacy octal source string is SyntaxError" {
     #|import x from "\1";
   let result = run_module_throws(src)
   expect_string(
-    result,
-    (
-      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 15")
-    ),
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
     "legacy octal import source error",
   )
 }
@@ -1917,10 +1911,7 @@ test "run_modules: legacy octal in import source rejected by loader" {
     e => e.to_string()
   }
   expect_string(
-    result,
-    (
-      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 15")
-    ),
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 15",
     "legacy octal loader source error",
   )
 }
@@ -1942,10 +1933,7 @@ test "run_modules: legacy octal escape in module body rejected" {
     e => e.to_string()
   }
   expect_string(
-    result,
-    (
-      #|SyntaxError(message="Octal escape sequences are not allowed in strict mode at line 1, col 1")
-    ),
+    result, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 1, col 1",
     "legacy octal loader body error",
   )
 }

@@ -1,16 +1,4 @@
-///| JavaScript Engine Error Types
-
-///|
-
-///| Comprehensive error handling for lexer, parser, and interpreter.
-
-///| Pattern inspired by: https://github.com/dowdiness/event-graph-walker
-
-///| See: https://tc39.es/ecma262/#sec-native-error-types-used-in-this-standard
-
-//==============================================================================
-// Core JavaScript Error Type (unified enum-style suberror)
-//==============================================================================
+// See: https://tc39.es/ecma262/#sec-native-error-types-used-in-this-standard
 
 ///|
 /// JsError - Unified error type for all JavaScript errors
@@ -43,16 +31,13 @@ pub(all) suberror JsError {
 
 ///|
 pub impl Show for JsError with output(self, logger) {
-  Debug::to_repr(self).output(logger)
+  logger.write_string(self.name())
+  logger.write_string(": ")
+  logger.write_string(self.get_message())
 }
 
-//==============================================================================
-// Error helper methods
-//==============================================================================
-
 ///|
-/// Get the error type name as a string
-pub fn JsError::name(self : JsError) -> String {
+pub fn JsError::name(self : JsError) -> String noraise {
   match self {
     TypeError(_) => "TypeError"
     ReferenceError(_) => "ReferenceError"
@@ -66,8 +51,7 @@ pub fn JsError::name(self : JsError) -> String {
 }
 
 ///|
-/// Get the error message
-pub fn JsError::get_message(self : JsError) -> String {
+pub fn JsError::get_message(self : JsError) -> String noraise {
   match self {
     TypeError(message~)
     | ReferenceError(message~)
@@ -81,9 +65,9 @@ pub fn JsError::get_message(self : JsError) -> String {
 }
 
 ///|
-/// Format as "ErrorType: message" (for stack traces)
-pub fn JsError::format(self : JsError) -> String {
-  self.name() + ": " + self.get_message()
+/// Format as "ErrorType: message" (for stack traces). Equivalent to to_string().
+pub fn JsError::format(self : JsError) -> String noraise {
+  self.to_string()
 }
 
 ///|
@@ -93,7 +77,7 @@ pub fn JsError::format(self : JsError) -> String {
 /// enumerating each constructor. The `Error` type is used because suberror
 /// constructors are individually promoted to `Error` and MoonBit does not
 /// support catching a suberror parent type as a single pattern.
-pub fn format_if_js_error(err : Error) -> String? {
+pub fn format_if_js_error(err : Error) -> String? noraise {
   match name_message_if_js_error(err) {
     Some((name, msg)) => Some(name + ": " + msg)
     None => None
@@ -106,7 +90,7 @@ pub fn format_if_js_error(err : Error) -> String? {
 /// Lower-level companion to `format_if_js_error` for consumers that need
 /// the name and message as separate strings (e.g. to pass to a function that
 /// takes them individually).
-pub fn name_message_if_js_error(err : Error) -> (String, String)? {
+pub fn name_message_if_js_error(err : Error) -> (String, String)? noraise {
   match err {
     TypeError(message~) => Some(("TypeError", message))
     ReferenceError(message~) => Some(("ReferenceError", message))

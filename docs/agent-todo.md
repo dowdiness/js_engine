@@ -41,6 +41,23 @@ observable behaviour.
 
 ---
 
+## ~~Error handling idiom research~~ — DONE (2026-05-19)
+
+### ~~`noraise` on `errors` and `token` helper functions~~ — DONE (2026-05-19, branch `claude/install-moon-refactor-yFqKV`)
+
+Added `noraise` to all 9 eligible public functions across two packages:
+
+- `errors/errors.mbt`: `JsError::name`, `JsError::get_message`, `JsError::format`, `format_if_js_error`, `name_message_if_js_error`
+- `token/token.mbt`: `Loc::default`, `Token::Token`, `Token::new`, `Token::eof`
+
+All are pure pattern matches or struct construction; none delegate to raising code. The compiler accepted all annotations, including `JsError::format` which calls `self.to_string()` via the `noraise` `Show` impl. `moon check` clean, 1439/1439 tests pass.
+
+### Error polymorphism (`raise?`) + `noraise` interaction — finding: no practical sites
+
+The JS interpreter domain forces all meaningful callbacks to raise. Every `each` call on `bag.properties` or `bag.symbol_properties` in `interpreter/runtime/destructuring.mbt` and `interpreter/stdlib/builtins_object.mbt` has a body that raises `JsError` (property access, coercion, interpreter calls). No `Array::map` / `Array::filter` callbacks are pure transformations — they all thread an `Interpreter` and can raise. The `raise?` + `noraise` combination has no practical payoff in this codebase today.
+
+---
+
 ## Small follow-ups (2026-05-10)
 
 ### Start bytecode/IR execution prototype
