@@ -41,6 +41,45 @@ observable behaviour.
 
 ---
 
+## Error handling idiom research (2026-05-19)
+
+Two MoonBit error handling features are unused in this codebase. Research whether either offers a practical benefit before implementing anything.
+
+### `noraise` on `errors` helper functions
+
+**What**: five public functions in `errors/errors.mbt` never raise but lack the `noraise` annotation:
+
+```
+JsError::name(self) -> String
+JsError::get_message(self) -> String
+JsError::format(self) -> String          # delegates to to_string()
+format_if_js_error(err) -> String?       # returns Option, never raises
+name_message_if_js_error(err) -> (...)? # returns Option, never raises
+```
+
+**Research question**: does adding `noraise` improve call-site inference anywhere (e.g. suppress `unused_try` warnings where these are called inside a `try` block)? Or is the annotation purely documentary at these sites?
+
+**Scope**: `errors/errors.mbt` only. Purely additive — `noraise` is a compile-time declaration, not a runtime change. If the compiler rejects any of them (e.g. because `Show::output` / `to_string()` is not itself declared `noraise`), document which ones are blocked and why.
+
+**Verification**: `moon check` warns on misuse; `moon test` must stay green.
+
+### Error polymorphism (`raise?`) + `noraise` interaction
+
+**Context**: error polymorphism (`raise?` on a callback parameter) lets the compiler infer whether a higher-order function raises based on the actual callback passed. It is most useful when some callbacks are `noraise` — the call site then requires no error handling. Neither `raise?` nor `noraise` are used anywhere in this codebase today.
+
+**Research question**: are there higher-order call patterns in the interpreter or stdlib where a `noraise` callback is genuinely passed, such that `raise?` would remove unnecessary `catch` arms or `raise Error` from the caller's signature? Or does the domain (JS interpreter — almost every callback can raise `JsError`) mean the combination has no practical payoff here?
+
+**Where to look**:
+- `interpreter/runtime/destructuring.mbt` — `each` calls with `fn(k, _) raise { … }` bodies: do any of those bodies actually contain paths that never raise?
+- `interpreter/stdlib/builtins_object.mbt` — same `each` pattern on `bag.properties` and `bag.symbol_properties`
+- Any `Array::map` / `Array::filter` call whose callback is a pure transformation
+
+**Expected outcome**: a one-paragraph finding — either "no practical sites found, domain forces all callbacks to raise" or a short list of specific functions worth converting.
+
+**Scope**: research only; no code changes until the finding justifies them.
+
+---
+
 ## Small follow-ups (2026-05-10)
 
 ### Start bytecode/IR execution prototype
