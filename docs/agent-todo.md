@@ -5,6 +5,34 @@ Completed tasks should be struck through and dated.
 
 ---
 
+## Stage 1 RealmState seed
+
+**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
+after Stage 0 guardrails landed in PR #126.
+
+**Goal:** Introduce the first interpreter-owned `RealmState` container without
+moving observable built-in behavior yet. The first patch should establish the
+state owner and threading point only; it should not migrate ArrayBuffer,
+WeakMap/WeakSet, well-known symbols, or prototype caches.
+
+**Scope for the first patch:**
+
+- Define a small realm-state container owned from the interpreter/realm context.
+- Thread it through setup paths where future state-family migrations will need
+  it.
+- Leave existing module-level globals as compatibility shims.
+- Keep the root facade and generated public interfaces stable unless an
+  intentional `.mbti` diff is reviewed.
+
+**Verification:** Run `make architecture-state-audit`, `moon check`,
+`moon test js_engine_test.mbt`, `moon test`, `moon info`, and review
+`.mbti` diffs. The Stage 0 isolation tests must remain green.
+
+**Explicit non-goals:** Do not combine this with semantic fixes, public runtime
+surface reduction, storage migration, or compiler-path cleanup.
+
+---
+
 ## ~~`conversions.mbt` incremental refactor~~ — DONE (2026-05-19, PR #124)
 
 **Branch:** `claude/ecstatic-hopper-2xoZA`
