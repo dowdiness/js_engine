@@ -127,8 +127,6 @@ pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
 
 pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
 
-pub fn installed_well_known_symbols() -> WellKnownSymbols
-
 pub fn instanceof_prototype_chain(Value, Value, Interpreter) -> Value raise
 
 pub fn is_callable(Value) -> Bool
@@ -643,7 +641,7 @@ pub(all) struct SymbolState {
   all_symbols : Map[Int, SymbolData]
   global_symbol_registry : Map[String, SymbolData]
   symbol_registry_reverse : Map[Int, String]
-  well_known_symbols : @ref.Ref[WellKnownSymbols?]
+  well_known_symbols_cache : @ref.Ref[WellKnownSymbols?]
 }
 pub fn SymbolState::get_symbol_by_id(Self, Int) -> SymbolData?
 pub fn SymbolState::new() -> Self
@@ -692,7 +690,6 @@ pub(all) struct WellKnownSymbols {
   split : SymbolData
   unscopables : SymbolData
 }
-pub fn WellKnownSymbols::WellKnownSymbols(SymbolState) -> Self
 
 // Type aliases
 
