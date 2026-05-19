@@ -111,171 +111,139 @@ pub fn SymbolState::get_symbol_by_id(
 }
 
 ///|
-/// Well-known Symbol.iterator - stored globally for iterator protocol support
-pub let well_known_iterator_sym : Ref[SymbolData?] = { val: None }
+/// Realm-owned well-known symbol identities.
+///
+/// These values are allocated from the realm's SymbolState before user code can
+/// create symbols, preserving the existing well-known symbol IDs while moving
+/// ownership out of per-symbol module globals.
+pub(all) struct WellKnownSymbols {
+  iterator : SymbolData
+  async_iterator : SymbolData
+  has_instance : SymbolData
+  is_concat_spreadable : SymbolData
+  to_primitive : SymbolData
+  to_string_tag : SymbolData
+  match_sym : SymbolData
+  match_all : SymbolData
+  replace : SymbolData
+  search : SymbolData
+  species : SymbolData
+  split : SymbolData
+  unscopables : SymbolData
+}
 
 ///|
-/// Well-known Symbol.asyncIterator - stored globally for async iteration support
-pub let well_known_async_iterator_sym : Ref[SymbolData?] = { val: None }
+pub fn WellKnownSymbols::WellKnownSymbols(
+  symbols : SymbolState,
+) -> WellKnownSymbols {
+  {
+    iterator: symbols.new_symbol(Some("Symbol.iterator")),
+    to_primitive: symbols.new_symbol(Some("Symbol.toPrimitive")),
+    to_string_tag: symbols.new_symbol(Some("Symbol.toStringTag")),
+    has_instance: symbols.new_symbol(Some("Symbol.hasInstance")),
+    is_concat_spreadable: symbols.new_symbol(Some("Symbol.isConcatSpreadable")),
+    species: symbols.new_symbol(Some("Symbol.species")),
+    match_sym: symbols.new_symbol(Some("Symbol.match")),
+    match_all: symbols.new_symbol(Some("Symbol.matchAll")),
+    replace: symbols.new_symbol(Some("Symbol.replace")),
+    search: symbols.new_symbol(Some("Symbol.search")),
+    split: symbols.new_symbol(Some("Symbol.split")),
+    unscopables: symbols.new_symbol(Some("Symbol.unscopables")),
+    async_iterator: symbols.new_symbol(Some("Symbol.asyncIterator")),
+  }
+}
 
 ///|
-/// Well-known Symbol.hasInstance - stored globally for instanceof operator support
-pub let well_known_hasinstance_sym : Ref[SymbolData?] = { val: None }
+let legacy_well_known_symbols : Ref[WellKnownSymbols?] = { val: None }
+
+///|
+fn install_well_known_symbols(symbols : WellKnownSymbols) -> Unit {
+  legacy_well_known_symbols.val = Some(symbols)
+}
+
+///|
+pub fn installed_well_known_symbols() -> WellKnownSymbols {
+  match legacy_well_known_symbols.val {
+    Some(symbols) => symbols
+    None => abort("well-known symbols not initialized")
+  }
+}
 
 ///|
 /// Get the well-known Symbol.iterator
 pub fn get_iterator_symbol() -> SymbolData {
-  match well_known_iterator_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.iterator not initialized")
-  }
+  installed_well_known_symbols().iterator
 }
 
 ///|
 /// Get the well-known Symbol.asyncIterator
 pub fn get_async_iterator_symbol() -> SymbolData {
-  match well_known_async_iterator_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.asyncIterator not initialized")
-  }
+  installed_well_known_symbols().async_iterator
 }
 
 ///|
 /// Get the well-known Symbol.hasInstance
 pub fn get_hasinstance_symbol() -> SymbolData {
-  match well_known_hasinstance_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.hasInstance not initialized")
-  }
+  installed_well_known_symbols().has_instance
 }
-
-///|
-/// Well-known Symbol.isConcatSpreadable
-pub let well_known_isconcatspreadable_sym : Ref[SymbolData?] = { val: None }
 
 ///|
 pub fn get_isconcatspreadable_symbol() -> SymbolData {
-  match well_known_isconcatspreadable_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.isConcatSpreadable not initialized")
-  }
+  installed_well_known_symbols().is_concat_spreadable
 }
-
-///|
-/// Well-known Symbol.toPrimitive - stored globally for @@toPrimitive support
-pub let well_known_toprimitive_sym : Ref[SymbolData?] = { val: None }
 
 ///|
 /// Get the well-known Symbol.toPrimitive
 pub fn get_toprimitive_symbol() -> SymbolData {
-  match well_known_toprimitive_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.toPrimitive not initialized")
-  }
+  installed_well_known_symbols().to_primitive
 }
-
-///|
-/// Well-known Symbol.toStringTag - stored globally for @@toStringTag support
-pub let well_known_tostringtag_sym : Ref[SymbolData?] = { val: None }
 
 ///|
 /// Get the well-known Symbol.toStringTag
 pub fn get_tostringtag_symbol() -> SymbolData {
-  match well_known_tostringtag_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.toStringTag not initialized")
-  }
+  installed_well_known_symbols().to_string_tag
 }
-
-///|
-/// Well-known Symbol.match - stored globally for RegExp @@match support
-pub let well_known_match_sym : Ref[SymbolData?] = { val: None }
-
-///|
-/// Well-known Symbol.replace - stored globally for RegExp @@replace support
-pub let well_known_replace_sym : Ref[SymbolData?] = { val: None }
-
-///|
-/// Well-known Symbol.search - stored globally for RegExp @@search support
-pub let well_known_search_sym : Ref[SymbolData?] = { val: None }
-
-///|
-/// Well-known Symbol.species - stored globally for @@species support
-pub let well_known_species_sym : Ref[SymbolData?] = { val: None }
 
 ///|
 /// Get the well-known Symbol.species
 pub fn get_species_symbol() -> SymbolData {
-  match well_known_species_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.species not initialized")
-  }
+  installed_well_known_symbols().species
 }
-
-///|
-/// Well-known Symbol.matchAll - stored globally for RegExp @@matchAll support
-pub let well_known_matchall_sym : Ref[SymbolData?] = { val: None }
-
-///|
-/// Well-known Symbol.split - stored globally for RegExp @@split support
-pub let well_known_split_sym : Ref[SymbolData?] = { val: None }
 
 ///|
 /// Get the well-known Symbol.match
 pub fn get_match_symbol() -> SymbolData {
-  match well_known_match_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.match not initialized")
-  }
+  installed_well_known_symbols().match_sym
 }
 
 ///|
 /// Get the well-known Symbol.replace
 pub fn get_replace_symbol() -> SymbolData {
-  match well_known_replace_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.replace not initialized")
-  }
+  installed_well_known_symbols().replace
 }
 
 ///|
 /// Get the well-known Symbol.search
 pub fn get_search_symbol() -> SymbolData {
-  match well_known_search_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.search not initialized")
-  }
+  installed_well_known_symbols().search
 }
 
 ///|
 /// Get the well-known Symbol.split
 pub fn get_split_symbol() -> SymbolData {
-  match well_known_split_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.split not initialized")
-  }
+  installed_well_known_symbols().split
 }
 
 ///|
 /// Get the well-known Symbol.matchAll
 pub fn get_matchall_symbol() -> SymbolData {
-  match well_known_matchall_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.matchAll not initialized")
-  }
+  installed_well_known_symbols().match_all
 }
-
-///|
-/// Well-known Symbol.unscopables - stored globally for with statement support
-pub let well_known_unscopables_sym : Ref[SymbolData?] = { val: None }
 
 ///|
 /// Get the well-known Symbol.unscopables
 pub fn get_unscopables_symbol() -> SymbolData {
-  match well_known_unscopables_sym.val {
-    Some(sym) => sym
-    None => abort("Symbol.unscopables not initialized")
-  }
+  installed_well_known_symbols().unscopables
 }
 
 ///|

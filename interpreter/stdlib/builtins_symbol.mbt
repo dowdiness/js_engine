@@ -26,39 +26,22 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     setter: None,
     is_accessor: false,
   }
-  // Create well-known symbols
-  let iterator_sym = symbols.new_symbol(Some("Symbol.iterator"))
-  // Store globally for iterator protocol support
-  @runtime.well_known_iterator_sym.val = Some(iterator_sym)
-  let to_primitive_sym = symbols.new_symbol(Some("Symbol.toPrimitive"))
-  @runtime.well_known_toprimitive_sym.val = Some(to_primitive_sym)
-  let to_string_tag_sym = symbols.new_symbol(Some("Symbol.toStringTag"))
-  @runtime.well_known_tostringtag_sym.val = Some(to_string_tag_sym)
-  let has_instance_sym = symbols.new_symbol(Some("Symbol.hasInstance"))
-  // Store globally for instanceof operator support
-  @runtime.well_known_hasinstance_sym.val = Some(has_instance_sym)
-  let is_concat_spreadable_sym = symbols.new_symbol(
-    Some("Symbol.isConcatSpreadable"),
-  )
-  @runtime.well_known_isconcatspreadable_sym.val = Some(
-    is_concat_spreadable_sym,
-  )
-  let species_sym = symbols.new_symbol(Some("Symbol.species"))
-  @runtime.well_known_species_sym.val = Some(species_sym)
-  let match_sym = symbols.new_symbol(Some("Symbol.match"))
-  @runtime.well_known_match_sym.val = Some(match_sym)
-  let match_all_sym = symbols.new_symbol(Some("Symbol.matchAll"))
-  @runtime.well_known_matchall_sym.val = Some(match_all_sym)
-  let replace_sym = symbols.new_symbol(Some("Symbol.replace"))
-  @runtime.well_known_replace_sym.val = Some(replace_sym)
-  let search_sym = symbols.new_symbol(Some("Symbol.search"))
-  @runtime.well_known_search_sym.val = Some(search_sym)
-  let split_sym = symbols.new_symbol(Some("Symbol.split"))
-  @runtime.well_known_split_sym.val = Some(split_sym)
-  let unscopables_sym = symbols.new_symbol(Some("Symbol.unscopables"))
-  @runtime.well_known_unscopables_sym.val = Some(unscopables_sym)
-  let async_iterator_sym = symbols.new_symbol(Some("Symbol.asyncIterator"))
-  @runtime.well_known_async_iterator_sym.val = Some(async_iterator_sym)
+  // Well-known symbols are allocated by RealmState so the same realm-owned
+  // identities are used by setup code and runtime lookup paths.
+  let well_known = @runtime.installed_well_known_symbols()
+  let iterator_sym = well_known.iterator
+  let to_primitive_sym = well_known.to_primitive
+  let to_string_tag_sym = well_known.to_string_tag
+  let has_instance_sym = well_known.has_instance
+  let is_concat_spreadable_sym = well_known.is_concat_spreadable
+  let species_sym = well_known.species
+  let match_sym = well_known.match_sym
+  let match_all_sym = well_known.match_all
+  let replace_sym = well_known.replace
+  let search_sym = well_known.search
+  let split_sym = well_known.split
+  let unscopables_sym = well_known.unscopables
+  let async_iterator_sym = well_known.async_iterator
 
   // Symbol prototype
   let symbol_proto_props : Map[String, Value] = {}

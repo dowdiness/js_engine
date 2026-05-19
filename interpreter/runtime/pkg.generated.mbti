@@ -127,6 +127,8 @@ pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
 
 pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
 
+pub fn installed_well_known_symbols() -> WellKnownSymbols
+
 pub fn instanceof_prototype_chain(Value, Value, Interpreter) -> Value raise
 
 pub fn is_callable(Value) -> Bool
@@ -284,32 +286,6 @@ pub fn validate_function_signature(Bool, String?, Array[String], Array[@ast.Stmt
 pub fn validate_function_signature_ext(Bool, String?, Array[@ast.Param], String?, Array[@ast.Stmt]) -> Unit raise
 
 pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
-
-pub let well_known_async_iterator_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_hasinstance_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_isconcatspreadable_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_iterator_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_match_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_matchall_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_replace_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_search_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_species_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_split_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_toprimitive_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_tostringtag_sym : @ref.Ref[SymbolData?]
-
-pub let well_known_unscopables_sym : @ref.Ref[SymbolData?]
 
 // Errors
 pub suberror GeneratorReturnSignal {
@@ -613,6 +589,7 @@ pub(all) struct ProxyData {
 
 pub(all) struct RealmState {
   symbols : SymbolState
+  well_known_symbols : WellKnownSymbols
 }
 #alias(new)
 pub fn RealmState::RealmState() -> Self
@@ -697,6 +674,23 @@ pub(all) enum Value {
   Proxy(ProxyData)
 }
 pub impl Show for Value
+
+pub(all) struct WellKnownSymbols {
+  iterator : SymbolData
+  async_iterator : SymbolData
+  has_instance : SymbolData
+  is_concat_spreadable : SymbolData
+  to_primitive : SymbolData
+  to_string_tag : SymbolData
+  match_sym : SymbolData
+  match_all : SymbolData
+  replace : SymbolData
+  search : SymbolData
+  species : SymbolData
+  split : SymbolData
+  unscopables : SymbolData
+}
+pub fn WellKnownSymbols::WellKnownSymbols(SymbolState) -> Self
 
 // Type aliases
 

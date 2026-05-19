@@ -139,6 +139,7 @@ pub fn Interpreter::new(
     extensible: true,
   })
   let realm_state = RealmState()
+  install_well_known_symbols(realm_state.well_known_symbols)
   let symbols = realm_state.symbols
   setup_builtins(global, output, symbols, annex_b)
   // Bind 'this' and 'globalThis' in global scope

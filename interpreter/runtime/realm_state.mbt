@@ -6,10 +6,12 @@
 /// they are until their individual migrations are covered by focused tests.
 pub(all) struct RealmState {
   symbols : SymbolState
+  well_known_symbols : WellKnownSymbols
 }
 
 ///|
 #alias(new)
 pub fn RealmState::RealmState() -> RealmState {
-  { symbols: SymbolState::new() }
+  let symbols = SymbolState::new()
+  { symbols, well_known_symbols: WellKnownSymbols(symbols) }
 }
