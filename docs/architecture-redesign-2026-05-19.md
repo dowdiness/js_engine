@@ -1,9 +1,10 @@
 # Architecture Redesign Findings — 2026-05-19
 
-> **Status:** current design analysis, not yet executed. This document records
-> the next maintainability pressure after the April 2026 runtime/stdlib split
-> and the later PropertyBag / internal-method dispatcher work. Code remains the
-> source of truth.
+> **Status:** active migration record. Stage 0 guardrails, the initial
+> interpreter-owned realm-state container, and the first well-known symbol
+> ownership slice have landed. This document records the maintainability
+> pressure after the April 2026 runtime/stdlib split and the later PropertyBag /
+> internal-method dispatcher work. Code remains the source of truth.
 
 ---
 
@@ -238,6 +239,14 @@ Risk control:
 
 - Migrate one intrinsic family at a time.
 
+Current state:
+
+- The first well-known symbol ownership slice has moved allocation into
+  realm-owned state and preserved standalone stdlib setup behavior.
+- A temporary compatibility path remains for no-argument well-known symbol
+  lookup helpers. The next slice should migrate those callers to explicit
+  realm-owned access before other state families move.
+
 ### Stage 3 — Move Backing Stores And Side Tables
 
 What changes:
@@ -438,16 +447,23 @@ Unknowns:
 
 ## 12. Recommended Next Steps
 
+Completed:
+
 1. Add Stage 0 tests and static audits.
 2. Add `RealmState` as an interpreter-owned container without moving behavior.
-3. Migrate well-known symbols first; they are the clearest ownership mismatch.
-4. Migrate prototype refs and lazy iterator/prototype caches one family at a
+3. Move well-known symbol allocation into realm-owned state.
+
+Remaining:
+
+1. Migrate no-argument well-known symbol lookup paths to explicit realm-owned
+   access, then remove the temporary compatibility path.
+2. Migrate prototype refs and lazy iterator/prototype caches one family at a
    time.
-5. Migrate ArrayBuffer and WeakMap / WeakSet stores after the intrinsic path is
+3. Migrate ArrayBuffer and WeakMap / WeakSet stores after the intrinsic path is
    stable.
-6. Only then reduce runtime public API surface and consider internal package
+4. Only then reduce runtime public API surface and consider internal package
    extraction.
-7. Keep closure conversion frozen as an opt-in benchmark path while any
+5. Keep closure conversion frozen as an opt-in benchmark path while any
    bytecode/IR prototype is designed around shared runtime operations.
 
 ## Evidence Checked

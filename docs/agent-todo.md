@@ -28,6 +28,68 @@ shim.
 
 ---
 
+## Stage 2b explicit well-known symbol lookup paths
+
+**Source:** Stage 2a landed in PR #130 and left one compatibility shim for
+legacy no-argument well-known symbol getters.
+
+**Pressure:** Well-known symbol identities are now allocated from realm-owned
+state, but many runtime and stdlib lookup paths still reach them through
+ambient no-argument helpers. That keeps a hidden process-wide dependency in the
+lookup path and delays removal of the compatibility shim.
+
+**Goal:** Replace no-argument well-known symbol lookups with explicit access to
+the active realm-owned symbol bundle, one caller family at a time. Keep symbol
+identity, setup order, and public root facade behavior unchanged.
+
+**Suggested first slices:**
+
+- Runtime call/construct/property paths that already have an `Interpreter` or
+  nearby realm context.
+- Iterator and `@@toStringTag` lookup helpers, because they have dense call
+  sites and visible protocol behavior.
+- Stdlib setup-time or method-family lookups where the relevant state is
+  already available through setup parameters.
+
+**Verification:** For each slice, run `moon check`, focused tests for the
+changed package, `moon test`, `make architecture-state-audit`, `moon info`, and
+review the `.mbti` diff. Include targeted coverage that standalone
+`setup_builtins(env, output, symbols, ...)` still reserves well-known symbol IDs
+in the provided `SymbolState`.
+
+**Risk control:** Do not remove the compatibility shim until all no-argument
+getter call sites are gone. Do not combine this with ArrayBuffer, WeakMap /
+WeakSet, or prototype-cache migration.
+
+---
+
+## Stage 2c intrinsic/prototype state migration planning
+
+**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
+Stage 2 after the well-known symbol ownership slice.
+
+**Pressure:** The mutable-state audit still classifies prototype refs, lazy
+iterator/prototype caches, ArrayBuffer storage, WeakMap / WeakSet side tables,
+and related compatibility state. Moving all of them at once would make failures
+hard to localize.
+
+**Goal:** Pick the next intrinsic/prototype state family only after Stage 2b
+removes the well-known symbol shim. Prefer a narrow family with strong existing
+tests and obvious realm ownership.
+
+**Candidate order:**
+
+1. Prototype refs and lazy iterator/prototype caches used by protocol lookup.
+2. ArrayBuffer backing stores and detach state.
+3. WeakMap / WeakSet side tables.
+4. Construction/current-interpreter ambient context.
+
+**Verification:** Keep `make architecture-state-audit` as the inventory gate.
+Add two-realm or two-interpreter tests before moving each state family, then
+run targeted Test262 filters for the affected built-ins where practical.
+
+---
+
 ## ~~Stage 1 RealmState seed~~ — DONE (2026-05-19, branch `codex/stage1-realmstate-seed`)
 
 **Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
