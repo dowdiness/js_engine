@@ -5,6 +5,29 @@ Completed tasks should be struck through and dated.
 
 ---
 
+## ~~Stage 2a well-known symbol ownership~~ — DONE (2026-05-19, branch `codex/stage2a-well-known-symbols`)
+
+**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
+after Stage 1 introduced `RealmState`.
+
+**Goal:** Move well-known symbol identity allocation out of individual
+module-global refs and into realm-owned state without changing observable
+Symbol, iterator, `instanceof`, RegExp symbol-method, or `@@toStringTag`
+behavior.
+
+**Result:** Added a realm-owned well-known symbol bundle, initialized it from
+the realm's `SymbolState`, and changed Symbol setup to consume those
+realm-owned identities. The 13 per-symbol module globals were removed from the
+architecture audit inventory. A single temporary compatibility shim remains for
+legacy no-argument lookup helpers until those lookup paths accept explicit
+`RealmState`.
+
+**Follow-up:** Migrate lookup paths from no-argument `get_*_symbol()` helpers to
+explicit realm-owned access one family at a time, then remove the compatibility
+shim.
+
+---
+
 ## ~~Stage 1 RealmState seed~~ — DONE (2026-05-19, branch `codex/stage1-realmstate-seed`)
 
 **Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)

@@ -76,44 +76,8 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/runtime/symbols.mbt:is_constructing": (
         "ambient construction context; replace with explicit call/construct context"
     ),
-    "interpreter/runtime/symbols.mbt:well_known_async_iterator_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_hasinstance_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_isconcatspreadable_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_iterator_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_match_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_matchall_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_replace_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_search_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_species_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_split_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_toprimitive_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_tostringtag_sym": (
-        "well-known symbol cache; move to RealmState"
-    ),
-    "interpreter/runtime/symbols.mbt:well_known_unscopables_sym": (
-        "well-known symbol cache; move to RealmState"
+    "interpreter/runtime/symbols.mbt:legacy_well_known_symbols": (
+        "temporary compatibility shim for no-arg well-known symbol getters; retire after lookup paths accept RealmState"
     ),
     "interpreter/stdlib/builtins_arraybuffer.mbt:arraybuffer_id_counter": (
         "ArrayBuffer backing-store counter; move to RealmState"
