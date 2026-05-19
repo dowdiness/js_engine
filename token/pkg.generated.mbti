@@ -32,6 +32,7 @@ pub(all) struct Token {
   raw : String
   lex_form : LexForm
 } derive(Eq, @debug.Debug)
+pub fn Token::Token(TokenKind, Loc, String, lex_form? : LexForm) -> Self
 pub fn Token::eof(Loc) -> Self
 pub fn Token::new(TokenKind, Loc, String, lex_form? : LexForm) -> Self
 pub impl Show for Token

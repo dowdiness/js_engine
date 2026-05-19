@@ -176,7 +176,7 @@ pub impl Show for Token with output(self, logger) {
 }
 
 ///|
-pub fn Token::new(
+pub fn Token::Token(
   kind : TokenKind,
   loc : Loc,
   raw : String,
@@ -186,6 +186,16 @@ pub fn Token::new(
 }
 
 ///|
+pub fn Token::new(
+  kind : TokenKind,
+  loc : Loc,
+  raw : String,
+  lex_form? : LexForm = LexNormal,
+) -> Token {
+  Token(kind, loc, raw, lex_form~)
+}
+
+///|
 pub fn Token::eof(loc : Loc) -> Token {
-  { kind: EOF, loc, raw: "", lex_form: LexNormal }
+  Token(EOF, loc, "")
 }
