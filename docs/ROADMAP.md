@@ -2,7 +2,11 @@
 
 ## Current Status
 
-**Test262** — CI run [25631308977](https://github.com/dowdiness/js_engine/actions/runs/25631308977) on PR head `cff0d37` (merged as squash `5d49cea` on main), 2026-05-11. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
+**Test262** — CI run [25631308977](https://github.com/dowdiness/js_engine/actions/runs/25631308977)
+on PR head `cff0d37`, merged as squash `5d49cea` on main, 2026-05-11.
+Each test file runs twice, once in strict mode and once in non-strict mode. The
+two modes are reported separately because summing them would double-count
+files.
 
 To refresh this block, run `make test262-report`; do not copy numbers from
 other documentation. For release notes, use `make test262-report
@@ -13,13 +17,38 @@ ARGS="--format=changelog"`.
 | strict | 44,986 | 18,270 | 26,602 | 23,798 | 2,804 | 113 | **89.5%** | 52.9% |
 | non-strict | 47,692 | 18,811 | 28,765 | 25,244 | 3,521 | 115 | **87.8%** | 52.9% |
 
-This row is the post-PR #103 baseline. The recent batch of PRs adds: #99 (lexer leading-zero `01.2`/`01e2` rejection + NonOctalDecimal lex_form retention, +0.7pp), #100 (PerformEval §19.2.1.1 early-error checks for super/new.target/arguments, +0.26pp), #101 (property descriptor refactor), #102 (eval-contains ArrayHole merge-skew hotfix), and #103 (parser trailing-comma in non-arrow params, +44 strict / +39 non-strict).
+This row is the post-PR #103 baseline. The recent batch includes:
 
-Delta vs v0.2.0 tip `f89898a` (run 24730849102): **+744 strict / +777 non-strict** at this baseline, reflecting PRs #70-#71 (pre-Stage-C TypeError bundle), Stage C `ArrayData.bag`, Stage B.3 `[[HasProperty]]` dispatcher, strict-reserved early errors, PR #74 (IteratorClose §7.4.10 + construct newTarget threading), PR #75 (TypedArray wide-catch + "-0" canonical-invalid guard), PR #82 (ToPrimitive cluster), PR #99 (lexer leading-zero fractional/exponent), PR #100 (eval early-errors), PR #101 (descriptors), and PR #103 (trailing-comma).
+- #99: lexer leading-zero `01.2` / `01e2` rejection and
+  `NonOctalDecimal` `lex_form` retention, +0.7pp.
+- #100: PerformEval §19.2.1.1 early-error checks for `super`,
+  `new.target`, and `arguments`, +0.26pp.
+- #101: property descriptor refactor.
+- #102: eval-contains `ArrayHole` merge-skew hotfix.
+- #103: parser trailing comma in non-arrow params, +44 strict / +39
+  non-strict.
 
-CI regression baseline: `test262-baseline.json` (min 23,520 non-strict / 22,450 strict passed, updated 2026-04-12; currently +1,724 / +1,348 above).
+Delta vs v0.2.0 tip `f89898a`, run 24730849102: **+744 strict / +777
+non-strict** at this baseline. That delta reflects:
 
-**Unit tests**: 1227 / 1227 passing (post-PR #103, includes 6 new parser trailing-comma tests).
+- PRs #70-#71: pre-Stage-C TypeError bundle.
+- Stage C: `ArrayData.bag`.
+- Stage B.3: `[[HasProperty]]` dispatcher.
+- Strict-reserved early errors.
+- PR #74: IteratorClose §7.4.10 and construct `newTarget` threading.
+- PR #75: TypedArray wide-catch and `"-0"` canonical-invalid guard.
+- PR #82: ToPrimitive cluster.
+- PR #99: lexer leading-zero fractional/exponent handling.
+- PR #100: eval early errors.
+- PR #101: descriptors.
+- PR #103: trailing comma handling.
+
+CI regression baseline: `test262-baseline.json`. Minimums are 23,520
+non-strict passed and 22,450 strict passed, updated 2026-04-12. The current
+baseline is +1,724 / +1,348 above those minimums.
+
+**Unit tests**: 1227 / 1227 passing. This is the post-PR #103 count and
+includes 6 new parser trailing-comma tests.
 
 ### How to read these rates
 
@@ -34,18 +63,36 @@ Skips dominate the gap: class-fields-private ~2,437, async-iteration ~3,731, Tem
 
 **Do not sum strict and non-strict figures.** Each file is run in both modes, so adding them double-counts the underlying ~45–48k test files. Report per-mode or not at all. See [TEST262.md](TEST262.md#output-format) for the runner-level definition and [supported-features.md](supported-features.md) for per-category pass rates, Annex B legacy features, and not-yet-implemented features.
 
-**Targeted verification (2026-02-11)**: `language/block-scope` slice is 106/106 passing (39 skipped).
-**Targeted verification (2026-02-12)**: `built-ins/Promise` slice is 599/599 passing (100%, 41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
-**Targeted verification (2026-02-13)**: `language/white-space` slice is 66/67 passing (98.5%, was 73.1%). Small compliance sweep completed. Proxy/Reflect implemented: Proxy 94.5% (257/272), Reflect 99.3% (152/153).
-**Targeted verification (2026-04-23)**: Reserved-word follow-up passes both targeted strict+non-strict slices: `language/reserved-words` 53 passed / 53 executed / 53 discovered, and `language/future-reserved-words` 85 passed / 85 executed / 85 discovered.
+**Targeted verification**
+
+- 2026-02-11: `language/block-scope` slice is 106/106 passing
+  (39 skipped).
+- 2026-02-12: `built-ins/Promise` slice is 599/599 passing (100%,
+  41 skipped). `language/block-scope` is 106/106 passing (100%, 39 skipped).
+- 2026-02-13: `language/white-space` slice is 66/67 passing (98.5%,
+  was 73.1%). Small compliance sweep completed. Proxy/Reflect implemented:
+  Proxy 94.5% (257/272), Reflect 99.3% (152/153).
+- 2026-04-23: Reserved-word follow-up passes both targeted strict and
+  non-strict slices. `language/reserved-words` is 53 passed / 53 executed /
+  53 discovered. `language/future-reserved-words` is 85 passed / 85 executed /
+  85 discovered.
+
 **Phase 16 (2026-02-14)**: TypedArray/ArrayBuffer/DataView implemented. 9 typed array types, DataView with all getter/setter methods, ArrayBuffer with slice/detach. 79 new unit tests, all passing. Full test262 re-run: **+2,142 tests passing** (20,870 → 23,012), pass rate 82.7% → **83.7%**.
+
 **Phase 17 (2026-02-14)**: TypedArray prototype chain conformance. Created `%TypedArray%` intrinsic constructor, set per-type constructor `[[Prototype]]` chains. TypedArray 55.1% → **92.8%** (+293), TypedArrayConstructors 86.1% → **94.4%** (+30). Estimated **+323 tests** passing overall.
+
 **Phase 18 (2026-02-14)**: Boxed primitives (`new String/Number/Boolean`). Constructor wrapping with `[[StringData]]`/`[[NumberData]]`/`[[BooleanData]]` internal slots, `Object()` ToObject wrapping, ToPrimitive coercion in `loose_equal`, prototype method support. Also fixed TypedArray constructor name inheritance regression. Key improvements: Object 92.7% → **95.9%** (+108), String 92.0% → **95.1%** (+38), Number 83.6% → **85.7%** (+7), TypedArray 92.8% → **93.4%** (+5), TypedArrayConstructors 94.4% → **95.3%** (+3), Boolean 83.7% → **85.7%** (+1). Estimated **+162 tests** passing in targeted categories.
+
 **Phase 19 (2026-02-15)**: Symbol/TypedArray prototype fixes and full re-run verification. Registered `[[SymbolPrototype]]` and `[[FunctionPrototype]]` as environment builtins. Boxed Symbol objects now use Symbol.prototype (was Object.prototype). `%TypedArray%` constructor gets `name`/`length` descriptors and `[[Prototype]]` set to Function.prototype. Reflect now **100%** (153/153). Full test262 re-run: **+525 tests passing** (23,012 → 23,537), pass rate 83.7% → **85.6%**.
+
 **Phase 20 (2026-02-15)**: WeakMap/WeakSet, iterator prototypes, RegExp improvements. Implemented WeakMap (100%, 139/139) and WeakSet (100%, 84/84) with full constructor/prototype support including `getOrInsert`/`getOrInsertComputed`. Added `getOrInsert`/`getOrInsertComputed` to Map (100%). Created shared iterator prototypes (`%MapIteratorPrototype%`, `%SetIteratorPrototype%`, `%ArrayIteratorPrototype%`, `%StringIteratorPrototype%`) with proper `[Symbol.toStringTag]`, `next` method `name`/`length` descriptors. Added `Symbol.iterator` support for Map/Set/boxed String. RegExp: added lookahead `(?=…)`/`(?!…)`, multiline `^`/`$` anchoring, backreferences `\1`-`\9`, dotAll `s` flag, sticky `y` flag, unicode `u` flag properties, full ES whitespace in `\s`/`\S`, `exec` result `index`/`input`/`groups` properties. Full test262 re-run: **+223 tests passing** (23,537 → 23,760), pass rate 85.6% → **86.1%**.
+
 **Phase 20 review fixes (2026-02-15)**: PR review fixes for regex, WeakMap/WeakSet, and array properties. RegExp: `is_line_terminator` helper for dot/multiline anchors covering `\r`/`\u2028`/`\u2029`; sticky flag reads/writes `lastIndex`; `regex_search` accepts `start_pos`. WeakMap/WeakSet: IDs moved to non-forgeable side tables with `physical_equal`; constructors reject calls without `new`; `is_constructing` flag set for `InterpreterCallable` in `eval_new`; `getOrInsertComputed` callback safety. Arrays: `set_property` persists named props to side table; `get_computed_property`/`set_computed_property` detect canonical numeric index strings; `get_computed_property` checks side table for named props. String `@@iterator` uses call-time receiver. Full test262 re-run: **+89 tests passing** (23,760 → 23,849), pass rate 86.1% → **86.4%**.
+
 **Phase 21 (2026-02-16)**: Annex B `get_string_method` gating and conformance fixes. `get_string_method` now accepts `annex_b~` parameter and returns `Undefined` for Annex B HTML method names when flag is false, preventing direct primitive access from bypassing `setup_string_prototype` gating. All interpreter call sites forward `self.annex_b`. Replaced `str[i:i+1].to_string()` with `str.view()[i:i+1].to_string()` in String constructor. Removed dead `"annex-b" in meta.includes` clause from test262-runner.py. Full test262 re-run: **+26 tests passing** (23,849 → 23,875), pass rate 86.4% → **86.5%**. Key improvements: annexB/built-ins 66.8% → **72.7%** (+13), JSON 97.8% → **99.3%** (+2), String 95.6% → **95.1%** (more tests executed), Iterator 80.0% → **100.0%** (+1).
+
 **Phase 22 (2026-02-17)**: Tier 1+2 conformance improvements. Tier 1: string escape sequences (`\r`, `\b`, `\v`, `\f`, `\0`, `\xHH`), `%ThrowTypeError%` intrinsic for strict arguments/caller. Tier 2: `with` statement (object environment record, SyntaxError in strict mode), Annex B block-level function hoisting (sloppy mode var binding propagation), RegExp `[Symbol.match]`/`[Symbol.replace]`/`[Symbol.split]`/`[Symbol.search]`, import syntax validation (escaped reserved words, duplicate bindings). PR review fixes: line continuation in string/template literals, escaped reserved words as IdentifierName, DataView ToIndex validation, `String.prototype.replaceAll` global-flag check, `with` primitive coercion, RegExp `Symbol.split` ToUint32 limit. Full test262 re-run: **+587 tests passing** (23,875 → 24,462), pass rate 86.5% → **88.1%**. Key improvements: annexB/language 38.1% → **87.0%** (+400), RegExp 77.3% → **86.8%** (+81), DataView 91.0% → **100.0%** (+24), Proxy 96.3% → **97.1%** (+2), language/statements 83.0% → **84.0%** (+44), language/identifiers 74.4% → **78.7%** (+9).
+
 **Phase 23 (2026-02-18)**: Tier 4 polish & edge cases. globalThis properties (`undefined`/`NaN`/`Infinity` with correct descriptors), full LineTerminator support (`\u2028`/`\u2029` in lexer, comments, strings, line continuation), directive prologue fix (full prologue scan, reject escaped `"use strict"`), GeneratorFunction constructor (`GeneratorFunction("a", "yield a")`), generator prototype chain fix, eval completion values for loops/switch, ASI restricted productions (`throw`/`return`/postfix `++`/`--`), Unicode whitespace rejection in identifier escapes. PR review fixes: regex multiline CRLF exclusion, `@@toStringTag` error propagation, `Object.assign` Proxy symbol properties, `Object.create` descriptor deduplication. Full test262 re-run: **+57 tests passing** (24,462 → 24,519), pass rate 88.1% → **88.8%**. Key improvements: GeneratorFunction **100.0%** (21/21, was 9.5%), GeneratorPrototype **88.5%** (54/61), line-terminators **68.3%** (28/41, was 48.8%), undefined **71.4%** (5/7, was 57.1%), ASI 96.1% → **96.1%** (98/102), white-space **100.0%** (67/67, was 98.5%).
 
 **Pre-Stage-C TypeError bundle (2026-04-21, PRs #70 + #71)**: Four narrow spec-anchored TypeError gates from the baseline "missing TypeError" cluster drill-down, plus method-shorthand non-constructor support. PR #70 (`e9622a6`): §12.5.4 `delete null/undefined`, §19.1.2.21 `Object.setPrototypeOf(null|undefined)`, §7.3.18 `Function.prototype.apply` non-Object argArray, §10.2.3 `instanceof` non-Object prototype (step-3 precedence fix). Shared helpers: `pub fn is_object_value` covering all 6 object-typed variants, and `create_list_from_array_like` rewritten to delegate to `to_array_like_length_interp` + `get_array_like_element_interp` so Proxy traps fire. PR #71 (`0eadc5a`): `is_method : Bool` on `FuncData`/`FuncDataExt`, set via `mark_as_method` in `eval_prop_value`, gated in both `is_constructor_value` and `construct_value` (including the Proxy branch). Net **+22 test262**, 0 regressions, +38 unit tests (940 → 978).

@@ -1,12 +1,13 @@
 # Documentation
 
-Start here to navigate `js_engine`'s documentation. Code is always the source of truth; if a doc disagrees with the code, the code wins.
+Use this index to find the right `js_engine` document. Code is the source of
+truth; when a doc and the code disagree, trust the code.
 
 ## Start here
 
 - [../README.md](../README.md) — project overview, quick start, supported language
 - [ROADMAP.md](ROADMAP.md) — headline status, phase history, next targets
-- [supported-features.md](supported-features.md) — per-category pass rates, Annex B, not-yet-implemented features
+- [supported-features.md](supported-features.md) — per-category pass rates, Annex B, missing features
 - [TEST262.md](TEST262.md) — how to run the test262 conformance suite
 
 ## Reference
@@ -20,12 +21,13 @@ Start here to navigate `js_engine`'s documentation. Code is always the source of
 
 ## Deep design
 
-Long-form research and design analysis. Read these for *why* the engine looks the way it does. They are point-in-time analyses and may lag the code.
+Long-form research and design analysis. These explain design history and may
+lag the code.
 
 - [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md) — closure-conversion prototype status, research notes, and bytecode/IR direction
 - [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) — self-hosting analysis (compiling the engine to JS)
-- [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — current redesign findings for realm state ownership, runtime public-surface containment, and execution-boundary clarity
-- [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md) — pressures and sizing probes for the next round of restructuring (exploratory, not yet executed)
+- [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — active migration record for realm state ownership, runtime surface control, and execution boundaries
+- [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md) — exploratory sizing probes for earlier restructuring work
 
 ## Historical / archived
 

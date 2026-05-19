@@ -1,24 +1,26 @@
 # Architecture Redesign Findings — 2026-05-19
 
-> **Status:** active migration record. Stage 0 guardrails, the initial
-> interpreter-owned realm-state container, and the first well-known symbol
-> ownership slice have landed. This document records the maintainability
-> pressure after the April 2026 runtime/stdlib split and the later PropertyBag /
-> internal-method dispatcher work. Code remains the source of truth.
+> This is an active migration record.
+>
+> Stage 0 guardrails, the initial interpreter-owned `RealmState`, and the first
+> well-known symbol ownership slice have landed.
+>
+> The document tracks the maintainability pressure after the April 2026
+> runtime/stdlib split and the later PropertyBag / internal-method dispatcher
+> work. Code remains the source of truth.
 
 ---
 
 ## 1. Change Pressures Driving Redesign
 
-The current architecture does not need another broad reshuffle. The confirmed
-pressure is narrower: state ownership is still unclear in places where the
-public API already exposes multiple interpreters and realms.
+The confirmed pressure is narrow. State ownership remains unclear in places
+where the public API already exposes multiple interpreters and realms.
 
-Observed pressures:
+Observed pressures include these:
 
-- Multi-interpreter and realm use exists: the public facade can return an
-  interpreter for host-driven event-loop control, and the test262 harness can
-  create fresh realms.
+- The public facade can return an interpreter for host-driven event-loop
+  control.
+- The test262 harness can create fresh realms.
 - Much durable state is now interpreter-owned, but several intrinsic caches,
   well-known symbols, backing stores, and side tables remain module-global.
 - Runtime and stdlib expose mutable implementation details as public API, which
@@ -27,9 +29,9 @@ Observed pressures:
   already demonstrates the maintenance risk of a second execution path that can
   duplicate JavaScript semantics.
 
-This analysis is therefore driven by realm hermeticity, public-surface
-containment, and execution-boundary clarity. It is not driven by parser shape,
-file naming, or broad aesthetic cleanup.
+This analysis is driven by realm hermeticity, public-surface containment, and
+execution-boundary clarity. Parser shape, file naming, and broad cleanup are
+outside scope.
 
 ## 2. Current Architecture Diagnosis
 
@@ -57,11 +59,10 @@ runtime -> ast / token / parser / errors
 compiler -> ast / token / runtime
 ```
 
-The previous split successfully prevents `runtime -> stdlib` imports. The
-remaining issue is not package direction; it is mutable state that bypasses
-interpreter ownership.
+The previous split prevents `runtime -> stdlib` imports. Package direction is
+acceptable; mutable state still bypasses interpreter ownership.
 
-State ownership today is mixed:
+State ownership is split across these places:
 
 - Interpreter-owned state: host queues, global environment, global object,
   module registry, generator state, symbol state, and stdlib hook table.
@@ -73,9 +74,9 @@ State ownership today is mixed:
 
 ## 3. Architectural Problems
 
-These are architectural problems, not local code smells:
+These are system-level concerns rather than local style issues:
 
-**P1 — Realm state is not owned by the realm/interpreter.**  
+**P1 — Realm/interpreter ownership is incomplete.**
 This affects long-term change because fresh interpreter and fresh realm
 behavior cannot be reasoned about from a single state owner.
 

@@ -24,3 +24,4 @@ promise.json
 # Claude Code session-local artifacts
 .claude/
 .codex
+.slopless/

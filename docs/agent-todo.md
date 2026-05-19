@@ -1,13 +1,13 @@
 # Agent Task Queue
 
-Tasks are ordered by effort/impact. Each is self-contained enough to complete in one session.
+Tasks are ordered by effort and impact. Each task should fit in one session.
 Completed tasks should be struck through and dated.
 
 ---
 
 ## ~~Stage 2a well-known symbol ownership~~ — DONE (2026-05-19, branch `codex/stage2a-well-known-symbols`)
 
-**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
+**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md),
 after Stage 1 introduced `RealmState`.
 
 **Goal:** Move well-known symbol identity allocation out of individual
@@ -15,12 +15,11 @@ module-global refs and into realm-owned state without changing observable
 Symbol, iterator, `instanceof`, RegExp symbol-method, or `@@toStringTag`
 behavior.
 
-**Result:** Added a realm-owned well-known symbol bundle, initialized it from
-the realm's `SymbolState`, and changed Symbol setup to consume those
-realm-owned identities. The 13 per-symbol module globals were removed from the
-architecture audit inventory. A single temporary compatibility shim remains for
-legacy no-argument lookup helpers until those lookup paths accept explicit
-`RealmState`.
+**Result:** Added a realm-owned well-known symbol bundle initialized from the
+realm's `SymbolState`. Symbol setup now consumes those identities. The 13
+per-symbol module globals were removed from the architecture audit inventory.
+One temporary compatibility shim remains for legacy no-argument lookup helpers
+until those paths accept explicit `RealmState`.
 
 **Follow-up:** Migrate lookup paths from no-argument `get_*_symbol()` helpers to
 explicit realm-owned access one family at a time, then remove the compatibility
@@ -34,13 +33,13 @@ shim.
 legacy no-argument well-known symbol getters.
 
 **Pressure:** Well-known symbol identities are now allocated from realm-owned
-state, but many runtime and stdlib lookup paths still reach them through
-ambient no-argument helpers. That keeps a hidden process-wide dependency in the
-lookup path and delays removal of the compatibility shim.
+state. Many runtime and stdlib lookup paths still reach them through ambient
+no-argument helpers, which keeps a hidden process-wide dependency alive and
+blocks removal of the compatibility shim.
 
 **Goal:** Replace no-argument well-known symbol lookups with explicit access to
-the active realm-owned symbol bundle, one caller family at a time. Keep symbol
-identity, setup order, and public root facade behavior unchanged.
+the active realm-owned symbol bundle. Work one caller family at a time. Keep
+symbol identity, setup order, and public root facade behavior unchanged.
 
 **Suggested first slices:**
 
@@ -65,13 +64,13 @@ WeakSet, or prototype-cache migration.
 
 ## Stage 2c intrinsic/prototype state migration planning
 
-**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
+**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md),
 Stage 2 after the well-known symbol ownership slice.
 
 **Pressure:** The mutable-state audit still classifies prototype refs, lazy
 iterator/prototype caches, ArrayBuffer storage, WeakMap / WeakSet side tables,
-and related compatibility state. Moving all of them at once would make failures
-hard to localize.
+and related compatibility state. Moving them together would make failures hard
+to localize.
 
 **Goal:** Pick the next intrinsic/prototype state family only after Stage 2b
 removes the well-known symbol shim. Prefer a narrow family with strong existing
