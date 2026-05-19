@@ -524,6 +524,127 @@ test "setTimeout equal delays preserve insertion order" {
 }
 
 ///|
+test "stage0: event-loop queues are interpreter-owned" {
+  let (interp_a, _) = @js_engine.run_with_event_loop(
+    (
+      #|queueMicrotask(function() { console.log("a microtask"); });
+      #|setTimeout(function() { console.log("a timer"); }, 0);
+      #|console.log("a sync");
+    ),
+  )
+  let (interp_b, _) = @js_engine.run_with_event_loop(
+    (
+      #|console.log("b sync");
+    ),
+  )
+  expect_bool(
+    @js_engine.has_pending_microtasks(interp_a),
+    true,
+    "interpreter A microtasks pending",
+  )
+  expect_bool(
+    @js_engine.has_pending_timers(interp_a),
+    true,
+    "interpreter A timers pending",
+  )
+  expect_bool(
+    @js_engine.has_pending_microtasks(interp_b),
+    false,
+    "interpreter B microtasks pending",
+  )
+  expect_bool(
+    @js_engine.has_pending_timers(interp_b),
+    false,
+    "interpreter B timers pending",
+  )
+  let _ = @js_engine.run_microtask_checkpoint(interp_a)
+  @js_engine.run_timer_checkpoint(interp_a)
+  json_inspect(interp_a.host.output, content=[
+    "a sync", "a microtask", "a timer",
+  ])
+  json_inspect(interp_b.host.output, content=["b sync"])
+}
+
+///|
+test "stage0: created realm globals and prototypes stay separate" {
+  let src =
+    #|globalThis.stage0Marker = "outer";
+    #|Array.prototype.stage0Marker = "outer-array";
+    #|var realm = $262.createRealm();
+    #|realm.evalScript(
+    #|  'globalThis.stage0Marker = "inner";' +
+    #|  'Array.prototype.stage0Marker = "inner-array";'
+    #|);
+    #|console.log(globalThis.stage0Marker);
+    #|console.log([].stage0Marker);
+    #|console.log(realm.global.stage0Marker);
+    #|console.log(realm.global.Array.prototype.stage0Marker);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["outer", "outer-array", "inner", "inner-array"])
+}
+
+///|
+test "stage0: realm backing stores and weak collections do not cross-contaminate" {
+  let src =
+    #|var outerBuffer = new ArrayBuffer(4);
+    #|var outerView = new Uint8Array(outerBuffer);
+    #|outerView[0] = 7;
+    #|var outerMap = new WeakMap();
+    #|var outerKey = {};
+    #|outerMap.set(outerKey, "outer");
+    #|
+    #|var realm = $262.createRealm();
+    #|realm.evalScript(
+    #|  'var innerBuffer = new ArrayBuffer(4);' +
+    #|  'var innerView = new Uint8Array(innerBuffer);' +
+    #|  'innerView[0] = 3;' +
+    #|  '$262.detachArrayBuffer(innerBuffer);' +
+    #|  'globalThis.innerDetachedThrows = false;' +
+    #|  'try { new Uint8Array(innerBuffer); }' +
+    #|  'catch (e) { globalThis.innerDetachedThrows = true; }' +
+    #|  'var innerMap = new WeakMap();' +
+    #|  'var innerKey = {};' +
+    #|  'innerMap.set(innerKey, "inner");' +
+    #|  'globalThis.innerWeakValue = innerMap.get(innerKey);'
+    #|);
+    #|
+    #|console.log(new Uint8Array(outerBuffer)[0]);
+    #|console.log(outerMap.get(outerKey));
+    #|console.log(realm.global.innerDetachedThrows);
+    #|console.log(realm.global.innerWeakValue);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["7", "outer", "true", "inner"])
+}
+
+///|
+test "stage0: module registries are isolated between facade runs" {
+  let modules_a : Array[(String, String)] = [
+    ("./dep", "export const value = 1;"),
+    (
+      "./main",
+      (
+        #|import { value } from './dep';
+        #|console.log(value);
+      ),
+    ),
+  ]
+  let modules_b : Array[(String, String)] = [
+    ("./dep", "export const value = 2;"),
+    (
+      "./main",
+      (
+        #|import { value } from './dep';
+        #|console.log(value);
+      ),
+    ),
+  ]
+  let (output_a, _) = @js_engine.run_modules(modules_a)
+  let (output_b, _) = @js_engine.run_modules(modules_b)
+  json_inspect(output_a, content=["1"])
+  json_inspect(output_b, content=["2"])
+}
+
+///|
 test "unicode escape in identifier" {
   let src =
     #|var \u0061 = 42;

@@ -1,4 +1,4 @@
-.PHONY: build test test262 test262-quick test262-analyze test262-validate-skips test262-download test262-report unicode-tables clean
+.PHONY: build test architecture-state-audit architecture-state-audit-test test262 test262-quick test262-analyze test262-validate-skips test262-download test262-report unicode-tables clean
 
 # Build the JS engine
 build:
@@ -7,6 +7,13 @@ build:
 # Run MoonBit unit tests
 test:
 	moon test
+
+# Guardrail for the realm-state migration track.
+architecture-state-audit: architecture-state-audit-test
+	python3 scripts/architecture-state-audit.py
+
+architecture-state-audit-test:
+	python3 scripts/architecture_state_audit_test.py
 
 # Download the Test262 test suite
 test262-download:
