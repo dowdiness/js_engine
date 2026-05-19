@@ -13,5 +13,5 @@ pub(all) struct RealmState {
 #alias(new)
 pub fn RealmState::RealmState() -> RealmState {
   let symbols = SymbolState::new()
-  { symbols, well_known_symbols: WellKnownSymbols(symbols) }
+  { symbols, well_known_symbols: symbols.well_known_symbols() }
 }

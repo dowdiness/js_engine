@@ -26,9 +26,9 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     setter: None,
     is_accessor: false,
   }
-  // Well-known symbols are allocated by RealmState so the same realm-owned
-  // identities are used by setup code and runtime lookup paths.
-  let well_known = @runtime.installed_well_known_symbols()
+  // Well-known symbols are allocated from the SymbolState passed to public
+  // setup, so standalone setup_builtins reserves the same IDs Symbol() uses.
+  let well_known = symbols.well_known_symbols()
   let iterator_sym = well_known.iterator
   let to_primitive_sym = well_known.to_primitive
   let to_string_tag_sym = well_known.to_string_tag

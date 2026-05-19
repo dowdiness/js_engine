@@ -643,10 +643,12 @@ pub(all) struct SymbolState {
   all_symbols : Map[Int, SymbolData]
   global_symbol_registry : Map[String, SymbolData]
   symbol_registry_reverse : Map[Int, String]
+  well_known_symbols : @ref.Ref[WellKnownSymbols?]
 }
 pub fn SymbolState::get_symbol_by_id(Self, Int) -> SymbolData?
 pub fn SymbolState::new() -> Self
 pub fn SymbolState::new_symbol(Self, String?) -> SymbolData
+pub fn SymbolState::well_known_symbols(Self) -> WellKnownSymbols
 
 pub(all) struct TimerTask {
   id : Int

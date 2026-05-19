@@ -76,6 +76,7 @@ pub(all) struct SymbolState {
   all_symbols : Map[Int, SymbolData]
   global_symbol_registry : Map[String, SymbolData]
   symbol_registry_reverse : Map[Int, String]
+  well_known_symbols : Ref[WellKnownSymbols?]
 }
 
 ///|
@@ -85,6 +86,7 @@ pub fn SymbolState::new() -> SymbolState {
     all_symbols: {},
     global_symbol_registry: {},
     symbol_registry_reverse: {},
+    well_known_symbols: { val: None },
   }
 }
 
@@ -159,6 +161,22 @@ let legacy_well_known_symbols : Ref[WellKnownSymbols?] = { val: None }
 ///|
 fn install_well_known_symbols(symbols : WellKnownSymbols) -> Unit {
   legacy_well_known_symbols.val = Some(symbols)
+}
+
+///|
+pub fn SymbolState::well_known_symbols(self : SymbolState) -> WellKnownSymbols {
+  match self.well_known_symbols.val {
+    Some(symbols) => {
+      install_well_known_symbols(symbols)
+      symbols
+    }
+    None => {
+      let symbols = WellKnownSymbols(self)
+      self.well_known_symbols.val = Some(symbols)
+      install_well_known_symbols(symbols)
+      symbols
+    }
+  }
 }
 
 ///|
