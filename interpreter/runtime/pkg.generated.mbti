@@ -239,7 +239,7 @@ pub fn set_function_name(Value, String) -> Unit
 
 pub fn setup_async_function_constructor(Environment) -> Unit
 
-pub fn setup_generator_function_constructor(Environment, Value) -> Unit
+pub fn setup_generator_function_constructor(Environment, Value, well_known_symbols~ : WellKnownSymbols) -> Unit
 
 pub fn sort_property_keys(Map[String, Value]) -> Array[String]
 

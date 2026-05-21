@@ -199,7 +199,11 @@ pub fn Interpreter::new(
     _ => ()
   }
   // Set up GeneratorFunction constructor
-  setup_generator_function_constructor(global, global_this)
+  setup_generator_function_constructor(
+    global,
+    global_this,
+    well_known_symbols=realm_state.well_known_symbols,
+  )
   // Set up AsyncFunction constructor
   setup_async_function_constructor(global)
   // Set up test262 harness host functions (print, $262)

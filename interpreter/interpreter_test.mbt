@@ -5651,6 +5651,21 @@ test "generator: Symbol.iterator returns self" {
 }
 
 ///|
+test "generator: Symbol.toStringTag tags generator objects" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|console.log(Object.prototype.toString.call(it));
+      #|console.log(Object.prototype.toString.call(GeneratorFunction.prototype));
+    ),
+  )
+  json_inspect(output, content=[
+    "[object Generator]", "[object GeneratorFunction]",
+  ])
+}
+
+///|
 test "generator: new with generator throws TypeError" {
   let output = run_output(
     (
