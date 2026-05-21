@@ -25,7 +25,7 @@ pub fn get_number_method(@runtime.Value, String) -> @runtime.Value
 
 pub fn get_promise_method(@runtime.PromiseData, String) -> @runtime.Value
 
-pub fn get_regexp_string_iterator_proto() -> @runtime.Value
+pub fn get_regexp_string_iterator_proto(@runtime.WellKnownSymbols) -> @runtime.Value
 
 pub fn get_set_method(@runtime.SetData, String) -> @runtime.Value
 
@@ -75,7 +75,7 @@ pub fn setup_date_builtins(@runtime.Environment) -> Unit
 
 pub fn setup_harness_builtins(@runtime.Environment, Array[String], @runtime.Value) -> Unit
 
-pub fn setup_map_set_builtins(@runtime.Environment) -> Unit
+pub fn setup_map_set_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
 
 pub fn setup_object_builtins(@runtime.Environment, @runtime.SymbolState) -> Unit
 

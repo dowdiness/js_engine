@@ -508,7 +508,7 @@ pub fn array_species_create(
   // Step 4: If Type(C) is Object, set C = Get(C, @@species)
   let species : Value = match c {
     Object(_) => {
-      let species_sym = get_species_symbol()
+      let species_sym = interp.realm_state.well_known_symbols.species
       let s = interp.get_computed_property(c, Symbol(species_sym), loc)
       // If species is null or undefined, use default
       match s {

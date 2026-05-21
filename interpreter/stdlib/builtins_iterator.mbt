@@ -1,7 +1,10 @@
 ///|
 /// Set up iterator protocol on Array and String prototypes
-fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
-  let iterator_sym = @runtime.get_iterator_symbol()
+fn setup_iterator_protocol(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit raise Error {
+  let iterator_sym = well_known_symbols.iterator
 
   // Get Array constructor and add Symbol.iterator to its prototype
   let array_val = env.get("Array")
@@ -16,8 +19,12 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
             _args,
           ) raise {
             match this_val {
-              Value::Array(arr) => @runtime.make_array_iterator_value(arr)
-              _ => @runtime.make_array_like_iterator_value(this_val)
+              Value::Array(arr) =>
+                @runtime.make_array_iterator_value(well_known_symbols, arr)
+              _ =>
+                @runtime.make_array_like_iterator_value(
+                  well_known_symbols, this_val,
+                )
             }
           })
           proto_data.bag.symbol_properties[iterator_sym.id] = values_fn
@@ -259,7 +266,7 @@ fn setup_iterator_protocol(env : Environment) -> Unit raise Error {
         length=0,
         fn(this_val, _args) {
           let s = this_val.to_string()
-          @runtime.make_string_iterator_value(s)
+          @runtime.make_string_iterator_value(well_known_symbols, s)
         },
       )
       proto_data.bag.symbol_properties[iterator_sym.id] = iter_method

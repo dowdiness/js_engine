@@ -51,15 +51,21 @@ pub fn get_set_method(_data : SetData, prop : String) -> Value {
 
 ///|
 /// Setup Map and Set constructors and prototypes
-pub fn setup_map_set_builtins(env : Environment) -> Unit {
-  setup_map_builtins(env)
-  setup_set_builtins(env)
+pub fn setup_map_set_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
+  setup_map_builtins(env, well_known_symbols)
+  setup_set_builtins(env, well_known_symbols)
 }
 
 ///|
 /// Setup Map constructor and prototype
-fn setup_map_builtins(env : Environment) -> Unit {
-  let iterator_sym = @runtime.get_iterator_symbol()
+fn setup_map_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
+  let iterator_sym = well_known_symbols.iterator
 
   // Map.prototype methods
   let map_proto_props : Map[String, Value] = {}
@@ -221,7 +227,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     _args,
   ) raise {
     match this_val {
-      Value::Map(data) => make_map_keys_iterator(data)
+      Value::Map(data) => make_map_keys_iterator(well_known_symbols, data)
       _ =>
         raise @errors.TypeError(
           message="Method Map.prototype.keys called on incompatible receiver",
@@ -235,7 +241,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Map(data) => make_map_values_iterator(data)
+        Value::Map(data) => make_map_values_iterator(well_known_symbols, data)
         _ =>
           raise @errors.TypeError(
             message="Method Map.prototype.values called on incompatible receiver",
@@ -250,7 +256,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Map(data) => make_map_entries_iterator(data)
+        Value::Map(data) => make_map_entries_iterator(well_known_symbols, data)
         _ =>
           raise @errors.TypeError(
             message="Method Map.prototype.entries called on incompatible receiver",
@@ -392,7 +398,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
       data.bag.symbol_properties[iterator_sym.id] = map_proto_props["entries"]
       data.bag.symbol_descriptors[iterator_sym.id] = method_desc
       // Add Symbol.toStringTag = "Map"
-      let tostringtag_sym = @runtime.get_tostringtag_symbol()
+      let tostringtag_sym = well_known_symbols.to_string_tag
       data.bag.symbol_properties[tostringtag_sym.id] = Value::String_("Map")
       data.bag.symbol_descriptors[tostringtag_sym.id] = {
         writable: false,
@@ -428,7 +434,7 @@ fn setup_map_builtins(env : Environment) -> Unit {
           _ => false
         }) {
         // Get iterator from iterable using Symbol.iterator
-        let iterator_sym = @runtime.get_iterator_symbol()
+        let iterator_sym = well_known_symbols.iterator
         let iterator_method = interp.get_computed_property(
           iterable,
           Symbol(iterator_sym),
@@ -589,8 +595,11 @@ fn setup_map_builtins(env : Environment) -> Unit {
 
 ///|
 /// Setup Set constructor and prototype
-fn setup_set_builtins(env : Environment) -> Unit {
-  let iterator_sym = @runtime.get_iterator_symbol()
+fn setup_set_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
+  let iterator_sym = well_known_symbols.iterator
 
   // Set.prototype methods
   let set_proto_props : Map[String, Value] = {}
@@ -722,7 +731,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     _args,
   ) raise {
     match this_val {
-      Value::Set(data) => make_set_values_iterator(data)
+      Value::Set(data) => make_set_values_iterator(well_known_symbols, data)
       _ =>
         raise @errors.TypeError(
           message="Method Set.prototype.keys called on incompatible receiver",
@@ -736,7 +745,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Set(data) => make_set_values_iterator(data)
+        Value::Set(data) => make_set_values_iterator(well_known_symbols, data)
         _ =>
           raise @errors.TypeError(
             message="Method Set.prototype.values called on incompatible receiver",
@@ -751,7 +760,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Set(data) => make_set_entries_iterator(data)
+        Value::Set(data) => make_set_entries_iterator(well_known_symbols, data)
         _ =>
           raise @errors.TypeError(
             message="Method Set.prototype.entries called on incompatible receiver",
@@ -823,7 +832,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
       data.bag.symbol_properties[iterator_sym.id] = set_proto_props["values"]
       data.bag.symbol_descriptors[iterator_sym.id] = method_desc
       // Add Symbol.toStringTag = "Set"
-      let tostringtag_sym = @runtime.get_tostringtag_symbol()
+      let tostringtag_sym = well_known_symbols.to_string_tag
       data.bag.symbol_properties[tostringtag_sym.id] = Value::String_("Set")
       data.bag.symbol_descriptors[tostringtag_sym.id] = {
         writable: false,
@@ -859,7 +868,7 @@ fn setup_set_builtins(env : Environment) -> Unit {
           _ => false
         }) {
         // Get iterator from iterable using Symbol.iterator
-        let iterator_sym = @runtime.get_iterator_symbol()
+        let iterator_sym = well_known_symbols.iterator
         let iterator_method = interp.get_computed_property(
           iterable,
           Symbol(iterator_sym),
@@ -952,12 +961,14 @@ let map_iterator_proto_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Get or create the shared %MapIteratorPrototype%
-fn get_map_iterator_proto() -> Value {
+fn get_map_iterator_proto(
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Value {
   match map_iterator_proto_ref.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = @runtime.get_iterator_symbol()
-      let tostringtag_sym = @runtime.get_tostringtag_symbol()
+      let iterator_sym = well_known_symbols.iterator
+      let tostringtag_sym = well_known_symbols.to_string_tag
       let proto_sym_props : Map[Int, Value] = {}
       proto_sym_props[tostringtag_sym.id] = Value::String_("Map Iterator")
       let proto_props : Map[String, Value] = {}
@@ -1001,7 +1012,7 @@ fn get_map_iterator_proto() -> Value {
           },
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: @runtime.get_iterator_proto(),
+        prototype: @runtime.get_iterator_proto(well_known_symbols),
         callable: None,
         class_name: "Map Iterator",
         extensible: true,
@@ -1014,8 +1025,11 @@ fn get_map_iterator_proto() -> Value {
 
 ///|
 /// Create a Map keys iterator
-fn make_map_keys_iterator(map_data : MapData) -> Value {
-  let map_iter_proto = get_map_iterator_proto()
+fn make_map_keys_iterator(
+  well_known_symbols : @runtime.WellKnownSymbols,
+  map_data : MapData,
+) -> Value {
+  let map_iter_proto = get_map_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1106,8 +1120,11 @@ fn make_map_keys_iterator(map_data : MapData) -> Value {
 
 ///|
 /// Create a Map values iterator
-fn make_map_values_iterator(map_data : MapData) -> Value {
-  let map_iter_proto = get_map_iterator_proto()
+fn make_map_values_iterator(
+  well_known_symbols : @runtime.WellKnownSymbols,
+  map_data : MapData,
+) -> Value {
+  let map_iter_proto = get_map_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1198,8 +1215,11 @@ fn make_map_values_iterator(map_data : MapData) -> Value {
 
 ///|
 /// Create a Map entries iterator
-fn make_map_entries_iterator(map_data : MapData) -> Value {
-  let map_iter_proto = get_map_iterator_proto()
+fn make_map_entries_iterator(
+  well_known_symbols : @runtime.WellKnownSymbols,
+  map_data : MapData,
+) -> Value {
+  let map_iter_proto = get_map_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1296,12 +1316,14 @@ let set_iterator_proto_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Get or create the shared %SetIteratorPrototype%
-fn get_set_iterator_proto() -> Value {
+fn get_set_iterator_proto(
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Value {
   match set_iterator_proto_ref.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = @runtime.get_iterator_symbol()
-      let tostringtag_sym = @runtime.get_tostringtag_symbol()
+      let iterator_sym = well_known_symbols.iterator
+      let tostringtag_sym = well_known_symbols.to_string_tag
       let proto_sym_props : Map[Int, Value] = {}
       proto_sym_props[tostringtag_sym.id] = Value::String_("Set Iterator")
       let proto_props : Map[String, Value] = {}
@@ -1343,7 +1365,7 @@ fn get_set_iterator_proto() -> Value {
           },
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: @runtime.get_iterator_proto(),
+        prototype: @runtime.get_iterator_proto(well_known_symbols),
         callable: None,
         class_name: "Set Iterator",
         extensible: true,
@@ -1356,8 +1378,11 @@ fn get_set_iterator_proto() -> Value {
 
 ///|
 /// Create a Set values iterator
-fn make_set_values_iterator(set_data : SetData) -> Value {
-  let set_iter_proto = get_set_iterator_proto()
+fn make_set_values_iterator(
+  well_known_symbols : @runtime.WellKnownSymbols,
+  set_data : SetData,
+) -> Value {
+  let set_iter_proto = get_set_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1448,8 +1473,11 @@ fn make_set_values_iterator(set_data : SetData) -> Value {
 
 ///|
 /// Create a Set entries iterator (returns [value, value] pairs)
-fn make_set_entries_iterator(set_data : SetData) -> Value {
-  let set_iter_proto = get_set_iterator_proto()
+fn make_set_entries_iterator(
+  well_known_symbols : @runtime.WellKnownSymbols,
+  set_data : SetData,
+) -> Value {
+  let set_iter_proto = get_set_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {

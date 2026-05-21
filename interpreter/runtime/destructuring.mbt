@@ -51,7 +51,7 @@ fn Interpreter::bind_pattern(
       }
       // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
       let loc_dstr = @token.Loc::default()
-      let iterator_sym_dstr = get_iterator_symbol()
+      let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
       let iterator_method_dstr = self.get_computed_property(
         value,
         Symbol(iterator_sym_dstr),
@@ -358,7 +358,7 @@ fn Interpreter::assign_pattern(
       }
       // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
       let loc_dstr = @token.Loc::default()
-      let iterator_sym_dstr = get_iterator_symbol()
+      let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
       let iterator_method_dstr = self.get_computed_property(
         value,
         Symbol(iterator_sym_dstr),

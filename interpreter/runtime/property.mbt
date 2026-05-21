@@ -706,7 +706,8 @@ pub fn Interpreter::get_computed_property(
   }
   // Handle Symbol keys specially
   match key {
-    Symbol(sym) =>
+    Symbol(sym) => {
+      let well_known_symbols = self.realm_state.well_known_symbols
       match obj {
         Object(data) => {
           // Check for symbol accessor descriptor (getter)
@@ -746,7 +747,7 @@ pub fn Interpreter::get_computed_property(
                 }
               }
               // Boxed primitive objects: delegate Symbol.iterator to primitive
-              let iterator_sym = get_iterator_symbol()
+              let iterator_sym = well_known_symbols.iterator
               if sym.id == iterator_sym.id {
                 if data.class_name == "String" {
                   match data.bag.properties.get("[[StringData]]") {
@@ -772,7 +773,7 @@ pub fn Interpreter::get_computed_property(
                               )
                             _ => this_val.to_string()
                           }
-                          make_string_iterator_value(str)
+                          make_string_iterator_value(well_known_symbols, str)
                         },
                       )
                     _ => ()
@@ -788,14 +789,14 @@ pub fn Interpreter::get_computed_property(
         }
         String_(s) => {
           // Handle Symbol.iterator for strings
-          let iterator_sym = get_iterator_symbol()
+          let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
             // Return a function that creates a string iterator
             return make_method_func(name="[Symbol.iterator]", length=0, fn(
               _this_val,
               _args,
             ) {
-              make_string_iterator_value(s)
+              make_string_iterator_value(well_known_symbols, s)
             })
           }
           return Undefined
@@ -833,10 +834,11 @@ pub fn Interpreter::get_computed_property(
             _ => ()
           }
           // Handle Symbol.iterator default for arrays
-          let iterator_sym = get_iterator_symbol()
+          let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
             let (override_getter, override_value) = get_array_iterator_override(
               arr,
+              well_known_symbols~,
             )
             match override_getter {
               Some(getter) => return self.call_value(getter, obj, [], loc)
@@ -851,7 +853,7 @@ pub fn Interpreter::get_computed_property(
               _this_val,
               _args,
             ) {
-              make_array_iterator_value(arr)
+              make_array_iterator_value(well_known_symbols, arr)
             })
           }
           return Undefined
@@ -871,11 +873,11 @@ pub fn Interpreter::get_computed_property(
             None => ()
           }
           // Well-known symbols
-          let iterator_sym = get_iterator_symbol()
+          let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
             return (self.stdlib_hooks.get_map_method)(map_data, "entries")
           }
-          let tostringtag_sym = get_tostringtag_symbol()
+          let tostringtag_sym = well_known_symbols.to_string_tag
           if sym.id == tostringtag_sym.id {
             return String_("Map")
           }
@@ -896,11 +898,11 @@ pub fn Interpreter::get_computed_property(
             None => ()
           }
           // Well-known symbols
-          let iterator_sym = get_iterator_symbol()
+          let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
             return (self.stdlib_hooks.get_set_method)(set_data, "values")
           }
-          let tostringtag_sym = get_tostringtag_symbol()
+          let tostringtag_sym = well_known_symbols.to_string_tag
           if sym.id == tostringtag_sym.id {
             return String_("Set")
           }
@@ -934,6 +936,7 @@ pub fn Interpreter::get_computed_property(
         }
         _ => return Undefined
       }
+    }
     _ => ()
   }
   match obj {

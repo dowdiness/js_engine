@@ -3081,6 +3081,25 @@ test "for-of with continue" {
 }
 
 ///|
+test "arguments object Symbol.iterator" {
+  let src =
+    #|function collect() {
+    #|  var out = [];
+    #|  for (var value of arguments) { out.push(value); }
+    #|  return out.join(",");
+    #|}
+    #|function C() {
+    #|  var out = [];
+    #|  for (var value of arguments) { out.push(value); }
+    #|  this.value = out.join("-");
+    #|}
+    #|console.log(collect("a", "b", "c"));
+    #|console.log(new C(1, 2).value);
+  let output = run_output(src)
+  json_inspect(output, content=["a,b,c", "1-2"])
+}
+
+///|
 test "spread in array literal" {
   let src =
     #|var a = [1, 2, 3];
@@ -5629,6 +5648,21 @@ test "generator: Symbol.iterator returns self" {
     ),
   )
   json_inspect(output, content=["true"])
+}
+
+///|
+test "generator: Symbol.toStringTag tags generator objects" {
+  let output = run_output(
+    (
+      #|function* g() { yield 1; }
+      #|const it = g();
+      #|console.log(Object.prototype.toString.call(it));
+      #|console.log(Object.prototype.toString.call(GeneratorFunction.prototype));
+    ),
+  )
+  json_inspect(output, content=[
+    "[object Generator]", "[object GeneratorFunction]",
+  ])
 }
 
 ///|
@@ -10500,6 +10534,21 @@ test "class fields on Set subclass" {
 }
 
 ///|
+test "Map and Set well-known symbol computed access" {
+  let output = run_output(
+    (
+      #|const m = new Map();
+      #|const s = new Set();
+      #|console.log(m[Symbol.iterator] === Map.prototype.entries);
+      #|console.log(m[Symbol.toStringTag]);
+      #|console.log(s[Symbol.iterator] === Set.prototype.values);
+      #|console.log(s[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["true", "Map", "true", "Set"])
+}
+
+///|
 test "regex flag ordering is normalized to alphabetical" {
   let output = run_output(
     (
@@ -10533,6 +10582,21 @@ test "Function.prototype.toString distinguishes async functions" {
   json_inspect(output, content=[
     "function foo() { [native code] }", "async function bar() { [native code] }",
   ])
+}
+
+///|
+test "async functions and generators expose well-known symbol protocol hooks" {
+  let output = run_output(
+    (
+      #|let AF = (async function(){}).constructor;
+      #|console.log(Object.prototype.toString.call(AF.prototype));
+      #|async function* ag() { yield 1; }
+      #|let it = ag();
+      #|console.log(typeof it[Symbol.asyncIterator]);
+      #|console.log(it[Symbol.asyncIterator]() === it);
+    ),
+  )
+  json_inspect(output, content=["[object AsyncFunction]", "function", "true"])
 }
 
 // ES262 §10.2.4 ExpectedArgumentCount: function `length` reports the

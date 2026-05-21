@@ -71,8 +71,8 @@ pub(all) struct GeneratorObject {
 /// Get or create %GeneratorPrototype% for the given interpreter.
 /// We create a new prototype each time to avoid stale symbol IDs
 /// across interpreter instances (each test creates a new interpreter).
-fn get_generator_prototype(_interp : Interpreter) -> Value {
-  init_generator_prototype()
+fn get_generator_prototype(interp : Interpreter) -> Value {
+  init_generator_prototype(interp.realm_state.well_known_symbols)
 }
 
 ///|
@@ -99,8 +99,8 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 
 ///|
 /// Initialize %GeneratorPrototype% with next, throw, return methods
-fn init_generator_prototype() -> Value {
-  let iterator_sym = get_iterator_symbol()
+fn init_generator_prototype(well_known_symbols : WellKnownSymbols) -> Value {
+  let iterator_sym = well_known_symbols.iterator
   let props : Map[String, Value] = {}
   let sym_props : Map[Int, Value] = {}
   let descs : Map[String, PropDescriptor] = {}
@@ -167,7 +167,7 @@ fn init_generator_prototype() -> Value {
   )
   // [Symbol.toStringTag] = "Generator"
   let sym_descs : Map[Int, PropDescriptor] = {}
-  let tostringtag_sym = get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
   sym_props[tostringtag_sym.id] = String_("Generator")
   sym_descs[tostringtag_sym.id] = {
     writable: false,
@@ -198,6 +198,7 @@ fn init_generator_prototype() -> Value {
 pub fn setup_generator_function_constructor(
   env : Environment,
   global_this : Value,
+  well_known_symbols~ : WellKnownSymbols,
 ) -> Unit {
   // %GeneratorFunction.prototype% inherits from Function.prototype
   let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
@@ -206,7 +207,7 @@ pub fn setup_generator_function_constructor(
   }
   let gf_sym_props : Map[Int, Value] = {}
   let gf_sym_descs : Map[Int, PropDescriptor] = {}
-  let tostringtag_sym = get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
   gf_sym_props[tostringtag_sym.id] = String_("GeneratorFunction")
   gf_sym_descs[tostringtag_sym.id] = {
     writable: false,
@@ -984,7 +985,7 @@ fn Interpreter::eval_yield(
         }
         // Get iterator from iterable
         let loc = @token.Loc::default()
-        let iterator_sym = get_iterator_symbol()
+        let iterator_sym = self.realm_state.well_known_symbols.iterator
         let iterator_method = self.get_computed_property(
           iterable,
           Symbol(iterator_sym),

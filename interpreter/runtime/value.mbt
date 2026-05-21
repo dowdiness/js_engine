@@ -431,10 +431,11 @@ pub fn get_array_symbol_prop(arr : ArrayData, sym_id : Int) -> Value? {
 ///|
 pub fn set_array_iterator_override(
   arr : ArrayData,
+  well_known_symbols~ : WellKnownSymbols,
   getter : Value?,
   value : Value?,
 ) -> Unit {
-  let iterator_sym = get_iterator_symbol()
+  let iterator_sym = well_known_symbols.iterator
   match value {
     Some(v) => arr.bag.symbol_properties[iterator_sym.id] = v
     None => {
@@ -452,8 +453,11 @@ pub fn set_array_iterator_override(
 }
 
 ///|
-pub fn get_array_iterator_override(arr : ArrayData) -> (Value?, Value?) {
-  let iterator_sym = get_iterator_symbol()
+pub fn get_array_iterator_override(
+  arr : ArrayData,
+  well_known_symbols~ : WellKnownSymbols,
+) -> (Value?, Value?) {
+  let iterator_sym = well_known_symbols.iterator
   let getter = match arr.bag.symbol_descriptors.get(iterator_sym.id) {
     Some(desc) => desc.getter
     None => None

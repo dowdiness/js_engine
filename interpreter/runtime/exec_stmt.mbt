@@ -565,7 +565,7 @@ fn Interpreter::exec_stmt(
         let iterable = self.eval_expr(ctx, iterable_expr, env)
 
         // Try to get the iterator via Symbol.iterator protocol
-        let iterator_sym = get_iterator_symbol()
+        let iterator_sym = self.realm_state.well_known_symbols.iterator
         let iterator_method = self.get_computed_property(
           iterable,
           Symbol(iterator_sym),
@@ -585,8 +585,16 @@ fn Interpreter::exec_stmt(
           Undefined =>
             // Fall back to built-in iteration for arrays and strings
             match iterable {
-              Array(arr) => make_array_iterator_value(arr)
-              String_(s) => make_string_iterator_value(s)
+              Array(arr) =>
+                make_array_iterator_value(
+                  self.realm_state.well_known_symbols,
+                  arr,
+                )
+              String_(s) =>
+                make_string_iterator_value(
+                  self.realm_state.well_known_symbols,
+                  s,
+                )
               _ =>
                 raise @errors.TypeError(
                   message="\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
@@ -868,7 +876,7 @@ fn Interpreter::exec_stmt(
       let iterable = self.eval_expr(ctx, iterable_expr, env)
 
       // Try to get the iterator via Symbol.iterator protocol
-      let iterator_sym = get_iterator_symbol()
+      let iterator_sym = self.realm_state.well_known_symbols.iterator
       let iterator_method = self.get_computed_property(
         iterable,
         Symbol(iterator_sym),
@@ -887,8 +895,13 @@ fn Interpreter::exec_stmt(
           }
         Undefined =>
           match iterable {
-            Array(arr) => make_array_iterator_value(arr)
-            String_(s) => make_string_iterator_value(s)
+            Array(arr) =>
+              make_array_iterator_value(
+                self.realm_state.well_known_symbols,
+                arr,
+              )
+            String_(s) =>
+              make_string_iterator_value(self.realm_state.well_known_symbols, s)
             _ =>
               raise @errors.TypeError(
                 message="\{type_of(iterable)} is not iterable",
@@ -1074,7 +1087,7 @@ fn Interpreter::exec_stmt(
     }
     ForOfExpr(lhs_expr, iterable_expr, body, loc) => {
       let iterable = self.eval_expr(ctx, iterable_expr, env)
-      let iterator_sym = get_iterator_symbol()
+      let iterator_sym = self.realm_state.well_known_symbols.iterator
       let iterator_method = self.get_computed_property(
         iterable,
         Symbol(iterator_sym),
@@ -1091,8 +1104,13 @@ fn Interpreter::exec_stmt(
           }
         Undefined =>
           match iterable {
-            Array(arr) => make_array_iterator_value(arr)
-            String_(s) => make_string_iterator_value(s)
+            Array(arr) =>
+              make_array_iterator_value(
+                self.realm_state.well_known_symbols,
+                arr,
+              )
+            String_(s) =>
+              make_string_iterator_value(self.realm_state.well_known_symbols, s)
             _ =>
               raise @errors.TypeError(
                 message="\{type_of(iterable)} is not iterable",
