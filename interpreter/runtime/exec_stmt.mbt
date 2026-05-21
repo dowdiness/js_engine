@@ -565,7 +565,7 @@ fn Interpreter::exec_stmt(
         let iterable = self.eval_expr(ctx, iterable_expr, env)
 
         // Try to get the iterator via Symbol.iterator protocol
-        let iterator_sym = get_iterator_symbol()
+        let iterator_sym = self.realm_state.well_known_symbols.iterator
         let iterator_method = self.get_computed_property(
           iterable,
           Symbol(iterator_sym),
@@ -868,7 +868,7 @@ fn Interpreter::exec_stmt(
       let iterable = self.eval_expr(ctx, iterable_expr, env)
 
       // Try to get the iterator via Symbol.iterator protocol
-      let iterator_sym = get_iterator_symbol()
+      let iterator_sym = self.realm_state.well_known_symbols.iterator
       let iterator_method = self.get_computed_property(
         iterable,
         Symbol(iterator_sym),
@@ -1074,7 +1074,7 @@ fn Interpreter::exec_stmt(
     }
     ForOfExpr(lhs_expr, iterable_expr, body, loc) => {
       let iterable = self.eval_expr(ctx, iterable_expr, env)
-      let iterator_sym = get_iterator_symbol()
+      let iterator_sym = self.realm_state.well_known_symbols.iterator
       let iterator_method = self.get_computed_property(
         iterable,
         Symbol(iterator_sym),
