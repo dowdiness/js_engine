@@ -95,6 +95,7 @@ pub fn utf16_length(s : String) -> Int {
 pub fn get_string_method(
   s : String,
   prop : String,
+  well_known_symbols : @runtime.WellKnownSymbols,
   annex_b? : Bool = false,
 ) -> Value {
   let chars = s.to_array()
@@ -548,7 +549,7 @@ pub fn get_string_method(
         if args.length() > 0 {
           match args[0] {
             Object(data) => {
-              let split_sym = @runtime.get_split_symbol()
+              let split_sym = well_known_symbols.split
               let split_fn = @runtime.lookup_symbol_property_chain(
                 args[0],
                 data,
@@ -671,7 +672,7 @@ pub fn get_string_method(
         // Per spec: check for [Symbol.replace] method on the argument
         match args[0] {
           Object(data) => {
-            let replace_sym = @runtime.get_replace_symbol()
+            let replace_sym = well_known_symbols.replace
             let replace_fn = @runtime.lookup_symbol_property_chain(
               args[0],
               data,
@@ -780,7 +781,7 @@ pub fn get_string_method(
         // Per spec: check for [Symbol.match] method on the argument
         match args[0] {
           Object(data) => {
-            let match_sym = @runtime.get_match_symbol()
+            let match_sym = well_known_symbols.match_sym
             let match_fn = @runtime.lookup_symbol_property_chain(
               args[0],
               data,
@@ -835,7 +836,7 @@ pub fn get_string_method(
               }
             }
             // Check for Symbol.matchAll on the object
-            let matchall_sym = @runtime.get_matchall_symbol()
+            let matchall_sym = well_known_symbols.match_all
             let matchall_fn = @runtime.lookup_symbol_property_chain(
               arg,
               data,
@@ -862,7 +863,7 @@ pub fn get_string_method(
         }
         let regexp = make_regexp_object(pattern, "g")
         // Call [Symbol.matchAll] on the new RegExp
-        let matchall_sym = @runtime.get_matchall_symbol()
+        let matchall_sym = well_known_symbols.match_all
         match regexp {
           Object(data) => {
             let matchall_fn = @runtime.lookup_symbol_property_chain(
@@ -897,7 +898,7 @@ pub fn get_string_method(
         // Per spec: check for [Symbol.search] method on the argument
         match args[0] {
           Object(data) => {
-            let search_sym = @runtime.get_search_symbol()
+            let search_sym = well_known_symbols.search
             let search_fn = @runtime.lookup_symbol_property_chain(
               args[0],
               data,
@@ -1135,7 +1136,7 @@ pub fn get_string_method(
         // Per spec: check for [Symbol.replace] method on the argument
         match args[0] {
           Object(data) => {
-            let replace_sym = @runtime.get_replace_symbol()
+            let replace_sym = well_known_symbols.replace
             let replace_fn = @runtime.lookup_symbol_property_chain(
               args[0],
               data,
@@ -1680,6 +1681,7 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
 /// Populate String.prototype with all string methods
 pub fn setup_string_prototype(
   string_proto : Value,
+  well_known_symbols : @runtime.WellKnownSymbols,
   annex_b? : Bool = false,
 ) -> Unit {
   match string_proto {
@@ -1713,7 +1715,8 @@ pub fn setup_string_prototype(
           mname
         }
         // Look up the length from the underlying native method
-        let meth_length = match get_string_method("", mname, annex_b~) {
+        let meth_length = match
+          get_string_method("", mname, well_known_symbols, annex_b~) {
           Object(fdata) =>
             match fdata.bag.properties.get("length") {
               Some(Value::Number(n)) => n.to_int()
@@ -1726,7 +1729,12 @@ pub fn setup_string_prototype(
           length=meth_length,
           fn(this_val, args) raise {
             let s = this_to_string(this_val)
-            let meth_val = get_string_method(s, mname, annex_b~)
+            let meth_val = get_string_method(
+              s,
+              mname,
+              well_known_symbols,
+              annex_b~,
+            )
             match meth_val {
               Object(fdata) =>
                 match fdata.callable {

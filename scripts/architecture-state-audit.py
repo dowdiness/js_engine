@@ -76,9 +76,6 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/runtime/symbols.mbt:is_constructing": (
         "ambient construction context; replace with explicit call/construct context"
     ),
-    "interpreter/runtime/symbols.mbt:legacy_well_known_symbols": (
-        "temporary compatibility shim for no-arg well-known symbol getters; retire after lookup paths accept RealmState"
-    ),
     "interpreter/stdlib/builtins_arraybuffer.mbt:arraybuffer_id_counter": (
         "ArrayBuffer backing-store counter; move to RealmState"
     ),

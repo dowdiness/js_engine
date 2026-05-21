@@ -38,7 +38,7 @@ fn get_promise_iterator_record(
   iterable : Value,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let iterator_sym = @runtime.get_iterator_symbol()
+  let iterator_sym = interp.realm_state.well_known_symbols.iterator
   let iterator_method = interp.get_computed_property(
     iterable,
     Symbol(iterator_sym),

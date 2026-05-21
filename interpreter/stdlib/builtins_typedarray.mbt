@@ -464,7 +464,7 @@ fn typed_array_species_constructor(
   if !@runtime.is_object_value(c) {
     raise @errors.TypeError(message="TypedArray constructor is not an object")
   }
-  let species_sym = @runtime.get_species_symbol()
+  let species_sym = interp.realm_state.well_known_symbols.species
   let s = interp.get_computed_property(c, Symbol(species_sym), loc)
   // §7.3.20 step 6: "If S is either undefined or null, return defaultConstructor."
   match s {
@@ -658,10 +658,13 @@ pub fn get_typedarray_prop(data : ObjectData, prop : String) -> Value {
 
 ///|
 /// Setup all TypedArray builtins.
-pub fn setup_typedarray_builtins(env : Environment) -> Unit {
+pub fn setup_typedarray_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
   let obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
-  let iterator_sym = @runtime.get_iterator_symbol()
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+  let iterator_sym = well_known_symbols.iterator
+  let tostringtag_sym = well_known_symbols.to_string_tag
 
   // Create %TypedArray%.prototype (shared prototype for all typed array instances)
   let ta_proto_props : Map[String, Value] = {}
@@ -2390,7 +2393,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
       let this_arg = if args.length() > 2 { args[2] } else { Undefined }
       let loc = @token.Loc::default()
       let source_values : Array[Value] = []
-      let iterator_sym = @runtime.get_iterator_symbol()
+      let iterator_sym = interp.realm_state.well_known_symbols.iterator
       let iterator_method = interp.get_computed_property(
         source,
         Symbol(iterator_sym),
@@ -2530,7 +2533,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
   }
   match ta_ctor {
     Object(ctor_data) => {
-      let sp_sym = @runtime.get_species_symbol()
+      let sp_sym = well_known_symbols.species
       ctor_data.bag.symbol_properties[sp_sym.id] = Undefined
       ctor_data.bag.symbol_descriptors[sp_sym.id] = ta_species_desc
     }
@@ -2867,7 +2870,7 @@ pub fn setup_typedarray_builtins(env : Environment) -> Unit {
             // From generic object with length
             Object(_) => {
               let loc = @token.Loc::default()
-              let iterator_sym = @runtime.get_iterator_symbol()
+              let iterator_sym = interp.realm_state.well_known_symbols.iterator
               let iterator_method = interp.get_computed_property(
                 first,
                 Symbol(iterator_sym),

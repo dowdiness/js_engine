@@ -83,6 +83,7 @@ pub fn Interpreter::get_property(
         let result = (self.stdlib_hooks.get_string_method)(
           s,
           prop,
+          self.realm_state.well_known_symbols,
           self.annex_b,
         )
         match result {
@@ -1405,7 +1406,12 @@ pub fn Interpreter::get_computed_property(
         }
         String_("length") => Number(utf16_length(s).to_double())
         String_(method_name) =>
-          (self.stdlib_hooks.get_string_method)(s, method_name, self.annex_b)
+          (self.stdlib_hooks.get_string_method)(
+            s,
+            method_name,
+            self.realm_state.well_known_symbols,
+            self.annex_b,
+          )
         _ => Undefined
       }
     Number(_) =>

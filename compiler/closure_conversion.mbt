@@ -1580,7 +1580,7 @@ fn eval_compiled_instanceof(
     Value::Object(_) => {
       let has_instance = interp.get_computed_property(
         right,
-        Value::Symbol(@runtime.get_hasinstance_symbol()),
+        Value::Symbol(interp.realm_state.well_known_symbols.has_instance),
         loc,
       )
       match has_instance {

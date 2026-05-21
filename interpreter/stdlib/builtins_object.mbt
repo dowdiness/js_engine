@@ -13,6 +13,7 @@
 pub fn setup_object_builtins(
   env : Environment,
   sym_state : SymbolState,
+  well_known_symbols : @runtime.WellKnownSymbols,
 ) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -43,7 +44,7 @@ pub fn setup_object_builtins(
         Proxy(_) => Value::String_("[object Object]")
         Object(data) => {
           // Per spec, always check Symbol.toStringTag first (it overrides built-in tags)
-          let tag = @runtime.get_tostringtag_value(data)
+          let tag = @runtime.get_tostringtag_value(data, well_known_symbols)
           match tag {
             Some(t) => Value::String_("[object \{t}]")
             None =>
