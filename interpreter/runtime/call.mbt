@@ -8,7 +8,7 @@ pub fn Interpreter::spread_iterable(
   let result : Array[Value] = []
 
   // Try to get the iterator via Symbol.iterator protocol
-  let iterator_sym = get_iterator_symbol()
+  let iterator_sym = self.realm_state.well_known_symbols.iterator
   let iterator_method = self.get_computed_property(
     val,
     Symbol(iterator_sym),
@@ -729,6 +729,7 @@ pub fn Interpreter::call_value(
             func_env.def(
               "arguments",
               make_arguments_object(
+                self.realm_state.well_known_symbols,
                 args,
                 callee,
                 func_strict,
@@ -856,6 +857,7 @@ pub fn Interpreter::call_value(
           param_env.def(
             "arguments",
             make_arguments_object(
+              self.realm_state.well_known_symbols,
               args,
               callee,
               func_strict,

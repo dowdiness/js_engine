@@ -3081,6 +3081,25 @@ test "for-of with continue" {
 }
 
 ///|
+test "arguments object Symbol.iterator" {
+  let src =
+    #|function collect() {
+    #|  var out = [];
+    #|  for (var value of arguments) { out.push(value); }
+    #|  return out.join(",");
+    #|}
+    #|function C() {
+    #|  var out = [];
+    #|  for (var value of arguments) { out.push(value); }
+    #|  this.value = out.join("-");
+    #|}
+    #|console.log(collect("a", "b", "c"));
+    #|console.log(new C(1, 2).value);
+  let output = run_output(src)
+  json_inspect(output, content=["a,b,c", "1-2"])
+}
+
+///|
 test "spread in array literal" {
   let src =
     #|var a = [1, 2, 3];
@@ -10497,6 +10516,21 @@ test "class fields on Set subclass" {
     ),
   )
   json_inspect(output, content=["my-set", "true"])
+}
+
+///|
+test "Map and Set well-known symbol computed access" {
+  let output = run_output(
+    (
+      #|const m = new Map();
+      #|const s = new Set();
+      #|console.log(m[Symbol.iterator] === Map.prototype.entries);
+      #|console.log(m[Symbol.toStringTag]);
+      #|console.log(s[Symbol.iterator] === Set.prototype.values);
+      #|console.log(s[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["true", "Map", "true", "Set"])
 }
 
 ///|

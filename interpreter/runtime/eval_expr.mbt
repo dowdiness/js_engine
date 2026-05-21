@@ -956,6 +956,7 @@ fn Interpreter::eval_expr(
                   call_env.def(
                     "arguments",
                     make_arguments_object(
+                      self.realm_state.well_known_symbols,
                       args,
                       super_ctor,
                       true,
@@ -1141,7 +1142,7 @@ fn Interpreter::eval_binary(
       match r {
         Object(r_data) => {
           // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
-          let has_instance_sym = get_hasinstance_symbol()
+          let has_instance_sym = self.realm_state.well_known_symbols.has_instance
           match
             lookup_symbol_property_chain(
               r,
@@ -1193,7 +1194,7 @@ fn Interpreter::eval_binary(
         }
         Proxy(proxy_data) => {
           // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
-          let has_instance_sym = get_hasinstance_symbol()
+          let has_instance_sym = self.realm_state.well_known_symbols.has_instance
           let has_instance_method = get_symbol_method(r, has_instance_sym.id)
           match has_instance_method {
             Some(has_instance_fn) =>

@@ -256,6 +256,7 @@ fn make_constructor_instance(proto : Value, class_name : String) -> Value {
 
 ///|
 fn make_arguments_object(
+  well_known_symbols : WellKnownSymbols,
   args : Array[Value],
   ctor : Value,
   strict : Bool,
@@ -407,7 +408,7 @@ fn make_arguments_object(
     }
   }
   // Add Symbol.iterator - creates an iterator over the arguments
-  let iter_sym = get_iterator_symbol()
+  let iter_sym = well_known_symbols.iterator
   let args_copy = args
   let new_args_sym_props : Map[Int, Value] = {}
   new_args_sym_props[iter_sym.id] = Object({
@@ -511,7 +512,13 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
   }
   param_env.def(
     "arguments",
-    make_arguments_object(args, ctor_val, true, throw_type_error=tte),
+    make_arguments_object(
+      self.realm_state.well_known_symbols,
+      args,
+      ctor_val,
+      true,
+      throw_type_error=tte,
+    ),
     VarBinding,
   )
   let mut effective_param_count = 0
@@ -704,6 +711,7 @@ pub fn Interpreter::construct_value(
           func_env.def(
             "arguments",
             make_arguments_object(
+              self.realm_state.well_known_symbols,
               args,
               ctor,
               func_strict,
@@ -798,6 +806,7 @@ pub fn Interpreter::construct_value(
           param_env.def(
             "arguments",
             make_arguments_object(
+              self.realm_state.well_known_symbols,
               args,
               ctor,
               func_strict,
