@@ -18,19 +18,17 @@ behavior.
 **Result:** Added a realm-owned well-known symbol bundle initialized from the
 realm's `SymbolState`. Symbol setup now consumes those identities. The 13
 per-symbol module globals were removed from the architecture audit inventory.
-One temporary compatibility shim remains for legacy no-argument lookup helpers
-until those paths accept explicit `RealmState`.
 
-**Follow-up:** Migrate lookup paths from no-argument `get_*_symbol()` helpers to
-explicit realm-owned access one family at a time, then remove the compatibility
-shim.
+**Follow-up:** Stage 2b completed the no-argument lookup migration and removed
+the temporary compatibility shim.
 
 ---
 
-## Stage 2b explicit well-known symbol lookup paths
+## ~~Stage 2b explicit well-known symbol lookup paths~~ — DONE (2026-05-21, branch `codex/stage2b-symbol-cleanup`)
 
-**Source:** Stage 2a landed in PR #130 and left one compatibility shim for
-legacy no-argument well-known symbol getters.
+**Source:** Stage 2a landed in PR #130 and PR #131 migrated the first runtime
+lookup families, leaving one compatibility shim for legacy no-argument
+well-known symbol getters.
 
 **Pressure:** Well-known symbol identities are now allocated from realm-owned
 state. Many runtime and stdlib lookup paths still reach them through ambient
@@ -41,7 +39,14 @@ blocks removal of the compatibility shim.
 the active realm-owned symbol bundle. Work one caller family at a time. Keep
 symbol identity, setup order, and public root facade behavior unchanged.
 
-**Suggested first slices:**
+**Result:** Runtime/compiler lookup paths, string-method hooks, stdlib
+setup-time symbol installation, RegExp symbol methods, collection constructors,
+`Object.prototype.toString`, and the standalone `setup_builtins` whitebox path
+now use explicit `WellKnownSymbols` from the active realm or provided
+`SymbolState`. The `legacy_well_known_symbols` shim and public no-argument
+`get_*_symbol()` helpers were removed.
+
+**Completed slices:**
 
 - Runtime call/construct/property paths that already have an `Interpreter` or
   nearby realm context.
@@ -50,15 +55,14 @@ symbol identity, setup order, and public root facade behavior unchanged.
 - Stdlib setup-time or method-family lookups where the relevant state is
   already available through setup parameters.
 
-**Verification:** For each slice, run `moon check`, focused tests for the
-changed package, `moon test`, `make architecture-state-audit`, `moon info`, and
-review the `.mbti` diff. Include targeted coverage that standalone
+**Verification:** `moon check`, focused Symbol / iterator / `@@toStringTag` /
+RegExp symbol-method coverage, `moon test`, `make architecture-state-audit`,
+`moon info`, `.mbti` diff review, and `moon check --deny-warn`. Standalone
 `setup_builtins(env, output, symbols, ...)` still reserves well-known symbol IDs
 in the provided `SymbolState`.
 
-**Risk control:** Do not remove the compatibility shim until all no-argument
-getter call sites are gone. Do not combine this with ArrayBuffer, WeakMap /
-WeakSet, or prototype-cache migration.
+**Risk control:** This did not combine with ArrayBuffer backing-store, WeakMap /
+WeakSet side-table, or prototype-cache migration.
 
 ---
 
@@ -72,8 +76,8 @@ iterator/prototype caches, ArrayBuffer storage, WeakMap / WeakSet side tables,
 and related compatibility state. Moving them together would make failures hard
 to localize.
 
-**Goal:** Pick the next intrinsic/prototype state family only after Stage 2b
-removes the well-known symbol shim. Prefer a narrow family with strong existing
+**Goal:** Pick the next intrinsic/prototype state family now that Stage 2b has
+removed the well-known symbol shim. Prefer a narrow family with strong existing
 tests and obvious realm ownership.
 
 **Candidate order:**

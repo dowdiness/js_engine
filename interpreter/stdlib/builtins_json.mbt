@@ -1,5 +1,8 @@
 ///|
-fn setup_json_builtins(env : Environment) -> Unit {
+fn setup_json_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
   let json_props : Map[String, Value] = {}
   let json_descs : Map[String, PropDescriptor] = {}
   let ne_desc : PropDescriptor = {
@@ -149,7 +152,7 @@ fn setup_json_builtins(env : Environment) -> Unit {
   )
   json_descs["stringify"] = ne_desc
   // Symbol.toStringTag = "JSON"
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
   let json_sym_props : Map[Int, Value] = {}
   let json_sym_descs : Map[Int, PropDescriptor] = {}
   json_sym_props[tostringtag_sym.id] = Value::String_("JSON")

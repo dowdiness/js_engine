@@ -165,15 +165,21 @@ pub fn get_weakset_method(data : ObjectData, prop : String) -> Value {
 
 ///|
 /// Setup WeakMap and WeakSet constructors and prototypes
-pub fn setup_weakmap_set_builtins(env : Environment) -> Unit {
-  setup_weakmap_builtins(env)
-  setup_weakset_builtins(env)
+pub fn setup_weakmap_set_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
+  setup_weakmap_builtins(env, well_known_symbols)
+  setup_weakset_builtins(env, well_known_symbols)
 }
 
 ///|
 /// Setup WeakMap constructor and prototype
-fn setup_weakmap_builtins(env : Environment) -> Unit {
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+fn setup_weakmap_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
+  let tostringtag_sym = well_known_symbols.to_string_tag
 
   // WeakMap.prototype methods
   let wm_proto_props : Map[String, Value] = {}
@@ -557,7 +563,7 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
           if !@runtime.is_callable(adder) {
             raise @errors.TypeError(message="WeakMap adder is not callable")
           }
-          let iterator_sym = @runtime.get_iterator_symbol()
+          let iterator_sym = interp.realm_state.well_known_symbols.iterator
           let iterator_method = interp.get_computed_property(
             iterable,
             Symbol(iterator_sym),
@@ -650,8 +656,11 @@ fn setup_weakmap_builtins(env : Environment) -> Unit {
 
 ///|
 /// Setup WeakSet constructor and prototype
-fn setup_weakset_builtins(env : Environment) -> Unit {
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+fn setup_weakset_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
+  let tostringtag_sym = well_known_symbols.to_string_tag
 
   // WeakSet.prototype methods
   let ws_proto_props : Map[String, Value] = {}
@@ -844,7 +853,7 @@ fn setup_weakset_builtins(env : Environment) -> Unit {
           if !@runtime.is_callable(adder) {
             raise @errors.TypeError(message="WeakSet adder is not callable")
           }
-          let iterator_sym = @runtime.get_iterator_symbol()
+          let iterator_sym = interp.realm_state.well_known_symbols.iterator
           let iterator_method = interp.get_computed_property(
             iterable,
             Symbol(iterator_sym),

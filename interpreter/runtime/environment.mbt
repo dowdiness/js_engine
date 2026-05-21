@@ -344,30 +344,29 @@ pub fn Environment::assign(
 
 ///|
 /// Check if a property is blocked by @@unscopables on the binding object
-fn is_blocked_by_unscopables(obj : Value, name : String) -> Bool raise Error {
+fn is_blocked_by_unscopables(
+  interp : Interpreter,
+  obj : Value,
+  name : String,
+) -> Bool raise Error {
+  let unscopables_sym = interp.realm_state.well_known_symbols.unscopables
   match obj {
-    Proxy(_) =>
-      match current_interpreter.val {
-        Some(interp) => {
-          let unscopables_sym = get_unscopables_symbol()
-          let unscopables = interp.get_computed_property(
-            obj,
-            Symbol(unscopables_sym),
-            @token.Loc::default(),
-          )
-          match unscopables {
-            Object(data) =>
-              match data.bag.properties.get(name) {
-                Some(v) => is_truthy(v)
-                None => false
-              }
-            _ => false
+    Proxy(_) => {
+      let unscopables = interp.get_computed_property(
+        obj,
+        Symbol(unscopables_sym),
+        @token.Loc::default(),
+      )
+      match unscopables {
+        Object(data) =>
+          match data.bag.properties.get(name) {
+            Some(v) => is_truthy(v)
+            None => false
           }
-        }
-        None => false
+        _ => false
       }
+    }
     Object(data) => {
-      let unscopables_sym = get_unscopables_symbol()
       // Walk prototype chain to find @@unscopables
       let mut current : Value = Object(data)
       while true {
@@ -398,31 +397,21 @@ fn with_object_has(obj : Value, name : String) -> Bool raise Error {
   match current_interpreter.val {
     Some(interp) =>
       if interp.has_property_key(obj, String_(name)) {
-        return !is_blocked_by_unscopables(obj, name)
+        return !is_blocked_by_unscopables(interp, obj, name)
       } else {
         return false
       }
     None => ()
-  }
-  if is_blocked_by_unscopables(obj, name) {
-    return false
   }
   let mut current = obj
   while true {
     match current {
       Object(data) => {
         if data.bag.properties.contains(name) {
-          // Check @@unscopables
-          if is_blocked_by_unscopables(obj, name) {
-            return false
-          }
           return true
         }
         // Check descriptors (for accessor-only properties)
         if data.bag.descriptors.contains(name) {
-          if is_blocked_by_unscopables(obj, name) {
-            return false
-          }
           return true
         }
         current = data.prototype
@@ -439,7 +428,7 @@ fn with_object_get(obj : Value, name : String) -> Value? raise Error {
   match current_interpreter.val {
     Some(interp) =>
       if interp.has_property_key(obj, String_(name)) &&
-        !is_blocked_by_unscopables(obj, name) {
+        !is_blocked_by_unscopables(interp, obj, name) {
         return Some(interp.get_property(obj, name, @token.Loc::default()))
       } else {
         return None

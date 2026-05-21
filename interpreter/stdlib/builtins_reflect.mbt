@@ -22,7 +22,10 @@ pub fn create_list_from_array_like(
 }
 
 ///|
-fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
+fn setup_reflect_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
   let reflect_props : Map[String, Value] = {}
 
   // Reflect.apply(target, thisArg, argumentsList)
@@ -533,7 +536,7 @@ fn setup_reflect_builtins(env : Environment, _sym_state : SymbolState) -> Unit {
   )
 
   // Create the Reflect object
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
   let reflect_sym_props : Map[Int, Value] = {}
   reflect_sym_props[tostringtag_sym.id] = Value::String_("Reflect")
   let method_desc : PropDescriptor = {

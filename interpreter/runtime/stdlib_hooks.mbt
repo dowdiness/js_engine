@@ -3,7 +3,7 @@
 /// This breaks the circular dependency: runtime defines the interface,
 /// stdlib provides the implementation, root interpreter wires them together.
 pub(all) struct StdlibHooks {
-  get_string_method : (String, String, Bool) -> Value
+  get_string_method : (String, String, WellKnownSymbols, Bool) -> Value
   get_number_method : (Value, String) -> Value
   get_array_method_with_interp : (ArrayData, String) -> Value
   get_map_method : (MapData, String) -> Value
@@ -22,7 +22,9 @@ pub(all) struct StdlibHooks {
 /// Default no-op hooks used before stdlib is wired in.
 pub fn default_stdlib_hooks() -> StdlibHooks {
   {
-    get_string_method: fn(_s, _prop, _annex_b) { Undefined },
+    get_string_method: fn(_s, _prop, _well_known_symbols, _annex_b) {
+      Undefined
+    },
     get_number_method: fn(_obj, _prop) { Undefined },
     get_array_method_with_interp: fn(_data, _prop) { Undefined },
     get_map_method: fn(_data, _prop) { Undefined },

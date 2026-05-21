@@ -2,8 +2,8 @@
 
 > This is an active migration record.
 >
-> Stage 0 guardrails, the initial interpreter-owned `RealmState`, and the first
-> well-known symbol ownership slice have landed.
+> Stage 0 guardrails, the initial interpreter-owned `RealmState`, and the
+> well-known symbol ownership and lookup cleanup slices have landed.
 >
 > The document tracks the maintainability pressure after the April 2026
 > runtime/stdlib split and the later PropertyBag / internal-method dispatcher
@@ -22,7 +22,7 @@ Observed pressures include these:
   control.
 - The test262 harness can create fresh realms.
 - Much durable state is now interpreter-owned, but several intrinsic caches,
-  well-known symbols, backing stores, and side tables remain module-global.
+  backing stores, and side tables remain module-global.
 - Runtime and stdlib expose mutable implementation details as public API, which
   makes future internal reshaping harder than it needs to be.
 - The closure-conversion prototype is useful as a benchmark path, but it
@@ -66,9 +66,9 @@ State ownership is split across these places:
 
 - Interpreter-owned state: host queues, global environment, global object,
   module registry, generator state, symbol state, and stdlib hook table.
-- Module-global state: selected well-known symbols, prototype refs, current
-  interpreter fallback, construction flag, ArrayBuffer backing store, WeakMap /
-  WeakSet side tables, and some iterator/prototype caches.
+- Module-global state: prototype refs, current interpreter fallback,
+  construction flag, ArrayBuffer backing store, WeakMap / WeakSet side tables,
+  and some iterator/prototype caches.
 - Side effects: host output and event-loop queues live in `HostEnv`, while
   several stdlib object stores and intrinsic caches live outside it.
 
@@ -242,11 +242,11 @@ Risk control:
 
 Current state:
 
-- The first well-known symbol ownership slice has moved allocation into
-  realm-owned state and preserved standalone stdlib setup behavior.
-- A temporary compatibility path remains for no-argument well-known symbol
-  lookup helpers. The next slice should migrate those callers to explicit
-  realm-owned access before other state families move.
+- Well-known symbol allocation and lookup now use realm-owned
+  `WellKnownSymbols`, and standalone stdlib setup still reserves those IDs in
+  the provided `SymbolState`.
+- The temporary compatibility path and no-argument well-known symbol lookup
+  helpers have been removed.
 
 ### Stage 3 — Move Backing Stores And Side Tables
 
@@ -453,18 +453,18 @@ Completed:
 1. Add Stage 0 tests and static audits.
 2. Add `RealmState` as an interpreter-owned container without moving behavior.
 3. Move well-known symbol allocation into realm-owned state.
+4. Migrate no-argument well-known symbol lookup paths to explicit realm-owned
+   access and remove the temporary compatibility path.
 
 Remaining:
 
-1. Migrate no-argument well-known symbol lookup paths to explicit realm-owned
-   access, then remove the temporary compatibility path.
-2. Migrate prototype refs and lazy iterator/prototype caches one family at a
+1. Migrate prototype refs and lazy iterator/prototype caches one family at a
    time.
-3. Migrate ArrayBuffer and WeakMap / WeakSet stores after the intrinsic path is
+2. Migrate ArrayBuffer and WeakMap / WeakSet stores after the intrinsic path is
    stable.
-4. Only then reduce runtime public API surface and consider internal package
+3. Only then reduce runtime public API surface and consider internal package
    extraction.
-5. Keep closure conversion frozen as an opt-in benchmark path while any
+4. Keep closure conversion frozen as an opt-in benchmark path while any
    bytecode/IR prototype is designed around shared runtime operations.
 
 ## Evidence Checked

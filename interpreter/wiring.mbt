@@ -31,8 +31,8 @@ pub fn new_interpreter(
 /// into the runtime property lookup system.
 fn make_stdlib_hooks() -> @runtime.StdlibHooks {
   {
-    get_string_method: fn(s, prop, annex_b) {
-      @stdlib.get_string_method(s, prop, annex_b~)
+    get_string_method: fn(s, prop, well_known_symbols, annex_b) {
+      @stdlib.get_string_method(s, prop, well_known_symbols, annex_b~)
     },
     get_number_method: fn(obj, prop) { @stdlib.get_number_method(obj, prop) },
     get_array_method_with_interp: fn(data, prop) {

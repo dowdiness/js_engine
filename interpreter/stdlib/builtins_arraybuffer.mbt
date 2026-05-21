@@ -104,7 +104,10 @@ pub fn make_arraybuffer_object(byte_length : Int, proto : Value) -> Value {
 }
 
 ///|
-pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
+pub fn setup_arraybuffer_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
   let obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
 
   // ArrayBuffer.prototype
@@ -265,7 +268,7 @@ pub fn setup_arraybuffer_builtins(env : Environment) -> Unit {
   }
 
   // Add Symbol.toStringTag
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
   let ab_proto_sym_props : Map[Int, Value] = {}
   ab_proto_sym_props[tostringtag_sym.id] = Value::String_("ArrayBuffer")
   let ab_proto_sym_descs : Map[Int, PropDescriptor] = {}

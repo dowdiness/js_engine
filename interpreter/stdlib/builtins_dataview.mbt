@@ -291,9 +291,12 @@ fn validate_dataview_access(
 }
 
 ///|
-pub fn setup_dataview_builtins(env : Environment) -> Unit {
+pub fn setup_dataview_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
   let obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
 
   // DataView.prototype
   let dv_proto_props : Map[String, Value] = {}

@@ -745,7 +745,10 @@ fn current_time_ms() -> Double {
 // ============================================================
 
 ///|
-pub fn setup_date_builtins(env : Environment) -> Unit {
+pub fn setup_date_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -1784,7 +1787,7 @@ pub fn setup_date_builtins(env : Environment) -> Unit {
   // Set Symbol.toPrimitive on prototype
   match date_proto {
     Object(data) => {
-      let to_prim_sym = @runtime.get_toprimitive_symbol()
+      let to_prim_sym = well_known_symbols.to_primitive
       data.bag.symbol_properties[to_prim_sym.id] = to_primitive_method
       data.bag.symbol_descriptors[to_prim_sym.id] = {
         writable: false,

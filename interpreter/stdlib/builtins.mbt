@@ -6,6 +6,7 @@ pub fn setup_builtins(
   annex_b? : Bool = false,
 ) -> Unit {
   let _ = output
+  let well_known_symbols = symbols.well_known_symbols()
   // Global constants
   env.def_builtin("NaN", Value::Number(0.0 / 0.0))
   env.def_builtin("Infinity", Value::Number(1.0 / 0.0))
@@ -561,7 +562,7 @@ pub fn setup_builtins(
   env.def_builtin("[[StringPrototype]]", string_proto)
   @runtime.string_prototype_ref.val = Some(string_proto)
   // Populate String.prototype with methods for .call() support
-  setup_string_prototype(string_proto, annex_b~)
+  setup_string_prototype(string_proto, well_known_symbols, annex_b~)
   // Set String.prototype.constructor = String
   match string_proto {
     Object(data) => {
@@ -783,7 +784,7 @@ pub fn setup_builtins(
   }
 
   // Object, Array constructors and built-in methods
-  setup_object_builtins(env, symbols)
+  setup_object_builtins(env, symbols, well_known_symbols)
 
   // Now that Object.prototype and Function.prototype exist, patch built-in
   // prototype chains.  Boolean.prototype, String.prototype, Number.prototype
@@ -883,7 +884,6 @@ pub fn setup_builtins(
 
   // Symbol constructor and well-known symbols (must be before Math for Symbol.toStringTag)
   setup_symbol_builtins(env, symbols)
-  let well_known_symbols = symbols.well_known_symbols()
   // Patch Symbol.prototype.[[Prototype]] = Object.prototype
   match env.bindings.get("[[ObjectPrototype]]") {
     Some(binding) => {
@@ -901,10 +901,10 @@ pub fn setup_builtins(
   }
 
   // Math object
-  setup_math_builtins(env)
+  setup_math_builtins(env, well_known_symbols)
 
   // JSON object
-  setup_json_builtins(env)
+  setup_json_builtins(env, well_known_symbols)
 
   // RegExp constructor
   env.def_builtin(
@@ -1370,7 +1370,7 @@ pub fn setup_builtins(
         is_accessor: false,
       }
       // [Symbol.match]
-      let match_sym = @runtime.get_match_symbol()
+      let match_sym = well_known_symbols.match_sym
       regexp_sym_props[match_sym.id] = @runtime.make_method_func(
         name="[Symbol.match]",
         length=1,
@@ -1382,7 +1382,7 @@ pub fn setup_builtins(
       )
       regexp_sym_descs[match_sym.id] = sym_method_desc
       // [Symbol.matchAll]
-      let match_all_sym = @runtime.get_matchall_symbol()
+      let match_all_sym = well_known_symbols.match_all
       regexp_sym_props[match_all_sym.id] = @runtime.make_method_func(
         name="[Symbol.matchAll]",
         length=1,
@@ -1443,7 +1443,7 @@ pub fn setup_builtins(
       )
       regexp_sym_descs[match_all_sym.id] = sym_method_desc
       // [Symbol.search]
-      let search_sym = @runtime.get_search_symbol()
+      let search_sym = well_known_symbols.search
       regexp_sym_props[search_sym.id] = @runtime.make_method_func(
         name="[Symbol.search]",
         length=1,
@@ -1455,7 +1455,7 @@ pub fn setup_builtins(
       )
       regexp_sym_descs[search_sym.id] = sym_method_desc
       // [Symbol.replace]
-      let replace_sym = @runtime.get_replace_symbol()
+      let replace_sym = well_known_symbols.replace
       regexp_sym_props[replace_sym.id] = @runtime.make_method_func(
         name="[Symbol.replace]",
         length=2,
@@ -1473,7 +1473,7 @@ pub fn setup_builtins(
       )
       regexp_sym_descs[replace_sym.id] = sym_method_desc
       // [Symbol.split]
-      let split_sym = @runtime.get_split_symbol()
+      let split_sym = well_known_symbols.split
       regexp_sym_props[split_sym.id] = @runtime.make_method_func(
         name="[Symbol.split]",
         length=0,
@@ -1605,7 +1605,7 @@ pub fn setup_builtins(
   setup_promise(env)
 
   // Set up Date constructor and prototype
-  setup_date_builtins(env)
+  setup_date_builtins(env, well_known_symbols)
 
   // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
   setup_timers(env)
@@ -1614,15 +1614,15 @@ pub fn setup_builtins(
   setup_proxy_builtins(env)
 
   // Set up Reflect global object
-  setup_reflect_builtins(env, symbols)
+  setup_reflect_builtins(env, well_known_symbols)
 
   // Set up ArrayBuffer, TypedArray, and DataView
-  setup_arraybuffer_builtins(env)
-  setup_typedarray_builtins(env)
-  setup_dataview_builtins(env)
+  setup_arraybuffer_builtins(env, well_known_symbols)
+  setup_typedarray_builtins(env, well_known_symbols)
+  setup_dataview_builtins(env, well_known_symbols)
 
   // Set up WeakMap and WeakSet
-  setup_weakmap_set_builtins(env)
+  setup_weakmap_set_builtins(env, well_known_symbols)
 
   // Final prototype chain patching for constructors registered after initial patch
   match env.bindings.get("[[FunctionPrototype]]") {
@@ -1697,7 +1697,7 @@ pub fn setup_builtins(
     let ctor_val = env.get(ctor_name) catch { _ => Undefined }
     match ctor_val {
       Object(ctor_data) => {
-        let sp_sym = @runtime.get_species_symbol()
+        let sp_sym = well_known_symbols.species
         ctor_data.bag.symbol_properties[sp_sym.id] = Undefined
         ctor_data.bag.symbol_descriptors[sp_sym.id] = species_desc
       }
@@ -1706,7 +1706,7 @@ pub fn setup_builtins(
   }
 
   // Add Function.prototype[Symbol.hasInstance]
-  let has_instance_sym = @runtime.get_hasinstance_symbol()
+  let has_instance_sym = well_known_symbols.has_instance
   let has_instance_fn = @runtime.make_interp_method_func(
     name="[Symbol.hasInstance]",
     length=1,

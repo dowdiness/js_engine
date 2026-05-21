@@ -63,8 +63,6 @@ pub fn get_array_prototype_override(ArrayData) -> Value?
 
 pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
 
-pub fn get_async_iterator_symbol() -> SymbolData
-
 pub fn get_boolean_proto() -> Value
 
 pub fn get_bound_func_name(Value) -> String
@@ -75,17 +73,7 @@ pub fn get_func_length(Callable) -> Int
 
 pub fn get_func_proto() -> Value
 
-pub fn get_hasinstance_symbol() -> SymbolData
-
-pub fn get_isconcatspreadable_symbol() -> SymbolData
-
 pub fn get_iterator_proto(WellKnownSymbols) -> Value
-
-pub fn get_iterator_symbol() -> SymbolData
-
-pub fn get_match_symbol() -> SymbolData
-
-pub fn get_matchall_symbol() -> SymbolData
 
 pub fn get_number_proto() -> Value
 
@@ -97,27 +85,13 @@ pub fn get_proxy_target(ProxyData) -> Value raise
 
 pub fn get_proxy_trap(ProxyData, String, Interpreter) -> Value? raise
 
-pub fn get_replace_symbol() -> SymbolData
-
-pub fn get_search_symbol() -> SymbolData
-
-pub fn get_species_symbol() -> SymbolData
-
-pub fn get_split_symbol() -> SymbolData
-
 pub fn get_string_iterator_proto(WellKnownSymbols) -> Value
 
 pub fn get_string_proto() -> Value
 
 pub fn get_symbol_proto() -> Value
 
-pub fn get_toprimitive_symbol() -> SymbolData
-
-pub fn get_tostringtag_symbol() -> SymbolData
-
-pub fn get_tostringtag_value(ObjectData) -> String? raise
-
-pub fn get_unscopables_symbol() -> SymbolData
+pub fn get_tostringtag_value(ObjectData, WellKnownSymbols) -> String? raise
 
 pub fn has_array_like_element(Interpreter, Value, Int) -> Bool
 
@@ -618,7 +592,7 @@ pub(all) enum Signal {
 }
 
 pub(all) struct StdlibHooks {
-  get_string_method : (String, String, Bool) -> Value
+  get_string_method : (String, String, WellKnownSymbols, Bool) -> Value
   get_number_method : (Value, String) -> Value
   get_array_method_with_interp : (ArrayData, String) -> Value
   get_map_method : (MapData, String) -> Value

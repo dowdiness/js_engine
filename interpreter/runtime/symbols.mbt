@@ -156,120 +156,26 @@ fn WellKnownSymbols::WellKnownSymbols(
 }
 
 ///|
-let legacy_well_known_symbols : Ref[WellKnownSymbols?] = { val: None }
-
-///|
-fn install_well_known_symbols(symbols : WellKnownSymbols) -> Unit {
-  legacy_well_known_symbols.val = Some(symbols)
-}
-
-///|
 pub fn SymbolState::well_known_symbols(self : SymbolState) -> WellKnownSymbols {
   match self.well_known_symbols_cache.val {
-    Some(symbols) => {
-      install_well_known_symbols(symbols)
-      symbols
-    }
+    Some(symbols) => symbols
     None => {
       let symbols = WellKnownSymbols(self)
       self.well_known_symbols_cache.val = Some(symbols)
-      install_well_known_symbols(symbols)
       symbols
     }
   }
-}
-
-///|
-fn installed_well_known_symbols() -> WellKnownSymbols {
-  match legacy_well_known_symbols.val {
-    Some(symbols) => symbols
-    None => abort("well-known symbols not initialized")
-  }
-}
-
-///|
-/// Get the well-known Symbol.iterator
-pub fn get_iterator_symbol() -> SymbolData {
-  installed_well_known_symbols().iterator
-}
-
-///|
-/// Get the well-known Symbol.asyncIterator
-pub fn get_async_iterator_symbol() -> SymbolData {
-  installed_well_known_symbols().async_iterator
-}
-
-///|
-/// Get the well-known Symbol.hasInstance
-pub fn get_hasinstance_symbol() -> SymbolData {
-  installed_well_known_symbols().has_instance
-}
-
-///|
-pub fn get_isconcatspreadable_symbol() -> SymbolData {
-  installed_well_known_symbols().is_concat_spreadable
-}
-
-///|
-/// Get the well-known Symbol.toPrimitive
-pub fn get_toprimitive_symbol() -> SymbolData {
-  installed_well_known_symbols().to_primitive
-}
-
-///|
-/// Get the well-known Symbol.toStringTag
-pub fn get_tostringtag_symbol() -> SymbolData {
-  installed_well_known_symbols().to_string_tag
-}
-
-///|
-/// Get the well-known Symbol.species
-pub fn get_species_symbol() -> SymbolData {
-  installed_well_known_symbols().species
-}
-
-///|
-/// Get the well-known Symbol.match
-pub fn get_match_symbol() -> SymbolData {
-  installed_well_known_symbols().match_sym
-}
-
-///|
-/// Get the well-known Symbol.replace
-pub fn get_replace_symbol() -> SymbolData {
-  installed_well_known_symbols().replace
-}
-
-///|
-/// Get the well-known Symbol.search
-pub fn get_search_symbol() -> SymbolData {
-  installed_well_known_symbols().search
-}
-
-///|
-/// Get the well-known Symbol.split
-pub fn get_split_symbol() -> SymbolData {
-  installed_well_known_symbols().split
-}
-
-///|
-/// Get the well-known Symbol.matchAll
-pub fn get_matchall_symbol() -> SymbolData {
-  installed_well_known_symbols().match_all
-}
-
-///|
-/// Get the well-known Symbol.unscopables
-pub fn get_unscopables_symbol() -> SymbolData {
-  installed_well_known_symbols().unscopables
 }
 
 ///|
 /// Get the Symbol.toStringTag value by walking the prototype chain.
 /// Checks symbol properties and evaluates getter descriptors if present.
 /// Per spec, errors thrown by @@toStringTag getters propagate to the caller.
-pub fn get_tostringtag_value(data : ObjectData) -> String? raise Error {
-  let sym = get_tostringtag_symbol()
+pub fn get_tostringtag_value(
+  data : ObjectData,
+  well_known_symbols : WellKnownSymbols,
+) -> String? raise Error {
+  let sym = well_known_symbols.to_string_tag
   // Walk the object and its prototype chain
   let mut current : Value = Object(data)
   while true {

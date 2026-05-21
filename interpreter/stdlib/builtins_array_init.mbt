@@ -342,7 +342,7 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let a = @runtime.array_species_create(interp, o, 0)
       let mut n = 0
-      let concat_sym_id = @runtime.get_isconcatspreadable_symbol().id
+      let concat_sym_id = interp.realm_state.well_known_symbols.is_concat_spreadable.id
       // Process this value and each argument per ES2015 concat spec
       let items : Array[Value] = [o]
       for arg in args {

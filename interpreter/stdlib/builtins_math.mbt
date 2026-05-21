@@ -1,5 +1,8 @@
 ///|
-fn setup_math_builtins(env : Environment) -> Unit {
+fn setup_math_builtins(
+  env : Environment,
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Unit {
   let math_props : Map[String, Value] = {}
   math_props["PI"] = Value::Number(3.141592653589793)
   math_props["E"] = Value::Number(2.718281828459045)
@@ -476,7 +479,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
           }
         Object(_) => {
           // Try to use Symbol.iterator
-          let iterator_sym = @runtime.get_iterator_symbol()
+          let iterator_sym = interp.realm_state.well_known_symbols.iterator
           let iter_fn = interp.get_computed_property(
             items,
             Symbol(iterator_sym),
@@ -554,7 +557,7 @@ fn setup_math_builtins(env : Environment) -> Unit {
   }
   // Set up Symbol.toStringTag for Math
   let math_symbol_props : Map[Int, Value] = {}
-  let tostringtag_sym = @runtime.get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
   math_symbol_props[tostringtag_sym.id] = Value::String_("Math")
   let math_symbol_descs : Map[Int, PropDescriptor] = {}
   math_symbol_descs[tostringtag_sym.id] = {
