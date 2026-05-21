@@ -838,6 +838,7 @@ pub fn Interpreter::get_computed_property(
           if sym.id == iterator_sym.id {
             let (override_getter, override_value) = get_array_iterator_override(
               arr,
+              well_known_symbols~,
             )
             match override_getter {
               Some(getter) => return self.call_value(getter, obj, [], loc)

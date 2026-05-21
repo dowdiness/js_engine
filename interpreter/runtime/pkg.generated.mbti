@@ -45,7 +45,7 @@ pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
 
 pub let function_prototype_ref : @ref.Ref[Value?]
 
-pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
+pub fn get_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSymbols) -> (Value?, Value?)
 
 pub fn get_array_iterator_proto(WellKnownSymbols) -> Value
 
@@ -221,7 +221,7 @@ pub fn raise_js_exception(Value) -> Unit raise
 
 pub fn reject_promise(Interpreter, PromiseData, Value) -> Unit
 
-pub fn set_array_iterator_override(ArrayData, Value?, Value?) -> Unit
+pub fn set_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSymbols, Value?, Value?) -> Unit
 
 pub fn set_array_length_override(ArrayData, Int64) -> Unit
 
@@ -237,7 +237,7 @@ pub fn set_array_symbol_prop(ArrayData, Int, Value) -> Unit
 
 pub fn set_function_name(Value, String) -> Unit
 
-pub fn setup_async_function_constructor(Environment) -> Unit
+pub fn setup_async_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
 
 pub fn setup_generator_function_constructor(Environment, Value, well_known_symbols~ : WellKnownSymbols) -> Unit
 

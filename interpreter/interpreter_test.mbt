@@ -10584,6 +10584,21 @@ test "Function.prototype.toString distinguishes async functions" {
   ])
 }
 
+///|
+test "async functions and generators expose well-known symbol protocol hooks" {
+  let output = run_output(
+    (
+      #|let AF = (async function(){}).constructor;
+      #|console.log(Object.prototype.toString.call(AF.prototype));
+      #|async function* ag() { yield 1; }
+      #|let it = ag();
+      #|console.log(typeof it[Symbol.asyncIterator]);
+      #|console.log(it[Symbol.asyncIterator]() === it);
+    ),
+  )
+  json_inspect(output, content=["[object AsyncFunction]", "function", "true"])
+}
+
 // ES262 §10.2.4 ExpectedArgumentCount: function `length` reports the
 // count of parameters before the first one with a default initializer
 // (or rest). Non-async siblings already handle this; PR #103

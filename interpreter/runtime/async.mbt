@@ -443,7 +443,9 @@ fn make_async_gen_function_inner(
   strict : Bool,
   closure : Environment,
 ) -> Value {
-  let async_gen_proto = init_async_generator_prototype()
+  let async_gen_proto = init_async_generator_prototype(
+    interp.realm_state.well_known_symbols,
+  )
   let func_prototype = Object({
     bag: PropertyBag(),
     prototype: async_gen_proto,
@@ -488,8 +490,10 @@ fn make_async_gen_function_inner(
 ///|
 /// Create the async generator prototype with Promise-wrapping protocol methods.
 /// Async generator .next()/.throw()/.return() return Promises per ECMAScript spec.
-fn init_async_generator_prototype() -> Value {
-  let async_iter_sym = get_async_iterator_symbol()
+fn init_async_generator_prototype(
+  well_known_symbols : WellKnownSymbols,
+) -> Value {
+  let async_iter_sym = well_known_symbols.async_iterator
   let props : Map[String, Value] = {}
   let sym_props : Map[Int, Value] = {}
   let descs : Map[String, PropDescriptor] = {}
@@ -607,7 +611,10 @@ fn get_function_prototype(interp : Interpreter) -> Value {
 ///   AsyncFunction.prototype.__proto__ === Function.prototype
 ///   AsyncFunction.prototype[@@toStringTag] === "AsyncFunction"
 ///   AsyncFunction.prototype.constructor === AsyncFunction
-pub fn setup_async_function_constructor(env : Environment) -> Unit {
+pub fn setup_async_function_constructor(
+  env : Environment,
+  well_known_symbols~ : WellKnownSymbols,
+) -> Unit {
   // %AsyncFunction.prototype% inherits from Function.prototype
   let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
     Some(binding) => binding.value
@@ -615,7 +622,7 @@ pub fn setup_async_function_constructor(env : Environment) -> Unit {
   }
   let af_sym_props : Map[Int, Value] = {}
   let af_sym_descs : Map[Int, PropDescriptor] = {}
-  let tostringtag_sym = get_tostringtag_symbol()
+  let tostringtag_sym = well_known_symbols.to_string_tag
   af_sym_props[tostringtag_sym.id] = String_("AsyncFunction")
   af_sym_descs[tostringtag_sym.id] = {
     writable: false,
