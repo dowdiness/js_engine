@@ -883,6 +883,7 @@ pub fn setup_builtins(
 
   // Symbol constructor and well-known symbols (must be before Math for Symbol.toStringTag)
   setup_symbol_builtins(env, symbols)
+  let well_known_symbols = symbols.well_known_symbols()
   // Patch Symbol.prototype.[[Prototype]] = Object.prototype
   match env.bindings.get("[[ObjectPrototype]]") {
     Some(binding) => {
@@ -1433,7 +1434,7 @@ pub fn setup_builtins(
               descriptors: {},
               symbol_descriptors: {},
             },
-            prototype: get_regexp_string_iterator_proto(),
+            prototype: get_regexp_string_iterator_proto(well_known_symbols),
             callable: None,
             class_name: "RegExp String Iterator",
             extensible: true,
@@ -1593,12 +1594,12 @@ pub fn setup_builtins(
 
   // Set up iterator protocol on Array and String prototypes
   // Use try/catch since setup_iterator_protocol can raise errors
-  setup_iterator_protocol(env) catch {
+  setup_iterator_protocol(env, well_known_symbols) catch {
     _ => () // Ignore errors during initialization
   }
 
   // Set up Map and Set collections
-  setup_map_set_builtins(env)
+  setup_map_set_builtins(env, well_known_symbols)
 
   // Set up Promise constructor and prototype
   setup_promise(env)

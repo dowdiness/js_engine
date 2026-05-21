@@ -773,7 +773,7 @@ pub fn Interpreter::get_computed_property(
                               )
                             _ => this_val.to_string()
                           }
-                          make_string_iterator_value(str)
+                          make_string_iterator_value(well_known_symbols, str)
                         },
                       )
                     _ => ()
@@ -796,7 +796,7 @@ pub fn Interpreter::get_computed_property(
               _this_val,
               _args,
             ) {
-              make_string_iterator_value(s)
+              make_string_iterator_value(well_known_symbols, s)
             })
           }
           return Undefined
@@ -852,7 +852,7 @@ pub fn Interpreter::get_computed_property(
               _this_val,
               _args,
             ) {
-              make_array_iterator_value(arr)
+              make_array_iterator_value(well_known_symbols, arr)
             })
           }
           return Undefined

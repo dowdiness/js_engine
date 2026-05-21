@@ -294,42 +294,63 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "entries" => {
       let arr = data
-      @runtime.make_native_func(name="entries", fn(_args) {
+      @runtime.make_interp_method_func(name="entries", length=0, fn(
+        interp,
+        _this_val,
+        _args,
+      ) {
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(
             @runtime.make_array([Value::Number(i.to_double()), arr.elements[i]]),
           )
         }
-        @runtime.make_array_iterator_value({
-          elements: result,
-          bag: @runtime.PropertyBag(),
-          length_writable: true,
-          holes: {},
-          extensible: true,
-        })
+        @runtime.make_array_iterator_value(
+          interp.realm_state.well_known_symbols,
+          {
+            elements: result,
+            bag: @runtime.PropertyBag(),
+            length_writable: true,
+            holes: {},
+            extensible: true,
+          },
+        )
       })
     }
     "keys" => {
       let arr = data
-      @runtime.make_native_func(name="keys", fn(_args) {
+      @runtime.make_interp_method_func(name="keys", length=0, fn(
+        interp,
+        _this_val,
+        _args,
+      ) {
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(Value::Number(i.to_double()))
         }
-        @runtime.make_array_iterator_value({
-          elements: result,
-          bag: @runtime.PropertyBag(),
-          length_writable: true,
-          holes: {},
-          extensible: true,
-        })
+        @runtime.make_array_iterator_value(
+          interp.realm_state.well_known_symbols,
+          {
+            elements: result,
+            bag: @runtime.PropertyBag(),
+            length_writable: true,
+            holes: {},
+            extensible: true,
+          },
+        )
       })
     }
     "values" => {
       let arr = data
-      @runtime.make_native_func(name="values", fn(_args) {
-        @runtime.make_array_iterator_value(arr)
+      @runtime.make_interp_method_func(name="values", length=0, fn(
+        interp,
+        _this_val,
+        _args,
+      ) {
+        @runtime.make_array_iterator_value(
+          interp.realm_state.well_known_symbols,
+          arr,
+        )
       })
     }
     "splice" => Undefined // Delegated to Array.prototype (species support)

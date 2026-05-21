@@ -47,7 +47,7 @@ pub let function_prototype_ref : @ref.Ref[Value?]
 
 pub fn get_array_iterator_override(ArrayData) -> (Value?, Value?)
 
-pub fn get_array_iterator_proto() -> Value
+pub fn get_array_iterator_proto(WellKnownSymbols) -> Value
 
 pub fn get_array_length_override(ArrayData) -> Int64?
 
@@ -79,7 +79,7 @@ pub fn get_hasinstance_symbol() -> SymbolData
 
 pub fn get_isconcatspreadable_symbol() -> SymbolData
 
-pub fn get_iterator_proto() -> Value
+pub fn get_iterator_proto(WellKnownSymbols) -> Value
 
 pub fn get_iterator_symbol() -> SymbolData
 
@@ -105,7 +105,7 @@ pub fn get_species_symbol() -> SymbolData
 
 pub fn get_split_symbol() -> SymbolData
 
-pub fn get_string_iterator_proto() -> Value
+pub fn get_string_iterator_proto(WellKnownSymbols) -> Value
 
 pub fn get_string_proto() -> Value
 
@@ -159,9 +159,9 @@ pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interprete
 
 pub fn make_array(Array[Value]) -> Value
 
-pub fn make_array_iterator_value(ArrayData) -> Value
+pub fn make_array_iterator_value(WellKnownSymbols, ArrayData) -> Value
 
-pub fn make_array_like_iterator_value(Value) -> Value raise
+pub fn make_array_like_iterator_value(WellKnownSymbols, Value) -> Value raise
 
 pub fn make_func(FuncData) -> Value
 
@@ -179,7 +179,7 @@ pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, Pro
 
 pub fn make_plain_object() -> Value
 
-pub fn make_string_iterator_value(String) -> Value
+pub fn make_string_iterator_value(WellKnownSymbols, String) -> Value
 
 pub fn mark_as_method(Value) -> Value
 

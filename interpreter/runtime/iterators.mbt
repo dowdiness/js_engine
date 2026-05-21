@@ -7,11 +7,11 @@ let iterator_proto_ref : Ref[Value?] = { val: None }
 /// Per ES spec, %IteratorPrototype% has [Symbol.iterator] that returns `this`
 /// and its [[Prototype]] is %Object.prototype% (Null for now since we don't
 /// thread Object.prototype here — iterators still function correctly).
-pub fn get_iterator_proto() -> Value {
+pub fn get_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value {
   match iterator_proto_ref.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = get_iterator_symbol()
+      let iterator_sym = well_known_symbols.iterator
       let proto_sym_props : Map[Int, Value] = {}
       proto_sym_props[iterator_sym.id] = make_method_func(
         name="[Symbol.iterator]",
@@ -42,12 +42,12 @@ let array_iterator_proto_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Get or create the shared %ArrayIteratorPrototype%
-pub fn get_array_iterator_proto() -> Value {
+pub fn get_array_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value {
   match array_iterator_proto_ref.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = get_iterator_symbol()
-      let tostringtag_sym = get_tostringtag_symbol()
+      let iterator_sym = well_known_symbols.iterator
+      let tostringtag_sym = well_known_symbols.to_string_tag
       let proto_sym_props : Map[Int, Value] = {}
       proto_sym_props[tostringtag_sym.id] = String_("Array Iterator")
       let proto_props : Map[String, Value] = {}
@@ -89,7 +89,7 @@ pub fn get_array_iterator_proto() -> Value {
           descriptors: proto_descs,
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: get_iterator_proto(),
+        prototype: get_iterator_proto(well_known_symbols),
         callable: None,
         class_name: "Array Iterator",
         extensible: true,
@@ -102,8 +102,11 @@ pub fn get_array_iterator_proto() -> Value {
 
 ///|
 /// Create an array iterator object that iterates over array elements
-pub fn make_array_iterator_value(arr : ArrayData) -> Value {
-  let arr_iter_proto = get_array_iterator_proto()
+pub fn make_array_iterator_value(
+  well_known_symbols : WellKnownSymbols,
+  arr : ArrayData,
+) -> Value {
+  let arr_iter_proto = get_array_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
 
   // Create the next method
@@ -197,8 +200,11 @@ pub fn make_array_iterator_value(arr : ArrayData) -> Value {
 ///|
 /// Create an array-like iterator for non-array objects with a `length` property.
 /// Uses `get_array_like_element` / `to_array_like_length` to read indexed values.
-pub fn make_array_like_iterator_value(val : Value) -> Value raise Error {
-  let arr_iter_proto = get_array_iterator_proto()
+pub fn make_array_like_iterator_value(
+  well_known_symbols : WellKnownSymbols,
+  val : Value,
+) -> Value raise Error {
+  let arr_iter_proto = get_array_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
   let len = to_array_like_length(val)
 
@@ -294,12 +300,14 @@ let string_iterator_proto_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Get or create the shared %StringIteratorPrototype%
-pub fn get_string_iterator_proto() -> Value {
+pub fn get_string_iterator_proto(
+  well_known_symbols : WellKnownSymbols,
+) -> Value {
   match string_iterator_proto_ref.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = get_iterator_symbol()
-      let tostringtag_sym = get_tostringtag_symbol()
+      let iterator_sym = well_known_symbols.iterator
+      let tostringtag_sym = well_known_symbols.to_string_tag
       let proto_sym_props : Map[Int, Value] = {}
       proto_sym_props[tostringtag_sym.id] = String_("String Iterator")
       let proto_props : Map[String, Value] = {}
@@ -341,7 +349,7 @@ pub fn get_string_iterator_proto() -> Value {
           descriptors: str_proto_descs,
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: get_iterator_proto(),
+        prototype: get_iterator_proto(well_known_symbols),
         callable: None,
         class_name: "String Iterator",
         extensible: true,
@@ -355,8 +363,11 @@ pub fn get_string_iterator_proto() -> Value {
 ///|
 /// Create a string iterator object that iterates over string characters
 /// Handles Unicode surrogate pairs correctly per ES6 spec
-pub fn make_string_iterator_value(s : String) -> Value {
-  let str_iter_proto = get_string_iterator_proto()
+pub fn make_string_iterator_value(
+  well_known_symbols : WellKnownSymbols,
+  s : String,
+) -> Value {
+  let str_iter_proto = get_string_iterator_proto(well_known_symbols)
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({

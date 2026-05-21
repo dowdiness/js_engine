@@ -2253,12 +2253,14 @@ let regexp_string_iterator_proto_ref : Ref[Value?] = { val: None }
 
 ///|
 /// Get or create the shared %RegExpStringIteratorPrototype%
-pub fn get_regexp_string_iterator_proto() -> Value {
+pub fn get_regexp_string_iterator_proto(
+  well_known_symbols : @runtime.WellKnownSymbols,
+) -> Value {
   match regexp_string_iterator_proto_ref.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = @runtime.get_iterator_symbol()
-      let tostringtag_sym = @runtime.get_tostringtag_symbol()
+      let iterator_sym = well_known_symbols.iterator
+      let tostringtag_sym = well_known_symbols.to_string_tag
       let proto_sym_props : Map[Int, Value] = {}
       proto_sym_props[tostringtag_sym.id] = Value::String_(
         "RegExp String Iterator",
@@ -2304,7 +2306,7 @@ pub fn get_regexp_string_iterator_proto() -> Value {
           descriptors: proto_descs,
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: @runtime.get_iterator_proto(),
+        prototype: @runtime.get_iterator_proto(well_known_symbols),
         callable: None,
         class_name: "RegExp String Iterator",
         extensible: true,

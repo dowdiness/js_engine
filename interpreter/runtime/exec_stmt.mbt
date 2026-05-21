@@ -585,8 +585,16 @@ fn Interpreter::exec_stmt(
           Undefined =>
             // Fall back to built-in iteration for arrays and strings
             match iterable {
-              Array(arr) => make_array_iterator_value(arr)
-              String_(s) => make_string_iterator_value(s)
+              Array(arr) =>
+                make_array_iterator_value(
+                  self.realm_state.well_known_symbols,
+                  arr,
+                )
+              String_(s) =>
+                make_string_iterator_value(
+                  self.realm_state.well_known_symbols,
+                  s,
+                )
               _ =>
                 raise @errors.TypeError(
                   message="\{type_of(iterable)} is not iterable (cannot read property Symbol(Symbol.iterator))",
@@ -887,8 +895,13 @@ fn Interpreter::exec_stmt(
           }
         Undefined =>
           match iterable {
-            Array(arr) => make_array_iterator_value(arr)
-            String_(s) => make_string_iterator_value(s)
+            Array(arr) =>
+              make_array_iterator_value(
+                self.realm_state.well_known_symbols,
+                arr,
+              )
+            String_(s) =>
+              make_string_iterator_value(self.realm_state.well_known_symbols, s)
             _ =>
               raise @errors.TypeError(
                 message="\{type_of(iterable)} is not iterable",
@@ -1091,8 +1104,13 @@ fn Interpreter::exec_stmt(
           }
         Undefined =>
           match iterable {
-            Array(arr) => make_array_iterator_value(arr)
-            String_(s) => make_string_iterator_value(s)
+            Array(arr) =>
+              make_array_iterator_value(
+                self.realm_state.well_known_symbols,
+                arr,
+              )
+            String_(s) =>
+              make_string_iterator_value(self.realm_state.well_known_symbols, s)
             _ =>
               raise @errors.TypeError(
                 message="\{type_of(iterable)} is not iterable",
