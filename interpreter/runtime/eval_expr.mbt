@@ -758,7 +758,7 @@ fn Interpreter::eval_expr(
       make_func_ext(func_data)
     }
     RegexLit(pattern, flags, _) =>
-      (self.stdlib_hooks.make_regexp_object)(pattern, flags)
+      (self.stdlib_hooks.make_regexp_object)(self.realm_state, pattern, flags)
     SpreadExpr(_, _) =>
       raise @errors.SyntaxError(
         message="Spread expression used outside of call or array literal",

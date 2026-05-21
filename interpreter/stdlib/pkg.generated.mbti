@@ -11,25 +11,25 @@ pub fn create_list_from_array_like(@runtime.Interpreter, @runtime.Value) -> Arra
 
 pub fn detach_arraybuffer(Int) -> Unit
 
-pub fn get_array_method(@runtime.ArrayData, String) -> @runtime.Value
+pub fn get_array_method(@runtime.ArrayData, String, @runtime.RealmState) -> @runtime.Value
 
-pub fn get_array_method_with_interp(@runtime.ArrayData, String) -> @runtime.Value
+pub fn get_array_method_with_interp(@runtime.ArrayData, String, @runtime.RealmState) -> @runtime.Value
 
 pub fn get_arraybuffer_bytes(Int) -> Array[Int]?
 
 pub fn get_buffer_id(@runtime.Value) -> Int?
 
-pub fn get_map_method(@runtime.MapData, String) -> @runtime.Value
+pub fn get_map_method(@runtime.MapData, String, @runtime.RealmState) -> @runtime.Value
 
 pub fn get_number_method(@runtime.Value, String) -> @runtime.Value
 
 pub fn get_promise_method(@runtime.PromiseData, String) -> @runtime.Value
 
-pub fn get_regexp_string_iterator_proto(@runtime.WellKnownSymbols) -> @runtime.Value
+pub fn get_regexp_string_iterator_proto(@runtime.RealmState) -> @runtime.Value
 
-pub fn get_set_method(@runtime.SetData, String) -> @runtime.Value
+pub fn get_set_method(@runtime.SetData, String, @runtime.RealmState) -> @runtime.Value
 
-pub fn get_string_method(String, String, @runtime.WellKnownSymbols, annex_b? : Bool) -> @runtime.Value
+pub fn get_string_method(String, String, @runtime.RealmState, annex_b? : Bool) -> @runtime.Value
 
 pub fn get_typedarray_prop(@runtime.ObjectData, String) -> @runtime.Value
 
@@ -51,6 +51,8 @@ pub fn make_regex_match_array(RegexMatch, String) -> @runtime.Value
 
 pub fn make_regexp_object(String, String) -> @runtime.Value raise
 
+pub fn make_regexp_object_with_realm_state(String, String, @runtime.RealmState) -> @runtime.Value raise
+
 pub fn make_typedarray_object(String, Int, @runtime.Value, @runtime.Environment) -> @runtime.Value
 
 pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
@@ -67,7 +69,9 @@ pub fn same_value_zero(@runtime.Value, @runtime.Value) -> Bool
 
 pub fn setup_arraybuffer_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
 
-pub fn setup_builtins(@runtime.Environment, Array[String], @runtime.SymbolState, annex_b? : Bool) -> Unit
+pub fn setup_builtins(@runtime.Environment, Array[String], @runtime.SymbolState, annex_b? : Bool) -> @runtime.RealmState
+
+pub fn setup_builtins_with_realm_state(@runtime.Environment, Array[String], @runtime.RealmState, annex_b? : Bool) -> Unit
 
 pub fn setup_dataview_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
 
@@ -75,13 +79,13 @@ pub fn setup_date_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> U
 
 pub fn setup_harness_builtins(@runtime.Environment, Array[String], @runtime.Value) -> Unit
 
-pub fn setup_map_set_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
+pub fn setup_map_set_builtins(@runtime.Environment, @runtime.RealmState) -> Unit
 
-pub fn setup_object_builtins(@runtime.Environment, @runtime.SymbolState, @runtime.WellKnownSymbols) -> Unit
+pub fn setup_object_builtins(@runtime.Environment, @runtime.SymbolState, @runtime.RealmState) -> Unit
 
 pub fn setup_promise(@runtime.Environment) -> Unit
 
-pub fn setup_string_prototype(@runtime.Value, @runtime.WellKnownSymbols, annex_b? : Bool) -> Unit
+pub fn setup_string_prototype(@runtime.Value, @runtime.RealmState, annex_b? : Bool) -> Unit
 
 pub fn setup_timers(@runtime.Environment) -> Unit
 

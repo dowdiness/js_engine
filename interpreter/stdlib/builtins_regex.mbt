@@ -1705,9 +1705,10 @@ fn extract_regexp_source_flags(val : Value) -> (String, String) {
 // ---- RegExp Object Creation ----
 
 ///|
-pub fn make_regexp_object(
+fn make_regexp_object_with_proto(
   pattern : String,
   flags : String,
+  prototype : Value,
 ) -> Value raise Error {
   // Validate flags - check for invalid or duplicate flag characters
   let valid_flags = "gimsuy"
@@ -1905,10 +1906,6 @@ pub fn make_regexp_object(
 
   let re_sym_descs : Map[Int, PropDescriptor] = {}
 
-  let proto = match regexp_prototype_ref.val {
-    Some(p) => p
-    None => Null
-  }
   Value::Object({
     bag: {
       properties: props,
@@ -1916,11 +1913,32 @@ pub fn make_regexp_object(
       descriptors: re_descs,
       symbol_descriptors: re_sym_descs,
     },
-    prototype: proto,
+    prototype,
     callable: None,
     class_name: "RegExp",
     extensible: true,
   })
+}
+
+///|
+pub fn make_regexp_object(
+  pattern : String,
+  flags : String,
+) -> Value raise Error {
+  make_regexp_object_with_proto(pattern, flags, Null)
+}
+
+///|
+pub fn make_regexp_object_with_realm_state(
+  pattern : String,
+  flags : String,
+  realm_state : @runtime.RealmState,
+) -> Value raise Error {
+  let prototype = match realm_state.regexp_prototype.val {
+    Some(p) => p
+    None => Null
+  }
+  make_regexp_object_with_proto(pattern, flags, prototype)
 }
 
 ///|
@@ -2248,15 +2266,13 @@ fn process_replacement(
 pub let regexp_prototype_ref : Ref[Value?] = { val: None }
 
 ///|
-/// Shared %RegExpStringIteratorPrototype% - lazily initialized
-let regexp_string_iterator_proto_ref : Ref[Value?] = { val: None }
-
-///|
-/// Get or create the shared %RegExpStringIteratorPrototype%
+/// Get or create the realm-owned %RegExpStringIteratorPrototype%
 pub fn get_regexp_string_iterator_proto(
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Value {
-  match regexp_string_iterator_proto_ref.val {
+  let well_known_symbols = realm_state.well_known_symbols
+  match
+    realm_state.runtime_iterator_prototypes.regexp_string_iterator_proto.val {
     Some(proto) => proto
     None => {
       let iterator_sym = well_known_symbols.iterator
@@ -2306,12 +2322,14 @@ pub fn get_regexp_string_iterator_proto(
           descriptors: proto_descs,
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: @runtime.get_iterator_proto(well_known_symbols),
+        prototype: realm_state.get_iterator_proto(),
         callable: None,
         class_name: "RegExp String Iterator",
         extensible: true,
       })
-      regexp_string_iterator_proto_ref.val = Some(proto)
+      realm_state.runtime_iterator_prototypes.regexp_string_iterator_proto.val = Some(
+        proto,
+      )
       proto
     }
   }

@@ -47,8 +47,6 @@ pub let function_prototype_ref : @ref.Ref[Value?]
 
 pub fn get_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSymbols) -> (Value?, Value?)
 
-pub fn get_array_iterator_proto(WellKnownSymbols) -> Value
-
 pub fn get_array_length_override(ArrayData) -> Int64?
 
 pub fn get_array_like_element(Value, Int) -> Value
@@ -73,8 +71,6 @@ pub fn get_func_length(Callable) -> Int
 
 pub fn get_func_proto() -> Value
 
-pub fn get_iterator_proto(WellKnownSymbols) -> Value
-
 pub fn get_number_proto() -> Value
 
 pub fn get_obj_proto() -> Value
@@ -84,8 +80,6 @@ pub fn get_proxy_handler(ProxyData) -> Value raise
 pub fn get_proxy_target(ProxyData) -> Value raise
 
 pub fn get_proxy_trap(ProxyData, String, Interpreter) -> Value? raise
-
-pub fn get_string_iterator_proto(WellKnownSymbols) -> Value
 
 pub fn get_string_proto() -> Value
 
@@ -133,10 +127,6 @@ pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interprete
 
 pub fn make_array(Array[Value]) -> Value
 
-pub fn make_array_iterator_value(WellKnownSymbols, ArrayData) -> Value
-
-pub fn make_array_like_iterator_value(WellKnownSymbols, Value) -> Value raise
-
 pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value
@@ -152,8 +142,6 @@ pub fn make_native_func(name~ : String, length? : Int, (Array[Value]) -> Value r
 pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, PropDescriptor], Bool) -> Value
 
 pub fn make_plain_object() -> Value
-
-pub fn make_string_iterator_value(WellKnownSymbols, String) -> Value
 
 pub fn mark_as_method(Value) -> Value
 
@@ -453,7 +441,7 @@ pub fn Interpreter::get_own_property(Self, Value, Value) -> (PropDescriptor, Val
 pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
 pub fn Interpreter::has_property(Self, Value, String) -> Bool raise
 pub fn Interpreter::has_property_key(Self, Value, Value) -> Bool raise
-pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], SymbolState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
+pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
 pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise
 pub fn Interpreter::perform_eval(Self, String, Environment, Bool, caller_strict? : Bool) -> Value raise
@@ -473,9 +461,10 @@ pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) ->
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
+  mut prototype : Value
   bag : PropertyBag
 }
-pub fn MapData::MapData(Array[(Value, Value)]) -> Self
+pub fn MapData::MapData(Array[(Value, Value)], prototype? : Value) -> Self
 
 pub(all) struct Microtask {
   callback : Value
@@ -562,9 +551,20 @@ pub(all) struct ProxyData {
 pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols
+  runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
+  map_prototype : @ref.Ref[Value?]
+  set_prototype : @ref.Ref[Value?]
+  regexp_prototype : @ref.Ref[Value?]
 }
 #alias(new)
 pub fn RealmState::RealmState() -> Self
+pub fn RealmState::from_symbols(SymbolState) -> Self
+pub fn RealmState::get_array_iterator_proto(Self) -> Value
+pub fn RealmState::get_iterator_proto(Self) -> Value
+pub fn RealmState::get_string_iterator_proto(Self) -> Value
+pub fn RealmState::make_array_iterator_value(Self, ArrayData) -> Value
+pub fn RealmState::make_array_like_iterator_value(Self, Value) -> Value raise
+pub fn RealmState::make_string_iterator_value(Self, String) -> Value
 
 pub(all) enum ResumeAction {
   NextAction
@@ -578,11 +578,22 @@ pub(all) enum ResumeKind {
   Return(Value)
 }
 
+pub(all) struct RuntimeIteratorPrototypeCaches {
+  iterator_proto : @ref.Ref[Value?]
+  array_iterator_proto : @ref.Ref[Value?]
+  string_iterator_proto : @ref.Ref[Value?]
+  map_iterator_proto : @ref.Ref[Value?]
+  set_iterator_proto : @ref.Ref[Value?]
+  regexp_string_iterator_proto : @ref.Ref[Value?]
+}
+pub fn RuntimeIteratorPrototypeCaches::RuntimeIteratorPrototypeCaches() -> Self
+
 pub(all) struct SetData {
   values : Array[Value]
+  mut prototype : Value
   bag : PropertyBag
 }
-pub fn SetData::SetData(Array[Value]) -> Self
+pub fn SetData::SetData(Array[Value], prototype? : Value) -> Self
 
 pub(all) enum Signal {
   Normal(Value)
@@ -592,13 +603,13 @@ pub(all) enum Signal {
 }
 
 pub(all) struct StdlibHooks {
-  get_string_method : (String, String, WellKnownSymbols, Bool) -> Value
+  get_string_method : (String, String, RealmState, Bool) -> Value
   get_number_method : (Value, String) -> Value
-  get_array_method_with_interp : (ArrayData, String) -> Value
-  get_map_method : (MapData, String) -> Value
-  get_set_method : (SetData, String) -> Value
+  get_array_method_with_interp : (ArrayData, String, RealmState) -> Value
+  get_map_method : (MapData, String, RealmState) -> Value
+  get_set_method : (SetData, String, RealmState) -> Value
   get_promise_method : (PromiseData, String) -> Value
-  make_regexp_object : (String, String) -> Value raise
+  make_regexp_object : (RealmState, String, String) -> Value raise
   typedarray_get_index : (ObjectData, Int) -> Value
   typedarray_set_index : (ObjectData, Int, Double) -> Unit
   typedarray_is_valid_index : (ObjectData, Int) -> Bool

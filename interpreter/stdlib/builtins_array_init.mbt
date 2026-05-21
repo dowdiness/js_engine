@@ -1,6 +1,7 @@
 ///|
 fn setup_array_builtins(
   env : Environment,
+  realm_state : @runtime.RealmState,
   nf_desc : PropDescriptor,
   obj_proto : Value,
   obj_method_desc : PropDescriptor,
@@ -1328,16 +1329,13 @@ fn setup_array_builtins(
           ]),
         )
       }
-      @runtime.make_array_iterator_value(
-        interp.realm_state.well_known_symbols,
-        {
-          elements: result,
-          bag: @runtime.PropertyBag(),
-          length_writable: true,
-          holes: {},
-          extensible: true,
-        },
-      )
+      realm_state.make_array_iterator_value({
+        elements: result,
+        bag: @runtime.PropertyBag(),
+        length_writable: true,
+        holes: {},
+        extensible: true,
+      })
     },
   )
   array_proto_props["keys"] = @runtime.make_interp_method_func(
@@ -1350,16 +1348,13 @@ fn setup_array_builtins(
       for i = 0; i < len; i = i + 1 {
         result.push(Value::Number(i.to_double()))
       }
-      @runtime.make_array_iterator_value(
-        interp.realm_state.well_known_symbols,
-        {
-          elements: result,
-          bag: @runtime.PropertyBag(),
-          length_writable: true,
-          holes: {},
-          extensible: true,
-        },
-      )
+      realm_state.make_array_iterator_value({
+        elements: result,
+        bag: @runtime.PropertyBag(),
+        length_writable: true,
+        holes: {},
+        extensible: true,
+      })
     },
   )
   array_proto_props["values"] = @runtime.make_interp_method_func(
@@ -1372,16 +1367,13 @@ fn setup_array_builtins(
       for i = 0; i < len; i = i + 1 {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
-      @runtime.make_array_iterator_value(
-        interp.realm_state.well_known_symbols,
-        {
-          elements: result,
-          bag: @runtime.PropertyBag(),
-          length_writable: true,
-          holes: {},
-          extensible: true,
-        },
-      )
+      realm_state.make_array_iterator_value({
+        elements: result,
+        bag: @runtime.PropertyBag(),
+        length_writable: true,
+        holes: {},
+        extensible: true,
+      })
     },
   )
   array_proto_props["toReversed"] = @runtime.make_interp_method_func(

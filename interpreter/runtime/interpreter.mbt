@@ -114,7 +114,7 @@ pub(all) struct Interpreter {
 pub fn Interpreter::new(
   annex_b? : Bool = false,
   module_loader? : ModuleLoader? = None,
-  setup_builtins? : (Environment, Array[String], SymbolState, Bool) -> Unit = fn(
+  setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit = fn(
     _,
     _,
     _,
@@ -140,7 +140,7 @@ pub fn Interpreter::new(
   })
   let realm_state = RealmState()
   let symbols = realm_state.symbols
-  setup_builtins(global, output, symbols, annex_b)
+  setup_builtins(global, output, realm_state, annex_b)
   // Bind 'this' and 'globalThis' in global scope
   global.def_builtin("this", global_this)
   global.def_builtin("globalThis", global_this)

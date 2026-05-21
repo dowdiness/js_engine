@@ -4,9 +4,22 @@ pub fn setup_builtins(
   output : Array[String],
   symbols : SymbolState,
   annex_b? : Bool = false,
+) -> @runtime.RealmState {
+  let realm_state = @runtime.RealmState::from_symbols(symbols)
+  setup_builtins_with_realm_state(env, output, realm_state, annex_b~)
+  realm_state
+}
+
+///|
+pub fn setup_builtins_with_realm_state(
+  env : Environment,
+  output : Array[String],
+  realm_state : @runtime.RealmState,
+  annex_b? : Bool = false,
 ) -> Unit {
   let _ = output
-  let well_known_symbols = symbols.well_known_symbols()
+  let symbols = realm_state.symbols
+  let well_known_symbols = realm_state.well_known_symbols
   // Global constants
   env.def_builtin("NaN", Value::Number(0.0 / 0.0))
   env.def_builtin("Infinity", Value::Number(1.0 / 0.0))
@@ -562,7 +575,7 @@ pub fn setup_builtins(
   env.def_builtin("[[StringPrototype]]", string_proto)
   @runtime.string_prototype_ref.val = Some(string_proto)
   // Populate String.prototype with methods for .call() support
-  setup_string_prototype(string_proto, well_known_symbols, annex_b~)
+  setup_string_prototype(string_proto, realm_state, annex_b~)
   // Set String.prototype.constructor = String
   match string_proto {
     Object(data) => {
@@ -784,7 +797,7 @@ pub fn setup_builtins(
   }
 
   // Object, Array constructors and built-in methods
-  setup_object_builtins(env, symbols, well_known_symbols)
+  setup_object_builtins(env, symbols, realm_state)
 
   // Now that Object.prototype and Function.prototype exist, patch built-in
   // prototype chains.  Boolean.prototype, String.prototype, Number.prototype
@@ -947,7 +960,7 @@ pub fn setup_builtins(
           } else {
             ""
           }
-          make_regexp_object(pattern, flags)
+          make_regexp_object_with_realm_state(pattern, flags, realm_state)
         }),
       ),
       class_name: "Function",
@@ -955,7 +968,7 @@ pub fn setup_builtins(
     }),
   )
 
-  // Set up RegExp.prototype and store in regexp_prototype_ref
+  // Set up RegExp.prototype and store it on the realm.
   match env.bindings.get("[[ObjectPrototype]]") {
     Some(obj_proto_binding) => {
       let obj_proto = obj_proto_binding.value
@@ -1434,7 +1447,7 @@ pub fn setup_builtins(
               descriptors: {},
               symbol_descriptors: {},
             },
-            prototype: get_regexp_string_iterator_proto(well_known_symbols),
+            prototype: get_regexp_string_iterator_proto(realm_state),
             callable: None,
             class_name: "RegExp String Iterator",
             extensible: true,
@@ -1569,6 +1582,7 @@ pub fn setup_builtins(
         extensible: true,
       })
       regexp_prototype_ref.val = Some(regexp_proto)
+      realm_state.regexp_prototype.val = Some(regexp_proto)
       // Set RegExp.prototype on the constructor
       match env.bindings.get("RegExp") {
         Some(b) =>
@@ -1594,12 +1608,12 @@ pub fn setup_builtins(
 
   // Set up iterator protocol on Array and String prototypes
   // Use try/catch since setup_iterator_protocol can raise errors
-  setup_iterator_protocol(env, well_known_symbols) catch {
+  setup_iterator_protocol(env, realm_state) catch {
     _ => () // Ignore errors during initialization
   }
 
   // Set up Map and Set collections
-  setup_map_set_builtins(env, well_known_symbols)
+  setup_map_set_builtins(env, realm_state)
 
   // Set up Promise constructor and prototype
   setup_promise(env)

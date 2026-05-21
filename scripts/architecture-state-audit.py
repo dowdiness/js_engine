@@ -64,15 +64,6 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/runtime/factories.mbt:symbol_prototype_ref": (
         "prototype cache; move to RealmState"
     ),
-    "interpreter/runtime/iterators.mbt:array_iterator_proto_ref": (
-        "iterator prototype cache; move to RealmState"
-    ),
-    "interpreter/runtime/iterators.mbt:iterator_proto_ref": (
-        "iterator prototype cache; move to RealmState"
-    ),
-    "interpreter/runtime/iterators.mbt:string_iterator_proto_ref": (
-        "iterator prototype cache; move to RealmState"
-    ),
     "interpreter/runtime/symbols.mbt:is_constructing": (
         "ambient construction context; replace with explicit call/construct context"
     ),
@@ -85,26 +76,11 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/stdlib/builtins_arraybuffer.mbt:detached_buffers": (
         "ArrayBuffer detached-state store; move to RealmState"
     ),
-    "interpreter/stdlib/builtins_map_set.mbt:map_iterator_proto_ref": (
-        "iterator prototype cache; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_map_set.mbt:map_prototype_ref": (
-        "prototype cache; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_map_set.mbt:set_iterator_proto_ref": (
-        "iterator prototype cache; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_map_set.mbt:set_prototype_ref": (
-        "prototype cache; move to RealmState"
-    ),
     "interpreter/stdlib/builtins_promise.mbt:promise_prototype_ref": (
         "prototype cache; move to RealmState"
     ),
     "interpreter/stdlib/builtins_regex.mbt:regexp_prototype_ref": (
         "prototype cache; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_regex.mbt:regexp_string_iterator_proto_ref": (
-        "iterator prototype cache; move to RealmState"
     ),
     "interpreter/stdlib/builtins_weakmap_set.mbt:weakmap_id_counter": (
         "WeakMap side-table counter; move to RealmState"

@@ -13,8 +13,9 @@
 pub fn setup_object_builtins(
   env : Environment,
   sym_state : SymbolState,
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
+  let well_known_symbols = realm_state.well_known_symbols
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -1410,5 +1411,5 @@ pub fn setup_object_builtins(
     _ => ()
   }
 
-  setup_array_builtins(env, nf_desc, obj_proto, obj_method_desc)
+  setup_array_builtins(env, realm_state, nf_desc, obj_proto, obj_method_desc)
 }

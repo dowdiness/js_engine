@@ -3,13 +3,13 @@
 /// This breaks the circular dependency: runtime defines the interface,
 /// stdlib provides the implementation, root interpreter wires them together.
 pub(all) struct StdlibHooks {
-  get_string_method : (String, String, WellKnownSymbols, Bool) -> Value
+  get_string_method : (String, String, RealmState, Bool) -> Value
   get_number_method : (Value, String) -> Value
-  get_array_method_with_interp : (ArrayData, String) -> Value
-  get_map_method : (MapData, String) -> Value
-  get_set_method : (SetData, String) -> Value
+  get_array_method_with_interp : (ArrayData, String, RealmState) -> Value
+  get_map_method : (MapData, String, RealmState) -> Value
+  get_set_method : (SetData, String, RealmState) -> Value
   get_promise_method : (PromiseData, String) -> Value
-  make_regexp_object : (String, String) -> Value raise Error
+  make_regexp_object : (RealmState, String, String) -> Value raise Error
   typedarray_get_index : (ObjectData, Int) -> Value
   typedarray_set_index : (ObjectData, Int, Double) -> Unit
   typedarray_is_valid_index : (ObjectData, Int) -> Bool
@@ -22,15 +22,13 @@ pub(all) struct StdlibHooks {
 /// Default no-op hooks used before stdlib is wired in.
 pub fn default_stdlib_hooks() -> StdlibHooks {
   {
-    get_string_method: fn(_s, _prop, _well_known_symbols, _annex_b) {
-      Undefined
-    },
+    get_string_method: fn(_s, _prop, _realm_state, _annex_b) { Undefined },
     get_number_method: fn(_obj, _prop) { Undefined },
-    get_array_method_with_interp: fn(_data, _prop) { Undefined },
-    get_map_method: fn(_data, _prop) { Undefined },
-    get_set_method: fn(_data, _prop) { Undefined },
+    get_array_method_with_interp: fn(_data, _prop, _realm_state) { Undefined },
+    get_map_method: fn(_data, _prop, _realm_state) { Undefined },
+    get_set_method: fn(_data, _prop, _realm_state) { Undefined },
     get_promise_method: fn(_data, _prop) { Undefined },
-    make_regexp_object: fn(_pattern, _flags) { Undefined },
+    make_regexp_object: fn(_realm_state, _pattern, _flags) { Undefined },
     typedarray_get_index: fn(_data, _idx) { Undefined },
     typedarray_set_index: fn(_data, _idx, _val) { () },
     typedarray_is_valid_index: fn(_data, _idx) { false },
