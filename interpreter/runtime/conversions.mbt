@@ -339,8 +339,18 @@ fn call_symbol_to_primitive(
   hint : String,
   interp? : Interpreter? = None,
 ) -> Value? raise Error {
-  let to_prim_sym = get_toprimitive_symbol()
-  match lookup_symbol_property_chain(obj_val, data, to_prim_sym.id, interp~) {
+  let effective = resolve_effective_interp(interp)
+  let to_prim_sym = match effective {
+    Some(ip) => ip.realm_state.well_known_symbols.to_primitive
+    None => return None
+  }
+  match
+    lookup_symbol_property_chain(
+      obj_val,
+      data,
+      to_prim_sym.id,
+      interp=effective,
+    ) {
     Some(Undefined) | Some(Null) | None => None
     Some(exotic_to_prim) => {
       if !is_callable(exotic_to_prim) {
@@ -350,7 +360,7 @@ fn call_symbol_to_primitive(
         exotic_to_prim,
         obj_val,
         [String_(hint)],
-        interp~,
+        interp=effective,
       )
       if is_js_object(result) {
         raise @errors.TypeError(
