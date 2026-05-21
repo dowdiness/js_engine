@@ -1,6 +1,11 @@
 ///|
-/// Shared %IteratorPrototype% - lazily initialized (ES spec §27.1.2)
-let iterator_proto_ref : Ref[Value?] = { val: None }
+/// Shared %IteratorPrototype% cache - lazily initialized per symbol bundle
+let iterator_proto_ref : Ref[Map[String, Value]] = { val: {} }
+
+///|
+fn iterator_proto_cache_key(well_known_symbols : WellKnownSymbols) -> String {
+  "\{well_known_symbols.iterator.id}:\{well_known_symbols.to_string_tag.id}"
+}
 
 ///|
 /// Get or create the shared %IteratorPrototype%
@@ -8,7 +13,8 @@ let iterator_proto_ref : Ref[Value?] = { val: None }
 /// and its [[Prototype]] is %Object.prototype% (Null for now since we don't
 /// thread Object.prototype here — iterators still function correctly).
 pub fn get_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value {
-  match iterator_proto_ref.val {
+  let cache_key = iterator_proto_cache_key(well_known_symbols)
+  match iterator_proto_ref.val.get(cache_key) {
     Some(proto) => proto
     None => {
       let iterator_sym = well_known_symbols.iterator
@@ -30,20 +36,21 @@ pub fn get_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value {
         class_name: "Iterator",
         extensible: true,
       })
-      iterator_proto_ref.val = Some(proto)
+      iterator_proto_ref.val[cache_key] = proto
       proto
     }
   }
 }
 
 ///|
-/// Shared %ArrayIteratorPrototype% - lazily initialized
-let array_iterator_proto_ref : Ref[Value?] = { val: None }
+/// Shared %ArrayIteratorPrototype% cache - lazily initialized per symbol bundle
+let array_iterator_proto_ref : Ref[Map[String, Value]] = { val: {} }
 
 ///|
 /// Get or create the shared %ArrayIteratorPrototype%
 pub fn get_array_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value {
-  match array_iterator_proto_ref.val {
+  let cache_key = iterator_proto_cache_key(well_known_symbols)
+  match array_iterator_proto_ref.val.get(cache_key) {
     Some(proto) => proto
     None => {
       let iterator_sym = well_known_symbols.iterator
@@ -94,7 +101,7 @@ pub fn get_array_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value 
         class_name: "Array Iterator",
         extensible: true,
       })
-      array_iterator_proto_ref.val = Some(proto)
+      array_iterator_proto_ref.val[cache_key] = proto
       proto
     }
   }
@@ -295,15 +302,16 @@ pub fn make_array_like_iterator_value(
 }
 
 ///|
-/// Shared %StringIteratorPrototype% - lazily initialized
-let string_iterator_proto_ref : Ref[Value?] = { val: None }
+/// Shared %StringIteratorPrototype% cache - lazily initialized per symbol bundle
+let string_iterator_proto_ref : Ref[Map[String, Value]] = { val: {} }
 
 ///|
 /// Get or create the shared %StringIteratorPrototype%
 pub fn get_string_iterator_proto(
   well_known_symbols : WellKnownSymbols,
 ) -> Value {
-  match string_iterator_proto_ref.val {
+  let cache_key = iterator_proto_cache_key(well_known_symbols)
+  match string_iterator_proto_ref.val.get(cache_key) {
     Some(proto) => proto
     None => {
       let iterator_sym = well_known_symbols.iterator
@@ -354,7 +362,7 @@ pub fn get_string_iterator_proto(
         class_name: "String Iterator",
         extensible: true,
       })
-      string_iterator_proto_ref.val = Some(proto)
+      string_iterator_proto_ref.val[cache_key] = proto
       proto
     }
   }
