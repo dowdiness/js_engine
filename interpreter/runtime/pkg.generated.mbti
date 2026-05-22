@@ -11,8 +11,6 @@ import {
 // Values
 pub fn array_species_create(Interpreter, Value, Int) -> Value raise
 
-pub let boolean_prototype_ref : @ref.Ref[Value?]
-
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
 
 pub fn check_proxy_set_trap_invariants(Value, Value, Value) -> Unit raise
@@ -147,8 +145,6 @@ pub fn mark_as_method(Value) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
-pub let number_prototype_ref : @ref.Ref[Value?]
-
 pub let object_prototype_ref : @ref.Ref[Value?]
 
 pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
@@ -207,13 +203,9 @@ pub fn sort_property_keys(Map[String, Value]) -> Array[String]
 
 pub fn strict_equal(Value, Value) -> Bool
 
-pub let string_prototype_ref : @ref.Ref[Value?]
-
 pub fn string_to_utf16(String) -> Array[Int]
 
 pub fn strip_self_name_binding(Value) -> Value
-
-pub let symbol_prototype_ref : @ref.Ref[Value?]
 
 pub fn to_array_like_elements(Value) -> Array[Value] raise
 
@@ -552,6 +544,10 @@ pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
+  string_prototype : @ref.Ref[Value?]
+  number_prototype : @ref.Ref[Value?]
+  boolean_prototype : @ref.Ref[Value?]
+  symbol_prototype : @ref.Ref[Value?]
   map_prototype : @ref.Ref[Value?]
   set_prototype : @ref.Ref[Value?]
   regexp_prototype : @ref.Ref[Value?]
@@ -560,8 +556,12 @@ pub(all) struct RealmState {
 pub fn RealmState::RealmState() -> Self
 pub fn RealmState::from_symbols(SymbolState) -> Self
 pub fn RealmState::get_array_iterator_proto(Self) -> Value
+pub fn RealmState::get_boolean_proto(Self) -> Value
 pub fn RealmState::get_iterator_proto(Self) -> Value
+pub fn RealmState::get_number_proto(Self) -> Value
 pub fn RealmState::get_string_iterator_proto(Self) -> Value
+pub fn RealmState::get_string_proto(Self) -> Value
+pub fn RealmState::get_symbol_proto(Self) -> Value
 pub fn RealmState::make_array_iterator_value(Self, ArrayData) -> Value
 pub fn RealmState::make_array_like_iterator_value(Self, Value) -> Value raise
 pub fn RealmState::make_string_iterator_value(Self, String) -> Value

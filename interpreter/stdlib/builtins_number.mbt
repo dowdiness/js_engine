@@ -42,7 +42,10 @@ fn char_to_digit(c : Char, radix : Int) -> Int {
 }
 
 ///|
-fn setup_number_builtins(env : Environment) -> Unit {
+fn setup_number_builtins(
+  env : Environment,
+  realm_state : @runtime.RealmState,
+) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -489,7 +492,7 @@ fn setup_number_builtins(env : Environment) -> Unit {
   })
   // Store Number.prototype for ToObject wrapping
   env.def_builtin("[[NumberPrototype]]", number_proto)
-  @runtime.number_prototype_ref.val = Some(number_proto)
+  realm_state.number_prototype.val = Some(number_proto)
   let number_props : Map[String, Value] = {}
   number_props["prototype"] = number_proto
   number_props["MAX_SAFE_INTEGER"] = Value::Number(9007199254740991.0)
