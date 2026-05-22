@@ -133,7 +133,7 @@ test "stdlib iterator prototype caches are isolated by realm state" {
 }
 
 ///|
-test "map and set method lookup backfills direct data from active realm state" {
+test "map and set method lookup uses active realm state without rehoming direct data" {
   let default_realm = new_realm_state()
   let shifted_realm = shifted_realm_state()
   setup_map_set_builtins(@runtime.Environment::new(), default_realm)
@@ -145,9 +145,20 @@ test "map and set method lookup backfills direct data from active realm state" {
     Undefined => fail("expected Map.prototype.entries method")
     _ => ()
   }
+  match map_data.prototype {
+    Null => ()
+    _ => fail("direct MapData lookup should not mutate prototype")
+  }
+  match get_map_method(map_data, "entries", shifted_realm) {
+    Undefined => fail("expected shifted Map.prototype.entries method")
+    _ => ()
+  }
+  match map_data.prototype {
+    Null => ()
+    _ => fail("shifted direct MapData lookup should not mutate prototype")
+  }
   match default_realm.map_prototype.val {
     Some(proto) => {
-      assert_same_object("backfilled map prototype", map_data.prototype, proto)
       let derived_map_proto = Value::Object({
         bag: @runtime.PropertyBag(),
         prototype: proto,
@@ -170,9 +181,20 @@ test "map and set method lookup backfills direct data from active realm state" {
     Undefined => fail("expected Set.prototype.values method")
     _ => ()
   }
+  match set_data.prototype {
+    Null => ()
+    _ => fail("direct SetData lookup should not mutate prototype")
+  }
+  match get_set_method(set_data, "values", shifted_realm) {
+    Undefined => fail("expected shifted Set.prototype.values method")
+    _ => ()
+  }
+  match set_data.prototype {
+    Null => ()
+    _ => fail("shifted direct SetData lookup should not mutate prototype")
+  }
   match default_realm.set_prototype.val {
     Some(proto) => {
-      assert_same_object("backfilled set prototype", set_data.prototype, proto)
       let derived_set_proto = Value::Object({
         bag: @runtime.PropertyBag(),
         prototype: proto,

@@ -24,17 +24,14 @@ fn lookup_prototype_method(proto : Value, prop : String) -> Value? {
 }
 
 ///|
-fn get_backfilled_map_prototype(
+fn get_map_lookup_prototype(
   data : MapData,
   realm_state : @runtime.RealmState,
 ) -> Value {
   match data.prototype {
     Null =>
       match realm_state.map_prototype.val {
-        Some(proto) => {
-          data.prototype = proto
-          proto
-        }
+        Some(proto) => proto
         None => Null
       }
     proto => proto
@@ -42,17 +39,14 @@ fn get_backfilled_map_prototype(
 }
 
 ///|
-fn get_backfilled_set_prototype(
+fn get_set_lookup_prototype(
   data : SetData,
   realm_state : @runtime.RealmState,
 ) -> Value {
   match data.prototype {
     Null =>
       match realm_state.set_prototype.val {
-        Some(proto) => {
-          data.prototype = proto
-          proto
-        }
+        Some(proto) => proto
         None => Null
       }
     proto => proto
@@ -67,10 +61,7 @@ pub fn get_map_method(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match
-    lookup_prototype_method(
-      get_backfilled_map_prototype(data, realm_state),
-      prop,
-    ) {
+    lookup_prototype_method(get_map_lookup_prototype(data, realm_state), prop) {
     Some(m) => m
     None => Undefined
   }
@@ -84,10 +75,7 @@ pub fn get_set_method(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match
-    lookup_prototype_method(
-      get_backfilled_set_prototype(data, realm_state),
-      prop,
-    ) {
+    lookup_prototype_method(get_set_lookup_prototype(data, realm_state), prop) {
     Some(m) => m
     None => Undefined
   }
