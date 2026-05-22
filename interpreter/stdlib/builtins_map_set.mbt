@@ -9,10 +9,18 @@
 
 ///|
 fn lookup_prototype_method(proto : Value, prop : String) -> Value? {
-  match proto {
-    Object(proto_data) => proto_data.bag.properties.get(prop)
-    _ => None
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) =>
+        match proto_data.bag.properties.get(prop) {
+          Some(value) => return Some(value)
+          None => current = proto_data.prototype
+        }
+      _ => return None
+    }
   }
+  None
 }
 
 ///|

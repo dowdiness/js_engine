@@ -146,8 +146,21 @@ test "map and set method lookup backfills direct data from active realm state" {
     _ => ()
   }
   match default_realm.map_prototype.val {
-    Some(proto) =>
+    Some(proto) => {
       assert_same_object("backfilled map prototype", map_data.prototype, proto)
+      let derived_map_proto = Value::Object({
+        bag: @runtime.PropertyBag(),
+        prototype: proto,
+        callable: None,
+        class_name: "DerivedMapPrototype",
+        extensible: true,
+      })
+      let derived_map_data = @runtime.MapData([], prototype=derived_map_proto)
+      match get_map_method(derived_map_data, "entries", default_realm) {
+        Undefined => fail("expected inherited Map.prototype.entries method")
+        _ => ()
+      }
+    }
     None => fail("expected default realm Map.prototype")
   }
 
@@ -158,14 +171,28 @@ test "map and set method lookup backfills direct data from active realm state" {
     _ => ()
   }
   match default_realm.set_prototype.val {
-    Some(proto) =>
+    Some(proto) => {
       assert_same_object("backfilled set prototype", set_data.prototype, proto)
+      let derived_set_proto = Value::Object({
+        bag: @runtime.PropertyBag(),
+        prototype: proto,
+        callable: None,
+        class_name: "DerivedSetPrototype",
+        extensible: true,
+      })
+      let derived_set_data = @runtime.SetData([], prototype=derived_set_proto)
+      match get_set_method(derived_set_data, "values", default_realm) {
+        Undefined => fail("expected inherited Set.prototype.values method")
+        _ => ()
+      }
+    }
     None => fail("expected default realm Set.prototype")
   }
 }
 
 ///|
 test "regexp factories ignore module global prototype fallback without realm prototype" {
+  let previous_regexp_prototype = regexp_prototype_ref.val
   let sentinel = Value::Object({
     bag: @runtime.PropertyBag(),
     prototype: Value::Null,
@@ -176,13 +203,20 @@ test "regexp factories ignore module global prototype fallback without realm pro
   regexp_prototype_ref.val = Some(sentinel)
   let realm = new_realm_state()
 
-  assert_null_prototype(
-    "realm regexp without prototype",
-    make_regexp_object_with_realm_state("a", "", realm),
-  )
-  assert_null_prototype(
-    "legacy regexp without realm",
-    make_regexp_object("a", ""),
-  )
-  regexp_prototype_ref.val = None
+  try {
+    assert_null_prototype(
+      "realm regexp without prototype",
+      make_regexp_object_with_realm_state("a", "", realm),
+    )
+    assert_null_prototype(
+      "legacy regexp without realm",
+      make_regexp_object("a", ""),
+    )
+    regexp_prototype_ref.val = previous_regexp_prototype
+  } catch {
+    e => {
+      regexp_prototype_ref.val = previous_regexp_prototype
+      raise e
+    }
+  }
 }
