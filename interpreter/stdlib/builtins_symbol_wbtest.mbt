@@ -5,8 +5,12 @@ test "setup_builtins reserves well-known symbols in provided SymbolState" {
   let env = @runtime.Environment::new()
   let output : Array[String] = []
   let symbols = @runtime.SymbolState::new()
-  setup_builtins(env, output, symbols)
+  let realm_state = setup_builtins(env, output, symbols)
   let well_known_symbols = symbols.well_known_symbols()
+  if realm_state.well_known_symbols.iterator.id !=
+    well_known_symbols.iterator.id {
+    fail("expected setup_builtins to return the created RealmState")
+  }
   let iterator_sym = well_known_symbols.iterator
   match symbols.get_symbol_by_id(iterator_sym.id) {
     Some(found) =>

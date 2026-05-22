@@ -1,5 +1,9 @@
 ///|
-pub fn get_array_method(data : ArrayData, prop : String) -> Value {
+pub fn get_array_method(
+  data : ArrayData,
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
   match prop {
     "push" => {
       let arr = data
@@ -294,63 +298,42 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
     }
     "entries" => {
       let arr = data
-      @runtime.make_interp_method_func(name="entries", length=0, fn(
-        interp,
-        _this_val,
-        _args,
-      ) {
+      @runtime.make_method_func(name="entries", length=0, fn(_this_val, _args) {
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(
             @runtime.make_array([Value::Number(i.to_double()), arr.elements[i]]),
           )
         }
-        @runtime.make_array_iterator_value(
-          interp.realm_state.well_known_symbols,
-          {
-            elements: result,
-            bag: @runtime.PropertyBag(),
-            length_writable: true,
-            holes: {},
-            extensible: true,
-          },
-        )
+        realm_state.make_array_iterator_value({
+          elements: result,
+          bag: @runtime.PropertyBag(),
+          length_writable: true,
+          holes: {},
+          extensible: true,
+        })
       })
     }
     "keys" => {
       let arr = data
-      @runtime.make_interp_method_func(name="keys", length=0, fn(
-        interp,
-        _this_val,
-        _args,
-      ) {
+      @runtime.make_method_func(name="keys", length=0, fn(_this_val, _args) {
         let result : Array[Value] = []
         for i = 0; i < arr.elements.length(); i = i + 1 {
           result.push(Value::Number(i.to_double()))
         }
-        @runtime.make_array_iterator_value(
-          interp.realm_state.well_known_symbols,
-          {
-            elements: result,
-            bag: @runtime.PropertyBag(),
-            length_writable: true,
-            holes: {},
-            extensible: true,
-          },
-        )
+        realm_state.make_array_iterator_value({
+          elements: result,
+          bag: @runtime.PropertyBag(),
+          length_writable: true,
+          holes: {},
+          extensible: true,
+        })
       })
     }
     "values" => {
       let arr = data
-      @runtime.make_interp_method_func(name="values", length=0, fn(
-        interp,
-        _this_val,
-        _args,
-      ) {
-        @runtime.make_array_iterator_value(
-          interp.realm_state.well_known_symbols,
-          arr,
-        )
+      @runtime.make_method_func(name="values", length=0, fn(_this_val, _args) {
+        realm_state.make_array_iterator_value(arr)
       })
     }
     "splice" => Undefined // Delegated to Array.prototype (species support)
@@ -386,7 +369,11 @@ pub fn get_array_method(data : ArrayData, prop : String) -> Value {
 }
 
 ///|
-pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
+pub fn get_array_method_with_interp(
+  data : ArrayData,
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
   match prop {
     "forEach" | "map" | "filter" => Undefined // Delegated to Array.prototype
     "reduce" | "reduceRight" => Undefined // Delegated to Array.prototype
@@ -723,7 +710,7 @@ pub fn get_array_method_with_interp(data : ArrayData, prop : String) -> Value {
       })
     }
     "concat" => Undefined // Delegated to Array.prototype (species support)
-    _ => get_array_method(data, prop)
+    _ => get_array_method(data, prop, realm_state)
   }
 }
 

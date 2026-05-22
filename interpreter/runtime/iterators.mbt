@@ -1,107 +1,108 @@
 ///|
-/// Shared %IteratorPrototype% cache - lazily initialized per symbol bundle
-let iterator_proto_ref : Ref[Map[String, Value]] = { val: {} }
-
-///|
-fn iterator_proto_cache_key(well_known_symbols : WellKnownSymbols) -> String {
-  "\{well_known_symbols.iterator.id}:\{well_known_symbols.to_string_tag.id}"
-}
-
-///|
-/// Get or create the shared %IteratorPrototype%
 /// Per ES spec, %IteratorPrototype% has [Symbol.iterator] that returns `this`
 /// and its [[Prototype]] is %Object.prototype% (Null for now since we don't
 /// thread Object.prototype here — iterators still function correctly).
-pub fn get_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value {
-  let cache_key = iterator_proto_cache_key(well_known_symbols)
-  match iterator_proto_ref.val.get(cache_key) {
+fn make_iterator_proto_value(well_known_symbols : WellKnownSymbols) -> Value {
+  let iterator_sym = well_known_symbols.iterator
+  let proto_sym_props : Map[Int, Value] = {}
+  proto_sym_props[iterator_sym.id] = make_method_func(
+    name="[Symbol.iterator]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
+  Object({
+    bag: {
+      properties: {},
+      symbol_properties: proto_sym_props,
+      descriptors: {},
+      symbol_descriptors: {},
+    },
+    prototype: Null,
+    callable: None,
+    class_name: "Iterator",
+    extensible: true,
+  })
+}
+
+///|
+/// Get or create the realm-owned %IteratorPrototype%.
+pub fn RealmState::get_iterator_proto(self : RealmState) -> Value {
+  match self.runtime_iterator_prototypes.iterator_proto.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = well_known_symbols.iterator
-      let proto_sym_props : Map[Int, Value] = {}
-      proto_sym_props[iterator_sym.id] = make_method_func(
-        name="[Symbol.iterator]",
-        length=0,
-        fn(this_val, _args) { this_val },
-      )
-      let proto : Value = Object({
-        bag: {
-          properties: {},
-          symbol_properties: proto_sym_props,
-          descriptors: {},
-          symbol_descriptors: {},
-        },
-        prototype: Null,
-        callable: None,
-        class_name: "Iterator",
-        extensible: true,
-      })
-      iterator_proto_ref.val[cache_key] = proto
+      let proto = make_iterator_proto_value(self.well_known_symbols)
+      self.runtime_iterator_prototypes.iterator_proto.val = Some(proto)
       proto
     }
   }
 }
 
 ///|
-/// Shared %ArrayIteratorPrototype% cache - lazily initialized per symbol bundle
-let array_iterator_proto_ref : Ref[Map[String, Value]] = { val: {} }
+fn make_array_iterator_proto_value(
+  well_known_symbols : WellKnownSymbols,
+  iterator_proto : Value,
+) -> Value {
+  let iterator_sym = well_known_symbols.iterator
+  let tostringtag_sym = well_known_symbols.to_string_tag
+  let proto_sym_props : Map[Int, Value] = {}
+  proto_sym_props[tostringtag_sym.id] = String_("Array Iterator")
+  let proto_props : Map[String, Value] = {}
+  let proto_sym_descs : Map[Int, PropDescriptor] = {}
+  proto_sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  proto_sym_props[iterator_sym.id] = make_method_func(
+    name="[Symbol.iterator]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
+  proto_props["next"] = make_method_func(name="next", length=0, fn(
+    _this_val,
+    _args,
+  ) raise {
+    raise @errors.TypeError(
+      message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+    )
+  })
+  let proto_descs : Map[String, PropDescriptor] = {}
+  proto_descs["next"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  Object({
+    bag: {
+      properties: proto_props,
+      symbol_properties: proto_sym_props,
+      descriptors: proto_descs,
+      symbol_descriptors: proto_sym_descs,
+    },
+    prototype: iterator_proto,
+    callable: None,
+    class_name: "Array Iterator",
+    extensible: true,
+  })
+}
 
 ///|
-/// Get or create the shared %ArrayIteratorPrototype%
-pub fn get_array_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value {
-  let cache_key = iterator_proto_cache_key(well_known_symbols)
-  match array_iterator_proto_ref.val.get(cache_key) {
+/// Get or create the realm-owned %ArrayIteratorPrototype%.
+pub fn RealmState::get_array_iterator_proto(self : RealmState) -> Value {
+  match self.runtime_iterator_prototypes.array_iterator_proto.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = well_known_symbols.iterator
-      let tostringtag_sym = well_known_symbols.to_string_tag
-      let proto_sym_props : Map[Int, Value] = {}
-      proto_sym_props[tostringtag_sym.id] = String_("Array Iterator")
-      let proto_props : Map[String, Value] = {}
-      let proto_sym_descs : Map[Int, PropDescriptor] = {}
-      proto_sym_descs[tostringtag_sym.id] = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      proto_sym_props[iterator_sym.id] = make_method_func(
-        name="[Symbol.iterator]",
-        length=0,
-        fn(this_val, _args) { this_val },
+      let proto = make_array_iterator_proto_value(
+        self.well_known_symbols,
+        self.get_iterator_proto(),
       )
-      proto_props["next"] = make_method_func(name="next", length=0, fn(
-        _this_val,
-        _args,
-      ) raise {
-        raise @errors.TypeError(
-          message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
-        )
-      })
-      let proto_descs : Map[String, PropDescriptor] = {}
-      proto_descs["next"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      let proto = Object({
-        bag: {
-          properties: proto_props,
-          symbol_properties: proto_sym_props,
-          descriptors: proto_descs,
-          symbol_descriptors: proto_sym_descs,
-        },
-        prototype: get_iterator_proto(well_known_symbols),
-        callable: None,
-        class_name: "Array Iterator",
-        extensible: true,
-      })
-      array_iterator_proto_ref.val[cache_key] = proto
+      self.runtime_iterator_prototypes.array_iterator_proto.val = Some(proto)
       proto
     }
   }
@@ -109,11 +110,10 @@ pub fn get_array_iterator_proto(well_known_symbols : WellKnownSymbols) -> Value 
 
 ///|
 /// Create an array iterator object that iterates over array elements
-pub fn make_array_iterator_value(
-  well_known_symbols : WellKnownSymbols,
+fn make_array_iterator_value_with_proto(
+  arr_iter_proto : Value,
   arr : ArrayData,
 ) -> Value {
-  let arr_iter_proto = get_array_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
 
   // Create the next method
@@ -205,13 +205,20 @@ pub fn make_array_iterator_value(
 }
 
 ///|
+pub fn RealmState::make_array_iterator_value(
+  self : RealmState,
+  arr : ArrayData,
+) -> Value {
+  make_array_iterator_value_with_proto(self.get_array_iterator_proto(), arr)
+}
+
+///|
 /// Create an array-like iterator for non-array objects with a `length` property.
 /// Uses `get_array_like_element` / `to_array_like_length` to read indexed values.
-pub fn make_array_like_iterator_value(
-  well_known_symbols : WellKnownSymbols,
+fn make_array_like_iterator_value_with_proto(
+  arr_iter_proto : Value,
   val : Value,
 ) -> Value raise Error {
-  let arr_iter_proto = get_array_iterator_proto(well_known_symbols)
   let index_ref : Ref[Int] = { val: 0 }
   let len = to_array_like_length(val)
 
@@ -302,67 +309,82 @@ pub fn make_array_like_iterator_value(
 }
 
 ///|
-/// Shared %StringIteratorPrototype% cache - lazily initialized per symbol bundle
-let string_iterator_proto_ref : Ref[Map[String, Value]] = { val: {} }
+pub fn RealmState::make_array_like_iterator_value(
+  self : RealmState,
+  val : Value,
+) -> Value raise Error {
+  make_array_like_iterator_value_with_proto(
+    self.get_array_iterator_proto(),
+    val,
+  )
+}
 
 ///|
-/// Get or create the shared %StringIteratorPrototype%
-pub fn get_string_iterator_proto(
+fn make_string_iterator_proto_value(
   well_known_symbols : WellKnownSymbols,
+  iterator_proto : Value,
 ) -> Value {
-  let cache_key = iterator_proto_cache_key(well_known_symbols)
-  match string_iterator_proto_ref.val.get(cache_key) {
+  let iterator_sym = well_known_symbols.iterator
+  let tostringtag_sym = well_known_symbols.to_string_tag
+  let proto_sym_props : Map[Int, Value] = {}
+  proto_sym_props[tostringtag_sym.id] = String_("String Iterator")
+  let proto_props : Map[String, Value] = {}
+  let proto_sym_descs : Map[Int, PropDescriptor] = {}
+  proto_sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  proto_sym_props[iterator_sym.id] = make_method_func(
+    name="[Symbol.iterator]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
+  proto_props["next"] = make_method_func(name="next", length=0, fn(
+    _this_val,
+    _args,
+  ) raise {
+    raise @errors.TypeError(
+      message="String Iterator.prototype.next requires that |this| be a String Iterator",
+    )
+  })
+  let str_proto_descs : Map[String, PropDescriptor] = {}
+  str_proto_descs["next"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  Object({
+    bag: {
+      properties: proto_props,
+      symbol_properties: proto_sym_props,
+      descriptors: str_proto_descs,
+      symbol_descriptors: proto_sym_descs,
+    },
+    prototype: iterator_proto,
+    callable: None,
+    class_name: "String Iterator",
+    extensible: true,
+  })
+}
+
+///|
+/// Get or create the realm-owned %StringIteratorPrototype%.
+pub fn RealmState::get_string_iterator_proto(self : RealmState) -> Value {
+  match self.runtime_iterator_prototypes.string_iterator_proto.val {
     Some(proto) => proto
     None => {
-      let iterator_sym = well_known_symbols.iterator
-      let tostringtag_sym = well_known_symbols.to_string_tag
-      let proto_sym_props : Map[Int, Value] = {}
-      proto_sym_props[tostringtag_sym.id] = String_("String Iterator")
-      let proto_props : Map[String, Value] = {}
-      let proto_sym_descs : Map[Int, PropDescriptor] = {}
-      proto_sym_descs[tostringtag_sym.id] = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      proto_sym_props[iterator_sym.id] = make_method_func(
-        name="[Symbol.iterator]",
-        length=0,
-        fn(this_val, _args) { this_val },
+      let proto = make_string_iterator_proto_value(
+        self.well_known_symbols,
+        self.get_iterator_proto(),
       )
-      proto_props["next"] = make_method_func(name="next", length=0, fn(
-        _this_val,
-        _args,
-      ) raise {
-        raise @errors.TypeError(
-          message="String Iterator.prototype.next requires that |this| be a String Iterator",
-        )
-      })
-      let str_proto_descs : Map[String, PropDescriptor] = {}
-      str_proto_descs["next"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      let proto = Object({
-        bag: {
-          properties: proto_props,
-          symbol_properties: proto_sym_props,
-          descriptors: str_proto_descs,
-          symbol_descriptors: proto_sym_descs,
-        },
-        prototype: get_iterator_proto(well_known_symbols),
-        callable: None,
-        class_name: "String Iterator",
-        extensible: true,
-      })
-      string_iterator_proto_ref.val[cache_key] = proto
+      self.runtime_iterator_prototypes.string_iterator_proto.val = Some(proto)
       proto
     }
   }
@@ -371,11 +393,10 @@ pub fn get_string_iterator_proto(
 ///|
 /// Create a string iterator object that iterates over string characters
 /// Handles Unicode surrogate pairs correctly per ES6 spec
-pub fn make_string_iterator_value(
-  well_known_symbols : WellKnownSymbols,
+fn make_string_iterator_value_with_proto(
+  str_iter_proto : Value,
   s : String,
 ) -> Value {
-  let str_iter_proto = get_string_iterator_proto(well_known_symbols)
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Object({
@@ -482,4 +503,12 @@ pub fn make_string_iterator_value(
     class_name: "String Iterator",
     extensible: true,
   })
+}
+
+///|
+pub fn RealmState::make_string_iterator_value(
+  self : RealmState,
+  s : String,
+) -> Value {
+  make_string_iterator_value_with_proto(self.get_string_iterator_proto(), s)
 }

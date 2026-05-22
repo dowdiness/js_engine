@@ -95,9 +95,10 @@ pub fn utf16_length(s : String) -> Int {
 pub fn get_string_method(
   s : String,
   prop : String,
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
   annex_b? : Bool = false,
 ) -> Value {
+  let well_known_symbols = realm_state.well_known_symbols
   let chars = s.to_array()
   match prop {
     "charAt" =>
@@ -861,7 +862,9 @@ pub fn get_string_method(
           Undefined => ""
           _ => arg.to_string()
         }
-        let regexp = make_regexp_object(pattern, "g")
+        let regexp = make_regexp_object_with_realm_state(
+          pattern, "g", realm_state,
+        )
         // Call [Symbol.matchAll] on the new RegExp
         let matchall_sym = well_known_symbols.match_all
         match regexp {
@@ -1681,7 +1684,7 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
 /// Populate String.prototype with all string methods
 pub fn setup_string_prototype(
   string_proto : Value,
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
   annex_b? : Bool = false,
 ) -> Unit {
   match string_proto {
@@ -1716,7 +1719,7 @@ pub fn setup_string_prototype(
         }
         // Look up the length from the underlying native method
         let meth_length = match
-          get_string_method("", mname, well_known_symbols, annex_b~) {
+          get_string_method("", mname, realm_state, annex_b~) {
           Object(fdata) =>
             match fdata.bag.properties.get("length") {
               Some(Value::Number(n)) => n.to_int()
@@ -1729,12 +1732,7 @@ pub fn setup_string_prototype(
           length=meth_length,
           fn(this_val, args) raise {
             let s = this_to_string(this_val)
-            let meth_val = get_string_method(
-              s,
-              mname,
-              well_known_symbols,
-              annex_b~,
-            )
+            let meth_val = get_string_method(s, mname, realm_state, annex_b~)
             match meth_val {
               Object(fdata) =>
                 match fdata.callable {

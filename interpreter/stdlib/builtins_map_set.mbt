@@ -8,43 +8,75 @@
 /// - Standard methods (get/set/has/delete/clear for Map, add/has/delete/clear for Set)
 
 ///|
-/// Global storage for Map prototype
-let map_prototype_ref : Ref[Value?] = { val: None }
+fn lookup_prototype_method(proto : Value, prop : String) -> Value? {
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) =>
+        match proto_data.bag.properties.get(prop) {
+          Some(value) => return Some(value)
+          None => current = proto_data.prototype
+        }
+      _ => return None
+    }
+  }
+  None
+}
 
 ///|
-/// Global storage for Set prototype
-let set_prototype_ref : Ref[Value?] = { val: None }
+fn get_map_lookup_prototype(
+  data : MapData,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  match data.prototype {
+    Null =>
+      match realm_state.map_prototype.val {
+        Some(proto) => proto
+        None => Null
+      }
+    proto => proto
+  }
+}
+
+///|
+fn get_set_lookup_prototype(
+  data : SetData,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  match data.prototype {
+    Null =>
+      match realm_state.set_prototype.val {
+        Some(proto) => proto
+        None => Null
+      }
+    proto => proto
+  }
+}
 
 ///|
 /// Get Map.prototype methods for a Map instance
-pub fn get_map_method(_data : MapData, prop : String) -> Value {
-  match map_prototype_ref.val {
-    Some(proto) =>
-      match proto {
-        Object(proto_data) =>
-          match proto_data.bag.properties.get(prop) {
-            Some(m) => m
-            None => Undefined
-          }
-        _ => Undefined
-      }
+pub fn get_map_method(
+  data : MapData,
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  match
+    lookup_prototype_method(get_map_lookup_prototype(data, realm_state), prop) {
+    Some(m) => m
     None => Undefined
   }
 }
 
 ///|
 /// Get Set.prototype methods for a Set instance
-pub fn get_set_method(_data : SetData, prop : String) -> Value {
-  match set_prototype_ref.val {
-    Some(proto) =>
-      match proto {
-        Object(proto_data) =>
-          match proto_data.bag.properties.get(prop) {
-            Some(m) => m
-            None => Undefined
-          }
-        _ => Undefined
-      }
+pub fn get_set_method(
+  data : SetData,
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  match
+    lookup_prototype_method(get_set_lookup_prototype(data, realm_state), prop) {
+    Some(m) => m
     None => Undefined
   }
 }
@@ -53,18 +85,19 @@ pub fn get_set_method(_data : SetData, prop : String) -> Value {
 /// Setup Map and Set constructors and prototypes
 pub fn setup_map_set_builtins(
   env : Environment,
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
-  setup_map_builtins(env, well_known_symbols)
-  setup_set_builtins(env, well_known_symbols)
+  setup_map_builtins(env, realm_state)
+  setup_set_builtins(env, realm_state)
 }
 
 ///|
 /// Setup Map constructor and prototype
 fn setup_map_builtins(
   env : Environment,
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
+  let well_known_symbols = realm_state.well_known_symbols
   let iterator_sym = well_known_symbols.iterator
 
   // Map.prototype methods
@@ -227,7 +260,7 @@ fn setup_map_builtins(
     _args,
   ) raise {
     match this_val {
-      Value::Map(data) => make_map_keys_iterator(well_known_symbols, data)
+      Value::Map(data) => make_map_keys_iterator(realm_state, data)
       _ =>
         raise @errors.TypeError(
           message="Method Map.prototype.keys called on incompatible receiver",
@@ -241,7 +274,7 @@ fn setup_map_builtins(
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Map(data) => make_map_values_iterator(well_known_symbols, data)
+        Value::Map(data) => make_map_values_iterator(realm_state, data)
         _ =>
           raise @errors.TypeError(
             message="Method Map.prototype.values called on incompatible receiver",
@@ -256,7 +289,7 @@ fn setup_map_builtins(
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Map(data) => make_map_entries_iterator(well_known_symbols, data)
+        Value::Map(data) => make_map_entries_iterator(realm_state, data)
         _ =>
           raise @errors.TypeError(
             message="Method Map.prototype.entries called on incompatible receiver",
@@ -389,8 +422,7 @@ fn setup_map_builtins(
     extensible: true,
   })
 
-  // Store Map prototype globally for get_map_method access
-  map_prototype_ref.val = Some(map_proto)
+  realm_state.map_prototype.val = Some(map_proto)
 
   // Add Map.prototype[Symbol.iterator] = Map.prototype.entries
   match map_proto {
@@ -423,7 +455,7 @@ fn setup_map_builtins(
         message="Constructor Map cannot be invoked without 'new'",
       )
     }
-    let new_map : Value = Value::Map(@runtime.MapData([]))
+    let new_map : Value = Value::Map(@runtime.MapData([], prototype=map_proto))
     let loc = @token.Loc::default()
 
     // If iterable provided, populate map
@@ -561,7 +593,7 @@ fn setup_map_builtins(
           for i = 0; i < group_keys.length(); i = i + 1 {
             entries.push((group_keys[i], @runtime.make_array(group_arrays[i])))
           }
-          Value::Map(@runtime.MapData(entries))
+          Value::Map(@runtime.MapData(entries, prototype=map_proto))
         },
       )
       ctor_data.bag.descriptors["groupBy"] = {
@@ -597,8 +629,9 @@ fn setup_map_builtins(
 /// Setup Set constructor and prototype
 fn setup_set_builtins(
   env : Environment,
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
+  let well_known_symbols = realm_state.well_known_symbols
   let iterator_sym = well_known_symbols.iterator
 
   // Set.prototype methods
@@ -731,7 +764,7 @@ fn setup_set_builtins(
     _args,
   ) raise {
     match this_val {
-      Value::Set(data) => make_set_values_iterator(well_known_symbols, data)
+      Value::Set(data) => make_set_values_iterator(realm_state, data)
       _ =>
         raise @errors.TypeError(
           message="Method Set.prototype.keys called on incompatible receiver",
@@ -745,7 +778,7 @@ fn setup_set_builtins(
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Set(data) => make_set_values_iterator(well_known_symbols, data)
+        Value::Set(data) => make_set_values_iterator(realm_state, data)
         _ =>
           raise @errors.TypeError(
             message="Method Set.prototype.values called on incompatible receiver",
@@ -760,7 +793,7 @@ fn setup_set_builtins(
     length=0,
     fn(this_val, _args) raise {
       match this_val {
-        Value::Set(data) => make_set_entries_iterator(well_known_symbols, data)
+        Value::Set(data) => make_set_entries_iterator(realm_state, data)
         _ =>
           raise @errors.TypeError(
             message="Method Set.prototype.entries called on incompatible receiver",
@@ -823,8 +856,7 @@ fn setup_set_builtins(
     extensible: true,
   })
 
-  // Store Set prototype globally for get_set_method access
-  set_prototype_ref.val = Some(set_proto)
+  realm_state.set_prototype.val = Some(set_proto)
 
   // Add Set.prototype[Symbol.iterator] = Set.prototype.values
   match set_proto {
@@ -857,7 +889,7 @@ fn setup_set_builtins(
         message="Constructor Set cannot be invoked without 'new'",
       )
     }
-    let new_set : Value = Value::Set(@runtime.SetData([]))
+    let new_set : Value = Value::Set(@runtime.SetData([], prototype=set_proto))
     let loc = @token.Loc::default()
 
     // If iterable provided, populate set
@@ -956,15 +988,10 @@ fn setup_set_builtins(
 }
 
 ///|
-/// Shared %MapIteratorPrototype% - lazily initialized
-let map_iterator_proto_ref : Ref[Value?] = { val: None }
-
-///|
-/// Get or create the shared %MapIteratorPrototype%
-fn get_map_iterator_proto(
-  well_known_symbols : @runtime.WellKnownSymbols,
-) -> Value {
-  match map_iterator_proto_ref.val {
+/// Get or create the realm-owned %MapIteratorPrototype%
+fn get_map_iterator_proto(realm_state : @runtime.RealmState) -> Value {
+  let well_known_symbols = realm_state.well_known_symbols
+  match realm_state.runtime_iterator_prototypes.map_iterator_proto.val {
     Some(proto) => proto
     None => {
       let iterator_sym = well_known_symbols.iterator
@@ -1012,12 +1039,14 @@ fn get_map_iterator_proto(
           },
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: @runtime.get_iterator_proto(well_known_symbols),
+        prototype: realm_state.get_iterator_proto(),
         callable: None,
         class_name: "Map Iterator",
         extensible: true,
       })
-      map_iterator_proto_ref.val = Some(proto)
+      realm_state.runtime_iterator_prototypes.map_iterator_proto.val = Some(
+        proto,
+      )
       proto
     }
   }
@@ -1026,10 +1055,10 @@ fn get_map_iterator_proto(
 ///|
 /// Create a Map keys iterator
 fn make_map_keys_iterator(
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
   map_data : MapData,
 ) -> Value {
-  let map_iter_proto = get_map_iterator_proto(well_known_symbols)
+  let map_iter_proto = get_map_iterator_proto(realm_state)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1121,10 +1150,10 @@ fn make_map_keys_iterator(
 ///|
 /// Create a Map values iterator
 fn make_map_values_iterator(
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
   map_data : MapData,
 ) -> Value {
-  let map_iter_proto = get_map_iterator_proto(well_known_symbols)
+  let map_iter_proto = get_map_iterator_proto(realm_state)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1216,10 +1245,10 @@ fn make_map_values_iterator(
 ///|
 /// Create a Map entries iterator
 fn make_map_entries_iterator(
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
   map_data : MapData,
 ) -> Value {
-  let map_iter_proto = get_map_iterator_proto(well_known_symbols)
+  let map_iter_proto = get_map_iterator_proto(realm_state)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1311,15 +1340,10 @@ fn make_map_entries_iterator(
 }
 
 ///|
-/// Shared %SetIteratorPrototype% - lazily initialized
-let set_iterator_proto_ref : Ref[Value?] = { val: None }
-
-///|
-/// Get or create the shared %SetIteratorPrototype%
-fn get_set_iterator_proto(
-  well_known_symbols : @runtime.WellKnownSymbols,
-) -> Value {
-  match set_iterator_proto_ref.val {
+/// Get or create the realm-owned %SetIteratorPrototype%
+fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
+  let well_known_symbols = realm_state.well_known_symbols
+  match realm_state.runtime_iterator_prototypes.set_iterator_proto.val {
     Some(proto) => proto
     None => {
       let iterator_sym = well_known_symbols.iterator
@@ -1365,12 +1389,14 @@ fn get_set_iterator_proto(
           },
           symbol_descriptors: proto_sym_descs,
         },
-        prototype: @runtime.get_iterator_proto(well_known_symbols),
+        prototype: realm_state.get_iterator_proto(),
         callable: None,
         class_name: "Set Iterator",
         extensible: true,
       })
-      set_iterator_proto_ref.val = Some(proto)
+      realm_state.runtime_iterator_prototypes.set_iterator_proto.val = Some(
+        proto,
+      )
       proto
     }
   }
@@ -1379,10 +1405,10 @@ fn get_set_iterator_proto(
 ///|
 /// Create a Set values iterator
 fn make_set_values_iterator(
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
   set_data : SetData,
 ) -> Value {
-  let set_iter_proto = get_set_iterator_proto(well_known_symbols)
+  let set_iter_proto = get_set_iterator_proto(realm_state)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {
@@ -1474,10 +1500,10 @@ fn make_set_values_iterator(
 ///|
 /// Create a Set entries iterator (returns [value, value] pairs)
 fn make_set_entries_iterator(
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
   set_data : SetData,
 ) -> Value {
-  let set_iter_proto = get_set_iterator_proto(well_known_symbols)
+  let set_iter_proto = get_set_iterator_proto(realm_state)
   let index_ref : Ref[Int] = { val: 0 }
   let next_method = Value::Object({
     bag: {

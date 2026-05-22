@@ -242,14 +242,18 @@ pub(all) struct SymbolData {
 /// Uses SameValueZero for key comparison (NaN === NaN, +0 === -0)
 pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
+  mut prototype : Value
   // Expando properties: stores instance fields from subclasses (class D extends Map)
   bag : PropertyBag
 }
 
 ///|
 /// Construct MapData with entries and an empty property bag (no expando properties).
-pub fn MapData::MapData(entries : Array[(Value, Value)]) -> MapData {
-  { entries, bag: PropertyBag() }
+pub fn MapData::MapData(
+  entries : Array[(Value, Value)],
+  prototype? : Value = Null,
+) -> MapData {
+  { entries, prototype, bag: PropertyBag() }
 }
 
 ///|
@@ -257,14 +261,18 @@ pub fn MapData::MapData(entries : Array[(Value, Value)]) -> MapData {
 /// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
 pub(all) struct SetData {
   values : Array[Value] // Array of unique values
+  mut prototype : Value
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
 }
 
 ///|
 /// Construct SetData with values and an empty property bag (no expando properties).
-pub fn SetData::SetData(values : Array[Value]) -> SetData {
-  { values, bag: PropertyBag() }
+pub fn SetData::SetData(
+  values : Array[Value],
+  prototype? : Value = Null,
+) -> SetData {
+  { values, prototype, bag: PropertyBag() }
 }
 
 ///|

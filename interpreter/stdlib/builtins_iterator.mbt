@@ -2,8 +2,9 @@
 /// Set up iterator protocol on Array and String prototypes
 fn setup_iterator_protocol(
   env : Environment,
-  well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit raise Error {
+  let well_known_symbols = realm_state.well_known_symbols
   let iterator_sym = well_known_symbols.iterator
 
   // Get Array constructor and add Symbol.iterator to its prototype
@@ -19,12 +20,8 @@ fn setup_iterator_protocol(
             _args,
           ) raise {
             match this_val {
-              Value::Array(arr) =>
-                @runtime.make_array_iterator_value(well_known_symbols, arr)
-              _ =>
-                @runtime.make_array_like_iterator_value(
-                  well_known_symbols, this_val,
-                )
+              Value::Array(arr) => realm_state.make_array_iterator_value(arr)
+              _ => realm_state.make_array_like_iterator_value(this_val)
             }
           })
           proto_data.bag.symbol_properties[iterator_sym.id] = values_fn
@@ -93,7 +90,7 @@ fn setup_iterator_protocol(
                   descriptors: {},
                   symbol_descriptors: {},
                 },
-                prototype: Null,
+                prototype: realm_state.get_array_iterator_proto(),
                 callable: None,
                 class_name: "Array Iterator",
                 extensible: true,
@@ -180,7 +177,7 @@ fn setup_iterator_protocol(
                   descriptors: {},
                   symbol_descriptors: {},
                 },
-                prototype: Null,
+                prototype: realm_state.get_array_iterator_proto(),
                 callable: None,
                 class_name: "Array Iterator",
                 extensible: true,
@@ -266,7 +263,7 @@ fn setup_iterator_protocol(
         length=0,
         fn(this_val, _args) {
           let s = this_val.to_string()
-          @runtime.make_string_iterator_value(well_known_symbols, s)
+          realm_state.make_string_iterator_value(s)
         },
       )
       proto_data.bag.symbol_properties[iterator_sym.id] = iter_method

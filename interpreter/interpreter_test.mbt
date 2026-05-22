@@ -6798,6 +6798,74 @@ test "harness: $262.createRealm evalScript runs in new realm" {
 }
 
 ///|
+test "iterator methods stay in caller realm after createRealm" {
+  let output = run_output(
+    (
+      #|var mapProto = Object.getPrototypeOf(new Map().entries());
+      #|var setProto = Object.getPrototypeOf(new Set().values());
+      #|var regexpProto = Object.getPrototypeOf(/a/g[Symbol.matchAll]("a"));
+      #|$262.createRealm();
+      #|console.log(Object.getPrototypeOf(new Map().entries()) === mapProto);
+      #|console.log(Object.getPrototypeOf(new Map().keys()) === mapProto);
+      #|console.log(Object.getPrototypeOf(new Set().values()) === setProto);
+      #|console.log(Object.getPrototypeOf(new Set().entries()) === setProto);
+      #|console.log(Object.getPrototypeOf(/a/g[Symbol.matchAll]("a")) === regexpProto);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true", "true"])
+}
+
+///|
+test "borrowed iterator methods use method realm after createRealm" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var arrayProto = r.evalScript("Object.getPrototypeOf([].values())");
+      #|var mapProto = r.evalScript("Object.getPrototypeOf(new Map().entries())");
+      #|var setProto = r.evalScript("Object.getPrototypeOf(new Set().values())");
+      #|var regexpProto = r.evalScript("Object.getPrototypeOf(/a/g[Symbol.matchAll]('a'))");
+      #|var foreignArrayKeys = r.evalScript("Array.prototype.keys");
+      #|var foreignArrayValues = r.evalScript("Array.prototype.values");
+      #|var foreignArrayEntries = r.evalScript("Array.prototype.entries");
+      #|var foreignMapKeys = r.evalScript("Map.prototype.keys");
+      #|var foreignMapEntries = r.evalScript("Map.prototype.entries");
+      #|var foreignSetValues = r.evalScript("Set.prototype.values");
+      #|var foreignSetEntries = r.evalScript("Set.prototype.entries");
+      #|var foreignMatchAll = r.evalScript("RegExp.prototype[Symbol.matchAll]");
+      #|console.log(Object.getPrototypeOf(foreignArrayKeys.call([])) === arrayProto);
+      #|console.log(Object.getPrototypeOf(foreignArrayValues.call([])) === arrayProto);
+      #|console.log(Object.getPrototypeOf(foreignArrayEntries.call([])) === arrayProto);
+      #|console.log(Object.getPrototypeOf(foreignMapKeys.call(new Map())) === mapProto);
+      #|console.log(Object.getPrototypeOf(foreignMapEntries.call(new Map())) === mapProto);
+      #|console.log(Object.getPrototypeOf(foreignSetValues.call(new Set())) === setProto);
+      #|console.log(Object.getPrototypeOf(foreignSetEntries.call(new Set())) === setProto);
+      #|console.log(Object.getPrototypeOf(foreignMatchAll.call(/a/g, "a")) === regexpProto);
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true",
+  ])
+}
+
+///|
+test "array iterator methods keep method realm when installed in another realm" {
+  let output = run_output(
+    (
+      #|var arrayProto = Object.getPrototypeOf([].values());
+      #|var r = $262.createRealm();
+      #|r.global.outerArrayKeys = [].keys;
+      #|r.global.outerArrayValues = [].values;
+      #|r.global.outerArrayEntries = [].entries;
+      #|r.global.outerArrayProto = arrayProto;
+      #|console.log(r.evalScript("Object.getPrototypeOf(outerArrayKeys.call([])) === outerArrayProto"));
+      #|console.log(r.evalScript("Object.getPrototypeOf(outerArrayValues.call([])) === outerArrayProto"));
+      #|console.log(r.evalScript("Object.getPrototypeOf(outerArrayEntries.call([])) === outerArrayProto"));
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
 test "harness: globalThis.$262 is accessible" {
   let output = run_output(
     (

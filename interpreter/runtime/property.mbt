@@ -64,7 +64,9 @@ pub fn Interpreter::get_property(
                   self.get_property_from_prototype(obj, proto, prop, loc)
                 None => {
                   let result = (self.stdlib_hooks.get_array_method_with_interp)(
-                    data, prop,
+                    data,
+                    prop,
+                    self.realm_state,
                   )
                   match result {
                     Undefined =>
@@ -83,7 +85,7 @@ pub fn Interpreter::get_property(
         let result = (self.stdlib_hooks.get_string_method)(
           s,
           prop,
-          self.realm_state.well_known_symbols,
+          self.realm_state,
           self.annex_b,
         )
         match result {
@@ -133,7 +135,7 @@ pub fn Interpreter::get_property(
       if prop == "size" {
         Number(data.entries.length().to_double())
       } else {
-        (self.stdlib_hooks.get_map_method)(data, prop)
+        (self.stdlib_hooks.get_map_method)(data, prop, self.realm_state)
       }
     }
     Set(data) => {
@@ -153,7 +155,7 @@ pub fn Interpreter::get_property(
       if prop == "size" {
         Number(data.values.length().to_double())
       } else {
-        (self.stdlib_hooks.get_set_method)(data, prop)
+        (self.stdlib_hooks.get_set_method)(data, prop, self.realm_state)
       }
     }
     Promise(data) =>
@@ -328,7 +330,9 @@ fn Interpreter::get_property_of_object(
               Some(v) => return v
               None => {
                 let result = (self.stdlib_hooks.get_array_method_with_interp)(
-                  arr_data, prop,
+                  arr_data,
+                  prop,
+                  self.realm_state,
                 )
                 match result {
                   Undefined => {
@@ -353,7 +357,11 @@ fn Interpreter::get_property_of_object(
             if prop == "size" {
               return Number(map_data.entries.length().to_double())
             }
-            let result = (self.stdlib_hooks.get_map_method)(map_data, prop)
+            let result = (self.stdlib_hooks.get_map_method)(
+              map_data,
+              prop,
+              self.realm_state,
+            )
             match result {
               Undefined => {
                 let ctor = self.global.get("Map") catch { _ => break }
@@ -374,7 +382,11 @@ fn Interpreter::get_property_of_object(
             if prop == "size" {
               return Number(set_data.values.length().to_double())
             }
-            let result = (self.stdlib_hooks.get_set_method)(set_data, prop)
+            let result = (self.stdlib_hooks.get_set_method)(
+              set_data,
+              prop,
+              self.realm_state,
+            )
             match result {
               Undefined => {
                 let ctor = self.global.get("Set") catch { _ => break }
@@ -708,6 +720,7 @@ pub fn Interpreter::get_computed_property(
   // Handle Symbol keys specially
   match key {
     Symbol(sym) => {
+      let realm_state = self.realm_state
       let well_known_symbols = self.realm_state.well_known_symbols
       match obj {
         Object(data) => {
@@ -774,7 +787,7 @@ pub fn Interpreter::get_computed_property(
                               )
                             _ => this_val.to_string()
                           }
-                          make_string_iterator_value(well_known_symbols, str)
+                          realm_state.make_string_iterator_value(str)
                         },
                       )
                     _ => ()
@@ -797,7 +810,7 @@ pub fn Interpreter::get_computed_property(
               _this_val,
               _args,
             ) {
-              make_string_iterator_value(well_known_symbols, s)
+              realm_state.make_string_iterator_value(s)
             })
           }
           return Undefined
@@ -854,7 +867,7 @@ pub fn Interpreter::get_computed_property(
               _this_val,
               _args,
             ) {
-              make_array_iterator_value(well_known_symbols, arr)
+              realm_state.make_array_iterator_value(arr)
             })
           }
           return Undefined
@@ -876,7 +889,11 @@ pub fn Interpreter::get_computed_property(
           // Well-known symbols
           let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
-            return (self.stdlib_hooks.get_map_method)(map_data, "entries")
+            return (self.stdlib_hooks.get_map_method)(
+              map_data,
+              "entries",
+              self.realm_state,
+            )
           }
           let tostringtag_sym = well_known_symbols.to_string_tag
           if sym.id == tostringtag_sym.id {
@@ -901,7 +918,11 @@ pub fn Interpreter::get_computed_property(
           // Well-known symbols
           let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
-            return (self.stdlib_hooks.get_set_method)(set_data, "values")
+            return (self.stdlib_hooks.get_set_method)(
+              set_data,
+              "values",
+              self.realm_state,
+            )
           }
           let tostringtag_sym = well_known_symbols.to_string_tag
           if sym.id == tostringtag_sym.id {
@@ -1009,7 +1030,9 @@ pub fn Interpreter::get_computed_property(
                   Some(v) => return v
                   None => {
                     let result = (self.stdlib_hooks.get_array_method_with_interp)(
-                      arr_data, prop,
+                      arr_data,
+                      prop,
+                      self.realm_state,
                     )
                     match result {
                       Undefined => {
@@ -1032,7 +1055,11 @@ pub fn Interpreter::get_computed_property(
                 if prop == "size" {
                   return Number(map_data.entries.length().to_double())
                 }
-                let result = (self.stdlib_hooks.get_map_method)(map_data, prop)
+                let result = (self.stdlib_hooks.get_map_method)(
+                  map_data,
+                  prop,
+                  self.realm_state,
+                )
                 match result {
                   Undefined => {
                     let ctor = self.global.get("Map") catch { _ => break }
@@ -1052,7 +1079,11 @@ pub fn Interpreter::get_computed_property(
                 if prop == "size" {
                   return Number(set_data.values.length().to_double())
                 }
-                let result = (self.stdlib_hooks.get_set_method)(set_data, prop)
+                let result = (self.stdlib_hooks.get_set_method)(
+                  set_data,
+                  prop,
+                  self.realm_state,
+                )
                 match result {
                   Undefined => {
                     let ctor = self.global.get("Set") catch { _ => break }
@@ -1373,7 +1404,9 @@ pub fn Interpreter::get_computed_property(
                     // built-in (and so non-index numeric strings keep
                     // ascending to `Object.prototype`).
                     let result = (self.stdlib_hooks.get_array_method_with_interp)(
-                      data, s,
+                      data,
+                      s,
+                      self.realm_state,
                     )
                     match result {
                       Undefined =>
@@ -1409,7 +1442,7 @@ pub fn Interpreter::get_computed_property(
           (self.stdlib_hooks.get_string_method)(
             s,
             method_name,
-            self.realm_state.well_known_symbols,
+            self.realm_state,
             self.annex_b,
           )
         _ => Undefined

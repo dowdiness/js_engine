@@ -16,8 +16,13 @@ pub fn new_interpreter(
   @runtime.Interpreter::new(
     annex_b~,
     module_loader~,
-    setup_builtins=fn(env, output, symbols, ab) {
-      @stdlib.setup_builtins(env, output, symbols, annex_b=ab)
+    setup_builtins=fn(env, output, realm_state, ab) {
+      @stdlib.setup_builtins_with_realm_state(
+        env,
+        output,
+        realm_state,
+        annex_b=ab,
+      )
     },
     setup_harness=fn(env, output, global_this) {
       @stdlib.setup_harness_builtins(env, output, global_this)
@@ -31,20 +36,24 @@ pub fn new_interpreter(
 /// into the runtime property lookup system.
 fn make_stdlib_hooks() -> @runtime.StdlibHooks {
   {
-    get_string_method: fn(s, prop, well_known_symbols, annex_b) {
-      @stdlib.get_string_method(s, prop, well_known_symbols, annex_b~)
+    get_string_method: fn(s, prop, realm_state, annex_b) {
+      @stdlib.get_string_method(s, prop, realm_state, annex_b~)
     },
     get_number_method: fn(obj, prop) { @stdlib.get_number_method(obj, prop) },
-    get_array_method_with_interp: fn(data, prop) {
-      @stdlib.get_array_method_with_interp(data, prop)
+    get_array_method_with_interp: fn(data, prop, realm_state) {
+      @stdlib.get_array_method_with_interp(data, prop, realm_state)
     },
-    get_map_method: fn(data, prop) { @stdlib.get_map_method(data, prop) },
-    get_set_method: fn(data, prop) { @stdlib.get_set_method(data, prop) },
+    get_map_method: fn(data, prop, realm_state) {
+      @stdlib.get_map_method(data, prop, realm_state)
+    },
+    get_set_method: fn(data, prop, realm_state) {
+      @stdlib.get_set_method(data, prop, realm_state)
+    },
     get_promise_method: fn(data, prop) {
       @stdlib.get_promise_method(data, prop)
     },
-    make_regexp_object: (pattern, flags) => {
-      @stdlib.make_regexp_object(pattern, flags)
+    make_regexp_object: (realm_state, pattern, flags) => {
+      @stdlib.make_regexp_object_with_realm_state(pattern, flags, realm_state)
     },
     typedarray_get_index: fn(data, idx) {
       @stdlib.typedarray_get_index(data, idx)
