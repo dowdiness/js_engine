@@ -6866,6 +6866,25 @@ test "array iterator methods keep method realm when installed in another realm" 
 }
 
 ///|
+test "borrowed Object.assign wraps primitive targets with method realm prototypes" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignAssign = r.evalScript("Object.assign");
+      #|var foreignNumberProto = r.evalScript("Number.prototype");
+      #|var foreignBooleanProto = r.evalScript("Boolean.prototype");
+      #|var foreignStringProto = r.evalScript("String.prototype");
+      #|var foreignSymbolProto = r.evalScript("Symbol.prototype");
+      #|console.log(Object.getPrototypeOf(foreignAssign(1, {})) === foreignNumberProto);
+      #|console.log(Object.getPrototypeOf(foreignAssign(true, {})) === foreignBooleanProto);
+      #|console.log(Object.getPrototypeOf(foreignAssign("x", {})) === foreignStringProto);
+      #|console.log(Object.getPrototypeOf(foreignAssign(Symbol("x"), {})) === foreignSymbolProto);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true"])
+}
+
+///|
 test "harness: globalThis.$262 is accessible" {
   let output = run_output(
     (

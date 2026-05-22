@@ -118,9 +118,13 @@ state affects object-key side tables.
 **Goal:** Continue moving one state family at a time into `RealmState`, starting
 with the narrowest prototype-ref families before storage migrations.
 
+**Progress:** Primitive-wrapper factory refs (`String`, `Number`, `Boolean`,
+and `Symbol`) now live in `RealmState`. Remaining runtime factory refs are the
+high-fanout `Object` and `Function` prototype refs.
+
 **Candidate order:**
 
-1. Runtime factory prototype refs in `interpreter/runtime/factories.mbt`.
+1. Remaining runtime factory `Object` / `Function` prototype refs.
 2. Stdlib Promise and remaining RegExp prototype refs.
 3. ArrayBuffer backing stores and detach state.
 4. WeakMap / WeakSet side tables.

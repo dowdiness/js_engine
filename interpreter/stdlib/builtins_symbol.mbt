@@ -1,5 +1,8 @@
 ///|
-fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
+fn setup_symbol_builtins(
+  env : Environment,
+  realm_state : @runtime.RealmState,
+) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -28,6 +31,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
   }
   // Well-known symbols are allocated from the SymbolState passed to public
   // setup, so standalone setup_builtins reserves the same IDs Symbol() uses.
+  let symbols = realm_state.symbols
   let well_known = symbols.well_known_symbols()
   let iterator_sym = well_known.iterator
   let to_primitive_sym = well_known.to_primitive
@@ -308,7 +312,7 @@ fn setup_symbol_builtins(env : Environment, symbols : SymbolState) -> Unit {
     }),
   )
   env.def_builtin("[[SymbolPrototype]]", symbol_proto)
-  @runtime.symbol_prototype_ref.val = Some(symbol_proto)
+  realm_state.symbol_prototype.val = Some(symbol_proto)
   // Set Symbol.prototype.constructor = Symbol
   match symbol_proto {
     Object(data) => {

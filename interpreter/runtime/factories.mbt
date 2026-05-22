@@ -218,20 +218,13 @@ pub let function_prototype_ref : Ref[Value?] = { val: None }
 pub let object_prototype_ref : Ref[Value?] = { val: None }
 
 ///|
-/// Global reference to String.prototype, set during initialization
-pub let string_prototype_ref : Ref[Value?] = { val: None }
-
-///|
-/// Global reference to Number.prototype, set during initialization
-pub let number_prototype_ref : Ref[Value?] = { val: None }
-
-///|
-/// Global reference to Boolean.prototype, set during initialization
-pub let boolean_prototype_ref : Ref[Value?] = { val: None }
-
-///|
-/// Global reference to Symbol.prototype, set during initialization
-pub let symbol_prototype_ref : Ref[Value?] = { val: None }
+/// Active realm for compatibility getters while code is executing.
+fn get_active_realm_state() -> RealmState? {
+  match current_interpreter.val {
+    Some(interp) => Some(interp.realm_state)
+    None => None
+  }
+}
 
 ///|
 pub fn get_func_proto() -> Value {
@@ -251,32 +244,32 @@ pub fn get_obj_proto() -> Value {
 
 ///|
 pub fn get_string_proto() -> Value {
-  match string_prototype_ref.val {
-    Some(p) => p
+  match get_active_realm_state() {
+    Some(realm_state) => realm_state.get_string_proto()
     None => Null
   }
 }
 
 ///|
 pub fn get_number_proto() -> Value {
-  match number_prototype_ref.val {
-    Some(p) => p
+  match get_active_realm_state() {
+    Some(realm_state) => realm_state.get_number_proto()
     None => Null
   }
 }
 
 ///|
 pub fn get_boolean_proto() -> Value {
-  match boolean_prototype_ref.val {
-    Some(p) => p
+  match get_active_realm_state() {
+    Some(realm_state) => realm_state.get_boolean_proto()
     None => Null
   }
 }
 
 ///|
 pub fn get_symbol_proto() -> Value {
-  match symbol_prototype_ref.val {
-    Some(p) => p
+  match get_active_realm_state() {
+    Some(realm_state) => realm_state.get_symbol_proto()
     None => Null
   }
 }

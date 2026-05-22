@@ -573,7 +573,7 @@ pub fn setup_builtins_with_realm_state(
 
   // Store String.prototype for ToObject wrapping
   env.def_builtin("[[StringPrototype]]", string_proto)
-  @runtime.string_prototype_ref.val = Some(string_proto)
+  realm_state.string_prototype.val = Some(string_proto)
   // Populate String.prototype with methods for .call() support
   setup_string_prototype(string_proto, realm_state, annex_b~)
   // Set String.prototype.constructor = String
@@ -594,7 +594,7 @@ pub fn setup_builtins_with_realm_state(
   }
 
   // Number constructor with static methods and prototype
-  setup_number_builtins(env)
+  setup_number_builtins(env, realm_state)
 
   // Boolean constructor with prototype
   let boolean_proto_props : Map[String, Value] = {}
@@ -679,7 +679,7 @@ pub fn setup_builtins_with_realm_state(
   })
   // Store Boolean.prototype for ToObject wrapping
   env.def_builtin("[[BooleanPrototype]]", boolean_proto)
-  @runtime.boolean_prototype_ref.val = Some(boolean_proto)
+  realm_state.boolean_prototype.val = Some(boolean_proto)
   env.def_builtin(
     "Boolean",
     Value::Object({
@@ -896,7 +896,7 @@ pub fn setup_builtins_with_realm_state(
   }
 
   // Symbol constructor and well-known symbols (must be before Math for Symbol.toStringTag)
-  setup_symbol_builtins(env, symbols)
+  setup_symbol_builtins(env, realm_state)
   // Patch Symbol.prototype.[[Prototype]] = Object.prototype
   match env.bindings.get("[[ObjectPrototype]]") {
     Some(binding) => {
