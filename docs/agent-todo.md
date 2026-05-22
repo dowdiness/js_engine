@@ -66,26 +66,65 @@ WeakSet side-table, or prototype-cache migration.
 
 ---
 
-## Stage 2c intrinsic/prototype state migration planning
+## ~~Stage 2c iterator/prototype cache slice~~ — DONE (2026-05-22, PR #133)
 
 **Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md),
 Stage 2 after the well-known symbol ownership slice.
 
-**Pressure:** The mutable-state audit still classifies prototype refs, lazy
-iterator/prototype caches, ArrayBuffer storage, WeakMap / WeakSet side tables,
-and related compatibility state. Moving them together would make failures hard
-to localize.
+**Pressure:** The mutable-state audit classified lazy iterator/prototype caches
+beside broader prototype refs, ArrayBuffer storage, WeakMap / WeakSet side
+tables, and ambient context. Moving all of them together would have made
+failures hard to localize.
 
-**Goal:** Pick the next intrinsic/prototype state family now that Stage 2b has
-removed the well-known symbol shim. Prefer a narrow family with strong existing
-tests and obvious realm ownership.
+**Goal:** Move the iterator/prototype caches used by protocol lookup into
+realm-owned state without starting the ArrayBuffer or WeakMap / WeakSet storage
+migrations.
+
+**Result:** `%IteratorPrototype%`, `%ArrayIteratorPrototype%`,
+`%StringIteratorPrototype%`, Map iterator, Set iterator, and RegExp string
+iterator prototype caches now live in `RealmState`. Map, Set, and RegExp
+prototype refs needed by iterator-producing closures are realm-owned where this
+slice needed them. Standalone `setup_builtins(env, output, symbols, ...)` now
+returns the created `RealmState`.
+
+**Review follow-up handled before merge:** Map/Set method lookup now walks the
+prototype chain, and direct `MapData` / `SetData` values with `Null` prototypes
+use the active realm for lookup without mutating and permanently re-homing the
+data.
+
+**Verification:** Keep `make architecture-state-audit` as the inventory gate.
+Added cross-realm iterator method tests and whitebox tests for iterator cache
+ownership, Map/Set direct-data lookup, and RegExp no-fallback behavior. Final
+CI passed `unit-test`, strict and non-strict Test262, `regression-check`,
+CodeRabbit, and WIP.
+
+**Risk control:** This did not combine with the remaining runtime factory
+prototype refs, Promise / RegExp prototype refs outside the iterator path,
+ArrayBuffer backing-store state, WeakMap / WeakSet side tables, or ambient
+construction/current-interpreter context.
+
+---
+
+## Stage 2c remaining intrinsic/prototype state migration planning
+
+**Source:** PR #133 landed the iterator/prototype-cache slice. The architecture
+audit still classifies the remaining runtime/stdlib module-level mutable state.
+
+**Pressure:** Remaining mutable state families have different behavior and
+failure modes. Prototype refs affect object identity and realm isolation;
+ArrayBuffer state affects storage identity and detachment; WeakMap / WeakSet
+state affects object-key side tables.
+
+**Goal:** Continue moving one state family at a time into `RealmState`, starting
+with the narrowest prototype-ref families before storage migrations.
 
 **Candidate order:**
 
-1. Prototype refs and lazy iterator/prototype caches used by protocol lookup.
-2. ArrayBuffer backing stores and detach state.
-3. WeakMap / WeakSet side tables.
-4. Construction/current-interpreter ambient context.
+1. Runtime factory prototype refs in `interpreter/runtime/factories.mbt`.
+2. Stdlib Promise and remaining RegExp prototype refs.
+3. ArrayBuffer backing stores and detach state.
+4. WeakMap / WeakSet side tables.
+5. Construction/current-interpreter ambient context.
 
 **Verification:** Keep `make architecture-state-audit` as the inventory gate.
 Add two-realm or two-interpreter tests before moving each state family, then

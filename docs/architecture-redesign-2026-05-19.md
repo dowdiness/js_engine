@@ -455,16 +455,21 @@ Completed:
 3. Move well-known symbol allocation into realm-owned state.
 4. Migrate no-argument well-known symbol lookup paths to explicit realm-owned
    access and remove the temporary compatibility path.
+5. Move the iterator/prototype caches used by protocol lookup into
+   `RealmState` in PR #133.
 
 Remaining:
 
-1. Migrate prototype refs and lazy iterator/prototype caches one family at a
-   time.
-2. Migrate ArrayBuffer and WeakMap / WeakSet stores after the intrinsic path is
-   stable.
-3. Only then reduce runtime public API surface and consider internal package
+1. Migrate the remaining runtime factory prototype refs and stdlib Promise /
+   RegExp prototype refs one family at a time.
+2. Migrate ArrayBuffer stores and detach state after the remaining prototype
+   path is stable.
+3. Migrate WeakMap / WeakSet stores after ArrayBuffer state is isolated.
+4. Replace ambient construction/current-interpreter context with explicit
+   context.
+5. Only then reduce runtime public API surface and consider internal package
    extraction.
-4. Keep closure conversion frozen as an opt-in benchmark path while any
+6. Keep closure conversion frozen as an opt-in benchmark path while any
    bytecode/IR prototype is designed around shared runtime operations.
 
 ## Evidence Checked
