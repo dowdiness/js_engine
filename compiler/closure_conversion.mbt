@@ -62,6 +62,16 @@ priv enum CompiledObjectProp {
 pub fn compile_expr_to_closure(
   expr : @ast.Expr,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
+  let compiled = compile_expr_to_closure_inner(expr)
+  fn(interp, ctx, env) raise {
+    interp.with_active_value(fn() raise { compiled(interp, ctx, env) })
+  }
+}
+
+///|
+fn compile_expr_to_closure_inner(
+  expr : @ast.Expr,
+) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   match expr {
     NumberLit(n, _, _) => fn(_, _, _) { Value::Number(n) }
     StringLit(s, _, _, _) => fn(_, _, _) { Value::String_(s) }
@@ -79,11 +89,11 @@ pub fn compile_expr_to_closure(
       compile_computed_assign(obj, key, value, loc)
     CompoundAssign(op, target, value, loc) =>
       compile_compound_assign(op, target, value, loc)
-    Grouping(inner, _) => compile_expr_to_closure(inner)
+    Grouping(inner, _) => compile_expr_to_closure_inner(inner)
     Unary(op, operand, loc) => compile_unary(op, operand, loc)
     Binary(op, left, right, loc) => {
-      let left_fn = compile_expr_to_closure(left)
-      let right_fn = compile_expr_to_closure(right)
+      let left_fn = compile_expr_to_closure_inner(left)
+      let right_fn = compile_expr_to_closure_inner(right)
       fn(interp, ctx, env) raise {
         eval_compiled_binary(interp, ctx, env, op, left_fn, right_fn, loc)
       }
@@ -100,14 +110,14 @@ pub fn compile_expr_to_closure(
     Member(Ident("console", _), prop, loc) =>
       fn(interp, _, _) raise { compiled_console_member(interp, prop, loc) }
     Member(obj, prop, loc) => {
-      let obj_fn = compile_expr_to_closure(obj)
+      let obj_fn = compile_expr_to_closure_inner(obj)
       fn(interp, ctx, env) raise {
         interp.get_property(obj_fn(interp, ctx, env), prop, loc)
       }
     }
     ComputedMember(obj, key, loc) => {
-      let obj_fn = compile_expr_to_closure(obj)
-      let key_fn = compile_expr_to_closure(key)
+      let obj_fn = compile_expr_to_closure_inner(obj)
+      let key_fn = compile_expr_to_closure_inner(key)
       fn(interp, ctx, env) raise {
         interp.get_computed_property(
           obj_fn(interp, ctx, env),
@@ -136,7 +146,9 @@ pub fn compile_program_to_closure(
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   let body = compile_body(stmts)
   fn(interp, ctx, env) raise {
-    reduce_program_signal((body.0)(interp, ctx, env))
+    interp.with_active_value(fn() raise {
+      reduce_program_signal((body.0)(interp, ctx, env))
+    })
   }
 }
 
@@ -208,7 +220,7 @@ fn compile_array_lit(
     match element {
       ArrayHole(_) => compiled.push(fn(_, _, _) { Value::Undefined })
       SpreadExpr(_, _) => return unsupported_expr("array spread")
-      _ => compiled.push(compile_expr_to_closure(element))
+      _ => compiled.push(compile_expr_to_closure_inner(element))
     }
   }
   fn(interp, ctx, env) raise {
@@ -231,7 +243,7 @@ fn compile_object_lit(
         if prop.computed {
           compiled.push(
             ComputedData(
-              compile_expr_to_closure(prop.key),
+              compile_expr_to_closure_inner(prop.key),
               compile_property_value(prop),
             ),
           )
@@ -330,10 +342,10 @@ fn compile_property_value(
     match prop.value {
       FuncExpr(name, params, body, _) =>
         compile_func_expr_with_constructable(name, params, body, false)
-      _ => compile_expr_to_closure(prop.value)
+      _ => compile_expr_to_closure_inner(prop.value)
     }
   } else {
-    compile_expr_to_closure(prop.value)
+    compile_expr_to_closure_inner(prop.value)
   }
 }
 
@@ -359,7 +371,7 @@ fn compile_assign(
   name : String,
   value_expr : @ast.Expr,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
-  let value_fn = compile_expr_to_closure(value_expr)
+  let value_fn = compile_expr_to_closure_inner(value_expr)
   fn(interp, ctx, env) raise {
     let value = value_fn(interp, ctx, env)
     env.assign(name, value) catch {
@@ -382,8 +394,8 @@ fn compile_member_assign(
   value_expr : @ast.Expr,
   loc : @token.Loc,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
-  let obj_fn = compile_expr_to_closure(obj_expr)
-  let value_fn = compile_expr_to_closure(value_expr)
+  let obj_fn = compile_expr_to_closure_inner(obj_expr)
+  let value_fn = compile_expr_to_closure_inner(value_expr)
   fn(interp, ctx, env) raise {
     let obj = obj_fn(interp, ctx, env)
     let value = value_fn(interp, ctx, env)
@@ -398,9 +410,9 @@ fn compile_computed_assign(
   value_expr : @ast.Expr,
   loc : @token.Loc,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
-  let obj_fn = compile_expr_to_closure(obj_expr)
-  let key_fn = compile_expr_to_closure(key_expr)
-  let value_fn = compile_expr_to_closure(value_expr)
+  let obj_fn = compile_expr_to_closure_inner(obj_expr)
+  let key_fn = compile_expr_to_closure_inner(key_expr)
+  let value_fn = compile_expr_to_closure_inner(value_expr)
   fn(interp, ctx, env) raise {
     let obj = obj_fn(interp, ctx, env)
     let key = key_fn(interp, ctx, env)
@@ -435,21 +447,21 @@ fn compile_unary(
             }
           }
         _ => {
-          let operand_fn = compile_expr_to_closure(operand)
+          let operand_fn = compile_expr_to_closure_inner(operand)
           fn(interp, ctx, env) raise {
             Value::String_(@runtime.type_of(operand_fn(interp, ctx, env)))
           }
         }
       }
     Void => {
-      let operand_fn = compile_expr_to_closure(operand)
+      let operand_fn = compile_expr_to_closure_inner(operand)
       fn(interp, ctx, env) raise {
         let _ = operand_fn(interp, ctx, env)
         Value::Undefined
       }
     }
     Neg | Pos | Not | BitNot => {
-      let operand_fn = compile_expr_to_closure(operand)
+      let operand_fn = compile_expr_to_closure_inner(operand)
       fn(interp, ctx, env) raise {
         let value = operand_fn(interp, ctx, env)
         match op {
@@ -485,7 +497,7 @@ fn compile_compound_assign(
     _ => ()
   }
   let bin_op = compound_op_to_bin_op(op)
-  let value_fn = compile_expr_to_closure(value_expr)
+  let value_fn = compile_expr_to_closure_inner(value_expr)
   match target {
     Ident(name, _) =>
       fn(interp, ctx, env) raise {
@@ -496,7 +508,7 @@ fn compile_compound_assign(
         result
       }
     Member(obj_expr, prop, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let current = interp.get_property(obj, prop, member_loc)
@@ -507,8 +519,8 @@ fn compile_compound_assign(
       }
     }
     ComputedMember(obj_expr, key_expr, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
-      let key_fn = compile_expr_to_closure(key_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
+      let key_fn = compile_expr_to_closure_inner(key_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let key = key_fn(interp, ctx, env)
@@ -538,7 +550,7 @@ fn compile_logical_assign(
   value_expr : @ast.Expr,
   loc : @token.Loc,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
-  let value_fn = compile_expr_to_closure(value_expr)
+  let value_fn = compile_expr_to_closure_inner(value_expr)
   let should_assign = logical_assign_predicate(op)
   match target {
     Ident(name, _) =>
@@ -553,7 +565,7 @@ fn compile_logical_assign(
         }
       }
     Member(obj_expr, prop, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let current = interp.get_property(obj, prop, member_loc)
@@ -566,8 +578,8 @@ fn compile_logical_assign(
       }
     }
     ComputedMember(obj_expr, key_expr, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
-      let key_fn = compile_expr_to_closure(key_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
+      let key_fn = compile_expr_to_closure_inner(key_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let key = key_fn(interp, ctx, env)
@@ -649,9 +661,9 @@ fn compile_ternary(
   then_expr : @ast.Expr,
   else_expr : @ast.Expr,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
-  let cond_fn = compile_expr_to_closure(cond)
-  let then_fn = compile_expr_to_closure(then_expr)
-  let else_fn = compile_expr_to_closure(else_expr)
+  let cond_fn = compile_expr_to_closure_inner(cond)
+  let then_fn = compile_expr_to_closure_inner(then_expr)
+  let else_fn = compile_expr_to_closure_inner(else_expr)
   fn(interp, ctx, env) raise {
     if @runtime.is_truthy(cond_fn(interp, ctx, env)) {
       then_fn(interp, ctx, env)
@@ -666,8 +678,8 @@ fn compile_comma(
   left : @ast.Expr,
   right : @ast.Expr,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
-  let left_fn = compile_expr_to_closure(left)
-  let right_fn = compile_expr_to_closure(right)
+  let left_fn = compile_expr_to_closure_inner(left)
+  let right_fn = compile_expr_to_closure_inner(right)
   fn(interp, ctx, env) raise {
     let _ = left_fn(interp, ctx, env)
     right_fn(interp, ctx, env)
@@ -698,7 +710,7 @@ fn compile_update(
         }
       }
     Member(obj_expr, prop, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let old = interp.get_property(obj, prop, member_loc)
@@ -722,8 +734,8 @@ fn compile_update(
       }
     }
     ComputedMember(obj_expr, key_expr, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
-      let key_fn = compile_expr_to_closure(key_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
+      let key_fn = compile_expr_to_closure_inner(key_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let key = key_fn(interp, ctx, env)
@@ -767,7 +779,7 @@ fn compile_call(
         interp.call_value(callee_value, Value::Undefined, values, loc)
       }
     Member(obj_expr, prop, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let callee_value = interp.get_property(obj, prop, member_loc)
@@ -776,8 +788,8 @@ fn compile_call(
       }
     }
     ComputedMember(obj_expr, key_expr, member_loc) => {
-      let obj_fn = compile_expr_to_closure(obj_expr)
-      let key_fn = compile_expr_to_closure(key_expr)
+      let obj_fn = compile_expr_to_closure_inner(obj_expr)
+      let key_fn = compile_expr_to_closure_inner(key_expr)
       fn(interp, ctx, env) raise {
         let obj = obj_fn(interp, ctx, env)
         let key = key_fn(interp, ctx, env)
@@ -792,7 +804,7 @@ fn compile_call(
           eval_compiled_direct_eval(interp, ctx, env, compiled_args, loc)
         }
       } else {
-        let callee_fn = compile_expr_to_closure(callee)
+        let callee_fn = compile_expr_to_closure_inner(callee)
         fn(interp, ctx, env) raise {
           let callee_value = callee_fn(interp, ctx, env)
           let values = eval_compiled_args(interp, ctx, env, compiled_args)
@@ -826,7 +838,7 @@ fn compile_new(
   args : Array[@ast.Expr],
   loc : @token.Loc,
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
-  let callee_fn = compile_expr_to_closure(callee)
+  let callee_fn = compile_expr_to_closure_inner(callee)
   let compiled_args = compile_args(args)
   fn(interp, ctx, env) raise {
     let ctor = callee_fn(interp, ctx, env)
@@ -945,8 +957,8 @@ fn compile_args(args : Array[@ast.Expr]) -> Array[CompiledArg] {
   for arg in args {
     match arg {
       SpreadExpr(inner, loc) =>
-        compiled.push(Spread(compile_expr_to_closure(inner), loc))
-      _ => compiled.push(Plain(compile_expr_to_closure(arg)))
+        compiled.push(Spread(compile_expr_to_closure_inner(inner), loc))
+      _ => compiled.push(Plain(compile_expr_to_closure_inner(arg)))
     }
   }
   compiled
@@ -978,12 +990,12 @@ fn compile_stmt(
 ) -> (Interpreter, ExecContext, Environment) -> Signal raise Error {
   match stmt {
     ExprStmt(expr, _) => {
-      let expr_fn = compile_expr_to_closure(expr)
+      let expr_fn = compile_expr_to_closure_inner(expr)
       fn(interp, ctx, env) raise { Signal::Normal(expr_fn(interp, ctx, env)) }
     }
     ReturnStmt(expr, _) => {
       let value_fn = match expr {
-        Some(e) => compile_expr_to_closure(e)
+        Some(e) => compile_expr_to_closure_inner(e)
         None => fn(_, _, _) { Value::Undefined }
       }
       fn(interp, ctx, env) raise {
@@ -992,7 +1004,7 @@ fn compile_stmt(
     }
     VarDecl(kind, name, init, _) => {
       let init_fn = match init {
-        Some(expr) => compile_expr_to_closure(expr)
+        Some(expr) => compile_expr_to_closure_inner(expr)
         None => fn(_, _, _) { Value::Undefined }
       }
       fn(interp, ctx, env) raise {
@@ -1020,7 +1032,7 @@ fn compile_stmt(
       }
     }
     IfStmt(cond, then_branch, else_branch, _) => {
-      let cond_fn = compile_expr_to_closure(cond)
+      let cond_fn = compile_expr_to_closure_inner(cond)
       let then_fn = compile_stmt(then_branch)
       let else_fn = match else_branch {
         Some(stmt) => Some(compile_stmt(stmt))
@@ -1038,7 +1050,7 @@ fn compile_stmt(
       }
     }
     WhileStmt(cond, body, _) => {
-      let cond_fn = compile_expr_to_closure(cond)
+      let cond_fn = compile_expr_to_closure_inner(cond)
       let body_fn = compile_stmt(body)
       fn(interp, ctx, env) raise {
         let mut completion = Value::Undefined
@@ -1066,7 +1078,7 @@ fn compile_stmt(
     }
     DoWhileStmt(body, cond, _) => {
       let body_fn = compile_stmt(body)
-      let cond_fn = compile_expr_to_closure(cond)
+      let cond_fn = compile_expr_to_closure_inner(cond)
       fn(interp, ctx, env) raise {
         let mut completion = Value::Undefined
         while true {
@@ -1093,7 +1105,7 @@ fn compile_stmt(
     ContinueStmt(label, _) =>
       fn(_, _, _) { Signal::ContinueSignal(None, label) }
     ThrowStmt(expr, _) => {
-      let expr_fn = compile_expr_to_closure(expr)
+      let expr_fn = compile_expr_to_closure_inner(expr)
       fn(interp, ctx, env) raise {
         let value = expr_fn(interp, ctx, env)
         @runtime.raise_js_exception(value)
@@ -1141,11 +1153,11 @@ fn compile_stmt(
         None => None
       }
       let cond_fn = match cond {
-        Some(expr) => Some(compile_expr_to_closure(expr))
+        Some(expr) => Some(compile_expr_to_closure_inner(expr))
         None => None
       }
       let update_fn = match update {
-        Some(expr) => Some(compile_expr_to_closure(expr))
+        Some(expr) => Some(compile_expr_to_closure_inner(expr))
         None => None
       }
       let body_fn = compile_stmt(body)
@@ -1260,40 +1272,42 @@ fn make_compiled_func(
   func_props["name"] = Value::String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
-  let func_obj = Value::Object({
-    bag: {
-      properties: func_props,
-      symbol_properties: {},
-      descriptors: func_descs,
-      symbol_descriptors: {},
-    },
-    prototype: @runtime.get_func_proto(),
-    callable: Some(
-      Callable::InterpreterCallable(func_name, fn(
-        interp,
-        this_val,
-        args,
-      ) raise {
-        if constructable && @runtime.is_constructing.val {
-          let new_obj = make_compiled_constructor_instance(proto)
-          let result = call_compiled_func(
-            interp, new_obj, args, params, closure, strict, body,
-          )
-          if is_constructor_return_object(result) {
-            result
+  let func_obj = @runtime.stamp_function_realm(
+    Value::Object({
+      bag: {
+        properties: func_props,
+        symbol_properties: {},
+        descriptors: func_descs,
+        symbol_descriptors: {},
+      },
+      prototype: @runtime.get_func_proto(),
+      callable: Some(
+        Callable::InterpreterCallable(func_name, fn(
+          interp,
+          this_val,
+          args,
+        ) raise {
+          if constructable && @runtime.is_constructing.val {
+            let new_obj = make_compiled_constructor_instance(proto)
+            let result = call_compiled_func(
+              interp, new_obj, args, params, closure, strict, body,
+            )
+            if is_constructor_return_object(result) {
+              result
+            } else {
+              new_obj
+            }
           } else {
-            new_obj
+            call_compiled_func(
+              interp, this_val, args, params, closure, strict, body,
+            )
           }
-        } else {
-          call_compiled_func(
-            interp, this_val, args, params, closure, strict, body,
-          )
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-  })
+        }),
+      ),
+      class_name: "Function",
+      extensible: true,
+    }),
+  )
   if constructable {
     match proto {
       Value::Object(proto_data) => {
@@ -1664,21 +1678,23 @@ fn ordinary_compiled_instanceof(
 ///|
 fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
   let nf_desc = non_writable_function_descriptor()
-  Value::Object({
-    bag: {
-      properties: {
-        "name": Value::String_(""),
-        "length": Value::Number(length.to_double()),
+  @runtime.stamp_function_realm(
+    Value::Object({
+      bag: {
+        properties: {
+          "name": Value::String_(""),
+          "length": Value::Number(length.to_double()),
+        },
+        symbol_properties: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
+        symbol_descriptors: {},
       },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: @runtime.get_func_proto(),
-    callable: Some(Callable::ArrowFuncExt(data)),
-    class_name: "Function",
-    extensible: true,
-  })
+      prototype: @runtime.get_func_proto(),
+      callable: Some(Callable::ArrowFuncExt(data)),
+      class_name: "Function",
+      extensible: true,
+    }),
+  )
 }
 
 ///|

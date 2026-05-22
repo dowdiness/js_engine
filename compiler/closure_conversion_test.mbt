@@ -182,6 +182,79 @@ test "closure conversion captures function expression environment" {
 }
 
 ///|
+test "closure conversion direct function expressions use provided interpreter prototypes" {
+  let interp = @interpreter.new_interpreter()
+  let fn_value = run_expr("(function() {})", interp, interp.global)
+  let function_proto = interp.global.get("[[FunctionPrototype]]")
+  let object_proto = interp.global.get("[[ObjectPrototype]]")
+  match fn_value {
+    Object(data) => {
+      expect_true(
+        @runtime.strict_equal(data.prototype, function_proto),
+        "compiled function [[Prototype]]",
+      )
+      match data.bag.properties.get("prototype") {
+        Some(Object(proto_data)) =>
+          expect_true(
+            @runtime.strict_equal(proto_data.prototype, object_proto),
+            "compiled function prototype object [[Prototype]]",
+          )
+        _ => fail("compiled function missing prototype object")
+      }
+    }
+    _ => fail("compiled function expression did not produce function object")
+  }
+}
+
+///|
+test "closure conversion preserves callee realm for foreign compiled functions" {
+  let foreign_interp = @interpreter.new_interpreter()
+  let prog = @parser.parse("function outer() { return function inner() {}; }")
+  let compiled = compile_script_to_closure(prog.stmts)
+  let _ = compiled(foreign_interp)
+  let outer = foreign_interp.global.get("outer")
+  let local_interp = @interpreter.new_interpreter()
+  let inner = local_interp.call_value(
+    outer,
+    Value::Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  let foreign_function_proto = foreign_interp.global.get(
+    "[[FunctionPrototype]]",
+  )
+  let foreign_object_proto = foreign_interp.global.get("[[ObjectPrototype]]")
+  let local_function_proto = local_interp.global.get("[[FunctionPrototype]]")
+  let local_object_proto = local_interp.global.get("[[ObjectPrototype]]")
+  match inner {
+    Object(data) => {
+      expect_true(
+        @runtime.strict_equal(data.prototype, foreign_function_proto),
+        "foreign compiled function [[Prototype]]",
+      )
+      expect_true(
+        !@runtime.strict_equal(data.prototype, local_function_proto),
+        "foreign compiled function avoids caller [[Prototype]]",
+      )
+      match data.bag.properties.get("prototype") {
+        Some(Object(proto_data)) => {
+          expect_true(
+            @runtime.strict_equal(proto_data.prototype, foreign_object_proto),
+            "foreign compiled function prototype object [[Prototype]]",
+          )
+          expect_true(
+            !@runtime.strict_equal(proto_data.prototype, local_object_proto),
+            "foreign compiled function prototype object avoids caller realm",
+          )
+        }
+        _ => fail("foreign compiled function missing prototype object")
+      }
+    }
+    _ => fail("foreign compiled function did not return function object")
+  }
+}
+
+///|
 test "closure conversion executes compiled function bodies" {
   let interp = @interpreter.new_interpreter()
   let make_counter = run_expr(

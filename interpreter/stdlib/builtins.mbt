@@ -11,11 +11,130 @@ pub fn setup_builtins(
 }
 
 ///|
+fn stamp_realm_functions_in_bag(
+  bag : @runtime.PropertyBag,
+  function_proto : Value,
+  object_proto : Value,
+  depth : Int,
+) -> Unit {
+  bag.properties.each(fn(_key, value) {
+    stamp_realm_functions_in_value(value, function_proto, object_proto, depth)
+  })
+  bag.symbol_properties.each(fn(_key, value) {
+    stamp_realm_functions_in_value(value, function_proto, object_proto, depth)
+  })
+}
+
+///|
+fn stamp_realm_functions_in_value(
+  value : Value,
+  function_proto : Value,
+  object_proto : Value,
+  depth : Int,
+) -> Unit {
+  if depth == 0 {
+    return
+  }
+  let next_depth = depth - 1
+  match value {
+    Object(data) => {
+      @runtime.stamp_function_realm_with(value, function_proto, object_proto)
+      |> ignore
+      stamp_realm_functions_in_bag(
+        data.bag,
+        function_proto,
+        object_proto,
+        next_depth,
+      )
+    }
+    Array(data) =>
+      stamp_realm_functions_in_bag(
+        data.bag,
+        function_proto,
+        object_proto,
+        next_depth,
+      )
+    Map(data) =>
+      stamp_realm_functions_in_bag(
+        data.bag,
+        function_proto,
+        object_proto,
+        next_depth,
+      )
+    Set(data) =>
+      stamp_realm_functions_in_bag(
+        data.bag,
+        function_proto,
+        object_proto,
+        next_depth,
+      )
+    Promise(data) =>
+      stamp_realm_functions_in_bag(
+        data.bag,
+        function_proto,
+        object_proto,
+        next_depth,
+      )
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) =>
+          stamp_realm_functions_in_value(
+            target, function_proto, object_proto, next_depth,
+          )
+        None => ()
+      }
+    _ => ()
+  }
+}
+
+///|
+fn stamp_realm_functions_in_env(
+  env : Environment,
+  function_proto : Value,
+  object_proto : Value,
+) -> Unit {
+  env.bindings.each(fn(_name, binding) {
+    stamp_realm_functions_in_value(
+      binding.value,
+      function_proto,
+      object_proto,
+      4,
+    )
+  })
+}
+
+///|
+fn stamp_realm_functions_from_env(env : Environment) -> Unit {
+  match
+    (
+      env.bindings.get("[[FunctionPrototype]]"),
+      env.bindings.get("[[ObjectPrototype]]"),
+    ) {
+    (Some(fp), Some(op)) =>
+      stamp_realm_functions_in_env(env, fp.value, op.value)
+    _ => ()
+  }
+}
+
+///|
 pub fn setup_builtins_with_realm_state(
   env : Environment,
   output : Array[String],
   realm_state : @runtime.RealmState,
   annex_b? : Bool = false,
+) -> Unit {
+  env.realm_state = Some(realm_state)
+  @runtime.with_active_realm_state_unit(realm_state, fn() {
+    setup_builtins_with_realm_state_active(env, output, realm_state, annex_b)
+  })
+}
+
+///|
+fn setup_builtins_with_realm_state_active(
+  env : Environment,
+  output : Array[String],
+  realm_state : @runtime.RealmState,
+  annex_b : Bool,
 ) -> Unit {
   let _ = output
   let symbols = realm_state.symbols
@@ -751,7 +870,7 @@ pub fn setup_builtins_with_realm_state(
   }
 
   // Function constructor with prototype
-  setup_function_builtins(env)
+  setup_function_builtins(env, realm_state)
 
   // Error constructors
   let error_proto = register_error_ctor(env, "Error", @runtime.get_obj_proto())
@@ -1782,6 +1901,7 @@ pub fn setup_builtins_with_realm_state(
       }
     None => ()
   }
+  stamp_realm_functions_from_env(env)
 }
 
 ///|
@@ -2129,62 +2249,66 @@ fn js_unescape(s : String) -> String {
 /// always executes in ri's global scope, not the caller's realm.
 /// Recursive createRealm calls go through ri.stdlib_hooks.create_realm()
 /// so all nested realms are also fully wired.
-fn make_realm_dollar262(ri : Interpreter) -> Value {
-  let realm_props : Map[String, Value] = {}
-  realm_props["global"] = ri.global_this
-  realm_props["gc"] = @runtime.make_native_func(name="gc", fn(_a) { Undefined })
-  realm_props["evalScript"] = @runtime.make_native_func(
-    name="evalScript",
-    length=1,
-    fn(es_args) raise {
-      let code = if es_args.length() > 0 {
-        match es_args[0] {
-          Value::String_(s) => s
-          _ => es_args[0].to_string()
+fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
+  ri.with_active_value(fn() {
+    let realm_props : Map[String, Value] = {}
+    realm_props["global"] = ri.global_this
+    realm_props["gc"] = @runtime.make_native_func(name="gc", fn(_a) {
+      Undefined
+    })
+    realm_props["evalScript"] = @runtime.make_native_func(
+      name="evalScript",
+      length=1,
+      fn(es_args) raise {
+        let code = if es_args.length() > 0 {
+          match es_args[0] {
+            Value::String_(s) => s
+            _ => es_args[0].to_string()
+          }
+        } else {
+          ""
         }
-      } else {
-        ""
-      }
-      let prog = @parser.parse(code)
-      ri.run(prog.stmts)
-    },
-  )
-  realm_props["createRealm"] = @runtime.make_native_func(name="createRealm", _a => {
-    let inner = (ri.stdlib_hooks.create_realm)()
-    make_realm_dollar262(inner)
-  })
-  realm_props["detachArrayBuffer"] = @runtime.make_native_func(
-    name="detachArrayBuffer",
-    length=1,
-    fn(a) raise {
-      if a.length() == 0 {
-        raise @errors.TypeError(
-          message="$262.detachArrayBuffer requires an ArrayBuffer argument",
-        )
-      }
-      match get_buffer_id(a[0]) {
-        Some(id) => {
-          detach_arraybuffer(id)
-          Undefined
-        }
-        None =>
+        let prog = @parser.parse(code)
+        ri.run(prog.stmts)
+      },
+    )
+    realm_props["createRealm"] = @runtime.make_native_func(name="createRealm", _a => {
+      let inner = (ri.stdlib_hooks.create_realm)()
+      make_realm_dollar262(inner)
+    })
+    realm_props["detachArrayBuffer"] = @runtime.make_native_func(
+      name="detachArrayBuffer",
+      length=1,
+      fn(a) raise {
+        if a.length() == 0 {
           raise @errors.TypeError(
             message="$262.detachArrayBuffer requires an ArrayBuffer argument",
           )
-      }
-    },
-  )
-  Value::Object({
-    bag: {
-      properties: realm_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-    },
-    prototype: Null,
-    callable: None,
-    class_name: "Object",
-    extensible: true,
+        }
+        match get_buffer_id(a[0]) {
+          Some(id) => {
+            detach_arraybuffer(id)
+            Undefined
+          }
+          None =>
+            raise @errors.TypeError(
+              message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+            )
+        }
+      },
+    )
+    Value::Object({
+      bag: {
+        properties: realm_props,
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
+      prototype: Null,
+      callable: None,
+      class_name: "Object",
+      extensible: true,
+    })
   })
 }
 
@@ -2330,4 +2454,5 @@ pub fn setup_harness_builtins(
     }
     _ => ()
   }
+  stamp_realm_functions_from_env(env)
 }

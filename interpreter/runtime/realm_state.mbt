@@ -31,6 +31,10 @@ pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
+  active_function_prototype_override : Ref[Value?]
+  active_object_prototype_override : Ref[Value?]
+  object_prototype : Ref[Value?]
+  function_prototype : Ref[Value?]
   string_prototype : Ref[Value?]
   number_prototype : Ref[Value?]
   boolean_prototype : Ref[Value?]
@@ -53,6 +57,10 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     symbols,
     well_known_symbols: symbols.well_known_symbols(),
     runtime_iterator_prototypes: RuntimeIteratorPrototypeCaches(),
+    active_function_prototype_override: { val: None },
+    active_object_prototype_override: { val: None },
+    object_prototype: { val: None },
+    function_prototype: { val: None },
     string_prototype: { val: None },
     number_prototype: { val: None },
     boolean_prototype: { val: None },
@@ -60,6 +68,22 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     map_prototype: { val: None },
     set_prototype: { val: None },
     regexp_prototype: { val: None },
+  }
+}
+
+///|
+pub fn RealmState::get_obj_proto(self : RealmState) -> Value {
+  match self.object_prototype.val {
+    Some(proto) => proto
+    None => Null
+  }
+}
+
+///|
+pub fn RealmState::get_func_proto(self : RealmState) -> Value {
+  match self.function_prototype.val {
+    Some(proto) => proto
+    None => Null
   }
 }
 

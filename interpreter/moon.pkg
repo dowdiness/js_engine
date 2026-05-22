@@ -7,4 +7,5 @@ import {
 import {
   "dowdiness/js_engine/errors",
   "dowdiness/js_engine/parser",
+  "dowdiness/js_engine/token",
 } for "test"

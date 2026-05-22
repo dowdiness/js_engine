@@ -139,78 +139,8 @@ pub fn Interpreter::new(
     extensible: true,
   })
   let realm_state = RealmState()
+  global.realm_state = Some(realm_state)
   let symbols = realm_state.symbols
-  setup_builtins(global, output, realm_state, annex_b)
-  // Bind 'this' and 'globalThis' in global scope
-  global.def_builtin("this", global_this)
-  global.def_builtin("globalThis", global_this)
-  // Mirror global built-in functions onto the global object (globalThis.X)
-  // so that this.isFinite, this.isNaN, etc. work correctly per the ES spec
-  let global_func_names = [
-    "eval", "isFinite", "isNaN", "parseInt", "parseFloat", "encodeURIComponent",
-    "decodeURIComponent", "encodeURI", "decodeURI", "escape", "unescape", "String",
-    "Number", "Boolean", "Object", "Array", "Function", "RegExp", "Error", "TypeError",
-    "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "Date",
-    "Math", "JSON", "Symbol", "Map", "Set", "WeakMap", "WeakSet", "Promise", "Proxy",
-    "Reflect", "ArrayBuffer", "DataView", "Int8Array", "Uint8Array", "Uint8ClampedArray",
-    "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
-  ]
-  let builtin_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  match global_this {
-    Object(data) =>
-      for name in global_func_names {
-        match global.bindings.get(name) {
-          Some(binding) => {
-            data.bag.properties[name] = binding.value
-            data.bag.descriptors[name] = { ..builtin_desc }
-          }
-          None => ()
-        }
-      }
-    _ => ()
-  }
-  // Mirror global constants (undefined, NaN, Infinity) onto the global object
-  // with correct property descriptors per ES spec §19.1
-  match global_this {
-    Object(data) => {
-      data.bag.properties["undefined"] = Undefined
-      data.bag.properties["NaN"] = Number(0.0 / 0.0)
-      data.bag.properties["Infinity"] = Number(1.0 / 0.0)
-      // All three are { writable: false, enumerable: false, configurable: false }
-      let frozen_desc : PropDescriptor = {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      data.bag.descriptors["undefined"] = { ..frozen_desc }
-      data.bag.descriptors["NaN"] = { ..frozen_desc }
-      data.bag.descriptors["Infinity"] = { ..frozen_desc }
-    }
-    _ => ()
-  }
-  // Set up GeneratorFunction constructor
-  setup_generator_function_constructor(
-    global,
-    global_this,
-    well_known_symbols=realm_state.well_known_symbols,
-  )
-  // Set up AsyncFunction constructor
-  setup_async_function_constructor(
-    global,
-    well_known_symbols=realm_state.well_known_symbols,
-  )
-  // Set up test262 harness host functions (print, $262)
-  setup_harness(global, output, global_this)
   let host : HostEnv = {
     output,
     microtask_queue: [],
@@ -220,7 +150,7 @@ pub fn Interpreter::new(
     cancelled_timer_ids: {},
     module_loader,
   }
-  {
+  let interp : Interpreter = {
     host,
     global,
     global_this,
@@ -235,6 +165,85 @@ pub fn Interpreter::new(
     stdlib_hooks,
     in_nonarrow_param_default_eval: false,
   }
+  let prev_interpreter = current_interpreter.val
+  // Setup still has compatibility factory calls that consult current_interpreter.
+  // Point them at the realm being initialized, not at an outer createRealm caller.
+  current_interpreter.val = Some(interp)
+  with_cleared_active_callee_realm_unit(fn() {
+    setup_builtins(global, output, realm_state, annex_b)
+    // Bind 'this' and 'globalThis' in global scope
+    global.def_builtin("this", global_this)
+    global.def_builtin("globalThis", global_this)
+    // Mirror global built-in functions onto the global object (globalThis.X)
+    // so that this.isFinite, this.isNaN, etc. work correctly per the ES spec
+    let global_func_names = [
+      "eval", "isFinite", "isNaN", "parseInt", "parseFloat", "encodeURIComponent",
+      "decodeURIComponent", "encodeURI", "decodeURI", "escape", "unescape", "String",
+      "Number", "Boolean", "Object", "Array", "Function", "RegExp", "Error", "TypeError",
+      "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "Date",
+      "Math", "JSON", "Symbol", "Map", "Set", "WeakMap", "WeakSet", "Promise", "Proxy",
+      "Reflect", "ArrayBuffer", "DataView", "Int8Array", "Uint8Array", "Uint8ClampedArray",
+      "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+    ]
+    let builtin_desc : PropDescriptor = {
+      writable: true,
+      enumerable: false,
+      configurable: true,
+      getter: None,
+      setter: None,
+      is_accessor: false,
+    }
+    match global_this {
+      Object(data) =>
+        for name in global_func_names {
+          match global.bindings.get(name) {
+            Some(binding) => {
+              data.bag.properties[name] = binding.value
+              data.bag.descriptors[name] = { ..builtin_desc }
+            }
+            None => ()
+          }
+        }
+      _ => ()
+    }
+    // Mirror global constants (undefined, NaN, Infinity) onto the global object
+    // with correct property descriptors per ES spec §19.1
+    match global_this {
+      Object(data) => {
+        data.bag.properties["undefined"] = Undefined
+        data.bag.properties["NaN"] = Number(0.0 / 0.0)
+        data.bag.properties["Infinity"] = Number(1.0 / 0.0)
+        // All three are { writable: false, enumerable: false, configurable: false }
+        let frozen_desc : PropDescriptor = {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        }
+        data.bag.descriptors["undefined"] = { ..frozen_desc }
+        data.bag.descriptors["NaN"] = { ..frozen_desc }
+        data.bag.descriptors["Infinity"] = { ..frozen_desc }
+      }
+      _ => ()
+    }
+    // Set up GeneratorFunction constructor
+    setup_generator_function_constructor(
+      global,
+      global_this,
+      well_known_symbols=realm_state.well_known_symbols,
+    )
+    // Set up AsyncFunction constructor
+    setup_async_function_constructor(
+      global,
+      well_known_symbols=realm_state.well_known_symbols,
+    )
+    // Set up test262 harness host functions (print, $262)
+    setup_harness(global, output, global_this)
+  })
+  current_interpreter.val = prev_interpreter
+  interp
 }
 
 ///|
@@ -582,23 +591,26 @@ pub fn Interpreter::run(
   let strict = has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
   try {
-    // Static block-scoped redeclaration checks (block lexical-vs-var conflicts).
-    self.validate_block_early_errors(stmts, strict)
-    // Hoist var declarations and function declarations at global level
-    self.hoist_declarations(stmts, self.global, strict~)
-    let mut last : Value = Undefined
-    for stmt in stmts {
-      match self.exec_stmt(ctx, stmt, self.global) {
-        Normal(v) => last = v
-        ReturnSignal(_) =>
-          raise @errors.SyntaxError(
-            message="return statement outside of function",
-          )
-        sig => raise_if_break_continue(sig)
+    let result = with_cleared_active_callee_realm(fn() raise {
+      // Static block-scoped redeclaration checks (block lexical-vs-var conflicts).
+      self.validate_block_early_errors(stmts, strict)
+      // Hoist var declarations and function declarations at global level
+      self.hoist_declarations(stmts, self.global, strict~)
+      let mut last : Value = Undefined
+      for stmt in stmts {
+        match self.exec_stmt(ctx, stmt, self.global) {
+          Normal(v) => last = v
+          ReturnSignal(_) =>
+            raise @errors.SyntaxError(
+              message="return statement outside of function",
+            )
+          sig => raise_if_break_continue(sig)
+        }
       }
-    }
+      last
+    })
     current_interpreter.val = prev_interpreter
-    last
+    result
   } catch {
     e => {
       current_interpreter.val = prev_interpreter

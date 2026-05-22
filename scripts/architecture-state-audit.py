@@ -46,12 +46,6 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/runtime/conversions.mbt:current_interpreter": (
         "temporary current-interpreter fallback; replace with explicit context"
     ),
-    "interpreter/runtime/factories.mbt:function_prototype_ref": (
-        "prototype cache; move to RealmState"
-    ),
-    "interpreter/runtime/factories.mbt:object_prototype_ref": (
-        "prototype cache; move to RealmState"
-    ),
     "interpreter/runtime/symbols.mbt:is_constructing": (
         "ambient construction context; replace with explicit call/construct context"
     ),

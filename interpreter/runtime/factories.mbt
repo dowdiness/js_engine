@@ -1,8 +1,16 @@
 ///|
+const FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID = -101
+
+///|
+const FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID = -102
+
+///|
 pub fn make_func(data : FuncData) -> Value {
+  let object_proto = get_obj_proto()
+  let function_proto = get_func_proto()
   let proto = Object({
     bag: PropertyBag(),
-    prototype: get_obj_proto(),
+    prototype: object_proto,
     callable: None,
     class_name: "Object",
     extensible: true,
@@ -37,14 +45,19 @@ pub fn make_func(data : FuncData) -> Value {
   func_props["name"] = String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
+  let func_symbol_props = function_realm_symbol_props(
+    function_proto, object_proto,
+  )
   let func_obj = Object({
     bag: {
       properties: func_props,
-      symbol_properties: {},
+      symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: {},
+      symbol_descriptors: function_realm_symbol_descs(
+        function_proto, object_proto,
+      ),
     },
-    prototype: get_func_proto(),
+    prototype: function_proto,
     callable: Some(UserFunc(data)),
     class_name: "Function",
     extensible: true,
@@ -70,9 +83,11 @@ pub fn make_func(data : FuncData) -> Value {
 
 ///|
 pub fn make_func_ext(data : FuncDataExt) -> Value {
+  let object_proto = get_obj_proto()
+  let function_proto = get_func_proto()
   let proto = Object({
     bag: PropertyBag(),
-    prototype: get_obj_proto(),
+    prototype: object_proto,
     callable: None,
     class_name: "Object",
     extensible: true,
@@ -121,14 +136,19 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
   func_props["name"] = String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
+  let func_symbol_props = function_realm_symbol_props(
+    function_proto, object_proto,
+  )
   let func_obj = Object({
     bag: {
       properties: func_props,
-      symbol_properties: {},
+      symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: {},
+      symbol_descriptors: function_realm_symbol_descs(
+        function_proto, object_proto,
+      ),
     },
-    prototype: get_func_proto(),
+    prototype: function_proto,
     callable: Some(UserFuncExt(data)),
     class_name: "Function",
     extensible: true,
@@ -210,34 +230,31 @@ pub fn mark_as_method(v : Value) -> Value {
 }
 
 ///|
-/// Global reference to Function.prototype, set during initialization
-pub let function_prototype_ref : Ref[Value?] = { val: None }
-
-///|
-/// Global reference to Object.prototype, set during initialization
-pub let object_prototype_ref : Ref[Value?] = { val: None }
-
-///|
 /// Active realm for compatibility getters while code is executing.
 fn get_active_realm_state() -> RealmState? {
-  match current_interpreter.val {
-    Some(interp) => Some(interp.realm_state)
-    None => None
-  }
+  current_interpreter.val.map(fn(interp) { interp.realm_state })
 }
 
 ///|
 pub fn get_func_proto() -> Value {
-  match function_prototype_ref.val {
-    Some(p) => p
+  match get_active_realm_state() {
+    Some(realm_state) =>
+      match realm_state.active_function_prototype_override.val {
+        Some(proto) => proto
+        None => realm_state.get_func_proto()
+      }
     None => Null
   }
 }
 
 ///|
 pub fn get_obj_proto() -> Value {
-  match object_prototype_ref.val {
-    Some(p) => p
+  match get_active_realm_state() {
+    Some(realm_state) =>
+      match realm_state.active_object_prototype_override.val {
+        Some(proto) => proto
+        None => realm_state.get_obj_proto()
+      }
     None => Null
   }
 }
@@ -285,6 +302,8 @@ pub fn get_symbol_proto() -> Value {
 /// (SetFunctionLength runs before SetFunctionName) and the ordering that the
 /// pre-consolidation wrappers produced.
 fn build_func_object(name : String, length : Int, callable : Callable) -> Value {
+  let object_proto = get_obj_proto()
+  let function_proto = get_func_proto()
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -299,15 +318,350 @@ fn build_func_object(name : String, length : Int, callable : Callable) -> Value 
         "length": Number(length.to_double()),
         "name": String_(name),
       },
-      symbol_properties: {},
+      symbol_properties: function_realm_symbol_props(
+        function_proto, object_proto,
+      ),
       descriptors: { "length": nf_desc, "name": nf_desc },
-      symbol_descriptors: {},
+      symbol_descriptors: function_realm_symbol_descs(
+        function_proto, object_proto,
+      ),
     },
-    prototype: get_func_proto(),
+    prototype: function_proto,
     callable: Some(callable),
     class_name: "Function",
     extensible: true,
   })
+}
+
+///|
+fn function_realm_symbol_props(
+  function_proto : Value,
+  object_proto : Value,
+) -> Map[Int, Value] {
+  let props : Map[Int, Value] = {}
+  match usable_realm_proto(function_proto) {
+    Some(proto) => props[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = proto
+    None => ()
+  }
+  match usable_realm_proto(object_proto) {
+    Some(proto) => props[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = proto
+    None => ()
+  }
+  props
+}
+
+///|
+fn function_realm_symbol_desc() -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn function_realm_symbol_descs(
+  function_proto : Value,
+  object_proto : Value,
+) -> Map[Int, PropDescriptor] {
+  let descs : Map[Int, PropDescriptor] = {}
+  match usable_realm_proto(function_proto) {
+    Some(_) =>
+      descs[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
+    None => ()
+  }
+  match usable_realm_proto(object_proto) {
+    Some(_) =>
+      descs[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
+    None => ()
+  }
+  descs
+}
+
+///|
+fn usable_realm_proto(proto : Value) -> Value? {
+  match proto {
+    Object(_) => Some(proto)
+    _ => None
+  }
+}
+
+///|
+fn function_realm_symbol_prop(data : ObjectData, id : Int) -> Value? {
+  match data.bag.symbol_properties.get(id) {
+    Some(proto) => usable_realm_proto(proto)
+    None => None
+  }
+}
+
+///|
+pub fn stamp_function_realm(value : Value) -> Value {
+  stamp_function_realm_with(value, get_func_proto(), get_obj_proto())
+}
+
+///|
+pub fn stamp_function_realm_with(
+  value : Value,
+  function_proto : Value,
+  object_proto : Value,
+) -> Value {
+  match value {
+    Object(data) =>
+      match data.callable {
+        Some(_) => {
+          match usable_realm_proto(function_proto) {
+            Some(proto) => {
+              match data.prototype {
+                Null => data.prototype = proto
+                _ => ()
+              }
+              data.bag.symbol_properties[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = proto
+              data.bag.symbol_descriptors[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
+            }
+            None => ()
+          }
+          match usable_realm_proto(object_proto) {
+            Some(proto) => {
+              data.bag.symbol_properties[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = proto
+              data.bag.symbol_descriptors[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
+            }
+            None => ()
+          }
+        }
+        None => ()
+      }
+    _ => ()
+  }
+  value
+}
+
+///|
+fn stamp_function_realm_if_unstamped_with(
+  value : Value,
+  function_proto : Value,
+  object_proto : Value,
+) -> Value {
+  match value {
+    Object(data) =>
+      match data.callable {
+        Some(_) => {
+          match
+            (
+              function_realm_symbol_prop(
+                data,
+                FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+              ),
+              usable_realm_proto(function_proto),
+            ) {
+            (None, Some(proto)) => {
+              match data.prototype {
+                Null => data.prototype = proto
+                _ => ()
+              }
+              data.bag.symbol_properties[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = proto
+              data.bag.symbol_descriptors[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
+            }
+            _ => ()
+          }
+          match
+            (
+              function_realm_symbol_prop(
+                data,
+                FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
+              ),
+              usable_realm_proto(object_proto),
+            ) {
+            (None, Some(proto)) => {
+              data.bag.symbol_properties[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = proto
+              data.bag.symbol_descriptors[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
+            }
+            _ => ()
+          }
+        }
+        None => ()
+      }
+    _ => ()
+  }
+  value
+}
+
+///|
+fn stamp_function_realm_from_state_if_unstamped(
+  value : Value,
+  realm_state : RealmState,
+) -> Value {
+  stamp_function_realm_if_unstamped_with(
+    value,
+    realm_state.get_func_proto(),
+    realm_state.get_obj_proto(),
+  )
+}
+
+///|
+fn object_data_function_realm_protos(data : ObjectData) -> (Value?, Value?) {
+  match data.callable {
+    Some(_) =>
+      (
+        function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+        ),
+        function_realm_symbol_prop(data, FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID),
+      )
+    None => (None, None)
+  }
+}
+
+///|
+fn callee_realm_protos(callee : Value) -> (Value?, Value?) {
+  match callee {
+    Object(data) => object_data_function_realm_protos(data)
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) => callee_realm_protos(target)
+        None => (None, None)
+      }
+    _ => (None, None)
+  }
+}
+
+///|
+fn with_active_callee_realm_value(
+  callee : Value,
+  eval : () -> Value raise Error,
+) -> Value raise Error {
+  let (function_proto, object_proto) = callee_realm_protos(callee)
+  match get_active_realm_state() {
+    Some(realm_state) => {
+      let prev_function_proto = realm_state.active_function_prototype_override.val
+      let prev_object_proto = realm_state.active_object_prototype_override.val
+      match function_proto {
+        Some(proto) =>
+          realm_state.active_function_prototype_override.val = Some(proto)
+        None => realm_state.active_function_prototype_override.val = None
+      }
+      match object_proto {
+        Some(proto) =>
+          realm_state.active_object_prototype_override.val = Some(proto)
+        None => realm_state.active_object_prototype_override.val = None
+      }
+      try {
+        let result = eval()
+        realm_state.active_function_prototype_override.val = prev_function_proto
+        realm_state.active_object_prototype_override.val = prev_object_proto
+        result
+      } catch {
+        e => {
+          realm_state.active_function_prototype_override.val = prev_function_proto
+          realm_state.active_object_prototype_override.val = prev_object_proto
+          raise e
+        }
+      }
+    }
+    None => eval()
+  }
+}
+
+///|
+fn[T] with_cleared_active_callee_realm(
+  eval : () -> T raise Error,
+) -> T raise Error {
+  match get_active_realm_state() {
+    Some(realm_state) => {
+      let prev_function_proto = realm_state.active_function_prototype_override.val
+      let prev_object_proto = realm_state.active_object_prototype_override.val
+      realm_state.active_function_prototype_override.val = None
+      realm_state.active_object_prototype_override.val = None
+      try {
+        let result = eval()
+        realm_state.active_function_prototype_override.val = prev_function_proto
+        realm_state.active_object_prototype_override.val = prev_object_proto
+        result
+      } catch {
+        e => {
+          realm_state.active_function_prototype_override.val = prev_function_proto
+          realm_state.active_object_prototype_override.val = prev_object_proto
+          raise e
+        }
+      }
+    }
+    None => eval()
+  }
+}
+
+///|
+fn with_cleared_active_callee_realm_unit(eval : () -> Unit) -> Unit {
+  match get_active_realm_state() {
+    Some(realm_state) => {
+      let prev_function_proto = realm_state.active_function_prototype_override.val
+      let prev_object_proto = realm_state.active_object_prototype_override.val
+      realm_state.active_function_prototype_override.val = None
+      realm_state.active_object_prototype_override.val = None
+      eval()
+      realm_state.active_function_prototype_override.val = prev_function_proto
+      realm_state.active_object_prototype_override.val = prev_object_proto
+    }
+    None => eval()
+  }
+}
+
+///|
+fn same_realm_state(left : RealmState, right : RealmState) -> Bool {
+  physical_equal(
+    left.symbols.symbol_id_counter,
+    right.symbols.symbol_id_counter,
+  )
+}
+
+///|
+fn standalone_realm_interpreter(realm_state : RealmState) -> Interpreter {
+  let global = Environment::new()
+  global.realm_state = Some(realm_state)
+  let output : Array[String] = []
+  let host : HostEnv = {
+    output,
+    microtask_queue: [],
+    timer_queue: [],
+    timer_id_counter: { val: 1 },
+    timer_insertion_counter: { val: 0 },
+    cancelled_timer_ids: {},
+    module_loader: None,
+  }
+  {
+    host,
+    global,
+    global_this: Null,
+    annex_b: false,
+    realm_state,
+    module_registry: {},
+    module_exports: {},
+    module_export_bindings: [],
+    generator_objects: {},
+    gen_id_counter: { val: 0 },
+    symbols: realm_state.symbols,
+    stdlib_hooks: default_stdlib_hooks(),
+    in_nonarrow_param_default_eval: false,
+  }
+}
+
+///|
+pub fn with_active_realm_state_unit(
+  realm_state : RealmState,
+  eval : () -> Unit,
+) -> Unit {
+  match current_interpreter.val {
+    Some(interp) if same_realm_state(interp.realm_state, realm_state) =>
+      with_cleared_active_callee_realm_unit(fn() { eval() })
+    _ => {
+      let prev_interpreter = current_interpreter.val
+      current_interpreter.val = Some(standalone_realm_interpreter(realm_state))
+      with_cleared_active_callee_realm_unit(fn() { eval() })
+      current_interpreter.val = prev_interpreter
+    }
+  }
 }
 
 ///|

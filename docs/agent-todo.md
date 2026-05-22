@@ -118,17 +118,15 @@ state affects object-key side tables.
 **Goal:** Continue moving one state family at a time into `RealmState`, starting
 with the narrowest prototype-ref families before storage migrations.
 
-**Progress:** Primitive-wrapper factory refs (`String`, `Number`, `Boolean`,
-and `Symbol`) now live in `RealmState`. Remaining runtime factory refs are the
-high-fanout `Object` and `Function` prototype refs.
+**Progress:** Runtime factory prototype refs (`Object`, `Function`, `String`,
+`Number`, `Boolean`, and `Symbol`) now live in `RealmState`.
 
 **Candidate order:**
 
-1. Remaining runtime factory `Object` / `Function` prototype refs.
-2. Stdlib Promise and remaining RegExp prototype refs.
-3. ArrayBuffer backing stores and detach state.
-4. WeakMap / WeakSet side tables.
-5. Construction/current-interpreter ambient context.
+1. Stdlib Promise and remaining RegExp prototype refs.
+2. ArrayBuffer backing stores and detach state.
+3. WeakMap / WeakSet side tables.
+4. Construction/current-interpreter ambient context.
 
 **Verification:** Keep `make architecture-state-audit` as the inventory gate.
 Add two-realm or two-interpreter tests before moving each state family, then

@@ -244,6 +244,7 @@ fn make_is_func() -> Value {
 
 ///|
 fn make_from_entries_func() -> Value {
+  let object_proto = @runtime.get_obj_proto()
   @runtime.make_native_func(name="fromEntries", length=1, fn(args) raise {
     // Object.fromEntries() - create object from iterable of key-value pairs
     let iterable = if args.length() > 0 { args[0] } else { Undefined }
@@ -298,7 +299,7 @@ fn make_from_entries_func() -> Value {
         descriptors: {},
         symbol_descriptors: {},
       },
-      prototype: @runtime.get_obj_proto(),
+      prototype: object_proto,
       callable: None,
       class_name: "Object",
       extensible: true,

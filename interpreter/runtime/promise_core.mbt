@@ -14,28 +14,45 @@ pub fn Interpreter::enqueue_microtask(
 /// This is called after each task (script execution) completes.
 /// Implements the microtask checkpoint from WHATWG Event Loop spec.
 pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
-  // Process microtasks until queue is empty
-  // Note: new microtasks can be enqueued during execution
-  // Use index-based draining to avoid O(n²) from repeated remove(0)
-  let mut head = 0
-  while head < self.host.microtask_queue.length() {
-    let task = self.host.microtask_queue[head]
-    head = head + 1
-    // Call the callback with queued arguments
-    match task.callback {
-      Object(obj_data) =>
-        match obj_data.callable {
-          Some(_) => {
-            let loc = @token.Loc::default()
-            let _ = self.call_value(task.callback, Undefined, task.args, loc)
-          }
-          None => ()
+  let prev_interpreter = current_interpreter.val
+  current_interpreter.val = Some(self)
+  try {
+    with_cleared_active_callee_realm(fn() raise {
+      // Process microtasks until queue is empty
+      // Note: new microtasks can be enqueued during execution
+      // Use index-based draining to avoid O(n²) from repeated remove(0)
+      let mut head = 0
+      while head < self.host.microtask_queue.length() {
+        let task = self.host.microtask_queue[head]
+        head = head + 1
+        // Call the callback with queued arguments
+        match task.callback {
+          Object(obj_data) =>
+            match obj_data.callable {
+              Some(_) => {
+                let loc = @token.Loc::default()
+                let _ = self.call_value(
+                  task.callback,
+                  Undefined,
+                  task.args,
+                  loc,
+                )
+              }
+              None => ()
+            }
+          _ => ()
         }
-      _ => ()
+      }
+      // Clear processed microtasks
+      self.host.microtask_queue.clear()
+    })
+    current_interpreter.val = prev_interpreter
+  } catch {
+    e => {
+      current_interpreter.val = prev_interpreter
+      raise e
     }
   }
-  // Clear processed microtasks
-  self.host.microtask_queue.clear()
 }
 
 ///|
@@ -262,50 +279,62 @@ pub fn create_resolving_functions(
 /// For setInterval, the timer is re-enqueued after each invocation
 /// until cancelled. A safety limit prevents infinite loops.
 pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
-  // Safety limit to prevent infinite loops from setInterval
-  let max_iterations = 10000
-  let mut iterations = 0
-  while self.host.timer_queue.length() > 0 && iterations < max_iterations {
-    iterations = iterations + 1
-    // Sort timers by delay (ascending), then by insertion order (ascending)
-    self.host.timer_queue.sort_by(fn(a, b) {
-      if a.delay != b.delay {
-        a.delay - b.delay
-      } else {
-        a.insertion_order - b.insertion_order
+  let prev_interpreter = current_interpreter.val
+  current_interpreter.val = Some(self)
+  try {
+    with_cleared_active_callee_realm(fn() raise {
+      // Safety limit to prevent infinite loops from setInterval
+      let max_iterations = 10000
+      let mut iterations = 0
+      while self.host.timer_queue.length() > 0 && iterations < max_iterations {
+        iterations = iterations + 1
+        // Sort timers by delay (ascending), then by insertion order (ascending)
+        self.host.timer_queue.sort_by(fn(a, b) {
+          if a.delay != b.delay {
+            a.delay - b.delay
+          } else {
+            a.insertion_order - b.insertion_order
+          }
+        })
+        // Take the first (soonest) timer
+        let timer = self.host.timer_queue.remove(0)
+        if timer.cancelled {
+          continue
+        }
+        // Execute the timer callback
+        let loc = @token.Loc::default()
+        let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
+        // Microtask checkpoint after each task (per WHATWG event loop spec)
+        self.run_microtasks()
+        // If this is setInterval and not cancelled, re-enqueue.
+        // Check both the timer's cancelled flag and cancelled_timer_ids,
+        // because clearInterval called inside the callback can't mark the
+        // already-removed timer struct — it records in cancelled_timer_ids instead.
+        if timer.is_interval &&
+          !timer.cancelled &&
+          !self.host.cancelled_timer_ids.contains(timer.id) {
+          let order = self.host.timer_insertion_counter.val
+          self.host.timer_insertion_counter.val = order + 1
+          self.host.timer_queue.push({
+            id: timer.id,
+            callback: timer.callback,
+            args: timer.args,
+            delay: timer.delay + timer.period,
+            period: timer.period,
+            cancelled: false,
+            is_interval: true,
+            insertion_order: order,
+          })
+        }
       }
+      // Clear the cancelled set for this run
+      self.host.cancelled_timer_ids.clear()
     })
-    // Take the first (soonest) timer
-    let timer = self.host.timer_queue.remove(0)
-    if timer.cancelled {
-      continue
-    }
-    // Execute the timer callback
-    let loc = @token.Loc::default()
-    let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
-    // Microtask checkpoint after each task (per WHATWG event loop spec)
-    self.run_microtasks()
-    // If this is setInterval and not cancelled, re-enqueue.
-    // Check both the timer's cancelled flag and cancelled_timer_ids,
-    // because clearInterval called inside the callback can't mark the
-    // already-removed timer struct — it records in cancelled_timer_ids instead.
-    if timer.is_interval &&
-      !timer.cancelled &&
-      !self.host.cancelled_timer_ids.contains(timer.id) {
-      let order = self.host.timer_insertion_counter.val
-      self.host.timer_insertion_counter.val = order + 1
-      self.host.timer_queue.push({
-        id: timer.id,
-        callback: timer.callback,
-        args: timer.args,
-        delay: timer.delay + timer.period,
-        period: timer.period,
-        cancelled: false,
-        is_interval: true,
-        insertion_order: order,
-      })
+    current_interpreter.val = prev_interpreter
+  } catch {
+    e => {
+      current_interpreter.val = prev_interpreter
+      raise e
     }
   }
-  // Clear the cancelled set for this run
-  self.host.cancelled_timer_ids.clear()
 }
