@@ -21,16 +21,43 @@ fn assert_weak_object(label : String, value : Value) -> ObjectData raise Error {
 }
 
 ///|
+/// Look up the named constructor's `prototype` property from an environment.
+///
+/// This bridges the realm-state proto field to the JS-visible proto: a
+/// regression that decouples `realm_state.{weakmap,weakset}_prototype` from
+/// the constructor's `.prototype` slot would otherwise be invisible to a
+/// realm-only test.
+fn ctor_prototype_from_env(
+  env : @runtime.Environment,
+  ctor_name : String,
+) -> Value raise Error {
+  let ctor = match env.bindings.get(ctor_name) {
+    Some(binding) => binding.value
+    None => fail(ctor_name + " constructor missing from environment")
+  }
+  let ctor_data = match ctor {
+    Object(data) => data
+    _ => fail(ctor_name + " constructor is not an object")
+  }
+  match ctor_data.bag.properties.get("prototype") {
+    Some(p) => p
+    None => fail(ctor_name + ".prototype property missing from constructor")
+  }
+}
+
+///|
 test "WeakMap prototype is realm-isolated" {
   let default_realm = new_weak_realm_state()
   let shifted_realm = shifted_weak_realm_state()
+  let default_env = @runtime.Environment::new()
+  let shifted_env = @runtime.Environment::new()
   setup_weakmap_set_builtins(
-    @runtime.Environment::new(),
+    default_env,
     default_realm.well_known_symbols,
     default_realm,
   )
   setup_weakmap_set_builtins(
-    @runtime.Environment::new(),
+    shifted_env,
     shifted_realm.well_known_symbols,
     shifted_realm,
   )
@@ -57,6 +84,20 @@ test "WeakMap prototype is realm-isolated" {
     fail("WeakMap.prototype must not be shared across realms")
   }
 
+  // The realm-state field must agree with the JS-visible WeakMap.prototype
+  // slot on the constructor object. Decoupling these would let a regression
+  // silently route dispatch through one source while user code observes the
+  // other.
+  let default_ctor_proto = ctor_prototype_from_env(default_env, "WeakMap")
+  let default_ctor_proto_data = assert_weak_object(
+    "default WeakMap constructor .prototype", default_ctor_proto,
+  )
+  if !physical_equal(default_data, default_ctor_proto_data) {
+    fail(
+      "realm_state.weakmap_prototype must equal WeakMap.prototype on the constructor",
+    )
+  }
+
   // get_weakmap_method must dispatch through the supplied realm: the same
   // key must yield each realm's own get() function.
   let default_get = get_weakmap_method("get", default_realm)
@@ -80,13 +121,15 @@ test "WeakMap prototype is realm-isolated" {
 test "WeakSet prototype is realm-isolated" {
   let default_realm = new_weak_realm_state()
   let shifted_realm = shifted_weak_realm_state()
+  let default_env = @runtime.Environment::new()
+  let shifted_env = @runtime.Environment::new()
   setup_weakmap_set_builtins(
-    @runtime.Environment::new(),
+    default_env,
     default_realm.well_known_symbols,
     default_realm,
   )
   setup_weakmap_set_builtins(
-    @runtime.Environment::new(),
+    shifted_env,
     shifted_realm.well_known_symbols,
     shifted_realm,
   )
@@ -107,6 +150,17 @@ test "WeakSet prototype is realm-isolated" {
   )
   if physical_equal(default_data, shifted_data) {
     fail("WeakSet.prototype must not be shared across realms")
+  }
+
+  // Realm-state proto field must agree with the constructor's .prototype.
+  let default_ctor_proto = ctor_prototype_from_env(default_env, "WeakSet")
+  let default_ctor_proto_data = assert_weak_object(
+    "default WeakSet constructor .prototype", default_ctor_proto,
+  )
+  if !physical_equal(default_data, default_ctor_proto_data) {
+    fail(
+      "realm_state.weakset_prototype must equal WeakSet.prototype on the constructor",
+    )
   }
 
   let default_add = get_weakset_method("add", default_realm)

@@ -9,6 +9,24 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
+### Changed (breaking, `interpreter/stdlib` package consumers)
+
+- Stage 2c migration of the WeakMap/WeakSet prototype caches into `RealmState`
+  changed three public stdlib signatures:
+  - `setup_weakmap_set_builtins(env, well_known_symbols)` →
+    `setup_weakmap_set_builtins(env, well_known_symbols, realm_state)`.
+  - `get_weakmap_method(data, prop)` → `get_weakmap_method(prop, realm_state)`.
+    Dropped the previously-unused `ObjectData` receiver param; the helper is
+    a pure prototype-chain lookup against `realm_state.weakmap_prototype`
+    (not a JS `[[Get]]` implementation — does NOT consult own properties).
+  - `get_weakset_method(data, prop)` → `get_weakset_method(prop, realm_state)`,
+    same shape as `get_weakmap_method`.
+
+  In-tree, only `interpreter/stdlib/builtins.mbt` calls
+  `setup_weakmap_set_builtins`; the two helper functions had no other callers
+  before this change. Direct downstream consumers of `interpreter/stdlib`
+  must update call sites.
+
 ## [0.2.3] — 2026-05-11
 
 Conformance-focused patch release. Closes the strict-mode legacy octal /
