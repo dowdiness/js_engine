@@ -457,11 +457,12 @@ Completed:
    access and remove the temporary compatibility path.
 5. Move the iterator/prototype caches used by protocol lookup into
    `RealmState` in PR #133.
+6. Move runtime factory prototype refs into `RealmState` in PRs #134 and #135.
 
 Remaining:
 
-1. Migrate the remaining runtime factory prototype refs and stdlib Promise /
-   RegExp prototype refs one family at a time.
+1. Migrate stdlib Promise and remaining RegExp prototype refs one family at a
+   time.
 2. Migrate ArrayBuffer stores and detach state after the remaining prototype
    path is stable.
 3. Migrate WeakMap / WeakSet stores after ArrayBuffer state is isolated.

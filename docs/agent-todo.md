@@ -105,10 +105,52 @@ construction/current-interpreter context.
 
 ---
 
-## Stage 2c remaining intrinsic/prototype state migration planning
+## ~~Stage 2c runtime factory prototype refs~~ — DONE (2026-05-23, PRs #134 and #135)
 
-**Source:** PR #133 landed the iterator/prototype-cache slice. The architecture
-audit still classifies the remaining runtime/stdlib module-level mutable state.
+**Source:** PR #133 landed the iterator/prototype-cache slice, leaving runtime
+factory prototype refs as the next narrow Stage 2c family.
+
+**Pressure:** Factory helpers create observable intrinsic prototypes during
+ordinary execution, standalone stdlib setup, host extension registration,
+compiled closure execution, and cross-realm calls. Moving these refs without
+realm-aware entry wrappers can silently allocate objects/functions with the
+wrong `[[Prototype]]`.
+
+**Goal:** Move the runtime factory prototype refs into `RealmState` without
+starting Promise / RegExp prototype refs, ArrayBuffer storage, WeakMap / WeakSet
+side tables, or ambient-context cleanup.
+
+**Result:** PR #134 moved the primitive-wrapper refs (`String`, `Number`,
+`Boolean`, and `Symbol`) into `RealmState`. PR #135 moved `Object` and
+`Function` prototype refs into `RealmState`, stamped callable values with
+callee-realm metadata, and installed active-realm envelopes for public
+execution, setup, callback, and property-access entry points that still use
+compatibility factory helpers.
+
+**Review follow-up handled before merge:** The final PR #135 patch preserved
+cross-realm function creation, borrowed builtin allocation realms, standalone
+setup, host-installed functions, module execution, queued callbacks, direct
+`call_value` / `construct_value`, direct compiled closures, direct property
+access, indirect eval, `$262` realm handles, bound functions, and derived class
+constructor allocation behavior.
+
+**Verification:** Final PR #135 CI passed `unit-test`, strict and non-strict
+Test262, `regression-check`, CodeRabbit, and WIP. Local validation included
+`rtk moon check --deny-warn`, targeted runtime/interpreter JS tests, full
+JS-target tests, `rtk make architecture-state-audit`, `rtk moon info`,
+`rtk moon fmt`, and `rtk git diff --check`.
+
+**Risk control:** This did not combine with stdlib Promise / remaining RegExp
+prototype refs, ArrayBuffer backing-store state, WeakMap / WeakSet side tables,
+or replacing the ambient current-interpreter / construction context.
+
+---
+
+## Stage 2c remaining stdlib/storage state migration planning
+
+**Source:** PRs #133, #134, and #135 landed the iterator/prototype-cache and
+runtime factory prototype-ref slices. The architecture audit still classifies
+the remaining runtime/stdlib module-level mutable state.
 
 **Pressure:** Remaining mutable state families have different behavior and
 failure modes. Prototype refs affect object identity and realm isolation;
@@ -116,10 +158,11 @@ ArrayBuffer state affects storage identity and detachment; WeakMap / WeakSet
 state affects object-key side tables.
 
 **Goal:** Continue moving one state family at a time into `RealmState`, starting
-with the narrowest prototype-ref families before storage migrations.
+with the remaining stdlib prototype-ref families before storage migrations.
 
-**Progress:** Runtime factory prototype refs (`Object`, `Function`, `String`,
-`Number`, `Boolean`, and `Symbol`) now live in `RealmState`.
+**Progress:** Iterator/prototype caches and runtime factory prototype refs
+(`Object`, `Function`, `String`, `Number`, `Boolean`, and `Symbol`) now live in
+`RealmState`. The mutable-state audit now reports 15 classified bindings.
 
 **Candidate order:**
 
