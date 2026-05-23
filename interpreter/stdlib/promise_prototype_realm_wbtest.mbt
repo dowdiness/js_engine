@@ -64,7 +64,16 @@ test "promise prototype is realm-isolated" {
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
     fail(
-      "realm_state.promise_prototype must equal Promise.prototype on the constructor",
+      "realm_state.promise_prototype must equal Promise.prototype on the constructor (default realm)",
+    )
+  }
+  let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "Promise")
+  let shifted_ctor_proto_data = assert_promise_object(
+    "shifted Promise constructor .prototype", shifted_ctor_proto,
+  )
+  if !physical_equal(shifted_data, shifted_ctor_proto_data) {
+    fail(
+      "realm_state.promise_prototype must equal Promise.prototype on the constructor (shifted realm)",
     )
   }
 
