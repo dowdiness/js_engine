@@ -1161,8 +1161,8 @@ pub fn setup_object_builtins(
                 Value::Number(_) => get_ctor_proto("Number")
                 Bool(_) => get_ctor_proto("Boolean")
                 Symbol(_) => get_ctor_proto("Symbol")
-                Map(_) => get_ctor_proto("Map")
-                Set(_) => get_ctor_proto("Set")
+                Map(_) => interp.realm_state.get_map_proto()
+                Set(_) => interp.realm_state.get_set_proto()
                 Promise(_) => interp.realm_state.get_promise_proto()
                 Value::Proxy(proxy_data) =>
                   @runtime.proxy_get_prototype_of(interp, proxy_data)
