@@ -783,9 +783,10 @@ pub fn Interpreter::has_property_key(
     Object(data) => self.has_object_property(data, key)
     Array(data) => self.has_array_property(data, key)
     // Map/Set/Promise share a uniform shape: an expando bag plus a builtin
-    // prototype reachable via globalThis[ctor].prototype. Implement
-    // OrdinaryHasProperty (ES §7.3.11): own bag → proto chain → bool,
-    // with no value inspection.
+    // prototype. Implement OrdinaryHasProperty (ES §7.3.11): own bag →
+    // proto chain → bool, with no value inspection. Promise reads its
+    // prototype from RealmState directly; Map and Set still resolve via
+    // globalThis[ctor].prototype until they migrate in a follow-up slice.
     Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
     Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
     Promise(data) =>
