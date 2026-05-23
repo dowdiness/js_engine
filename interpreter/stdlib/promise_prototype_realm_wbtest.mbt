@@ -27,8 +27,10 @@ fn assert_promise_object(
 test "promise prototype is realm-isolated" {
   let default_realm = new_promise_realm_state()
   let shifted_realm = shifted_promise_realm_state()
-  setup_promise(@runtime.Environment::new(), default_realm)
-  setup_promise(@runtime.Environment::new(), shifted_realm)
+  let default_env = @runtime.Environment::new()
+  let shifted_env = @runtime.Environment::new()
+  setup_promise(default_env, default_realm)
+  setup_promise(shifted_env, shifted_realm)
 
   // Each realm must have an installed Promise prototype.
   let default_proto = match default_realm.promise_prototype.val {
@@ -50,6 +52,29 @@ test "promise prototype is realm-isolated" {
   )
   if physical_equal(default_data, shifted_data) {
     fail("Promise.prototype must not be shared across realms")
+  }
+
+  // The realm-state field must agree with the JS-visible Promise.prototype
+  // slot on the constructor object. Decoupling these would let a regression
+  // silently route dispatch through one source while user code observes the
+  // other (cache-for-X invariant; Codex finding on PR #138).
+  let default_ctor_proto = ctor_prototype_from_env(default_env, "Promise")
+  let default_ctor_proto_data = assert_promise_object(
+    "default Promise constructor .prototype", default_ctor_proto,
+  )
+  if !physical_equal(default_data, default_ctor_proto_data) {
+    fail(
+      "realm_state.promise_prototype must equal Promise.prototype on the constructor (default realm)",
+    )
+  }
+  let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "Promise")
+  let shifted_ctor_proto_data = assert_promise_object(
+    "shifted Promise constructor .prototype", shifted_ctor_proto,
+  )
+  if !physical_equal(shifted_data, shifted_ctor_proto_data) {
+    fail(
+      "realm_state.promise_prototype must equal Promise.prototype on the constructor (shifted realm)",
+    )
   }
 
   // get_promise_method must dispatch through the supplied realm: the same

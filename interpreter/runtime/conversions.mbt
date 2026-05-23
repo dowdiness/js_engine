@@ -783,12 +783,18 @@ pub fn Interpreter::has_property_key(
     Object(data) => self.has_object_property(data, key)
     Array(data) => self.has_array_property(data, key)
     // Map/Set/Promise share a uniform shape: an expando bag plus a builtin
-    // prototype reachable via globalThis[ctor].prototype. Implement
-    // OrdinaryHasProperty (ES §7.3.11): own bag → proto chain → bool,
-    // with no value inspection.
+    // prototype. Implement OrdinaryHasProperty (ES §7.3.11): own bag →
+    // proto chain → bool, with no value inspection. Promise reads its
+    // prototype from RealmState directly; Map and Set still resolve via
+    // globalThis[ctor].prototype until they migrate in a follow-up slice.
     Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
     Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
-    Promise(data) => self.has_bag_or_builtin_proto_key(data.bag, "Promise", key)
+    Promise(data) =>
+      self.has_bag_with_proto(
+        data.bag,
+        self.realm_state.get_promise_proto(),
+        key,
+      )
     _ => false
   }
 }
@@ -886,7 +892,12 @@ fn Interpreter::has_property_on_proto(
     Array(arr_data) => self.has_array_property(arr_data, key)
     Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
     Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
-    Promise(data) => self.has_bag_or_builtin_proto_key(data.bag, "Promise", key)
+    Promise(data) =>
+      self.has_bag_with_proto(
+        data.bag,
+        self.realm_state.get_promise_proto(),
+        key,
+      )
     _ => false
   }
 }
@@ -906,7 +917,7 @@ fn bag_has_key(bag : PropertyBag, key : Value) -> Bool raise Error {
 
 ///|
 /// OrdinaryHasProperty for exotic values whose prototype is stored globally
-/// (Map, Set, Promise). Checks own-bag descriptors and properties first, then
+/// (Map, Set). Checks own-bag descriptors and properties first, then
 /// walks the prototype chain starting from globalThis[ctor_name].prototype.
 fn Interpreter::has_bag_or_builtin_proto_key(
   self : Interpreter,
@@ -927,6 +938,22 @@ fn Interpreter::has_bag_or_builtin_proto_key(
     _ => return false
   }
   self.has_property_on_proto(current, key)
+}
+
+///|
+/// OrdinaryHasProperty for exotic values whose prototype is cached on
+/// RealmState. Checks own-bag descriptors and properties first, then walks
+/// the prototype chain from the caller-supplied builtin prototype value.
+fn Interpreter::has_bag_with_proto(
+  self : Interpreter,
+  bag : PropertyBag,
+  proto : Value,
+  key : Value,
+) -> Bool raise Error {
+  if bag_has_key(bag, key) {
+    return true
+  }
+  self.has_property_on_proto(proto, key)
 }
 
 ///|

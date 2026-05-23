@@ -1445,7 +1445,7 @@ pub fn instanceof_prototype_chain(
     Array(_) => get_constructor_prototype(interp.global, "Array")
     Map(_) => get_constructor_prototype(interp.global, "Map")
     Set(_) => get_constructor_prototype(interp.global, "Set")
-    Promise(_) => get_constructor_prototype(interp.global, "Promise")
+    Promise(_) => interp.realm_state.get_promise_proto()
     // Invoke the [[GetPrototypeOf]] trap so Proxy handler can intercept
     Proxy(proxy_data) => proxy_get_prototype_of(interp, proxy_data)
     // Primitive values are never instances
