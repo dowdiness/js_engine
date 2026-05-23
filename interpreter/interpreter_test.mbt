@@ -11471,14 +11471,11 @@ test "annex-b eval: try-block FunctionDeclaration ignored by lex/var conflict ch
 /// `let f` collides with a SIBLING top-level `function f` (NOT under any
 /// nested control flow), which is a real var/lex conflict.
 test "annex-b eval: top-level let f + top-level function f still throws" {
-  let display = run_error_display(
+  expect_error_display(
     (
       #|eval("let f = 1; function f() {}");
     ),
-  )
-  inspect(
-    display,
-    content="SyntaxError: Identifier 'f' has already been declared",
+    "SyntaxError: Identifier 'f' has already been declared",
   )
 }
 
@@ -11558,14 +11555,11 @@ test "annex-b eval: if-branch FuncDeclExt (default-param) ignored by conflict ch
 /// Companion to the if-branch / try-block / switch-case tests above, which
 /// assert the OPPOSITE direction (FuncDecl hidden, no collision).
 test "annex-b eval: labeled function at eval top still conflicts with sibling let" {
-  let display = run_error_display(
+  expect_error_display(
     (
       #|eval("label: function f() {}; let f = 1");
     ),
-  )
-  inspect(
-    display,
-    content="SyntaxError: Identifier 'f' has already been declared",
+    "SyntaxError: Identifier 'f' has already been declared",
   )
 }
 
