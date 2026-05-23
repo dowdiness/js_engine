@@ -25,14 +25,6 @@ let weakset_id_counter : Ref[Int] = { val: 0 }
 let weakset_storage : Map[Int, Array[Value]] = {}
 
 ///|
-/// Global storage for WeakMap prototype
-let weakmap_prototype_ref : Ref[Value?] = { val: None }
-
-///|
-/// Global storage for WeakSet prototype
-let weakset_prototype_ref : Ref[Value?] = { val: None }
-
-///|
 /// Side table for WeakMap instance IDs (non-forgeable by user code)
 let weakmap_id_table : Array[(ObjectData, Int)] = []
 
@@ -120,14 +112,17 @@ fn close_weak_collection_iterator(
 }
 
 ///|
-/// Get WeakMap.prototype method for a WeakMap instance
-pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
-  // Check own properties first
-  match data.bag.properties.get(prop) {
-    Some(v) => return v
-    None => ()
-  }
-  match weakmap_prototype_ref.val {
+/// Look up a method on WeakMap.prototype for the given realm.
+///
+/// Pure prototype-chain lookup against `realm_state.weakmap_prototype`. Does
+/// NOT consult the receiver's own properties, so callers who need full
+/// [[Get]] semantics (own-property-then-prototype) must compose this with
+/// the standard property-lookup path.
+pub fn get_weakmap_method(
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  match realm_state.weakmap_prototype.val {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
@@ -142,14 +137,17 @@ pub fn get_weakmap_method(data : ObjectData, prop : String) -> Value {
 }
 
 ///|
-/// Get WeakSet.prototype method for a WeakSet instance
-pub fn get_weakset_method(data : ObjectData, prop : String) -> Value {
-  // Check own properties first
-  match data.bag.properties.get(prop) {
-    Some(v) => return v
-    None => ()
-  }
-  match weakset_prototype_ref.val {
+/// Look up a method on WeakSet.prototype for the given realm.
+///
+/// Pure prototype-chain lookup against `realm_state.weakset_prototype`. Does
+/// NOT consult the receiver's own properties, so callers who need full
+/// [[Get]] semantics (own-property-then-prototype) must compose this with
+/// the standard property-lookup path.
+pub fn get_weakset_method(
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  match realm_state.weakset_prototype.val {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
@@ -168,9 +166,10 @@ pub fn get_weakset_method(data : ObjectData, prop : String) -> Value {
 pub fn setup_weakmap_set_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
-  setup_weakmap_builtins(env, well_known_symbols)
-  setup_weakset_builtins(env, well_known_symbols)
+  setup_weakmap_builtins(env, well_known_symbols, realm_state)
+  setup_weakset_builtins(env, well_known_symbols, realm_state)
 }
 
 ///|
@@ -178,6 +177,7 @@ pub fn setup_weakmap_set_builtins(
 fn setup_weakmap_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
   let tostringtag_sym = well_known_symbols.to_string_tag
 
@@ -525,8 +525,8 @@ fn setup_weakmap_builtins(
     extensible: true,
   })
 
-  // Store WeakMap prototype globally
-  weakmap_prototype_ref.val = Some(wm_proto)
+  // Store WeakMap prototype in the realm.
+  realm_state.weakmap_prototype.val = Some(wm_proto)
 
   // WeakMap constructor
   let wm_ctor = @runtime.make_interp_method_func(name="WeakMap", length=0, fn(
@@ -659,6 +659,7 @@ fn setup_weakmap_builtins(
 fn setup_weakset_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
   let tostringtag_sym = well_known_symbols.to_string_tag
 
@@ -815,8 +816,8 @@ fn setup_weakset_builtins(
     extensible: true,
   })
 
-  // Store WeakSet prototype globally
-  weakset_prototype_ref.val = Some(ws_proto)
+  // Store WeakSet prototype in the realm.
+  realm_state.weakset_prototype.val = Some(ws_proto)
 
   // WeakSet constructor
   let ws_ctor = @runtime.make_interp_method_func(name="WeakSet", length=0, fn(

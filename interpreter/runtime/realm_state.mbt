@@ -43,6 +43,8 @@ pub(all) struct RealmState {
   set_prototype : Ref[Value?]
   regexp_prototype : Ref[Value?]
   promise_prototype : Ref[Value?]
+  weakmap_prototype : Ref[Value?]
+  weakset_prototype : Ref[Value?]
 }
 
 ///|
@@ -70,6 +72,8 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     set_prototype: { val: None },
     regexp_prototype: { val: None },
     promise_prototype: { val: None },
+    weakmap_prototype: { val: None },
+    weakset_prototype: { val: None },
   }
 }
 
@@ -124,6 +128,22 @@ pub fn RealmState::get_symbol_proto(self : RealmState) -> Value {
 ///|
 pub fn RealmState::get_promise_proto(self : RealmState) -> Value {
   match self.promise_prototype.val {
+    Some(proto) => proto
+    None => Null
+  }
+}
+
+///|
+pub fn RealmState::get_weakmap_proto(self : RealmState) -> Value {
+  match self.weakmap_prototype.val {
+    Some(proto) => proto
+    None => Null
+  }
+}
+
+///|
+pub fn RealmState::get_weakset_proto(self : RealmState) -> Value {
+  match self.weakset_prototype.val {
     Some(proto) => proto
     None => Null
   }

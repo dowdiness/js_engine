@@ -560,6 +560,8 @@ pub(all) struct RealmState {
   set_prototype : @ref.Ref[Value?]
   regexp_prototype : @ref.Ref[Value?]
   promise_prototype : @ref.Ref[Value?]
+  weakmap_prototype : @ref.Ref[Value?]
+  weakset_prototype : @ref.Ref[Value?]
 }
 #alias(new)
 pub fn RealmState::RealmState() -> Self
@@ -574,6 +576,8 @@ pub fn RealmState::get_promise_proto(Self) -> Value
 pub fn RealmState::get_string_iterator_proto(Self) -> Value
 pub fn RealmState::get_string_proto(Self) -> Value
 pub fn RealmState::get_symbol_proto(Self) -> Value
+pub fn RealmState::get_weakmap_proto(Self) -> Value
+pub fn RealmState::get_weakset_proto(Self) -> Value
 pub fn RealmState::make_array_iterator_value(Self, ArrayData) -> Value
 pub fn RealmState::make_array_like_iterator_value(Self, Value) -> Value raise
 pub fn RealmState::make_string_iterator_value(Self, String) -> Value
