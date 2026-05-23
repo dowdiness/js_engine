@@ -1139,17 +1139,6 @@ pub fn setup_object_builtins(
             length=1,
             fn(interp, args) raise {
               let obj = if args.length() > 0 { args[0] } else { Undefined }
-              fn get_ctor_proto(name : String) -> Value {
-                let ctor = env.get(name) catch { _ => return Null }
-                match ctor {
-                  Object(ctor_data) =>
-                    match ctor_data.bag.properties.get("prototype") {
-                      Some(proto) => proto
-                      None => Null
-                    }
-                  _ => Null
-                }
-              }
               match obj {
                 Null | Undefined =>
                   raise @errors.TypeError(
@@ -1157,10 +1146,10 @@ pub fn setup_object_builtins(
                   )
                 Object(data) => data.prototype
                 Array(data) => @runtime.get_array_prototype(env, data)
-                Value::String_(_) => get_ctor_proto("String")
-                Value::Number(_) => get_ctor_proto("Number")
-                Bool(_) => get_ctor_proto("Boolean")
-                Symbol(_) => get_ctor_proto("Symbol")
+                Value::String_(_) => interp.realm_state.get_string_proto()
+                Value::Number(_) => interp.realm_state.get_number_proto()
+                Bool(_) => interp.realm_state.get_boolean_proto()
+                Symbol(_) => interp.realm_state.get_symbol_proto()
                 Map(_) => interp.realm_state.get_map_proto()
                 Set(_) => interp.realm_state.get_set_proto()
                 Promise(_) => interp.realm_state.get_promise_proto()
