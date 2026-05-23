@@ -1163,7 +1163,7 @@ pub fn setup_object_builtins(
                 Symbol(_) => get_ctor_proto("Symbol")
                 Map(_) => get_ctor_proto("Map")
                 Set(_) => get_ctor_proto("Set")
-                Promise(_) => get_ctor_proto("Promise")
+                Promise(_) => interp.realm_state.get_promise_proto()
                 Value::Proxy(proxy_data) =>
                   @runtime.proxy_get_prototype_of(interp, proxy_data)
               }

@@ -788,7 +788,12 @@ pub fn Interpreter::has_property_key(
     // with no value inspection.
     Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
     Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
-    Promise(data) => self.has_bag_or_builtin_proto_key(data.bag, "Promise", key)
+    Promise(data) =>
+      self.has_bag_with_proto(
+        data.bag,
+        self.realm_state.get_promise_proto(),
+        key,
+      )
     _ => false
   }
 }
@@ -886,7 +891,12 @@ fn Interpreter::has_property_on_proto(
     Array(arr_data) => self.has_array_property(arr_data, key)
     Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
     Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
-    Promise(data) => self.has_bag_or_builtin_proto_key(data.bag, "Promise", key)
+    Promise(data) =>
+      self.has_bag_with_proto(
+        data.bag,
+        self.realm_state.get_promise_proto(),
+        key,
+      )
     _ => false
   }
 }
@@ -906,7 +916,7 @@ fn bag_has_key(bag : PropertyBag, key : Value) -> Bool raise Error {
 
 ///|
 /// OrdinaryHasProperty for exotic values whose prototype is stored globally
-/// (Map, Set, Promise). Checks own-bag descriptors and properties first, then
+/// (Map, Set). Checks own-bag descriptors and properties first, then
 /// walks the prototype chain starting from globalThis[ctor_name].prototype.
 fn Interpreter::has_bag_or_builtin_proto_key(
   self : Interpreter,
@@ -927,6 +937,22 @@ fn Interpreter::has_bag_or_builtin_proto_key(
     _ => return false
   }
   self.has_property_on_proto(current, key)
+}
+
+///|
+/// OrdinaryHasProperty for exotic values whose prototype is cached on
+/// RealmState. Checks own-bag descriptors and properties first, then walks
+/// the prototype chain from the caller-supplied builtin prototype value.
+fn Interpreter::has_bag_with_proto(
+  self : Interpreter,
+  bag : PropertyBag,
+  proto : Value,
+  key : Value,
+) -> Bool raise Error {
+  if bag_has_key(bag, key) {
+    return true
+  }
+  self.has_property_on_proto(proto, key)
 }
 
 ///|
