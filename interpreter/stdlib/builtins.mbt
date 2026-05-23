@@ -1700,7 +1700,6 @@ fn setup_builtins_with_realm_state_active(
         class_name: "Object",
         extensible: true,
       })
-      regexp_prototype_ref.val = Some(regexp_proto)
       realm_state.regexp_prototype.val = Some(regexp_proto)
       // Set RegExp.prototype on the constructor
       match env.bindings.get("RegExp") {

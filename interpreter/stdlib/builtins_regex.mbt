@@ -2262,10 +2262,6 @@ fn process_replacement(
 }
 
 ///|
-/// Shared RegExp.prototype - set during global setup
-pub let regexp_prototype_ref : Ref[Value?] = { val: None }
-
-///|
 /// Get or create the realm-owned %RegExpStringIteratorPrototype%
 pub fn get_regexp_string_iterator_proto(
   realm_state : @runtime.RealmState,
