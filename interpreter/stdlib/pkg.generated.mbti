@@ -3,7 +3,6 @@ package "dowdiness/js_engine/interpreter/stdlib"
 
 import {
   "dowdiness/js_engine/interpreter/runtime",
-  "moonbitlang/core/ref",
 }
 
 // Values
@@ -60,8 +59,6 @@ pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
 pub fn regex_search(String, String, String, start_pos? : Int) -> RegexMatch? raise
 
 pub fn regex_search_all(String, String, String) -> Array[RegexMatch] raise
-
-pub let regexp_prototype_ref : @ref.Ref[@runtime.Value?]
 
 pub fn same_value(@runtime.Value, @runtime.Value) -> Bool
 

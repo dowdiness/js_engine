@@ -213,32 +213,14 @@ test "map and set method lookup uses active realm state without rehoming direct 
 }
 
 ///|
-test "regexp factories ignore module global prototype fallback without realm prototype" {
-  let previous_regexp_prototype = regexp_prototype_ref.val
-  let sentinel = Value::Object({
-    bag: @runtime.PropertyBag(),
-    prototype: Value::Null,
-    callable: None,
-    class_name: "RegExp.prototype sentinel",
-    extensible: true,
-  })
-  regexp_prototype_ref.val = Some(sentinel)
+test "regexp factories return null prototype without realm prototype" {
   let realm = new_realm_state()
-
-  try {
-    assert_null_prototype(
-      "realm regexp without prototype",
-      make_regexp_object_with_realm_state("a", "", realm),
-    )
-    assert_null_prototype(
-      "legacy regexp without realm",
-      make_regexp_object("a", ""),
-    )
-    regexp_prototype_ref.val = previous_regexp_prototype
-  } catch {
-    e => {
-      regexp_prototype_ref.val = previous_regexp_prototype
-      raise e
-    }
-  }
+  assert_null_prototype(
+    "realm regexp without prototype",
+    make_regexp_object_with_realm_state("a", "", realm),
+  )
+  assert_null_prototype(
+    "legacy regexp without realm",
+    make_regexp_object("a", ""),
+  )
 }
