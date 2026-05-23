@@ -295,6 +295,8 @@ pub fn Interpreter::run_module(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Map[String, Value] raise Error {
+  let prev_interpreter = current_interpreter.val
+  current_interpreter.val = Some(self)
   // Save and reset module exports for this module
   let saved_exports = self.module_exports
   let saved_bindings = self.module_export_bindings
@@ -305,35 +307,39 @@ pub fn Interpreter::run_module(
   // Modules are always strict mode per ES2022 §16.2.1
   let module_ctx : ExecContext = { strict: true, current_generator: None }
   try {
-    // Static block-scoped redeclaration checks (applies to module code too).
-    self.validate_block_early_errors(stmts, true)
-    // Hoist var declarations and function declarations
-    self.hoist_declarations(stmts, module_env, strict=true)
-    // Also hoist block-scoped (let/const/class) with TDZ
-    hoist_block_tdz(stmts, module_env)
-    for stmt in stmts {
-      match self.exec_stmt(module_ctx, stmt, module_env) {
-        Normal(_) => ()
-        ReturnSignal(_) =>
-          raise @errors.SyntaxError(
-            message="return statement outside of function",
-          )
-        sig => raise_if_break_continue(sig)
+    let exports = with_cleared_active_callee_realm(fn() raise {
+      // Static block-scoped redeclaration checks (applies to module code too).
+      self.validate_block_early_errors(stmts, true)
+      // Hoist var declarations and function declarations
+      self.hoist_declarations(stmts, module_env, strict=true)
+      // Also hoist block-scoped (let/const/class) with TDZ
+      hoist_block_tdz(stmts, module_env)
+      for stmt in stmts {
+        match self.exec_stmt(module_ctx, stmt, module_env) {
+          Normal(_) => ()
+          ReturnSignal(_) =>
+            raise @errors.SyntaxError(
+              message="return statement outside of function",
+            )
+          sig => raise_if_break_continue(sig)
+        }
       }
-    }
-    // Resolve deferred export bindings from module environment (live bindings)
-    for pair in self.module_export_bindings {
-      let (export_name, local_name) = pair
-      self.module_exports[export_name] = module_env.get(local_name)
-    }
-    let exports = self.module_exports
+      // Resolve deferred export bindings from module environment (live bindings)
+      for pair in self.module_export_bindings {
+        let (export_name, local_name) = pair
+        self.module_exports[export_name] = module_env.get(local_name)
+      }
+      self.module_exports
+    })
     self.module_exports = saved_exports
     self.module_export_bindings = saved_bindings
+    current_interpreter.val = prev_interpreter
     exports
   } catch {
     e => {
       self.module_exports = saved_exports
       self.module_export_bindings = saved_bindings
+      current_interpreter.val = prev_interpreter
       raise e
     }
   }

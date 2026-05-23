@@ -17,9 +17,11 @@ pub fn Interpreter::run_compiled_script(
   let strict = has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
   try {
-    self.validate_block_early_errors(stmts, strict)
-    self.hoist_declarations(stmts, self.global, strict~)
-    let result = eval(ctx, self.global)
+    let result = with_cleared_active_callee_realm(fn() raise {
+      self.validate_block_early_errors(stmts, strict)
+      self.hoist_declarations(stmts, self.global, strict~)
+      eval(ctx, self.global)
+    })
     current_interpreter.val = prev_interpreter
     result
   } catch {
@@ -30,6 +32,27 @@ pub fn Interpreter::run_compiled_script(
       } else {
         raise e
       }
+    }
+  }
+}
+
+///|
+/// Run a public runtime entry point with this interpreter installed as the
+/// active realm for compatibility factory lookups.
+pub fn Interpreter::with_active_value(
+  self : Interpreter,
+  eval : () -> Value raise Error,
+) -> Value raise Error {
+  let prev_interpreter = current_interpreter.val
+  current_interpreter.val = Some(self)
+  try {
+    let result = with_cleared_active_callee_realm(fn() raise { eval() })
+    current_interpreter.val = prev_interpreter
+    result
+  } catch {
+    e => {
+      current_interpreter.val = prev_interpreter
+      raise e
     }
   }
 }

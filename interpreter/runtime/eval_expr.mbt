@@ -667,21 +667,23 @@ fn Interpreter::eval_expr(
         setter: None,
         is_accessor: false,
       }
-      Object({
-        bag: {
-          properties: {
-            "name": String_(""),
-            "length": Number(params.length().to_double()),
+      stamp_function_realm(
+        Object({
+          bag: {
+            properties: {
+              "name": String_(""),
+              "length": Number(params.length().to_double()),
+            },
+            symbol_properties: {},
+            descriptors: { "name": nf_desc, "length": nf_desc },
+            symbol_descriptors: {},
           },
-          symbol_properties: {},
-          descriptors: { "name": nf_desc, "length": nf_desc },
-          symbol_descriptors: {},
-        },
-        prototype: get_func_proto(),
-        callable: Some(ArrowFunc(func_data)),
-        class_name: "Function",
-        extensible: true,
-      })
+          prototype: get_func_proto(),
+          callable: Some(ArrowFunc(func_data)),
+          class_name: "Function",
+          extensible: true,
+        }),
+      )
     }
     ArrowFuncExt(params, rest_param, body, _) => {
       validate_function_signature_ext(
@@ -721,21 +723,23 @@ fn Interpreter::eval_expr(
         }
         arrow_len += 1
       }
-      Object({
-        bag: {
-          properties: {
-            "name": String_(""),
-            "length": Number(arrow_len.to_double()),
+      stamp_function_realm(
+        Object({
+          bag: {
+            properties: {
+              "name": String_(""),
+              "length": Number(arrow_len.to_double()),
+            },
+            symbol_properties: {},
+            descriptors: { "name": nf_desc, "length": nf_desc },
+            symbol_descriptors: {},
           },
-          symbol_properties: {},
-          descriptors: { "name": nf_desc, "length": nf_desc },
-          symbol_descriptors: {},
-        },
-        prototype: get_func_proto(),
-        callable: Some(ArrowFuncExt(func_data)),
-        class_name: "Function",
-        extensible: true,
-      })
+          prototype: get_func_proto(),
+          callable: Some(ArrowFuncExt(func_data)),
+          class_name: "Function",
+          extensible: true,
+        }),
+      )
     }
     FuncExprExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(

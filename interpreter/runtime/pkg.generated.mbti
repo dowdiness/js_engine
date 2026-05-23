@@ -41,8 +41,6 @@ pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
 pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
 
-pub let function_prototype_ref : @ref.Ref[Value?]
-
 pub fn get_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSymbols) -> (Value?, Value?)
 
 pub fn get_array_length_override(ArrayData) -> Int64?
@@ -145,8 +143,6 @@ pub fn mark_as_method(Value) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
-pub let object_prototype_ref : @ref.Ref[Value?]
-
 pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
 
 pub fn ordinary_get_own_value_for_descriptor(Value, Value) -> Value raise
@@ -201,6 +197,10 @@ pub fn setup_generator_function_constructor(Environment, Value, well_known_symbo
 
 pub fn sort_property_keys(Map[String, Value]) -> Array[String]
 
+pub fn stamp_function_realm(Value) -> Value
+
+pub fn stamp_function_realm_with(Value, Value, Value) -> Value
+
 pub fn strict_equal(Value, Value) -> Bool
 
 pub fn string_to_utf16(String) -> Array[Int]
@@ -238,6 +238,8 @@ pub fn validate_function_signature(Bool, String?, Array[String], Array[@ast.Stmt
 pub fn validate_function_signature_ext(Bool, String?, Array[@ast.Param], String?, Array[@ast.Stmt]) -> Unit raise
 
 pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
+
+pub fn with_active_realm_state_unit(RealmState, () -> Unit) -> Unit
 
 // Errors
 pub suberror GeneratorReturnSignal {
@@ -314,6 +316,7 @@ pub(all) struct Environment {
   parent : Environment?
   mut is_var_scope : Bool
   mut with_object : Value?
+  mut realm_state : RealmState?
   error_class_names : Map[String, Unit]
 }
 pub fn Environment::assign(Self, String, Value) -> Unit raise
@@ -450,6 +453,7 @@ pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) -> Unit raise
+pub fn Interpreter::with_active_value(Self, () -> Value raise) -> Value raise
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
@@ -544,6 +548,10 @@ pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
+  active_function_prototype_override : @ref.Ref[Value?]
+  active_object_prototype_override : @ref.Ref[Value?]
+  object_prototype : @ref.Ref[Value?]
+  function_prototype : @ref.Ref[Value?]
   string_prototype : @ref.Ref[Value?]
   number_prototype : @ref.Ref[Value?]
   boolean_prototype : @ref.Ref[Value?]
@@ -557,8 +565,10 @@ pub fn RealmState::RealmState() -> Self
 pub fn RealmState::from_symbols(SymbolState) -> Self
 pub fn RealmState::get_array_iterator_proto(Self) -> Value
 pub fn RealmState::get_boolean_proto(Self) -> Value
+pub fn RealmState::get_func_proto(Self) -> Value
 pub fn RealmState::get_iterator_proto(Self) -> Value
 pub fn RealmState::get_number_proto(Self) -> Value
+pub fn RealmState::get_obj_proto(Self) -> Value
 pub fn RealmState::get_string_iterator_proto(Self) -> Value
 pub fn RealmState::get_string_proto(Self) -> Value
 pub fn RealmState::get_symbol_proto(Self) -> Value

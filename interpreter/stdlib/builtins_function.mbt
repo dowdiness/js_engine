@@ -9,7 +9,10 @@ fn func_kind_prefix(class_name : String) -> String {
 }
 
 ///|
-fn setup_function_builtins(env : Environment) -> Unit {
+fn setup_function_builtins(
+  env : Environment,
+  realm_state : @runtime.RealmState,
+) -> Unit {
   // Create Function.prototype
   let func_proto_props : Map[String, Value] = {}
 
@@ -132,6 +135,14 @@ fn setup_function_builtins(env : Environment) -> Unit {
           message="Function.prototype.bind called on non-callable",
         )
       }
+      let target_proto = match this_val {
+        Object(data) =>
+          match data.prototype {
+            Null => @runtime.get_func_proto()
+            proto => proto
+          }
+        _ => @runtime.get_func_proto()
+      }
       let bind_this = if args.length() > 0 { args[0] } else { Undefined }
       let bound_args : Array[Value] = []
       for i = 1; i < args.length(); i = i + 1 {
@@ -165,18 +176,20 @@ fn setup_function_builtins(env : Environment) -> Unit {
       let bprops : Map[String, Value] = {}
       bprops["length"] = Value::Number(bound_length.to_double())
       bprops["name"] = Value::String_(bound_name)
-      Value::Object({
-        bag: {
-          properties: bprops,
-          symbol_properties: {},
-          descriptors: { "length": nf_desc, "name": nf_desc },
-          symbol_descriptors: {},
-        },
-        prototype: @runtime.get_func_proto(),
-        callable: Some(BoundFunc(this_val, bind_this, bound_args)),
-        class_name: "Function",
-        extensible: true,
-      })
+      @runtime.stamp_function_realm(
+        Value::Object({
+          bag: {
+            properties: bprops,
+            symbol_properties: {},
+            descriptors: { "length": nf_desc, "name": nf_desc },
+            symbol_descriptors: {},
+          },
+          prototype: target_proto,
+          callable: Some(BoundFunc(this_val, bind_this, bound_args)),
+          class_name: "Function",
+          extensible: true,
+        }),
+      )
     },
   )
   // %ThrowTypeError% intrinsic (ES spec §10.2.4)
@@ -335,13 +348,15 @@ fn setup_function_builtins(env : Environment) -> Unit {
     callable: Some(
       InterpreterCallable("Function", fn(interp, _this, args) raise {
         if args.length() == 0 {
-          return Value::Object({
-            bag: @runtime.PropertyBag(),
-            prototype: func_proto,
-            callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
-            class_name: "Function",
-            extensible: true,
-          })
+          return @runtime.stamp_function_realm(
+            Value::Object({
+              bag: @runtime.PropertyBag(),
+              prototype: func_proto,
+              callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
+              class_name: "Function",
+              extensible: true,
+            }),
+          )
         }
         // Last arg is body, previous args are parameter names
         let body_str = match args[args.length() - 1] {
@@ -377,29 +392,31 @@ fn setup_function_builtins(env : Environment) -> Unit {
                 body,
               )
               interp.validate_block_early_errors(body, body_strict)
-              return Value::Object({
-                bag: {
-                  properties: fn_props,
-                  symbol_properties: {},
-                  descriptors: { "length": nf_desc },
-                  symbol_descriptors: {},
-                },
-                prototype: func_proto,
-                callable: Some(
-                  UserFunc({
-                    name: Some("anonymous"),
-                    params,
-                    body,
-                    closure: env,
-                    strict: body_strict,
-                    // `new Function(...)` result has no self-name binding.
-                    has_name_binding: false,
-                    is_method: false,
-                  }),
-                ),
-                class_name: "Function",
-                extensible: true,
-              })
+              return @runtime.stamp_function_realm(
+                Value::Object({
+                  bag: {
+                    properties: fn_props,
+                    symbol_properties: {},
+                    descriptors: { "length": nf_desc },
+                    symbol_descriptors: {},
+                  },
+                  prototype: func_proto,
+                  callable: Some(
+                    UserFunc({
+                      name: Some("anonymous"),
+                      params,
+                      body,
+                      closure: env,
+                      strict: body_strict,
+                      // `new Function(...)` result has no self-name binding.
+                      has_name_binding: false,
+                      is_method: false,
+                    }),
+                  ),
+                  class_name: "Function",
+                  extensible: true,
+                }),
+              )
             }
             FuncDeclExt(_, params, rest_param, body, _) => {
               let fn_props : Map[String, Value] = {}
@@ -424,41 +441,45 @@ fn setup_function_builtins(env : Environment) -> Unit {
                 false, param_names, rest_param, body,
               )
               interp.validate_block_early_errors(body, body_strict)
-              return Value::Object({
-                bag: {
-                  properties: fn_props,
-                  symbol_properties: {},
-                  descriptors: { "length": nf_desc },
-                  symbol_descriptors: {},
-                },
-                prototype: func_proto,
-                callable: Some(
-                  UserFuncExt({
-                    name: Some("anonymous"),
-                    params,
-                    rest_param,
-                    body,
-                    closure: env,
-                    strict: body_strict,
-                    has_name_binding: false,
-                    is_method: false,
-                  }),
-                ),
-                class_name: "Function",
-                extensible: true,
-              })
+              return @runtime.stamp_function_realm(
+                Value::Object({
+                  bag: {
+                    properties: fn_props,
+                    symbol_properties: {},
+                    descriptors: { "length": nf_desc },
+                    symbol_descriptors: {},
+                  },
+                  prototype: func_proto,
+                  callable: Some(
+                    UserFuncExt({
+                      name: Some("anonymous"),
+                      params,
+                      rest_param,
+                      body,
+                      closure: env,
+                      strict: body_strict,
+                      has_name_binding: false,
+                      is_method: false,
+                    }),
+                  ),
+                  class_name: "Function",
+                  extensible: true,
+                }),
+              )
             }
             _ => ()
           }
         }
         // Fallback: empty function
-        Value::Object({
-          bag: @runtime.PropertyBag(),
-          prototype: func_proto,
-          callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
-          class_name: "Function",
-          extensible: true,
-        })
+        @runtime.stamp_function_realm(
+          Value::Object({
+            bag: @runtime.PropertyBag(),
+            prototype: func_proto,
+            callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
+            class_name: "Function",
+            extensible: true,
+          }),
+        )
       }),
     ),
     class_name: "Function",
@@ -483,7 +504,7 @@ fn setup_function_builtins(env : Environment) -> Unit {
 
   // Register Function.prototype so other builtins can look it up
   env.def_builtin("[[FunctionPrototype]]", func_proto)
-  @runtime.function_prototype_ref.val = Some(func_proto)
+  realm_state.function_prototype.val = Some(func_proto)
   // Register the same Function constructor object globally
   env.def_builtin("Function", func_ctor)
 }

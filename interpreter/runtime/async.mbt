@@ -26,40 +26,42 @@ fn Interpreter::make_async_function(
     is_accessor: false,
   }
   let async_proto = get_function_prototype(self)
-  Object({
-    bag: {
-      properties: {
-        "name": String_(func_name),
-        "length": Number(params.length().to_double()),
+  stamp_function_realm(
+    Object({
+      bag: {
+        properties: {
+          "name": String_(func_name),
+          "length": Number(params.length().to_double()),
+        },
+        symbol_properties: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
+        symbol_descriptors: {},
       },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: async_proto,
-    callable: Some(
-      InterpreterCallable(func_name, fn(
-        ip : Interpreter,
-        this_val : Value,
-        args : Array[Value],
-      ) -> Value {
-        run_async_body(
-          ip,
-          this_val,
-          args,
-          name,
-          params,
-          None,
-          rest_param,
-          body,
-          strict,
-          closure,
-        )
-      }),
-    ),
-    class_name: "AsyncFunction",
-    extensible: true,
-  })
+      prototype: async_proto,
+      callable: Some(
+        InterpreterCallable(func_name, fn(
+          ip : Interpreter,
+          this_val : Value,
+          args : Array[Value],
+        ) -> Value {
+          run_async_body(
+            ip,
+            this_val,
+            args,
+            name,
+            params,
+            None,
+            rest_param,
+            body,
+            strict,
+            closure,
+          )
+        }),
+      ),
+      class_name: "AsyncFunction",
+      extensible: true,
+    }),
+  )
 }
 
 ///|
@@ -97,40 +99,42 @@ fn Interpreter::make_async_function_ext(
     }
     func_length += 1
   }
-  Object({
-    bag: {
-      properties: {
-        "name": String_(func_name),
-        "length": Number(func_length.to_double()),
+  stamp_function_realm(
+    Object({
+      bag: {
+        properties: {
+          "name": String_(func_name),
+          "length": Number(func_length.to_double()),
+        },
+        symbol_properties: {},
+        descriptors: { "name": nf_desc, "length": nf_desc },
+        symbol_descriptors: {},
       },
-      symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-    },
-    prototype: async_proto,
-    callable: Some(
-      InterpreterCallable(func_name, fn(
-        ip : Interpreter,
-        this_val : Value,
-        args : Array[Value],
-      ) -> Value {
-        run_async_body(
-          ip,
-          this_val,
-          args,
-          name,
-          [],
-          Some(params),
-          rest_param,
-          body,
-          strict,
-          closure,
-        )
-      }),
-    ),
-    class_name: "AsyncFunction",
-    extensible: true,
-  })
+      prototype: async_proto,
+      callable: Some(
+        InterpreterCallable(func_name, fn(
+          ip : Interpreter,
+          this_val : Value,
+          args : Array[Value],
+        ) -> Value {
+          run_async_body(
+            ip,
+            this_val,
+            args,
+            name,
+            [],
+            Some(params),
+            rest_param,
+            body,
+            strict,
+            closure,
+          )
+        }),
+      ),
+      class_name: "AsyncFunction",
+      extensible: true,
+    }),
+  )
 }
 
 ///|
@@ -460,31 +464,33 @@ fn make_async_gen_function_inner(
   }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
-  Object({
-    bag: {
-      properties: fn_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-    },
-    prototype: gen_func_proto,
-    callable: Some(
-      InterpreterCallable(
-        match name {
-          Some(n) => n
-          None => "anonymous"
-        },
-        fn(ip, this_val, args) raise {
-          create_generator_instance(
-            ip, this_val, args, name, params, params_ext, rest_param, body, strict,
-            closure, func_prototype,
-          )
-        },
+  stamp_function_realm(
+    Object({
+      bag: {
+        properties: fn_props,
+        symbol_properties: {},
+        descriptors: {},
+        symbol_descriptors: {},
+      },
+      prototype: gen_func_proto,
+      callable: Some(
+        InterpreterCallable(
+          match name {
+            Some(n) => n
+            None => "anonymous"
+          },
+          fn(ip, this_val, args) raise {
+            create_generator_instance(
+              ip, this_val, args, name, params, params_ext, rest_param, body, strict,
+              closure, func_prototype,
+            )
+          },
+        ),
       ),
-    ),
-    class_name: "AsyncGeneratorFunction",
-    extensible: true,
-  })
+      class_name: "AsyncGeneratorFunction",
+      extensible: true,
+    }),
+  )
 }
 
 ///|

@@ -225,22 +225,24 @@ fn Interpreter::install_instance_fields(
 /// Stored as [[InitInstanceFields]] in the constructor env so the super()
 /// call site can apply the fields to the actual `this` after super() returns.
 fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
-  Object({
-    bag: PropertyBag(),
-    prototype: Null,
-    callable: Some(
-      InterpreterCallable("[[InitInstanceFields]]", fn(
-        interp,
-        this_arg,
-        _,
-      ) raise {
-        interp.install_instance_fields(this_arg, fields)
-        Undefined
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-  })
+  stamp_function_realm(
+    Object({
+      bag: PropertyBag(),
+      prototype: Null,
+      callable: Some(
+        InterpreterCallable("[[InitInstanceFields]]", fn(
+          interp,
+          this_arg,
+          _,
+        ) raise {
+          interp.install_instance_fields(this_arg, fields)
+          Undefined
+        }),
+      ),
+      class_name: "Function",
+      extensible: true,
+    }),
+  )
 }
 
 ///|
@@ -307,27 +309,31 @@ fn make_arguments_object(
     let pname = mapped_names[i]
     match (mapped_env, mapped_indices.get(i)) {
       (Some(env), Some(true)) => {
-        let getter_fn = Object({
-          bag: PropertyBag(),
-          prototype: Null,
-          callable: Some(
-            NativeCallable("[[MappedArgGetter]]", _a => env.get(pname)),
-          ),
-          class_name: "Function",
-          extensible: true,
-        })
-        let setter_fn = Object({
-          bag: PropertyBag(),
-          prototype: Null,
-          callable: Some(
-            NativeCallable("[[MappedArgSetter]]", a => {
-              env.assign(pname, if a.length() > 0 { a[0] } else { Undefined })
-              Undefined
-            }),
-          ),
-          class_name: "Function",
-          extensible: true,
-        })
+        let getter_fn = stamp_function_realm(
+          Object({
+            bag: PropertyBag(),
+            prototype: Null,
+            callable: Some(
+              NativeCallable("[[MappedArgGetter]]", _a => env.get(pname)),
+            ),
+            class_name: "Function",
+            extensible: true,
+          }),
+        )
+        let setter_fn = stamp_function_realm(
+          Object({
+            bag: PropertyBag(),
+            prototype: Null,
+            callable: Some(
+              NativeCallable("[[MappedArgSetter]]", a => {
+                env.assign(pname, if a.length() > 0 { a[0] } else { Undefined })
+                Undefined
+              }),
+            ),
+            class_name: "Function",
+            extensible: true,
+          }),
+        )
         new_args_props[key] = Undefined // accessor sentinel
         new_args_descs[key] = {
           writable: false,
@@ -411,70 +417,74 @@ fn make_arguments_object(
   let iter_sym = well_known_symbols.iterator
   let args_copy = args
   let new_args_sym_props : Map[Int, Value] = {}
-  new_args_sym_props[iter_sym.id] = Object({
-    bag: PropertyBag(),
-    prototype: Null,
-    callable: Some(
-      MethodCallable("values", fn(_this_val, _args2) {
-        let index_ref : Ref[Int] = { val: 0 }
-        let len = args_copy.length()
-        let next_fn = Object({
-          bag: PropertyBag(),
-          prototype: Null,
-          callable: Some(
-            NativeCallable("next", fn(_a) {
-              let idx = index_ref.val
-              if idx < len {
-                let value = args_copy[idx]
-                index_ref.val = idx + 1
-                Object({
-                  bag: {
-                    properties: { "value": value, "done": Bool(false) },
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
-                  },
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  extensible: true,
-                })
-              } else {
-                Object({
-                  bag: {
-                    properties: { "value": Undefined, "done": Bool(true) },
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
-                  },
-                  prototype: Null,
-                  callable: None,
-                  class_name: "Object",
-                  extensible: true,
-                })
-              }
+  new_args_sym_props[iter_sym.id] = stamp_function_realm(
+    Object({
+      bag: PropertyBag(),
+      prototype: Null,
+      callable: Some(
+        MethodCallable("values", fn(_this_val, _args2) {
+          let index_ref : Ref[Int] = { val: 0 }
+          let len = args_copy.length()
+          let next_fn = stamp_function_realm(
+            Object({
+              bag: PropertyBag(),
+              prototype: Null,
+              callable: Some(
+                NativeCallable("next", fn(_a) {
+                  let idx = index_ref.val
+                  if idx < len {
+                    let value = args_copy[idx]
+                    index_ref.val = idx + 1
+                    Object({
+                      bag: {
+                        properties: { "value": value, "done": Bool(false) },
+                        symbol_properties: {},
+                        descriptors: {},
+                        symbol_descriptors: {},
+                      },
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      extensible: true,
+                    })
+                  } else {
+                    Object({
+                      bag: {
+                        properties: { "value": Undefined, "done": Bool(true) },
+                        symbol_properties: {},
+                        descriptors: {},
+                        symbol_descriptors: {},
+                      },
+                      prototype: Null,
+                      callable: None,
+                      class_name: "Object",
+                      extensible: true,
+                    })
+                  }
+                }),
+              ),
+              class_name: "Function",
+              extensible: true,
             }),
-          ),
-          class_name: "Function",
-          extensible: true,
-        })
-        Object({
-          bag: {
-            properties: { "next": next_fn },
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-          },
-          prototype: Null,
-          callable: None,
-          class_name: "Array Iterator",
-          extensible: true,
-        })
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-  })
+          )
+          Object({
+            bag: {
+              properties: { "next": next_fn },
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
+            prototype: Null,
+            callable: None,
+            class_name: "Array Iterator",
+            extensible: true,
+          })
+        }),
+      ),
+      class_name: "Function",
+      extensible: true,
+    }),
+  )
   Object({
     bag: {
       properties: new_args_props,
@@ -607,6 +617,22 @@ fn maybe_set_promise_constructor(value : Value, ctor : Value) -> Value {
 
 ///|
 pub fn Interpreter::construct_value(
+  self : Interpreter,
+  ctor : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+  proto_override? : Value? = None,
+  new_target? : Value? = None,
+) -> Value raise Error {
+  self.with_active_value(fn() raise {
+    with_active_callee_realm_value(ctor, fn() raise {
+      self.construct_value_impl(ctor, args, loc, proto_override~, new_target~)
+    })
+  })
+}
+
+///|
+fn Interpreter::construct_value_impl(
   self : Interpreter,
   ctor : Value,
   args : Array[Value],

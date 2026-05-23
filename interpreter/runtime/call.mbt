@@ -637,6 +637,21 @@ pub fn Interpreter::call_value(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
+  self.with_active_value(fn() raise {
+    with_active_callee_realm_value(callee, fn() raise {
+      self.call_value_impl(callee, this_val, args, loc)
+    })
+  })
+}
+
+///|
+fn Interpreter::call_value_impl(
+  self : Interpreter,
+  callee : Value,
+  this_val : Value,
+  args : Array[Value],
+  loc : @token.Loc,
+) -> Value raise Error {
   let normalize_sloppy_this = fn(tv : Value) {
     match tv {
       Undefined | Null => self.global_this

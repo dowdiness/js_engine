@@ -400,45 +400,47 @@ fn Interpreter::make_generator_function(
     setter: None,
     is_accessor: false,
   }
-  Object({
-    bag: {
-      properties: fn_props,
-      symbol_properties: {},
-      descriptors: {
-        "name": nf_desc,
-        "length": nf_desc,
-        "prototype": {
-          writable: true,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-          is_accessor: false,
+  stamp_function_realm(
+    Object({
+      bag: {
+        properties: fn_props,
+        symbol_properties: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: true,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+            is_accessor: false,
+          },
         },
+        symbol_descriptors: {},
       },
-      symbol_descriptors: {},
-    },
-    prototype: gen_func_proto,
-    callable: Some(
-      InterpreterCallable(func_name, fn(ip, this_val, args) raise {
-        create_generator_instance(
-          ip,
-          this_val,
-          args,
-          name,
-          params,
-          None,
-          rest_param,
-          body,
-          strict,
-          closure,
-          func_prototype,
-        )
-      }),
-    ),
-    class_name: "GeneratorFunction",
-    extensible: true,
-  })
+      prototype: gen_func_proto,
+      callable: Some(
+        InterpreterCallable(func_name, fn(ip, this_val, args) raise {
+          create_generator_instance(
+            ip,
+            this_val,
+            args,
+            name,
+            params,
+            None,
+            rest_param,
+            body,
+            strict,
+            closure,
+            func_prototype,
+          )
+        }),
+      ),
+      class_name: "GeneratorFunction",
+      extensible: true,
+    }),
+  )
 }
 
 ///|
@@ -495,45 +497,47 @@ fn Interpreter::make_generator_function_ext(
     setter: None,
     is_accessor: false,
   }
-  Object({
-    bag: {
-      properties: fn_props,
-      symbol_properties: {},
-      descriptors: {
-        "name": nf_desc,
-        "length": nf_desc,
-        "prototype": {
-          writable: true,
-          enumerable: false,
-          configurable: false,
-          getter: None,
-          setter: None,
-          is_accessor: false,
+  stamp_function_realm(
+    Object({
+      bag: {
+        properties: fn_props,
+        symbol_properties: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: true,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+            is_accessor: false,
+          },
         },
+        symbol_descriptors: {},
       },
-      symbol_descriptors: {},
-    },
-    prototype: gen_func_proto,
-    callable: Some(
-      InterpreterCallable(func_name, fn(ip, this_val, args) raise {
-        create_generator_instance(
-          ip,
-          this_val,
-          args,
-          name,
-          [],
-          Some(params),
-          rest_param,
-          body,
-          strict,
-          closure,
-          func_prototype,
-        )
-      }),
-    ),
-    class_name: "GeneratorFunction",
-    extensible: true,
-  })
+      prototype: gen_func_proto,
+      callable: Some(
+        InterpreterCallable(func_name, fn(ip, this_val, args) raise {
+          create_generator_instance(
+            ip,
+            this_val,
+            args,
+            name,
+            [],
+            Some(params),
+            rest_param,
+            body,
+            strict,
+            closure,
+            func_prototype,
+          )
+        }),
+      ),
+      class_name: "GeneratorFunction",
+      extensible: true,
+    }),
+  )
 }
 
 ///|

@@ -36,6 +36,7 @@ pub(all) struct Environment {
   parent : Environment?
   mut is_var_scope : Bool // true for function/global scopes (where var is hoisted to)
   mut with_object : Value? // For 'with' statement: the live object to proxy lookups through
+  mut realm_state : RealmState? // Realm that owns host-installed builtin functions.
   /// Registry of class_names that carry [[ErrorData]] semantics.
   /// Populated by register_error_ctor / register_aggregate_error_ctor at
   /// stdlib init time; consumed by Error.isError.  Stored per-Environment so
@@ -45,11 +46,16 @@ pub(all) struct Environment {
 
 ///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
+  let realm_state = match parent {
+    Some(parent) => parent.realm_state
+    None => None
+  }
   {
     bindings: {},
     parent,
     is_var_scope: false,
     with_object: None,
+    realm_state,
     error_class_names: {},
   }
 }
@@ -192,8 +198,13 @@ pub fn Environment::def_builtin(
   name : String,
   value : Value,
 ) -> Unit {
+  let bound_value = match self.realm_state {
+    Some(realm_state) =>
+      stamp_function_realm_from_state_if_unstamped(value, realm_state)
+    None => value
+  }
   self.bindings[name] = {
-    value,
+    value: bound_value,
     kind: VarBinding,
     initialized: true,
     annex_b_hoisted: false,

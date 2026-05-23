@@ -24,3 +24,35 @@ test "setup_builtins reserves well-known symbols in provided SymbolState" {
     fail("expected user symbols to allocate after well-known symbols")
   }
 }
+
+///|
+test "standalone setup_builtins_with_realm_state activates provided realm" {
+  let env = @runtime.Environment::new()
+  let output : Array[String] = []
+  let realm_state = @runtime.RealmState()
+  setup_builtins_with_realm_state(env, output, realm_state)
+  let object_proto = realm_state.get_obj_proto()
+  let object_ctor = env.get("Object") catch {
+    err => fail("expected Object constructor: " + err.to_string())
+  }
+  let from_entries = match object_ctor {
+    Object(data) =>
+      match data.bag.properties.get("fromEntries") {
+        Some(func) => func
+        None => fail("expected Object.fromEntries")
+      }
+    _ => fail("expected Object constructor object")
+  }
+  let result = @runtime.call_callable_direct(from_entries, Undefined, [
+    @runtime.make_array([]),
+  ]) catch {
+    err => fail("Object.fromEntries call failed: " + err.to_string())
+  }
+  match result {
+    Object(data) =>
+      if !@runtime.strict_equal(data.prototype, object_proto) {
+        fail("expected Object.fromEntries result to use standalone realm")
+      }
+    _ => fail("expected Object.fromEntries result object")
+  }
+}

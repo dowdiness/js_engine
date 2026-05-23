@@ -425,28 +425,30 @@ fn Interpreter::create_class(
     Some(super_class) => super_class
   }
   // Create the class constructor function
-  let class_obj = Object({
-    bag: {
-      properties: static_props,
-      symbol_properties: static_symbol_props,
-      descriptors: static_descriptors,
-      symbol_descriptors: static_symbol_descriptors,
-    },
-    prototype: class_proto,
-    callable: Some(
-      ClassConstructor({
-        name,
-        proto,
-        super_ctor,
-        ctor_fn,
-        closure: env,
-        super_proto,
-        instance_fields,
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-  })
+  let class_obj = stamp_function_realm(
+    Object({
+      bag: {
+        properties: static_props,
+        symbol_properties: static_symbol_props,
+        descriptors: static_descriptors,
+        symbol_descriptors: static_symbol_descriptors,
+      },
+      prototype: class_proto,
+      callable: Some(
+        ClassConstructor({
+          name,
+          proto,
+          super_ctor,
+          ctor_fn,
+          closure: env,
+          super_proto,
+          instance_fields,
+        }),
+      ),
+      class_name: "Function",
+      extensible: true,
+    }),
+  )
   // Set prototype.constructor to point to the class (non-enumerable per spec)
   if !constructor_overridden {
     match proto {

@@ -26,7 +26,44 @@ fn Interpreter::array_get_indexed(
 }
 
 ///|
+fn Interpreter::with_active_property_access_value(
+  self : Interpreter,
+  eval : () -> Value raise Error,
+) -> Value raise Error {
+  match current_interpreter.val {
+    Some(interp) if same_realm_state(interp.realm_state, self.realm_state) =>
+      eval()
+    _ => {
+      let prev_interpreter = current_interpreter.val
+      current_interpreter.val = Some(self)
+      try {
+        let result = with_cleared_active_callee_realm(fn() raise { eval() })
+        current_interpreter.val = prev_interpreter
+        result
+      } catch {
+        e => {
+          current_interpreter.val = prev_interpreter
+          raise e
+        }
+      }
+    }
+  }
+}
+
+///|
 pub fn Interpreter::get_property(
+  self : Interpreter,
+  obj : Value,
+  prop : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  self.with_active_property_access_value(fn() raise {
+    self.get_property_impl(obj, prop, loc)
+  })
+}
+
+///|
+fn Interpreter::get_property_impl(
   self : Interpreter,
   obj : Value,
   prop : String,
@@ -426,24 +463,29 @@ fn Interpreter::get_property_of_object(
       match data.callable {
         Some(callable) =>
           if prop == "call" {
-            return Object({
-              bag: PropertyBag(),
-              prototype: Null,
-              callable: Some(FuncCallMethod(obj)),
-              class_name: "Function",
-              extensible: true,
-            })
+            return stamp_function_realm(
+              Object({
+                bag: PropertyBag(),
+                prototype: Null,
+                callable: Some(FuncCallMethod(obj)),
+                class_name: "Function",
+                extensible: true,
+              }),
+            )
           } else if prop == "apply" {
-            return Object({
-              bag: PropertyBag(),
-              prototype: Null,
-              callable: Some(FuncApplyMethod(obj)),
-              class_name: "Function",
-              extensible: true,
-            })
+            return stamp_function_realm(
+              Object({
+                bag: PropertyBag(),
+                prototype: Null,
+                callable: Some(FuncApplyMethod(obj)),
+                class_name: "Function",
+                extensible: true,
+              }),
+            )
           } else if prop == "bind" {
             let target = obj
             let target_length = get_func_length(callable)
+            let target_proto = data.prototype
             return make_native_func(name="bind", fn(args) {
               let bind_this = if args.length() > 0 {
                 args[0]
@@ -474,18 +516,20 @@ fn Interpreter::get_property_of_object(
               let bprops : Map[String, Value] = {}
               bprops["name"] = String_(bound_name)
               bprops["length"] = Number(bound_length.to_double())
-              Object({
-                bag: {
-                  properties: bprops,
-                  symbol_properties: {},
-                  descriptors: { "name": nf_desc, "length": nf_desc },
-                  symbol_descriptors: {},
-                },
-                prototype: get_func_proto(),
-                callable: Some(BoundFunc(target, bind_this, bound_args)),
-                class_name: "Function",
-                extensible: true,
-              })
+              stamp_function_realm(
+                Object({
+                  bag: {
+                    properties: bprops,
+                    symbol_properties: {},
+                    descriptors: { "name": nf_desc, "length": nf_desc },
+                    symbol_descriptors: {},
+                  },
+                  prototype: target_proto,
+                  callable: Some(BoundFunc(target, bind_this, bound_args)),
+                  class_name: "Function",
+                  extensible: true,
+                }),
+              )
             })
           } else if prop == "length" {
             // Return the number of formal parameters
@@ -683,6 +727,18 @@ fn lookup_builtin_proto(
 
 ///|
 pub fn Interpreter::get_computed_property(
+  self : Interpreter,
+  obj : Value,
+  key : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  self.with_active_property_access_value(fn() raise {
+    self.get_computed_property_impl(obj, key, loc)
+  })
+}
+
+///|
+fn Interpreter::get_computed_property_impl(
   self : Interpreter,
   obj : Value,
   key : Value,
@@ -1106,24 +1162,29 @@ pub fn Interpreter::get_computed_property(
           match data.callable {
             Some(callable) =>
               if prop == "call" {
-                return Object({
-                  bag: PropertyBag(),
-                  prototype: Null,
-                  callable: Some(FuncCallMethod(obj)),
-                  class_name: "Function",
-                  extensible: true,
-                })
+                return stamp_function_realm(
+                  Object({
+                    bag: PropertyBag(),
+                    prototype: Null,
+                    callable: Some(FuncCallMethod(obj)),
+                    class_name: "Function",
+                    extensible: true,
+                  }),
+                )
               } else if prop == "apply" {
-                return Object({
-                  bag: PropertyBag(),
-                  prototype: Null,
-                  callable: Some(FuncApplyMethod(obj)),
-                  class_name: "Function",
-                  extensible: true,
-                })
+                return stamp_function_realm(
+                  Object({
+                    bag: PropertyBag(),
+                    prototype: Null,
+                    callable: Some(FuncApplyMethod(obj)),
+                    class_name: "Function",
+                    extensible: true,
+                  }),
+                )
               } else if prop == "bind" {
                 let target = obj
                 let target_length = get_func_length(callable)
+                let target_proto = data.prototype
                 return make_native_func(name="bind", fn(args) {
                   let bind_this = if args.length() > 0 {
                     args[0]
@@ -1154,18 +1215,20 @@ pub fn Interpreter::get_computed_property(
                   let bprops : Map[String, Value] = {}
                   bprops["name"] = String_(bound_name)
                   bprops["length"] = Number(bound_length.to_double())
-                  Object({
-                    bag: {
-                      properties: bprops,
-                      symbol_properties: {},
-                      descriptors: { "name": nf_desc, "length": nf_desc },
-                      symbol_descriptors: {},
-                    },
-                    prototype: get_func_proto(),
-                    callable: Some(BoundFunc(target, bind_this, bound_args)),
-                    class_name: "Function",
-                    extensible: true,
-                  })
+                  stamp_function_realm(
+                    Object({
+                      bag: {
+                        properties: bprops,
+                        symbol_properties: {},
+                        descriptors: { "name": nf_desc, "length": nf_desc },
+                        symbol_descriptors: {},
+                      },
+                      prototype: target_proto,
+                      callable: Some(BoundFunc(target, bind_this, bound_args)),
+                      class_name: "Function",
+                      extensible: true,
+                    }),
+                  )
                 })
               } else if prop == "length" {
                 // Return the number of formal parameters

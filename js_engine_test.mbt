@@ -703,6 +703,19 @@ test "ES module: export function declaration" {
 }
 
 ///|
+test "ES module: function declarations use realm prototypes" {
+  let (output, exports) = @js_engine.run_module(
+    (
+      #|export function f() {}
+      #|console.log(Object.getPrototypeOf(f) === Function.prototype);
+      #|console.log(Object.getPrototypeOf(f.prototype) === Object.prototype);
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+  expect_bool(exports.contains("f"), true, "export f")
+}
+
+///|
 test "ES module: export default expression" {
   let (_output, exports) = @js_engine.run_module(
     (

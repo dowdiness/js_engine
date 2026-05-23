@@ -64,6 +64,15 @@ fn run_output_async(source : String) -> Array[String] raise Error {
 }
 
 ///|
+fn run_output_timers(source : String) -> Array[String] raise Error {
+  let interp = new_interpreter()
+  let prog = @parser.parse(source)
+  let _ = interp.run(prog.stmts)
+  interp.run_timers()
+  interp.host.output
+}
+
+///|
 test "realm_state symbols share legacy interpreter symbols compatibility field" {
   let interp = new_interpreter()
   let sym = interp.realm_state.symbols.new_symbol(Some("stage1"))
@@ -138,6 +147,21 @@ fn expect_value_string(
 ///|
 fn expect_result(actual : Value, expected : String) -> Unit raise Error {
   expect_value_string(actual, expected, "result")
+}
+
+///|
+fn expect_function_object_prototype(
+  label : String,
+  value : Value,
+  expected : Value,
+) -> Unit raise Error {
+  match value {
+    Object(data) =>
+      if !@runtime.strict_equal(data.prototype, expected) {
+        fail(label)
+      }
+    _ => fail(label + " expected function object")
+  }
 }
 
 ///|
@@ -1973,6 +1997,34 @@ test "Promise then throws when constructor is not object" {
     ),
   )
   json_inspect(output, content=["true", "Promise constructor is not an object"])
+}
+
+///|
+test "Promise reaction callbacks create functions with active realm prototypes" {
+  let output = run_output_async(
+    (
+      #|Promise.resolve().then(function() {
+      #|  var f = function() {};
+      #|  console.log(Object.getPrototypeOf(f) === Function.prototype);
+      #|  console.log(Object.getPrototypeOf(f.prototype) === Object.prototype);
+      #|});
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "timer callbacks create functions with active realm prototypes" {
+  let output = run_output_timers(
+    (
+      #|setTimeout(function() {
+      #|  var f = function() {};
+      #|  console.log(Object.getPrototypeOf(f) === Function.prototype);
+      #|  console.log(Object.getPrototypeOf(f.prototype) === Object.prototype);
+      #|}, 0);
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
 }
 
 // ====== Phase 2: Array Methods ======
@@ -6882,6 +6934,328 @@ test "borrowed Object.assign wraps primitive targets with method realm prototype
     ),
   )
   json_inspect(output, content=["true", "true", "true", "true"])
+}
+
+///|
+test "local function creation keeps local prototypes after creating another realm" {
+  let output = run_output(
+    (
+      #|var localObjectProto = Object.prototype;
+      #|var localFunctionProto = Function.prototype;
+      #|var r = $262.createRealm();
+      #|var foreignObjectProto = r.evalScript("Object.prototype");
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var f = function localFunction() {};
+      #|var arrow = () => {};
+      #|console.log(Object.getPrototypeOf(f) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf(f) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(arrow) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf(f.prototype) === localObjectProto);
+      #|console.log(Object.getPrototypeOf(f.prototype) === foreignObjectProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false", "true", "true", "false"])
+}
+
+///|
+test "created realm setup does not inherit caller realm function prototype" {
+  let output = run_output(
+    (
+      #|var localFunctionProto = Function.prototype;
+      #|var r = $262.createRealm();
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var foreignIsNaN = r.evalScript("isNaN");
+      #|var foreignObjectToString = r.evalScript("Object.prototype.toString");
+      #|console.log(Object.getPrototypeOf(foreignIsNaN) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignObjectToString) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignObjectToString) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=["false", "true", "false"])
+}
+
+///|
+test "$262 realm handle methods use created realm function prototype" {
+  let output = run_output(
+    (
+      #|var localFunctionProto = Function.prototype;
+      #|var r = $262.createRealm();
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|console.log(Object.getPrototypeOf(r.evalScript) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(r.evalScript) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf(r.createRealm) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(r.createRealm) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false", "true", "false"])
+}
+
+///|
+test "indirect eval keeps current realm function prototypes" {
+  let output = run_output(
+    (
+      #|(0, eval)("var indirectEvalFn = function(){};");
+      #|console.log(Object.getPrototypeOf(indirectEvalFn) === Function.prototype);
+      #|console.log(Object.getPrototypeOf(indirectEvalFn.prototype) === Object.prototype);
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "borrowed Function.prototype.bind keeps target function prototype realm" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var localBind = Function.prototype.bind;
+      #|var localFunctionProto = Function.prototype;
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var foreignFn = r.evalScript("(function target(){})");
+      #|var bound = localBind.call(foreignFn, null);
+      #|console.log(Object.getPrototypeOf(bound) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(bound) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
+test "binding Function.prototype.bind uses function prototype fallback" {
+  let output = run_output(
+    (
+      #|var bound = Function.prototype.bind.call(Function.prototype.bind, null);
+      #|console.log(Object.getPrototypeOf(bound) === Function.prototype);
+      #|console.log(Object.getPrototypeOf(bound) === null);
+    ),
+  )
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
+test "borrowed Object.fromEntries allocates result in callee realm" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignFromEntries = r.evalScript("Object.fromEntries");
+      #|var foreignObjectProto = r.evalScript("Object.prototype");
+      #|var localObjectProto = Object.prototype;
+      #|var result = foreignFromEntries([["x", 1]]);
+      #|console.log(Object.getPrototypeOf(result) === foreignObjectProto);
+      #|console.log(Object.getPrototypeOf(result) === localObjectProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
+test "foreign function calls create returned functions in callee realm" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var outer = r.evalScript("(function(){ return function inner(){}; })");
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var foreignObjectProto = r.evalScript("Object.prototype");
+      #|var localFunctionProto = Function.prototype;
+      #|var localObjectProto = Object.prototype;
+      #|var f = outer();
+      #|console.log(Object.getPrototypeOf(f) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(f) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf(f.prototype) === foreignObjectProto);
+      #|console.log(Object.getPrototypeOf(f.prototype) === localObjectProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false", "true", "false"])
+}
+
+///|
+test "derived class constructors keep function realm separate from static inheritance" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var info = r.evalScript("(function(){ class A{}; class B extends A { constructor(){ super(); this.f = function(){}; } } return { A: A, B: B, functionProto: Function.prototype, objectProto: Object.prototype }; })()");
+      #|var localFunctionProto = Function.prototype;
+      #|var localObjectProto = Object.prototype;
+      #|var b = new info.B();
+      #|console.log(Object.getPrototypeOf(info.B) === info.A);
+      #|console.log(Object.getPrototypeOf(b.f) === info.functionProto);
+      #|console.log(Object.getPrototypeOf(b.f) === info.A);
+      #|console.log(Object.getPrototypeOf(b.f) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf(b.f.prototype) === info.objectProto);
+      #|console.log(Object.getPrototypeOf(b.f.prototype) === localObjectProto);
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "false", "false", "true", "false",
+  ])
+}
+
+///|
+test "Object.assign does not copy function realm markers" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignFn = r.evalScript("(function foreignFn(){})");
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var foreignObjectProto = r.evalScript("Object.prototype");
+      #|var localFunctionProto = Function.prototype;
+      #|var localObjectProto = Object.prototype;
+      #|function localOuter() {
+      #|  return function nested() {};
+      #|}
+      #|Object.assign(localOuter, foreignFn);
+      #|var nested = localOuter();
+      #|console.log(Object.getPrototypeOf(nested) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf(nested) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(nested.prototype) === localObjectProto);
+      #|console.log(Object.getPrototypeOf(nested.prototype) === foreignObjectProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false", "true", "false"])
+}
+
+///|
+test "borrowed Object.getOwnPropertyDescriptor allocates descriptor in callee realm" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignGetOwnPropertyDescriptor = r.evalScript("Object.getOwnPropertyDescriptor");
+      #|var foreignObjectProto = r.evalScript("Object.prototype");
+      #|var localObjectProto = Object.prototype;
+      #|var desc = foreignGetOwnPropertyDescriptor({ x: 1 }, "x");
+      #|console.log(Object.getPrototypeOf(desc) === foreignObjectProto);
+      #|console.log(Object.getPrototypeOf(desc) === localObjectProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
+test "direct call_value keeps active realm for returned function prototypes" {
+  let interp = new_interpreter()
+  let prog = @parser.parse("function outer() { return function inner() {}; }")
+  let _ = interp.run(prog.stmts)
+  let outer = interp.global.get("outer")
+  let result = interp.call_value(
+    outer,
+    Value::Undefined,
+    [],
+    @token.Loc::default(),
+  )
+  let function_proto = interp.global.get("[[FunctionPrototype]]")
+  let object_proto = interp.global.get("[[ObjectPrototype]]")
+  match result {
+    Object(data) => {
+      guard @runtime.strict_equal(data.prototype, function_proto) else {
+        fail("direct call_value function [[Prototype]]")
+      }
+      match data.bag.properties.get("prototype") {
+        Some(Object(proto_data)) =>
+          if !@runtime.strict_equal(proto_data.prototype, object_proto) {
+            fail("direct call_value function prototype object [[Prototype]]")
+          }
+        _ => fail("direct call_value function missing prototype object")
+      }
+    }
+    _ => fail("direct call_value did not return function object")
+  }
+}
+
+///|
+test "direct construct_value keeps active realm for constructor-created functions" {
+  let interp = new_interpreter()
+  let prog = @parser.parse("function C() { this.f = function made() {}; }")
+  let _ = interp.run(prog.stmts)
+  let ctor = interp.global.get("C")
+  let instance = interp.construct_value(ctor, [], @token.Loc::default())
+  let made = interp.get_property(instance, "f", @token.Loc::default())
+  let function_proto = interp.global.get("[[FunctionPrototype]]")
+  let object_proto = interp.global.get("[[ObjectPrototype]]")
+  match made {
+    Object(data) => {
+      guard @runtime.strict_equal(data.prototype, function_proto) else {
+        fail("direct construct_value function [[Prototype]]")
+      }
+      match data.bag.properties.get("prototype") {
+        Some(Object(proto_data)) =>
+          if !@runtime.strict_equal(proto_data.prototype, object_proto) {
+            fail(
+              "direct construct_value function prototype object [[Prototype]]",
+            )
+          }
+        _ => fail("direct construct_value function missing prototype object")
+      }
+    }
+    _ => fail("direct construct_value did not create function object")
+  }
+}
+
+///|
+test "host factory helpers bind to target environment realm after setup" {
+  let first = new_interpreter()
+  let first_function_proto = first.global.get("[[FunctionPrototype]]")
+  let first_host = @runtime.make_native_func(name="firstHost", fn(_args) {
+    Value::Undefined
+  })
+  first.global.def_builtin("firstHost", first_host)
+  let installed_first_host = first.global.get("firstHost")
+  expect_function_object_prototype(
+    "first host factory function [[Prototype]]", installed_first_host, first_function_proto,
+  )
+  let prog = @parser.parse("var r = $262.createRealm();")
+  let _ = first.run(prog.stmts)
+  let after_create_realm = @runtime.make_native_func(name="afterCreateRealm", fn(
+    _args,
+  ) {
+    Value::Undefined
+  })
+  first.global.def_builtin("afterCreateRealm", after_create_realm)
+  let installed_after_create_realm = first.global.get("afterCreateRealm")
+  expect_function_object_prototype(
+    "host factory realm after nested createRealm", installed_after_create_realm,
+    first_function_proto,
+  )
+  let second = new_interpreter()
+  let second_function_proto = second.global.get("[[FunctionPrototype]]")
+  let first_after_second = @runtime.make_native_func(name="firstAfterSecond", fn(
+    _args,
+  ) {
+    Value::Undefined
+  })
+  first.global.def_builtin("firstAfterSecond", first_after_second)
+  let installed_first_after_second = first.global.get("firstAfterSecond")
+  expect_function_object_prototype(
+    "first host factory after second interpreter [[Prototype]]", installed_first_after_second,
+    first_function_proto,
+  )
+  let second_host = @runtime.make_native_func(name="secondHost", fn(_args) {
+    Value::Undefined
+  })
+  second.global.def_builtin("secondHost", second_host)
+  let installed_second_host = second.global.get("secondHost")
+  expect_function_object_prototype(
+    "second host factory function [[Prototype]]", installed_second_host, second_function_proto,
+  )
+  match installed_second_host {
+    Object(data) =>
+      if @runtime.strict_equal(data.prototype, first_function_proto) {
+        fail("second host factory should not keep first realm")
+      }
+    _ => fail("second host factory expected function object")
+  }
+}
+
+///|
+test "direct get_property uses interpreter realm for lazy array methods" {
+  let interp = new_interpreter()
+  let function_proto = interp.global.get("[[FunctionPrototype]]")
+  let array_method = interp.get_property(
+    @runtime.make_array([Value::Number(1.0)]),
+    "toReversed",
+    @token.Loc::default(),
+  )
+  expect_function_object_prototype(
+    "direct get_property lazy array method [[Prototype]]", array_method, function_proto,
+  )
 }
 
 ///|
