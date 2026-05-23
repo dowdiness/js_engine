@@ -559,6 +559,7 @@ pub(all) struct RealmState {
   map_prototype : @ref.Ref[Value?]
   set_prototype : @ref.Ref[Value?]
   regexp_prototype : @ref.Ref[Value?]
+  promise_prototype : @ref.Ref[Value?]
 }
 #alias(new)
 pub fn RealmState::RealmState() -> Self
@@ -569,6 +570,7 @@ pub fn RealmState::get_func_proto(Self) -> Value
 pub fn RealmState::get_iterator_proto(Self) -> Value
 pub fn RealmState::get_number_proto(Self) -> Value
 pub fn RealmState::get_obj_proto(Self) -> Value
+pub fn RealmState::get_promise_proto(Self) -> Value
 pub fn RealmState::get_string_iterator_proto(Self) -> Value
 pub fn RealmState::get_string_proto(Self) -> Value
 pub fn RealmState::get_symbol_proto(Self) -> Value
@@ -618,7 +620,7 @@ pub(all) struct StdlibHooks {
   get_array_method_with_interp : (ArrayData, String, RealmState) -> Value
   get_map_method : (MapData, String, RealmState) -> Value
   get_set_method : (SetData, String, RealmState) -> Value
-  get_promise_method : (PromiseData, String) -> Value
+  get_promise_method : (PromiseData, String, RealmState) -> Value
   make_regexp_object : (RealmState, String, String) -> Value raise
   typedarray_get_index : (ObjectData, Int) -> Value
   typedarray_set_index : (ObjectData, Int, Double) -> Unit

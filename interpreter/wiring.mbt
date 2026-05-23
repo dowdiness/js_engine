@@ -49,8 +49,8 @@ fn make_stdlib_hooks() -> @runtime.StdlibHooks {
     get_set_method: fn(data, prop, realm_state) {
       @stdlib.get_set_method(data, prop, realm_state)
     },
-    get_promise_method: fn(data, prop) {
-      @stdlib.get_promise_method(data, prop)
+    get_promise_method: fn(data, prop, realm_state) {
+      @stdlib.get_promise_method(data, prop, realm_state)
     },
     make_regexp_object: (realm_state, pattern, flags) => {
       @stdlib.make_regexp_object_with_realm_state(pattern, flags, realm_state)

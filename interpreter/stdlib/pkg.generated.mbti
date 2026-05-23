@@ -22,7 +22,7 @@ pub fn get_map_method(@runtime.MapData, String, @runtime.RealmState) -> @runtime
 
 pub fn get_number_method(@runtime.Value, String) -> @runtime.Value
 
-pub fn get_promise_method(@runtime.PromiseData, String) -> @runtime.Value
+pub fn get_promise_method(@runtime.PromiseData, String, @runtime.RealmState) -> @runtime.Value
 
 pub fn get_regexp_string_iterator_proto(@runtime.RealmState) -> @runtime.Value
 
@@ -80,7 +80,7 @@ pub fn setup_map_set_builtins(@runtime.Environment, @runtime.RealmState) -> Unit
 
 pub fn setup_object_builtins(@runtime.Environment, @runtime.SymbolState, @runtime.RealmState) -> Unit
 
-pub fn setup_promise(@runtime.Environment) -> Unit
+pub fn setup_promise(@runtime.Environment, @runtime.RealmState) -> Unit
 
 pub fn setup_string_prototype(@runtime.Value, @runtime.RealmState, annex_b? : Bool) -> Unit
 

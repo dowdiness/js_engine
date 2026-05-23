@@ -8,7 +8,7 @@ pub(all) struct StdlibHooks {
   get_array_method_with_interp : (ArrayData, String, RealmState) -> Value
   get_map_method : (MapData, String, RealmState) -> Value
   get_set_method : (SetData, String, RealmState) -> Value
-  get_promise_method : (PromiseData, String) -> Value
+  get_promise_method : (PromiseData, String, RealmState) -> Value
   make_regexp_object : (RealmState, String, String) -> Value raise Error
   typedarray_get_index : (ObjectData, Int) -> Value
   typedarray_set_index : (ObjectData, Int, Double) -> Unit
@@ -27,7 +27,7 @@ pub fn default_stdlib_hooks() -> StdlibHooks {
     get_array_method_with_interp: fn(_data, _prop, _realm_state) { Undefined },
     get_map_method: fn(_data, _prop, _realm_state) { Undefined },
     get_set_method: fn(_data, _prop, _realm_state) { Undefined },
-    get_promise_method: fn(_data, _prop) { Undefined },
+    get_promise_method: fn(_data, _prop, _realm_state) { Undefined },
     make_regexp_object: fn(_realm_state, _pattern, _flags) { Undefined },
     typedarray_get_index: fn(_data, _idx) { Undefined },
     typedarray_set_index: fn(_data, _idx, _val) { () },

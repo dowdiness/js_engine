@@ -58,9 +58,6 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/stdlib/builtins_arraybuffer.mbt:detached_buffers": (
         "ArrayBuffer detached-state store; move to RealmState"
     ),
-    "interpreter/stdlib/builtins_promise.mbt:promise_prototype_ref": (
-        "prototype cache; move to RealmState"
-    ),
     "interpreter/stdlib/builtins_weakmap_set.mbt:weakmap_id_counter": (
         "WeakMap side-table counter; move to RealmState"
     ),

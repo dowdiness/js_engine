@@ -1734,7 +1734,7 @@ fn setup_builtins_with_realm_state_active(
   setup_map_set_builtins(env, realm_state)
 
   // Set up Promise constructor and prototype
-  setup_promise(env)
+  setup_promise(env, realm_state)
 
   // Set up Date constructor and prototype
   setup_date_builtins(env, well_known_symbols)
