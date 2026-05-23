@@ -1754,7 +1754,7 @@ fn setup_builtins_with_realm_state_active(
   setup_dataview_builtins(env, well_known_symbols)
 
   // Set up WeakMap and WeakSet
-  setup_weakmap_set_builtins(env, well_known_symbols)
+  setup_weakmap_set_builtins(env, well_known_symbols, realm_state)
 
   // Final prototype chain patching for constructors registered after initial patch
   match env.bindings.get("[[FunctionPrototype]]") {

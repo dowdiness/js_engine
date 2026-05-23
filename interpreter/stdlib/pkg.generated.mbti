@@ -32,9 +32,9 @@ pub fn get_string_method(String, String, @runtime.RealmState, annex_b? : Bool) -
 
 pub fn get_typedarray_prop(@runtime.ObjectData, String) -> @runtime.Value
 
-pub fn get_weakmap_method(@runtime.ObjectData, String) -> @runtime.Value
+pub fn get_weakmap_method(String, @runtime.RealmState) -> @runtime.Value
 
-pub fn get_weakset_method(@runtime.ObjectData, String) -> @runtime.Value
+pub fn get_weakset_method(String, @runtime.RealmState) -> @runtime.Value
 
 pub fn is_arraybuffer_detached(Int) -> Bool
 
@@ -88,7 +88,7 @@ pub fn setup_timers(@runtime.Environment) -> Unit
 
 pub fn setup_typedarray_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
 
-pub fn setup_weakmap_set_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
+pub fn setup_weakmap_set_builtins(@runtime.Environment, @runtime.WellKnownSymbols, @runtime.RealmState) -> Unit
 
 pub fn strict_equal_val(@runtime.Value, @runtime.Value) -> Bool
 
