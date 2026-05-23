@@ -204,13 +204,23 @@ fn Interpreter::get_property_impl(
             None =>
               match data.bag.properties.get(prop) {
                 Some(v) => v
-                None => (self.stdlib_hooks.get_promise_method)(data, prop)
+                None =>
+                  (self.stdlib_hooks.get_promise_method)(
+                    data,
+                    prop,
+                    self.realm_state,
+                  )
               }
           }
         None =>
           match data.bag.properties.get(prop) {
             Some(v) => v
-            None => (self.stdlib_hooks.get_promise_method)(data, prop)
+            None =>
+              (self.stdlib_hooks.get_promise_method)(
+                data,
+                prop,
+                self.realm_state,
+              )
           }
       }
     Null =>
@@ -1527,7 +1537,12 @@ fn Interpreter::get_computed_property_impl(
           let prop = to_js_string(key)
           match data.bag.properties.get(prop) {
             Some(v) => v
-            None => (self.stdlib_hooks.get_promise_method)(data, prop)
+            None =>
+              (self.stdlib_hooks.get_promise_method)(
+                data,
+                prop,
+                self.realm_state,
+              )
           }
         }
       }

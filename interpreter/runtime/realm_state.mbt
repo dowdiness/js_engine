@@ -42,6 +42,7 @@ pub(all) struct RealmState {
   map_prototype : Ref[Value?]
   set_prototype : Ref[Value?]
   regexp_prototype : Ref[Value?]
+  promise_prototype : Ref[Value?]
 }
 
 ///|
@@ -68,6 +69,7 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     map_prototype: { val: None },
     set_prototype: { val: None },
     regexp_prototype: { val: None },
+    promise_prototype: { val: None },
   }
 }
 
@@ -114,6 +116,14 @@ pub fn RealmState::get_boolean_proto(self : RealmState) -> Value {
 ///|
 pub fn RealmState::get_symbol_proto(self : RealmState) -> Value {
   match self.symbol_prototype.val {
+    Some(proto) => proto
+    None => Null
+  }
+}
+
+///|
+pub fn RealmState::get_promise_proto(self : RealmState) -> Value {
+  match self.promise_prototype.val {
     Some(proto) => proto
     None => Null
   }

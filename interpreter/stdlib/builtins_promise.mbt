@@ -11,13 +11,13 @@
 /// Reference: https://tc39.es/ecma262/multipage/executable-code-and-execution-contexts.html#sec-jobs
 
 ///|
-/// Reference to Promise.prototype for method lookup
-let promise_prototype_ref : Ref[Value?] = { val: None }
-
-///|
 /// Get Promise.prototype methods for a Promise instance
-pub fn get_promise_method(_data : PromiseData, prop : String) -> Value {
-  match promise_prototype_ref.val {
+pub fn get_promise_method(
+  _data : PromiseData,
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  match realm_state.promise_prototype.val {
     Some(proto) =>
       match proto {
         Object(proto_data) =>
@@ -346,7 +346,10 @@ fn invoke_then_method(
 
 ///|
 /// Setup Promise constructor and prototype methods
-pub fn setup_promise(env : Environment) -> Unit {
+pub fn setup_promise(
+  env : Environment,
+  realm_state : @runtime.RealmState,
+) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -617,7 +620,7 @@ pub fn setup_promise(env : Environment) -> Unit {
   })
 
   // Store prototype reference for method lookup
-  promise_prototype_ref.val = Some(promise_proto)
+  realm_state.promise_prototype.val = Some(promise_proto)
 
   // Promise constructor
   let promise_ctor_props : Map[String, Value] = {}
