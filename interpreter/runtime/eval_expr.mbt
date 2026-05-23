@@ -1443,8 +1443,8 @@ pub fn instanceof_prototype_chain(
   let mut current = match l {
     Object(l_data) => l_data.prototype
     Array(_) => get_constructor_prototype(interp.global, "Array")
-    Map(_) => get_constructor_prototype(interp.global, "Map")
-    Set(_) => get_constructor_prototype(interp.global, "Set")
+    Map(_) => interp.realm_state.get_map_proto()
+    Set(_) => interp.realm_state.get_set_proto()
     Promise(_) => interp.realm_state.get_promise_proto()
     // Invoke the [[GetPrototypeOf]] trap so Proxy handler can intercept
     Proxy(proxy_data) => proxy_get_prototype_of(interp, proxy_data)

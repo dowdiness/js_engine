@@ -784,11 +784,12 @@ pub fn Interpreter::has_property_key(
     Array(data) => self.has_array_property(data, key)
     // Map/Set/Promise share a uniform shape: an expando bag plus a builtin
     // prototype. Implement OrdinaryHasProperty (ES §7.3.11): own bag →
-    // proto chain → bool, with no value inspection. Promise reads its
-    // prototype from RealmState directly; Map and Set still resolve via
-    // globalThis[ctor].prototype until they migrate in a follow-up slice.
-    Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
-    Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
+    // proto chain → bool, with no value inspection. Each family resolves
+    // its prototype from RealmState.
+    Map(data) =>
+      self.has_bag_with_proto(data.bag, self.realm_state.get_map_proto(), key)
+    Set(data) =>
+      self.has_bag_with_proto(data.bag, self.realm_state.get_set_proto(), key)
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
@@ -890,8 +891,10 @@ fn Interpreter::has_property_on_proto(
     Proxy(proxy_data) => proxy_has_property_key(self, proxy_data, key)
     Object(proto_data) => self.has_object_property(proto_data, key)
     Array(arr_data) => self.has_array_property(arr_data, key)
-    Map(data) => self.has_bag_or_builtin_proto_key(data.bag, "Map", key)
-    Set(data) => self.has_bag_or_builtin_proto_key(data.bag, "Set", key)
+    Map(data) =>
+      self.has_bag_with_proto(data.bag, self.realm_state.get_map_proto(), key)
+    Set(data) =>
+      self.has_bag_with_proto(data.bag, self.realm_state.get_set_proto(), key)
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
@@ -913,31 +916,6 @@ fn bag_has_key(bag : PropertyBag, key : Value) -> Bool raise Error {
       bag.properties.contains(name) || bag.descriptors.contains(name)
     }
   }
-}
-
-///|
-/// OrdinaryHasProperty for exotic values whose prototype is stored globally
-/// (Map, Set). Checks own-bag descriptors and properties first, then
-/// walks the prototype chain starting from globalThis[ctor_name].prototype.
-fn Interpreter::has_bag_or_builtin_proto_key(
-  self : Interpreter,
-  bag : PropertyBag,
-  ctor_name : String,
-  key : Value,
-) -> Bool raise Error {
-  if bag_has_key(bag, key) {
-    return true
-  }
-  let ctor = self.global.get(ctor_name) catch { _ => return false }
-  let current = match ctor {
-    Object(ctor_data) =>
-      match ctor_data.bag.properties.get("prototype") {
-        Some(p) => p
-        None => return false
-      }
-    _ => return false
-  }
-  self.has_property_on_proto(current, key)
 }
 
 ///|

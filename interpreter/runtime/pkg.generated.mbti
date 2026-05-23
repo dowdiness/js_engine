@@ -570,9 +570,11 @@ pub fn RealmState::get_array_iterator_proto(Self) -> Value
 pub fn RealmState::get_boolean_proto(Self) -> Value
 pub fn RealmState::get_func_proto(Self) -> Value
 pub fn RealmState::get_iterator_proto(Self) -> Value
+pub fn RealmState::get_map_proto(Self) -> Value
 pub fn RealmState::get_number_proto(Self) -> Value
 pub fn RealmState::get_obj_proto(Self) -> Value
 pub fn RealmState::get_promise_proto(Self) -> Value
+pub fn RealmState::get_set_proto(Self) -> Value
 pub fn RealmState::get_string_iterator_proto(Self) -> Value
 pub fn RealmState::get_string_proto(Self) -> Value
 pub fn RealmState::get_symbol_proto(Self) -> Value

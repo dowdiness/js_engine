@@ -126,6 +126,22 @@ pub fn RealmState::get_symbol_proto(self : RealmState) -> Value {
 }
 
 ///|
+pub fn RealmState::get_map_proto(self : RealmState) -> Value {
+  match self.map_prototype.val {
+    Some(proto) => proto
+    None => Null
+  }
+}
+
+///|
+pub fn RealmState::get_set_proto(self : RealmState) -> Value {
+  match self.set_prototype.val {
+    Some(proto) => proto
+    None => Null
+  }
+}
+
+///|
 pub fn RealmState::get_promise_proto(self : RealmState) -> Value {
   match self.promise_prototype.val {
     Some(proto) => proto
