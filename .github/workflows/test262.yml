@@ -93,7 +93,7 @@ jobs:
         run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.moon/registry
@@ -108,7 +108,7 @@ jobs:
           moon build --target js --release
 
       - name: Cache test262 suite
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: test262
           key: test262-${{ env.TEST262_COMMIT }}
@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test262-${{ matrix.mode }}-results
           path: test262-${{ matrix.mode }}-results.json
@@ -188,7 +188,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Download all results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: test262-*-results
           merge-multiple: true
