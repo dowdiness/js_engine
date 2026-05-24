@@ -21,8 +21,8 @@ Observed pressures include these:
 - The public facade can return an interpreter for host-driven event-loop
   control.
 - The test262 harness can create fresh realms.
-- Much durable state is now interpreter-owned, but several intrinsic caches,
-  backing stores, and side tables remain module-global.
+- Most durable state is now interpreter-owned, but ArrayBuffer backing stores
+  and ambient execution/construction context remain module-global.
 - Runtime and stdlib expose mutable implementation details as public API, which
   makes future internal reshaping harder than it needs to be.
 - The closure-conversion prototype is useful as a benchmark path, but it
@@ -65,12 +65,13 @@ acceptable; mutable state still bypasses interpreter ownership.
 State ownership is split across these places:
 
 - Interpreter-owned state: host queues, global environment, global object,
-  module registry, generator state, symbol state, and stdlib hook table.
-- Module-global state: prototype refs, current interpreter fallback,
-  construction flag, ArrayBuffer backing store, WeakMap / WeakSet side tables,
-  and some iterator/prototype caches.
+  module registry, generator state, symbol state, stdlib hook table,
+  prototype caches, prototype refs, and WeakMap / WeakSet side tables.
+- Module-global state: current interpreter fallback, construction flag,
+  ArrayBuffer backing store, ArrayBuffer backing-store ID counter, and
+  ArrayBuffer detached-buffer store.
 - Side effects: host output and event-loop queues live in `HostEnv`, while
-  several stdlib object stores and intrinsic caches live outside it.
+  the remaining stdlib object-store debt is the ArrayBuffer storage family.
 
 ## 3. Architectural Problems
 
@@ -247,15 +248,19 @@ Current state:
   the provided `SymbolState`.
 - The temporary compatibility path and no-argument well-known symbol lookup
   helpers have been removed.
+- Iterator/prototype caches, runtime factory prototype refs, stdlib Promise and
+  RegExp prototype refs, dependent runtime prototype read paths, and WeakMap /
+  WeakSet side-table storage have moved into `RealmState` through PR #147.
 
-### Stage 3 — Move Backing Stores And Side Tables
+### Stage 3 — Move Remaining Backing Stores And Ambient Context
 
 What changes:
 
-- Move ArrayBuffer backing bytes and detach state into realm-owned storage.
-- Move WeakMap / WeakSet IDs and entries into realm-owned storage.
-- Move remaining iterator/prototype lazy caches into realm-owned state.
+- Move ArrayBuffer backing bytes, backing-store IDs, and detach state into
+  realm-owned storage.
 - Replace construction context globals with explicit call/construct context.
+- Replace current-interpreter fallback with explicit interpreter/context
+  threading.
 
 What stays the same:
 
@@ -264,8 +269,8 @@ What stays the same:
 
 Verification:
 
-- `built-ins/ArrayBuffer`, `built-ins/DataView`, typed array, WeakMap, and
-  WeakSet targeted tests.
+- `built-ins/ArrayBuffer`, `built-ins/DataView`, and typed array targeted
+  tests.
 - Tests that mutate one realm and verify another realm does not observe it.
 
 Risk control:
@@ -458,19 +463,25 @@ Completed:
 5. Move the iterator/prototype caches used by protocol lookup into
    `RealmState` in PR #133.
 6. Move runtime factory prototype refs into `RealmState` in PRs #134 and #135.
+7. Move stdlib Promise and RegExp prototype refs, plus dependent runtime
+   prototype read paths, into `RealmState` through PRs #136 through #146.
+8. Move WeakMap / WeakSet side-table storage into `RealmState` in PR #147.
+
+Current audit inventory:
+
+`scripts/architecture-state-audit.py --list` reports 5 classified bindings:
+`current_interpreter`, `is_constructing`, `arraybuffer_store`,
+`arraybuffer_id_counter`, and `detached_buffers`.
 
 Remaining:
 
-1. Migrate stdlib Promise and remaining RegExp prototype refs one family at a
-   time.
-2. Migrate ArrayBuffer stores and detach state after the remaining prototype
-   path is stable.
-3. Migrate WeakMap / WeakSet stores after ArrayBuffer state is isolated.
-4. Replace ambient construction/current-interpreter context with explicit
+1. Migrate ArrayBuffer backing stores, id counter, and detach state into
+   `RealmState`.
+2. Replace ambient construction/current-interpreter context with explicit
    context.
-5. Only then reduce runtime public API surface and consider internal package
+3. Only then reduce runtime public API surface and consider internal package
    extraction.
-6. Keep closure conversion frozen as an opt-in benchmark path while any
+4. Keep closure conversion frozen as an opt-in benchmark path while any
    bytecode/IR prototype is designed around shared runtime operations.
 
 ## Evidence Checked
