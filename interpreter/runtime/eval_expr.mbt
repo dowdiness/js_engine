@@ -268,6 +268,7 @@ fn Interpreter::eval_expr(
         callable: None,
         class_name: "Object",
         extensible: true,
+        arraybuffer_state: None,
       }
       let home_object : Value = Object(object_data)
       let method_env = Environment::new(parent=Some(env))
@@ -682,6 +683,7 @@ fn Interpreter::eval_expr(
           callable: Some(ArrowFunc(func_data)),
           class_name: "Function",
           extensible: true,
+          arraybuffer_state: None,
         }),
       )
     }
@@ -738,6 +740,7 @@ fn Interpreter::eval_expr(
           callable: Some(ArrowFuncExt(func_data)),
           class_name: "Function",
           extensible: true,
+          arraybuffer_state: None,
         }),
       )
     }

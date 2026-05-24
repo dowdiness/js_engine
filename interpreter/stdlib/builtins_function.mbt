@@ -188,6 +188,7 @@ fn setup_function_builtins(
           callable: Some(BoundFunc(this_val, bind_this, bound_args)),
           class_name: "Function",
           extensible: true,
+          arraybuffer_state: None,
         }),
       )
     },
@@ -228,6 +229,7 @@ fn setup_function_builtins(
     ),
     class_name: "Function",
     extensible: false,
+    arraybuffer_state: None,
   })
 
   // Install ThrowTypeError accessors on Function.prototype for caller and arguments
@@ -306,6 +308,7 @@ fn setup_function_builtins(
     callable: Some(NonConstructableCallable("", fn(_args) { Undefined })),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Set ThrowTypeError's prototype to Function.prototype (after func_proto is created)
@@ -355,6 +358,7 @@ fn setup_function_builtins(
               callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
               class_name: "Function",
               extensible: true,
+              arraybuffer_state: None,
             }),
           )
         }
@@ -415,6 +419,7 @@ fn setup_function_builtins(
                   ),
                   class_name: "Function",
                   extensible: true,
+                  arraybuffer_state: None,
                 }),
               )
             }
@@ -464,6 +469,7 @@ fn setup_function_builtins(
                   ),
                   class_name: "Function",
                   extensible: true,
+                  arraybuffer_state: None,
                 }),
               )
             }
@@ -478,12 +484,14 @@ fn setup_function_builtins(
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
             class_name: "Function",
             extensible: true,
+            arraybuffer_state: None,
           }),
         )
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Add constructor back-reference to prototype (same object as global Function)

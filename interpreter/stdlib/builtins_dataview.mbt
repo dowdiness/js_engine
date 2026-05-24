@@ -263,7 +263,11 @@ fn validate_dataview_access(
     Some(Value::Number(n)) => n.to_int()
     _ => raise @errors.TypeError(message="DataView access on invalid object")
   }
-  if is_arraybuffer_detached(realm_state, buf_id) {
+  let storage_state = arraybuffer_state_from_data(
+    data,
+    realm_state.arraybuffer_state,
+  )
+  if is_arraybuffer_state_detached(storage_state, buf_id) {
     raise @errors.TypeError(
       message="Cannot perform DataView operation on a detached ArrayBuffer",
     )
@@ -281,7 +285,7 @@ fn validate_dataview_access(
       message="Offset is outside the bounds of the DataView",
     )
   }
-  let bytes = match get_arraybuffer_bytes(realm_state, buf_id) {
+  let bytes = match get_arraybuffer_state_bytes(storage_state, buf_id) {
     Some(b) => b
     None =>
       raise @errors.TypeError(
@@ -816,6 +820,7 @@ pub fn setup_dataview_builtins(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   env.def_builtin("[[DataViewPrototype]]", dv_proto)
 
@@ -870,7 +875,11 @@ pub fn setup_dataview_builtins(
               message="First argument to DataView constructor must be an ArrayBuffer",
             )
         }
-        if is_arraybuffer_detached(realm_state, buf_id) {
+        let storage_state = arraybuffer_state_from_value(
+          buffer,
+          realm_state.arraybuffer_state,
+        )
+        if is_arraybuffer_state_detached(storage_state, buf_id) {
           raise @errors.TypeError(
             message="Cannot construct DataView with a detached ArrayBuffer",
           )
@@ -943,11 +952,13 @@ pub fn setup_dataview_builtins(
           callable: None,
           class_name: "DataView",
           extensible: true,
+          arraybuffer_state: Some(storage_state),
         })
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Link constructor

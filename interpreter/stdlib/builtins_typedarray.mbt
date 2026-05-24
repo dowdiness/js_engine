@@ -267,11 +267,9 @@ pub fn make_typedarray_object(
   let bpe = typed_array_bytes_per_element(type_name)
   let byte_length = length * bpe
   let ab_proto = env.get("[[ArrayBufferPrototype]]") catch { _ => Null }
-  let buffer = make_arraybuffer_object(
-    arraybuffer_realm_from_env(env),
-    byte_length,
-    ab_proto,
-  )
+  let realm_state = arraybuffer_realm_from_env(env)
+  let buffer = make_arraybuffer_object(realm_state, byte_length, ab_proto)
+  let storage_state = realm_state.arraybuffer_state
   let buf_id = match get_buffer_id(buffer) {
     Some(id) => id
     None => -1
@@ -309,6 +307,7 @@ pub fn make_typedarray_object(
     callable: None,
     class_name: type_name,
     extensible: true,
+    arraybuffer_state: Some(storage_state),
   })
 }
 
@@ -325,6 +324,10 @@ fn make_typedarray_from_buffer(
     Some(id) => id
     None => -1
   }
+  let storage_state = arraybuffer_state_from_value(
+    buffer,
+    @runtime.ArrayBufferState(),
+  )
   let bpe = typed_array_bytes_per_element(type_name)
   let byte_length = length * bpe
   let props : Map[String, Value] = {}
@@ -360,7 +363,27 @@ fn make_typedarray_from_buffer(
     callable: None,
     class_name: type_name,
     extensible: true,
+    arraybuffer_state: Some(storage_state),
   })
+}
+
+///|
+fn typedarray_arraybuffer_state(
+  data : ObjectData,
+  fallback_realm_state : @runtime.RealmState,
+) -> @runtime.ArrayBufferState {
+  match data.arraybuffer_state {
+    Some(state) => state
+    None =>
+      match data.bag.properties.get("[[ViewedArrayBuffer]]") {
+        Some(buffer) =>
+          arraybuffer_state_from_value(
+            buffer,
+            fallback_realm_state.arraybuffer_state,
+          )
+        None => fallback_realm_state.arraybuffer_state
+      }
+  }
 }
 
 ///|
@@ -385,7 +408,8 @@ pub fn typedarray_is_valid_index(
     Some(Value::Number(n)) => n.to_int()
     _ => return false
   }
-  !is_arraybuffer_detached(realm_state, buf_id)
+  let storage_state = typedarray_arraybuffer_state(data, realm_state)
+  !is_arraybuffer_state_detached(storage_state, buf_id)
 }
 
 ///|
@@ -428,7 +452,8 @@ pub fn validate_typed_array(
     _ =>
       raise @errors.TypeError(message="\{method_name} called on non-TypedArray")
   }
-  if is_arraybuffer_detached(realm_state, buf_id) {
+  let storage_state = typedarray_arraybuffer_state(data, realm_state)
+  if is_arraybuffer_state_detached(storage_state, buf_id) {
     raise @errors.TypeError(
       message="Cannot perform \{method_name} on a detached ArrayBuffer",
     )
@@ -579,7 +604,8 @@ pub fn typedarray_get_index(
     Some(Value::Number(n)) => n.to_int()
     _ => return Undefined
   }
-  if is_arraybuffer_detached(realm_state, buf_id) {
+  let storage_state = typedarray_arraybuffer_state(data, realm_state)
+  if is_arraybuffer_state_detached(storage_state, buf_id) {
     return Undefined
   }
   let byte_offset = match data.bag.properties.get("[[ByteOffset]]") {
@@ -588,7 +614,7 @@ pub fn typedarray_get_index(
   }
   let bpe = typed_array_bytes_per_element(data.class_name)
   let elem_offset = byte_offset + index * bpe
-  match get_arraybuffer_bytes(realm_state, buf_id) {
+  match get_arraybuffer_state_bytes(storage_state, buf_id) {
     Some(bytes) => typed_array_get_element(bytes, elem_offset, data.class_name)
     None => Undefined
   }
@@ -613,7 +639,8 @@ pub fn typedarray_set_index(
     Some(Value::Number(n)) => n.to_int()
     _ => return
   }
-  if is_arraybuffer_detached(realm_state, buf_id) {
+  let storage_state = typedarray_arraybuffer_state(data, realm_state)
+  if is_arraybuffer_state_detached(storage_state, buf_id) {
     return
   }
   let byte_offset = match data.bag.properties.get("[[ByteOffset]]") {
@@ -622,7 +649,7 @@ pub fn typedarray_set_index(
   }
   let bpe = typed_array_bytes_per_element(data.class_name)
   let elem_offset = byte_offset + index * bpe
-  match get_arraybuffer_bytes(realm_state, buf_id) {
+  match get_arraybuffer_state_bytes(storage_state, buf_id) {
     Some(bytes) =>
       typed_array_set_element(bytes, elem_offset, data.class_name, value)
     None => ()
@@ -1514,7 +1541,11 @@ pub fn setup_typedarray_builtins(
           Some(Value::Number(n)) => n.to_int()
           _ => -1
         }
-        if buf_id >= 0 && is_arraybuffer_detached(realm_state, buf_id) {
+        if buf_id >= 0 &&
+          is_arraybuffer_state_detached(
+            typedarray_arraybuffer_state(data, realm_state),
+            buf_id,
+          ) {
           raise @errors.TypeError(
             message="Cannot iterate over a detached ArrayBuffer",
           )
@@ -1542,6 +1573,7 @@ pub fn setup_typedarray_builtins(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -1558,6 +1590,7 @@ pub fn setup_typedarray_builtins(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       })
@@ -1570,6 +1603,7 @@ pub fn setup_typedarray_builtins(
         callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
         class_name: "Function",
         extensible: true,
+        arraybuffer_state: None,
       })
       Value::Object({
         bag: {
@@ -1582,6 +1616,7 @@ pub fn setup_typedarray_builtins(
         callable: None,
         class_name: "Array Iterator",
         extensible: true,
+        arraybuffer_state: None,
       })
     },
   )
@@ -1599,7 +1634,11 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => -1
       }
-      if buf_id >= 0 && is_arraybuffer_detached(realm_state, buf_id) {
+      if buf_id >= 0 &&
+        is_arraybuffer_state_detached(
+          typedarray_arraybuffer_state(data, realm_state),
+          buf_id,
+        ) {
         raise @errors.TypeError(
           message="Cannot iterate over a detached ArrayBuffer",
         )
@@ -1625,6 +1664,7 @@ pub fn setup_typedarray_builtins(
           callable: None,
           class_name: "Object",
           extensible: true,
+          arraybuffer_state: None,
         })
       } else {
         let result_props : Map[String, Value] = {}
@@ -1641,6 +1681,7 @@ pub fn setup_typedarray_builtins(
           callable: None,
           class_name: "Object",
           extensible: true,
+          arraybuffer_state: None,
         })
       }
     })
@@ -1653,6 +1694,7 @@ pub fn setup_typedarray_builtins(
       callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     })
     Value::Object({
       bag: {
@@ -1665,6 +1707,7 @@ pub fn setup_typedarray_builtins(
       callable: None,
       class_name: "Array Iterator",
       extensible: true,
+      arraybuffer_state: None,
     })
   })
 
@@ -1681,7 +1724,11 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => -1
       }
-      if buf_id >= 0 && is_arraybuffer_detached(realm_state, buf_id) {
+      if buf_id >= 0 &&
+        is_arraybuffer_state_detached(
+          typedarray_arraybuffer_state(data, realm_state),
+          buf_id,
+        ) {
         raise @errors.TypeError(
           message="Cannot iterate over a detached ArrayBuffer",
         )
@@ -1708,6 +1755,7 @@ pub fn setup_typedarray_builtins(
           callable: None,
           class_name: "Object",
           extensible: true,
+          arraybuffer_state: None,
         })
       } else {
         let result_props : Map[String, Value] = {}
@@ -1724,6 +1772,7 @@ pub fn setup_typedarray_builtins(
           callable: None,
           class_name: "Object",
           extensible: true,
+          arraybuffer_state: None,
         })
       }
     })
@@ -1736,6 +1785,7 @@ pub fn setup_typedarray_builtins(
       callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     })
     Value::Object({
       bag: {
@@ -1748,6 +1798,7 @@ pub fn setup_typedarray_builtins(
       callable: None,
       class_name: "Array Iterator",
       extensible: true,
+      arraybuffer_state: None,
     })
   })
   ta_proto_props["values"] = values_fn
@@ -2389,6 +2440,7 @@ pub fn setup_typedarray_builtins(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   env.def_builtin("[[TypedArrayPrototype]]", ta_proto)
 
@@ -2530,6 +2582,7 @@ pub fn setup_typedarray_builtins(
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   // Set ta_proto.constructor = %TypedArray%
   match ta_proto {
@@ -2606,6 +2659,7 @@ pub fn setup_typedarray_builtins(
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
 
     // Constructor
@@ -2729,6 +2783,7 @@ pub fn setup_typedarray_builtins(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     })
 
     let ctor_descs : Map[String, PropDescriptor] = {}
@@ -2827,7 +2882,13 @@ pub fn setup_typedarray_builtins(
                 _ => -1
               }
               if check_buf_id >= 0 &&
-                is_arraybuffer_detached(realm_state, check_buf_id) {
+                is_arraybuffer_state_detached(
+                  arraybuffer_state_from_data(
+                    buf_data,
+                    realm_state.arraybuffer_state,
+                  ),
+                  check_buf_id,
+                ) {
                 raise @errors.TypeError(
                   message="Cannot construct a TypedArray with a detached ArrayBuffer",
                 )
@@ -2976,6 +3037,7 @@ pub fn setup_typedarray_builtins(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     })
 
     // Link constructor

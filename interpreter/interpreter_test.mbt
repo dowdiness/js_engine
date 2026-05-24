@@ -8915,6 +8915,26 @@ test "ArrayBuffer backing store is isolated across interpreters" {
 }
 
 ///|
+test "ArrayBuffer backing store follows cross-realm typed arrays" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|r.evalScript("var view = new Uint8Array(1); view[0] = 64;");
+      #|console.log(r.global.view[0]);
+      #|console.log(Uint8Array.prototype.join.call(r.global.view));
+      #|$262.detachArrayBuffer(r.global.view.buffer);
+      #|console.log(r.global.view[0]);
+      #|try {
+      #|  Uint8Array.prototype.join.call(r.global.view);
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["64", "64", "undefined", "true"])
+}
+
+///|
 test "test262: ArrayBuffer constructor requires new" {
   let output = run_output(
     (

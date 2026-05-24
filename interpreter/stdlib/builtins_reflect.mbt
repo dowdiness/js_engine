@@ -581,6 +581,7 @@ fn setup_reflect_builtins(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   env.def_builtin("Reflect", reflect_obj)
 }

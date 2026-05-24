@@ -145,6 +145,7 @@ fn Interpreter::install_instance_fields(
               callable: None,
               class_name: "Object",
               extensible: true,
+              arraybuffer_state: None,
             })
             let trap_result = self.call_value(
               trap_fn,
@@ -241,6 +242,7 @@ fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }
@@ -253,6 +255,7 @@ fn make_constructor_instance(proto : Value, class_name : String) -> Value {
     callable: None,
     class_name,
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -318,6 +321,7 @@ fn make_arguments_object(
             ),
             class_name: "Function",
             extensible: true,
+            arraybuffer_state: None,
           }),
         )
         let setter_fn = stamp_function_realm(
@@ -332,6 +336,7 @@ fn make_arguments_object(
             ),
             class_name: "Function",
             extensible: true,
+            arraybuffer_state: None,
           }),
         )
         new_args_props[key] = Undefined // accessor sentinel
@@ -446,6 +451,7 @@ fn make_arguments_object(
                       callable: None,
                       class_name: "Object",
                       extensible: true,
+                      arraybuffer_state: None,
                     })
                   } else {
                     Object({
@@ -459,12 +465,14 @@ fn make_arguments_object(
                       callable: None,
                       class_name: "Object",
                       extensible: true,
+                      arraybuffer_state: None,
                     })
                   }
                 }),
               ),
               class_name: "Function",
               extensible: true,
+              arraybuffer_state: None,
             }),
           )
           Object({
@@ -478,11 +486,13 @@ fn make_arguments_object(
             callable: None,
             class_name: "Array Iterator",
             extensible: true,
+            arraybuffer_state: None,
           })
         }),
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   Object({
@@ -496,6 +506,7 @@ fn make_arguments_object(
     callable: None,
     class_name: "Arguments",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 

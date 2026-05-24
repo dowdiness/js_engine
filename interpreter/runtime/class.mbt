@@ -411,6 +411,7 @@ fn Interpreter::create_class(
     callable: None,
     class_name: name,
     extensible: true,
+    arraybuffer_state: None,
   })
   // Add constructor back-reference to prototype
   // (will be set after class object is created)
@@ -447,6 +448,7 @@ fn Interpreter::create_class(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   // Set prototype.constructor to point to the class (non-enumerable per spec)

@@ -51,6 +51,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         callable: None,
         class_name: "String",
         extensible: true,
+        arraybuffer_state: None,
       })
     }
     Value::Number(n) => {
@@ -68,6 +69,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         callable: None,
         class_name: "Number",
         extensible: true,
+        arraybuffer_state: None,
       })
     }
     Value::Bool(b) => {
@@ -85,6 +87,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         callable: None,
         class_name: "Boolean",
         extensible: true,
+        arraybuffer_state: None,
       })
     }
     Symbol(_) => {
@@ -102,6 +105,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         callable: None,
         class_name: "Symbol",
         extensible: true,
+        arraybuffer_state: None,
       })
     }
   }
@@ -131,6 +135,7 @@ pub fn make_data_desc_obj(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -158,5 +163,6 @@ pub fn make_accessor_desc_obj(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
 }

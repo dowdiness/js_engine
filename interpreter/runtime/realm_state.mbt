@@ -46,6 +46,7 @@ pub(all) struct RealmState {
   promise_prototype : Ref[Value?]
   weakmap_prototype : Ref[Value?]
   weakset_prototype : Ref[Value?]
+  arraybuffer_state : ArrayBufferState
   arraybuffer_id_counter : Ref[Int]
   arraybuffer_store : Map[Int, Array[Int]]
   detached_buffers : Map[Int, Bool]
@@ -66,6 +67,7 @@ pub fn RealmState::RealmState() -> RealmState {
 
 ///|
 pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
+  let arraybuffer_state = ArrayBufferState()
   {
     symbols,
     well_known_symbols: symbols.well_known_symbols(),
@@ -85,9 +87,10 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     promise_prototype: { val: None },
     weakmap_prototype: { val: None },
     weakset_prototype: { val: None },
-    arraybuffer_id_counter: { val: 0 },
-    arraybuffer_store: {},
-    detached_buffers: {},
+    arraybuffer_state,
+    arraybuffer_id_counter: arraybuffer_state.id_counter,
+    arraybuffer_store: arraybuffer_state.store,
+    detached_buffers: arraybuffer_state.detached,
     weakmap_id_counter: { val: 0 },
     weakmap_storage: {},
     weakmap_id_table: [],

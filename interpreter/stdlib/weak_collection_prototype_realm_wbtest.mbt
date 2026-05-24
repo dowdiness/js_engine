@@ -238,6 +238,7 @@ fn fresh_object_data() -> ObjectData {
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   }
 }
 

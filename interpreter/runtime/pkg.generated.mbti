@@ -253,6 +253,13 @@ pub suberror YieldSignal {
 }
 
 // Types and methods
+pub(all) struct ArrayBufferState {
+  id_counter : @ref.Ref[Int]
+  store : Map[Int, Array[Int]]
+  detached : Map[Int, Bool]
+}
+pub fn ArrayBufferState::ArrayBufferState() -> Self
+
 pub(all) struct ArrayData {
   elements : Array[Value]
   bag : PropertyBag
@@ -473,6 +480,7 @@ pub(all) struct ObjectData {
   callable : Callable?
   class_name : String
   mut extensible : Bool
+  arraybuffer_state : ArrayBufferState?
 }
 
 pub(all) struct PartialDescriptor {
@@ -561,6 +569,7 @@ pub(all) struct RealmState {
   promise_prototype : @ref.Ref[Value?]
   weakmap_prototype : @ref.Ref[Value?]
   weakset_prototype : @ref.Ref[Value?]
+  arraybuffer_state : ArrayBufferState
   arraybuffer_id_counter : @ref.Ref[Int]
   arraybuffer_store : Map[Int, Array[Int]]
   detached_buffers : Map[Int, Bool]

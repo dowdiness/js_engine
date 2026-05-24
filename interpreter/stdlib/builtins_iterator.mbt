@@ -58,6 +58,7 @@ fn setup_iterator_protocol(
                         callable: None,
                         class_name: "Object",
                         extensible: true,
+                        arraybuffer_state: None,
                       })
                     } else {
                       let result_props : Map[String, Value] = {}
@@ -74,12 +75,14 @@ fn setup_iterator_protocol(
                         callable: None,
                         class_name: "Object",
                         extensible: true,
+                        arraybuffer_state: None,
                       })
                     }
                   }),
                 ),
                 class_name: "Function",
                 extensible: true,
+                arraybuffer_state: None,
               })
               let iter_props : Map[String, Value] = {}
               iter_props["next"] = next_method
@@ -94,6 +97,7 @@ fn setup_iterator_protocol(
                 callable: None,
                 class_name: "Array Iterator",
                 extensible: true,
+                arraybuffer_state: None,
               })
 
               // Add [Symbol.iterator] to keys iterator
@@ -145,6 +149,7 @@ fn setup_iterator_protocol(
                         callable: None,
                         class_name: "Object",
                         extensible: true,
+                        arraybuffer_state: None,
                       })
                     } else {
                       let result_props : Map[String, Value] = {}
@@ -161,12 +166,14 @@ fn setup_iterator_protocol(
                         callable: None,
                         class_name: "Object",
                         extensible: true,
+                        arraybuffer_state: None,
                       })
                     }
                   }),
                 ),
                 class_name: "Function",
                 extensible: true,
+                arraybuffer_state: None,
               })
               let iter_props : Map[String, Value] = {}
               iter_props["next"] = next_method
@@ -181,6 +188,7 @@ fn setup_iterator_protocol(
                 callable: None,
                 class_name: "Array Iterator",
                 extensible: true,
+                arraybuffer_state: None,
               })
 
               // Add [Symbol.iterator] to entries iterator
@@ -235,6 +243,7 @@ fn setup_iterator_protocol(
                   callable: None,
                   class_name: "Object",
                   extensible: true,
+                  arraybuffer_state: None,
                 },
               )
               proto_data.bag.symbol_descriptors[unscopables_sym2.id] = {

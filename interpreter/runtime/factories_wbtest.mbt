@@ -15,6 +15,7 @@ fn unmarked_callable() -> Value {
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 

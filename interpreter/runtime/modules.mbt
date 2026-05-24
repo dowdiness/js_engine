@@ -79,6 +79,7 @@ fn Interpreter::exec_import(
         callable: None,
         class_name: "Module",
         extensible: false,
+        arraybuffer_state: None,
       })
       env.def(name, ns_obj, ConstBinding)
     }
@@ -197,6 +198,7 @@ fn Interpreter::exec_export_all(
         callable: None,
         class_name: "Module",
         extensible: false,
+        arraybuffer_state: None,
       })
       self.module_exports[name] = ns_obj
     }

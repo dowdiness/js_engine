@@ -60,6 +60,7 @@ fn Interpreter::make_async_function(
       ),
       class_name: "AsyncFunction",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }
@@ -133,6 +134,7 @@ fn Interpreter::make_async_function_ext(
       ),
       class_name: "AsyncFunction",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }
@@ -163,6 +165,7 @@ fn run_async_body(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   let gen_val = create_generator_instance(
     ip, this_val, args, name, params, params_ext, rest_param, body, strict, closure,
@@ -456,6 +459,7 @@ fn make_async_gen_function_inner(
     callable: None,
     class_name: "AsyncGenerator",
     extensible: true,
+    arraybuffer_state: None,
   })
   let gen_func_proto : Value = match
     interp.global.bindings.get("[[GeneratorFunctionPrototype]]") {
@@ -489,6 +493,7 @@ fn make_async_gen_function_inner(
       ),
       class_name: "AsyncGeneratorFunction",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }
@@ -563,6 +568,7 @@ fn init_async_generator_prototype(
     callable: None,
     class_name: "AsyncGenerator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -649,6 +655,7 @@ pub fn setup_async_function_constructor(
     callable: None,
     class_name: "AsyncFunction",
     extensible: true,
+    arraybuffer_state: None,
   })
   // AsyncFunction constructor: AsyncFunction(p1, p2, ..., body)
   let async_func_ctor : Value = make_interp_method_func(

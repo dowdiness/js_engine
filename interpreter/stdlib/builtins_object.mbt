@@ -488,6 +488,7 @@ pub fn setup_object_builtins(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   // Store Object.prototype so plain objects {} can link to it
   env.def_builtin("[[ObjectPrototype]]", obj_proto)
@@ -782,6 +783,7 @@ pub fn setup_object_builtins(
               callable: None,
               class_name: "Object",
               extensible: true,
+              arraybuffer_state: None,
             })
             // Handle optional second argument (property descriptors)
             if args.length() > 1 {
@@ -824,6 +826,7 @@ pub fn setup_object_builtins(
                   callable: None,
                   class_name: "Number",
                   extensible: true,
+                  arraybuffer_state: None,
                 })
               Value::Bool(b) =>
                 Value::Object({
@@ -837,6 +840,7 @@ pub fn setup_object_builtins(
                   callable: None,
                   class_name: "Boolean",
                   extensible: true,
+                  arraybuffer_state: None,
                 })
               Value::String_(s) => {
                 let props : Map[String, Value] = {}
@@ -878,6 +882,7 @@ pub fn setup_object_builtins(
                   callable: None,
                   class_name: "String",
                   extensible: true,
+                  arraybuffer_state: None,
                 })
               }
               Symbol(_) =>
@@ -892,6 +897,7 @@ pub fn setup_object_builtins(
                   callable: None,
                   class_name: "Symbol",
                   extensible: true,
+                  arraybuffer_state: None,
                 })
             }
             match target {
@@ -1278,6 +1284,7 @@ pub fn setup_object_builtins(
                 callable: None,
                 class_name: "Object",
                 extensible: true,
+                arraybuffer_state: None,
               })
             Value::String_(s) => {
               // ToObject: wrap string as boxed String object
@@ -1320,6 +1327,7 @@ pub fn setup_object_builtins(
                 callable: None,
                 class_name: "String",
                 extensible: true,
+                arraybuffer_state: None,
               })
             }
             Value::Number(n) => {
@@ -1338,6 +1346,7 @@ pub fn setup_object_builtins(
                 callable: None,
                 class_name: "Number",
                 extensible: true,
+                arraybuffer_state: None,
               })
             }
             Value::Bool(b) => {
@@ -1356,6 +1365,7 @@ pub fn setup_object_builtins(
                 callable: None,
                 class_name: "Boolean",
                 extensible: true,
+                arraybuffer_state: None,
               })
             }
             Symbol(_) => {
@@ -1374,6 +1384,7 @@ pub fn setup_object_builtins(
                 callable: None,
                 class_name: "Symbol",
                 extensible: true,
+                arraybuffer_state: None,
               })
             }
           }
@@ -1381,6 +1392,7 @@ pub fn setup_object_builtins(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 

@@ -54,6 +54,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Proxy.revocable(target, handler)
@@ -123,6 +124,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
           ),
           class_name: "Function",
           extensible: true,
+          arraybuffer_state: None,
         })
         let result_props : Map[String, Value] = {}
         result_props["proxy"] = proxy_val
@@ -138,11 +140,13 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
           callable: None,
           class_name: "Object",
           extensible: true,
+          arraybuffer_state: None,
         })
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Add Proxy.revocable as a static method

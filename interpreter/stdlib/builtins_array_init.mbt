@@ -1636,6 +1636,7 @@ fn setup_array_builtins(
     callable: None,
     class_name: "Array",
     extensible: true,
+    arraybuffer_state: None,
   })
   realm_state.array_prototype.val = Some(array_proto)
 
@@ -1923,6 +1924,7 @@ fn setup_array_builtins(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   // Set Array.prototype.constructor = Array

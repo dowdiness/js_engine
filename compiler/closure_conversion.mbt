@@ -280,6 +280,7 @@ fn compile_object_lit(
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     }
     let home_object = Value::Object(object_data)
     let method_env = Environment::new(parent=Some(env))
@@ -1239,6 +1240,7 @@ fn make_compiled_func(
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
   } else {
     Value::Null
@@ -1306,6 +1308,7 @@ fn make_compiled_func(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   if constructable {
@@ -1335,6 +1338,7 @@ fn make_compiled_constructor_instance(proto : Value) -> Value {
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -1693,6 +1697,7 @@ fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
       callable: Some(Callable::ArrowFuncExt(data)),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }

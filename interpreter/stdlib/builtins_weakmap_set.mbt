@@ -507,6 +507,7 @@ fn setup_weakmap_builtins(
     callable: None,
     class_name: "WeakMap",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Store WeakMap prototype in the realm.
@@ -532,6 +533,7 @@ fn setup_weakmap_builtins(
       callable: None,
       class_name: "WeakMap",
       extensible: true,
+      arraybuffer_state: None,
     }
     set_weakmap_id(realm_state, wm_data, id)
     let wm_obj : Value = Object(wm_data)
@@ -798,6 +800,7 @@ fn setup_weakset_builtins(
     callable: None,
     class_name: "WeakSet",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Store WeakSet prototype in the realm.
@@ -823,6 +826,7 @@ fn setup_weakset_builtins(
       callable: None,
       class_name: "WeakSet",
       extensible: true,
+      arraybuffer_state: None,
     }
     set_weakset_id(realm_state, ws_data, id)
     let ws_obj : Value = Object(ws_data)

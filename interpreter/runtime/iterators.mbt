@@ -21,6 +21,7 @@ fn make_iterator_proto_value(well_known_symbols : WellKnownSymbols) -> Value {
     callable: None,
     class_name: "Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -89,6 +90,7 @@ fn make_array_iterator_proto_value(
     callable: None,
     class_name: "Array Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -162,6 +164,7 @@ fn make_array_iterator_value_with_proto(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -178,12 +181,14 @@ fn make_array_iterator_value_with_proto(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Create the iterator object with next method
@@ -201,6 +206,7 @@ fn make_array_iterator_value_with_proto(
     callable: None,
     class_name: "Array Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -267,6 +273,7 @@ fn make_array_like_iterator_value_with_proto(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -283,12 +290,14 @@ fn make_array_like_iterator_value_with_proto(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   let iter_props : Map[String, Value] = {}
@@ -305,6 +314,7 @@ fn make_array_like_iterator_value_with_proto(
     callable: None,
     class_name: "Array Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -371,6 +381,7 @@ fn make_string_iterator_proto_value(
     callable: None,
     class_name: "String Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -466,6 +477,7 @@ fn make_string_iterator_value_with_proto(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -482,12 +494,14 @@ fn make_string_iterator_value_with_proto(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
@@ -502,6 +516,7 @@ fn make_string_iterator_value_with_proto(
     callable: None,
     class_name: "String Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 

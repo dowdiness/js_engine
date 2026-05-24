@@ -75,6 +75,7 @@ fn register_error_ctor(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   // Determine the parent constructor's [[Prototype]] for the error constructor
   // For Error itself, it should be Function.prototype (Null for now, set later)
@@ -163,11 +164,13 @@ fn register_error_ctor(
             callable: None,
             class_name: name,
             extensible: true,
+            arraybuffer_state: None,
           })
         }),
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   // Register this name in the per-Environment error registry so that
@@ -265,6 +268,7 @@ fn register_aggregate_error_ctor(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   // AggregateError constructor's [[Prototype]] should be the Error constructor
   let ctor_proto : Value = match env.bindings.get("Error") {
@@ -355,11 +359,13 @@ fn register_aggregate_error_ctor(
             callable: None,
             class_name: name,
             extensible: true,
+            arraybuffer_state: None,
           })
         }),
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   // Register AggregateError in the per-Environment error registry so that
