@@ -858,8 +858,8 @@ pub fn setup_dataview_builtins(
     },
     prototype: Null,
     callable: Some(
-      NativeCallable("DataView", fn(args) raise {
-        if !@runtime.is_constructing.val {
+      NativeCallableWithContext("DataView", fn(context, args) raise {
+        if !context.is_constructing() {
           raise @errors.TypeError(message="Constructor DataView requires 'new'")
         }
         if args.length() == 0 {

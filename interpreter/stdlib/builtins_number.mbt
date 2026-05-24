@@ -618,14 +618,14 @@ fn setup_number_builtins(
       },
       prototype: Null,
       callable: Some(
-        NativeCallable("Number", fn(args) raise {
+        NativeCallableWithContext("Number", fn(context, args) raise {
           // Per spec: Value::Number() with no args returns +0, not NaN
           let n = if args.length() > 0 {
             @runtime.to_number(args[0])
           } else {
             0.0
           }
-          if @runtime.is_constructing.val {
+          if context.is_constructing() {
             // new Value::Number(value) → boxed Number object
             Value::Object({
               bag: {

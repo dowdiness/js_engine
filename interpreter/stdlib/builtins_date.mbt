@@ -1913,10 +1913,10 @@ pub fn setup_date_builtins(
       },
       prototype: Null,
       callable: Some(
-        NativeCallable("Date", fn(args) raise {
+        NativeCallableWithContext("Date", fn(context, args) raise {
           // Date() without new returns a string of the current date/time
           // new Date(...) returns a Date object
-          if !@runtime.is_constructing.val {
+          if !context.is_constructing() {
             return Value::String_(date_to_string(current_time_ms().floor()))
           }
           let t = if args.length() == 0 {

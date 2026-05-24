@@ -152,25 +152,21 @@ or replacing the ambient current-interpreter / construction context.
 prototype-ref, and WeakMap / WeakSet side-table slices. The architecture audit
 still classifies the remaining runtime/stdlib module-level mutable state.
 
-**Pressure:** Remaining mutable state families have different behavior and
-failure modes. ArrayBuffer state affects storage identity and detachment; the
-current-interpreter and construction flags affect ambient execution context.
+**Pressure:** The remaining mutable state affects ambient execution context.
 
-**Goal:** Continue removing one classified state family at a time, starting with
-ArrayBuffer backing-store and detached-state migration, then replacing the
-ambient current-interpreter / construction context with explicit context.
+**Goal:** Replace the ambient current-interpreter fallback with explicit context.
 
 **Progress:** Iterator/prototype caches and runtime factory prototype refs
 (`Object`, `Function`, `String`, `Number`, `Boolean`, and `Symbol`) now live in
 `RealmState`. Promise and RegExp prototype refs were completed through PRs
 #136 through #146, and WeakMap / WeakSet side-table storage was completed in
 PR #147. ArrayBuffer backing stores, backing-store IDs, and detached-state
-storage now live in `RealmState`. The mutable-state audit now reports 2
-classified bindings: `current_interpreter` and `is_constructing`.
+storage now live in `RealmState`. Construction context is now explicit. The
+mutable-state audit now reports 1 classified binding: `current_interpreter`.
 
 **Candidate order:**
 
-1. Construction/current-interpreter ambient context.
+1. Current-interpreter ambient context.
 
 **Verification:** Keep `make architecture-state-audit` as the inventory gate.
 Add two-realm or two-interpreter tests before moving each state family, then

@@ -624,7 +624,7 @@ fn setup_builtins_with_realm_state_active(
       },
       prototype: Null,
       callable: Some(
-        NativeCallable("String", fn(args) raise {
+        NativeCallableWithContext("String", fn(context, args) raise {
           let str = if args.length() == 0 {
             // Per spec: String() with no args returns ""
             ""
@@ -640,7 +640,7 @@ fn setup_builtins_with_realm_state_active(
               _ => @runtime.to_js_string(val)
             }
           }
-          if @runtime.is_constructing.val {
+          if context.is_constructing() {
             // new String(value) → boxed String object
             let props : Map[String, Value] = {}
             props["[[StringData]]"] = Value::String_(str)
@@ -830,10 +830,10 @@ fn setup_builtins_with_realm_state_active(
       },
       prototype: Null,
       callable: Some(
-        NativeCallable("Boolean", fn(args) {
+        NativeCallableWithContext("Boolean", fn(context, args) {
           let val = if args.length() > 0 { args[0] } else { Undefined }
           let b = @runtime.is_truthy(val)
-          if @runtime.is_constructing.val {
+          if context.is_constructing() {
             // new Boolean(value) → boxed Boolean object
             Value::Object({
               bag: {

@@ -721,6 +721,8 @@ fn json_stringify_value(
                       match to_json_data.callable {
                         Some(MethodCallable(_, func)) => Some(func(val, []))
                         Some(NativeCallable(_, func)) => Some(func([]))
+                        Some(NativeCallableWithContext(_, func)) =>
+                          Some(func(Call, []))
                         Some(NonConstructableCallable(_, func)) =>
                           Some(func([]))
                         _ => None // cannot call without interpreter, skip

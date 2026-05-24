@@ -93,8 +93,6 @@ pub fn instanceof_prototype_chain(Value, Value, Interpreter) -> Value raise
 
 pub fn is_callable(Value) -> Bool
 
-pub let is_constructing : @ref.Ref[Bool]
-
 pub fn is_constructor_value(Value) -> Bool
 
 pub fn is_es_whitespace_cp(Int) -> Bool
@@ -126,6 +124,8 @@ pub fn make_func(FuncData) -> Value
 pub fn make_func_ext(FuncDataExt) -> Value
 
 pub fn make_interp_method_func(name~ : String, length? : Int, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
+
+pub fn make_interp_method_func_with_context(name~ : String, length? : Int, (Interpreter, CallContext, Value, Array[Value]) -> Value raise) -> Value
 
 pub fn make_interp_static_func(name~ : String, length? : Int, (Interpreter, Array[Value]) -> Value raise) -> Value
 
@@ -283,18 +283,26 @@ pub(all) enum BindingKind {
 } derive(Eq, @debug.Debug)
 pub impl Show for BindingKind
 
+pub(all) enum CallContext {
+  Call
+  Construct
+}
+pub fn CallContext::is_constructing(Self) -> Bool
+
 pub(all) enum Callable {
   UserFunc(FuncData)
   ArrowFunc(FuncData)
   UserFuncExt(FuncDataExt)
   ArrowFuncExt(FuncDataExt)
   NativeCallable(String, (Array[Value]) -> Value raise)
+  NativeCallableWithContext(String, (CallContext, Array[Value]) -> Value raise)
   NonConstructableCallable(String, (Array[Value]) -> Value raise)
   BoundFunc(Value, Value, Array[Value])
   FuncCallMethod(Value)
   FuncApplyMethod(Value)
   MethodCallable(String, (Value, Array[Value]) -> Value raise)
   InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
+  InterpreterCallableWithContext(String, (Interpreter, CallContext, Value, Array[Value]) -> Value raise)
   NonConstructableInterpreterCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ConstructorOnlyCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ClassConstructor(ClassConstructorData)

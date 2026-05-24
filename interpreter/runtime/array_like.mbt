@@ -102,6 +102,7 @@ pub fn to_array_like_length(val : Value) -> Int raise {
                 Some(Object(getter_data)) =>
                   match getter_data.callable {
                     Some(NativeCallable(_, f)) => Some(f([]))
+                    Some(NativeCallableWithContext(_, f)) => Some(f(Call, []))
                     Some(NonConstructableCallable(_, f)) => Some(f([]))
                     Some(MethodCallable(_, f)) => Some(f(Object(data), []))
                     _ => None
@@ -196,6 +197,10 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
             Some(Object(getter_data)) =>
               match getter_data.callable {
                 Some(NativeCallable(_, f)) => Some(f([])) catch { _ => None }
+                Some(NativeCallableWithContext(_, f)) =>
+                  Some(f(Call, [])) catch {
+                    _ => None
+                  }
                 Some(NonConstructableCallable(_, f)) =>
                   Some(f([])) catch {
                     _ => None

@@ -952,6 +952,7 @@ fn Interpreter::call_value_impl(
         }
         Some(MethodCallable(_, func)) => func(this_val, args)
         Some(NativeCallable(_, func)) => func(args)
+        Some(NativeCallableWithContext(_, func)) => func(Call, args)
         Some(NonConstructableCallable(name, func)) =>
           if name == "eval" {
             // Indirect eval: route through perform_eval for interpreter access
@@ -967,6 +968,8 @@ fn Interpreter::call_value_impl(
             func(args)
           }
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
+        Some(InterpreterCallableWithContext(_, func)) =>
+          func(self, Call, this_val, args)
         Some(NonConstructableInterpreterCallable(_, func)) => func(self, args)
         Some(ConstructorOnlyCallable(name, _)) =>
           raise @errors.TypeError(
