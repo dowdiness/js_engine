@@ -561,6 +561,12 @@ pub(all) struct RealmState {
   promise_prototype : @ref.Ref[Value?]
   weakmap_prototype : @ref.Ref[Value?]
   weakset_prototype : @ref.Ref[Value?]
+  weakmap_id_counter : @ref.Ref[Int]
+  weakmap_storage : Map[Int, Array[(Value, Value)]]
+  weakmap_id_table : Array[(ObjectData, Int)]
+  weakset_id_counter : @ref.Ref[Int]
+  weakset_storage : Map[Int, Array[Value]]
+  weakset_id_table : Array[(ObjectData, Int)]
 }
 #alias(new)
 pub fn RealmState::RealmState() -> Self

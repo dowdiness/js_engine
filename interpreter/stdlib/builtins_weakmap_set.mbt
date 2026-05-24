@@ -9,30 +9,6 @@
 ///   (true GC-based weakness is not possible in a tree-walking interpreter)
 
 ///|
-/// Global counter for WeakMap instance IDs
-let weakmap_id_counter : Ref[Int] = { val: 0 }
-
-///|
-/// Global storage for WeakMap entries keyed by instance ID
-let weakmap_storage : Map[Int, Array[(Value, Value)]] = {}
-
-///|
-/// Global counter for WeakSet instance IDs
-let weakset_id_counter : Ref[Int] = { val: 0 }
-
-///|
-/// Global storage for WeakSet entries keyed by instance ID
-let weakset_storage : Map[Int, Array[Value]] = {}
-
-///|
-/// Side table for WeakMap instance IDs (non-forgeable by user code)
-let weakmap_id_table : Array[(ObjectData, Int)] = []
-
-///|
-/// Side table for WeakSet instance IDs (non-forgeable by user code)
-let weakset_id_table : Array[(ObjectData, Int)] = []
-
-///|
 /// Check if a value is a valid WeakMap/WeakSet key (must be an object or symbol)
 fn is_valid_weak_key(val : Value) -> Bool {
   match val {
@@ -43,10 +19,10 @@ fn is_valid_weak_key(val : Value) -> Bool {
 }
 
 ///|
-/// Get the WeakMap ID from the side table (non-forgeable)
-fn get_weakmap_id(data : ObjectData) -> Int? {
-  for i = 0; i < weakmap_id_table.length(); i = i + 1 {
-    let (existing, id) = weakmap_id_table[i]
+/// Get the WeakMap ID from the per-realm side table (non-forgeable)
+fn get_weakmap_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
+  for i = 0; i < realm_state.weakmap_id_table.length(); i = i + 1 {
+    let (existing, id) = realm_state.weakmap_id_table[i]
     if physical_equal(existing, data) {
       return Some(id)
     }
@@ -55,16 +31,20 @@ fn get_weakmap_id(data : ObjectData) -> Int? {
 }
 
 ///|
-/// Store a WeakMap ID in the side table
-fn set_weakmap_id(data : ObjectData, id : Int) -> Unit {
-  weakmap_id_table.push((data, id))
+/// Store a WeakMap ID in the per-realm side table
+fn set_weakmap_id(
+  realm_state : @runtime.RealmState,
+  data : ObjectData,
+  id : Int,
+) -> Unit {
+  realm_state.weakmap_id_table.push((data, id))
 }
 
 ///|
-/// Get the WeakSet ID from the side table (non-forgeable)
-fn get_weakset_id(data : ObjectData) -> Int? {
-  for i = 0; i < weakset_id_table.length(); i = i + 1 {
-    let (existing, id) = weakset_id_table[i]
+/// Get the WeakSet ID from the per-realm side table (non-forgeable)
+fn get_weakset_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
+  for i = 0; i < realm_state.weakset_id_table.length(); i = i + 1 {
+    let (existing, id) = realm_state.weakset_id_table[i]
     if physical_equal(existing, data) {
       return Some(id)
     }
@@ -73,9 +53,13 @@ fn get_weakset_id(data : ObjectData) -> Int? {
 }
 
 ///|
-/// Store a WeakSet ID in the side table
-fn set_weakset_id(data : ObjectData, id : Int) -> Unit {
-  weakset_id_table.push((data, id))
+/// Store a WeakSet ID in the per-realm side table
+fn set_weakset_id(
+  realm_state : @runtime.RealmState,
+  data : ObjectData,
+  id : Int,
+) -> Unit {
+  realm_state.weakset_id_table.push((data, id))
 }
 
 ///|
@@ -191,10 +175,10 @@ fn setup_weakmap_builtins(
   ) raise {
     match this_val {
       Object(data) =>
-        match get_weakmap_id(data) {
+        match get_weakmap_id(realm_state, data) {
           Some(id) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
-            match weakmap_storage.get(id) {
+            match realm_state.weakmap_storage.get(id) {
               Some(entries) => {
                 for i = 0; i < entries.length(); i = i + 1 {
                   let (k, v) = entries[i]
@@ -226,7 +210,7 @@ fn setup_weakmap_builtins(
   ) raise {
     match this_val {
       Object(data) =>
-        match get_weakmap_id(data) {
+        match get_weakmap_id(realm_state, data) {
           Some(id) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
             let value = if args.length() > 1 { args[1] } else { Undefined }
@@ -235,7 +219,7 @@ fn setup_weakmap_builtins(
                 message="Invalid value used as weak map key",
               )
             }
-            match weakmap_storage.get(id) {
+            match realm_state.weakmap_storage.get(id) {
               Some(entries) => {
                 for i = 0; i < entries.length(); i = i + 1 {
                   let (k, _) = entries[i]
@@ -249,7 +233,7 @@ fn setup_weakmap_builtins(
               }
               None => {
                 // Initialize storage if somehow missing
-                weakmap_storage[id] = [(key, value)]
+                realm_state.weakmap_storage[id] = [(key, value)]
                 this_val
               }
             }
@@ -273,10 +257,10 @@ fn setup_weakmap_builtins(
   ) raise {
     match this_val {
       Object(data) =>
-        match get_weakmap_id(data) {
+        match get_weakmap_id(realm_state, data) {
           Some(id) => {
             let key = if args.length() > 0 { args[0] } else { Undefined }
-            match weakmap_storage.get(id) {
+            match realm_state.weakmap_storage.get(id) {
               Some(entries) => {
                 for i = 0; i < entries.length(); i = i + 1 {
                   let (k, _) = entries[i]
@@ -308,10 +292,10 @@ fn setup_weakmap_builtins(
     fn(this_val, args) raise {
       match this_val {
         Object(data) =>
-          match get_weakmap_id(data) {
+          match get_weakmap_id(realm_state, data) {
             Some(id) => {
               let key = if args.length() > 0 { args[0] } else { Undefined }
-              match weakmap_storage.get(id) {
+              match realm_state.weakmap_storage.get(id) {
                 Some(entries) => {
                   for i = 0; i < entries.length(); i = i + 1 {
                     let (k, _) = entries[i]
@@ -345,7 +329,7 @@ fn setup_weakmap_builtins(
     fn(this_val, args) raise {
       match this_val {
         Object(data) =>
-          match get_weakmap_id(data) {
+          match get_weakmap_id(realm_state, data) {
             Some(id) => {
               let key = if args.length() > 0 { args[0] } else { Undefined }
               let value = if args.length() > 1 { args[1] } else { Undefined }
@@ -354,7 +338,7 @@ fn setup_weakmap_builtins(
                   message="Invalid value used as weak map key",
                 )
               }
-              match weakmap_storage.get(id) {
+              match realm_state.weakmap_storage.get(id) {
                 Some(entries) => {
                   // If key exists, return existing value
                   for i = 0; i < entries.length(); i = i + 1 {
@@ -368,7 +352,7 @@ fn setup_weakmap_builtins(
                   value
                 }
                 None => {
-                  weakmap_storage[id] = [(key, value)]
+                  realm_state.weakmap_storage[id] = [(key, value)]
                   value
                 }
               }
@@ -393,7 +377,7 @@ fn setup_weakmap_builtins(
     fn(interp, this_val, args) raise {
       match this_val {
         Object(data) =>
-          match get_weakmap_id(data) {
+          match get_weakmap_id(realm_state, data) {
             Some(id) => {
               let key = if args.length() > 0 { args[0] } else { Undefined }
               let callbackfn = if args.length() > 1 {
@@ -414,7 +398,7 @@ fn setup_weakmap_builtins(
                   message="Invalid value used as weak map key",
                 )
               }
-              match weakmap_storage.get(id) {
+              match realm_state.weakmap_storage.get(id) {
                 Some(entries) => {
                   // If key exists, return existing value without calling callback
                   for i = 0; i < entries.length(); i = i + 1 {
@@ -452,7 +436,7 @@ fn setup_weakmap_builtins(
                     loc,
                   )
                   // Re-read storage after callback (it may have inserted entries)
-                  match weakmap_storage.get(id) {
+                  match realm_state.weakmap_storage.get(id) {
                     Some(entries) => {
                       // Check if key was already added by callback
                       for i = 0; i < entries.length(); i = i + 1 {
@@ -464,7 +448,7 @@ fn setup_weakmap_builtins(
                       }
                       entries.push((key, value))
                     }
-                    None => weakmap_storage[id] = [(key, value)]
+                    None => realm_state.weakmap_storage[id] = [(key, value)]
                   }
                   value
                 }
@@ -538,10 +522,10 @@ fn setup_weakmap_builtins(
       raise @errors.TypeError(message="Constructor WeakMap requires 'new'")
     }
     // Create new WeakMap instance
-    let id = weakmap_id_counter.val
-    weakmap_id_counter.val = id + 1
+    let id = realm_state.weakmap_id_counter.val
+    realm_state.weakmap_id_counter.val = id + 1
     let entries : Array[(Value, Value)] = []
-    weakmap_storage[id] = entries
+    realm_state.weakmap_storage[id] = entries
     let wm_data : ObjectData = {
       bag: @runtime.PropertyBag(),
       prototype: wm_proto,
@@ -549,7 +533,7 @@ fn setup_weakmap_builtins(
       class_name: "WeakMap",
       extensible: true,
     }
-    set_weakmap_id(wm_data, id)
+    set_weakmap_id(realm_state, wm_data, id)
     let wm_obj : Value = Object(wm_data)
 
     // If iterable provided, populate
@@ -673,13 +657,13 @@ fn setup_weakset_builtins(
   ) raise {
     match this_val {
       Object(data) =>
-        match get_weakset_id(data) {
+        match get_weakset_id(realm_state, data) {
           Some(id) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
             if !is_valid_weak_key(value) {
               raise @errors.TypeError(message="Invalid value used in weak set")
             }
-            match weakset_storage.get(id) {
+            match realm_state.weakset_storage.get(id) {
               Some(values) => {
                 for i = 0; i < values.length(); i = i + 1 {
                   if weak_key_equal(values[i], value) {
@@ -690,7 +674,7 @@ fn setup_weakset_builtins(
                 this_val
               }
               None => {
-                weakset_storage[id] = [value]
+                realm_state.weakset_storage[id] = [value]
                 this_val
               }
             }
@@ -714,10 +698,10 @@ fn setup_weakset_builtins(
   ) raise {
     match this_val {
       Object(data) =>
-        match get_weakset_id(data) {
+        match get_weakset_id(realm_state, data) {
           Some(id) => {
             let value = if args.length() > 0 { args[0] } else { Undefined }
-            match weakset_storage.get(id) {
+            match realm_state.weakset_storage.get(id) {
               Some(values) => {
                 for i = 0; i < values.length(); i = i + 1 {
                   if weak_key_equal(values[i], value) {
@@ -748,10 +732,10 @@ fn setup_weakset_builtins(
     fn(this_val, args) raise {
       match this_val {
         Object(data) =>
-          match get_weakset_id(data) {
+          match get_weakset_id(realm_state, data) {
             Some(id) => {
               let value = if args.length() > 0 { args[0] } else { Undefined }
-              match weakset_storage.get(id) {
+              match realm_state.weakset_storage.get(id) {
                 Some(values) => {
                   for i = 0; i < values.length(); i = i + 1 {
                     if weak_key_equal(values[i], value) {
@@ -829,10 +813,10 @@ fn setup_weakset_builtins(
       raise @errors.TypeError(message="Constructor WeakSet requires 'new'")
     }
     // Create new WeakSet instance
-    let id = weakset_id_counter.val
-    weakset_id_counter.val = id + 1
+    let id = realm_state.weakset_id_counter.val
+    realm_state.weakset_id_counter.val = id + 1
     let values : Array[Value] = []
-    weakset_storage[id] = values
+    realm_state.weakset_storage[id] = values
     let ws_data : ObjectData = {
       bag: @runtime.PropertyBag(),
       prototype: ws_proto,
@@ -840,7 +824,7 @@ fn setup_weakset_builtins(
       class_name: "WeakSet",
       extensible: true,
     }
-    set_weakset_id(ws_data, id)
+    set_weakset_id(realm_state, ws_data, id)
     let ws_obj : Value = Object(ws_data)
 
     // If iterable provided, populate
