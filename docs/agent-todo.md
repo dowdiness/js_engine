@@ -146,30 +146,32 @@ or replacing the ambient current-interpreter / construction context.
 
 ---
 
-## Stage 2c remaining stdlib/storage state migration planning
+## Stage 2c remaining storage/context migration planning
 
-**Source:** PRs #133, #134, and #135 landed the iterator/prototype-cache and
-runtime factory prototype-ref slices. The architecture audit still classifies
-the remaining runtime/stdlib module-level mutable state.
+**Source:** PRs #133 through #147 landed the Stage 2c iterator/prototype-cache,
+prototype-ref, and WeakMap / WeakSet side-table slices. The architecture audit
+still classifies the remaining runtime/stdlib module-level mutable state.
 
 **Pressure:** Remaining mutable state families have different behavior and
-failure modes. Prototype refs affect object identity and realm isolation;
-ArrayBuffer state affects storage identity and detachment; WeakMap / WeakSet
-state affects object-key side tables.
+failure modes. ArrayBuffer state affects storage identity and detachment; the
+current-interpreter and construction flags affect ambient execution context.
 
-**Goal:** Continue moving one state family at a time into `RealmState`, starting
-with the remaining stdlib prototype-ref families before storage migrations.
+**Goal:** Continue removing one classified state family at a time, starting with
+ArrayBuffer backing-store and detached-state migration, then replacing the
+ambient current-interpreter / construction context with explicit context.
 
 **Progress:** Iterator/prototype caches and runtime factory prototype refs
 (`Object`, `Function`, `String`, `Number`, `Boolean`, and `Symbol`) now live in
-`RealmState`. The mutable-state audit now reports 15 classified bindings.
+`RealmState`. Promise and RegExp prototype refs were completed through PRs
+#136 through #146, and WeakMap / WeakSet side-table storage was completed in
+PR #147. The mutable-state audit now reports 5 classified bindings:
+`current_interpreter`, `is_constructing`, `arraybuffer_store`,
+`arraybuffer_id_counter`, and `detached_buffers`.
 
 **Candidate order:**
 
-1. Stdlib Promise and remaining RegExp prototype refs.
-2. ArrayBuffer backing stores and detach state.
-3. WeakMap / WeakSet side tables.
-4. Construction/current-interpreter ambient context.
+1. ArrayBuffer backing stores and detach state.
+2. Construction/current-interpreter ambient context.
 
 **Verification:** Keep `make architecture-state-audit` as the inventory gate.
 Add two-realm or two-interpreter tests before moving each state family, then
