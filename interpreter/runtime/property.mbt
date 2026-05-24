@@ -383,14 +383,10 @@ fn Interpreter::get_property_of_object(
                 )
                 match result {
                   Undefined => {
-                    // Continue to Array.prototype
-                    let ctor = self.global.get("Array") catch { _ => break }
-                    match ctor {
-                      Object(ctor_data) =>
-                        match ctor_data.bag.properties.get("prototype") {
-                          Some(proto) => current = proto
-                          None => break
-                        }
+                    // Continue to Array.prototype (per-realm via RealmState)
+                    let proto = self.realm_state.get_array_proto()
+                    match proto {
+                      Object(_) => current = proto
                       _ => break
                     }
                   }
@@ -898,29 +894,24 @@ fn Interpreter::get_computed_property_impl(
             None => ()
           }
           // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
-          let array_ctor = self.global.get("Array") catch { _ => Undefined }
-          match array_ctor {
-            Object(ctor_data) =>
-              match ctor_data.bag.properties.get("prototype") {
-                Some(Object(proto_data)) => {
-                  // Check symbol descriptors for getters
-                  match proto_data.bag.symbol_descriptors.get(sym.id) {
-                    Some(desc) =>
-                      match desc.getter {
-                        Some(getter) =>
-                          return self.call_value(getter, obj, [], loc)
-                        None => ()
-                      }
+          // (per-realm via RealmState)
+          match self.realm_state.get_array_proto() {
+            Object(proto_data) => {
+              // Check symbol descriptors for getters
+              match proto_data.bag.symbol_descriptors.get(sym.id) {
+                Some(desc) =>
+                  match desc.getter {
+                    Some(getter) => return self.call_value(getter, obj, [], loc)
                     None => ()
                   }
-                  // Check symbol properties
-                  match proto_data.bag.symbol_properties.get(sym.id) {
-                    Some(v) => return v
-                    None => ()
-                  }
-                }
-                _ => ()
+                None => ()
               }
+              // Check symbol properties
+              match proto_data.bag.symbol_properties.get(sym.id) {
+                Some(v) => return v
+                None => ()
+              }
+            }
             _ => ()
           }
           // Handle Symbol.iterator default for arrays
@@ -1112,13 +1103,10 @@ fn Interpreter::get_computed_property_impl(
                     )
                     match result {
                       Undefined => {
-                        let ctor = self.global.get("Array") catch { _ => break }
-                        match ctor {
-                          Object(ctor_data) =>
-                            match ctor_data.bag.properties.get("prototype") {
-                              Some(proto) => current = proto
-                              None => break
-                            }
+                        // Continue to Array.prototype (per-realm via RealmState)
+                        let proto = self.realm_state.get_array_proto()
+                        match proto {
+                          Object(_) => current = proto
                           _ => break
                         }
                       }
