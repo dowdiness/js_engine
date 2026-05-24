@@ -266,7 +266,7 @@ pub fn get_array_like_element_interp(
           interp.call_value(getter, val, [], @token.Loc::default())
         OwnAccessor(None) => Undefined
         Hole | OutOfRange => {
-          let proto = get_array_prototype(interp.global, data)
+          let proto = get_array_prototype(interp.realm_state, data)
           interp.get_property_from_prototype(
             val,
             proto,
@@ -309,7 +309,7 @@ fn proto_chain_has_index(
           Hole | OutOfRange =>
             // Array-as-prototype: continue walking via the array's own
             // prototype so inherited indices on Object.prototype are seen.
-            current = get_array_prototype(interp.global, arr_data)
+            current = get_array_prototype(interp.realm_state, arr_data)
         }
       _ => return false
     }
@@ -320,7 +320,7 @@ fn proto_chain_has_index(
 ///|
 /// Check if array-like value has indexed property.
 /// `interp` is required so the Array branch can resolve `%Array.prototype%`
-/// via `get_array_prototype(interp.global, data)`.
+/// via `get_array_prototype(interp.realm_state,data)`.
 pub fn has_array_like_element(
   interp : Interpreter,
   val : Value,
@@ -332,7 +332,7 @@ pub fn has_array_like_element(
       match array_index_lookup_result(data, index) {
         Present(_) | OwnAccessor(_) => true
         Hole | OutOfRange => {
-          let proto = get_array_prototype(interp.global, data)
+          let proto = get_array_prototype(interp.realm_state, data)
           proto_chain_has_index(interp, proto, key, index)
         }
       }
@@ -367,7 +367,7 @@ pub fn has_array_like_element(
             match array_index_lookup_result(arr_data, index) {
               Present(_) | OwnAccessor(_) => return true
               Hole | OutOfRange =>
-                current = get_array_prototype(interp.global, arr_data)
+                current = get_array_prototype(interp.realm_state, arr_data)
             }
           _ => break
         }

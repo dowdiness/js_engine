@@ -51,7 +51,7 @@ pub fn get_array_like_element_interp(Interpreter, Value, Int) -> Value raise
 
 pub fn get_array_named_prop(ArrayData, String) -> Value?
 
-pub fn get_array_prototype(Environment, ArrayData) -> Value
+pub fn get_array_prototype(RealmState, ArrayData) -> Value
 
 pub fn get_array_prototype_override(ArrayData) -> Value?
 
@@ -60,8 +60,6 @@ pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
 pub fn get_boolean_proto() -> Value
 
 pub fn get_bound_func_name(Value) -> String
-
-pub fn get_constructor_prototype(Environment, String) -> Value
 
 pub fn get_func_length(Callable) -> Int
 
@@ -556,6 +554,7 @@ pub(all) struct RealmState {
   number_prototype : @ref.Ref[Value?]
   boolean_prototype : @ref.Ref[Value?]
   symbol_prototype : @ref.Ref[Value?]
+  array_prototype : @ref.Ref[Value?]
   map_prototype : @ref.Ref[Value?]
   set_prototype : @ref.Ref[Value?]
   regexp_prototype : @ref.Ref[Value?]
@@ -567,6 +566,7 @@ pub(all) struct RealmState {
 pub fn RealmState::RealmState() -> Self
 pub fn RealmState::from_symbols(SymbolState) -> Self
 pub fn RealmState::get_array_iterator_proto(Self) -> Value
+pub fn RealmState::get_array_proto(Self) -> Value
 pub fn RealmState::get_boolean_proto(Self) -> Value
 pub fn RealmState::get_func_proto(Self) -> Value
 pub fn RealmState::get_iterator_proto(Self) -> Value

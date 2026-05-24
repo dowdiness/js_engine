@@ -258,7 +258,7 @@ pub fn setup_object_builtins(
       let arg = if args.length() > 0 { args[0] } else { Undefined }
       let mut current : Value = match arg {
         Object(data) => data.prototype
-        Array(_) => @runtime.get_constructor_prototype(interp.global, "Array")
+        Array(_) => interp.realm_state.get_array_proto()
         Promise(_) => Null
         _ => return Value::Bool(false)
       }
@@ -1145,7 +1145,8 @@ pub fn setup_object_builtins(
                     message="Cannot convert undefined or null to object",
                   )
                 Object(data) => data.prototype
-                Array(data) => @runtime.get_array_prototype(env, data)
+                Array(data) =>
+                  @runtime.get_array_prototype(interp.realm_state, data)
                 Value::String_(_) => interp.realm_state.get_string_proto()
                 Value::Number(_) => interp.realm_state.get_number_proto()
                 Bool(_) => interp.realm_state.get_boolean_proto()

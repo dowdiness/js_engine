@@ -19,7 +19,7 @@ fn Interpreter::array_get_indexed(
     OwnAccessor(Some(getter)) => self.call_value(getter, obj, [], loc)
     OwnAccessor(None) => Undefined
     Hole | OutOfRange => {
-      let proto = get_array_prototype(self.global, data)
+      let proto = get_array_prototype(self.realm_state, data)
       self.get_property_from_prototype(obj, proto, key, loc)
     }
   }
@@ -279,7 +279,7 @@ fn Interpreter::get_property_from_prototype(
             OwnAccessor(None) => return Undefined
             Hole | OutOfRange => {
               // Continue the chain via this array's own prototype.
-              current = get_array_prototype(self.global, data)
+              current = get_array_prototype(self.realm_state, data)
               continue
             }
           }
@@ -1415,7 +1415,7 @@ fn Interpreter::get_computed_property_impl(
             match get_array_named_prop(data, key_str) {
               Some(v) => v
               None => {
-                let proto = get_array_prototype(self.global, data)
+                let proto = get_array_prototype(self.realm_state, data)
                 self.get_property_from_prototype(obj, proto, key_str, loc)
               }
             }

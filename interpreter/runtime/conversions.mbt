@@ -877,7 +877,7 @@ fn Interpreter::has_array_property(
       }
     }
   }
-  self.has_property_on_proto(get_array_prototype(self.global, data), key)
+  self.has_property_on_proto(get_array_prototype(self.realm_state, data), key)
 }
 
 ///|

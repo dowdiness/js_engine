@@ -1637,6 +1637,7 @@ fn setup_array_builtins(
     class_name: "Array",
     extensible: true,
   })
+  realm_state.array_prototype.val = Some(array_proto)
 
   // Array constructor with Array.isArray, Array.from, Array.of
   let array_props : Map[String, Value] = {}
