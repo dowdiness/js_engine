@@ -469,7 +469,8 @@ Completed:
 
 Current audit inventory:
 
-`scripts/architecture-state-audit.py --list` reports 5 classified bindings:
+`python3 scripts/architecture-state-audit.py --list` reports 5 classified
+bindings:
 `current_interpreter`, `is_constructing`, `arraybuffer_store`,
 `arraybuffer_id_counter`, and `detached_buffers`.
 
