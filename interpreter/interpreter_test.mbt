@@ -8886,6 +8886,35 @@ test "test262: ArrayBuffer constructor basic" {
 }
 
 ///|
+test "ArrayBuffer backing store is isolated across interpreters" {
+  let interp_a = new_interpreter()
+  let interp_b = new_interpreter()
+  let prog_a = @parser.parse(
+    (
+      #|var view = new Uint8Array(1);
+      #|view[0] = 77;
+      #|console.log(view[0]);
+      #|$262.detachArrayBuffer(view.buffer);
+      #|console.log(view[0]);
+    ),
+  )
+  let _ = interp_a.run(prog_a.stmts)
+  let prog_b = @parser.parse(
+    (
+      #|var view = new Uint8Array(1);
+      #|console.log(view[0]);
+      #|console.log(view.buffer.byteLength);
+    ),
+  )
+  let _ = interp_b.run(prog_b.stmts)
+
+  assert_eq(interp_a.realm_state.arraybuffer_id_counter.val, 1)
+  assert_eq(interp_b.realm_state.arraybuffer_id_counter.val, 1)
+  json_inspect(interp_a.host.output, content=["77", "undefined"])
+  json_inspect(interp_b.host.output, content=["0", "1"])
+}
+
+///|
 test "test262: ArrayBuffer constructor requires new" {
   let output = run_output(
     (

@@ -1,51 +1,59 @@
 ///|
-/// Global storage for ArrayBuffer byte data.
-/// Each ArrayBuffer Object gets a unique ID stored in "[[ArrayBufferID]]".
-/// The actual bytes are stored here, keyed by that ID.
-let arraybuffer_store : Map[Int, Array[Int]] = {}
-
-///|
-/// Global counter for ArrayBuffer IDs
-let arraybuffer_id_counter : Ref[Int] = { val: 0 }
-
-///|
-/// Set of detached buffer IDs
-let detached_buffers : Map[Int, Bool] = {}
-
-///|
-/// Allocate a new ArrayBuffer backing store with the given byte length.
-/// Returns the buffer ID.
-fn alloc_arraybuffer(byte_length : Int) -> Int {
-  let id = arraybuffer_id_counter.val
-  arraybuffer_id_counter.val = id + 1
+/// ArrayBuffer byte data is owned by the RealmState that allocated the buffer.
+/// Each ArrayBuffer Object gets a realm-local ID stored in "[[ArrayBufferID]]".
+/// The actual bytes are stored in `realm_state.arraybuffer_store`, keyed by ID.
+fn alloc_arraybuffer(
+  realm_state : @runtime.RealmState,
+  byte_length : Int,
+) -> Int {
+  let id = realm_state.arraybuffer_id_counter.val
+  realm_state.arraybuffer_id_counter.val = id + 1
   let bytes : Array[Int] = []
   for i = 0; i < byte_length; i = i + 1 {
     let _ = i
     bytes.push(0)
   }
-  arraybuffer_store[id] = bytes
+  realm_state.arraybuffer_store[id] = bytes
   id
 }
 
 ///|
 /// Get the byte array for a given buffer ID. Returns None if detached.
-pub fn get_arraybuffer_bytes(id : Int) -> Array[Int]? {
-  if detached_buffers.contains(id) {
+pub fn get_arraybuffer_bytes(
+  realm_state : @runtime.RealmState,
+  id : Int,
+) -> Array[Int]? {
+  if realm_state.detached_buffers.contains(id) {
     return None
   }
-  arraybuffer_store.get(id)
+  realm_state.arraybuffer_store.get(id)
 }
 
 ///|
 /// Detach an ArrayBuffer by its ID.
-pub fn detach_arraybuffer(id : Int) -> Unit {
-  detached_buffers[id] = true
+pub fn detach_arraybuffer(realm_state : @runtime.RealmState, id : Int) -> Unit {
+  realm_state.detached_buffers[id] = true
 }
 
 ///|
 /// Check if an ArrayBuffer is detached.
-pub fn is_arraybuffer_detached(id : Int) -> Bool {
-  detached_buffers.contains(id)
+pub fn is_arraybuffer_detached(
+  realm_state : @runtime.RealmState,
+  id : Int,
+) -> Bool {
+  realm_state.detached_buffers.contains(id)
+}
+
+///|
+fn arraybuffer_realm_from_env(env : Environment) -> @runtime.RealmState {
+  match env.realm_state {
+    Some(state) => state
+    None => {
+      let state = @runtime.RealmState()
+      env.realm_state = Some(state)
+      state
+    }
+  }
 }
 
 ///|
@@ -67,8 +75,12 @@ pub fn get_buffer_id(obj : Value) -> Int? {
 
 ///|
 /// Create an ArrayBuffer object with the given byte length.
-pub fn make_arraybuffer_object(byte_length : Int, proto : Value) -> Value {
-  let id = alloc_arraybuffer(byte_length)
+pub fn make_arraybuffer_object(
+  realm_state : @runtime.RealmState,
+  byte_length : Int,
+  proto : Value,
+) -> Value {
+  let id = alloc_arraybuffer(realm_state, byte_length)
   let props : Map[String, Value] = {}
   props["[[ArrayBufferID]]"] = Value::Number(id.to_double())
   props["[[ArrayBufferByteLength]]"] = Value::Number(byte_length.to_double())
@@ -107,6 +119,7 @@ pub fn make_arraybuffer_object(byte_length : Int, proto : Value) -> Value {
 pub fn setup_arraybuffer_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
   let obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
 
@@ -130,7 +143,7 @@ pub fn setup_arraybuffer_builtins(
             if data.class_name == "ArrayBuffer" {
               match data.bag.properties.get("[[ArrayBufferID]]") {
                 Some(Value::Number(id_n)) =>
-                  if is_arraybuffer_detached(id_n.to_int()) {
+                  if is_arraybuffer_detached(realm_state, id_n.to_int()) {
                     raise @errors.TypeError(
                       message="Cannot perform get on a detached ArrayBuffer",
                     )
@@ -173,12 +186,12 @@ pub fn setup_arraybuffer_builtins(
                 message="ArrayBuffer.prototype.slice called on non-ArrayBuffer",
               )
           }
-          if is_arraybuffer_detached(buf_id) {
+          if is_arraybuffer_detached(realm_state, buf_id) {
             raise @errors.TypeError(
               message="Cannot perform slice on a detached ArrayBuffer",
             )
           }
-          let bytes = match get_arraybuffer_bytes(buf_id) {
+          let bytes = match get_arraybuffer_bytes(realm_state, buf_id) {
             Some(b) => b
             None =>
               raise @errors.TypeError(
@@ -225,12 +238,12 @@ pub fn setup_arraybuffer_builtins(
           }
           let new_len = if end > start { end - start } else { 0 }
           let ab_proto2 = env.get("[[ArrayBufferPrototype]]")
-          let new_buf = make_arraybuffer_object(new_len, ab_proto2)
+          let new_buf = make_arraybuffer_object(realm_state, new_len, ab_proto2)
           let new_id = match get_buffer_id(new_buf) {
             Some(id) => id
             None => -1
           }
-          match get_arraybuffer_bytes(new_id) {
+          match get_arraybuffer_bytes(realm_state, new_id) {
             Some(new_bytes) =>
               for i = 0; i < new_len; i = i + 1 {
                 new_bytes[i] = bytes[start + i]
@@ -369,7 +382,7 @@ pub fn setup_arraybuffer_builtins(
         } else {
           0
         }
-        make_arraybuffer_object(byte_length, ab_proto)
+        make_arraybuffer_object(realm_state, byte_length, ab_proto)
       }),
     ),
     class_name: "Function",
@@ -415,12 +428,15 @@ pub fn is_typedarray_class(name : String) -> Bool {
 ///|
 /// Validate that a TypedArray's underlying buffer is not detached.
 /// Throws TypeError if detached. Per spec, iteration methods must check this.
-pub fn validate_typedarray_buffer(data : ObjectData) -> Unit raise Error {
+pub fn validate_typedarray_buffer(
+  data : ObjectData,
+  realm_state : @runtime.RealmState,
+) -> Unit raise Error {
   let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => -1
   }
-  if buf_id >= 0 && is_arraybuffer_detached(buf_id) {
+  if buf_id >= 0 && is_arraybuffer_detached(realm_state, buf_id) {
     raise @errors.TypeError(
       message="Cannot perform operation on a detached ArrayBuffer",
     )

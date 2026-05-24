@@ -561,6 +561,9 @@ pub(all) struct RealmState {
   promise_prototype : @ref.Ref[Value?]
   weakmap_prototype : @ref.Ref[Value?]
   weakset_prototype : @ref.Ref[Value?]
+  arraybuffer_id_counter : @ref.Ref[Int]
+  arraybuffer_store : Map[Int, Array[Int]]
+  detached_buffers : Map[Int, Bool]
   weakmap_id_counter : @ref.Ref[Int]
   weakmap_storage : Map[Int, Array[(Value, Value)]]
   weakmap_id_table : Array[(ObjectData, Int)]
@@ -634,9 +637,9 @@ pub(all) struct StdlibHooks {
   get_set_method : (SetData, String, RealmState) -> Value
   get_promise_method : (PromiseData, String, RealmState) -> Value
   make_regexp_object : (RealmState, String, String) -> Value raise
-  typedarray_get_index : (ObjectData, Int) -> Value
-  typedarray_set_index : (ObjectData, Int, Double) -> Unit
-  typedarray_is_valid_index : (ObjectData, Int) -> Bool
+  typedarray_get_index : (ObjectData, Int, RealmState) -> Value
+  typedarray_set_index : (ObjectData, Int, Double, RealmState) -> Unit
+  typedarray_is_valid_index : (ObjectData, Int, RealmState) -> Bool
   create_realm : () -> Interpreter
 }
 

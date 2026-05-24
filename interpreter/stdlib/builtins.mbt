@@ -1749,9 +1749,9 @@ fn setup_builtins_with_realm_state_active(
   setup_reflect_builtins(env, well_known_symbols)
 
   // Set up ArrayBuffer, TypedArray, and DataView
-  setup_arraybuffer_builtins(env, well_known_symbols)
-  setup_typedarray_builtins(env, well_known_symbols)
-  setup_dataview_builtins(env, well_known_symbols)
+  setup_arraybuffer_builtins(env, well_known_symbols, realm_state)
+  setup_typedarray_builtins(env, well_known_symbols, realm_state)
+  setup_dataview_builtins(env, well_known_symbols, realm_state)
 
   // Set up WeakMap and WeakSet
   setup_weakmap_set_builtins(env, well_known_symbols, realm_state)
@@ -2286,7 +2286,7 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
         }
         match get_buffer_id(a[0]) {
           Some(id) => {
-            detach_arraybuffer(id)
+            detach_arraybuffer(ri.realm_state, id)
             Undefined
           }
           None =>
@@ -2320,6 +2320,14 @@ pub fn setup_harness_builtins(
   output : Array[String],
   global_this : Value,
 ) -> Unit {
+  let realm_state = match env.realm_state {
+    Some(state) => state
+    None => {
+      let state = @runtime.RealmState()
+      env.realm_state = Some(state)
+      state
+    }
+  }
   // print() - host-provided print function for test262 harness compatibility.
   // Joins arguments with spaces and appends to output (like console.log).
   let print_func = @runtime.make_native_func(name="print", fn(args) {
@@ -2420,7 +2428,7 @@ pub fn setup_harness_builtins(
       }
       match get_buffer_id(args[0]) {
         Some(id) => {
-          detach_arraybuffer(id)
+          detach_arraybuffer(realm_state, id)
           Undefined
         }
         None =>

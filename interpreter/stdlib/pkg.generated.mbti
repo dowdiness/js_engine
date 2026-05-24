@@ -8,13 +8,13 @@ import {
 // Values
 pub fn create_list_from_array_like(@runtime.Interpreter, @runtime.Value) -> Array[@runtime.Value] raise
 
-pub fn detach_arraybuffer(Int) -> Unit
+pub fn detach_arraybuffer(@runtime.RealmState, Int) -> Unit
 
 pub fn get_array_method(@runtime.ArrayData, String, @runtime.RealmState) -> @runtime.Value
 
 pub fn get_array_method_with_interp(@runtime.ArrayData, String, @runtime.RealmState) -> @runtime.Value
 
-pub fn get_arraybuffer_bytes(Int) -> Array[Int]?
+pub fn get_arraybuffer_bytes(@runtime.RealmState, Int) -> Array[Int]?
 
 pub fn get_buffer_id(@runtime.Value) -> Int?
 
@@ -30,19 +30,19 @@ pub fn get_set_method(@runtime.SetData, String, @runtime.RealmState) -> @runtime
 
 pub fn get_string_method(String, String, @runtime.RealmState, annex_b? : Bool) -> @runtime.Value
 
-pub fn get_typedarray_prop(@runtime.ObjectData, String) -> @runtime.Value
+pub fn get_typedarray_prop(@runtime.ObjectData, String, @runtime.RealmState) -> @runtime.Value
 
 pub fn get_weakmap_method(String, @runtime.RealmState) -> @runtime.Value
 
 pub fn get_weakset_method(String, @runtime.RealmState) -> @runtime.Value
 
-pub fn is_arraybuffer_detached(Int) -> Bool
+pub fn is_arraybuffer_detached(@runtime.RealmState, Int) -> Bool
 
 pub fn is_typedarray_class(String) -> Bool
 
 pub fn make_accessor_desc_obj(@runtime.Value, @runtime.Value, Bool, Bool) -> @runtime.Value
 
-pub fn make_arraybuffer_object(Int, @runtime.Value) -> @runtime.Value
+pub fn make_arraybuffer_object(@runtime.RealmState, Int, @runtime.Value) -> @runtime.Value
 
 pub fn make_data_desc_obj(@runtime.Value, Bool, Bool, Bool) -> @runtime.Value
 
@@ -64,13 +64,13 @@ pub fn same_value(@runtime.Value, @runtime.Value) -> Bool
 
 pub fn same_value_zero(@runtime.Value, @runtime.Value) -> Bool
 
-pub fn setup_arraybuffer_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
+pub fn setup_arraybuffer_builtins(@runtime.Environment, @runtime.WellKnownSymbols, @runtime.RealmState) -> Unit
 
 pub fn setup_builtins(@runtime.Environment, Array[String], @runtime.SymbolState, annex_b? : Bool) -> @runtime.RealmState
 
 pub fn setup_builtins_with_realm_state(@runtime.Environment, Array[String], @runtime.RealmState, annex_b? : Bool) -> Unit
 
-pub fn setup_dataview_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
+pub fn setup_dataview_builtins(@runtime.Environment, @runtime.WellKnownSymbols, @runtime.RealmState) -> Unit
 
 pub fn setup_date_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
 
@@ -86,7 +86,7 @@ pub fn setup_string_prototype(@runtime.Value, @runtime.RealmState, annex_b? : Bo
 
 pub fn setup_timers(@runtime.Environment) -> Unit
 
-pub fn setup_typedarray_builtins(@runtime.Environment, @runtime.WellKnownSymbols) -> Unit
+pub fn setup_typedarray_builtins(@runtime.Environment, @runtime.WellKnownSymbols, @runtime.RealmState) -> Unit
 
 pub fn setup_weakmap_set_builtins(@runtime.Environment, @runtime.WellKnownSymbols, @runtime.RealmState) -> Unit
 
@@ -108,17 +108,17 @@ pub fn typed_array_bytes_per_element(String) -> Int
 
 pub fn typed_array_species_create(@runtime.Interpreter, @runtime.Value, Array[@runtime.Value]) -> @runtime.Value raise
 
-pub fn typedarray_get_index(@runtime.ObjectData, Int) -> @runtime.Value
+pub fn typedarray_get_index(@runtime.ObjectData, Int, @runtime.RealmState) -> @runtime.Value
 
-pub fn typedarray_is_valid_index(@runtime.ObjectData, Int) -> Bool
+pub fn typedarray_is_valid_index(@runtime.ObjectData, Int, @runtime.RealmState) -> Bool
 
-pub fn typedarray_set_index(@runtime.ObjectData, Int, Double) -> Unit
+pub fn typedarray_set_index(@runtime.ObjectData, Int, Double, @runtime.RealmState) -> Unit
 
 pub fn utf16_length(String) -> Int
 
-pub fn validate_typed_array(@runtime.Value, String) -> (@runtime.ObjectData, Int) raise
+pub fn validate_typed_array(@runtime.Value, String, @runtime.RealmState) -> (@runtime.ObjectData, Int) raise
 
-pub fn validate_typedarray_buffer(@runtime.ObjectData) -> Unit raise
+pub fn validate_typedarray_buffer(@runtime.ObjectData, @runtime.RealmState) -> Unit raise
 
 // Errors
 

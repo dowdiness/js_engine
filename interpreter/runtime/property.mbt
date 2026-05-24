@@ -1036,7 +1036,11 @@ fn Interpreter::get_computed_property_impl(
           Number(n) => {
             let idx = n.to_int()
             if idx.to_double() == n && idx >= 0 {
-              return (self.stdlib_hooks.typedarray_get_index)(data, idx)
+              return (self.stdlib_hooks.typedarray_get_index)(
+                data,
+                idx,
+                self.realm_state,
+              )
             }
             // Non-integer or negative Number key: return undefined per spec
             return Undefined
@@ -1045,7 +1049,11 @@ fn Interpreter::get_computed_property_impl(
             match classify_typedarray_string_key(s) {
               Some(-1) => return Undefined
               Some(idx) =>
-                return (self.stdlib_hooks.typedarray_get_index)(data, idx)
+                return (self.stdlib_hooks.typedarray_get_index)(
+                  data,
+                  idx,
+                  self.realm_state,
+                )
               None => ()
             }
           _ => ()

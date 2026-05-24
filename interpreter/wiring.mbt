@@ -55,14 +55,14 @@ fn make_stdlib_hooks() -> @runtime.StdlibHooks {
     make_regexp_object: (realm_state, pattern, flags) => {
       @stdlib.make_regexp_object_with_realm_state(pattern, flags, realm_state)
     },
-    typedarray_get_index: fn(data, idx) {
-      @stdlib.typedarray_get_index(data, idx)
+    typedarray_get_index: fn(data, idx, realm_state) {
+      @stdlib.typedarray_get_index(data, idx, realm_state)
     },
-    typedarray_set_index: fn(data, idx, val) {
-      @stdlib.typedarray_set_index(data, idx, val)
+    typedarray_set_index: fn(data, idx, val, realm_state) {
+      @stdlib.typedarray_set_index(data, idx, val, realm_state)
     },
-    typedarray_is_valid_index: fn(data, idx) {
-      @stdlib.typedarray_is_valid_index(data, idx)
+    typedarray_is_valid_index: fn(data, idx, realm_state) {
+      @stdlib.typedarray_is_valid_index(data, idx, realm_state)
     },
     create_realm: fn() { new_interpreter() },
   }
