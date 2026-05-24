@@ -58,24 +58,6 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/stdlib/builtins_arraybuffer.mbt:detached_buffers": (
         "ArrayBuffer detached-state store; move to RealmState"
     ),
-    "interpreter/stdlib/builtins_weakmap_set.mbt:weakmap_id_counter": (
-        "WeakMap side-table counter; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_weakmap_set.mbt:weakmap_id_table": (
-        "WeakMap identity side table; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_weakmap_set.mbt:weakmap_storage": (
-        "WeakMap backing store; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_weakmap_set.mbt:weakset_id_counter": (
-        "WeakSet side-table counter; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_weakmap_set.mbt:weakset_id_table": (
-        "WeakSet identity side table; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_weakmap_set.mbt:weakset_storage": (
-        "WeakSet backing store; move to RealmState"
-    ),
 }
 
 
