@@ -695,42 +695,52 @@ fn lookup_builtin_proto(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let ctor = interp.global.get(ctor_name) catch { _ => return Undefined }
-  match ctor {
-    Object(ctor_data) =>
-      match ctor_data.bag.properties.get("prototype") {
-        Some(Object(proto_data)) => {
-          // Walk up prototype chain and honor accessor getters with `receiver`.
-          let mut current : Value = Object(proto_data)
-          while true {
-            match current {
-              Object(pdata) => {
-                match pdata.bag.descriptors.get(prop) {
-                  Some(desc) =>
-                    match desc.getter {
-                      Some(getter) =>
-                        return interp.call_value(getter, receiver, [], loc)
-                      None =>
-                        match pdata.bag.properties.get(prop) {
-                          Some(v) => return v
-                          None => ()
-                        }
-                    }
+  // Resolve the built-in prototype via RealmState rather than re-deriving it
+  // through `globalThis[ctor_name].prototype`. Cache-for-X pins each family's
+  // realm field to the JS-visible constructor `.prototype` slot, so the two
+  // paths are equivalent — but routing through RealmState makes the per-realm
+  // ownership explicit and avoids re-reading the global binding on every miss.
+  // Unknown ctor names fall through to Undefined, matching the previous
+  // `interp.global.get(...) catch { _ => Undefined }` behavior.
+  let proto = match ctor_name {
+    "Array" => interp.realm_state.get_array_proto()
+    "String" => interp.realm_state.get_string_proto()
+    "Number" => interp.realm_state.get_number_proto()
+    "Boolean" => interp.realm_state.get_boolean_proto()
+    "Symbol" => interp.realm_state.get_symbol_proto()
+    _ => return Undefined
+  }
+  match proto {
+    Object(proto_data) => {
+      // Walk up prototype chain and honor accessor getters with `receiver`.
+      let mut current : Value = Object(proto_data)
+      while true {
+        match current {
+          Object(pdata) => {
+            match pdata.bag.descriptors.get(prop) {
+              Some(desc) =>
+                match desc.getter {
+                  Some(getter) =>
+                    return interp.call_value(getter, receiver, [], loc)
                   None =>
                     match pdata.bag.properties.get(prop) {
                       Some(v) => return v
                       None => ()
                     }
                 }
-                current = pdata.prototype
-              }
-              _ => break
+              None =>
+                match pdata.bag.properties.get(prop) {
+                  Some(v) => return v
+                  None => ()
+                }
             }
+            current = pdata.prototype
           }
-          Undefined
+          _ => break
         }
-        _ => Undefined
       }
+      Undefined
+    }
     _ => Undefined
   }
 }
