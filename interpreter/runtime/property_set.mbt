@@ -546,9 +546,13 @@ fn Interpreter::typedarray_set_dispatch(
 ) -> Value raise Error {
   if strict_equal(obj, receiver) {
     let num = to_number(value)
-    (self.stdlib_hooks.typedarray_set_index)(data, idx, num)
+    (self.stdlib_hooks.typedarray_set_index)(data, idx, num, self.realm_state)
     value
-  } else if !(self.stdlib_hooks.typedarray_is_valid_index)(data, idx) {
+  } else if !(self.stdlib_hooks.typedarray_is_valid_index)(
+      data,
+      idx,
+      self.realm_state,
+    ) {
     value
   } else {
     self.define_value_on_receiver(receiver, key, value, loc, strict)

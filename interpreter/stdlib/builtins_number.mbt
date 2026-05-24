@@ -489,6 +489,7 @@ fn setup_number_builtins(
     callable: None,
     class_name: "Number",
     extensible: true,
+    arraybuffer_state: None,
   })
   // Store Number.prototype for ToObject wrapping
   env.def_builtin("[[NumberPrototype]]", number_proto)
@@ -637,6 +638,7 @@ fn setup_number_builtins(
               callable: None,
               class_name: "Number",
               extensible: true,
+              arraybuffer_state: None,
             })
           } else {
             Value::Number(n)
@@ -645,6 +647,7 @@ fn setup_number_builtins(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   // Set Number.prototype.constructor = Number

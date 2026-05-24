@@ -1087,6 +1087,7 @@ fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
     },
     prototype: Null,
     extensible: true,
+    arraybuffer_state: None,
     callable: None,
     class_name: "Object",
   })

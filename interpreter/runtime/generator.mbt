@@ -188,6 +188,7 @@ fn init_generator_prototype(well_known_symbols : WellKnownSymbols) -> Value {
     callable: None,
     class_name: "Generator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -228,6 +229,7 @@ pub fn setup_generator_function_constructor(
     callable: None,
     class_name: "GeneratorFunction",
     extensible: true,
+    arraybuffer_state: None,
   })
   // GeneratorFunction constructor: GeneratorFunction(p1, p2, ..., body)
   let gen_func_ctor : Value = make_interp_method_func(
@@ -377,6 +379,7 @@ fn Interpreter::make_generator_function(
     callable: None,
     class_name: "Generator",
     extensible: true,
+    arraybuffer_state: None,
   })
   // Generator functions inherit from %GeneratorFunction.prototype%
   let gen_func_proto : Value = match
@@ -439,6 +442,7 @@ fn Interpreter::make_generator_function(
       ),
       class_name: "GeneratorFunction",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }
@@ -462,6 +466,7 @@ fn Interpreter::make_generator_function_ext(
     callable: None,
     class_name: "Generator",
     extensible: true,
+    arraybuffer_state: None,
   })
   // Generator functions inherit from %GeneratorFunction.prototype%
   let gen_func_proto : Value = match
@@ -536,6 +541,7 @@ fn Interpreter::make_generator_function_ext(
       ),
       class_name: "GeneratorFunction",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }
@@ -678,6 +684,7 @@ fn create_generator_instance(
         callable: None,
         class_name: "Arguments",
         extensible: true,
+        arraybuffer_state: None,
       }),
       VarBinding,
     )
@@ -755,6 +762,7 @@ fn create_generator_instance(
       callable: None,
       class_name: "Generator",
       extensible: true,
+      arraybuffer_state: None,
     })
   } catch {
     e => {

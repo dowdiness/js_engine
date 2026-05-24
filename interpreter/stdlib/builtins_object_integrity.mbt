@@ -303,6 +303,7 @@ fn make_from_entries_func() -> Value {
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
   })
 }
@@ -358,6 +359,7 @@ fn make_group_by_func() -> Value {
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
   })
 }

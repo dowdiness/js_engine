@@ -49,15 +49,6 @@ CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
     "interpreter/runtime/symbols.mbt:is_constructing": (
         "ambient construction context; replace with explicit call/construct context"
     ),
-    "interpreter/stdlib/builtins_arraybuffer.mbt:arraybuffer_id_counter": (
-        "ArrayBuffer backing-store counter; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_arraybuffer.mbt:arraybuffer_store": (
-        "ArrayBuffer backing store; move to RealmState"
-    ),
-    "interpreter/stdlib/builtins_arraybuffer.mbt:detached_buffers": (
-        "ArrayBuffer detached-state store; move to RealmState"
-    ),
 }
 
 

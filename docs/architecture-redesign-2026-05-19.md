@@ -21,8 +21,8 @@ Observed pressures include these:
 - The public facade can return an interpreter for host-driven event-loop
   control.
 - The test262 harness can create fresh realms.
-- Most durable state is now interpreter-owned, but ArrayBuffer backing stores
-  and ambient execution/construction context remain module-global.
+- Most durable state is now interpreter-owned, but ambient execution and
+  construction context remain module-global.
 - Runtime and stdlib expose mutable implementation details as public API, which
   makes future internal reshaping harder than it needs to be.
 - The closure-conversion prototype is useful as a benchmark path, but it
@@ -66,12 +66,10 @@ State ownership is split across these places:
 
 - Interpreter-owned state: host queues, global environment, global object,
   module registry, generator state, symbol state, stdlib hook table,
-  prototype caches, prototype refs, and WeakMap / WeakSet side tables.
-- Module-global state: current interpreter fallback, construction flag,
-  ArrayBuffer backing store, ArrayBuffer backing-store ID counter, and
-  ArrayBuffer detached-buffer store.
-- Side effects: host output and event-loop queues live in `HostEnv`, while
-  the remaining stdlib object-store debt is the ArrayBuffer storage family.
+  prototype caches, prototype refs, WeakMap / WeakSet side tables, and
+  ArrayBuffer backing stores / detached state.
+- Module-global state: current interpreter fallback and construction flag.
+- Side effects: host output and event-loop queues live in `HostEnv`.
 
 ## 3. Architectural Problems
 
@@ -466,23 +464,21 @@ Completed:
 7. Move stdlib Promise and RegExp prototype refs, plus dependent runtime
    prototype read paths, into `RealmState` through PRs #136 through #146.
 8. Move WeakMap / WeakSet side-table storage into `RealmState` in PR #147.
+9. Move ArrayBuffer backing stores, id counter, and detach state into
+   `RealmState`.
 
 Current audit inventory:
 
-`python3 scripts/architecture-state-audit.py --list` reports 5 classified
-bindings:
-`current_interpreter`, `is_constructing`, `arraybuffer_store`,
-`arraybuffer_id_counter`, and `detached_buffers`.
+`python3 scripts/architecture-state-audit.py --list` reports 2 classified
+bindings: `current_interpreter` and `is_constructing`.
 
 Remaining:
 
-1. Migrate ArrayBuffer backing stores, id counter, and detach state into
-   `RealmState`.
-2. Replace ambient construction/current-interpreter context with explicit
+1. Replace ambient construction/current-interpreter context with explicit
    context.
-3. Only then reduce runtime public API surface and consider internal package
+2. Only then reduce runtime public API surface and consider internal package
    extraction.
-4. Keep closure conversion frozen as an opt-in benchmark path while any
+3. Keep closure conversion frozen as an opt-in benchmark path while any
    bytecode/IR prototype is designed around shared runtime operations.
 
 ## Evidence Checked

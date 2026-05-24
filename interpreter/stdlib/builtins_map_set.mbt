@@ -420,6 +420,7 @@ fn setup_map_builtins(
     callable: None,
     class_name: "Map",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   realm_state.map_prototype.val = Some(map_proto)
@@ -854,6 +855,7 @@ fn setup_set_builtins(
     callable: None,
     class_name: "Set",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   realm_state.set_prototype.val = Some(set_proto)
@@ -1043,6 +1045,7 @@ fn get_map_iterator_proto(realm_state : @runtime.RealmState) -> Value {
         callable: None,
         class_name: "Map Iterator",
         extensible: true,
+        arraybuffer_state: None,
       })
       realm_state.runtime_iterator_prototypes.map_iterator_proto.val = Some(
         proto,
@@ -1108,6 +1111,7 @@ fn make_map_keys_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -1124,12 +1128,14 @@ fn make_map_keys_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
@@ -1144,6 +1150,7 @@ fn make_map_keys_iterator(
     callable: None,
     class_name: "Map Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -1203,6 +1210,7 @@ fn make_map_values_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -1219,12 +1227,14 @@ fn make_map_values_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
@@ -1239,6 +1249,7 @@ fn make_map_values_iterator(
     callable: None,
     class_name: "Map Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -1300,6 +1311,7 @@ fn make_map_entries_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -1316,12 +1328,14 @@ fn make_map_entries_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
@@ -1336,6 +1350,7 @@ fn make_map_entries_iterator(
     callable: None,
     class_name: "Map Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -1393,6 +1408,7 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
         callable: None,
         class_name: "Set Iterator",
         extensible: true,
+        arraybuffer_state: None,
       })
       realm_state.runtime_iterator_prototypes.set_iterator_proto.val = Some(
         proto,
@@ -1458,6 +1474,7 @@ fn make_set_values_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -1474,12 +1491,14 @@ fn make_set_values_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
@@ -1494,6 +1513,7 @@ fn make_set_values_iterator(
     callable: None,
     class_name: "Set Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -1555,6 +1575,7 @@ fn make_set_entries_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         } else {
           let result_props : Map[String, Value] = {}
@@ -1571,12 +1592,14 @@ fn make_set_entries_iterator(
             callable: None,
             class_name: "Object",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
       }),
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
   iter_props["next"] = next_method
@@ -1591,5 +1614,6 @@ fn make_set_entries_iterator(
     callable: None,
     class_name: "Set Iterator",
     extensible: true,
+    arraybuffer_state: None,
   })
 }

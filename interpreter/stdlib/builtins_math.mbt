@@ -584,6 +584,7 @@ fn setup_math_builtins(
       callable: None,
       class_name: "Math",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }

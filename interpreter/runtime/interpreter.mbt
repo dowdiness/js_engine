@@ -137,6 +137,7 @@ pub fn Interpreter::new(
     callable: None,
     class_name: "global",
     extensible: true,
+    arraybuffer_state: None,
   })
   let realm_state = RealmState()
   global.realm_state = Some(realm_state)

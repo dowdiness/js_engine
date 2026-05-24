@@ -178,6 +178,7 @@ fn setup_builtins_with_realm_state_active(
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   env.def_builtin("eval", eval_func)
 
@@ -448,6 +449,7 @@ fn setup_builtins_with_realm_state_active(
     callable: None,
     class_name: "String",
     extensible: true,
+    arraybuffer_state: None,
   })
   env.def_builtin(
     "String",
@@ -679,6 +681,7 @@ fn setup_builtins_with_realm_state_active(
               callable: None,
               class_name: "String",
               extensible: true,
+              arraybuffer_state: None,
             })
           } else {
             Value::String_(str)
@@ -687,6 +690,7 @@ fn setup_builtins_with_realm_state_active(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 
@@ -795,6 +799,7 @@ fn setup_builtins_with_realm_state_active(
     callable: None,
     class_name: "Boolean",
     extensible: true,
+    arraybuffer_state: None,
   })
   // Store Boolean.prototype for ToObject wrapping
   env.def_builtin("[[BooleanPrototype]]", boolean_proto)
@@ -841,6 +846,7 @@ fn setup_builtins_with_realm_state_active(
               callable: None,
               class_name: "Boolean",
               extensible: true,
+              arraybuffer_state: None,
             })
           } else {
             Value::Bool(b)
@@ -849,6 +855,7 @@ fn setup_builtins_with_realm_state_active(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 
@@ -1084,6 +1091,7 @@ fn setup_builtins_with_realm_state_active(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 
@@ -1570,6 +1578,7 @@ fn setup_builtins_with_realm_state_active(
             callable: None,
             class_name: "RegExp String Iterator",
             extensible: true,
+            arraybuffer_state: None,
           })
         },
       )
@@ -1699,6 +1708,7 @@ fn setup_builtins_with_realm_state_active(
         callable: None,
         class_name: "Object",
         extensible: true,
+        arraybuffer_state: None,
       })
       realm_state.regexp_prototype.val = Some(regexp_proto)
       // Set RegExp.prototype on the constructor
@@ -1749,9 +1759,9 @@ fn setup_builtins_with_realm_state_active(
   setup_reflect_builtins(env, well_known_symbols)
 
   // Set up ArrayBuffer, TypedArray, and DataView
-  setup_arraybuffer_builtins(env, well_known_symbols)
-  setup_typedarray_builtins(env, well_known_symbols)
-  setup_dataview_builtins(env, well_known_symbols)
+  setup_arraybuffer_builtins(env, well_known_symbols, realm_state)
+  setup_typedarray_builtins(env, well_known_symbols, realm_state)
+  setup_dataview_builtins(env, well_known_symbols, realm_state)
 
   // Set up WeakMap and WeakSet
   setup_weakmap_set_builtins(env, well_known_symbols, realm_state)
@@ -2284,15 +2294,12 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
             message="$262.detachArrayBuffer requires an ArrayBuffer argument",
           )
         }
-        match get_buffer_id(a[0]) {
-          Some(id) => {
-            detach_arraybuffer(id)
-            Undefined
-          }
-          None =>
-            raise @errors.TypeError(
-              message="$262.detachArrayBuffer requires an ArrayBuffer argument",
-            )
+        if detach_arraybuffer_value(a[0], ri.realm_state) {
+          Undefined
+        } else {
+          raise @errors.TypeError(
+            message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+          )
         }
       },
     )
@@ -2307,6 +2314,7 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
   })
 }
@@ -2320,6 +2328,14 @@ pub fn setup_harness_builtins(
   output : Array[String],
   global_this : Value,
 ) -> Unit {
+  let realm_state = match env.realm_state {
+    Some(state) => state
+    None => {
+      let state = @runtime.RealmState()
+      env.realm_state = Some(state)
+      state
+    }
+  }
   // print() - host-provided print function for test262 harness compatibility.
   // Joins arguments with spaces and appends to output (like console.log).
   let print_func = @runtime.make_native_func(name="print", fn(args) {
@@ -2368,6 +2384,7 @@ pub fn setup_harness_builtins(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // $262 - the test262 host object providing host-level hooks.
@@ -2418,15 +2435,12 @@ pub fn setup_harness_builtins(
           message="$262.detachArrayBuffer requires an ArrayBuffer argument",
         )
       }
-      match get_buffer_id(args[0]) {
-        Some(id) => {
-          detach_arraybuffer(id)
-          Undefined
-        }
-        None =>
-          raise @errors.TypeError(
-            message="$262.detachArrayBuffer requires an ArrayBuffer argument",
-          )
+      if detach_arraybuffer_value(args[0], realm_state) {
+        Undefined
+      } else {
+        raise @errors.TypeError(
+          message="$262.detachArrayBuffer requires an ArrayBuffer argument",
+        )
       }
     },
   )
@@ -2441,6 +2455,7 @@ pub fn setup_harness_builtins(
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   env.def_builtin("$262", dollar262)
 

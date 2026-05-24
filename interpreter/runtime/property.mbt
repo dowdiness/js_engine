@@ -476,6 +476,7 @@ fn Interpreter::get_property_of_object(
                 callable: Some(FuncCallMethod(obj)),
                 class_name: "Function",
                 extensible: true,
+                arraybuffer_state: None,
               }),
             )
           } else if prop == "apply" {
@@ -486,6 +487,7 @@ fn Interpreter::get_property_of_object(
                 callable: Some(FuncApplyMethod(obj)),
                 class_name: "Function",
                 extensible: true,
+                arraybuffer_state: None,
               }),
             )
           } else if prop == "bind" {
@@ -534,6 +536,7 @@ fn Interpreter::get_property_of_object(
                   callable: Some(BoundFunc(target, bind_this, bound_args)),
                   class_name: "Function",
                   extensible: true,
+                  arraybuffer_state: None,
                 }),
               )
             })
@@ -625,6 +628,7 @@ fn Interpreter::get_property_of_object(
                   callable: None,
                   class_name: "Object",
                   extensible: true,
+                  arraybuffer_state: None,
                 })
                 data.bag.properties["prototype"] = proto
                 return proto
@@ -1036,7 +1040,11 @@ fn Interpreter::get_computed_property_impl(
           Number(n) => {
             let idx = n.to_int()
             if idx.to_double() == n && idx >= 0 {
-              return (self.stdlib_hooks.typedarray_get_index)(data, idx)
+              return (self.stdlib_hooks.typedarray_get_index)(
+                data,
+                idx,
+                self.realm_state,
+              )
             }
             // Non-integer or negative Number key: return undefined per spec
             return Undefined
@@ -1045,7 +1053,11 @@ fn Interpreter::get_computed_property_impl(
             match classify_typedarray_string_key(s) {
               Some(-1) => return Undefined
               Some(idx) =>
-                return (self.stdlib_hooks.typedarray_get_index)(data, idx)
+                return (self.stdlib_hooks.typedarray_get_index)(
+                  data,
+                  idx,
+                  self.realm_state,
+                )
               None => ()
             }
           _ => ()
@@ -1177,6 +1189,7 @@ fn Interpreter::get_computed_property_impl(
                     callable: Some(FuncCallMethod(obj)),
                     class_name: "Function",
                     extensible: true,
+                    arraybuffer_state: None,
                   }),
                 )
               } else if prop == "apply" {
@@ -1187,6 +1200,7 @@ fn Interpreter::get_computed_property_impl(
                     callable: Some(FuncApplyMethod(obj)),
                     class_name: "Function",
                     extensible: true,
+                    arraybuffer_state: None,
                   }),
                 )
               } else if prop == "bind" {
@@ -1235,6 +1249,7 @@ fn Interpreter::get_computed_property_impl(
                       callable: Some(BoundFunc(target, bind_this, bound_args)),
                       class_name: "Function",
                       extensible: true,
+                      arraybuffer_state: None,
                     }),
                   )
                 })
@@ -1328,6 +1343,7 @@ fn Interpreter::get_computed_property_impl(
                       callable: None,
                       class_name: "Object",
                       extensible: true,
+                      arraybuffer_state: None,
                     })
                     data.bag.properties["prototype"] = proto
                     return proto

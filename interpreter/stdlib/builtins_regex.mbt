@@ -1675,6 +1675,7 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
   } else {
     Undefined
@@ -1917,6 +1918,7 @@ fn make_regexp_object_with_proto(
     callable: None,
     class_name: "RegExp",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -2145,6 +2147,7 @@ fn call_replace_fn(
         callable: None,
         class_name: "Object",
         extensible: true,
+        arraybuffer_state: None,
       }),
     )
   }
@@ -2322,6 +2325,7 @@ pub fn get_regexp_string_iterator_proto(
         callable: None,
         class_name: "RegExp String Iterator",
         extensible: true,
+        arraybuffer_state: None,
       })
       realm_state.runtime_iterator_prototypes.regexp_string_iterator_proto.val = Some(
         proto,

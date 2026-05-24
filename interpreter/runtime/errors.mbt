@@ -68,6 +68,7 @@ fn make_error_value_with_env(
     callable: None,
     class_name: name,
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -148,6 +149,7 @@ fn make_aggregate_error_value(
     callable: None,
     class_name: "AggregateError",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 

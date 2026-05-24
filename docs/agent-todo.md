@@ -164,14 +164,13 @@ ambient current-interpreter / construction context with explicit context.
 (`Object`, `Function`, `String`, `Number`, `Boolean`, and `Symbol`) now live in
 `RealmState`. Promise and RegExp prototype refs were completed through PRs
 #136 through #146, and WeakMap / WeakSet side-table storage was completed in
-PR #147. The mutable-state audit now reports 5 classified bindings:
-`current_interpreter`, `is_constructing`, `arraybuffer_store`,
-`arraybuffer_id_counter`, and `detached_buffers`.
+PR #147. ArrayBuffer backing stores, backing-store IDs, and detached-state
+storage now live in `RealmState`. The mutable-state audit now reports 2
+classified bindings: `current_interpreter` and `is_constructing`.
 
 **Candidate order:**
 
-1. ArrayBuffer backing stores and detach state.
-2. Construction/current-interpreter ambient context.
+1. Construction/current-interpreter ambient context.
 
 **Verification:** Keep `make architecture-state-audit` as the inventory gate.
 Add two-realm or two-interpreter tests before moving each state family, then

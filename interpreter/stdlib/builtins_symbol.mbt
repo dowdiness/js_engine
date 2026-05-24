@@ -191,6 +191,7 @@ fn setup_symbol_builtins(
     callable: None,
     class_name: "Symbol",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Symbol constructor properties
@@ -309,6 +310,7 @@ fn setup_symbol_builtins(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
   env.def_builtin("[[SymbolPrototype]]", symbol_proto)

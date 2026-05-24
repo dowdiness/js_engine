@@ -165,6 +165,7 @@ test "map and set method lookup uses active realm state without rehoming direct 
         callable: None,
         class_name: "DerivedMapPrototype",
         extensible: true,
+        arraybuffer_state: None,
       })
       let derived_map_data = @runtime.MapData([], prototype=derived_map_proto)
       match get_map_method(derived_map_data, "entries", default_realm) {
@@ -201,6 +202,7 @@ test "map and set method lookup uses active realm state without rehoming direct 
         callable: None,
         class_name: "DerivedSetPrototype",
         extensible: true,
+        arraybuffer_state: None,
       })
       let derived_set_data = @runtime.SetData([], prototype=derived_set_proto)
       match get_set_method(derived_set_data, "values", default_realm) {

@@ -1472,6 +1472,7 @@ fn Interpreter::exec_stmt(
             callable: None,
             class_name: "String",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
         Number(n) => {
@@ -1490,6 +1491,7 @@ fn Interpreter::exec_stmt(
             callable: None,
             class_name: "Number",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
         Bool(b) => {
@@ -1508,6 +1510,7 @@ fn Interpreter::exec_stmt(
             callable: None,
             class_name: "Boolean",
             extensible: true,
+            arraybuffer_state: None,
           })
         }
         Object(_) => raw_obj

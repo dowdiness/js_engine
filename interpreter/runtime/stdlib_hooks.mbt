@@ -10,9 +10,9 @@ pub(all) struct StdlibHooks {
   get_set_method : (SetData, String, RealmState) -> Value
   get_promise_method : (PromiseData, String, RealmState) -> Value
   make_regexp_object : (RealmState, String, String) -> Value raise Error
-  typedarray_get_index : (ObjectData, Int) -> Value
-  typedarray_set_index : (ObjectData, Int, Double) -> Unit
-  typedarray_is_valid_index : (ObjectData, Int) -> Bool
+  typedarray_get_index : (ObjectData, Int, RealmState) -> Value
+  typedarray_set_index : (ObjectData, Int, Double, RealmState) -> Unit
+  typedarray_is_valid_index : (ObjectData, Int, RealmState) -> Bool
   // Factory for creating a fully-wired realm (builtins + harness + hooks).
   // Populated by the wiring layer; the default produces a bare interpreter.
   create_realm : () -> Interpreter
@@ -29,9 +29,9 @@ pub fn default_stdlib_hooks() -> StdlibHooks {
     get_set_method: fn(_data, _prop, _realm_state) { Undefined },
     get_promise_method: fn(_data, _prop, _realm_state) { Undefined },
     make_regexp_object: fn(_realm_state, _pattern, _flags) { Undefined },
-    typedarray_get_index: fn(_data, _idx) { Undefined },
-    typedarray_set_index: fn(_data, _idx, _val) { () },
-    typedarray_is_valid_index: fn(_data, _idx) { false },
+    typedarray_get_index: fn(_data, _idx, _realm_state) { Undefined },
+    typedarray_set_index: fn(_data, _idx, _val, _realm_state) { () },
+    typedarray_is_valid_index: fn(_data, _idx, _realm_state) { false },
     create_realm: fn() { Interpreter::new() },
   }
 }

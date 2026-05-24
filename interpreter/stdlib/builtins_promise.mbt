@@ -522,6 +522,7 @@ pub fn setup_promise(
               ),
               class_name: "Function",
               extensible: true,
+              arraybuffer_state: None,
             })
             // Chain: Promise.resolve(finally_result).then(() => value)
             let then_method = i.get_property(result_promise, "then", loc)
@@ -530,6 +531,7 @@ pub fn setup_promise(
         ),
         class_name: "Function",
         extensible: true,
+        arraybuffer_state: None,
       })
       let thrower_thunk = Value::Object({
         bag: @runtime.PropertyBag(),
@@ -563,6 +565,7 @@ pub fn setup_promise(
               ),
               class_name: "Function",
               extensible: true,
+              arraybuffer_state: None,
             })
             // Chain: Promise.resolve(finally_result).then(() => { throw reason })
             let then_method = i.get_property(result_promise, "then", loc)
@@ -571,6 +574,7 @@ pub fn setup_promise(
         ),
         class_name: "Function",
         extensible: true,
+        arraybuffer_state: None,
       })
       let then_method = interp.get_property(this_val, "then", loc)
       interp.call_value(
@@ -617,6 +621,7 @@ pub fn setup_promise(
     callable: None,
     class_name: "Promise",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Store prototype reference for method lookup
@@ -694,6 +699,7 @@ pub fn setup_promise(
         callable: None,
         class_name: "Object",
         extensible: true,
+        arraybuffer_state: None,
       })
     },
   )
@@ -1028,6 +1034,7 @@ pub fn setup_promise(
                 callable: None,
                 class_name: "Object",
                 extensible: true,
+                arraybuffer_state: None,
               })
               remaining.val = remaining.val - 1
               if remaining.val == 0 {
@@ -1065,6 +1072,7 @@ pub fn setup_promise(
                 callable: None,
                 class_name: "Object",
                 extensible: true,
+                arraybuffer_state: None,
               })
               remaining.val = remaining.val - 1
               if remaining.val == 0 {
@@ -1360,6 +1368,7 @@ pub fn setup_promise(
     ),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Promise[Symbol.species] getter returns `this` (used by SpeciesConstructor).
@@ -1671,5 +1680,6 @@ fn make_aggregate_error(
     callable: None,
     class_name: "AggregateError",
     extensible: true,
+    arraybuffer_state: None,
   })
 }

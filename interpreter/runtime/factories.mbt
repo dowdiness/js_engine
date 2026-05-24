@@ -14,6 +14,7 @@ pub fn make_func(data : FuncData) -> Value {
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   let func_name = match data.name {
     Some(n) => n
@@ -61,6 +62,7 @@ pub fn make_func(data : FuncData) -> Value {
     callable: Some(UserFunc(data)),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   if !data.is_method {
     match proto {
@@ -91,6 +93,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
   let func_name = match data.name {
     Some(n) => n
@@ -152,6 +155,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     callable: Some(UserFuncExt(data)),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
   if !data.is_method {
     match proto {
@@ -330,6 +334,7 @@ fn build_func_object(name : String, length : Int, callable : Callable) -> Value 
     callable: Some(callable),
     class_name: "Function",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -733,6 +738,7 @@ pub fn make_object(
     callable,
     class_name,
     extensible,
+    arraybuffer_state: None,
   })
 }
 
@@ -753,6 +759,7 @@ pub fn create_iter_result(value : Value, done : Bool) -> Value {
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -765,6 +772,7 @@ pub fn make_plain_object() -> Value {
     callable: None,
     class_name: "Object",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 

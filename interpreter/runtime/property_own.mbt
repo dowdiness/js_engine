@@ -664,6 +664,7 @@ pub fn descriptor_to_value(desc : PropDescriptor, value : Value) -> Value {
     },
     prototype: get_obj_proto(),
     extensible: true,
+    arraybuffer_state: None,
     callable: None,
     class_name: "Object",
   })

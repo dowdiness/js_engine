@@ -121,12 +121,25 @@ pub fn PropertyBag::PropertyBag() -> PropertyBag {
 }
 
 ///|
+pub(all) struct ArrayBufferState {
+  id_counter : Ref[Int]
+  store : Map[Int, Array[Int]]
+  detached : Map[Int, Bool]
+}
+
+///|
+pub fn ArrayBufferState::ArrayBufferState() -> ArrayBufferState {
+  { id_counter: { val: 0 }, store: {}, detached: {} }
+}
+
+///|
 pub(all) struct ObjectData {
   bag : PropertyBag
   mut prototype : Value // Mutable to support Object.setPrototypeOf()
   callable : Callable?
   class_name : String
   mut extensible : Bool
+  arraybuffer_state : ArrayBufferState?
 }
 
 ///|

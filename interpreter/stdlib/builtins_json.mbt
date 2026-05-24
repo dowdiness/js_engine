@@ -39,6 +39,7 @@ fn setup_json_builtins(
           callable: None,
           class_name: "Object",
           extensible: true,
+          arraybuffer_state: None,
         })
         return json_internalize(root, "", args[1], interp)
       }
@@ -135,6 +136,7 @@ fn setup_json_builtins(
         callable: None,
         class_name: "Object",
         extensible: true,
+        arraybuffer_state: None,
       })
       let seen : Array[Value] = []
       json_stringify_value(
@@ -181,6 +183,7 @@ fn setup_json_builtins(
       callable: None,
       class_name: "JSON",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 }
@@ -368,6 +371,7 @@ fn json_parse(input : String) -> Value raise Error {
         callable: None,
         class_name: "Object",
         extensible: true,
+        arraybuffer_state: None,
       })
     }
     while true {
@@ -415,6 +419,7 @@ fn json_parse(input : String) -> Value raise Error {
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
   }
   and parse_array = fn() -> Value raise Error {

@@ -731,6 +731,7 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
     callable: None,
     class_name: "Date",
     extensible: true,
+    arraybuffer_state: None,
   })
 }
 
@@ -1782,6 +1783,7 @@ pub fn setup_date_builtins(
     callable: None,
     class_name: "Date",
     extensible: true,
+    arraybuffer_state: None,
   })
 
   // Set Symbol.toPrimitive on prototype
@@ -1982,6 +1984,7 @@ pub fn setup_date_builtins(
       ),
       class_name: "Function",
       extensible: true,
+      arraybuffer_state: None,
     }),
   )
 

@@ -293,6 +293,7 @@ fn Interpreter::bind_pattern(
               callable: None,
               class_name: "Object",
               extensible: true,
+              arraybuffer_state: None,
             }),
             env,
             bk,
@@ -609,6 +610,7 @@ fn Interpreter::assign_pattern(
               callable: None,
               class_name: "Object",
               extensible: true,
+              arraybuffer_state: None,
             }),
             env,
           )

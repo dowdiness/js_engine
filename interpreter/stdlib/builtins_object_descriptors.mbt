@@ -405,6 +405,7 @@ fn make_get_own_property_descriptors_func(sym_state : SymbolState) -> Value {
       callable: None,
       class_name: "Object",
       extensible: true,
+      arraybuffer_state: None,
     })
   })
 }
