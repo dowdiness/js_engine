@@ -64,7 +64,6 @@ jobs:
       - name: Install and test
         run: |
           moon update
-          moon install
           moon check
           moon test
 
@@ -104,7 +103,6 @@ jobs:
       - name: Install and build
         run: |
           moon update
-          moon install
           moon build --target js --release
 
       - name: Cache test262 suite
