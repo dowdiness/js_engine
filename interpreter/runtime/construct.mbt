@@ -903,17 +903,8 @@ fn Interpreter::construct_value_impl(
             new_target=nt_for_target,
           )
         }
-        Some(NativeCallable(_, func)) => {
-          is_constructing.val = true
-          let result = func(args) catch {
-            e => {
-              is_constructing.val = false
-              raise e
-            }
-          }
-          is_constructing.val = false
-          result
-        }
+        Some(NativeCallable(_, func)) => func(args)
+        Some(NativeCallableWithContext(_, func)) => func(Construct, args)
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
@@ -928,15 +919,15 @@ fn Interpreter::construct_value_impl(
               message=format_loc_context(_name + " is not a constructor", loc),
             )
           }
-          is_constructing.val = true
-          let result = func(self, Undefined, args) catch {
-            e => {
-              is_constructing.val = false
-              raise e
-            }
+          func(self, Undefined, args)
+        }
+        Some(InterpreterCallableWithContext(_name, func)) => {
+          if !interpreter_callable_is_constructor(obj_data) {
+            raise @errors.TypeError(
+              message=format_loc_context(_name + " is not a constructor", loc),
+            )
           }
-          is_constructing.val = false
-          result
+          func(self, Construct, Undefined, args)
         }
         Some(MethodCallable(name, _)) =>
           raise @errors.TypeError(
@@ -1117,7 +1108,9 @@ fn Interpreter::construct_value_impl(
                             }
                           }
                           Some(NativeCallable(_, _))
-                          | Some(InterpreterCallable(_, _)) => {
+                          | Some(NativeCallableWithContext(_, _))
+                          | Some(InterpreterCallable(_, _))
+                          | Some(InterpreterCallableWithContext(_, _)) => {
                             // Built-in constructors like Error, Map, Set, etc.
                             let super_result = self.construct_value(
                               sc,

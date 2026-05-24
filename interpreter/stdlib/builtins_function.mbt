@@ -45,7 +45,8 @@ fn setup_function_builtins(
               } else {
                 Value::String_("() => { [native code] }")
               }
-            Some(NativeCallable(name, _)) =>
+            Some(NativeCallable(name, _))
+            | Some(NativeCallableWithContext(name, _)) =>
               Value::String_(prefix + name + "() { [native code] }")
             Some(NonConstructableCallable(name, _)) =>
               Value::String_(prefix + name + "() { [native code] }")
@@ -53,7 +54,8 @@ fn setup_function_builtins(
               Value::String_(prefix + "() { [native code] }")
             Some(MethodCallable(name, _)) =>
               Value::String_(prefix + name + "() { [native code] }")
-            Some(InterpreterCallable(name, _)) =>
+            Some(InterpreterCallable(name, _))
+            | Some(InterpreterCallableWithContext(name, _)) =>
               Value::String_(prefix + name + "() { [native code] }")
             Some(NonConstructableInterpreterCallable(name, _)) =>
               Value::String_(prefix + name + "() { [native code] }")

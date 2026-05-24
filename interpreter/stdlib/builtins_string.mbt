@@ -1737,6 +1737,7 @@ pub fn setup_string_prototype(
               Object(fdata) =>
                 match fdata.callable {
                   Some(NativeCallable(_, f)) => f(args)
+                  Some(NativeCallableWithContext(_, f)) => f(Call, args)
                   Some(NonConstructableCallable(_, f)) => f(args)
                   _ => Undefined
                 }

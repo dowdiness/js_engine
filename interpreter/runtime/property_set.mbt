@@ -1472,14 +1472,16 @@ pub fn get_bound_func_name(target : Value) -> String {
       match td.callable {
         Some(UserFunc(fd)) => "bound " + fd.name.unwrap_or("")
         Some(UserFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
-        Some(NativeCallable(n, _)) => "bound " + n
+        Some(NativeCallable(n, _)) | Some(NativeCallableWithContext(n, _)) =>
+          "bound " + n
         Some(NonConstructableCallable(n, _)) => "bound " + n
         Some(BoundFunc(inner, _, _)) => "bound " + get_bound_func_name(inner)
         Some(ArrowFunc(fd)) => "bound " + fd.name.unwrap_or("")
         Some(ArrowFuncExt(fd)) => "bound " + fd.name.unwrap_or("")
         Some(ClassConstructor({ name: n, .. })) => "bound " + n
         Some(MethodCallable(n, _)) => "bound " + n
-        Some(InterpreterCallable(n, _)) => "bound " + n
+        Some(InterpreterCallable(n, _))
+        | Some(InterpreterCallableWithContext(n, _)) => "bound " + n
         Some(NonConstructableInterpreterCallable(n, _)) => "bound " + n
         Some(_) => "bound "
         None => "bound "
@@ -1532,11 +1534,13 @@ pub fn get_func_length(callable : Callable) -> Int {
         _ => 0
       }
     NativeCallable(_, _) => 0
+    NativeCallableWithContext(_, _) => 0
     NonConstructableCallable(_, _) => 0
     FuncCallMethod(_) => 1
     FuncApplyMethod(_) => 2
     MethodCallable(_, _) => 0
     InterpreterCallable(_, _) => 0
+    InterpreterCallableWithContext(_, _) => 0
     NonConstructableInterpreterCallable(_, _) => 0
     ConstructorOnlyCallable(_, _) => 0
     ClassConstructor({ ctor_fn, .. }) =>

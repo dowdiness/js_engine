@@ -1284,12 +1284,13 @@ fn make_compiled_func(
       },
       prototype: @runtime.get_func_proto(),
       callable: Some(
-        Callable::InterpreterCallable(func_name, fn(
+        Callable::InterpreterCallableWithContext(func_name, fn(
           interp,
+          context,
           this_val,
           args,
         ) raise {
-          if constructable && @runtime.is_constructing.val {
+          if constructable && context.is_constructing() {
             let new_obj = make_compiled_constructor_instance(proto)
             let result = call_compiled_func(
               interp, new_obj, args, params, closure, strict, body,

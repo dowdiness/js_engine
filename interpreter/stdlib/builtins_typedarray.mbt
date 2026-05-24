@@ -2829,8 +2829,13 @@ pub fn setup_typedarray_builtins(
       },
       prototype: ta_ctor,
       callable: Some(
-        InterpreterCallable(type_name, fn(interp, _this_val, args) raise {
-          if !@runtime.is_constructing.val {
+        InterpreterCallableWithContext(type_name, fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
+          if !context.is_constructing() {
             raise @errors.TypeError(
               message="Constructor \{type_name} requires 'new'",
             )

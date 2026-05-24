@@ -59,6 +59,7 @@ pub fn call_callable_direct(
       match obj_data.callable {
         Some(MethodCallable(_, f)) => f(this_val, args)
         Some(NativeCallable(_, f)) => f(args)
+        Some(NativeCallableWithContext(_, f)) => f(Call, args)
         Some(NonConstructableCallable(_, f)) => f(args)
         Some(UserFunc(_))
         | Some(ArrowFunc(_))
@@ -66,6 +67,7 @@ pub fn call_callable_direct(
         | Some(ArrowFuncExt(_))
         | Some(BoundFunc(_, _, _))
         | Some(InterpreterCallable(_, _))
+        | Some(InterpreterCallableWithContext(_, _))
         | Some(NonConstructableInterpreterCallable(_, _))
         | Some(ClassConstructor(_)) => {
           let effective = resolve_effective_interp(interp)

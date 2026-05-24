@@ -446,91 +446,101 @@ fn setup_map_builtins(
   }
 
   // Map constructor
-  let map_ctor = @runtime.make_interp_method_func(name="Map", length=0, fn(
-    interp,
-    _this_val,
-    args,
-  ) raise {
-    if !@runtime.is_constructing.val {
-      raise @errors.TypeError(
-        message="Constructor Map cannot be invoked without 'new'",
-      )
-    }
-    let new_map : Value = Value::Map(@runtime.MapData([], prototype=map_proto))
-    let loc = @token.Loc::default()
-
-    // If iterable provided, populate map
-    if args.length() > 0 {
-      let iterable = args[0]
-      if !(match iterable {
-          Undefined | Null => true
-          _ => false
-        }) {
-        // Get iterator from iterable using Symbol.iterator
-        let iterator_sym = well_known_symbols.iterator
-        let iterator_method = interp.get_computed_property(
-          iterable,
-          Symbol(iterator_sym),
-          loc,
+  let map_ctor = @runtime.make_interp_method_func_with_context(
+    name="Map",
+    length=0,
+    fn(interp, context, _this_val, args) raise {
+      if !context.is_constructing() {
+        raise @errors.TypeError(
+          message="Constructor Map cannot be invoked without 'new'",
         )
-        let iterator = match iterator_method {
-          Object(data) =>
-            match data.callable {
-              Some(_) => interp.call_value(iterator_method, iterable, [], loc)
-              None =>
-                raise @errors.TypeError(
-                  message="Result of the Symbol.iterator method is not an object",
-                )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="\{@runtime.type_of(iterable)} is not iterable",
-            )
-        }
+      }
+      let new_map : Value = Value::Map(
+        @runtime.MapData([], prototype=map_proto),
+      )
+      let loc = @token.Loc::default()
 
-        // Iterate over the iterator
-        while true {
-          let next_method = interp.get_property(iterator, "next", loc)
-          let result = interp.call_value(next_method, iterator, [], loc)
-          let done = match interp.get_property(result, "done", loc) {
-            Value::Bool(b) => b
+      // If iterable provided, populate map
+      if args.length() > 0 {
+        let iterable = args[0]
+        if !(match iterable {
+            Undefined | Null => true
             _ => false
+          }) {
+          // Get iterator from iterable using Symbol.iterator
+          let iterator_sym = well_known_symbols.iterator
+          let iterator_method = interp.get_computed_property(
+            iterable,
+            Symbol(iterator_sym),
+            loc,
+          )
+          let iterator = match iterator_method {
+            Object(data) =>
+              match data.callable {
+                Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                None =>
+                  raise @errors.TypeError(
+                    message="Result of the Symbol.iterator method is not an object",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="\{@runtime.type_of(iterable)} is not iterable",
+              )
           }
-          if done {
-            break
-          }
-          let value = interp.get_property(result, "value", loc)
-          // Value should be [key, value] pair or array-like with '0' and '1' properties
-          // Try to get key and value from the entry
-          let key = interp.get_computed_property(value, Value::Number(0.0), loc)
-          let val = interp.get_computed_property(value, Value::Number(1.0), loc)
 
-          // Add to map using same SameValueZero upsert logic as Map.prototype.set
-          match new_map {
-            Value::Map(data) => {
-              // Find existing key using SameValueZero
-              let mut found = false
-              for i = 0; i < data.entries.length(); i = i + 1 {
-                let (k, _) = data.entries[i]
-                if same_value_zero(k, key) {
-                  // Update existing entry
-                  data.entries[i] = (key, val)
-                  found = true
-                  break
+          // Iterate over the iterator
+          while true {
+            let next_method = interp.get_property(iterator, "next", loc)
+            let result = interp.call_value(next_method, iterator, [], loc)
+            let done = match interp.get_property(result, "done", loc) {
+              Value::Bool(b) => b
+              _ => false
+            }
+            if done {
+              break
+            }
+            let value = interp.get_property(result, "value", loc)
+            // Value should be [key, value] pair or array-like with '0' and '1' properties
+            // Try to get key and value from the entry
+            let key = interp.get_computed_property(
+              value,
+              Value::Number(0.0),
+              loc,
+            )
+            let val = interp.get_computed_property(
+              value,
+              Value::Number(1.0),
+              loc,
+            )
+
+            // Add to map using same SameValueZero upsert logic as Map.prototype.set
+            match new_map {
+              Value::Map(data) => {
+                // Find existing key using SameValueZero
+                let mut found = false
+                for i = 0; i < data.entries.length(); i = i + 1 {
+                  let (k, _) = data.entries[i]
+                  if same_value_zero(k, key) {
+                    // Update existing entry
+                    data.entries[i] = (key, val)
+                    found = true
+                    break
+                  }
+                }
+                if !found {
+                  // Add new entry
+                  data.entries.push((key, val))
                 }
               }
-              if !found {
-                // Add new entry
-                data.entries.push((key, val))
-              }
+              _ => ()
             }
-            _ => ()
           }
         }
       }
-    }
-    new_map
-  })
+      new_map
+    },
+  )
   // Add prototype property to Map constructor
   match map_ctor {
     Object(data) => {
@@ -881,81 +891,83 @@ fn setup_set_builtins(
   }
 
   // Set constructor
-  let set_ctor = @runtime.make_interp_method_func(name="Set", length=0, fn(
-    interp,
-    _this_val,
-    args,
-  ) raise {
-    if !@runtime.is_constructing.val {
-      raise @errors.TypeError(
-        message="Constructor Set cannot be invoked without 'new'",
-      )
-    }
-    let new_set : Value = Value::Set(@runtime.SetData([], prototype=set_proto))
-    let loc = @token.Loc::default()
-
-    // If iterable provided, populate set
-    if args.length() > 0 {
-      let iterable = args[0]
-      if !(match iterable {
-          Undefined | Null => true
-          _ => false
-        }) {
-        // Get iterator from iterable using Symbol.iterator
-        let iterator_sym = well_known_symbols.iterator
-        let iterator_method = interp.get_computed_property(
-          iterable,
-          Symbol(iterator_sym),
-          loc,
+  let set_ctor = @runtime.make_interp_method_func_with_context(
+    name="Set",
+    length=0,
+    fn(interp, context, _this_val, args) raise {
+      if !context.is_constructing() {
+        raise @errors.TypeError(
+          message="Constructor Set cannot be invoked without 'new'",
         )
-        let iterator = match iterator_method {
-          Object(data) =>
-            match data.callable {
-              Some(_) => interp.call_value(iterator_method, iterable, [], loc)
-              None =>
-                raise @errors.TypeError(
-                  message="Result of the Symbol.iterator method is not an object",
-                )
-            }
-          _ =>
-            raise @errors.TypeError(
-              message="\{@runtime.type_of(iterable)} is not iterable",
-            )
-        }
+      }
+      let new_set : Value = Value::Set(
+        @runtime.SetData([], prototype=set_proto),
+      )
+      let loc = @token.Loc::default()
 
-        // Iterate over the iterator
-        while true {
-          let next_method = interp.get_property(iterator, "next", loc)
-          let result = interp.call_value(next_method, iterator, [], loc)
-          let done = match interp.get_property(result, "done", loc) {
-            Value::Bool(b) => b
+      // If iterable provided, populate set
+      if args.length() > 0 {
+        let iterable = args[0]
+        if !(match iterable {
+            Undefined | Null => true
             _ => false
+          }) {
+          // Get iterator from iterable using Symbol.iterator
+          let iterator_sym = well_known_symbols.iterator
+          let iterator_method = interp.get_computed_property(
+            iterable,
+            Symbol(iterator_sym),
+            loc,
+          )
+          let iterator = match iterator_method {
+            Object(data) =>
+              match data.callable {
+                Some(_) => interp.call_value(iterator_method, iterable, [], loc)
+                None =>
+                  raise @errors.TypeError(
+                    message="Result of the Symbol.iterator method is not an object",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="\{@runtime.type_of(iterable)} is not iterable",
+              )
           }
-          if done {
-            break
-          }
-          let value = interp.get_property(result, "value", loc)
-          // Add to set (using SameValueZero)
-          match new_set {
-            Value::Set(data) => {
-              let mut found = false
-              for i = 0; i < data.values.length(); i = i + 1 {
-                if same_value_zero(data.values[i], value) {
-                  found = true
-                  break
+
+          // Iterate over the iterator
+          while true {
+            let next_method = interp.get_property(iterator, "next", loc)
+            let result = interp.call_value(next_method, iterator, [], loc)
+            let done = match interp.get_property(result, "done", loc) {
+              Value::Bool(b) => b
+              _ => false
+            }
+            if done {
+              break
+            }
+            let value = interp.get_property(result, "value", loc)
+            // Add to set (using SameValueZero)
+            match new_set {
+              Value::Set(data) => {
+                let mut found = false
+                for i = 0; i < data.values.length(); i = i + 1 {
+                  if same_value_zero(data.values[i], value) {
+                    found = true
+                    break
+                  }
+                }
+                if !found {
+                  data.values.push(value)
                 }
               }
-              if !found {
-                data.values.push(value)
-              }
+              _ => ()
             }
-            _ => ()
           }
         }
       }
-    }
-    new_set
-  })
+      new_set
+    },
+  )
   // Add prototype property to Set constructor
   match set_ctor {
     Object(data) => {

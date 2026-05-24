@@ -35,12 +35,27 @@ pub(all) struct FuncDataExt {
 }
 
 ///|
+pub(all) enum CallContext {
+  Call
+  Construct
+}
+
+///|
+pub fn CallContext::is_constructing(self : CallContext) -> Bool {
+  self is Construct
+}
+
+///|
 pub(all) enum Callable {
   UserFunc(FuncData)
   ArrowFunc(FuncData)
   UserFuncExt(FuncDataExt)
   ArrowFuncExt(FuncDataExt)
   NativeCallable(String, (Array[Value]) -> Value raise Error)
+  NativeCallableWithContext(
+    String,
+    (CallContext, Array[Value]) -> Value raise Error
+  )
   NonConstructableCallable(String, (Array[Value]) -> Value raise Error) // like NativeCallable but throws on new
   BoundFunc(Value, Value, Array[Value]) // (target, this_val, bound_args)
   FuncCallMethod(Value) // .call proxy: captures target function
@@ -50,6 +65,10 @@ pub(all) enum Callable {
     String,
     (Interpreter, Value, Array[Value]) -> Value raise Error
   ) // needs interpreter for callback invocation
+  InterpreterCallableWithContext(
+    String,
+    (Interpreter, CallContext, Value, Array[Value]) -> Value raise Error
+  )
   NonConstructableInterpreterCallable(
     String,
     (Interpreter, Array[Value]) -> Value raise Error
@@ -493,7 +512,7 @@ pub suberror JsException {
 }
 
 ///|
-pub impl Show for Value with output(self, logger) {
+pub impl Show for Value with fn output(self, logger) {
   match self {
     Number(n) => {
       // Format integers without decimal point
@@ -524,7 +543,8 @@ pub impl Show for Value with output(self, logger) {
           }
         Some(BoundFunc(_, _, _)) =>
           logger.write_string("function bound() { [native code] }")
-        Some(NativeCallable(name, _)) =>
+        Some(NativeCallable(name, _))
+        | Some(NativeCallableWithContext(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         Some(NonConstructableCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
@@ -534,7 +554,8 @@ pub impl Show for Value with output(self, logger) {
           logger.write_string("function apply() { [native code] }")
         Some(MethodCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
-        Some(InterpreterCallable(name, _)) =>
+        Some(InterpreterCallable(name, _))
+        | Some(InterpreterCallableWithContext(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")
         Some(NonConstructableInterpreterCallable(name, _)) =>
           logger.write_string("function \{name}() { [native code] }")

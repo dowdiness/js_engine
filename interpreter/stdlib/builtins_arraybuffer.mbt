@@ -442,8 +442,8 @@ pub fn setup_arraybuffer_builtins(
     },
     prototype: Null,
     callable: Some(
-      NativeCallable("ArrayBuffer", fn(args) raise {
-        if !@runtime.is_constructing.val {
+      NativeCallableWithContext("ArrayBuffer", fn(context, args) raise {
+        if !context.is_constructing() {
           raise @errors.TypeError(
             message="Constructor ArrayBuffer requires 'new'",
           )

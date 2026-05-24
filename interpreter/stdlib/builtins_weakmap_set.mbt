@@ -514,98 +514,99 @@ fn setup_weakmap_builtins(
   realm_state.weakmap_prototype.val = Some(wm_proto)
 
   // WeakMap constructor
-  let wm_ctor = @runtime.make_interp_method_func(name="WeakMap", length=0, fn(
-    interp,
-    _this_val,
-    args,
-  ) raise {
-    if !@runtime.is_constructing.val {
-      raise @errors.TypeError(message="Constructor WeakMap requires 'new'")
-    }
-    // Create new WeakMap instance
-    let id = realm_state.weakmap_id_counter.val
-    realm_state.weakmap_id_counter.val = id + 1
-    let entries : Array[(Value, Value)] = []
-    realm_state.weakmap_storage[id] = entries
-    let wm_data : ObjectData = {
-      bag: @runtime.PropertyBag(),
-      prototype: wm_proto,
-      callable: None,
-      class_name: "WeakMap",
-      extensible: true,
-      arraybuffer_state: None,
-    }
-    set_weakmap_id(realm_state, wm_data, id)
-    let wm_obj : Value = Object(wm_data)
+  let wm_ctor = @runtime.make_interp_method_func_with_context(
+    name="WeakMap",
+    length=0,
+    fn(interp, context, _this_val, args) raise {
+      if !context.is_constructing() {
+        raise @errors.TypeError(message="Constructor WeakMap requires 'new'")
+      }
+      // Create new WeakMap instance
+      let id = realm_state.weakmap_id_counter.val
+      realm_state.weakmap_id_counter.val = id + 1
+      let entries : Array[(Value, Value)] = []
+      realm_state.weakmap_storage[id] = entries
+      let wm_data : ObjectData = {
+        bag: @runtime.PropertyBag(),
+        prototype: wm_proto,
+        callable: None,
+        class_name: "WeakMap",
+        extensible: true,
+        arraybuffer_state: None,
+      }
+      set_weakmap_id(realm_state, wm_data, id)
+      let wm_obj : Value = Object(wm_data)
 
-    // If iterable provided, populate
-    if args.length() > 0 {
-      let iterable = args[0]
-      match iterable {
-        Undefined | Null => ()
-        _ => {
-          let loc = @token.Loc::default()
-          let adder = interp.get_property(wm_obj, "set", loc)
-          if !@runtime.is_callable(adder) {
-            raise @errors.TypeError(message="WeakMap adder is not callable")
-          }
-          let iterator_sym = interp.realm_state.well_known_symbols.iterator
-          let iterator_method = interp.get_computed_property(
-            iterable,
-            Symbol(iterator_sym),
-            loc,
-          )
-          let iterator = match iterator_method {
-            Object(data) =>
-              match data.callable {
-                Some(_) => interp.call_value(iterator_method, iterable, [], loc)
-                None =>
-                  raise @errors.TypeError(
-                    message="Result of the Symbol.iterator method is not an object",
-                  )
-              }
-            _ =>
-              raise @errors.TypeError(
-                message="\{@runtime.type_of(iterable)} is not iterable",
-              )
-          }
-
-          while true {
-            let next_method = interp.get_property(iterator, "next", loc)
-            let result = interp.call_value(next_method, iterator, [], loc)
-            let done = match interp.get_property(result, "done", loc) {
-              Value::Bool(b) => b
-              _ => false
+      // If iterable provided, populate
+      if args.length() > 0 {
+        let iterable = args[0]
+        match iterable {
+          Undefined | Null => ()
+          _ => {
+            let loc = @token.Loc::default()
+            let adder = interp.get_property(wm_obj, "set", loc)
+            if !@runtime.is_callable(adder) {
+              raise @errors.TypeError(message="WeakMap adder is not callable")
             }
-            if done {
-              break
-            }
-            let value = interp.get_property(result, "value", loc)
-            // Value should be [key, value] pair
-            let key = interp.get_computed_property(
-              value,
-              Value::Number(0.0),
+            let iterator_sym = interp.realm_state.well_known_symbols.iterator
+            let iterator_method = interp.get_computed_property(
+              iterable,
+              Symbol(iterator_sym),
               loc,
             )
-            let val = interp.get_computed_property(
-              value,
-              Value::Number(1.0),
-              loc,
-            )
-            let _ = interp.call_value(adder, wm_obj, [key, val], loc) catch {
-              e => {
-                close_weak_collection_iterator(interp, iterator, loc) catch {
-                  _ => ()
+            let iterator = match iterator_method {
+              Object(data) =>
+                match data.callable {
+                  Some(_) =>
+                    interp.call_value(iterator_method, iterable, [], loc)
+                  None =>
+                    raise @errors.TypeError(
+                      message="Result of the Symbol.iterator method is not an object",
+                    )
                 }
-                raise e
+              _ =>
+                raise @errors.TypeError(
+                  message="\{@runtime.type_of(iterable)} is not iterable",
+                )
+            }
+
+            while true {
+              let next_method = interp.get_property(iterator, "next", loc)
+              let result = interp.call_value(next_method, iterator, [], loc)
+              let done = match interp.get_property(result, "done", loc) {
+                Value::Bool(b) => b
+                _ => false
+              }
+              if done {
+                break
+              }
+              let value = interp.get_property(result, "value", loc)
+              // Value should be [key, value] pair
+              let key = interp.get_computed_property(
+                value,
+                Value::Number(0.0),
+                loc,
+              )
+              let val = interp.get_computed_property(
+                value,
+                Value::Number(1.0),
+                loc,
+              )
+              let _ = interp.call_value(adder, wm_obj, [key, val], loc) catch {
+                e => {
+                  close_weak_collection_iterator(interp, iterator, loc) catch {
+                    _ => ()
+                  }
+                  raise e
+                }
               }
             }
           }
         }
       }
-    }
-    wm_obj
-  })
+      wm_obj
+    },
+  )
   // Add prototype property to WeakMap constructor
   match wm_ctor {
     Object(data) => {
@@ -807,87 +808,88 @@ fn setup_weakset_builtins(
   realm_state.weakset_prototype.val = Some(ws_proto)
 
   // WeakSet constructor
-  let ws_ctor = @runtime.make_interp_method_func(name="WeakSet", length=0, fn(
-    interp,
-    _this_val,
-    args,
-  ) raise {
-    if !@runtime.is_constructing.val {
-      raise @errors.TypeError(message="Constructor WeakSet requires 'new'")
-    }
-    // Create new WeakSet instance
-    let id = realm_state.weakset_id_counter.val
-    realm_state.weakset_id_counter.val = id + 1
-    let values : Array[Value] = []
-    realm_state.weakset_storage[id] = values
-    let ws_data : ObjectData = {
-      bag: @runtime.PropertyBag(),
-      prototype: ws_proto,
-      callable: None,
-      class_name: "WeakSet",
-      extensible: true,
-      arraybuffer_state: None,
-    }
-    set_weakset_id(realm_state, ws_data, id)
-    let ws_obj : Value = Object(ws_data)
+  let ws_ctor = @runtime.make_interp_method_func_with_context(
+    name="WeakSet",
+    length=0,
+    fn(interp, context, _this_val, args) raise {
+      if !context.is_constructing() {
+        raise @errors.TypeError(message="Constructor WeakSet requires 'new'")
+      }
+      // Create new WeakSet instance
+      let id = realm_state.weakset_id_counter.val
+      realm_state.weakset_id_counter.val = id + 1
+      let values : Array[Value] = []
+      realm_state.weakset_storage[id] = values
+      let ws_data : ObjectData = {
+        bag: @runtime.PropertyBag(),
+        prototype: ws_proto,
+        callable: None,
+        class_name: "WeakSet",
+        extensible: true,
+        arraybuffer_state: None,
+      }
+      set_weakset_id(realm_state, ws_data, id)
+      let ws_obj : Value = Object(ws_data)
 
-    // If iterable provided, populate
-    if args.length() > 0 {
-      let iterable = args[0]
-      match iterable {
-        Undefined | Null => ()
-        _ => {
-          let loc = @token.Loc::default()
-          let adder = interp.get_property(ws_obj, "add", loc)
-          if !@runtime.is_callable(adder) {
-            raise @errors.TypeError(message="WeakSet adder is not callable")
-          }
-          let iterator_sym = interp.realm_state.well_known_symbols.iterator
-          let iterator_method = interp.get_computed_property(
-            iterable,
-            Symbol(iterator_sym),
-            loc,
-          )
-          let iterator = match iterator_method {
-            Object(data) =>
-              match data.callable {
-                Some(_) => interp.call_value(iterator_method, iterable, [], loc)
-                None =>
-                  raise @errors.TypeError(
-                    message="Result of the Symbol.iterator method is not an object",
-                  )
-              }
-            _ =>
-              raise @errors.TypeError(
-                message="\{@runtime.type_of(iterable)} is not iterable",
-              )
-          }
-
-          while true {
-            let next_method = interp.get_property(iterator, "next", loc)
-            let result = interp.call_value(next_method, iterator, [], loc)
-            let done = match interp.get_property(result, "done", loc) {
-              Value::Bool(b) => b
-              _ => false
+      // If iterable provided, populate
+      if args.length() > 0 {
+        let iterable = args[0]
+        match iterable {
+          Undefined | Null => ()
+          _ => {
+            let loc = @token.Loc::default()
+            let adder = interp.get_property(ws_obj, "add", loc)
+            if !@runtime.is_callable(adder) {
+              raise @errors.TypeError(message="WeakSet adder is not callable")
             }
-            if done {
-              break
-            }
-            let value = interp.get_property(result, "value", loc)
-            let _ = interp.call_value(adder, ws_obj, [value], loc) catch {
-              e => {
-                close_weak_collection_iterator(interp, iterator, loc) catch {
-                  _ => ()
+            let iterator_sym = interp.realm_state.well_known_symbols.iterator
+            let iterator_method = interp.get_computed_property(
+              iterable,
+              Symbol(iterator_sym),
+              loc,
+            )
+            let iterator = match iterator_method {
+              Object(data) =>
+                match data.callable {
+                  Some(_) =>
+                    interp.call_value(iterator_method, iterable, [], loc)
+                  None =>
+                    raise @errors.TypeError(
+                      message="Result of the Symbol.iterator method is not an object",
+                    )
                 }
-                raise e
+              _ =>
+                raise @errors.TypeError(
+                  message="\{@runtime.type_of(iterable)} is not iterable",
+                )
+            }
+
+            while true {
+              let next_method = interp.get_property(iterator, "next", loc)
+              let result = interp.call_value(next_method, iterator, [], loc)
+              let done = match interp.get_property(result, "done", loc) {
+                Value::Bool(b) => b
+                _ => false
+              }
+              if done {
+                break
+              }
+              let value = interp.get_property(result, "value", loc)
+              let _ = interp.call_value(adder, ws_obj, [value], loc) catch {
+                e => {
+                  close_weak_collection_iterator(interp, iterator, loc) catch {
+                    _ => ()
+                  }
+                  raise e
+                }
               }
             }
           }
         }
       }
-    }
-    ws_obj
-  })
+      ws_obj
+    },
+  )
   // Add prototype property to WeakSet constructor
   match ws_ctor {
     Object(data) => {

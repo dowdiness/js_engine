@@ -703,6 +703,16 @@ pub fn make_interp_method_func(
 }
 
 ///|
+/// Interpreter-aware method function with explicit call/construct context.
+pub fn make_interp_method_func_with_context(
+  name~ : String,
+  length? : Int = 0,
+  func : (Interpreter, CallContext, Value, Array[Value]) -> Value raise Error,
+) -> Value {
+  build_func_object(name, length, InterpreterCallableWithContext(name, func))
+}
+
+///|
 /// Interpreter-aware static function: callback receives interpreter but not `this`.
 /// Signature `(Interpreter, Array[Value]) -> Value raise Error`.
 pub fn make_interp_static_func(

@@ -1,10 +1,4 @@
 ///|
-/// Flag set by eval_new before calling a NativeCallable so the callee can
-/// distinguish `new Foo()` from `Foo()`.  Safe because NativeCallable has
-/// no Interpreter access and therefore cannot re-enter eval_new.
-pub let is_constructing : Ref[Bool] = { val: false }
-
-///|
 fn interpreter_callable_is_constructor(data : ObjectData) -> Bool {
   data.bag.properties.contains("prototype") &&
   data.class_name != "GeneratorFunction" &&
@@ -20,13 +14,15 @@ pub fn is_constructor_value(v : Value) -> Bool {
         Some(UserFunc(fd)) => !fd.is_method
         Some(UserFuncExt(fd)) => !fd.is_method
         Some(NativeCallable(_, _)) => true
+        Some(NativeCallableWithContext(_, _)) => true
         Some(ClassConstructor(_)) => true
         Some(ConstructorOnlyCallable(_, _)) => true
         Some(BoundFunc(target, _, _)) => is_constructor_value(target)
         Some(NonConstructableCallable(_, _)) => false
         Some(NonConstructableInterpreterCallable(_, _)) => false
         Some(MethodCallable(_, _)) => false
-        Some(InterpreterCallable(_, _)) =>
+        Some(InterpreterCallable(_, _))
+        | Some(InterpreterCallableWithContext(_, _)) =>
           // InterpreterCallable is a constructor if it has a prototype property
           // (builtin constructors like Map, Set, Promise have prototype).
           // Generator functions are the spec-visible exception: they have a
@@ -200,6 +196,13 @@ pub fn get_tostringtag_value(
                       Some(NativeCallable(_, f))
                       | Some(NonConstructableCallable(_, f)) => {
                         let result = f([Object(data)])
+                        match result {
+                          String_(s) => return Some(s)
+                          _ => return None
+                        }
+                      }
+                      Some(NativeCallableWithContext(_, f)) => {
+                        let result = f(Call, [Object(data)])
                         match result {
                           String_(s) => return Some(s)
                           _ => return None

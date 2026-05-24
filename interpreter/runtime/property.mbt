@@ -552,12 +552,13 @@ fn Interpreter::get_property_of_object(
               ArrowFunc(_) => ""
               ArrowFuncExt(_) => ""
               BoundFunc(target, _, _) => get_bound_func_name(target)
-              NativeCallable(n, _) => n
+              NativeCallable(n, _) | NativeCallableWithContext(n, _) => n
               NonConstructableCallable(n, _) => n
               FuncCallMethod(_) => "call"
               FuncApplyMethod(_) => "apply"
               MethodCallable(n, _) => n
-              InterpreterCallable(n, _) => n
+              InterpreterCallable(n, _)
+              | InterpreterCallableWithContext(n, _) => n
               NonConstructableInterpreterCallable(n, _) => n
               ConstructorOnlyCallable(n, _) => n
               ClassConstructor({ name: n, .. }) => n
@@ -577,13 +578,15 @@ fn Interpreter::get_property_of_object(
               ArrowFunc(_) => "() => { [native code] }"
               ArrowFuncExt(_) => "() => { [native code] }"
               BoundFunc(_, _, _) => "function () { [native code] }"
-              NativeCallable(n, _) => "function " + n + "() { [native code] }"
+              NativeCallable(n, _) | NativeCallableWithContext(n, _) =>
+                "function " + n + "() { [native code] }"
               NonConstructableCallable(n, _) =>
                 "function " + n + "() { [native code] }"
               FuncCallMethod(_) => "function call() { [native code] }"
               FuncApplyMethod(_) => "function apply() { [native code] }"
               MethodCallable(n, _) => "function " + n + "() { [native code] }"
-              InterpreterCallable(n, _) =>
+              InterpreterCallable(n, _)
+              | InterpreterCallableWithContext(n, _) =>
                 "function " + n + "() { [native code] }"
               NonConstructableInterpreterCallable(n, _) =>
                 "function " + n + "() { [native code] }"
@@ -602,6 +605,7 @@ fn Interpreter::get_property_of_object(
               UserFunc(fd) => !fd.is_method
               UserFuncExt(fd) => !fd.is_method
               NativeCallable(_, _)
+              | NativeCallableWithContext(_, _)
               | ConstructorOnlyCallable(_, _)
               | ClassConstructor(_) => true
               ArrowFunc(_)
@@ -612,7 +616,8 @@ fn Interpreter::get_property_of_object(
               | FuncCallMethod(_)
               | FuncApplyMethod(_)
               | MethodCallable(_, _)
-              | InterpreterCallable(_, _) => false
+              | InterpreterCallable(_, _)
+              | InterpreterCallableWithContext(_, _) => false
             }
             if !is_constructable {
               return Undefined
@@ -1265,12 +1270,13 @@ fn Interpreter::get_computed_property_impl(
                   ArrowFunc(_) => ""
                   ArrowFuncExt(_) => ""
                   BoundFunc(target, _, _) => get_bound_func_name(target)
-                  NativeCallable(n, _) => n
+                  NativeCallable(n, _) | NativeCallableWithContext(n, _) => n
                   NonConstructableCallable(n, _) => n
                   FuncCallMethod(_) => "call"
                   FuncApplyMethod(_) => "apply"
                   MethodCallable(n, _) => n
-                  InterpreterCallable(n, _) => n
+                  InterpreterCallable(n, _)
+                  | InterpreterCallableWithContext(n, _) => n
                   NonConstructableInterpreterCallable(n, _) => n
                   ConstructorOnlyCallable(n, _) => n
                   ClassConstructor({ name: n, .. }) => n
@@ -1290,7 +1296,7 @@ fn Interpreter::get_computed_property_impl(
                   ArrowFunc(_) => "() => { [native code] }"
                   ArrowFuncExt(_) => "() => { [native code] }"
                   BoundFunc(_, _, _) => "function () { [native code] }"
-                  NativeCallable(n, _) =>
+                  NativeCallable(n, _) | NativeCallableWithContext(n, _) =>
                     "function " + n + "() { [native code] }"
                   NonConstructableCallable(n, _) =>
                     "function " + n + "() { [native code] }"
@@ -1298,7 +1304,8 @@ fn Interpreter::get_computed_property_impl(
                   FuncApplyMethod(_) => "function apply() { [native code] }"
                   MethodCallable(n, _) =>
                     "function " + n + "() { [native code] }"
-                  InterpreterCallable(n, _) =>
+                  InterpreterCallable(n, _)
+                  | InterpreterCallableWithContext(n, _) =>
                     "function " + n + "() { [native code] }"
                   NonConstructableInterpreterCallable(n, _) =>
                     "function " + n + "() { [native code] }"
@@ -1317,6 +1324,7 @@ fn Interpreter::get_computed_property_impl(
                   UserFunc(fd) => !fd.is_method
                   UserFuncExt(fd) => !fd.is_method
                   NativeCallable(_, _)
+                  | NativeCallableWithContext(_, _)
                   | ConstructorOnlyCallable(_, _)
                   | ClassConstructor(_) => true
                   ArrowFunc(_)
@@ -1327,7 +1335,8 @@ fn Interpreter::get_computed_property_impl(
                   | FuncCallMethod(_)
                   | FuncApplyMethod(_)
                   | MethodCallable(_, _)
-                  | InterpreterCallable(_, _) => false
+                  | InterpreterCallable(_, _)
+                  | InterpreterCallableWithContext(_, _) => false
                 }
                 if !is_constructable {
                   return Undefined
