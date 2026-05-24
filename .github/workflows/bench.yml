@@ -49,7 +49,7 @@ jobs:
         run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.moon/registry
@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload CSV artifact
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-results-${{ github.sha }}
           path: bench-results.csv
