@@ -1442,7 +1442,7 @@ pub fn instanceof_prototype_chain(
 ) -> Value raise Error {
   let mut current = match l {
     Object(l_data) => l_data.prototype
-    Array(_) => get_constructor_prototype(interp.global, "Array")
+    Array(_) => interp.realm_state.get_array_proto()
     Map(_) => interp.realm_state.get_map_proto()
     Set(_) => interp.realm_state.get_set_proto()
     Promise(_) => interp.realm_state.get_promise_proto()
@@ -1474,26 +1474,10 @@ pub fn instanceof_prototype_chain(
 }
 
 ///|
-pub fn get_constructor_prototype(
-  env : Environment,
-  ctor_name : String,
-) -> Value {
-  let ctor = env.get(ctor_name) catch { _ => return Null }
-  match ctor {
-    Object(data) =>
-      match data.bag.properties.get("prototype") {
-        Some(proto) => proto
-        None => Null
-      }
-    _ => Null
-  }
-}
-
-///|
-pub fn get_array_prototype(env : Environment, arr : ArrayData) -> Value {
+pub fn get_array_prototype(realm_state : RealmState, arr : ArrayData) -> Value {
   match get_array_prototype_override(arr) {
     Some(proto) => proto
-    None => get_constructor_prototype(env, "Array")
+    None => realm_state.get_array_proto()
   }
 }
 

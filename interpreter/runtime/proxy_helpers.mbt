@@ -478,7 +478,7 @@ pub fn proxy_get_prototype_of(
     None =>
       match target {
         Object(data) => data.prototype
-        Array(data) => get_array_prototype(interp.global, data)
+        Array(data) => get_array_prototype(interp.realm_state, data)
         Value::Proxy(inner) => proxy_get_prototype_of(interp, inner)
         _ => Null
       }
@@ -499,7 +499,7 @@ pub fn proxy_get_prototype_of(
       if !extensible {
         let target_proto = match target {
           Object(data) => data.prototype
-          Array(data) => get_array_prototype(interp.global, data)
+          Array(data) => get_array_prototype(interp.realm_state, data)
           _ => Null
         }
         if !strict_equal(result, target_proto) {

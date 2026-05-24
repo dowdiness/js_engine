@@ -298,7 +298,7 @@ fn setup_reflect_builtins(
       }
       match args[0] {
         Object(data) => data.prototype
-        Array(data) => @runtime.get_array_prototype(interp.global, data)
+        Array(data) => @runtime.get_array_prototype(interp.realm_state, data)
         Value::Proxy(proxy_data) =>
           @runtime.proxy_get_prototype_of(interp, proxy_data)
         _ =>
