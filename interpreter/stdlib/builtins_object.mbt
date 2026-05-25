@@ -1156,7 +1156,10 @@ pub fn setup_object_builtins(
                   )
                 Object(data) => data.prototype
                 Array(data) =>
-                  @runtime.get_array_prototype(interp.realm_state, data)
+                  match @runtime.get_array_prototype_override(data) {
+                    Some(proto) => proto
+                    None => interp.realm_state.get_array_proto()
+                  }
                 Value::String_(_) =>
                   @runtime.get_string_proto(
                     realm_state=Some(interp.realm_state),
@@ -1173,14 +1176,17 @@ pub fn setup_object_builtins(
                   @runtime.get_symbol_proto(
                     realm_state=Some(interp.realm_state),
                   )
-                Map(_) =>
-                  @runtime.get_map_proto(realm_state=Some(interp.realm_state))
-                Set(_) =>
-                  @runtime.get_set_proto(realm_state=Some(interp.realm_state))
-                Promise(_) =>
-                  @runtime.get_promise_proto(
-                    realm_state=Some(interp.realm_state),
-                  )
+                Map(data) =>
+                  match data.prototype {
+                    Null => interp.realm_state.get_map_proto()
+                    proto => proto
+                  }
+                Set(data) =>
+                  match data.prototype {
+                    Null => interp.realm_state.get_set_proto()
+                    proto => proto
+                  }
+                Promise(_) => interp.realm_state.get_promise_proto()
                 Value::Proxy(proxy_data) =>
                   @runtime.proxy_get_prototype_of(interp, proxy_data)
               }

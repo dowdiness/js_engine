@@ -84,7 +84,7 @@ test "borrowed Object.prototype.isPrototypeOf honors array prototype override" {
 }
 
 ///|
-test "borrowed Object.getPrototypeOf uses built-in function realm for builtin families" {
+test "borrowed Object.getPrototypeOf uses built-in function realm for primitives" {
   let realm_a = make_borrowed_builtin_realm_interp()
   let realm_b = make_borrowed_builtin_realm_interp()
   let object_ctor = realm_a.global.get("Object")
@@ -117,36 +117,63 @@ test "borrowed Object.getPrototypeOf uses built-in function realm for builtin fa
     realm_a.realm_state.get_symbol_proto(),
     realm_b.realm_state.get_symbol_proto(),
   )
-  assert_borrowed_get_prototype_of(
-    "Array exotic",
-    realm_b,
-    get_prototype_of,
-    @runtime.make_array([Number(1.0)]),
-    realm_a.realm_state.get_array_proto(),
-    realm_b.realm_state.get_array_proto(),
+}
+
+///|
+test "borrowed Object.getPrototypeOf uses target prototype for object exotics" {
+  let realm_a = make_borrowed_builtin_realm_interp()
+  let realm_b = make_borrowed_builtin_realm_interp()
+  let object_ctor = realm_a.global.get("Object")
+  let get_prototype_of = realm_a.get_property(
+    object_ctor,
+    "getPrototypeOf",
+    @token.Loc::default(),
   )
-  assert_borrowed_get_prototype_of(
-    "Map exotic",
-    realm_b,
-    get_prototype_of,
-    Map(MapData([])),
-    realm_a.realm_state.get_map_proto(),
-    realm_b.realm_state.get_map_proto(),
-  )
-  assert_borrowed_get_prototype_of(
-    "Set exotic",
-    realm_b,
-    get_prototype_of,
-    Set(SetData([])),
-    realm_a.realm_state.get_set_proto(),
-    realm_b.realm_state.get_set_proto(),
-  )
-  assert_borrowed_get_prototype_of(
-    "Promise exotic",
-    realm_b,
-    get_prototype_of,
-    Promise(@runtime.new_promise_data()),
-    realm_a.realm_state.get_promise_proto(),
-    realm_b.realm_state.get_promise_proto(),
-  )
+  let cases = [
+    (
+      "Array exotic",
+      @runtime.make_array([Number(1.0)]),
+      realm_b.realm_state.get_array_proto(),
+    ),
+    (
+      "Map exotic",
+      Map(MapData([], prototype=realm_b.realm_state.get_map_proto())),
+      realm_b.realm_state.get_map_proto(),
+    ),
+    (
+      "Set exotic",
+      Set(SetData([], prototype=realm_b.realm_state.get_set_proto())),
+      realm_b.realm_state.get_set_proto(),
+    ),
+    (
+      "Promise exotic",
+      Promise(@runtime.new_promise_data()),
+      realm_b.realm_state.get_promise_proto(),
+    ),
+  ]
+  for item in cases {
+    let (label, arg, expected) = item
+    let result = realm_b.call_value(
+      get_prototype_of,
+      Undefined,
+      [arg],
+      @token.Loc::default(),
+    )
+    if !@runtime.strict_equal(result, expected) {
+      fail(
+        label + ": borrowed Object.getPrototypeOf must return target prototype",
+      )
+    }
+    match label {
+      "Map exotic" | "Set exotic" =>
+        if @runtime.strict_equal(result, realm_a.realm_state.get_map_proto()) ||
+          @runtime.strict_equal(result, realm_a.realm_state.get_set_proto()) {
+          fail(
+            label +
+            ": borrowed Object.getPrototypeOf must not return callee realm prototype",
+          )
+        }
+      _ => ()
+    }
+  }
 }

@@ -760,6 +760,27 @@ pub fn Interpreter::has_property(
 }
 
 ///|
+fn map_target_prototype(realm_state : RealmState, data : MapData) -> Value {
+  match data.prototype {
+    Null => realm_state.get_map_proto()
+    proto => proto
+  }
+}
+
+///|
+fn set_target_prototype(realm_state : RealmState, data : SetData) -> Value {
+  match data.prototype {
+    Null => realm_state.get_set_proto()
+    proto => proto
+  }
+}
+
+///|
+fn promise_target_prototype(realm_state : RealmState) -> Value {
+  realm_state.get_promise_proto()
+}
+
+///|
 /// ES §7.3.11 `HasProperty` with a pre-computed property key.
 pub fn Interpreter::has_property_key(
   self : Interpreter,
@@ -772,24 +793,24 @@ pub fn Interpreter::has_property_key(
     Array(data) => self.has_array_property(data, key)
     // Map/Set/Promise share a uniform shape: an expando bag plus a builtin
     // prototype. Implement OrdinaryHasProperty (ES §7.3.11): own bag →
-    // proto chain → bool, with no value inspection. Each family resolves
-    // its prototype through the active callee realm.
+    // proto chain → bool, with no value inspection. Resolve from the target
+    // object's own prototype chain, not the active callee realm.
     Map(data) =>
       self.has_bag_with_proto(
         data.bag,
-        get_map_proto(realm_state=Some(self.realm_state)),
+        map_target_prototype(self.realm_state, data),
         key,
       )
     Set(data) =>
       self.has_bag_with_proto(
         data.bag,
-        get_set_proto(realm_state=Some(self.realm_state)),
+        set_target_prototype(self.realm_state, data),
         key,
       )
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
-        get_promise_proto(realm_state=Some(self.realm_state)),
+        promise_target_prototype(self.realm_state),
         key,
       )
     _ => false
@@ -890,19 +911,19 @@ fn Interpreter::has_property_on_proto(
     Map(data) =>
       self.has_bag_with_proto(
         data.bag,
-        get_map_proto(realm_state=Some(self.realm_state)),
+        map_target_prototype(self.realm_state, data),
         key,
       )
     Set(data) =>
       self.has_bag_with_proto(
         data.bag,
-        get_set_proto(realm_state=Some(self.realm_state)),
+        set_target_prototype(self.realm_state, data),
         key,
       )
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
-        get_promise_proto(realm_state=Some(self.realm_state)),
+        promise_target_prototype(self.realm_state),
         key,
       )
     _ => false
