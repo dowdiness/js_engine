@@ -395,13 +395,7 @@ fn Interpreter::get_property_of_object(
               self.realm_state,
             )
             match result {
-              Undefined => {
-                let proto = get_map_proto(realm_state=Some(self.realm_state))
-                match proto {
-                  Object(_) => current = proto
-                  _ => break
-                }
-              }
+              Undefined => break
               _ => return result
             }
           }
@@ -416,13 +410,7 @@ fn Interpreter::get_property_of_object(
               self.realm_state,
             )
             match result {
-              Undefined => {
-                let proto = get_set_proto(realm_state=Some(self.realm_state))
-                match proto {
-                  Object(_) => current = proto
-                  _ => break
-                }
-              }
+              Undefined => break
               _ => return result
             }
           }
@@ -1137,15 +1125,7 @@ fn Interpreter::get_computed_property_impl(
                   self.realm_state,
                 )
                 match result {
-                  Undefined => {
-                    let proto = get_map_proto(
-                      realm_state=Some(self.realm_state),
-                    )
-                    match proto {
-                      Object(_) => current = proto
-                      _ => break
-                    }
-                  }
+                  Undefined => break
                   _ => return result
                 }
               }
@@ -1159,15 +1139,7 @@ fn Interpreter::get_computed_property_impl(
                   self.realm_state,
                 )
                 match result {
-                  Undefined => {
-                    let proto = get_set_proto(
-                      realm_state=Some(self.realm_state),
-                    )
-                    match proto {
-                      Object(_) => current = proto
-                      _ => break
-                    }
-                  }
+                  Undefined => break
                   _ => return result
                 }
               }

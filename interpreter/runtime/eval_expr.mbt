@@ -1500,7 +1500,7 @@ pub fn instanceof_prototype_chain(
 pub fn get_array_prototype(realm_state : RealmState, arr : ArrayData) -> Value {
   match get_array_prototype_override(arr) {
     Some(proto) => proto
-    None => get_array_proto(realm_state=Some(realm_state))
+    None => realm_state.get_array_proto()
   }
 }
 

@@ -8,6 +8,33 @@ fn make_borrowed_builtin_realm_interp() -> @runtime.Interpreter {
 }
 
 ///|
+fn install_borrowed_marker(
+  proto : Value,
+  marker_name : String,
+  marker_value : String,
+) -> Unit raise Error {
+  match proto {
+    Object(data) => data.bag.properties[marker_name] = String_(marker_value)
+    _ => fail("expected object prototype for marker install")
+  }
+}
+
+///|
+fn assert_string_marker(
+  label : String,
+  value : Value,
+  expected : String,
+) -> Unit raise Error {
+  match value {
+    String_(actual) =>
+      if actual != expected {
+        fail(label + ": expected " + expected + ", got " + actual)
+      }
+    _ => fail(label + ": expected string marker")
+  }
+}
+
+///|
 fn assert_borrowed_get_prototype_of(
   label : String,
   caller_realm : @runtime.Interpreter,
@@ -116,6 +143,49 @@ test "borrowed Object.getPrototypeOf uses built-in function realm for primitives
     Symbol(realm_a.realm_state.symbols.new_symbol(Some("borrowed"))),
     realm_a.realm_state.get_symbol_proto(),
     realm_b.realm_state.get_symbol_proto(),
+  )
+}
+
+///|
+test "Map and Set property lookup uses target realm prototype" {
+  let interp = make_borrowed_builtin_realm_interp()
+  let active_map_proto = @runtime.make_object(
+    {},
+    Null,
+    None,
+    "Object",
+    {},
+    true,
+  )
+  let active_set_proto = @runtime.make_object(
+    {},
+    Null,
+    None,
+    "Object",
+    {},
+    true,
+  )
+  interp.realm_state.active_map_prototype_override.val = Some(active_map_proto)
+  interp.realm_state.active_set_prototype_override.val = Some(active_set_proto)
+  install_borrowed_marker(
+    interp.realm_state.get_map_proto(),
+    "__target_marker__",
+    "map-target",
+  )
+  install_borrowed_marker(
+    interp.realm_state.get_set_proto(),
+    "__target_marker__",
+    "set-target",
+  )
+  assert_string_marker(
+    "Map target marker",
+    get_map_method(MapData([]), "__target_marker__", interp.realm_state),
+    "map-target",
+  )
+  assert_string_marker(
+    "Set target marker",
+    get_set_method(SetData([]), "__target_marker__", interp.realm_state),
+    "set-target",
   )
 }
 

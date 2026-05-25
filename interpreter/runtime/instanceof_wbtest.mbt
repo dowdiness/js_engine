@@ -1,6 +1,25 @@
 ///| Whitebox tests for instanceof prototype-chain edge cases.
 
 ///|
+test "get_array_prototype ignores active callee realm without override" {
+  let realm_state = RealmState()
+  let base_proto = make_object({}, Null, None, "Object", {}, true)
+  let active_proto = make_object({}, Null, None, "Object", {}, true)
+  realm_state.array_prototype.val = Some(base_proto)
+  realm_state.active_array_prototype_override.val = Some(active_proto)
+  let arr = make_array([Number(1.0)])
+  match arr {
+    Array(data) => {
+      let proto = get_array_prototype(realm_state, data)
+      if !strict_equal(proto, base_proto) {
+        fail("array target prototype fallback must ignore active callee realm")
+      }
+    }
+    _ => fail("expected array value")
+  }
+}
+
+///|
 test "instanceof honors per-array prototype override" {
   let interp = Interpreter::new()
   let custom_proto = make_object({}, Null, None, "Object", {}, true)

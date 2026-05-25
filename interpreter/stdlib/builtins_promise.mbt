@@ -17,7 +17,7 @@ pub fn get_promise_method(
   prop : String,
   realm_state : @runtime.RealmState,
 ) -> Value {
-  match @runtime.get_promise_proto(realm_state=Some(realm_state)) {
+  match realm_state.get_promise_proto() {
     Object(proto_data) =>
       match proto_data.bag.properties.get(prop) {
         Some(m) => m
