@@ -57,6 +57,33 @@ test "borrowed Object.getPrototypeOf uses built-in function realm for primitive"
 }
 
 ///|
+test "borrowed Object.prototype.isPrototypeOf honors array prototype override" {
+  let realm_a = make_borrowed_builtin_realm_interp()
+  let realm_b = make_borrowed_builtin_realm_interp()
+  let is_prototype_of = realm_a.get_property(
+    realm_a.realm_state.get_obj_proto(),
+    "isPrototypeOf",
+    @token.Loc::default(),
+  )
+  let custom_proto = @runtime.make_object({}, Null, None, "Object", {}, true)
+  let arr = @runtime.make_array([Number(1.0)])
+  match arr {
+    Array(data) => @runtime.set_array_prototype_override(data, custom_proto)
+    _ => fail("expected array value")
+  }
+  match
+    realm_b.call_value(
+      is_prototype_of,
+      custom_proto,
+      [arr],
+      @token.Loc::default(),
+    ) {
+    Bool(true) => ()
+    _ => fail("borrowed isPrototypeOf must walk the argument array prototype")
+  }
+}
+
+///|
 test "borrowed Object.getPrototypeOf uses built-in function realm for builtin families" {
   let realm_a = make_borrowed_builtin_realm_interp()
   let realm_b = make_borrowed_builtin_realm_interp()

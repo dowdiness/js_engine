@@ -372,10 +372,8 @@ fn Interpreter::get_property_of_object(
                 )
                 match result {
                   Undefined => {
-                    // Continue to Array.prototype (per active callee realm)
-                    let proto = get_array_proto(
-                      realm_state=Some(self.realm_state),
-                    )
+                    // Continue to this array's prototype, honoring per-array overrides.
+                    let proto = get_array_prototype(self.realm_state, arr_data)
                     match proto {
                       Object(_) => current = proto
                       _ => break
@@ -897,8 +895,8 @@ fn Interpreter::get_computed_property_impl(
             None => ()
           }
           // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
-          // (per active callee realm)
-          match get_array_proto(realm_state=Some(self.realm_state)) {
+          // while honoring per-array prototype overrides.
+          match get_array_prototype(self.realm_state, arr) {
             Object(proto_data) => {
               // Check symbol descriptors for getters
               match proto_data.bag.symbol_descriptors.get(sym.id) {
@@ -1114,9 +1112,10 @@ fn Interpreter::get_computed_property_impl(
                     )
                     match result {
                       Undefined => {
-                        // Continue to Array.prototype (per active callee realm)
-                        let proto = get_array_proto(
-                          realm_state=Some(self.realm_state),
+                        // Continue to this array's prototype, honoring per-array overrides.
+                        let proto = get_array_prototype(
+                          self.realm_state,
+                          arr_data,
                         )
                         match proto {
                           Object(_) => current = proto

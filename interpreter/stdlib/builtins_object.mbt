@@ -258,8 +258,11 @@ pub fn setup_object_builtins(
       let arg = if args.length() > 0 { args[0] } else { Undefined }
       let mut current : Value = match arg {
         Object(data) => data.prototype
-        Array(_) =>
-          @runtime.get_array_proto(realm_state=Some(interp.realm_state))
+        Array(data) =>
+          match @runtime.get_array_prototype_override(data) {
+            Some(proto) => proto
+            None => interp.realm_state.get_array_proto()
+          }
         Promise(_) => Null
         _ => return Value::Bool(false)
       }
