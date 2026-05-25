@@ -69,10 +69,13 @@ test "unmarked callees clear inherited active realm overrides" {
   let realm_state = RealmState()
   let base_function_proto = test_proto("base function")
   let base_object_proto = test_proto("base object")
+  let base_string_proto = test_proto("base string")
   let override_function_proto = test_proto("override function")
   let override_object_proto = test_proto("override object")
+  let override_string_proto = test_proto("override string")
   realm_state.function_prototype.val = Some(base_function_proto)
   realm_state.object_prototype.val = Some(base_object_proto)
+  realm_state.string_prototype.val = Some(base_string_proto)
   let failure : Ref[String?] = { val: None }
   with_active_realm_state_unit(realm_state, fn() {
     realm_state.active_function_prototype_override.val = Some(
@@ -80,6 +83,9 @@ test "unmarked callees clear inherited active realm overrides" {
     )
     realm_state.active_object_prototype_override.val = Some(
       override_object_proto,
+    )
+    realm_state.active_string_prototype_override.val = Some(
+      override_string_proto,
     )
     let _ = with_active_callee_realm_value(realm_state, unmarked_callable(), fn() raise {
       if !strict_equal(
@@ -93,6 +99,12 @@ test "unmarked callees clear inherited active realm overrides" {
           base_object_proto,
         ) {
         fail("expected unstamped callee to use active Object.prototype")
+      }
+      if !strict_equal(
+          get_string_proto(realm_state=Some(realm_state)),
+          base_string_proto,
+        ) {
+        fail("expected unstamped callee to use active String.prototype")
       }
       Undefined
     }) catch {
@@ -112,6 +124,12 @@ test "unmarked callees clear inherited active realm overrides" {
         override_object_proto,
       ) {
       failure.val = Some("expected object override to be restored after call")
+    }
+    if !strict_equal(
+        get_string_proto(realm_state=Some(realm_state)),
+        override_string_proto,
+      ) {
+      failure.val = Some("expected string override to be restored after call")
     }
   })
   match failure.val {

@@ -1453,10 +1453,10 @@ pub fn instanceof_prototype_chain(
 ) -> Value raise Error {
   let mut current = match l {
     Object(l_data) => l_data.prototype
-    Array(_) => interp.realm_state.get_array_proto()
-    Map(_) => interp.realm_state.get_map_proto()
-    Set(_) => interp.realm_state.get_set_proto()
-    Promise(_) => interp.realm_state.get_promise_proto()
+    Array(_) => get_array_proto(realm_state=Some(interp.realm_state))
+    Map(_) => get_map_proto(realm_state=Some(interp.realm_state))
+    Set(_) => get_set_proto(realm_state=Some(interp.realm_state))
+    Promise(_) => get_promise_proto(realm_state=Some(interp.realm_state))
     // Invoke the [[GetPrototypeOf]] trap so Proxy handler can intercept
     Proxy(proxy_data) => proxy_get_prototype_of(interp, proxy_data)
     // Primitive values are never instances
@@ -1488,7 +1488,7 @@ pub fn instanceof_prototype_chain(
 pub fn get_array_prototype(realm_state : RealmState, arr : ArrayData) -> Value {
   match get_array_prototype_override(arr) {
     Some(proto) => proto
-    None => realm_state.get_array_proto()
+    None => get_array_proto(realm_state=Some(realm_state))
   }
 }
 

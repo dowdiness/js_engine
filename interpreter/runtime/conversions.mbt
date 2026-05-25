@@ -42,35 +42,33 @@ pub fn call_callable_direct(
   args : Array[Value],
   interp? : Interpreter? = None,
 ) -> Value raise Error {
-  match callable_val {
-    Object(obj_data) =>
-      match obj_data.callable {
-        Some(MethodCallable(_, f)) => f(this_val, args)
-        Some(NativeCallable(_, f)) => f(args)
-        Some(NativeCallableWithContext(_, f)) => f(Call, args)
-        Some(NonConstructableCallable(_, f)) => f(args)
-        Some(UserFunc(_))
-        | Some(ArrowFunc(_))
-        | Some(UserFuncExt(_))
-        | Some(ArrowFuncExt(_))
-        | Some(BoundFunc(_, _, _))
-        | Some(InterpreterCallable(_, _))
-        | Some(InterpreterCallableWithContext(_, _))
-        | Some(NonConstructableInterpreterCallable(_, _))
-        | Some(ClassConstructor(_)) => {
-          let effective = resolve_effective_interp(interp)
-          match effective {
-            Some(ip) =>
-              ip.call_value(callable_val, this_val, args, @token.Loc::default())
-            None =>
+  match resolve_effective_interp(interp) {
+    Some(ip) =>
+      ip.call_value(callable_val, this_val, args, @token.Loc::default())
+    None =>
+      match callable_val {
+        Object(obj_data) =>
+          match obj_data.callable {
+            Some(MethodCallable(_, f)) => f(this_val, args)
+            Some(NativeCallable(_, f)) => f(args)
+            Some(NativeCallableWithContext(_, f)) => f(Call, args)
+            Some(NonConstructableCallable(_, f)) => f(args)
+            Some(UserFunc(_))
+            | Some(ArrowFunc(_))
+            | Some(UserFuncExt(_))
+            | Some(ArrowFuncExt(_))
+            | Some(BoundFunc(_, _, _))
+            | Some(InterpreterCallable(_, _))
+            | Some(InterpreterCallableWithContext(_, _))
+            | Some(NonConstructableInterpreterCallable(_, _))
+            | Some(ClassConstructor(_)) =>
               raise @errors.TypeError(
                 message="Cannot call user function without interpreter context",
               )
+            _ => raise @errors.TypeError(message="Value is not callable")
           }
-        }
         _ => raise @errors.TypeError(message="Value is not callable")
       }
-    _ => raise @errors.TypeError(message="Value is not callable")
   }
 }
 
@@ -775,15 +773,23 @@ pub fn Interpreter::has_property_key(
     // Map/Set/Promise share a uniform shape: an expando bag plus a builtin
     // prototype. Implement OrdinaryHasProperty (ES §7.3.11): own bag →
     // proto chain → bool, with no value inspection. Each family resolves
-    // its prototype from RealmState.
+    // its prototype through the active callee realm.
     Map(data) =>
-      self.has_bag_with_proto(data.bag, self.realm_state.get_map_proto(), key)
+      self.has_bag_with_proto(
+        data.bag,
+        get_map_proto(realm_state=Some(self.realm_state)),
+        key,
+      )
     Set(data) =>
-      self.has_bag_with_proto(data.bag, self.realm_state.get_set_proto(), key)
+      self.has_bag_with_proto(
+        data.bag,
+        get_set_proto(realm_state=Some(self.realm_state)),
+        key,
+      )
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
-        self.realm_state.get_promise_proto(),
+        get_promise_proto(realm_state=Some(self.realm_state)),
         key,
       )
     _ => false
@@ -882,13 +888,21 @@ fn Interpreter::has_property_on_proto(
     Object(proto_data) => self.has_object_property(proto_data, key)
     Array(arr_data) => self.has_array_property(arr_data, key)
     Map(data) =>
-      self.has_bag_with_proto(data.bag, self.realm_state.get_map_proto(), key)
+      self.has_bag_with_proto(
+        data.bag,
+        get_map_proto(realm_state=Some(self.realm_state)),
+        key,
+      )
     Set(data) =>
-      self.has_bag_with_proto(data.bag, self.realm_state.get_set_proto(), key)
+      self.has_bag_with_proto(
+        data.bag,
+        get_set_proto(realm_state=Some(self.realm_state)),
+        key,
+      )
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
-        self.realm_state.get_promise_proto(),
+        get_promise_proto(realm_state=Some(self.realm_state)),
         key,
       )
     _ => false

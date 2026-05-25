@@ -13,23 +13,21 @@ pub fn setup_builtins(
 ///|
 fn stamp_realm_functions_in_bag(
   bag : @runtime.PropertyBag,
-  function_proto : Value,
-  object_proto : Value,
+  realm_state : @runtime.RealmState,
   depth : Int,
 ) -> Unit {
   bag.properties.each(fn(_key, value) {
-    stamp_realm_functions_in_value(value, function_proto, object_proto, depth)
+    stamp_realm_functions_in_value(value, realm_state, depth)
   })
   bag.symbol_properties.each(fn(_key, value) {
-    stamp_realm_functions_in_value(value, function_proto, object_proto, depth)
+    stamp_realm_functions_in_value(value, realm_state, depth)
   })
 }
 
 ///|
 fn stamp_realm_functions_in_value(
   value : Value,
-  function_proto : Value,
-  object_proto : Value,
+  realm_state : @runtime.RealmState,
   depth : Int,
 ) -> Unit {
   if depth == 0 {
@@ -38,49 +36,20 @@ fn stamp_realm_functions_in_value(
   let next_depth = depth - 1
   match value {
     Object(data) => {
-      @runtime.stamp_function_realm_with(value, function_proto, object_proto)
+      @runtime.stamp_function_realm(value, realm_state=Some(realm_state))
       |> ignore
-      stamp_realm_functions_in_bag(
-        data.bag,
-        function_proto,
-        object_proto,
-        next_depth,
-      )
+      stamp_realm_functions_in_bag(data.bag, realm_state, next_depth)
     }
     Array(data) =>
-      stamp_realm_functions_in_bag(
-        data.bag,
-        function_proto,
-        object_proto,
-        next_depth,
-      )
-    Map(data) =>
-      stamp_realm_functions_in_bag(
-        data.bag,
-        function_proto,
-        object_proto,
-        next_depth,
-      )
-    Set(data) =>
-      stamp_realm_functions_in_bag(
-        data.bag,
-        function_proto,
-        object_proto,
-        next_depth,
-      )
+      stamp_realm_functions_in_bag(data.bag, realm_state, next_depth)
+    Map(data) => stamp_realm_functions_in_bag(data.bag, realm_state, next_depth)
+    Set(data) => stamp_realm_functions_in_bag(data.bag, realm_state, next_depth)
     Promise(data) =>
-      stamp_realm_functions_in_bag(
-        data.bag,
-        function_proto,
-        object_proto,
-        next_depth,
-      )
+      stamp_realm_functions_in_bag(data.bag, realm_state, next_depth)
     Proxy(proxy_data) =>
       match proxy_data.target {
         Some(target) =>
-          stamp_realm_functions_in_value(
-            target, function_proto, object_proto, next_depth,
-          )
+          stamp_realm_functions_in_value(target, realm_state, next_depth)
         None => ()
       }
     _ => ()
@@ -90,30 +59,19 @@ fn stamp_realm_functions_in_value(
 ///|
 fn stamp_realm_functions_in_env(
   env : Environment,
-  function_proto : Value,
-  object_proto : Value,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
   env.bindings.each(fn(_name, binding) {
-    stamp_realm_functions_in_value(
-      binding.value,
-      function_proto,
-      object_proto,
-      4,
-    )
+    stamp_realm_functions_in_value(binding.value, realm_state, 4)
   })
 }
 
 ///|
-fn stamp_realm_functions_from_env(env : Environment) -> Unit {
-  match
-    (
-      env.bindings.get("[[FunctionPrototype]]"),
-      env.bindings.get("[[ObjectPrototype]]"),
-    ) {
-    (Some(fp), Some(op)) =>
-      stamp_realm_functions_in_env(env, fp.value, op.value)
-    _ => ()
-  }
+fn stamp_realm_functions_from_env(
+  env : Environment,
+  realm_state : @runtime.RealmState,
+) -> Unit {
+  stamp_realm_functions_in_env(env, realm_state)
 }
 
 ///|
@@ -1914,7 +1872,7 @@ fn setup_builtins_with_realm_state_active(
       }
     None => ()
   }
-  stamp_realm_functions_from_env(env)
+  stamp_realm_functions_from_env(env, realm_state)
 }
 
 ///|
@@ -2480,5 +2438,5 @@ pub fn setup_harness_builtins(
     }
     _ => ()
   }
-  stamp_realm_functions_from_env(env)
+  stamp_realm_functions_from_env(env, realm_state)
 }

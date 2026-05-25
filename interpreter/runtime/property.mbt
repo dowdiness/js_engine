@@ -372,8 +372,10 @@ fn Interpreter::get_property_of_object(
                 )
                 match result {
                   Undefined => {
-                    // Continue to Array.prototype (per-realm via RealmState)
-                    let proto = self.realm_state.get_array_proto()
+                    // Continue to Array.prototype (per active callee realm)
+                    let proto = get_array_proto(
+                      realm_state=Some(self.realm_state),
+                    )
                     match proto {
                       Object(_) => current = proto
                       _ => break
@@ -396,13 +398,9 @@ fn Interpreter::get_property_of_object(
             )
             match result {
               Undefined => {
-                let ctor = self.global.get("Map") catch { _ => break }
-                match ctor {
-                  Object(ctor_data) =>
-                    match ctor_data.bag.properties.get("prototype") {
-                      Some(proto) => current = proto
-                      None => break
-                    }
+                let proto = get_map_proto(realm_state=Some(self.realm_state))
+                match proto {
+                  Object(_) => current = proto
                   _ => break
                 }
               }
@@ -421,13 +419,9 @@ fn Interpreter::get_property_of_object(
             )
             match result {
               Undefined => {
-                let ctor = self.global.get("Set") catch { _ => break }
-                match ctor {
-                  Object(ctor_data) =>
-                    match ctor_data.bag.properties.get("prototype") {
-                      Some(proto) => current = proto
-                      None => break
-                    }
+                let proto = get_set_proto(realm_state=Some(self.realm_state))
+                match proto {
+                  Object(_) => current = proto
                   _ => break
                 }
               }
@@ -703,19 +697,16 @@ fn lookup_builtin_proto(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  // Resolve the built-in prototype via RealmState rather than re-deriving it
-  // through `globalThis[ctor_name].prototype`. Cache-for-X pins each family's
-  // realm field to the JS-visible constructor `.prototype` slot, so the two
-  // paths are equivalent — but routing through RealmState makes the per-realm
-  // ownership explicit and avoids re-reading the global binding on every miss.
+  // Resolve the built-in prototype through the active callee realm rather
+  // than re-deriving it through `globalThis[ctor_name].prototype`.
   // Unknown ctor names fall through to Undefined, matching the previous
   // `interp.global.get(...) catch { _ => Undefined }` behavior.
   let proto = match ctor_name {
-    "Array" => interp.realm_state.get_array_proto()
-    "String" => interp.realm_state.get_string_proto()
-    "Number" => interp.realm_state.get_number_proto()
-    "Boolean" => interp.realm_state.get_boolean_proto()
-    "Symbol" => interp.realm_state.get_symbol_proto()
+    "Array" => get_array_proto(realm_state=Some(interp.realm_state))
+    "String" => get_string_proto(realm_state=Some(interp.realm_state))
+    "Number" => get_number_proto(realm_state=Some(interp.realm_state))
+    "Boolean" => get_boolean_proto(realm_state=Some(interp.realm_state))
+    "Symbol" => get_symbol_proto(realm_state=Some(interp.realm_state))
     _ => return Undefined
   }
   match proto {
@@ -906,8 +897,8 @@ fn Interpreter::get_computed_property_impl(
             None => ()
           }
           // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
-          // (per-realm via RealmState)
-          match self.realm_state.get_array_proto() {
+          // (per active callee realm)
+          match get_array_proto(realm_state=Some(self.realm_state)) {
             Object(proto_data) => {
               // Check symbol descriptors for getters
               match proto_data.bag.symbol_descriptors.get(sym.id) {
@@ -1123,8 +1114,10 @@ fn Interpreter::get_computed_property_impl(
                     )
                     match result {
                       Undefined => {
-                        // Continue to Array.prototype (per-realm via RealmState)
-                        let proto = self.realm_state.get_array_proto()
+                        // Continue to Array.prototype (per active callee realm)
+                        let proto = get_array_proto(
+                          realm_state=Some(self.realm_state),
+                        )
                         match proto {
                           Object(_) => current = proto
                           _ => break
@@ -1146,13 +1139,11 @@ fn Interpreter::get_computed_property_impl(
                 )
                 match result {
                   Undefined => {
-                    let ctor = self.global.get("Map") catch { _ => break }
-                    match ctor {
-                      Object(ctor_data) =>
-                        match ctor_data.bag.properties.get("prototype") {
-                          Some(proto) => current = proto
-                          None => break
-                        }
+                    let proto = get_map_proto(
+                      realm_state=Some(self.realm_state),
+                    )
+                    match proto {
+                      Object(_) => current = proto
                       _ => break
                     }
                   }
@@ -1170,13 +1161,11 @@ fn Interpreter::get_computed_property_impl(
                 )
                 match result {
                   Undefined => {
-                    let ctor = self.global.get("Set") catch { _ => break }
-                    match ctor {
-                      Object(ctor_data) =>
-                        match ctor_data.bag.properties.get("prototype") {
-                          Some(proto) => current = proto
-                          None => break
-                        }
+                    let proto = get_set_proto(
+                      realm_state=Some(self.realm_state),
+                    )
+                    match proto {
+                      Object(_) => current = proto
                       _ => break
                     }
                   }
