@@ -225,7 +225,10 @@ fn Interpreter::install_instance_fields(
 /// Create a deferred instance-field initializer Value.
 /// Stored as [[InitInstanceFields]] in the constructor env so the super()
 /// call site can apply the fields to the actual `this` after super() returns.
-fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
+fn make_instance_fields_init(
+  fields : Array[ClassFieldInit],
+  realm_state : RealmState,
+) -> Value {
   stamp_function_realm(
     Object({
       bag: PropertyBag(),
@@ -244,6 +247,7 @@ fn make_instance_fields_init(fields : Array[ClassFieldInit]) -> Value {
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(realm_state),
   )
 }
 
@@ -261,6 +265,7 @@ fn make_constructor_instance(proto : Value, class_name : String) -> Value {
 
 ///|
 fn make_arguments_object(
+  realm_state : RealmState,
   well_known_symbols : WellKnownSymbols,
   args : Array[Value],
   ctor : Value,
@@ -323,6 +328,7 @@ fn make_arguments_object(
             extensible: true,
             arraybuffer_state: None,
           }),
+          realm_state=Some(realm_state),
         )
         let setter_fn = stamp_function_realm(
           Object({
@@ -338,6 +344,7 @@ fn make_arguments_object(
             extensible: true,
             arraybuffer_state: None,
           }),
+          realm_state=Some(realm_state),
         )
         new_args_props[key] = Undefined // accessor sentinel
         new_args_descs[key] = {
@@ -474,6 +481,7 @@ fn make_arguments_object(
               extensible: true,
               arraybuffer_state: None,
             }),
+            realm_state=Some(realm_state),
           )
           Object({
             bag: {
@@ -494,6 +502,7 @@ fn make_arguments_object(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(realm_state),
   )
   Object({
     bag: {
@@ -502,7 +511,7 @@ fn make_arguments_object(
       descriptors: new_args_descs,
       symbol_descriptors: {},
     },
-    prototype: get_obj_proto(),
+    prototype: get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
     class_name: "Arguments",
     extensible: true,
@@ -534,6 +543,7 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
   param_env.def(
     "arguments",
     make_arguments_object(
+      self.realm_state,
       self.realm_state.well_known_symbols,
       args,
       ctor_val,
@@ -636,7 +646,7 @@ pub fn Interpreter::construct_value(
   new_target? : Value? = None,
 ) -> Value raise Error {
   self.with_active_value(fn() raise {
-    with_active_callee_realm_value(ctor, fn() raise {
+    with_active_callee_realm_value(self.realm_state, ctor, fn() raise {
       self.construct_value_impl(ctor, args, loc, proto_override~, new_target~)
     })
   })
@@ -748,6 +758,7 @@ fn Interpreter::construct_value_impl(
           func_env.def(
             "arguments",
             make_arguments_object(
+              self.realm_state,
               self.realm_state.well_known_symbols,
               args,
               ctor,
@@ -843,6 +854,7 @@ fn Interpreter::construct_value_impl(
           param_env.def(
             "arguments",
             make_arguments_object(
+              self.realm_state,
               self.realm_state.well_known_symbols,
               args,
               ctor,
@@ -981,7 +993,7 @@ fn Interpreter::construct_value_impl(
                 if ctor_fn is Some(_) && instance_fields.length() > 0 {
                   ctor_env.def_builtin(
                     "[[InitInstanceFields]]",
-                    make_instance_fields_init(instance_fields),
+                    make_instance_fields_init(instance_fields, self.realm_state),
                   )
                 }
               }
@@ -1062,6 +1074,7 @@ fn Interpreter::construct_value_impl(
                                     "[[InitInstanceFields]]",
                                     make_instance_fields_init(
                                       super_instance_fields,
+                                      self.realm_state,
                                     ),
                                   )
                                 }

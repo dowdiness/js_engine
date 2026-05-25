@@ -14,44 +14,31 @@ pub fn Interpreter::enqueue_microtask(
 /// This is called after each task (script execution) completes.
 /// Implements the microtask checkpoint from WHATWG Event Loop spec.
 pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
-  let prev_interpreter = current_interpreter.val
-  current_interpreter.val = Some(self)
-  try {
-    with_cleared_active_callee_realm(fn() raise {
-      // Process microtasks until queue is empty
-      // Note: new microtasks can be enqueued during execution
-      // Use index-based draining to avoid O(n²) from repeated remove(0)
-      let mut head = 0
-      while head < self.host.microtask_queue.length() {
-        let task = self.host.microtask_queue[head]
-        head = head + 1
-        // Call the callback with queued arguments
-        match task.callback {
-          Object(obj_data) =>
-            match obj_data.callable {
-              Some(_) => {
-                let loc = @token.Loc::default()
-                let _ = self.call_value(
-                  task.callback,
-                  Undefined,
-                  task.args,
-                  loc,
-                )
-              }
-              None => ()
+  with_cleared_active_callee_realm(self.realm_state, fn() raise {
+    // Process microtasks until queue is empty
+    // Note: new microtasks can be enqueued during execution
+    // Use index-based draining to avoid O(n²) from repeated remove(0)
+    let mut head = 0
+    while head < self.host.microtask_queue.length() {
+      let task = self.host.microtask_queue[head]
+      head = head + 1
+      // Call the callback with queued arguments
+      match task.callback {
+        Object(obj_data) =>
+          match obj_data.callable {
+            Some(_) => {
+              let loc = @token.Loc::default()
+              let _ = self.call_value(task.callback, Undefined, task.args, loc)
             }
-          _ => ()
-        }
+            None => ()
+          }
+        _ => ()
       }
-      // Clear processed microtasks
-      self.host.microtask_queue.clear()
-    })
-    current_interpreter.val = prev_interpreter
-  } catch {
-    e => {
-      current_interpreter.val = prev_interpreter
-      raise e
     }
+    // Clear processed microtasks
+    self.host.microtask_queue.clear()
+  }) catch {
+    e => raise e
   }
 }
 
@@ -122,6 +109,7 @@ pub fn enqueue_promise_reaction_job(
   let job_callback = make_interp_method_func(
     name="PromiseReactionJob",
     length=0,
+    realm_state=Some(interp.realm_state),
     fn(i, _this, args) raise {
       let value = if args.length() > 0 { args[0] } else { Undefined }
       let loc = @token.Loc::default()
@@ -169,103 +157,111 @@ pub fn enqueue_promise_reaction_job(
 /// Create resolve and reject capability functions for a promise.
 /// Returns (resolve_func, reject_func).
 pub fn create_resolving_functions(
-  _interp : Interpreter,
+  interp : Interpreter,
   promise_data : PromiseData,
 ) -> (Value, Value) {
   // Track whether already resolved (prevents multiple resolution)
   let already_resolved : Ref[Bool] = { val: false }
 
   // Create resolve function
-  let resolve_func = make_interp_method_func(name="resolve", length=1, fn(
-    i,
-    _this,
-    args,
-  ) {
-    if already_resolved.val {
-      return Undefined
-    }
-    already_resolved.val = true
-    let resolution = if args.length() > 0 { args[0] } else { Undefined }
-
-    // Check for self-resolution (ECMAScript spec requirement)
-    match resolution {
-      Promise(pd) =>
-        if physical_equal(pd, promise_data) {
-          // Self-resolution: reject with TypeError
-          let error = js_error_to_value_with_env(
-            @errors.TypeError(message="Chaining cycle detected for promise"),
-            Some(i.global),
-          )
-          reject_promise(i, promise_data, error)
-          return Undefined
-        }
-      _ => ()
-    }
-
-    // Thenable assimilation (ECMAScript §25.6.1.3.2 steps 8-13)
-    // If resolution is not an object, fulfill directly.
-    // Otherwise, perform Get(resolution, "then") and check if callable.
-    // This applies uniformly to both native Promises and plain objects
-    // — the spec has no fast-path for native promises.
-    if is_thenable_object_candidate(resolution) {
-      // Get(resolution, "then") walks the prototype chain and
-      // invokes accessors per ECMAScript spec
-      let loc = @token.Loc::default()
-      let then_val = i.get_property(resolution, "then", loc) catch {
-        e => {
-          // If Get throws, reject the promise with the error
-          let err = js_error_to_value_with_env(e, Some(i.global))
-          reject_promise(i, promise_data, err)
-          return Undefined
-        }
+  let resolve_func = make_interp_method_func(
+    name="resolve",
+    length=1,
+    realm_state=Some(interp.realm_state),
+    fn(i, _this, args) {
+      if already_resolved.val {
+        return Undefined
       }
-      match then_val {
-        Object(then_od) =>
-          match then_od.callable {
-            Some(_) => {
-              // Thenable: enqueue PromiseResolveThenableJob
-              let (res, rej) = create_resolving_functions(i, promise_data)
-              let job = make_interp_method_func(
-                name="PromiseResolveThenableJob",
-                length=0,
-                fn(i2, _t, _a) raise {
-                  try {
-                    let _ = i2.call_value(then_val, resolution, [res, rej], loc)
-                  } catch {
-                    e => {
-                      let err = js_error_to_value_with_env(e, Some(i2.global))
-                      let _ = i2.call_value(rej, Undefined, [err], loc)
-                    }
-                  }
-                  Undefined
-                },
-              )
-              i.enqueue_microtask(job, [])
-            }
-            None => fulfill_promise(i, promise_data, resolution)
+      already_resolved.val = true
+      let resolution = if args.length() > 0 { args[0] } else { Undefined }
+
+      // Check for self-resolution (ECMAScript spec requirement)
+      match resolution {
+        Promise(pd) =>
+          if physical_equal(pd, promise_data) {
+            // Self-resolution: reject with TypeError
+            let error = js_error_to_value_with_env(
+              @errors.TypeError(message="Chaining cycle detected for promise"),
+              Some(i.global),
+            )
+            reject_promise(i, promise_data, error)
+            return Undefined
           }
-        _ => fulfill_promise(i, promise_data, resolution)
+        _ => ()
       }
-    } else {
-      fulfill_promise(i, promise_data, resolution)
-    }
-    Undefined
-  })
+
+      // Thenable assimilation (ECMAScript §25.6.1.3.2 steps 8-13)
+      // If resolution is not an object, fulfill directly.
+      // Otherwise, perform Get(resolution, "then") and check if callable.
+      // This applies uniformly to both native Promises and plain objects
+      // — the spec has no fast-path for native promises.
+      if is_thenable_object_candidate(resolution) {
+        // Get(resolution, "then") walks the prototype chain and
+        // invokes accessors per ECMAScript spec
+        let loc = @token.Loc::default()
+        let then_val = i.get_property(resolution, "then", loc) catch {
+          e => {
+            // If Get throws, reject the promise with the error
+            let err = js_error_to_value_with_env(e, Some(i.global))
+            reject_promise(i, promise_data, err)
+            return Undefined
+          }
+        }
+        match then_val {
+          Object(then_od) =>
+            match then_od.callable {
+              Some(_) => {
+                // Thenable: enqueue PromiseResolveThenableJob
+                let (res, rej) = create_resolving_functions(i, promise_data)
+                let job = make_interp_method_func(
+                  name="PromiseResolveThenableJob",
+                  length=0,
+                  realm_state=Some(i.realm_state),
+                  fn(i2, _t, _a) raise {
+                    try {
+                      let _ = i2.call_value(
+                        then_val,
+                        resolution,
+                        [res, rej],
+                        loc,
+                      )
+                    } catch {
+                      e => {
+                        let err = js_error_to_value_with_env(e, Some(i2.global))
+                        let _ = i2.call_value(rej, Undefined, [err], loc)
+                      }
+                    }
+                    Undefined
+                  },
+                )
+                i.enqueue_microtask(job, [])
+              }
+              None => fulfill_promise(i, promise_data, resolution)
+            }
+          _ => fulfill_promise(i, promise_data, resolution)
+        }
+      } else {
+        fulfill_promise(i, promise_data, resolution)
+      }
+      Undefined
+    },
+  )
 
   // Create reject function
-  let reject_func = make_interp_method_func(name="reject", length=1, fn(
-    i,
-    _this,
-    args,
-  ) {
-    if already_resolved.val {
-      return Undefined
-    }
-    already_resolved.val = true
-    let reason = if args.length() > 0 { args[0] } else { Undefined }
-    reject_promise(i, promise_data, reason)
-    Undefined
-  })
+  let reject_func = make_interp_method_func(
+    name="reject",
+    length=1,
+    realm_state=Some(interp.realm_state),
+    fn(i, _this, args) {
+      if already_resolved.val {
+        return Undefined
+      }
+      already_resolved.val = true
+      let reason = if args.length() > 0 { args[0] } else { Undefined }
+      reject_promise(i, promise_data, reason)
+      Undefined
+    },
+  )
   (resolve_func, reject_func)
 }
 
@@ -279,62 +275,54 @@ pub fn create_resolving_functions(
 /// For setInterval, the timer is re-enqueued after each invocation
 /// until cancelled. A safety limit prevents infinite loops.
 pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
-  let prev_interpreter = current_interpreter.val
-  current_interpreter.val = Some(self)
-  try {
-    with_cleared_active_callee_realm(fn() raise {
-      // Safety limit to prevent infinite loops from setInterval
-      let max_iterations = 10000
-      let mut iterations = 0
-      while self.host.timer_queue.length() > 0 && iterations < max_iterations {
-        iterations = iterations + 1
-        // Sort timers by delay (ascending), then by insertion order (ascending)
-        self.host.timer_queue.sort_by(fn(a, b) {
-          if a.delay != b.delay {
-            a.delay - b.delay
-          } else {
-            a.insertion_order - b.insertion_order
-          }
-        })
-        // Take the first (soonest) timer
-        let timer = self.host.timer_queue.remove(0)
-        if timer.cancelled {
-          continue
+  with_cleared_active_callee_realm(self.realm_state, fn() raise {
+    // Safety limit to prevent infinite loops from setInterval
+    let max_iterations = 10000
+    let mut iterations = 0
+    while self.host.timer_queue.length() > 0 && iterations < max_iterations {
+      iterations = iterations + 1
+      // Sort timers by delay (ascending), then by insertion order (ascending)
+      self.host.timer_queue.sort_by(fn(a, b) {
+        if a.delay != b.delay {
+          a.delay - b.delay
+        } else {
+          a.insertion_order - b.insertion_order
         }
-        // Execute the timer callback
-        let loc = @token.Loc::default()
-        let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
-        // Microtask checkpoint after each task (per WHATWG event loop spec)
-        self.run_microtasks()
-        // If this is setInterval and not cancelled, re-enqueue.
-        // Check both the timer's cancelled flag and cancelled_timer_ids,
-        // because clearInterval called inside the callback can't mark the
-        // already-removed timer struct — it records in cancelled_timer_ids instead.
-        if timer.is_interval &&
-          !timer.cancelled &&
-          !self.host.cancelled_timer_ids.contains(timer.id) {
-          let order = self.host.timer_insertion_counter.val
-          self.host.timer_insertion_counter.val = order + 1
-          self.host.timer_queue.push({
-            id: timer.id,
-            callback: timer.callback,
-            args: timer.args,
-            delay: timer.delay + timer.period,
-            period: timer.period,
-            cancelled: false,
-            is_interval: true,
-            insertion_order: order,
-          })
-        }
+      })
+      // Take the first (soonest) timer
+      let timer = self.host.timer_queue.remove(0)
+      if timer.cancelled {
+        continue
       }
-      // Clear the cancelled set for this run
-      self.host.cancelled_timer_ids.clear()
-    })
-    current_interpreter.val = prev_interpreter
-  } catch {
-    e => {
-      current_interpreter.val = prev_interpreter
-      raise e
+      // Execute the timer callback
+      let loc = @token.Loc::default()
+      let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
+      // Microtask checkpoint after each task (per WHATWG event loop spec)
+      self.run_microtasks()
+      // If this is setInterval and not cancelled, re-enqueue.
+      // Check both the timer's cancelled flag and cancelled_timer_ids,
+      // because clearInterval called inside the callback can't mark the
+      // already-removed timer struct — it records in cancelled_timer_ids instead.
+      if timer.is_interval &&
+        !timer.cancelled &&
+        !self.host.cancelled_timer_ids.contains(timer.id) {
+        let order = self.host.timer_insertion_counter.val
+        self.host.timer_insertion_counter.val = order + 1
+        self.host.timer_queue.push({
+          id: timer.id,
+          callback: timer.callback,
+          args: timer.args,
+          delay: timer.delay + timer.period,
+          period: timer.period,
+          cancelled: false,
+          is_interval: true,
+          insertion_order: order,
+        })
+      }
     }
+    // Clear the cancelled set for this run
+    self.host.cancelled_timer_ids.clear()
+  }) catch {
+    e => raise e
   }
 }

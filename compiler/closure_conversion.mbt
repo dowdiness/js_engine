@@ -64,6 +64,8 @@ pub fn compile_expr_to_closure(
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   let compiled = compile_expr_to_closure_inner(expr)
   fn(interp, ctx, env) raise {
+    env.realm_state = Some(interp.realm_state)
+    env.interpreter_context = Some(interp)
     interp.with_active_value(fn() raise { compiled(interp, ctx, env) })
   }
 }
@@ -146,6 +148,8 @@ pub fn compile_program_to_closure(
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   let body = compile_body(stmts)
   fn(interp, ctx, env) raise {
+    env.realm_state = Some(interp.realm_state)
+    env.interpreter_context = Some(interp)
     interp.with_active_value(fn() raise {
       reduce_program_signal((body.0)(interp, ctx, env))
     })
@@ -504,7 +508,13 @@ fn compile_compound_assign(
       fn(interp, ctx, env) raise {
         let current = env.get(name)
         let rhs = value_fn(interp, ctx, env)
-        let result = @runtime.eval_binary_op(bin_op, current, rhs, loc)
+        let result = @runtime.eval_binary_op(
+          bin_op,
+          current,
+          rhs,
+          loc,
+          interp=Some(interp),
+        )
         env.assign(name, result)
         result
       }
@@ -514,7 +524,13 @@ fn compile_compound_assign(
         let obj = obj_fn(interp, ctx, env)
         let current = interp.get_property(obj, prop, member_loc)
         let rhs = value_fn(interp, ctx, env)
-        let result = @runtime.eval_binary_op(bin_op, current, rhs, loc)
+        let result = @runtime.eval_binary_op(
+          bin_op,
+          current,
+          rhs,
+          loc,
+          interp=Some(interp),
+        )
         let _ = interp.set_property(obj, prop, result, loc, strict=ctx.strict)
         result
       }
@@ -529,7 +545,13 @@ fn compile_compound_assign(
         let prop_key = @runtime.to_property_key(key, interp=Some(interp))
         let current = interp.get_computed_property(obj, prop_key, member_loc)
         let rhs = value_fn(interp, ctx, env)
-        let result = @runtime.eval_binary_op(bin_op, current, rhs, loc)
+        let result = @runtime.eval_binary_op(
+          bin_op,
+          current,
+          rhs,
+          loc,
+          interp=Some(interp),
+        )
         let _ = interp.set_computed_property(
           obj,
           prop_key,
@@ -823,11 +845,15 @@ fn compiled_console_member(
 ) -> Value raise Error {
   if prop == "log" {
     let output = interp.host.output
-    @runtime.make_native_func(name="log", fn(args) {
-      let parts : Array[String] = args.map(fn(a) { a.to_string() })
-      output.push(parts.join(" "))
-      Value::Undefined
-    })
+    @runtime.make_native_func(
+      name="log",
+      realm_state=Some(interp.realm_state),
+      fn(args) {
+        let parts : Array[String] = args.map(fn(a) { a.to_string() })
+        output.push(parts.join(" "))
+        Value::Undefined
+      },
+    )
   } else {
     raise @errors.TypeError(message="console.\{prop} is not supported")
   }
@@ -1233,10 +1259,14 @@ fn make_compiled_func(
   body : CompiledBody,
   constructable? : Bool = true,
 ) -> Value {
+  let realm_state = match closure.interpreter_context {
+    Some(interp) => Some(interp.realm_state)
+    None => closure.realm_state
+  }
   let proto = if constructable {
     Value::Object({
       bag: PropertyBag::PropertyBag(),
-      prototype: @runtime.get_obj_proto(),
+      prototype: @runtime.get_obj_proto(realm_state~),
       callable: None,
       class_name: "Object",
       extensible: true,
@@ -1282,7 +1312,7 @@ fn make_compiled_func(
         descriptors: func_descs,
         symbol_descriptors: {},
       },
-      prototype: @runtime.get_func_proto(),
+      prototype: @runtime.get_func_proto(realm_state~),
       callable: Some(
         Callable::InterpreterCallableWithContext(func_name, fn(
           interp,
@@ -1311,6 +1341,7 @@ fn make_compiled_func(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state~,
   )
   if constructable {
     match proto {
@@ -1363,13 +1394,18 @@ fn make_compiled_arrow_func(
   strict : Bool,
   body : CompiledBody,
 ) -> Value {
-  @runtime.make_interp_method_func(name="", length=params.length(), fn(
-    interp,
-    _this_val,
-    args,
-  ) raise {
-    call_compiled_arrow_func(interp, args, params, closure, strict, body)
-  })
+  let realm_state = match closure.interpreter_context {
+    Some(interp) => Some(interp.realm_state)
+    None => closure.realm_state
+  }
+  @runtime.make_interp_method_func(
+    name="",
+    length=params.length(),
+    realm_state~,
+    fn(interp, _this_val, args) raise {
+      call_compiled_arrow_func(interp, args, params, closure, strict, body)
+    },
+  )
 }
 
 ///|
@@ -1583,7 +1619,7 @@ fn eval_compiled_binary(
     _ => {
       let left = left_fn(interp, ctx, env)
       let right = right_fn(interp, ctx, env)
-      @runtime.eval_binary_op(op, left, right, loc)
+      @runtime.eval_binary_op(op, left, right, loc, interp=Some(interp))
     }
   }
 }
@@ -1683,6 +1719,10 @@ fn ordinary_compiled_instanceof(
 ///|
 fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
   let nf_desc = non_writable_function_descriptor()
+  let realm_state = match data.closure.interpreter_context {
+    Some(interp) => Some(interp.realm_state)
+    None => data.closure.realm_state
+  }
   @runtime.stamp_function_realm(
     Value::Object({
       bag: {
@@ -1694,12 +1734,13 @@ fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
         descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
       },
-      prototype: @runtime.get_func_proto(),
+      prototype: @runtime.get_func_proto(realm_state~),
       callable: Some(Callable::ArrowFuncExt(data)),
       class_name: "Function",
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state~,
   )
 }
 

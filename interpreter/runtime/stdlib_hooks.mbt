@@ -4,7 +4,7 @@
 /// stdlib provides the implementation, root interpreter wires them together.
 pub(all) struct StdlibHooks {
   get_string_method : (String, String, RealmState, Bool) -> Value
-  get_number_method : (Value, String) -> Value
+  get_number_method : (Value, String, RealmState) -> Value
   get_array_method_with_interp : (ArrayData, String, RealmState) -> Value
   get_map_method : (MapData, String, RealmState) -> Value
   get_set_method : (SetData, String, RealmState) -> Value
@@ -23,7 +23,7 @@ pub(all) struct StdlibHooks {
 pub fn default_stdlib_hooks() -> StdlibHooks {
   {
     get_string_method: fn(_s, _prop, _realm_state, _annex_b) { Undefined },
-    get_number_method: fn(_obj, _prop) { Undefined },
+    get_number_method: fn(_obj, _prop, _realm_state) { Undefined },
     get_array_method_with_interp: fn(_data, _prop, _realm_state) { Undefined },
     get_map_method: fn(_data, _prop, _realm_state) { Undefined },
     get_set_method: fn(_data, _prop, _realm_state) { Undefined },

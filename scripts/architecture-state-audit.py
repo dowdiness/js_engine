@@ -42,11 +42,7 @@ MODULE_LET_START_RE = re.compile(
 # Known ambient mutable state as of 2026-05-19. These entries are the migration
 # inventory for Stage 1+. Adding a new entry here should be reviewed as an
 # architecture decision, not as routine test maintenance.
-CLASSIFIED_MUTABLE_STATE: dict[str, str] = {
-    "interpreter/runtime/conversions.mbt:current_interpreter": (
-        "temporary current-interpreter fallback; replace with explicit context"
-    ),
-}
+CLASSIFIED_MUTABLE_STATE: dict[str, str] = {}
 
 
 @dataclass(frozen=True)

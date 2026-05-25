@@ -749,6 +749,7 @@ fn current_time_ms() -> Double {
 pub fn setup_date_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
+  realm_state : @runtime.RealmState,
 ) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -1779,7 +1780,7 @@ pub fn setup_date_builtins(
       descriptors: date_proto_descs,
       symbol_descriptors: {},
     },
-    prototype: @runtime.get_obj_proto(),
+    prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
     class_name: "Date",
     extensible: true,

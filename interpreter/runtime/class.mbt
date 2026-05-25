@@ -450,6 +450,7 @@ fn Interpreter::create_class(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(self.realm_state),
   )
   // Set prototype.constructor to point to the class (non-enumerable per spec)
   if !constructor_overridden {

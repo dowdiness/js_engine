@@ -140,10 +140,10 @@ fn setup_function_builtins(
       let target_proto = match this_val {
         Object(data) =>
           match data.prototype {
-            Null => @runtime.get_func_proto()
+            Null => @runtime.get_func_proto(realm_state=Some(realm_state))
             proto => proto
           }
-        _ => @runtime.get_func_proto()
+        _ => @runtime.get_func_proto(realm_state=Some(realm_state))
       }
       let bind_this = if args.length() > 0 { args[0] } else { Undefined }
       let bound_args : Array[Value] = []
@@ -192,6 +192,7 @@ fn setup_function_builtins(
           extensible: true,
           arraybuffer_state: None,
         }),
+        realm_state=Some(realm_state),
       )
     },
   )
@@ -362,6 +363,7 @@ fn setup_function_builtins(
               extensible: true,
               arraybuffer_state: None,
             }),
+            realm_state=Some(realm_state),
           )
         }
         // Last arg is body, previous args are parameter names
@@ -423,6 +425,7 @@ fn setup_function_builtins(
                   extensible: true,
                   arraybuffer_state: None,
                 }),
+                realm_state=Some(realm_state),
               )
             }
             FuncDeclExt(_, params, rest_param, body, _) => {
@@ -473,6 +476,7 @@ fn setup_function_builtins(
                   extensible: true,
                   arraybuffer_state: None,
                 }),
+                realm_state=Some(realm_state),
               )
             }
             _ => ()
@@ -488,6 +492,7 @@ fn setup_function_builtins(
             extensible: true,
             arraybuffer_state: None,
           }),
+          realm_state=Some(realm_state),
         )
       }),
     ),

@@ -401,7 +401,7 @@ fn make_get_own_property_descriptors_func(sym_state : SymbolState) -> Value {
         descriptors: {},
         symbol_descriptors: {},
       },
-      prototype: @runtime.get_obj_proto(),
+      prototype: @runtime.get_obj_proto(realm_state=Some(interp.realm_state)),
       callable: None,
       class_name: "Object",
       extensible: true,
@@ -483,6 +483,7 @@ fn make_get_own_property_descriptor_func() -> Value {
             false,
             false,
             false,
+            realm_state=Some(interp.realm_state),
           )
         }
         let idx = @string.parse_int(prop_name) catch { _ => -1 }
@@ -495,6 +496,7 @@ fn make_get_own_property_descriptor_func() -> Value {
             false,
             true,
             false,
+            realm_state=Some(interp.realm_state),
           )
         }
         return Undefined
@@ -507,7 +509,12 @@ fn make_get_own_property_descriptor_func() -> Value {
     // §10.5.5 / §10.1.5 via dispatcher — Proxy getOwnPropertyDescriptor trap fires.
     match interp.get_own_property(obj, prop_key) {
       None => Undefined
-      Some((desc, val)) => @runtime.descriptor_to_value(desc, val)
+      Some((desc, val)) =>
+        @runtime.descriptor_to_value(
+          desc,
+          val,
+          realm_state=Some(interp.realm_state),
+        )
     }
   })
 }

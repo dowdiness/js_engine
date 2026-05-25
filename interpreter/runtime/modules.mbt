@@ -297,8 +297,6 @@ pub fn Interpreter::run_module(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Map[String, Value] raise Error {
-  let prev_interpreter = current_interpreter.val
-  current_interpreter.val = Some(self)
   // Save and reset module exports for this module
   let saved_exports = self.module_exports
   let saved_bindings = self.module_export_bindings
@@ -309,7 +307,7 @@ pub fn Interpreter::run_module(
   // Modules are always strict mode per ES2022 §16.2.1
   let module_ctx : ExecContext = { strict: true, current_generator: None }
   try {
-    let exports = with_cleared_active_callee_realm(fn() raise {
+    let exports = with_cleared_active_callee_realm(self.realm_state, fn() raise {
       // Static block-scoped redeclaration checks (applies to module code too).
       self.validate_block_early_errors(stmts, true)
       // Hoist var declarations and function declarations
@@ -335,13 +333,11 @@ pub fn Interpreter::run_module(
     })
     self.module_exports = saved_exports
     self.module_export_bindings = saved_bindings
-    current_interpreter.val = prev_interpreter
     exports
   } catch {
     e => {
       self.module_exports = saved_exports
       self.module_export_bindings = saved_bindings
-      current_interpreter.val = prev_interpreter
       raise e
     }
   }

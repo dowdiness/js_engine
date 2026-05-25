@@ -445,7 +445,7 @@ fn setup_builtins_with_realm_state_active(
       },
       symbol_descriptors: {},
     },
-    prototype: @runtime.get_obj_proto(),
+    prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
     class_name: "String",
     extensible: true,
@@ -795,7 +795,7 @@ fn setup_builtins_with_realm_state_active(
       descriptors: boolean_proto_descs,
       symbol_descriptors: {},
     },
-    prototype: @runtime.get_obj_proto(),
+    prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
     class_name: "Boolean",
     extensible: true,
@@ -880,7 +880,11 @@ fn setup_builtins_with_realm_state_active(
   setup_function_builtins(env, realm_state)
 
   // Error constructors
-  let error_proto = register_error_ctor(env, "Error", @runtime.get_obj_proto())
+  let error_proto = register_error_ctor(
+    env,
+    "Error",
+    @runtime.get_obj_proto(realm_state=Some(realm_state)),
+  )
   register_error_ctor(env, "TypeError", error_proto) |> ignore
   register_error_ctor(env, "ReferenceError", error_proto) |> ignore
   register_error_ctor(env, "SyntaxError", error_proto) |> ignore
@@ -1747,7 +1751,7 @@ fn setup_builtins_with_realm_state_active(
   setup_promise(env, realm_state)
 
   // Set up Date constructor and prototype
-  setup_date_builtins(env, well_known_symbols)
+  setup_date_builtins(env, well_known_symbols, realm_state)
 
   // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
   setup_timers(env)
@@ -2262,12 +2266,15 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
   ri.with_active_value(fn() {
     let realm_props : Map[String, Value] = {}
     realm_props["global"] = ri.global_this
-    realm_props["gc"] = @runtime.make_native_func(name="gc", fn(_a) {
-      Undefined
-    })
+    realm_props["gc"] = @runtime.make_native_func(
+      name="gc",
+      realm_state=Some(ri.realm_state),
+      fn(_a) { Undefined },
+    )
     realm_props["evalScript"] = @runtime.make_native_func(
       name="evalScript",
       length=1,
+      realm_state=Some(ri.realm_state),
       fn(es_args) raise {
         let code = if es_args.length() > 0 {
           match es_args[0] {
@@ -2281,13 +2288,18 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
         ri.run(prog.stmts)
       },
     )
-    realm_props["createRealm"] = @runtime.make_native_func(name="createRealm", _a => {
-      let inner = (ri.stdlib_hooks.create_realm)()
-      make_realm_dollar262(inner)
-    })
+    realm_props["createRealm"] = @runtime.make_native_func(
+      name="createRealm",
+      realm_state=Some(ri.realm_state),
+      _a => {
+        let inner = (ri.stdlib_hooks.create_realm)()
+        make_realm_dollar262(inner)
+      },
+    )
     realm_props["detachArrayBuffer"] = @runtime.make_native_func(
       name="detachArrayBuffer",
       length=1,
+      realm_state=Some(ri.realm_state),
       fn(a) raise {
         if a.length() == 0 {
           raise @errors.TypeError(

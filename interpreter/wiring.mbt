@@ -39,7 +39,9 @@ fn make_stdlib_hooks() -> @runtime.StdlibHooks {
     get_string_method: fn(s, prop, realm_state, annex_b) {
       @stdlib.get_string_method(s, prop, realm_state, annex_b~)
     },
-    get_number_method: fn(obj, prop) { @stdlib.get_number_method(obj, prop) },
+    get_number_method: fn(obj, prop, realm_state) {
+      @stdlib.get_number_method(obj, prop, realm_state)
+    },
     get_array_method_with_interp: fn(data, prop, realm_state) {
       @stdlib.get_array_method_with_interp(data, prop, realm_state)
     },

@@ -7,7 +7,9 @@ pub fn get_array_method(
   match prop {
     "push" => {
       let arr = data
-      @runtime.make_native_func(name="push", fn(args) raise {
+      @runtime.make_native_func(name="push", realm_state=Some(realm_state), fn(
+        args,
+      ) raise {
         // §23.1.3.20 step 6: Set(A, "length", newLen) — throws if length
         // is non-writable. We must reject BEFORE mutating elements.
         if args.length() > 0 && !arr.length_writable {
@@ -23,7 +25,9 @@ pub fn get_array_method(
     }
     "pop" => {
       let arr = data
-      @runtime.make_native_func(name="pop", fn(_args) raise {
+      @runtime.make_native_func(name="pop", realm_state=Some(realm_state), fn(
+        _args,
+      ) raise {
         if arr.elements.length() == 0 {
           // §23.1.3.19 step 3.b.ii: even for an empty array, pop attempts
           // Set(A, "length", 0), which throws when length is non-writable.
@@ -45,7 +49,9 @@ pub fn get_array_method(
     }
     "shift" => {
       let arr = data
-      @runtime.make_native_func(name="shift", fn(_args) raise {
+      @runtime.make_native_func(name="shift", realm_state=Some(realm_state), fn(
+        _args,
+      ) raise {
         if arr.elements.length() == 0 {
           if !arr.length_writable {
             raise @errors.TypeError(
@@ -75,7 +81,9 @@ pub fn get_array_method(
     }
     "unshift" => {
       let arr = data
-      @runtime.make_native_func(name="unshift", fn(args) raise {
+      @runtime.make_native_func(name="unshift", realm_state=Some(realm_state), fn(
+        args,
+      ) raise {
         if args.length() > 0 && !arr.length_writable {
           raise @errors.TypeError(
             message="Cannot assign to read only property 'length' of array",
@@ -99,7 +107,9 @@ pub fn get_array_method(
     }
     "join" => {
       let arr = data
-      @runtime.make_native_func(name="join", fn(args) {
+      @runtime.make_native_func(name="join", realm_state=Some(realm_state), fn(
+        args,
+      ) {
         let sep = if args.length() > 0 {
           match args[0] {
             Undefined => ","
@@ -120,43 +130,51 @@ pub fn get_array_method(
     "indexOf" | "lastIndexOf" => Undefined // Delegated to Array.prototype (hole handling)
     "includes" => {
       let arr = data
-      @runtime.make_native_func(name="includes", fn(args) raise {
-        let search = if args.length() > 0 { args[0] } else { Undefined }
-        let from_idx = if args.length() > 1 {
-          @runtime.to_number(args[1]).to_int()
-        } else {
-          0
-        }
-        let len = arr.elements.length()
-        let start = if from_idx < 0 {
-          let s = len + from_idx
-          if s < 0 {
-            0
+      @runtime.make_native_func(
+        name="includes",
+        realm_state=Some(realm_state),
+        fn(args) raise {
+          let search = if args.length() > 0 { args[0] } else { Undefined }
+          let from_idx = if args.length() > 1 {
+            @runtime.to_number(args[1]).to_int()
           } else {
-            s
+            0
           }
-        } else {
-          from_idx
-        }
-        for i = start; i < len; i = i + 1 {
-          if same_value_zero(arr.elements[i], search) {
-            return Value::Bool(true)
+          let len = arr.elements.length()
+          let start = if from_idx < 0 {
+            let s = len + from_idx
+            if s < 0 {
+              0
+            } else {
+              s
+            }
+          } else {
+            from_idx
           }
-        }
-        Value::Bool(false)
-      })
+          for i = start; i < len; i = i + 1 {
+            if same_value_zero(arr.elements[i], search) {
+              return Value::Bool(true)
+            }
+          }
+          Value::Bool(false)
+        },
+      )
     }
     "slice" | "concat" => Undefined // Delegated to Array.prototype (species support)
     "reverse" => {
       let arr = data
-      @runtime.make_native_func(name="reverse", fn(_args) {
+      @runtime.make_native_func(name="reverse", realm_state=Some(realm_state), fn(
+        _args,
+      ) {
         arr.elements.rev_in_place()
         Value::Array(arr)
       })
     }
     "fill" => {
       let arr = data
-      @runtime.make_native_func(name="fill", fn(args) raise {
+      @runtime.make_native_func(name="fill", realm_state=Some(realm_state), fn(
+        args,
+      ) raise {
         let fill_val = if args.length() > 0 { args[0] } else { Undefined }
         let alen = arr.elements.length()
         let mut start = if args.length() > 1 {
@@ -202,19 +220,25 @@ pub fn get_array_method(
     }
     "toString" => {
       let arr = data
-      @runtime.make_native_func(name="toString", fn(_args) {
-        let parts : Array[String] = arr.elements.map(fn(v) {
-          match v {
-            Null | Undefined => ""
-            _ => v.to_string()
-          }
-        })
-        Value::String_(parts.join(","))
-      })
+      @runtime.make_native_func(
+        name="toString",
+        realm_state=Some(realm_state),
+        fn(_args) {
+          let parts : Array[String] = arr.elements.map(fn(v) {
+            match v {
+              Null | Undefined => ""
+              _ => v.to_string()
+            }
+          })
+          Value::String_(parts.join(","))
+        },
+      )
     }
     "at" => {
       let arr = data
-      @runtime.make_native_func(name="at", fn(args) raise {
+      @runtime.make_native_func(name="at", realm_state=Some(realm_state), fn(
+        args,
+      ) raise {
         // Array.prototype.at() - access element at index (supports negative)
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -232,114 +256,136 @@ pub fn get_array_method(
     }
     "copyWithin" => {
       let arr = data
-      @runtime.make_native_func(name="copyWithin", fn(args) raise {
-        // Array.prototype.copyWithin(target, start, end?)
-        let len = arr.elements.length()
-        let mut target = if args.length() > 0 {
-          @runtime.to_number(args[0]).to_int()
-        } else {
-          0
-        }
-        let mut start = if args.length() > 1 {
-          @runtime.to_number(args[1]).to_int()
-        } else {
-          0
-        }
-        let mut end = if args.length() > 2 {
-          match args[2] {
-            Undefined => len
-            _ => @runtime.to_number(args[2]).to_int()
+      @runtime.make_native_func(
+        name="copyWithin",
+        realm_state=Some(realm_state),
+        fn(args) raise {
+          // Array.prototype.copyWithin(target, start, end?)
+          let len = arr.elements.length()
+          let mut target = if args.length() > 0 {
+            @runtime.to_number(args[0]).to_int()
+          } else {
+            0
           }
-        } else {
-          len
-        }
-        // Normalize negative indices
-        if target < 0 {
-          target = len + target
+          let mut start = if args.length() > 1 {
+            @runtime.to_number(args[1]).to_int()
+          } else {
+            0
+          }
+          let mut end = if args.length() > 2 {
+            match args[2] {
+              Undefined => len
+              _ => @runtime.to_number(args[2]).to_int()
+            }
+          } else {
+            len
+          }
+          // Normalize negative indices
           if target < 0 {
-            target = 0
-          }
-        }
-        if start < 0 {
-          start = len + start
-          if start < 0 {
-            start = 0
-          }
-        }
-        if end < 0 {
-          end = len + end
-          if end < 0 {
-            end = 0
-          }
-        }
-        if end > len {
-          end = len
-        }
-        // Copy elements
-        let count = if end - start < len - target {
-          end - start
-        } else {
-          len - target
-        }
-        if count > 0 {
-          // Copy to temporary first to handle overlapping
-          let temp : Array[Value] = []
-          for i = start; i < start + count; i = i + 1 {
-            temp.push(arr.elements[i])
-          }
-          for i = 0; i < count; i = i + 1 {
-            if target + i < len {
-              arr.elements[target + i] = temp[i]
+            target = len + target
+            if target < 0 {
+              target = 0
             }
           }
-        }
-        Value::Array(arr)
-      })
+          if start < 0 {
+            start = len + start
+            if start < 0 {
+              start = 0
+            }
+          }
+          if end < 0 {
+            end = len + end
+            if end < 0 {
+              end = 0
+            }
+          }
+          if end > len {
+            end = len
+          }
+          // Copy elements
+          let count = if end - start < len - target {
+            end - start
+          } else {
+            len - target
+          }
+          if count > 0 {
+            // Copy to temporary first to handle overlapping
+            let temp : Array[Value] = []
+            for i = start; i < start + count; i = i + 1 {
+              temp.push(arr.elements[i])
+            }
+            for i = 0; i < count; i = i + 1 {
+              if target + i < len {
+                arr.elements[target + i] = temp[i]
+              }
+            }
+          }
+          Value::Array(arr)
+        },
+      )
     }
     "entries" => {
       let arr = data
-      @runtime.make_method_func(name="entries", length=0, fn(_this_val, _args) {
-        let result : Array[Value] = []
-        for i = 0; i < arr.elements.length(); i = i + 1 {
-          result.push(
-            @runtime.make_array([Value::Number(i.to_double()), arr.elements[i]]),
-          )
-        }
-        realm_state.make_array_iterator_value({
-          elements: result,
-          bag: @runtime.PropertyBag(),
-          length_writable: true,
-          holes: {},
-          extensible: true,
-        })
-      })
+      @runtime.make_method_func(
+        name="entries",
+        length=0,
+        realm_state=Some(realm_state),
+        fn(_this_val, _args) {
+          let result : Array[Value] = []
+          for i = 0; i < arr.elements.length(); i = i + 1 {
+            result.push(
+              @runtime.make_array([
+                Value::Number(i.to_double()),
+                arr.elements[i],
+              ]),
+            )
+          }
+          realm_state.make_array_iterator_value({
+            elements: result,
+            bag: @runtime.PropertyBag(),
+            length_writable: true,
+            holes: {},
+            extensible: true,
+          })
+        },
+      )
     }
     "keys" => {
       let arr = data
-      @runtime.make_method_func(name="keys", length=0, fn(_this_val, _args) {
-        let result : Array[Value] = []
-        for i = 0; i < arr.elements.length(); i = i + 1 {
-          result.push(Value::Number(i.to_double()))
-        }
-        realm_state.make_array_iterator_value({
-          elements: result,
-          bag: @runtime.PropertyBag(),
-          length_writable: true,
-          holes: {},
-          extensible: true,
-        })
-      })
+      @runtime.make_method_func(
+        name="keys",
+        length=0,
+        realm_state=Some(realm_state),
+        fn(_this_val, _args) {
+          let result : Array[Value] = []
+          for i = 0; i < arr.elements.length(); i = i + 1 {
+            result.push(Value::Number(i.to_double()))
+          }
+          realm_state.make_array_iterator_value({
+            elements: result,
+            bag: @runtime.PropertyBag(),
+            length_writable: true,
+            holes: {},
+            extensible: true,
+          })
+        },
+      )
     }
     "values" => {
       let arr = data
-      @runtime.make_method_func(name="values", length=0, fn(_this_val, _args) {
-        realm_state.make_array_iterator_value(arr)
-      })
+      @runtime.make_method_func(
+        name="values",
+        length=0,
+        realm_state=Some(realm_state),
+        fn(_this_val, _args) { realm_state.make_array_iterator_value(arr) },
+      )
     }
     "splice" => Undefined // Delegated to Array.prototype (species support)
     "sort" => {
       let arr = data
-      @runtime.make_native_func(name="sort", fn(_args) {
+      @runtime.make_native_func(name="sort", realm_state=Some(realm_state), fn(
+        _args,
+      ) {
         // Default sort: undefined goes to end, then compare as strings
         arr.elements.sort_by(fn(a, b) {
           if a is Undefined && b is Undefined {
@@ -381,182 +427,193 @@ pub fn get_array_method_with_interp(
     "every" | "some" => Undefined // Delegated to Array.prototype
     "toReversed" => {
       let arr = data
-      @runtime.make_native_func(name="toReversed", fn(_args) {
-        // Non-mutating reverse
-        let result : Array[Value] = []
-        for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
-          result.push(arr.elements[i])
-        }
-        @runtime.make_array(result)
-      })
+      @runtime.make_native_func(
+        name="toReversed",
+        realm_state=Some(realm_state),
+        fn(_args) {
+          // Non-mutating reverse
+          let result : Array[Value] = []
+          for i = arr.elements.length() - 1; i >= 0; i = i - 1 {
+            result.push(arr.elements[i])
+          }
+          @runtime.make_array(result)
+        },
+      )
     }
     "toSorted" => {
       let arr = data
-      @runtime.make_interp_method_func(name="toSorted", length=1, fn(
-        interp,
-        this_val,
-        args,
-      ) raise {
-        let _ = this_val
-        // Create a copy of the array
-        let result : Array[Value] = []
-        for el in arr.elements {
-          result.push(el)
-        }
-        // Sort the copy
-        if args.length() > 0 {
-          match args[0] {
-            Undefined =>
-              // Default sort: undefined goes to end
-              result.sort_by(fn(a, b) {
-                if a is Undefined && b is Undefined {
-                  return 0
-                }
-                if a is Undefined {
-                  return 1
-                }
-                if b is Undefined {
-                  return -1
-                }
-                let sa = a.to_string()
-                let sb = b.to_string()
-                if sa < sb {
-                  -1
-                } else if sa > sb {
-                  1
-                } else {
-                  0
-                }
-              })
-            _ => {
-              let comparefn = args[0]
-              let loc = @token.Loc::default()
-              // Store any exception to re-throw after sort (spec requires propagation)
-              let mut caught_error : Error? = None
-              result.sort_by(fn(a, b) {
-                if a is Undefined && b is Undefined {
-                  return 0
-                }
-                if a is Undefined {
-                  return 1
-                }
-                if b is Undefined {
-                  return -1
-                }
-                // Skip comparisons if we already have an error
-                if caught_error is Some(_) {
-                  return 0
-                }
-                let compare_result = interp.call_value(
-                  comparefn,
-                  Undefined,
-                  [a, b],
-                  loc,
-                ) catch {
-                  e => {
-                    caught_error = Some(e)
+      @runtime.make_interp_method_func(
+        name="toSorted",
+        length=1,
+        realm_state=Some(realm_state),
+        fn(interp, this_val, args) raise {
+          let _ = this_val
+          // Create a copy of the array
+          let result : Array[Value] = []
+          for el in arr.elements {
+            result.push(el)
+          }
+          // Sort the copy
+          if args.length() > 0 {
+            match args[0] {
+              Undefined =>
+                // Default sort: undefined goes to end
+                result.sort_by(fn(a, b) {
+                  if a is Undefined && b is Undefined {
                     return 0
                   }
-                }
-                // Use sign-based comparison to avoid truncating fractional values
-                let cmp = @runtime.to_number(compare_result) catch {
-                  e => {
-                    caught_error = Some(e)
+                  if a is Undefined {
+                    return 1
+                  }
+                  if b is Undefined {
+                    return -1
+                  }
+                  let sa = a.to_string()
+                  let sb = b.to_string()
+                  if sa < sb {
+                    -1
+                  } else if sa > sb {
+                    1
+                  } else {
+                    0
+                  }
+                })
+              _ => {
+                let comparefn = args[0]
+                let loc = @token.Loc::default()
+                // Store any exception to re-throw after sort (spec requires propagation)
+                let mut caught_error : Error? = None
+                result.sort_by(fn(a, b) {
+                  if a is Undefined && b is Undefined {
                     return 0
                   }
+                  if a is Undefined {
+                    return 1
+                  }
+                  if b is Undefined {
+                    return -1
+                  }
+                  // Skip comparisons if we already have an error
+                  if caught_error is Some(_) {
+                    return 0
+                  }
+                  let compare_result = interp.call_value(
+                    comparefn,
+                    Undefined,
+                    [a, b],
+                    loc,
+                  ) catch {
+                    e => {
+                      caught_error = Some(e)
+                      return 0
+                    }
+                  }
+                  // Use sign-based comparison to avoid truncating fractional values
+                  let cmp = @runtime.to_number(compare_result) catch {
+                    e => {
+                      caught_error = Some(e)
+                      return 0
+                    }
+                  }
+                  if cmp.is_nan() {
+                    0
+                  } else if cmp < 0.0 {
+                    -1
+                  } else if cmp > 0.0 {
+                    1
+                  } else {
+                    0
+                  }
+                })
+                // Re-throw any caught exception per spec
+                match caught_error {
+                  Some(e) => raise e
+                  None => ()
                 }
-                if cmp.is_nan() {
-                  0
-                } else if cmp < 0.0 {
-                  -1
-                } else if cmp > 0.0 {
-                  1
-                } else {
-                  0
-                }
-              })
-              // Re-throw any caught exception per spec
-              match caught_error {
-                Some(e) => raise e
-                None => ()
               }
             }
+          } else {
+            result.sort_by(fn(a, b) {
+              if a is Undefined && b is Undefined {
+                return 0
+              }
+              if a is Undefined {
+                return 1
+              }
+              if b is Undefined {
+                return -1
+              }
+              let sa = a.to_string()
+              let sb = b.to_string()
+              if sa < sb {
+                -1
+              } else if sa > sb {
+                1
+              } else {
+                0
+              }
+            })
           }
-        } else {
-          result.sort_by(fn(a, b) {
-            if a is Undefined && b is Undefined {
-              return 0
-            }
-            if a is Undefined {
-              return 1
-            }
-            if b is Undefined {
-              return -1
-            }
-            let sa = a.to_string()
-            let sb = b.to_string()
-            if sa < sb {
-              -1
-            } else if sa > sb {
-              1
-            } else {
-              0
-            }
-          })
-        }
-        @runtime.make_array(result)
-      })
+          @runtime.make_array(result)
+        },
+      )
     }
     "toSpliced" => {
       let arr = data
-      @runtime.make_native_func(name="toSpliced", fn(args) raise {
-        // Non-mutating splice
-        let len = arr.elements.length()
-        let mut start = if args.length() > 0 {
-          @runtime.to_number(args[0]).to_int()
-        } else {
-          0
-        }
-        if start < 0 {
-          start = len + start
-          if start < 0 {
-            start = 0
-          }
-        }
-        if start > len {
-          start = len
-        }
-        let del_count = if args.length() > 1 {
-          let d = @runtime.to_number(args[1]).to_int()
-          if d < 0 {
-            0
-          } else if d > len - start {
-            len - start
+      @runtime.make_native_func(
+        name="toSpliced",
+        realm_state=Some(realm_state),
+        fn(args) raise {
+          // Non-mutating splice
+          let len = arr.elements.length()
+          let mut start = if args.length() > 0 {
+            @runtime.to_number(args[0]).to_int()
           } else {
-            d
+            0
           }
-        } else {
-          len - start
-        }
-        let result : Array[Value] = []
-        // Copy before start
-        for i = 0; i < start; i = i + 1 {
-          result.push(arr.elements[i])
-        }
-        // Add new items
-        for i = 2; i < args.length(); i = i + 1 {
-          result.push(args[i])
-        }
-        // Copy after deleted portion
-        for i = start + del_count; i < len; i = i + 1 {
-          result.push(arr.elements[i])
-        }
-        @runtime.make_array(result)
-      })
+          if start < 0 {
+            start = len + start
+            if start < 0 {
+              start = 0
+            }
+          }
+          if start > len {
+            start = len
+          }
+          let del_count = if args.length() > 1 {
+            let d = @runtime.to_number(args[1]).to_int()
+            if d < 0 {
+              0
+            } else if d > len - start {
+              len - start
+            } else {
+              d
+            }
+          } else {
+            len - start
+          }
+          let result : Array[Value] = []
+          // Copy before start
+          for i = 0; i < start; i = i + 1 {
+            result.push(arr.elements[i])
+          }
+          // Add new items
+          for i = 2; i < args.length(); i = i + 1 {
+            result.push(args[i])
+          }
+          // Copy after deleted portion
+          for i = start + del_count; i < len; i = i + 1 {
+            result.push(arr.elements[i])
+          }
+          @runtime.make_array(result)
+        },
+      )
     }
     "with" => {
       let arr = data
-      @runtime.make_native_func(name="with", fn(args) raise {
+      @runtime.make_native_func(name="with", realm_state=Some(realm_state), fn(
+        args,
+      ) raise {
         // Non-mutating element replacement
         let idx = if args.length() > 0 {
           @runtime.to_number(args[0]).to_int()
@@ -584,130 +641,131 @@ pub fn get_array_method_with_interp(
     "sort" => {
       // Sort with optional compareFn needs InterpreterCallable
       let arr = data
-      @runtime.make_interp_method_func(name="sort", length=1, fn(
-        interp,
-        this_val,
-        args,
-      ) raise {
-        let _ = this_val
-        // Validate comparefn before sorting
-        if args.length() > 0 {
-          let comparefn = args[0]
-          match comparefn {
-            Undefined => ()
-            _ =>
-              if !@runtime.is_callable(comparefn) {
-                raise @errors.TypeError(
-                  message=@runtime.to_js_string(comparefn) +
-                    " is not a function",
-                )
-              }
-          }
-        }
-        if args.length() > 0 {
-          match args[0] {
-            Undefined =>
-              // Default sort: undefined goes to end
-              arr.elements.sort_by(fn(a, b) {
-                if a is Undefined && b is Undefined {
-                  return 0
+      @runtime.make_interp_method_func(
+        name="sort",
+        length=1,
+        realm_state=Some(realm_state),
+        fn(interp, this_val, args) raise {
+          let _ = this_val
+          // Validate comparefn before sorting
+          if args.length() > 0 {
+            let comparefn = args[0]
+            match comparefn {
+              Undefined => ()
+              _ =>
+                if !@runtime.is_callable(comparefn) {
+                  raise @errors.TypeError(
+                    message=@runtime.to_js_string(comparefn) +
+                      " is not a function",
+                  )
                 }
-                if a is Undefined {
-                  return 1
-                }
-                if b is Undefined {
-                  return -1
-                }
-                let sa = a.to_string()
-                let sb = b.to_string()
-                if sa < sb {
-                  -1
-                } else if sa > sb {
-                  1
-                } else {
-                  0
-                }
-              })
-            _ => {
-              let comparefn = args[0]
-              let loc = @token.Loc::default()
-              // Store any exception to re-throw after sort (spec requires propagation)
-              let mut caught_error : Error? = None
-              arr.elements.sort_by(fn(a, b) {
-                // Per spec: undefined sorts to end even with comparefn
-                if a is Undefined && b is Undefined {
-                  return 0
-                }
-                if a is Undefined {
-                  return 1
-                }
-                if b is Undefined {
-                  return -1
-                }
-                // Skip comparisons if we already have an error
-                if caught_error is Some(_) {
-                  return 0
-                }
-                let result = interp.call_value(
-                  comparefn,
-                  Undefined,
-                  [a, b],
-                  loc,
-                ) catch {
-                  e => {
-                    caught_error = Some(e)
-                    return 0
-                  }
-                }
-                // Use sign-based comparison to avoid truncating fractional values
-                let cmp = @runtime.to_number(result) catch {
-                  e => {
-                    caught_error = Some(e)
-                    return 0
-                  }
-                }
-                if cmp.is_nan() {
-                  0
-                } else if cmp < 0.0 {
-                  -1
-                } else if cmp > 0.0 {
-                  1
-                } else {
-                  0
-                }
-              })
-              // Re-throw any caught exception per spec
-              match caught_error {
-                Some(e) => raise e
-                None => ()
-              }
             }
           }
-        } else {
-          arr.elements.sort_by(fn(a, b) {
-            // Per spec: undefined sorts to end
-            if a is Undefined && b is Undefined {
-              return 0
+          if args.length() > 0 {
+            match args[0] {
+              Undefined =>
+                // Default sort: undefined goes to end
+                arr.elements.sort_by(fn(a, b) {
+                  if a is Undefined && b is Undefined {
+                    return 0
+                  }
+                  if a is Undefined {
+                    return 1
+                  }
+                  if b is Undefined {
+                    return -1
+                  }
+                  let sa = a.to_string()
+                  let sb = b.to_string()
+                  if sa < sb {
+                    -1
+                  } else if sa > sb {
+                    1
+                  } else {
+                    0
+                  }
+                })
+              _ => {
+                let comparefn = args[0]
+                let loc = @token.Loc::default()
+                // Store any exception to re-throw after sort (spec requires propagation)
+                let mut caught_error : Error? = None
+                arr.elements.sort_by(fn(a, b) {
+                  // Per spec: undefined sorts to end even with comparefn
+                  if a is Undefined && b is Undefined {
+                    return 0
+                  }
+                  if a is Undefined {
+                    return 1
+                  }
+                  if b is Undefined {
+                    return -1
+                  }
+                  // Skip comparisons if we already have an error
+                  if caught_error is Some(_) {
+                    return 0
+                  }
+                  let result = interp.call_value(
+                    comparefn,
+                    Undefined,
+                    [a, b],
+                    loc,
+                  ) catch {
+                    e => {
+                      caught_error = Some(e)
+                      return 0
+                    }
+                  }
+                  // Use sign-based comparison to avoid truncating fractional values
+                  let cmp = @runtime.to_number(result) catch {
+                    e => {
+                      caught_error = Some(e)
+                      return 0
+                    }
+                  }
+                  if cmp.is_nan() {
+                    0
+                  } else if cmp < 0.0 {
+                    -1
+                  } else if cmp > 0.0 {
+                    1
+                  } else {
+                    0
+                  }
+                })
+                // Re-throw any caught exception per spec
+                match caught_error {
+                  Some(e) => raise e
+                  None => ()
+                }
+              }
             }
-            if a is Undefined {
-              return 1
-            }
-            if b is Undefined {
-              return -1
-            }
-            let sa = a.to_string()
-            let sb = b.to_string()
-            if sa < sb {
-              -1
-            } else if sa > sb {
-              1
-            } else {
-              0
-            }
-          })
-        }
-        Value::Array(arr)
-      })
+          } else {
+            arr.elements.sort_by(fn(a, b) {
+              // Per spec: undefined sorts to end
+              if a is Undefined && b is Undefined {
+                return 0
+              }
+              if a is Undefined {
+                return 1
+              }
+              if b is Undefined {
+                return -1
+              }
+              let sa = a.to_string()
+              let sb = b.to_string()
+              if sa < sb {
+                -1
+              } else if sa > sb {
+                1
+              } else {
+                0
+              }
+            })
+          }
+          Value::Array(arr)
+        },
+      )
     }
     "concat" => Undefined // Delegated to Array.prototype (species support)
     _ => get_array_method(data, prop, realm_state)

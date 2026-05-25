@@ -1179,7 +1179,7 @@ pub fn setup_object_builtins(
           "isSealed": make_is_sealed_func(),
           "isExtensible": make_is_extensible_func(),
           "is": make_is_func(),
-          "fromEntries": make_from_entries_func(),
+          "fromEntries": make_from_entries_func(realm_state),
           "groupBy": make_group_by_func(),
           "hasOwn": make_has_own_func(),
           "setPrototypeOf": @runtime.make_interp_static_func(

@@ -166,11 +166,8 @@ pub fn Interpreter::new(
     stdlib_hooks,
     in_nonarrow_param_default_eval: false,
   }
-  let prev_interpreter = current_interpreter.val
-  // Setup still has compatibility factory calls that consult current_interpreter.
-  // Point them at the realm being initialized, not at an outer createRealm caller.
-  current_interpreter.val = Some(interp)
-  with_cleared_active_callee_realm_unit(fn() {
+  global.interpreter_context = Some(interp)
+  with_cleared_active_callee_realm_unit(realm_state, fn() {
     setup_builtins(global, output, realm_state, annex_b)
     // Bind 'this' and 'globalThis' in global scope
     global.def_builtin("this", global_this)
@@ -243,7 +240,6 @@ pub fn Interpreter::new(
     // Set up test262 harness host functions (print, $262)
     setup_harness(global, output, global_this)
   })
-  current_interpreter.val = prev_interpreter
   interp
 }
 
@@ -584,15 +580,10 @@ pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
-  // Store interpreter ref for ToPrimitive to use when calling user functions.
-  // Save and restore so nested run() calls (e.g. $262.evalScript) don't clobber
-  // the outer interpreter.
-  let prev_interpreter = current_interpreter.val
-  current_interpreter.val = Some(self)
   let strict = has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
   try {
-    let result = with_cleared_active_callee_realm(fn() raise {
+    let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
       // Static block-scoped redeclaration checks (block lexical-vs-var conflicts).
       self.validate_block_early_errors(stmts, strict)
       // Hoist var declarations and function declarations at global level
@@ -610,16 +601,13 @@ pub fn Interpreter::run(
       }
       last
     })
-    current_interpreter.val = prev_interpreter
     result
   } catch {
-    e => {
-      current_interpreter.val = prev_interpreter
+    e =>
       if is_js_catchable_error(e) {
         raise JsException(js_error_to_value_with_env(e, Some(self.global)))
       } else {
         raise e
       }
-    }
   }
 }

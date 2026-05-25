@@ -243,69 +243,74 @@ fn make_is_func() -> Value {
 }
 
 ///|
-fn make_from_entries_func() -> Value {
-  let object_proto = @runtime.get_obj_proto()
-  @runtime.make_native_func(name="fromEntries", length=1, fn(args) raise {
-    // Object.fromEntries() - create object from iterable of key-value pairs
-    let iterable = if args.length() > 0 { args[0] } else { Undefined }
-    let properties : Map[String, Value] = {}
-    match iterable {
-      Value::Array(data) =>
-        for entry in data.elements {
-          match entry {
-            Array(pair) =>
-              if pair.elements.length() >= 2 {
-                let key = pair.elements[0].to_string()
-                let value = pair.elements[1]
+fn make_from_entries_func(realm_state : @runtime.RealmState) -> Value {
+  let object_proto = realm_state.get_obj_proto()
+  @runtime.make_native_func(
+    name="fromEntries",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(args) raise {
+      // Object.fromEntries() - create object from iterable of key-value pairs
+      let iterable = if args.length() > 0 { args[0] } else { Undefined }
+      let properties : Map[String, Value] = {}
+      match iterable {
+        Value::Array(data) =>
+          for entry in data.elements {
+            match entry {
+              Array(pair) =>
+                if pair.elements.length() >= 2 {
+                  let key = pair.elements[0].to_string()
+                  let value = pair.elements[1]
+                  properties[key] = value
+                } else {
+                  raise @errors.TypeError(
+                    message="Iterator value is not an entry object",
+                  )
+                }
+              Object(obj) => {
+                // Object with numeric indices 0 and 1
+                let key = match obj.bag.properties.get("0") {
+                  Some(v) => v.to_string()
+                  None =>
+                    raise @errors.TypeError(
+                      message="Iterator value is not an entry object",
+                    )
+                }
+                let value = match obj.bag.properties.get("1") {
+                  Some(v) => v
+                  None =>
+                    raise @errors.TypeError(
+                      message="Iterator value is not an entry object",
+                    )
+                }
                 properties[key] = value
-              } else {
+              }
+              _ =>
                 raise @errors.TypeError(
                   message="Iterator value is not an entry object",
                 )
-              }
-            Object(obj) => {
-              // Object with numeric indices 0 and 1
-              let key = match obj.bag.properties.get("0") {
-                Some(v) => v.to_string()
-                None =>
-                  raise @errors.TypeError(
-                    message="Iterator value is not an entry object",
-                  )
-              }
-              let value = match obj.bag.properties.get("1") {
-                Some(v) => v
-                None =>
-                  raise @errors.TypeError(
-                    message="Iterator value is not an entry object",
-                  )
-              }
-              properties[key] = value
             }
-            _ =>
-              raise @errors.TypeError(
-                message="Iterator value is not an entry object",
-              )
           }
-        }
-      _ =>
-        raise @errors.TypeError(
-          message="Object.fromEntries requires an iterable argument",
-        )
-    }
-    Value::Object({
-      bag: {
-        properties,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-      },
-      prototype: object_proto,
-      callable: None,
-      class_name: "Object",
-      extensible: true,
-      arraybuffer_state: None,
-    })
-  })
+        _ =>
+          raise @errors.TypeError(
+            message="Object.fromEntries requires an iterable argument",
+          )
+      }
+      Value::Object({
+        bag: {
+          properties,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
+        prototype: object_proto,
+        callable: None,
+        class_name: "Object",
+        extensible: true,
+        arraybuffer_state: None,
+      })
+    },
+  )
 }
 
 ///|

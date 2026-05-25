@@ -644,7 +644,11 @@ pub fn Interpreter::partial_descriptor_from_attrs(
 /// Object.getOwnPropertyDescriptor / Reflect.getOwnPropertyDescriptor
 /// callers. Emits value + writable for data descriptors; get + set for
 /// accessor descriptors.
-pub fn descriptor_to_value(desc : PropDescriptor, value : Value) -> Value {
+pub fn descriptor_to_value(
+  desc : PropDescriptor,
+  value : Value,
+  realm_state? : RealmState? = None,
+) -> Value {
   let props : Map[String, Value] = {}
   if desc.is_accessor {
     props["get"] = desc.getter.unwrap_or(Undefined)
@@ -662,7 +666,7 @@ pub fn descriptor_to_value(desc : PropDescriptor, value : Value) -> Value {
       descriptors: {},
       symbol_descriptors: {},
     },
-    prototype: get_obj_proto(),
+    prototype: get_obj_proto(realm_state~),
     extensible: true,
     arraybuffer_state: None,
     callable: None,

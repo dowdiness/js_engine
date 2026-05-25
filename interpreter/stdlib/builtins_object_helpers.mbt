@@ -118,6 +118,7 @@ pub fn make_data_desc_obj(
   writable : Bool,
   enumerable : Bool,
   configurable : Bool,
+  realm_state? : @runtime.RealmState? = None,
 ) -> Value {
   Value::Object({
     bag: {
@@ -131,7 +132,7 @@ pub fn make_data_desc_obj(
       descriptors: {},
       symbol_descriptors: {},
     },
-    prototype: @runtime.get_obj_proto(),
+    prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,
     class_name: "Object",
     extensible: true,
@@ -146,6 +147,7 @@ pub fn make_accessor_desc_obj(
   setter_val : Value,
   enumerable : Bool,
   configurable : Bool,
+  realm_state? : @runtime.RealmState? = None,
 ) -> Value {
   Value::Object({
     bag: {
@@ -159,7 +161,7 @@ pub fn make_accessor_desc_obj(
       descriptors: {},
       symbol_descriptors: {},
     },
-    prototype: @runtime.get_obj_proto(),
+    prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,
     class_name: "Object",
     extensible: true,

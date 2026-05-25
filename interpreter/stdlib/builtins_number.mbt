@@ -56,6 +56,7 @@ fn setup_number_builtins(
   }
   let number_proto_props : Map[String, Value] = {}
   number_proto_props["toFixed"] = @runtime.make_method_func(
+    realm_state=Some(realm_state),
     name="toFixed",
     length=1,
     fn(this_val, args) raise {
@@ -131,6 +132,7 @@ fn setup_number_builtins(
     },
   )
   number_proto_props["toString"] = @runtime.make_method_func(
+    realm_state=Some(realm_state),
     name="toString",
     length=1,
     fn(this_val, args) raise {
@@ -202,6 +204,7 @@ fn setup_number_builtins(
     },
   )
   number_proto_props["valueOf"] = @runtime.make_method_func(
+    realm_state=Some(realm_state),
     name="valueOf",
     length=0,
     fn(this_val, _args) raise {
@@ -229,6 +232,7 @@ fn setup_number_builtins(
     },
   )
   number_proto_props["toPrecision"] = @runtime.make_method_func(
+    realm_state=Some(realm_state),
     name="toPrecision",
     length=1,
     fn(this_val, args) raise {
@@ -343,6 +347,7 @@ fn setup_number_builtins(
     },
   )
   number_proto_props["toExponential"] = @runtime.make_method_func(
+    realm_state=Some(realm_state),
     name="toExponential",
     length=1,
     fn(this_val, args) raise {
@@ -430,6 +435,7 @@ fn setup_number_builtins(
     },
   )
   number_proto_props["toLocaleString"] = @runtime.make_method_func(
+    realm_state=Some(realm_state),
     name="toLocaleString",
     length=0,
     fn(this_val, _args) raise {
@@ -485,7 +491,7 @@ fn setup_number_builtins(
       descriptors: number_proto_descs,
       symbol_descriptors: {},
     },
-    prototype: @runtime.get_obj_proto(),
+    prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
     class_name: "Number",
     extensible: true,
@@ -504,16 +510,20 @@ fn setup_number_builtins(
   number_props["POSITIVE_INFINITY"] = Value::Number(1.0 / 0.0)
   number_props["NEGATIVE_INFINITY"] = Value::Number(-1.0 / 0.0)
   number_props["NaN"] = Value::Number(0.0 / 0.0)
-  number_props["isNaN"] = @runtime.make_native_func(name="isNaN", length=1, fn(
-    args,
-  ) {
-    let val = if args.length() > 0 { args[0] } else { Undefined }
-    match val {
-      Value::Number(n) => Bool(n.is_nan())
-      _ => Value::Bool(false) // Number.isNaN does NOT coerce
-    }
-  })
+  number_props["isNaN"] = @runtime.make_native_func(
+    realm_state=Some(realm_state),
+    name="isNaN",
+    length=1,
+    fn(args) {
+      let val = if args.length() > 0 { args[0] } else { Undefined }
+      match val {
+        Value::Number(n) => Bool(n.is_nan())
+        _ => Value::Bool(false) // Number.isNaN does NOT coerce
+      }
+    },
+  )
   number_props["isFinite"] = @runtime.make_native_func(
+    realm_state=Some(realm_state),
     name="isFinite",
     length=1,
     fn(args) {
@@ -525,6 +535,7 @@ fn setup_number_builtins(
     },
   )
   number_props["isInteger"] = @runtime.make_native_func(
+    realm_state=Some(realm_state),
     name="isInteger",
     length=1,
     fn(args) {
@@ -541,6 +552,7 @@ fn setup_number_builtins(
     },
   )
   number_props["isSafeInteger"] = @runtime.make_native_func(
+    realm_state=Some(realm_state),
     name="isSafeInteger",
     length=1,
     fn(args) {
@@ -671,245 +683,311 @@ fn setup_number_builtins(
 ///|
 
 ///|
-pub fn get_number_method(num_val : Value, prop : String) -> Value {
+pub fn get_number_method(
+  num_val : Value,
+  prop : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
   match prop {
     "toFixed" =>
-      @runtime.make_method_func(name="toFixed", length=1, fn(
-        this_val,
-        args,
-      ) raise {
-        let n = @runtime.to_number(this_val)
-        let digits = if args.length() > 0 {
-          @runtime.to_number(args[0]).to_int()
-        } else {
-          0
-        }
-        if digits < 0 || digits > 100 {
-          raise @errors.RangeError(
-            message="toFixed() digits argument must be between 0 and 100",
-          )
-        }
-        if n.is_nan() {
-          return Value::String_("NaN")
-        }
-        if n.is_inf() {
-          return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        if digits == 0 {
-          let rounded = if n >= 0.0 {
-            (n + 0.5).floor()
+      @runtime.make_method_func(
+        realm_state=Some(realm_state),
+        name="toFixed",
+        length=1,
+        fn(this_val, args) raise {
+          let n = @runtime.to_number(this_val)
+          let digits = if args.length() > 0 {
+            @runtime.to_number(args[0]).to_int()
           } else {
-            -(-n + 0.5).floor()
+            0
           }
-          return Value::String_(rounded.to_int().to_string())
-        }
-        let multiplier = @math.pow(10.0, digits.to_double())
-        let shifted = n * multiplier
-        let rounded = if shifted >= 0.0 {
-          (shifted + 0.5).floor()
-        } else {
-          -(-shifted + 0.5).floor()
-        }
-        let rounded_abs = rounded.abs()
-        let int_part_abs = (rounded_abs / multiplier).floor()
-        let frac_abs = rounded_abs - int_part_abs * multiplier
-        let buf = StringBuilder::new()
-        if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
-          buf.write_string("-")
-        }
-        buf.write_string(int_part_abs.to_int().to_string())
-        buf.write_string(".")
-        let frac_str = frac_abs.to_int().to_string()
-        for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
-          buf.write_string("0")
-        }
-        buf.write_string(frac_str)
-        Value::String_(buf.to_string())
-      })
+          if digits < 0 || digits > 100 {
+            raise @errors.RangeError(
+              message="toFixed() digits argument must be between 0 and 100",
+            )
+          }
+          if n.is_nan() {
+            return Value::String_("NaN")
+          }
+          if n.is_inf() {
+            return Value::String_(
+              if n > 0.0 {
+                "Infinity"
+              } else {
+                "-Infinity"
+              },
+            )
+          }
+          if digits == 0 {
+            let rounded = if n >= 0.0 {
+              (n + 0.5).floor()
+            } else {
+              -(-n + 0.5).floor()
+            }
+            return Value::String_(rounded.to_int().to_string())
+          }
+          let multiplier = @math.pow(10.0, digits.to_double())
+          let shifted = n * multiplier
+          let rounded = if shifted >= 0.0 {
+            (shifted + 0.5).floor()
+          } else {
+            -(-shifted + 0.5).floor()
+          }
+          let rounded_abs = rounded.abs()
+          let int_part_abs = (rounded_abs / multiplier).floor()
+          let frac_abs = rounded_abs - int_part_abs * multiplier
+          let buf = StringBuilder::new()
+          if rounded < 0.0 || (n < 0.0 && rounded == 0.0) {
+            buf.write_string("-")
+          }
+          buf.write_string(int_part_abs.to_int().to_string())
+          buf.write_string(".")
+          let frac_str = frac_abs.to_int().to_string()
+          for _i = 0; _i < digits - frac_str.length(); _i = _i + 1 {
+            buf.write_string("0")
+          }
+          buf.write_string(frac_str)
+          Value::String_(buf.to_string())
+        },
+      )
     "toString" =>
-      @runtime.make_method_func(name="toString", length=1, fn(
-        this_val,
-        args,
-      ) raise {
-        let n = @runtime.to_number(this_val)
-        let radix = if args.length() > 0 && !(args[0] is Undefined) {
-          @runtime.to_number(args[0]).to_int()
-        } else {
-          10
-        }
-        if radix < 2 || radix > 36 {
-          raise @errors.RangeError(
-            message="toString() radix must be between 2 and 36",
-          )
-        }
-        if n.is_nan() {
-          return Value::String_("NaN")
-        }
-        if n.is_inf() {
-          return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        if radix == 10 {
-          return Value::String_(num_val.to_string())
-        }
-        let is_neg = n < 0.0
-        let mut val = n.abs().floor()
-        if val == 0.0 {
-          return Value::String_("0")
-        }
-        let digits_arr : Array[Char] = []
-        let digit_str = "0123456789abcdefghijklmnopqrstuvwxyz"
-        let digit_chars = digit_str.to_array()
-        while val > 0.0 {
-          let remainder = (val % radix.to_double()).to_int()
-          digits_arr.push(digit_chars[remainder])
-          val = (val / radix.to_double()).floor()
-        }
-        digits_arr.rev_in_place()
-        let buf = StringBuilder::new()
-        if is_neg {
-          buf.write_string("-")
-        }
-        for c in digits_arr {
-          buf.write_char(c)
-        }
-        Value::String_(buf.to_string())
-      })
+      @runtime.make_method_func(
+        realm_state=Some(realm_state),
+        name="toString",
+        length=1,
+        fn(this_val, args) raise {
+          let n = @runtime.to_number(this_val)
+          let radix = if args.length() > 0 && !(args[0] is Undefined) {
+            @runtime.to_number(args[0]).to_int()
+          } else {
+            10
+          }
+          if radix < 2 || radix > 36 {
+            raise @errors.RangeError(
+              message="toString() radix must be between 2 and 36",
+            )
+          }
+          if n.is_nan() {
+            return Value::String_("NaN")
+          }
+          if n.is_inf() {
+            return Value::String_(
+              if n > 0.0 {
+                "Infinity"
+              } else {
+                "-Infinity"
+              },
+            )
+          }
+          if radix == 10 {
+            return Value::String_(num_val.to_string())
+          }
+          let is_neg = n < 0.0
+          let mut val = n.abs().floor()
+          if val == 0.0 {
+            return Value::String_("0")
+          }
+          let digits_arr : Array[Char] = []
+          let digit_str = "0123456789abcdefghijklmnopqrstuvwxyz"
+          let digit_chars = digit_str.to_array()
+          while val > 0.0 {
+            let remainder = (val % radix.to_double()).to_int()
+            digits_arr.push(digit_chars[remainder])
+            val = (val / radix.to_double()).floor()
+          }
+          digits_arr.rev_in_place()
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
+          for c in digits_arr {
+            buf.write_char(c)
+          }
+          Value::String_(buf.to_string())
+        },
+      )
     "valueOf" =>
-      @runtime.make_method_func(name="valueOf", length=0, fn(
-        this_val,
-        _args,
-      ) raise {
-        Value::Number(@runtime.to_number(this_val))
-      })
+      @runtime.make_method_func(
+        realm_state=Some(realm_state),
+        name="valueOf",
+        length=0,
+        fn(this_val, _args) raise {
+          Value::Number(@runtime.to_number(this_val))
+        },
+      )
     "toPrecision" =>
-      @runtime.make_method_func(name="toPrecision", length=1, fn(
-        this_val,
-        args,
-      ) raise {
-        let n = @runtime.to_number(this_val)
-        if args.length() == 0 {
-          return Value::String_(n.to_string())
-        }
-        match args[0] {
-          Undefined => return Value::String_(n.to_string())
-          _ => ()
-        }
-        let precision = @runtime.to_number(args[0]).to_int()
-        if precision < 1 || precision > 100 {
-          raise @errors.RangeError(
-            message="toPrecision() argument must be between 1 and 100",
-          )
-        }
-        if n.is_nan() {
-          return Value::String_("NaN")
-        }
-        if n.is_inf() {
-          return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        let is_neg = n < 0.0
-        let abs_n = n.abs()
-        if abs_n == 0.0 {
-          let buf = StringBuilder::new()
-          if is_neg {
-            buf.write_string("-")
+      @runtime.make_method_func(
+        realm_state=Some(realm_state),
+        name="toPrecision",
+        length=1,
+        fn(this_val, args) raise {
+          let n = @runtime.to_number(this_val)
+          if args.length() == 0 {
+            return Value::String_(n.to_string())
           }
-          buf.write_char('0')
-          if precision > 1 {
-            buf.write_char('.')
-            for _i = 1; _i < precision; _i = _i + 1 {
-              buf.write_char('0')
+          match args[0] {
+            Undefined => return Value::String_(n.to_string())
+            _ => ()
+          }
+          let precision = @runtime.to_number(args[0]).to_int()
+          if precision < 1 || precision > 100 {
+            raise @errors.RangeError(
+              message="toPrecision() argument must be between 1 and 100",
+            )
+          }
+          if n.is_nan() {
+            return Value::String_("NaN")
+          }
+          if n.is_inf() {
+            return Value::String_(
+              if n > 0.0 {
+                "Infinity"
+              } else {
+                "-Infinity"
+              },
+            )
+          }
+          let is_neg = n < 0.0
+          let abs_n = n.abs()
+          if abs_n == 0.0 {
+            let buf = StringBuilder::new()
+            if is_neg {
+              buf.write_string("-")
             }
-          }
-          return Value::String_(buf.to_string())
-        }
-        let log_val = @math.log10(abs_n)
-        let mut exp = log_val.floor().to_int()
-        if exp >= precision || exp < -6 {
-          let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
-          // Round mantissa and check for overflow
-          let mult = @math.pow(10.0, (precision - 1).to_double())
-          let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
-          if rounded_mantissa >= 10.0 {
-            mantissa = rounded_mantissa / 10.0
-            exp = exp + 1
-          } else {
-            mantissa = rounded_mantissa
-          }
-          let buf = StringBuilder::new()
-          if is_neg {
-            buf.write_string("-")
-          }
-          let mantissa_str = format_number_precision(mantissa, precision)
-          buf.write_string(mantissa_str)
-          buf.write_char('e')
-          if exp >= 0 {
-            buf.write_char('+')
-          }
-          buf.write_string(exp.to_string())
-          return Value::String_(buf.to_string())
-        }
-        let decimal_places = precision - exp - 1
-        let buf = StringBuilder::new()
-        if is_neg {
-          buf.write_string("-")
-        }
-        if decimal_places >= 0 {
-          let multiplier = @math.pow(10.0, decimal_places.to_double())
-          let shifted = abs_n * multiplier
-          let rounded = (shifted + 0.5).floor()
-          let int_val = rounded.to_int64()
-          let int_str = int_val.to_string()
-          let int_len = int_str.length()
-          if int_len <= decimal_places {
-            buf.write_string("0.")
-            for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
-              buf.write_char('0')
-            }
-            buf.write_string(int_str)
-          } else {
-            let int_part_len = int_len - decimal_places
-            let chars = int_str.to_array()
-            for i = 0; i < int_part_len; i = i + 1 {
-              buf.write_char(chars[i])
-            }
-            if decimal_places > 0 {
+            buf.write_char('0')
+            if precision > 1 {
               buf.write_char('.')
-              for i = int_part_len; i < int_len; i = i + 1 {
-                buf.write_char(chars[i])
+              for _i = 1; _i < precision; _i = _i + 1 {
+                buf.write_char('0')
               }
             }
+            return Value::String_(buf.to_string())
           }
-        } else {
-          let multiplier = @math.pow(10.0, (-decimal_places).to_double())
-          let shifted = abs_n / multiplier
-          let rounded = (shifted + 0.5).floor()
-          buf.write_string((rounded * multiplier).to_int().to_string())
-        }
-        Value::String_(buf.to_string())
-      })
-    "toExponential" =>
-      @runtime.make_method_func(name="toExponential", length=1, fn(
-        this_val,
-        args,
-      ) raise {
-        let n = @runtime.to_number(this_val)
-        if n.is_nan() {
-          return Value::String_("NaN")
-        }
-        if n.is_inf() {
-          return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
-        }
-        let is_neg = n < 0.0
-        let abs_n = n.abs()
-        if abs_n == 0.0 {
+          let log_val = @math.log10(abs_n)
+          let mut exp = log_val.floor().to_int()
+          if exp >= precision || exp < -6 {
+            let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+            // Round mantissa and check for overflow
+            let mult = @math.pow(10.0, (precision - 1).to_double())
+            let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
+            if rounded_mantissa >= 10.0 {
+              mantissa = rounded_mantissa / 10.0
+              exp = exp + 1
+            } else {
+              mantissa = rounded_mantissa
+            }
+            let buf = StringBuilder::new()
+            if is_neg {
+              buf.write_string("-")
+            }
+            let mantissa_str = format_number_precision(mantissa, precision)
+            buf.write_string(mantissa_str)
+            buf.write_char('e')
+            if exp >= 0 {
+              buf.write_char('+')
+            }
+            buf.write_string(exp.to_string())
+            return Value::String_(buf.to_string())
+          }
+          let decimal_places = precision - exp - 1
           let buf = StringBuilder::new()
           if is_neg {
             buf.write_string("-")
           }
-          buf.write_char('0')
+          if decimal_places >= 0 {
+            let multiplier = @math.pow(10.0, decimal_places.to_double())
+            let shifted = abs_n * multiplier
+            let rounded = (shifted + 0.5).floor()
+            let int_val = rounded.to_int64()
+            let int_str = int_val.to_string()
+            let int_len = int_str.length()
+            if int_len <= decimal_places {
+              buf.write_string("0.")
+              for _i = 0; _i < decimal_places - int_len; _i = _i + 1 {
+                buf.write_char('0')
+              }
+              buf.write_string(int_str)
+            } else {
+              let int_part_len = int_len - decimal_places
+              let chars = int_str.to_array()
+              for i = 0; i < int_part_len; i = i + 1 {
+                buf.write_char(chars[i])
+              }
+              if decimal_places > 0 {
+                buf.write_char('.')
+                for i = int_part_len; i < int_len; i = i + 1 {
+                  buf.write_char(chars[i])
+                }
+              }
+            }
+          } else {
+            let multiplier = @math.pow(10.0, (-decimal_places).to_double())
+            let shifted = abs_n / multiplier
+            let rounded = (shifted + 0.5).floor()
+            buf.write_string((rounded * multiplier).to_int().to_string())
+          }
+          Value::String_(buf.to_string())
+        },
+      )
+    "toExponential" =>
+      @runtime.make_method_func(
+        realm_state=Some(realm_state),
+        name="toExponential",
+        length=1,
+        fn(this_val, args) raise {
+          let n = @runtime.to_number(this_val)
+          if n.is_nan() {
+            return Value::String_("NaN")
+          }
+          if n.is_inf() {
+            return Value::String_(
+              if n > 0.0 {
+                "Infinity"
+              } else {
+                "-Infinity"
+              },
+            )
+          }
+          let is_neg = n < 0.0
+          let abs_n = n.abs()
+          if abs_n == 0.0 {
+            let buf = StringBuilder::new()
+            if is_neg {
+              buf.write_string("-")
+            }
+            buf.write_char('0')
+            if args.length() > 0 {
+              match args[0] {
+                Undefined => ()
+                _ => {
+                  let frac_digits = @runtime.to_number(args[0]).to_int()
+                  if frac_digits < 0 || frac_digits > 100 {
+                    raise @errors.RangeError(
+                      message="toExponential() argument must be between 0 and 100",
+                    )
+                  }
+                  if frac_digits > 0 {
+                    buf.write_char('.')
+                    for _i = 0; _i < frac_digits; _i = _i + 1 {
+                      buf.write_char('0')
+                    }
+                  }
+                }
+              }
+            }
+            buf.write_string("e+0")
+            return Value::String_(buf.to_string())
+          }
+          let log_val = @math.log10(abs_n)
+          let mut exp = log_val.floor().to_int()
+          let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
+          let buf = StringBuilder::new()
+          if is_neg {
+            buf.write_string("-")
+          }
           if args.length() > 0 {
             match args[0] {
-              Undefined => ()
+              Undefined => buf.write_string(mantissa.to_string())
               _ => {
                 let frac_digits = @runtime.to_number(args[0]).to_int()
                 if frac_digits < 0 || frac_digits > 100 {
@@ -917,59 +995,31 @@ pub fn get_number_method(num_val : Value, prop : String) -> Value {
                     message="toExponential() argument must be between 0 and 100",
                   )
                 }
-                if frac_digits > 0 {
-                  buf.write_char('.')
-                  for _i = 0; _i < frac_digits; _i = _i + 1 {
-                    buf.write_char('0')
-                  }
+                // Round mantissa and check for overflow
+                let precision = frac_digits + 1
+                let mult = @math.pow(10.0, (precision - 1).to_double())
+                let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
+                if rounded_mantissa >= 10.0 {
+                  mantissa = rounded_mantissa / 10.0
+                  exp = exp + 1
+                } else {
+                  mantissa = rounded_mantissa
                 }
+                let mantissa_str = format_number_precision(mantissa, precision)
+                buf.write_string(mantissa_str)
               }
             }
+          } else {
+            buf.write_string(mantissa.to_string())
           }
-          buf.write_string("e+0")
-          return Value::String_(buf.to_string())
-        }
-        let log_val = @math.log10(abs_n)
-        let mut exp = log_val.floor().to_int()
-        let mut mantissa = abs_n / @math.pow(10.0, exp.to_double())
-        let buf = StringBuilder::new()
-        if is_neg {
-          buf.write_string("-")
-        }
-        if args.length() > 0 {
-          match args[0] {
-            Undefined => buf.write_string(mantissa.to_string())
-            _ => {
-              let frac_digits = @runtime.to_number(args[0]).to_int()
-              if frac_digits < 0 || frac_digits > 100 {
-                raise @errors.RangeError(
-                  message="toExponential() argument must be between 0 and 100",
-                )
-              }
-              // Round mantissa and check for overflow
-              let precision = frac_digits + 1
-              let mult = @math.pow(10.0, (precision - 1).to_double())
-              let rounded_mantissa = (mantissa * mult + 0.5).floor() / mult
-              if rounded_mantissa >= 10.0 {
-                mantissa = rounded_mantissa / 10.0
-                exp = exp + 1
-              } else {
-                mantissa = rounded_mantissa
-              }
-              let mantissa_str = format_number_precision(mantissa, precision)
-              buf.write_string(mantissa_str)
-            }
+          buf.write_char('e')
+          if exp >= 0 {
+            buf.write_char('+')
           }
-        } else {
-          buf.write_string(mantissa.to_string())
-        }
-        buf.write_char('e')
-        if exp >= 0 {
-          buf.write_char('+')
-        }
-        buf.write_string(exp.to_string())
-        Value::String_(buf.to_string())
-      })
+          buf.write_string(exp.to_string())
+          Value::String_(buf.to_string())
+        },
+      )
     _ => Undefined
   }
 }

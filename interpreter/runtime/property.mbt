@@ -30,24 +30,7 @@ fn Interpreter::with_active_property_access_value(
   self : Interpreter,
   eval : () -> Value raise Error,
 ) -> Value raise Error {
-  match current_interpreter.val {
-    Some(interp) if same_realm_state(interp.realm_state, self.realm_state) =>
-      eval()
-    _ => {
-      let prev_interpreter = current_interpreter.val
-      current_interpreter.val = Some(self)
-      try {
-        let result = with_cleared_active_callee_realm(fn() raise { eval() })
-        current_interpreter.val = prev_interpreter
-        result
-      } catch {
-        e => {
-          current_interpreter.val = prev_interpreter
-          raise e
-        }
-      }
-    }
-  }
+  with_cleared_active_callee_realm(self.realm_state, fn() raise { eval() })
 }
 
 ///|
@@ -131,7 +114,11 @@ fn Interpreter::get_property_impl(
         }
       }
     Number(_) => {
-      let result = (self.stdlib_hooks.get_number_method)(obj, prop)
+      let result = (self.stdlib_hooks.get_number_method)(
+        obj,
+        prop,
+        self.realm_state,
+      )
       match result {
         Undefined => lookup_builtin_proto(self, obj, "Number", prop, loc)
         _ => result
@@ -146,7 +133,9 @@ fn Interpreter::get_property_impl(
           None => Undefined
         }
       } else if prop == "toString" {
-        make_native_func(name="toString", fn(_args) {
+        make_native_func(name="toString", realm_state=Some(self.realm_state), fn(
+          _args,
+        ) {
           match sym.description {
             Some(desc) => String_("Symbol(\{desc})")
             None => String_("Symbol()")
@@ -478,6 +467,7 @@ fn Interpreter::get_property_of_object(
                 extensible: true,
                 arraybuffer_state: None,
               }),
+              realm_state=Some(self.realm_state),
             )
           } else if prop == "apply" {
             return stamp_function_realm(
@@ -489,57 +479,63 @@ fn Interpreter::get_property_of_object(
                 extensible: true,
                 arraybuffer_state: None,
               }),
+              realm_state=Some(self.realm_state),
             )
           } else if prop == "bind" {
             let target = obj
             let target_length = get_func_length(callable)
             let target_proto = data.prototype
-            return make_native_func(name="bind", fn(args) {
-              let bind_this = if args.length() > 0 {
-                args[0]
-              } else {
-                Undefined
-              }
-              let bound_args : Array[Value] = []
-              for i = 1; i < args.length(); i = i + 1 {
-                bound_args.push(args[i])
-              }
-              let bound_name = get_bound_func_name(target)
-              let bound_length = {
-                let diff = target_length - bound_args.length()
-                if diff < 0 {
-                  0
+            return make_native_func(
+              name="bind",
+              realm_state=Some(self.realm_state),
+              fn(args) {
+                let bind_this = if args.length() > 0 {
+                  args[0]
                 } else {
-                  diff
+                  Undefined
                 }
-              }
-              let nf_desc : PropDescriptor = {
-                writable: false,
-                enumerable: false,
-                configurable: true,
-                getter: None,
-                setter: None,
-                is_accessor: false,
-              }
-              let bprops : Map[String, Value] = {}
-              bprops["name"] = String_(bound_name)
-              bprops["length"] = Number(bound_length.to_double())
-              stamp_function_realm(
-                Object({
-                  bag: {
-                    properties: bprops,
-                    symbol_properties: {},
-                    descriptors: { "name": nf_desc, "length": nf_desc },
-                    symbol_descriptors: {},
-                  },
-                  prototype: target_proto,
-                  callable: Some(BoundFunc(target, bind_this, bound_args)),
-                  class_name: "Function",
-                  extensible: true,
-                  arraybuffer_state: None,
-                }),
-              )
-            })
+                let bound_args : Array[Value] = []
+                for i = 1; i < args.length(); i = i + 1 {
+                  bound_args.push(args[i])
+                }
+                let bound_name = get_bound_func_name(target)
+                let bound_length = {
+                  let diff = target_length - bound_args.length()
+                  if diff < 0 {
+                    0
+                  } else {
+                    diff
+                  }
+                }
+                let nf_desc : PropDescriptor = {
+                  writable: false,
+                  enumerable: false,
+                  configurable: true,
+                  getter: None,
+                  setter: None,
+                  is_accessor: false,
+                }
+                let bprops : Map[String, Value] = {}
+                bprops["name"] = String_(bound_name)
+                bprops["length"] = Number(bound_length.to_double())
+                stamp_function_realm(
+                  Object({
+                    bag: {
+                      properties: bprops,
+                      symbol_properties: {},
+                      descriptors: { "name": nf_desc, "length": nf_desc },
+                      symbol_descriptors: {},
+                    },
+                    prototype: target_proto,
+                    callable: Some(BoundFunc(target, bind_this, bound_args)),
+                    class_name: "Function",
+                    extensible: true,
+                    arraybuffer_state: None,
+                  }),
+                  realm_state=Some(self.realm_state),
+                )
+              },
+            )
           } else if prop == "length" {
             // Return the number of formal parameters
             let param_count = get_func_length(callable)
@@ -595,9 +591,11 @@ fn Interpreter::get_property_of_object(
               ClassConstructor({ name: n, .. }) =>
                 "class " + n + " { [native code] }"
             }
-            return make_native_func(name="toString", fn(_args) {
-              String_(func_str)
-            })
+            return make_native_func(
+              name="toString",
+              realm_state=Some(self.realm_state),
+              fn(_args) { String_(func_str) },
+            )
           } else if prop == "prototype" {
             // Only constructable functions have a prototype property
             // Non-constructable (arrow functions, bound functions, etc.) return undefined
@@ -629,7 +627,7 @@ fn Interpreter::get_property_of_object(
                 // Create and memoize default prototype
                 let proto : Value = Object({
                   bag: PropertyBag(),
-                  prototype: get_obj_proto(),
+                  prototype: get_obj_proto(realm_state=Some(self.realm_state)),
                   callable: None,
                   class_name: "Object",
                   extensible: true,
@@ -646,44 +644,49 @@ fn Interpreter::get_property_of_object(
       // Objects with null prototype (Object.create(null)) should NOT have these
       if !(data.prototype is Null && data.callable is None) {
         if prop == "hasOwnProperty" {
-          return make_method_func(name="hasOwnProperty", length=1, fn(
-            this_val,
-            args,
-          ) {
-            let key_val = if args.length() > 0 { args[0] } else { Undefined }
-            match this_val {
-              Object(d) =>
-                match key_val {
-                  Symbol(sym) => Bool(d.bag.symbol_properties.contains(sym.id))
-                  _ => Bool(d.bag.properties.contains(key_val.to_string()))
-                }
-              Array(ad) =>
-                match key_val {
-                  Symbol(sym) =>
-                    Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
-                  _ => {
-                    let k = key_val.to_string()
-                    if k == "length" {
-                      return Bool(true)
-                    }
-                    let idx = @string.parse_int(k) catch { _ => -1 }
-                    if idx >= 0 &&
-                      idx.to_string() == k &&
-                      idx < ad.elements.length() {
-                      Bool(true)
-                    } else {
-                      Bool(get_array_named_prop(ad, k) is Some(_))
+          return make_method_func(
+            name="hasOwnProperty",
+            length=1,
+            realm_state=Some(self.realm_state),
+            fn(this_val, args) {
+              let key_val = if args.length() > 0 { args[0] } else { Undefined }
+              match this_val {
+                Object(d) =>
+                  match key_val {
+                    Symbol(sym) =>
+                      Bool(d.bag.symbol_properties.contains(sym.id))
+                    _ => Bool(d.bag.properties.contains(key_val.to_string()))
+                  }
+                Array(ad) =>
+                  match key_val {
+                    Symbol(sym) =>
+                      Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                    _ => {
+                      let k = key_val.to_string()
+                      if k == "length" {
+                        return Bool(true)
+                      }
+                      let idx = @string.parse_int(k) catch { _ => -1 }
+                      if idx >= 0 &&
+                        idx.to_string() == k &&
+                        idx < ad.elements.length() {
+                        Bool(true)
+                      } else {
+                        Bool(get_array_named_prop(ad, k) is Some(_))
+                      }
                     }
                   }
-                }
-              _ => Bool(false)
-            }
-          })
+                _ => Bool(false)
+              }
+            },
+          )
         }
         if prop == "toString" {
-          return make_native_func(name="toString", fn(_args) {
-            String_("[object Object]")
-          })
+          return make_native_func(
+            name="toString",
+            realm_state=Some(self.realm_state),
+            fn(_args) { String_("[object Object]") },
+          )
         }
       }
       Undefined
@@ -776,7 +779,7 @@ fn Interpreter::get_computed_property_impl(
       // For symbol keys, call the trap directly (invariant checks TODO)
       let key_str = match key {
         Symbol(_) => ""
-        _ => to_js_string(key)
+        _ => to_js_string(key, interp=Some(self))
       }
       match key {
         Symbol(_) => {
@@ -1068,7 +1071,7 @@ fn Interpreter::get_computed_property_impl(
           _ => ()
         }
       }
-      let prop = to_js_string(key)
+      let prop = to_js_string(key, interp=Some(self))
       // Check for accessor descriptor (getter) on own property
       match data.bag.descriptors.get(prop) {
         Some(desc) =>
@@ -1196,6 +1199,7 @@ fn Interpreter::get_computed_property_impl(
                     extensible: true,
                     arraybuffer_state: None,
                   }),
+                  realm_state=Some(self.realm_state),
                 )
               } else if prop == "apply" {
                 return stamp_function_realm(
@@ -1207,57 +1211,63 @@ fn Interpreter::get_computed_property_impl(
                     extensible: true,
                     arraybuffer_state: None,
                   }),
+                  realm_state=Some(self.realm_state),
                 )
               } else if prop == "bind" {
                 let target = obj
                 let target_length = get_func_length(callable)
                 let target_proto = data.prototype
-                return make_native_func(name="bind", fn(args) {
-                  let bind_this = if args.length() > 0 {
-                    args[0]
-                  } else {
-                    Undefined
-                  }
-                  let bound_args : Array[Value] = []
-                  for i = 1; i < args.length(); i = i + 1 {
-                    bound_args.push(args[i])
-                  }
-                  let bound_name = get_bound_func_name(target)
-                  let bound_length = {
-                    let diff = target_length - bound_args.length()
-                    if diff < 0 {
-                      0
+                return make_native_func(
+                  name="bind",
+                  realm_state=Some(self.realm_state),
+                  fn(args) {
+                    let bind_this = if args.length() > 0 {
+                      args[0]
                     } else {
-                      diff
+                      Undefined
                     }
-                  }
-                  let nf_desc : PropDescriptor = {
-                    writable: false,
-                    enumerable: false,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                    is_accessor: false,
-                  }
-                  let bprops : Map[String, Value] = {}
-                  bprops["name"] = String_(bound_name)
-                  bprops["length"] = Number(bound_length.to_double())
-                  stamp_function_realm(
-                    Object({
-                      bag: {
-                        properties: bprops,
-                        symbol_properties: {},
-                        descriptors: { "name": nf_desc, "length": nf_desc },
-                        symbol_descriptors: {},
-                      },
-                      prototype: target_proto,
-                      callable: Some(BoundFunc(target, bind_this, bound_args)),
-                      class_name: "Function",
-                      extensible: true,
-                      arraybuffer_state: None,
-                    }),
-                  )
-                })
+                    let bound_args : Array[Value] = []
+                    for i = 1; i < args.length(); i = i + 1 {
+                      bound_args.push(args[i])
+                    }
+                    let bound_name = get_bound_func_name(target)
+                    let bound_length = {
+                      let diff = target_length - bound_args.length()
+                      if diff < 0 {
+                        0
+                      } else {
+                        diff
+                      }
+                    }
+                    let nf_desc : PropDescriptor = {
+                      writable: false,
+                      enumerable: false,
+                      configurable: true,
+                      getter: None,
+                      setter: None,
+                      is_accessor: false,
+                    }
+                    let bprops : Map[String, Value] = {}
+                    bprops["name"] = String_(bound_name)
+                    bprops["length"] = Number(bound_length.to_double())
+                    stamp_function_realm(
+                      Object({
+                        bag: {
+                          properties: bprops,
+                          symbol_properties: {},
+                          descriptors: { "name": nf_desc, "length": nf_desc },
+                          symbol_descriptors: {},
+                        },
+                        prototype: target_proto,
+                        callable: Some(BoundFunc(target, bind_this, bound_args)),
+                        class_name: "Function",
+                        extensible: true,
+                        arraybuffer_state: None,
+                      }),
+                      realm_state=Some(self.realm_state),
+                    )
+                  },
+                )
               } else if prop == "length" {
                 // Return the number of formal parameters
                 let param_count = get_func_length(callable)
@@ -1314,9 +1324,11 @@ fn Interpreter::get_computed_property_impl(
                   ClassConstructor({ name: n, .. }) =>
                     "class " + n + " { [native code] }"
                 }
-                return make_native_func(name="toString", fn(_args) {
-                  String_(func_str)
-                })
+                return make_native_func(
+                  name="toString",
+                  realm_state=Some(self.realm_state),
+                  fn(_args) { String_(func_str) },
+                )
               } else if prop == "prototype" {
                 // Only constructable functions have a prototype property
                 // Non-constructable (arrow functions, bound functions, etc.) return undefined
@@ -1348,7 +1360,9 @@ fn Interpreter::get_computed_property_impl(
                     // Create and memoize default prototype
                     let proto : Value = Object({
                       bag: PropertyBag(),
-                      prototype: get_obj_proto(),
+                      prototype: get_obj_proto(
+                        realm_state=Some(self.realm_state),
+                      ),
                       callable: None,
                       class_name: "Object",
                       extensible: true,
@@ -1364,49 +1378,54 @@ fn Interpreter::get_computed_property_impl(
           // Built-in Object methods (only for objects that inherit from Object.prototype)
           if !(data.prototype is Null && data.callable is None) {
             if prop == "hasOwnProperty" {
-              return make_method_func(name="hasOwnProperty", length=1, fn(
-                this_val,
-                args,
-              ) {
-                let key_val = if args.length() > 0 {
-                  args[0]
-                } else {
-                  Undefined
-                }
-                match this_val {
-                  Object(d) =>
-                    match key_val {
-                      Symbol(sym) =>
-                        Bool(d.bag.symbol_properties.contains(sym.id))
-                      _ => Bool(d.bag.properties.contains(key_val.to_string()))
-                    }
-                  Array(ad) =>
-                    match key_val {
-                      Symbol(sym) =>
-                        Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
-                      _ => {
-                        let k = key_val.to_string()
-                        if k == "length" {
-                          return Bool(true)
-                        }
-                        let idx = @string.parse_int(k) catch { _ => -1 }
-                        if idx >= 0 &&
-                          idx.to_string() == k &&
-                          idx < ad.elements.length() {
-                          Bool(true)
-                        } else {
-                          Bool(get_array_named_prop(ad, k) is Some(_))
+              return make_method_func(
+                name="hasOwnProperty",
+                length=1,
+                realm_state=Some(self.realm_state),
+                fn(this_val, args) {
+                  let key_val = if args.length() > 0 {
+                    args[0]
+                  } else {
+                    Undefined
+                  }
+                  match this_val {
+                    Object(d) =>
+                      match key_val {
+                        Symbol(sym) =>
+                          Bool(d.bag.symbol_properties.contains(sym.id))
+                        _ =>
+                          Bool(d.bag.properties.contains(key_val.to_string()))
+                      }
+                    Array(ad) =>
+                      match key_val {
+                        Symbol(sym) =>
+                          Bool(get_array_symbol_prop(ad, sym.id) is Some(_))
+                        _ => {
+                          let k = key_val.to_string()
+                          if k == "length" {
+                            return Bool(true)
+                          }
+                          let idx = @string.parse_int(k) catch { _ => -1 }
+                          if idx >= 0 &&
+                            idx.to_string() == k &&
+                            idx < ad.elements.length() {
+                            Bool(true)
+                          } else {
+                            Bool(get_array_named_prop(ad, k) is Some(_))
+                          }
                         }
                       }
-                    }
-                  _ => Bool(false)
-                }
-              })
+                    _ => Bool(false)
+                  }
+                },
+              )
             }
             if prop == "toString" {
-              return make_native_func(name="toString", fn(_args) {
-                String_("[object Object]")
-              })
+              return make_native_func(
+                name="toString",
+                realm_state=Some(self.realm_state),
+                fn(_args) { String_("[object Object]") },
+              )
             }
           }
           Undefined
@@ -1546,7 +1565,11 @@ fn Interpreter::get_computed_property_impl(
     Number(_) =>
       match key {
         String_(method_name) =>
-          (self.stdlib_hooks.get_number_method)(obj, method_name)
+          (self.stdlib_hooks.get_number_method)(
+            obj,
+            method_name,
+            self.realm_state,
+          )
         _ => Undefined
       }
     Promise(data) =>
@@ -1557,7 +1580,7 @@ fn Interpreter::get_computed_property_impl(
             None => Undefined
           }
         _ => {
-          let prop = to_js_string(key)
+          let prop = to_js_string(key, interp=Some(self))
           match data.bag.properties.get(prop) {
             Some(v) => v
             None =>

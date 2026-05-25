@@ -117,7 +117,7 @@ fn Interpreter::eval_compound_assign(
       validate_strict_assignment_target_name(ctx.strict, name)
       let current = env.get(name)
       let rhs = self.eval_expr(ctx, value_expr, env)
-      let result = eval_binary_op(bin_op, current, rhs, loc)
+      let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
       // Check if the target is a non-writable property on the global object
       if self.is_immutable_global(name) {
         if ctx.strict {
@@ -134,7 +134,7 @@ fn Interpreter::eval_compound_assign(
       let obj = self.eval_expr(ctx, obj_expr, env)
       let current = self.get_property(obj, prop, mloc)
       let rhs = self.eval_expr(ctx, value_expr, env)
-      let result = eval_binary_op(bin_op, current, rhs, loc)
+      let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
       let _ = self.set_property(obj, prop, result, loc, strict=ctx.strict)
       result
     }
@@ -151,7 +151,7 @@ fn Interpreter::eval_compound_assign(
       let prop_key = to_property_key(key, interp=Some(self))
       let current = self.get_computed_property(obj, prop_key, mloc)
       let rhs = self.eval_expr(ctx, value_expr, env)
-      let result = eval_binary_op(bin_op, current, rhs, loc)
+      let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
       let _ = self.set_computed_property(
         obj,
         prop_key,

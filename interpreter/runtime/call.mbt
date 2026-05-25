@@ -638,7 +638,7 @@ pub fn Interpreter::call_value(
   loc : @token.Loc,
 ) -> Value raise Error {
   self.with_active_value(fn() raise {
-    with_active_callee_realm_value(callee, fn() raise {
+    with_active_callee_realm_value(self.realm_state, callee, fn() raise {
       self.call_value_impl(callee, this_val, args, loc)
     })
   })
@@ -744,6 +744,7 @@ fn Interpreter::call_value_impl(
             func_env.def(
               "arguments",
               make_arguments_object(
+                self.realm_state,
                 self.realm_state.well_known_symbols,
                 args,
                 callee,
@@ -872,6 +873,7 @@ fn Interpreter::call_value_impl(
           param_env.def(
             "arguments",
             make_arguments_object(
+              self.realm_state,
               self.realm_state.well_known_symbols,
               args,
               callee,

@@ -28,26 +28,14 @@ fn is_js_object(val : Value) -> Bool {
 }
 
 ///|
-/// Global ref to current interpreter, set during execution so that
-/// ToPrimitive can call user-defined valueOf/toString/@@toPrimitive
-/// from NativeCallable builtins that do not receive an explicit interpreter.
-let current_interpreter : Ref[Interpreter?] = { val: None }
-
-///|
-/// Return `interp` if it is Some; otherwise fall back to the module-level
-/// current_interpreter. Centralises the fallback logic used throughout
-/// this file so it is not repeated inline at every call site.
 fn resolve_effective_interp(interp : Interpreter?) -> Interpreter? {
-  match interp {
-    Some(_) => interp
-    None => current_interpreter.val
-  }
+  interp
 }
 
 ///|
 /// Call a callable value, dispatching to the interpreter for UserFunc types.
 /// Supports all callable types including user-defined functions.
-/// Pass `interp` explicitly when available; falls back to the module global.
+/// Pass `interp` explicitly when user-code dispatch may be required.
 pub fn call_callable_direct(
   callable_val : Value,
   this_val : Value,

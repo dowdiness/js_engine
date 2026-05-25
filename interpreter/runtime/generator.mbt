@@ -72,7 +72,10 @@ pub(all) struct GeneratorObject {
 /// We create a new prototype each time to avoid stale symbol IDs
 /// across interpreter instances (each test creates a new interpreter).
 fn get_generator_prototype(interp : Interpreter) -> Value {
-  init_generator_prototype(interp.realm_state.well_known_symbols)
+  init_generator_prototype(
+    interp.realm_state.well_known_symbols,
+    interp.realm_state,
+  )
 }
 
 ///|
@@ -99,21 +102,25 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 
 ///|
 /// Initialize %GeneratorPrototype% with next, throw, return methods
-fn init_generator_prototype(well_known_symbols : WellKnownSymbols) -> Value {
+fn init_generator_prototype(
+  well_known_symbols : WellKnownSymbols,
+  realm_state : RealmState,
+) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let props : Map[String, Value] = {}
   let sym_props : Map[Int, Value] = {}
   let descs : Map[String, PropDescriptor] = {}
 
   // .next(value)
-  props["next"] = make_interp_method_func(name="next", length=1, fn(
-    ip,
-    this_val,
-    args,
-  ) raise {
-    let arg = if args.length() > 0 { args[0] } else { Undefined }
-    generator_resume(ip, this_val, Next(arg))
-  })
+  props["next"] = make_interp_method_func(
+    name="next",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip, this_val, args) raise {
+      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      generator_resume(ip, this_val, Next(arg))
+    },
+  )
   descs["next"] = {
     writable: true,
     enumerable: false,
@@ -124,14 +131,15 @@ fn init_generator_prototype(well_known_symbols : WellKnownSymbols) -> Value {
   }
 
   // .throw(exception)
-  props["throw"] = make_interp_method_func(name="throw", length=1, fn(
-    ip,
-    this_val,
-    args,
-  ) raise {
-    let arg = if args.length() > 0 { args[0] } else { Undefined }
-    generator_resume(ip, this_val, Throw(arg))
-  })
+  props["throw"] = make_interp_method_func(
+    name="throw",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip, this_val, args) raise {
+      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      generator_resume(ip, this_val, Throw(arg))
+    },
+  )
   descs["throw"] = {
     writable: true,
     enumerable: false,
@@ -142,14 +150,15 @@ fn init_generator_prototype(well_known_symbols : WellKnownSymbols) -> Value {
   }
 
   // .return(value)
-  props["return"] = make_interp_method_func(name="return", length=1, fn(
-    ip,
-    this_val,
-    args,
-  ) raise {
-    let arg = if args.length() > 0 { args[0] } else { Undefined }
-    generator_resume(ip, this_val, Return(arg))
-  })
+  props["return"] = make_interp_method_func(
+    name="return",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip, this_val, args) raise {
+      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      generator_resume(ip, this_val, Return(arg))
+    },
+  )
   descs["return"] = {
     writable: true,
     enumerable: false,
@@ -163,6 +172,7 @@ fn init_generator_prototype(well_known_symbols : WellKnownSymbols) -> Value {
   sym_props[iterator_sym.id] = make_method_func(
     name="[Symbol.iterator]",
     length=0,
+    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
   // [Symbol.toStringTag] = "Generator"
@@ -235,6 +245,7 @@ pub fn setup_generator_function_constructor(
   let gen_func_ctor : Value = make_interp_method_func(
     name="GeneratorFunction",
     length=1,
+    realm_state=env.realm_state,
     fn(interp, _this, args) raise {
       if args.length() == 0 {
         // No arguments: return empty generator function
@@ -444,6 +455,7 @@ fn Interpreter::make_generator_function(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(self.realm_state),
   )
 }
 
@@ -543,6 +555,7 @@ fn Interpreter::make_generator_function_ext(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(self.realm_state),
   )
 }
 

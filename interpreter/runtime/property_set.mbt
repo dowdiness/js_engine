@@ -487,7 +487,7 @@ fn Interpreter::landing_via_define_own_property(
       if strict {
         let key_display = match key {
           Symbol(sym) => "Symbol(\{sym.description.unwrap_or_default()})"
-          _ => to_js_string(key)
+          _ => to_js_string(key, interp=Some(self))
         }
         raise @errors.TypeError(
           message="Cannot redefine non-writable or accessor property '\{key_display}' on receiver",
@@ -507,7 +507,7 @@ fn Interpreter::landing_via_define_own_property(
     if strict {
       let key_display = match key {
         Symbol(sym) => "Symbol(\{sym.description.unwrap_or_default()})"
-        _ => to_js_string(key)
+        _ => to_js_string(key, interp=Some(self))
       }
       raise @errors.TypeError(
         message="Cannot assign to property '\{key_display}' on receiver",
@@ -618,7 +618,7 @@ fn Interpreter::define_value_on_receiver(
           value
         }
         _ => {
-          let prop = to_js_string(key)
+          let prop = to_js_string(key, interp=Some(self))
           match rdata.bag.descriptors.get(prop) {
             Some(desc) =>
               if existing_receiver_desc_blocks(desc) {
@@ -662,7 +662,7 @@ fn Interpreter::define_value_on_receiver(
           value
         }
         _ => {
-          let prop = to_js_string(key)
+          let prop = to_js_string(key, interp=Some(self))
           match rdata.bag.descriptors.get(prop) {
             Some(desc) =>
               if existing_receiver_desc_blocks(desc) {
@@ -702,7 +702,7 @@ fn Interpreter::define_value_on_receiver(
           value
         }
         _ => {
-          let prop = to_js_string(key)
+          let prop = to_js_string(key, interp=Some(self))
           match rdata.bag.descriptors.get(prop) {
             Some(desc) =>
               if existing_receiver_desc_blocks(desc) {
@@ -738,7 +738,7 @@ fn Interpreter::define_value_on_receiver(
           value
         }
         _ => {
-          let prop = to_js_string(key)
+          let prop = to_js_string(key, interp=Some(self))
           match rdata.bag.descriptors.get(prop) {
             Some(desc) =>
               if existing_receiver_desc_blocks(desc) {
@@ -811,7 +811,7 @@ pub fn Interpreter::set_computed_property(
           let handler = get_proxy_handler(proxy_data)
           let prop_key = match key {
             Symbol(_) => key
-            _ => String_(to_js_string(key))
+            _ => String_(to_js_string(key, interp=Some(self)))
           }
           let result = self.call_value(
             trap_fn,
@@ -997,7 +997,7 @@ pub fn Interpreter::set_computed_property(
               _ => ()
             }
           }
-          let prop = to_js_string(key)
+          let prop = to_js_string(key, interp=Some(self))
           // Check for accessor descriptor (setter) on string key
           match data.bag.descriptors.get(prop) {
             Some(desc) =>
@@ -1128,7 +1128,7 @@ pub fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          data.bag.properties[to_js_string(key)] = value
+          data.bag.properties[to_js_string(key, interp=Some(self))] = value
           value
         }
       }
@@ -1144,7 +1144,7 @@ pub fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          data.bag.properties[to_js_string(key)] = value
+          data.bag.properties[to_js_string(key, interp=Some(self))] = value
           value
         }
       }
@@ -1216,7 +1216,7 @@ pub fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          let prop = to_js_string(key)
+          let prop = to_js_string(key, interp=Some(self))
           if prop == "length" {
             // §10.4.2.4 step 3: reject when length is non-writable.
             if !data.length_writable {
@@ -1380,7 +1380,7 @@ pub fn Interpreter::set_computed_property(
           value
         }
         _ => {
-          data.bag.properties[to_js_string(key)] = value
+          data.bag.properties[to_js_string(key, interp=Some(self))] = value
           value
         }
       }
@@ -1442,7 +1442,9 @@ fn Interpreter::eval_member(
     Ident("console", _) =>
       if prop == "log" {
         let output = self.host.output
-        make_native_func(name="log", fn(args) {
+        make_native_func(name="log", realm_state=Some(self.realm_state), fn(
+          args,
+        ) {
           let parts : Array[String] = args.map(fn(a) { a.to_string() })
           output.push(parts.join(" "))
           Undefined

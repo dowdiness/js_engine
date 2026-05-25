@@ -62,6 +62,7 @@ fn Interpreter::make_async_function(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(self.realm_state),
   )
 }
 
@@ -136,6 +137,7 @@ fn Interpreter::make_async_function_ext(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(self.realm_state),
   )
 }
 
@@ -259,24 +261,26 @@ fn async_step(
     let gen = gen_val
     let res_fn = resolve_fn
     let rej_fn = reject_fn
-    let on_fulfill = make_interp_method_func(name="", length=1, fn(
-      i : Interpreter,
-      _this : Value,
-      args : Array[Value],
-    ) -> Value {
-      let v = if args.length() > 0 { args[0] } else { Undefined }
-      async_step(i, gen, v, res_fn, rej_fn, false)
-      Undefined
-    })
-    let on_reject = make_interp_method_func(name="", length=1, fn(
-      i : Interpreter,
-      _this : Value,
-      args : Array[Value],
-    ) -> Value {
-      let v = if args.length() > 0 { args[0] } else { Undefined }
-      async_step(i, gen, v, res_fn, rej_fn, true)
-      Undefined
-    })
+    let on_fulfill = make_interp_method_func(
+      name="",
+      length=1,
+      realm_state=Some(ip.realm_state),
+      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
+        let v = if args.length() > 0 { args[0] } else { Undefined }
+        async_step(i, gen, v, res_fn, rej_fn, false)
+        Undefined
+      },
+    )
+    let on_reject = make_interp_method_func(
+      name="",
+      length=1,
+      realm_state=Some(ip.realm_state),
+      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
+        let v = if args.length() > 0 { args[0] } else { Undefined }
+        async_step(i, gen, v, res_fn, rej_fn, true)
+        Undefined
+      },
+    )
     // Wrap the awaited value in Promise.resolve() then schedule .then()
     // This ensures all await continuations go through the microtask queue,
     // matching spec behavior and preventing stack overflow.
@@ -296,13 +300,14 @@ fn async_step(
               Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
               Rejected => ip.enqueue_microtask(on_reject, [pd.result])
               Pending => {
-                let noop = make_interp_method_func(name="", length=0, fn(
-                  _i : Interpreter,
-                  _t : Value,
-                  _a : Array[Value],
-                ) -> Value {
-                  Undefined
-                })
+                let noop = make_interp_method_func(
+                  name="",
+                  length=0,
+                  realm_state=Some(ip.realm_state),
+                  fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
+                    Undefined
+                  },
+                )
                 pd.fulfill_reactions.push({
                   handler: Some(on_fulfill),
                   resolve: noop,
@@ -331,13 +336,14 @@ fn async_step(
           Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
           Rejected => ip.enqueue_microtask(on_reject, [pd.result])
           Pending => {
-            let noop = make_interp_method_func(name="", length=0, fn(
-              _i : Interpreter,
-              _t : Value,
-              _a : Array[Value],
-            ) -> Value {
-              Undefined
-            })
+            let noop = make_interp_method_func(
+              name="",
+              length=0,
+              realm_state=Some(ip.realm_state),
+              fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
+                Undefined
+              },
+            )
             pd.fulfill_reactions.push({
               handler: Some(on_fulfill),
               resolve: noop,
@@ -452,6 +458,7 @@ fn make_async_gen_function_inner(
 ) -> Value {
   let async_gen_proto = init_async_generator_prototype(
     interp.realm_state.well_known_symbols,
+    interp.realm_state,
   )
   let func_prototype = Object({
     bag: PropertyBag(),
@@ -495,6 +502,7 @@ fn make_async_gen_function_inner(
       extensible: true,
       arraybuffer_state: None,
     }),
+    realm_state=Some(interp.realm_state),
   )
 }
 
@@ -503,6 +511,7 @@ fn make_async_gen_function_inner(
 /// Async generator .next()/.throw()/.return() return Promises per ECMAScript spec.
 fn init_async_generator_prototype(
   well_known_symbols : WellKnownSymbols,
+  realm_state : RealmState,
 ) -> Value {
   let async_iter_sym = well_known_symbols.async_iterator
   let props : Map[String, Value] = {}
@@ -518,42 +527,46 @@ fn init_async_generator_prototype(
   }
 
   // .next(value) — returns Promise<{value, done}>
-  props["next"] = make_interp_method_func(name="next", length=1, fn(
-    ip,
-    this_val,
-    args,
-  ) {
-    let arg = if args.length() > 0 { args[0] } else { Undefined }
-    async_generator_resume(ip, this_val, Next(arg))
-  })
+  props["next"] = make_interp_method_func(
+    name="next",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip, this_val, args) {
+      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      async_generator_resume(ip, this_val, Next(arg))
+    },
+  )
   descs["next"] = non_enum
 
   // .throw(exception) — returns Promise<{value, done}>
-  props["throw"] = make_interp_method_func(name="throw", length=1, fn(
-    ip,
-    this_val,
-    args,
-  ) {
-    let arg = if args.length() > 0 { args[0] } else { Undefined }
-    async_generator_resume(ip, this_val, Throw(arg))
-  })
+  props["throw"] = make_interp_method_func(
+    name="throw",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip, this_val, args) {
+      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      async_generator_resume(ip, this_val, Throw(arg))
+    },
+  )
   descs["throw"] = non_enum
 
   // .return(value) — returns Promise<{value, done}>
-  props["return"] = make_interp_method_func(name="return", length=1, fn(
-    ip,
-    this_val,
-    args,
-  ) {
-    let arg = if args.length() > 0 { args[0] } else { Undefined }
-    async_generator_resume(ip, this_val, Return(arg))
-  })
+  props["return"] = make_interp_method_func(
+    name="return",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip, this_val, args) {
+      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      async_generator_resume(ip, this_val, Return(arg))
+    },
+  )
   descs["return"] = non_enum
 
   // [Symbol.asyncIterator]() { return this; }
   sym_props[async_iter_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
+    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
 
@@ -661,6 +674,7 @@ pub fn setup_async_function_constructor(
   let async_func_ctor : Value = make_interp_method_func(
     name="AsyncFunction",
     length=1,
+    realm_state=env.realm_state,
     fn(interp, _this, args) raise {
       if args.length() == 0 {
         return interp.make_async_function(

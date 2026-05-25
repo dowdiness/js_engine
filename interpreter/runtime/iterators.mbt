@@ -2,12 +2,16 @@
 /// Per ES spec, %IteratorPrototype% has [Symbol.iterator] that returns `this`
 /// and its [[Prototype]] is %Object.prototype% (Null for now since we don't
 /// thread Object.prototype here — iterators still function correctly).
-fn make_iterator_proto_value(well_known_symbols : WellKnownSymbols) -> Value {
+fn make_iterator_proto_value(
+  well_known_symbols : WellKnownSymbols,
+  realm_state : RealmState,
+) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let proto_sym_props : Map[Int, Value] = {}
   proto_sym_props[iterator_sym.id] = make_method_func(
     name="[Symbol.iterator]",
     length=0,
+    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
   Object({
@@ -31,7 +35,7 @@ pub fn RealmState::get_iterator_proto(self : RealmState) -> Value {
   match self.runtime_iterator_prototypes.iterator_proto.val {
     Some(proto) => proto
     None => {
-      let proto = make_iterator_proto_value(self.well_known_symbols)
+      let proto = make_iterator_proto_value(self.well_known_symbols, self)
       self.runtime_iterator_prototypes.iterator_proto.val = Some(proto)
       proto
     }
@@ -42,6 +46,7 @@ pub fn RealmState::get_iterator_proto(self : RealmState) -> Value {
 fn make_array_iterator_proto_value(
   well_known_symbols : WellKnownSymbols,
   iterator_proto : Value,
+  realm_state : RealmState,
 ) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
@@ -60,16 +65,19 @@ fn make_array_iterator_proto_value(
   proto_sym_props[iterator_sym.id] = make_method_func(
     name="[Symbol.iterator]",
     length=0,
+    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
-  proto_props["next"] = make_method_func(name="next", length=0, fn(
-    _this_val,
-    _args,
-  ) raise {
-    raise @errors.TypeError(
-      message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
-    )
-  })
+  proto_props["next"] = make_method_func(
+    name="next",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(_this_val, _args) raise {
+      raise @errors.TypeError(
+        message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+      )
+    },
+  )
   let proto_descs : Map[String, PropDescriptor] = {}
   proto_descs["next"] = {
     writable: true,
@@ -103,6 +111,7 @@ pub fn RealmState::get_array_iterator_proto(self : RealmState) -> Value {
       let proto = make_array_iterator_proto_value(
         self.well_known_symbols,
         self.get_iterator_proto(),
+        self,
       )
       self.runtime_iterator_prototypes.array_iterator_proto.val = Some(proto)
       proto
@@ -333,6 +342,7 @@ pub fn RealmState::make_array_like_iterator_value(
 fn make_string_iterator_proto_value(
   well_known_symbols : WellKnownSymbols,
   iterator_proto : Value,
+  realm_state : RealmState,
 ) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
@@ -351,16 +361,19 @@ fn make_string_iterator_proto_value(
   proto_sym_props[iterator_sym.id] = make_method_func(
     name="[Symbol.iterator]",
     length=0,
+    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
-  proto_props["next"] = make_method_func(name="next", length=0, fn(
-    _this_val,
-    _args,
-  ) raise {
-    raise @errors.TypeError(
-      message="String Iterator.prototype.next requires that |this| be a String Iterator",
-    )
-  })
+  proto_props["next"] = make_method_func(
+    name="next",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(_this_val, _args) raise {
+      raise @errors.TypeError(
+        message="String Iterator.prototype.next requires that |this| be a String Iterator",
+      )
+    },
+  )
   let str_proto_descs : Map[String, PropDescriptor] = {}
   str_proto_descs["next"] = {
     writable: true,
@@ -394,6 +407,7 @@ pub fn RealmState::get_string_iterator_proto(self : RealmState) -> Value {
       let proto = make_string_iterator_proto_value(
         self.well_known_symbols,
         self.get_iterator_proto(),
+        self,
       )
       self.runtime_iterator_prototypes.string_iterator_proto.val = Some(proto)
       proto

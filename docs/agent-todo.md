@@ -162,11 +162,8 @@ still classifies the remaining runtime/stdlib module-level mutable state.
 #136 through #146, and WeakMap / WeakSet side-table storage was completed in
 PR #147. ArrayBuffer backing stores, backing-store IDs, and detached-state
 storage now live in `RealmState`. Construction context is now explicit. The
-mutable-state audit now reports 1 classified binding: `current_interpreter`.
-
-**Candidate order:**
-
-1. Current-interpreter ambient context.
+current-interpreter fallback has been removed; the mutable-state audit now
+reports 0 classified bindings.
 
 **Verification:** Keep `make architecture-state-audit` as the inventory gate.
 Add two-realm or two-interpreter tests before moving each state family, then

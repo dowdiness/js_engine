@@ -81,11 +81,17 @@ test "unmarked callees clear inherited active realm overrides" {
     realm_state.active_object_prototype_override.val = Some(
       override_object_proto,
     )
-    let _ = with_active_callee_realm_value(unmarked_callable(), fn() raise {
-      if !strict_equal(get_func_proto(), base_function_proto) {
+    let _ = with_active_callee_realm_value(realm_state, unmarked_callable(), fn() raise {
+      if !strict_equal(
+          get_func_proto(realm_state=Some(realm_state)),
+          base_function_proto,
+        ) {
         fail("expected unstamped callee to use active Function.prototype")
       }
-      if !strict_equal(get_obj_proto(), base_object_proto) {
+      if !strict_equal(
+          get_obj_proto(realm_state=Some(realm_state)),
+          base_object_proto,
+        ) {
         fail("expected unstamped callee to use active Object.prototype")
       }
       Undefined
@@ -95,10 +101,16 @@ test "unmarked callees clear inherited active realm overrides" {
         Undefined
       }
     }
-    if !strict_equal(get_func_proto(), override_function_proto) {
+    if !strict_equal(
+        get_func_proto(realm_state=Some(realm_state)),
+        override_function_proto,
+      ) {
       failure.val = Some("expected function override to be restored after call")
     }
-    if !strict_equal(get_obj_proto(), override_object_proto) {
+    if !strict_equal(
+        get_obj_proto(realm_state=Some(realm_state)),
+        override_object_proto,
+      ) {
       failure.val = Some("expected object override to be restored after call")
     }
   })

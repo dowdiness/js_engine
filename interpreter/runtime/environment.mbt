@@ -6,7 +6,7 @@ pub(all) enum BindingKind {
 } derive(Debug, Eq)
 
 ///|
-pub impl Show for BindingKind with output(self, logger) {
+pub impl Show for BindingKind with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
@@ -37,6 +37,7 @@ pub(all) struct Environment {
   mut is_var_scope : Bool // true for function/global scopes (where var is hoisted to)
   mut with_object : Value? // For 'with' statement: the live object to proxy lookups through
   mut realm_state : RealmState? // Realm that owns host-installed builtin functions.
+  mut interpreter_context : Interpreter? // Interpreter explicitly threaded through this scope chain.
   /// Registry of class_names that carry [[ErrorData]] semantics.
   /// Populated by register_error_ctor / register_aggregate_error_ctor at
   /// stdlib init time; consumed by Error.isError.  Stored per-Environment so
@@ -46,9 +47,9 @@ pub(all) struct Environment {
 
 ///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
-  let realm_state = match parent {
-    Some(parent) => parent.realm_state
-    None => None
+  let (realm_state, interpreter_context) = match parent {
+    Some(parent) => (parent.realm_state, parent.interpreter_context)
+    None => (None, None)
   }
   {
     bindings: {},
@@ -56,6 +57,7 @@ pub fn Environment::new(parent? : Environment? = None) -> Environment {
     is_var_scope: false,
     with_object: None,
     realm_state,
+    interpreter_context,
     error_class_names: {},
   }
 }
@@ -217,7 +219,7 @@ pub fn Environment::has(self : Environment, name : String) -> Bool raise Error {
   // Check with_object first for 'with' statement environments
   match self.with_object {
     Some(obj) => {
-      let has_with = with_object_has(obj, name)
+      let has_with = with_object_has(self.interpreter_context, obj, name)
       if has_with {
         return true
       }
@@ -292,7 +294,7 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
   // Check with_object first for 'with' statement environments
   match self.with_object {
     Some(obj) => {
-      let result = with_object_get(obj, name)
+      let result = with_object_get(self.interpreter_context, obj, name)
       match result {
         Some(v) => return v
         None => ()
@@ -326,7 +328,7 @@ pub fn Environment::assign(
   // Check with_object first for 'with' statement environments
   match self.with_object {
     Some(obj) =>
-      if with_object_has(obj, name) {
+      if with_object_has(self.interpreter_context, obj, name) {
         with_object_set(obj, name, value)
         return
       }
@@ -404,8 +406,12 @@ fn is_blocked_by_unscopables(
 
 ///|
 /// Check if a with-object (or its prototype chain) has a property
-fn with_object_has(obj : Value, name : String) -> Bool raise Error {
-  match current_interpreter.val {
+fn with_object_has(
+  interp_context : Interpreter?,
+  obj : Value,
+  name : String,
+) -> Bool raise Error {
+  match interp_context {
     Some(interp) =>
       if interp.has_property_key(obj, String_(name)) {
         return !is_blocked_by_unscopables(interp, obj, name)
@@ -435,8 +441,12 @@ fn with_object_has(obj : Value, name : String) -> Bool raise Error {
 
 ///|
 /// Get a property from a with-object (walking prototype chain)
-fn with_object_get(obj : Value, name : String) -> Value? raise Error {
-  match current_interpreter.val {
+fn with_object_get(
+  interp_context : Interpreter?,
+  obj : Value,
+  name : String,
+) -> Value? raise Error {
+  match interp_context {
     Some(interp) =>
       if interp.has_property_key(obj, String_(name)) &&
         !is_blocked_by_unscopables(interp, obj, name) {
@@ -478,7 +488,10 @@ pub fn Environment::find_with_object(
   name : String,
 ) -> Value? raise Error {
   match self.with_object {
-    Some(obj) => if with_object_has(obj, name) { return Some(obj) }
+    Some(obj) =>
+      if with_object_has(self.interpreter_context, obj, name) {
+        return Some(obj)
+      }
     None => ()
   }
   match self.parent {

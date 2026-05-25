@@ -679,12 +679,13 @@ fn Interpreter::eval_expr(
             descriptors: { "name": nf_desc, "length": nf_desc },
             symbol_descriptors: {},
           },
-          prototype: get_func_proto(),
+          prototype: get_func_proto(realm_state=Some(self.realm_state)),
           callable: Some(ArrowFunc(func_data)),
           class_name: "Function",
           extensible: true,
           arraybuffer_state: None,
         }),
+        realm_state=Some(self.realm_state),
       )
     }
     ArrowFuncExt(params, rest_param, body, _) => {
@@ -736,12 +737,13 @@ fn Interpreter::eval_expr(
             descriptors: { "name": nf_desc, "length": nf_desc },
             symbol_descriptors: {},
           },
-          prototype: get_func_proto(),
+          prototype: get_func_proto(realm_state=Some(self.realm_state)),
           callable: Some(ArrowFuncExt(func_data)),
           class_name: "Function",
           extensible: true,
           arraybuffer_state: None,
         }),
+        realm_state=Some(self.realm_state),
       )
     }
     FuncExprExt(name, params, rest_param, body, _) => {
@@ -936,7 +938,10 @@ fn Interpreter::eval_expr(
                   if super_instance_fields.length() > 0 {
                     call_env.def_builtin(
                       "[[InitInstanceFields]]",
-                      make_instance_fields_init(super_instance_fields),
+                      make_instance_fields_init(
+                        super_instance_fields,
+                        self.realm_state,
+                      ),
                     )
                   }
                 }
@@ -963,6 +968,7 @@ fn Interpreter::eval_expr(
                   call_env.def(
                     "arguments",
                     make_arguments_object(
+                      self.realm_state,
                       self.realm_state.well_known_symbols,
                       args,
                       super_ctor,
@@ -1267,7 +1273,7 @@ fn Interpreter::eval_binary(
     _ => {
       let left = self.eval_expr(ctx, left_expr, env)
       let right = self.eval_expr(ctx, right_expr, env)
-      eval_binary_op(op, left, right, loc)
+      eval_binary_op(op, left, right, loc, interp=Some(self))
     }
   }
 }
@@ -1278,7 +1284,17 @@ pub fn eval_binary_op(
   left : Value,
   right : Value,
   _loc : @token.Loc,
+  interp? : Interpreter? = None,
 ) -> Value raise Error {
+  fn n(v : Value) -> Double raise Error {
+    to_number(v, interp~)
+  }
+  fn s(v : Value) -> String raise Error {
+    to_js_string(v, interp~)
+  }
+  fn p_default(v : Value, data : ObjectData) -> Value raise Error {
+    to_primitive_default(v, data, interp~)
+  }
   match (op, left, right) {
     // Symbol cannot be converted to string implicitly
     (Add, Symbol(_), _) | (Add, _, Symbol(_)) =>
@@ -1318,12 +1334,12 @@ pub fn eval_binary_op(
     (NotEq, l, r) => Bool(!loose_equal(l, r))
     // Exponentiation
     (Exp, Number(a), Number(b)) => Number(@math.pow(a, b))
-    (Exp, l, r) => Number(@math.pow(to_number(l), to_number(r)))
+    (Exp, l, r) => Number(@math.pow(n(l), n(r)))
     // Add fallback: ToPrimitive, then check for strings
     (Add, l, r) => {
       // ToPrimitive with hint "default" per spec (+ operator uses no preferred type)
       let lp = match l {
-        Object(data) => to_primitive_default(l, data)
+        Object(data) => p_default(l, data)
         Array(arr_data) => {
           let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
           String_(s)
@@ -1331,7 +1347,7 @@ pub fn eval_binary_op(
         _ => l
       }
       let rp = match r {
-        Object(data) => to_primitive_default(r, data)
+        Object(data) => p_default(r, data)
         Array(arr_data) => {
           let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
           String_(s)
@@ -1341,41 +1357,38 @@ pub fn eval_binary_op(
       // If either is a string after ToPrimitive, do string concatenation
       match (lp, rp) {
         (String_(a), String_(b)) => String_(a + b)
-        (String_(a), b) => String_(a + to_js_string(b))
-        (a, String_(b)) => String_(to_js_string(a) + b)
-        (a, b) => Number(to_number(a) + to_number(b))
+        (String_(a), b) => String_(a + s(b))
+        (a, String_(b)) => String_(s(a) + b)
+        (a, b) => Number(n(a) + n(b))
       }
     }
-    (Sub, l, r) => Number(to_number(l) - to_number(r))
-    (Mul, l, r) => Number(to_number(l) * to_number(r))
-    (Div, l, r) => Number(to_number(l) / to_number(r))
-    (Mod, l, r) => Number(to_number(l) % to_number(r))
+    (Sub, l, r) => Number(n(l) - n(r))
+    (Mul, l, r) => Number(n(l) * n(r))
+    (Div, l, r) => Number(n(l) / n(r))
+    (Mod, l, r) => Number(n(l) % n(r))
     // Comparison fallbacks (type coercion)
-    (Lt, l, r) => Bool(to_number(l) < to_number(r))
-    (Gt, l, r) => Bool(to_number(l) > to_number(r))
-    (LtEq, l, r) => Bool(to_number(l) <= to_number(r))
-    (GtEq, l, r) => Bool(to_number(l) >= to_number(r))
+    (Lt, l, r) => Bool(n(l) < n(r))
+    (Gt, l, r) => Bool(n(l) > n(r))
+    (LtEq, l, r) => Bool(n(l) <= n(r))
+    (GtEq, l, r) => Bool(n(l) >= n(r))
     // Bitwise operations
-    (BitAnd, l, r) =>
-      Number((to_int32(to_number(l)) & to_int32(to_number(r))).to_double())
-    (BitOr, l, r) =>
-      Number((to_int32(to_number(l)) | to_int32(to_number(r))).to_double())
-    (BitXor, l, r) =>
-      Number((to_int32(to_number(l)) ^ to_int32(to_number(r))).to_double())
+    (BitAnd, l, r) => Number((to_int32(n(l)) & to_int32(n(r))).to_double())
+    (BitOr, l, r) => Number((to_int32(n(l)) | to_int32(n(r))).to_double())
+    (BitXor, l, r) => Number((to_int32(n(l)) ^ to_int32(n(r))).to_double())
     // Shift operations
     (LShift, l, r) => {
-      let a = to_int32(to_number(l))
-      let shift = to_int32(to_number(r)) & 0x1f
+      let a = to_int32(n(l))
+      let shift = to_int32(n(r)) & 0x1f
       Number((a << shift).to_double())
     }
     (RShift, l, r) => {
-      let a = to_int32(to_number(l))
-      let shift = to_int32(to_number(r)) & 0x1f
+      let a = to_int32(n(l))
+      let shift = to_int32(n(r)) & 0x1f
       Number((a >> shift).to_double())
     }
     (URShift, l, r) => {
-      let a = to_int32(to_number(l))
-      let shift = to_int32(to_number(r)) & 0x1f
+      let a = to_int32(n(l))
+      let shift = to_int32(n(r)) & 0x1f
       if shift == 0 {
         if a < 0 {
           Number(a.to_double() + 4294967296.0)
@@ -1392,15 +1405,10 @@ pub fn eval_binary_op(
     // in operator - ES §7.3.11 HasProperty
     (In, l, r) =>
       if is_object_value(r) {
-        match current_interpreter.val {
-          Some(interp) =>
-            Bool(
-              interp.has_property_key(
-                r,
-                to_property_key(l, interp=Some(interp)),
-              ),
-            )
-          None => Bool(has_property(r, to_js_string(l)))
+        match interp {
+          Some(ip) =>
+            Bool(ip.has_property_key(r, to_property_key(l, interp=Some(ip))))
+          None => Bool(has_property(r, s(l)))
         }
       } else {
         raise @errors.TypeError(

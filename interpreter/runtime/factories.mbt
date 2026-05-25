@@ -6,8 +6,12 @@ const FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID = -102
 
 ///|
 pub fn make_func(data : FuncData) -> Value {
-  let object_proto = get_obj_proto()
-  let function_proto = get_func_proto()
+  let realm_state = match data.closure.interpreter_context {
+    Some(interp) => Some(interp.realm_state)
+    None => data.closure.realm_state
+  }
+  let object_proto = get_obj_proto(realm_state~)
+  let function_proto = get_func_proto(realm_state~)
   let proto = Object({
     bag: PropertyBag(),
     prototype: object_proto,
@@ -85,8 +89,12 @@ pub fn make_func(data : FuncData) -> Value {
 
 ///|
 pub fn make_func_ext(data : FuncDataExt) -> Value {
-  let object_proto = get_obj_proto()
-  let function_proto = get_func_proto()
+  let realm_state = match data.closure.interpreter_context {
+    Some(interp) => Some(interp.realm_state)
+    None => data.closure.realm_state
+  }
+  let object_proto = get_obj_proto(realm_state~)
+  let function_proto = get_func_proto(realm_state~)
   let proto = Object({
     bag: PropertyBag(),
     prototype: object_proto,
@@ -234,14 +242,8 @@ pub fn mark_as_method(v : Value) -> Value {
 }
 
 ///|
-/// Active realm for compatibility getters while code is executing.
-fn get_active_realm_state() -> RealmState? {
-  current_interpreter.val.map(fn(interp) { interp.realm_state })
-}
-
-///|
-pub fn get_func_proto() -> Value {
-  match get_active_realm_state() {
+pub fn get_func_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
     Some(realm_state) =>
       match realm_state.active_function_prototype_override.val {
         Some(proto) => proto
@@ -252,8 +254,8 @@ pub fn get_func_proto() -> Value {
 }
 
 ///|
-pub fn get_obj_proto() -> Value {
-  match get_active_realm_state() {
+pub fn get_obj_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
     Some(realm_state) =>
       match realm_state.active_object_prototype_override.val {
         Some(proto) => proto
@@ -264,32 +266,32 @@ pub fn get_obj_proto() -> Value {
 }
 
 ///|
-pub fn get_string_proto() -> Value {
-  match get_active_realm_state() {
+pub fn get_string_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
     Some(realm_state) => realm_state.get_string_proto()
     None => Null
   }
 }
 
 ///|
-pub fn get_number_proto() -> Value {
-  match get_active_realm_state() {
+pub fn get_number_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
     Some(realm_state) => realm_state.get_number_proto()
     None => Null
   }
 }
 
 ///|
-pub fn get_boolean_proto() -> Value {
-  match get_active_realm_state() {
+pub fn get_boolean_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
     Some(realm_state) => realm_state.get_boolean_proto()
     None => Null
   }
 }
 
 ///|
-pub fn get_symbol_proto() -> Value {
-  match get_active_realm_state() {
+pub fn get_symbol_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
     Some(realm_state) => realm_state.get_symbol_proto()
     None => Null
   }
@@ -305,9 +307,14 @@ pub fn get_symbol_proto() -> Value {
 /// `Reflect.ownKeys` report `[..., "length", "name"]`, matching the spec order
 /// (SetFunctionLength runs before SetFunctionName) and the ordering that the
 /// pre-consolidation wrappers produced.
-fn build_func_object(name : String, length : Int, callable : Callable) -> Value {
-  let object_proto = get_obj_proto()
-  let function_proto = get_func_proto()
+fn build_func_object(
+  name : String,
+  length : Int,
+  callable : Callable,
+  realm_state? : RealmState? = None,
+) -> Value {
+  let object_proto = get_obj_proto(realm_state~)
+  let function_proto = get_func_proto(realm_state~)
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -403,8 +410,15 @@ fn function_realm_symbol_prop(data : ObjectData, id : Int) -> Value? {
 }
 
 ///|
-pub fn stamp_function_realm(value : Value) -> Value {
-  stamp_function_realm_with(value, get_func_proto(), get_obj_proto())
+pub fn stamp_function_realm(
+  value : Value,
+  realm_state? : RealmState? = None,
+) -> Value {
+  stamp_function_realm_with(
+    value,
+    get_func_proto(realm_state~),
+    get_obj_proto(realm_state~),
+  )
 }
 
 ///|
@@ -535,11 +549,12 @@ fn callee_realm_protos(callee : Value) -> (Value?, Value?) {
 
 ///|
 fn with_active_callee_realm_value(
+  realm_state : RealmState,
   callee : Value,
   eval : () -> Value raise Error,
 ) -> Value raise Error {
   let (function_proto, object_proto) = callee_realm_protos(callee)
-  match get_active_realm_state() {
+  match Some(realm_state) {
     Some(realm_state) => {
       let prev_function_proto = realm_state.active_function_prototype_override.val
       let prev_object_proto = realm_state.active_object_prototype_override.val
@@ -572,9 +587,10 @@ fn with_active_callee_realm_value(
 
 ///|
 fn[T] with_cleared_active_callee_realm(
+  realm_state : RealmState,
   eval : () -> T raise Error,
 ) -> T raise Error {
-  match get_active_realm_state() {
+  match Some(realm_state) {
     Some(realm_state) => {
       let prev_function_proto = realm_state.active_function_prototype_override.val
       let prev_object_proto = realm_state.active_object_prototype_override.val
@@ -598,8 +614,11 @@ fn[T] with_cleared_active_callee_realm(
 }
 
 ///|
-fn with_cleared_active_callee_realm_unit(eval : () -> Unit) -> Unit {
-  match get_active_realm_state() {
+fn with_cleared_active_callee_realm_unit(
+  realm_state : RealmState,
+  eval : () -> Unit,
+) -> Unit {
+  match Some(realm_state) {
     Some(realm_state) => {
       let prev_function_proto = realm_state.active_function_prototype_override.val
       let prev_object_proto = realm_state.active_object_prototype_override.val
@@ -614,59 +633,11 @@ fn with_cleared_active_callee_realm_unit(eval : () -> Unit) -> Unit {
 }
 
 ///|
-fn same_realm_state(left : RealmState, right : RealmState) -> Bool {
-  physical_equal(
-    left.symbols.symbol_id_counter,
-    right.symbols.symbol_id_counter,
-  )
-}
-
-///|
-fn standalone_realm_interpreter(realm_state : RealmState) -> Interpreter {
-  let global = Environment::new()
-  global.realm_state = Some(realm_state)
-  let output : Array[String] = []
-  let host : HostEnv = {
-    output,
-    microtask_queue: [],
-    timer_queue: [],
-    timer_id_counter: { val: 1 },
-    timer_insertion_counter: { val: 0 },
-    cancelled_timer_ids: {},
-    module_loader: None,
-  }
-  {
-    host,
-    global,
-    global_this: Null,
-    annex_b: false,
-    realm_state,
-    module_registry: {},
-    module_exports: {},
-    module_export_bindings: [],
-    generator_objects: {},
-    gen_id_counter: { val: 0 },
-    symbols: realm_state.symbols,
-    stdlib_hooks: default_stdlib_hooks(),
-    in_nonarrow_param_default_eval: false,
-  }
-}
-
-///|
 pub fn with_active_realm_state_unit(
   realm_state : RealmState,
   eval : () -> Unit,
 ) -> Unit {
-  match current_interpreter.val {
-    Some(interp) if same_realm_state(interp.realm_state, realm_state) =>
-      with_cleared_active_callee_realm_unit(fn() { eval() })
-    _ => {
-      let prev_interpreter = current_interpreter.val
-      current_interpreter.val = Some(standalone_realm_interpreter(realm_state))
-      with_cleared_active_callee_realm_unit(fn() { eval() })
-      current_interpreter.val = prev_interpreter
-    }
-  }
+  with_cleared_active_callee_realm_unit(realm_state, fn() { eval() })
 }
 
 ///|
@@ -675,9 +646,15 @@ pub fn with_active_realm_state_unit(
 pub fn make_native_func(
   name~ : String,
   length? : Int = 0,
+  realm_state? : RealmState? = None,
   func : (Array[Value]) -> Value raise Error,
 ) -> Value {
-  build_func_object(name, length, NonConstructableCallable(name, func))
+  build_func_object(
+    name,
+    length,
+    NonConstructableCallable(name, func),
+    realm_state~,
+  )
 }
 
 ///|
@@ -686,9 +663,10 @@ pub fn make_native_func(
 pub fn make_method_func(
   name~ : String,
   length? : Int = 0,
+  realm_state? : RealmState? = None,
   func : (Value, Array[Value]) -> Value raise Error,
 ) -> Value {
-  build_func_object(name, length, MethodCallable(name, func))
+  build_func_object(name, length, MethodCallable(name, func), realm_state~)
 }
 
 ///|
@@ -697,9 +675,10 @@ pub fn make_method_func(
 pub fn make_interp_method_func(
   name~ : String,
   length? : Int = 0,
+  realm_state? : RealmState? = None,
   func : (Interpreter, Value, Array[Value]) -> Value raise Error,
 ) -> Value {
-  build_func_object(name, length, InterpreterCallable(name, func))
+  build_func_object(name, length, InterpreterCallable(name, func), realm_state~)
 }
 
 ///|

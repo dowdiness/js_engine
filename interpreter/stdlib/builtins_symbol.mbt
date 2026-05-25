@@ -187,7 +187,7 @@ fn setup_symbol_builtins(
       descriptors: symbol_proto_descs,
       symbol_descriptors: symbol_proto_sym_descs,
     },
-    prototype: @runtime.get_obj_proto(),
+    prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
     class_name: "Symbol",
     extensible: true,
