@@ -146,28 +146,29 @@ or replacing the ambient current-interpreter / construction context.
 
 ---
 
-## Stage 2c remaining storage/context migration planning
+## ~~Stage 2c remaining storage/context migration planning~~ — DONE (2026-05-25, commit `968c092`)
 
 **Source:** PRs #133 through #147 landed the Stage 2c iterator/prototype-cache,
-prototype-ref, and WeakMap / WeakSet side-table slices. The architecture audit
-still classifies the remaining runtime/stdlib module-level mutable state.
-
-**Pressure:** The remaining mutable state affects ambient execution context.
+prototype-ref, and WeakMap / WeakSet side-table slices. Commit `968c092`
+finished the last ambient-context slice by replacing the current-interpreter
+fallback with explicit interpreter / realm threading.
 
 **Goal:** Replace the ambient current-interpreter fallback with explicit context.
 
-**Progress:** Iterator/prototype caches and runtime factory prototype refs
+**Result:** Iterator/prototype caches and runtime factory prototype refs
 (`Object`, `Function`, `String`, `Number`, `Boolean`, and `Symbol`) now live in
 `RealmState`. Promise and RegExp prototype refs were completed through PRs
 #136 through #146, and WeakMap / WeakSet side-table storage was completed in
 PR #147. ArrayBuffer backing stores, backing-store IDs, and detached-state
-storage now live in `RealmState`. Construction context is now explicit. The
-current-interpreter fallback has been removed; the mutable-state audit now
+storage now live in `RealmState`. Construction context is explicit, the
+current-interpreter fallback has been removed, and the mutable-state audit now
 reports 0 classified bindings.
 
-**Verification:** Keep `make architecture-state-audit` as the inventory gate.
-Add two-realm or two-interpreter tests before moving each state family, then
-run targeted Test262 filters for the affected built-ins where practical.
+**Verification:** Commit `968c092` passed local `rtk moon test`, `rtk moon test
+--target js`, `rtk moon info`, `rtk moon check --deny-warn`, `rtk make
+architecture-state-audit`, `rtk python3 scripts/architecture-state-audit.py
+--list`, and `git diff --check`. CI passed `Benchmarks` and `Test262
+Conformance` (unit-test plus strict and non-strict Test262 jobs).
 
 ---
 
