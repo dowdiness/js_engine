@@ -4,6 +4,7 @@ A minimal JavaScript tree-walking interpreter written in [MoonBit](https://www.m
 
 - Conformance on [test262](https://github.com/tc39/test262): each file is run in strict and non-strict modes and reported per mode. Do not sum the modes. Generate current numbers from CI artifacts with `make test262-report`; see [docs/TEST262.md](docs/TEST262.md).
 - JavaScript target: the engine builds with MoonBit's JS target and runs on Node.js.
+- Benchmark dashboard: https://dowdiness.github.io/js_engine/benchmarks/
 
 ## Quick Start
 
