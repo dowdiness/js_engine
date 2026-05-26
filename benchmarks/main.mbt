@@ -9,7 +9,7 @@
 ///   moon run benchmarks --target js                   # regression only
 ///   moon run benchmarks --target js -- --all          # all categories
 ///   moon run benchmarks --target js -- --csv          # CSV output
-///   moon run benchmarks --target js -- --list         # list benchmarks
+///   moon run benchmarks --target js -- --list         # list benchmarks with category/stage
 ///   moon run benchmarks --target js -- --all --csv    # full CSV snapshot
 ///
 /// CSV output can be redirected to a file and committed as a performance
@@ -27,10 +27,10 @@ fn main {
   }
   let args = parse_bench_args()
   if args.list_only {
-    println("Available benchmarks (name, category):")
+    println("Available benchmarks (name, category, stage):")
     for pair in all_bench_names() {
-      let (name, cat) = pair
-      println("  \{name}  [\{cat}]")
+      let (name, cat, stage) = pair
+      println("  \{name}  [\{cat}/\{stage}]")
     }
     println("\nRun with --all to include component and workflow benchmarks.")
     return

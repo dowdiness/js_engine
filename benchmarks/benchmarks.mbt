@@ -16,12 +16,16 @@
 // causes the test to abort with a clear diagnostic — this prevents measuring
 // "fast but wrong" code paths.
 //
-// Category labels
-// ---------------
-// See Category enum in runner.mbt:
+// Category and stage labels
+// -------------------------
+// See Category and BenchStage in runner.mbt. Category answers "when should this
+// run?" while stage answers "which subsystem is being measured?"
 //   Regression — low-noise, CI-suitable (run by default)
 //   Component  — subsystem benchmarks (run with --all on CLI runner)
 //   Workflow   — end-to-end, higher variance (manual / exploratory)
+//   Startup    — interpreter construction, realm setup, builtin installation
+//   Frontend   — lexing, parsing, or compile/closure-conversion preparation
+//   Execution  — AST/compiled evaluation, calls, properties, builtins
 //
 // @bench.T behaviour
 // ------------------
@@ -57,6 +61,29 @@ fn expect(name : String, src : String, want : String) -> Unit {
 // run on every commit. Rename or remove only when the underlying workload
 // fundamentally changes — renaming breaks baseline continuity.
 // =============================================================================
+
+///|
+/// Tiny-program startup cost.
+///
+/// What it measures: @lib.run("1 + 1"), where cost is dominated by
+///                   Interpreter construction and setup_builtins().
+/// What it answers:  Did built-in installation regress startup again?
+/// What it excludes: Node process startup; use the release cmd/main loop from
+///                   docs/development.md when investigating process-level cost.
+///
+/// Guards issue #141 / PR #153 realm-stamping regressions.
+/// Expected result: "2"
+test "startup/tiny_program" (b : @bench.T) {
+  expect("startup/tiny_program", STARTUP_TINY_SRC, "2")
+  b.bench(fn() {
+    try {
+      let (_, v) = @lib.run(STARTUP_TINY_SRC)
+      b.keep(v)
+    } catch {
+      _ => abort("run raised")
+    }
+  })
+}
 
 ///|
 /// Lexer throughput on a small (~130-token) realistic JS snippet.

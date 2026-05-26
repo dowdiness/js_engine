@@ -40,12 +40,25 @@ pub fn verify(src : String, expected : String) -> Unit raise {
 // ---------------------------------------------------------------------------
 
 ///|
+pub fn bench_startup_tiny() -> BenchResult raise {
+  verify(STARTUP_TINY_SRC, "2")
+  run_bench(
+    "startup/tiny_program",
+    Regression,
+    { warmup: 5, iterations: 50, group_size: 50 },
+    fn() raise { let _ = @lib.run(STARTUP_TINY_SRC) },
+    stage=Startup,
+  )
+}
+
+///|
 pub fn bench_lexer_small() -> BenchResult raise {
   run_bench(
     "lexer/small",
     Regression,
     { warmup: 3, iterations: 100, group_size: 100 },
     fn() raise { let _ = @lexer.tokenize(LEXER_SMALL_SRC) },
+    stage=Frontend,
   )
 }
 
@@ -54,8 +67,9 @@ pub fn bench_lexer_large() -> BenchResult raise {
   run_bench(
     "lexer/large",
     Regression,
-    { warmup: 3, iterations: 30, group_size: 10 },
+    { warmup: 3, iterations: 50, group_size: 50 },
     fn() raise { let _ = @lexer.tokenize(LEXER_LARGE_SRC) },
+    stage=Frontend,
   )
 }
 
@@ -98,7 +112,7 @@ pub fn bench_closure_factory() -> BenchResult raise {
   run_bench(
     "exec/closure_factory",
     Component,
-    { warmup: 2, iterations: 10, group_size: 1 },
+    { warmup: 3, iterations: 20, group_size: 3 },
     fn() raise { let _ = @lib.run(CLOSURE_FACTORY_SRC) },
   )
 }
@@ -118,7 +132,7 @@ pub fn bench_closure_conversion_closure_factory() -> BenchResult raise {
   run_bench(
     "baseline/closure_conversion/closure_factory",
     Component,
-    { warmup: 2, iterations: 10, group_size: 1 },
+    { warmup: 3, iterations: 20, group_size: 3 },
     fn() raise {
       let interp = @interpreter.new_interpreter()
       let _ = compiled(interp)
@@ -132,7 +146,7 @@ pub fn bench_object_construction() -> BenchResult raise {
   run_bench(
     "exec/object_construction",
     Component,
-    { warmup: 2, iterations: 10, group_size: 1 },
+    { warmup: 3, iterations: 20, group_size: 3 },
     fn() raise { let _ = @lib.run(OBJECT_CONSTRUCTION_SRC) },
   )
 }
@@ -143,7 +157,7 @@ pub fn bench_string_ops() -> BenchResult raise {
   run_bench(
     "exec/string_ops",
     Component,
-    { warmup: 2, iterations: 10, group_size: 1 },
+    { warmup: 3, iterations: 20, group_size: 5 },
     fn() raise { let _ = @lib.run(STRING_OPS_SRC) },
   )
 }
@@ -156,6 +170,7 @@ pub fn bench_pipeline_exec_lex() -> BenchResult raise {
     Workflow,
     { warmup: 3, iterations: 30, group_size: 500 },
     fn() raise { let _ = @lexer.tokenize(PIPELINE_EXEC_SRC) },
+    stage=Frontend,
   )
 }
 
@@ -167,8 +182,9 @@ pub fn bench_pipeline_exec_parse() -> BenchResult raise {
   run_bench(
     "pipeline/exec/parse",
     Workflow,
-    { warmup: 3, iterations: 30, group_size: 500 },
+    { warmup: 3, iterations: 40, group_size: 2000 },
     fn() raise { let _ = @parser.parse_tokens(tokens) },
+    stage=Frontend,
   )
 }
 
@@ -208,7 +224,7 @@ pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise {
   run_bench(
     "pipeline/closure_conversion/evaluate",
     Workflow,
-    { warmup: 2, iterations: 10, group_size: 1 },
+    { warmup: 3, iterations: 20, group_size: 5 },
     fn() raise { let _ = compiled(interp) },
   )
 }
@@ -220,6 +236,7 @@ pub fn bench_parse_heavy() -> BenchResult raise {
     Workflow,
     { warmup: 3, iterations: 30, group_size: 50 },
     fn() raise { let _ = @parser.parse(PARSER_HEAVY_SRC) },
+    stage=Frontend,
   )
 }
 
@@ -230,6 +247,7 @@ pub fn bench_parse_heavy() -> BenchResult raise {
 ///|
 pub fn run_regression() -> Array[BenchResult] raise {
   [
+    bench_startup_tiny(),
     bench_lexer_small(),
     bench_lexer_large(),
     bench_fibonacci(),
@@ -278,22 +296,23 @@ pub fn run_all() -> Array[BenchResult] raise {
 ///|
 /// Stable list of all benchmark names, in canonical run order.
 /// Used by main.mbt to print --list output.
-pub fn all_bench_names() -> Array[(String, String)] {
+pub fn all_bench_names() -> Array[(String, String, String)] {
   [
-    ("lexer/small", "regression"),
-    ("lexer/large", "regression"),
-    ("exec/fibonacci_30", "regression"),
-    ("exec/property_chain", "regression"),
-    ("exec/array_map_filter", "component"),
-    ("exec/closure_factory", "component"),
-    ("baseline/closure_conversion/closure_factory", "component"),
-    ("exec/arithmetic_loop", "component"),
-    ("exec/object_construction", "component"),
-    ("exec/string_ops", "component"),
-    ("pipeline/exec/lex", "workflow"),
-    ("pipeline/exec/parse", "workflow"),
-    ("pipeline/exec/evaluate", "workflow"),
-    ("pipeline/closure_conversion/evaluate", "workflow"),
-    ("pipeline/parse_heavy", "workflow"),
+    ("startup/tiny_program", "regression", "startup"),
+    ("lexer/small", "regression", "frontend"),
+    ("lexer/large", "regression", "frontend"),
+    ("exec/fibonacci_30", "regression", "execution"),
+    ("exec/property_chain", "regression", "execution"),
+    ("exec/array_map_filter", "component", "execution"),
+    ("exec/closure_factory", "component", "execution"),
+    ("baseline/closure_conversion/closure_factory", "component", "execution"),
+    ("exec/arithmetic_loop", "component", "execution"),
+    ("exec/object_construction", "component", "execution"),
+    ("exec/string_ops", "component", "execution"),
+    ("pipeline/exec/lex", "workflow", "frontend"),
+    ("pipeline/exec/parse", "workflow", "frontend"),
+    ("pipeline/exec/evaluate", "workflow", "execution"),
+    ("pipeline/closure_conversion/evaluate", "workflow", "execution"),
+    ("pipeline/parse_heavy", "workflow", "frontend"),
   ]
 }
