@@ -5,6 +5,68 @@ const FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID = -101
 const FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID = -102
 
 ///|
+const FUNCTION_REALM_STRING_PROTO_SYMBOL_ID = -103
+
+///|
+const FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID = -104
+
+///|
+const FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID = -105
+
+///|
+const FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID = -106
+
+///|
+const FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID = -107
+
+///|
+const FUNCTION_REALM_MAP_PROTO_SYMBOL_ID = -108
+
+///|
+const FUNCTION_REALM_SET_PROTO_SYMBOL_ID = -109
+
+///|
+const FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID = -110
+
+///|
+priv struct FunctionRealmProtos {
+  function_proto : Value?
+  object_proto : Value?
+  string_proto : Value?
+  number_proto : Value?
+  boolean_proto : Value?
+  symbol_proto : Value?
+  array_proto : Value?
+  map_proto : Value?
+  set_proto : Value?
+  promise_proto : Value?
+}
+
+///|
+fn empty_function_realm_protos() -> FunctionRealmProtos {
+  {
+    function_proto: None,
+    object_proto: None,
+    string_proto: None,
+    number_proto: None,
+    boolean_proto: None,
+    symbol_proto: None,
+    array_proto: None,
+    map_proto: None,
+    set_proto: None,
+    promise_proto: None,
+  }
+}
+
+///|
+fn active_proto_or_base(active : Ref[Value?], base : Value) -> Value {
+  match active.val {
+    Some(proto) => proto
+    None => base
+  }
+}
+
+///|
 pub fn make_func(data : FuncData) -> Value {
   let realm_state = match data.closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -12,6 +74,7 @@ pub fn make_func(data : FuncData) -> Value {
   }
   let object_proto = get_obj_proto(realm_state~)
   let function_proto = get_func_proto(realm_state~)
+  let realm_protos = function_realm_protos_from_state(realm_state~)
   let proto = Object({
     bag: PropertyBag(),
     prototype: object_proto,
@@ -50,17 +113,13 @@ pub fn make_func(data : FuncData) -> Value {
   func_props["name"] = String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
-  let func_symbol_props = function_realm_symbol_props(
-    function_proto, object_proto,
-  )
+  let func_symbol_props = function_realm_symbol_props(realm_protos)
   let func_obj = Object({
     bag: {
       properties: func_props,
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: function_realm_symbol_descs(
-        function_proto, object_proto,
-      ),
+      symbol_descriptors: function_realm_symbol_descs(realm_protos),
     },
     prototype: function_proto,
     callable: Some(UserFunc(data)),
@@ -95,6 +154,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
   }
   let object_proto = get_obj_proto(realm_state~)
   let function_proto = get_func_proto(realm_state~)
+  let realm_protos = function_realm_protos_from_state(realm_state~)
   let proto = Object({
     bag: PropertyBag(),
     prototype: object_proto,
@@ -147,17 +207,13 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
   func_props["name"] = String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
-  let func_symbol_props = function_realm_symbol_props(
-    function_proto, object_proto,
-  )
+  let func_symbol_props = function_realm_symbol_props(realm_protos)
   let func_obj = Object({
     bag: {
       properties: func_props,
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: function_realm_symbol_descs(
-        function_proto, object_proto,
-      ),
+      symbol_descriptors: function_realm_symbol_descs(realm_protos),
     },
     prototype: function_proto,
     callable: Some(UserFuncExt(data)),
@@ -268,7 +324,11 @@ pub fn get_obj_proto(realm_state? : RealmState? = None) -> Value {
 ///|
 pub fn get_string_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
-    Some(realm_state) => realm_state.get_string_proto()
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_string_prototype_override,
+        realm_state.get_string_proto(),
+      )
     None => Null
   }
 }
@@ -276,7 +336,11 @@ pub fn get_string_proto(realm_state? : RealmState? = None) -> Value {
 ///|
 pub fn get_number_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
-    Some(realm_state) => realm_state.get_number_proto()
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_number_prototype_override,
+        realm_state.get_number_proto(),
+      )
     None => Null
   }
 }
@@ -284,7 +348,11 @@ pub fn get_number_proto(realm_state? : RealmState? = None) -> Value {
 ///|
 pub fn get_boolean_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
-    Some(realm_state) => realm_state.get_boolean_proto()
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_boolean_prototype_override,
+        realm_state.get_boolean_proto(),
+      )
     None => Null
   }
 }
@@ -292,7 +360,59 @@ pub fn get_boolean_proto(realm_state? : RealmState? = None) -> Value {
 ///|
 pub fn get_symbol_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
-    Some(realm_state) => realm_state.get_symbol_proto()
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_symbol_prototype_override,
+        realm_state.get_symbol_proto(),
+      )
+    None => Null
+  }
+}
+
+///|
+pub fn get_array_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_array_prototype_override,
+        realm_state.get_array_proto(),
+      )
+    None => Null
+  }
+}
+
+///|
+pub fn get_map_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_map_prototype_override,
+        realm_state.get_map_proto(),
+      )
+    None => Null
+  }
+}
+
+///|
+pub fn get_set_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_set_prototype_override,
+        realm_state.get_set_proto(),
+      )
+    None => Null
+  }
+}
+
+///|
+pub fn get_promise_proto(realm_state? : RealmState? = None) -> Value {
+  match realm_state {
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_promise_prototype_override,
+        realm_state.get_promise_proto(),
+      )
     None => Null
   }
 }
@@ -313,8 +433,8 @@ fn build_func_object(
   callable : Callable,
   realm_state? : RealmState? = None,
 ) -> Value {
-  let object_proto = get_obj_proto(realm_state~)
   let function_proto = get_func_proto(realm_state~)
+  let realm_protos = function_realm_protos_from_state(realm_state~)
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -329,13 +449,9 @@ fn build_func_object(
         "length": Number(length.to_double()),
         "name": String_(name),
       },
-      symbol_properties: function_realm_symbol_props(
-        function_proto, object_proto,
-      ),
+      symbol_properties: function_realm_symbol_props(realm_protos),
       descriptors: { "length": nf_desc, "name": nf_desc },
-      symbol_descriptors: function_realm_symbol_descs(
-        function_proto, object_proto,
-      ),
+      symbol_descriptors: function_realm_symbol_descs(realm_protos),
     },
     prototype: function_proto,
     callable: Some(callable),
@@ -346,19 +462,130 @@ fn build_func_object(
 }
 
 ///|
-fn function_realm_symbol_props(
-  function_proto : Value,
-  object_proto : Value,
-) -> Map[Int, Value] {
+fn function_realm_protos_from_state(
+  realm_state? : RealmState? = None,
+) -> FunctionRealmProtos {
+  match realm_state {
+    Some(realm_state) =>
+      {
+        function_proto: usable_realm_proto(
+          get_func_proto(realm_state=Some(realm_state)),
+        ),
+        object_proto: usable_realm_proto(
+          get_obj_proto(realm_state=Some(realm_state)),
+        ),
+        string_proto: usable_realm_proto(
+          get_string_proto(realm_state=Some(realm_state)),
+        ),
+        number_proto: usable_realm_proto(
+          get_number_proto(realm_state=Some(realm_state)),
+        ),
+        boolean_proto: usable_realm_proto(
+          get_boolean_proto(realm_state=Some(realm_state)),
+        ),
+        symbol_proto: usable_realm_proto(
+          get_symbol_proto(realm_state=Some(realm_state)),
+        ),
+        array_proto: usable_realm_proto(
+          get_array_proto(realm_state=Some(realm_state)),
+        ),
+        map_proto: usable_realm_proto(
+          get_map_proto(realm_state=Some(realm_state)),
+        ),
+        set_proto: usable_realm_proto(
+          get_set_proto(realm_state=Some(realm_state)),
+        ),
+        promise_proto: usable_realm_proto(
+          get_promise_proto(realm_state=Some(realm_state)),
+        ),
+      }
+    None => empty_function_realm_protos()
+  }
+}
+
+///|
+fn function_realm_protos_from_realm_state(
+  realm_state : RealmState,
+) -> FunctionRealmProtos {
+  {
+    function_proto: usable_realm_proto(realm_state.get_func_proto()),
+    object_proto: usable_realm_proto(realm_state.get_obj_proto()),
+    string_proto: usable_realm_proto(realm_state.get_string_proto()),
+    number_proto: usable_realm_proto(realm_state.get_number_proto()),
+    boolean_proto: usable_realm_proto(realm_state.get_boolean_proto()),
+    symbol_proto: usable_realm_proto(realm_state.get_symbol_proto()),
+    array_proto: usable_realm_proto(realm_state.get_array_proto()),
+    map_proto: usable_realm_proto(realm_state.get_map_proto()),
+    set_proto: usable_realm_proto(realm_state.get_set_proto()),
+    promise_proto: usable_realm_proto(realm_state.get_promise_proto()),
+  }
+}
+
+///|
+fn put_function_realm_symbol_prop(
+  props : Map[Int, Value],
+  id : Int,
+  proto : Value?,
+) -> Unit {
+  match proto {
+    Some(proto) => props[id] = proto
+    None => ()
+  }
+}
+
+///|
+fn function_realm_symbol_props(protos : FunctionRealmProtos) -> Map[Int, Value] {
   let props : Map[Int, Value] = {}
-  match usable_realm_proto(function_proto) {
-    Some(proto) => props[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = proto
-    None => ()
-  }
-  match usable_realm_proto(object_proto) {
-    Some(proto) => props[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = proto
-    None => ()
-  }
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+    protos.function_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
+    protos.object_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
+    protos.string_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
+    protos.number_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
+    protos.boolean_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
+    protos.symbol_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
+    protos.array_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
+    protos.map_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
+    protos.set_proto,
+  )
+  put_function_realm_symbol_prop(
+    props,
+    FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
+    protos.promise_proto,
+  )
   props
 }
 
@@ -375,21 +602,72 @@ fn function_realm_symbol_desc() -> PropDescriptor {
 }
 
 ///|
+fn put_function_realm_symbol_desc(
+  descs : Map[Int, PropDescriptor],
+  id : Int,
+  proto : Value?,
+) -> Unit {
+  match proto {
+    Some(_) => descs[id] = function_realm_symbol_desc()
+    None => ()
+  }
+}
+
+///|
 fn function_realm_symbol_descs(
-  function_proto : Value,
-  object_proto : Value,
+  protos : FunctionRealmProtos,
 ) -> Map[Int, PropDescriptor] {
   let descs : Map[Int, PropDescriptor] = {}
-  match usable_realm_proto(function_proto) {
-    Some(_) =>
-      descs[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
-    None => ()
-  }
-  match usable_realm_proto(object_proto) {
-    Some(_) =>
-      descs[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
-    None => ()
-  }
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+    protos.function_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
+    protos.object_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
+    protos.string_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
+    protos.number_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
+    protos.boolean_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
+    protos.symbol_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
+    protos.array_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
+    protos.map_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
+    protos.set_proto,
+  )
+  put_function_realm_symbol_desc(
+    descs,
+    FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
+    protos.promise_proto,
+  )
   descs
 }
 
@@ -414,10 +692,9 @@ pub fn stamp_function_realm(
   value : Value,
   realm_state? : RealmState? = None,
 ) -> Value {
-  stamp_function_realm_with(
+  stamp_function_realm_with_protos(
     value,
-    get_func_proto(realm_state~),
-    get_obj_proto(realm_state~),
+    function_realm_protos_from_state(realm_state~),
   )
 }
 
@@ -426,29 +703,125 @@ pub fn stamp_function_realm_with(
   value : Value,
   function_proto : Value,
   object_proto : Value,
+  string_proto? : Value = Null,
+  number_proto? : Value = Null,
+  boolean_proto? : Value = Null,
+  symbol_proto? : Value = Null,
+  array_proto? : Value = Null,
+  map_proto? : Value = Null,
+  set_proto? : Value = Null,
+  promise_proto? : Value = Null,
+) -> Value {
+  stamp_function_realm_with_protos(value, {
+    function_proto: usable_realm_proto(function_proto),
+    object_proto: usable_realm_proto(object_proto),
+    string_proto: usable_realm_proto(string_proto),
+    number_proto: usable_realm_proto(number_proto),
+    boolean_proto: usable_realm_proto(boolean_proto),
+    symbol_proto: usable_realm_proto(symbol_proto),
+    array_proto: usable_realm_proto(array_proto),
+    map_proto: usable_realm_proto(map_proto),
+    set_proto: usable_realm_proto(set_proto),
+    promise_proto: usable_realm_proto(promise_proto),
+  })
+}
+
+///|
+fn stamp_realm_proto(
+  data : ObjectData,
+  id : Int,
+  proto : Value?,
+  set_function_prototype? : Bool = false,
+) -> Unit {
+  match proto {
+    Some(proto) => {
+      if set_function_prototype {
+        match data.prototype {
+          Null => data.prototype = proto
+          _ => ()
+        }
+      }
+      data.bag.symbol_properties[id] = proto
+      data.bag.symbol_descriptors[id] = function_realm_symbol_desc()
+    }
+    None => ()
+  }
+}
+
+///|
+fn stamp_realm_proto_if_unstamped(
+  data : ObjectData,
+  id : Int,
+  proto : Value?,
+  set_function_prototype? : Bool = false,
+) -> Unit {
+  match (function_realm_symbol_prop(data, id), proto) {
+    (None, Some(proto)) =>
+      stamp_realm_proto(data, id, Some(proto), set_function_prototype~)
+    _ => ()
+  }
+}
+
+///|
+fn stamp_function_realm_with_protos(
+  value : Value,
+  protos : FunctionRealmProtos,
 ) -> Value {
   match value {
     Object(data) =>
       match data.callable {
         Some(_) => {
-          match usable_realm_proto(function_proto) {
-            Some(proto) => {
-              match data.prototype {
-                Null => data.prototype = proto
-                _ => ()
-              }
-              data.bag.symbol_properties[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = proto
-              data.bag.symbol_descriptors[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
-            }
-            None => ()
-          }
-          match usable_realm_proto(object_proto) {
-            Some(proto) => {
-              data.bag.symbol_properties[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = proto
-              data.bag.symbol_descriptors[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
-            }
-            None => ()
-          }
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+            protos.function_proto,
+            set_function_prototype=true,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
+            protos.object_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
+            protos.string_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
+            protos.number_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
+            protos.boolean_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
+            protos.symbol_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
+            protos.array_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
+            protos.map_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
+            protos.set_proto,
+          )
+          stamp_realm_proto(
+            data,
+            FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
+            protos.promise_proto,
+          )
         }
         None => ()
       }
@@ -458,47 +831,65 @@ pub fn stamp_function_realm_with(
 }
 
 ///|
-fn stamp_function_realm_if_unstamped_with(
+fn stamp_function_realm_if_unstamped_with_protos(
   value : Value,
-  function_proto : Value,
-  object_proto : Value,
+  protos : FunctionRealmProtos,
 ) -> Value {
   match value {
     Object(data) =>
       match data.callable {
         Some(_) => {
-          match
-            (
-              function_realm_symbol_prop(
-                data,
-                FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
-              ),
-              usable_realm_proto(function_proto),
-            ) {
-            (None, Some(proto)) => {
-              match data.prototype {
-                Null => data.prototype = proto
-                _ => ()
-              }
-              data.bag.symbol_properties[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = proto
-              data.bag.symbol_descriptors[FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
-            }
-            _ => ()
-          }
-          match
-            (
-              function_realm_symbol_prop(
-                data,
-                FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
-              ),
-              usable_realm_proto(object_proto),
-            ) {
-            (None, Some(proto)) => {
-              data.bag.symbol_properties[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = proto
-              data.bag.symbol_descriptors[FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID] = function_realm_symbol_desc()
-            }
-            _ => ()
-          }
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+            protos.function_proto,
+            set_function_prototype=true,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
+            protos.object_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
+            protos.string_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
+            protos.number_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
+            protos.boolean_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
+            protos.symbol_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
+            protos.array_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
+            protos.map_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
+            protos.set_proto,
+          )
+          stamp_realm_proto_if_unstamped(
+            data,
+            FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
+            protos.promise_proto,
+          )
         }
         None => ()
       }
@@ -512,39 +903,106 @@ fn stamp_function_realm_from_state_if_unstamped(
   value : Value,
   realm_state : RealmState,
 ) -> Value {
-  stamp_function_realm_if_unstamped_with(
+  stamp_function_realm_if_unstamped_with_protos(
     value,
-    realm_state.get_func_proto(),
-    realm_state.get_obj_proto(),
+    function_realm_protos_from_realm_state(realm_state),
   )
 }
 
 ///|
-fn object_data_function_realm_protos(data : ObjectData) -> (Value?, Value?) {
+fn object_data_function_realm_protos(data : ObjectData) -> FunctionRealmProtos {
   match data.callable {
     Some(_) =>
-      (
-        function_realm_symbol_prop(
+      {
+        function_proto: function_realm_symbol_prop(
           data,
           FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
         ),
-        function_realm_symbol_prop(data, FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID),
-      )
-    None => (None, None)
+        object_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
+        ),
+        string_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
+        ),
+        number_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
+        ),
+        boolean_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
+        ),
+        symbol_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
+        ),
+        array_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
+        ),
+        map_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
+        ),
+        set_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
+        ),
+        promise_proto: function_realm_symbol_prop(
+          data,
+          FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
+        ),
+      }
+    None => empty_function_realm_protos()
   }
 }
 
 ///|
-fn callee_realm_protos(callee : Value) -> (Value?, Value?) {
+fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
   match callee {
     Object(data) => object_data_function_realm_protos(data)
     Proxy(proxy_data) =>
       match proxy_data.target {
         Some(target) => callee_realm_protos(target)
-        None => (None, None)
+        None => empty_function_realm_protos()
       }
-    _ => (None, None)
+    _ => empty_function_realm_protos()
   }
+}
+
+///|
+fn active_realm_protos(realm_state : RealmState) -> FunctionRealmProtos {
+  {
+    function_proto: realm_state.active_function_prototype_override.val,
+    object_proto: realm_state.active_object_prototype_override.val,
+    string_proto: realm_state.active_string_prototype_override.val,
+    number_proto: realm_state.active_number_prototype_override.val,
+    boolean_proto: realm_state.active_boolean_prototype_override.val,
+    symbol_proto: realm_state.active_symbol_prototype_override.val,
+    array_proto: realm_state.active_array_prototype_override.val,
+    map_proto: realm_state.active_map_prototype_override.val,
+    set_proto: realm_state.active_set_prototype_override.val,
+    promise_proto: realm_state.active_promise_prototype_override.val,
+  }
+}
+
+///|
+fn apply_active_realm_protos(
+  realm_state : RealmState,
+  protos : FunctionRealmProtos,
+) -> Unit {
+  realm_state.active_function_prototype_override.val = protos.function_proto
+  realm_state.active_object_prototype_override.val = protos.object_proto
+  realm_state.active_string_prototype_override.val = protos.string_proto
+  realm_state.active_number_prototype_override.val = protos.number_proto
+  realm_state.active_boolean_prototype_override.val = protos.boolean_proto
+  realm_state.active_symbol_prototype_override.val = protos.symbol_proto
+  realm_state.active_array_prototype_override.val = protos.array_proto
+  realm_state.active_map_prototype_override.val = protos.map_proto
+  realm_state.active_set_prototype_override.val = protos.set_proto
+  realm_state.active_promise_prototype_override.val = protos.promise_proto
 }
 
 ///|
@@ -553,35 +1011,17 @@ fn with_active_callee_realm_value(
   callee : Value,
   eval : () -> Value raise Error,
 ) -> Value raise Error {
-  let (function_proto, object_proto) = callee_realm_protos(callee)
-  match Some(realm_state) {
-    Some(realm_state) => {
-      let prev_function_proto = realm_state.active_function_prototype_override.val
-      let prev_object_proto = realm_state.active_object_prototype_override.val
-      match function_proto {
-        Some(proto) =>
-          realm_state.active_function_prototype_override.val = Some(proto)
-        None => realm_state.active_function_prototype_override.val = None
-      }
-      match object_proto {
-        Some(proto) =>
-          realm_state.active_object_prototype_override.val = Some(proto)
-        None => realm_state.active_object_prototype_override.val = None
-      }
-      try {
-        let result = eval()
-        realm_state.active_function_prototype_override.val = prev_function_proto
-        realm_state.active_object_prototype_override.val = prev_object_proto
-        result
-      } catch {
-        e => {
-          realm_state.active_function_prototype_override.val = prev_function_proto
-          realm_state.active_object_prototype_override.val = prev_object_proto
-          raise e
-        }
-      }
+  let prev = active_realm_protos(realm_state)
+  apply_active_realm_protos(realm_state, callee_realm_protos(callee))
+  try {
+    let result = eval()
+    apply_active_realm_protos(realm_state, prev)
+    result
+  } catch {
+    e => {
+      apply_active_realm_protos(realm_state, prev)
+      raise e
     }
-    None => eval()
   }
 }
 
@@ -590,26 +1030,17 @@ fn[T] with_cleared_active_callee_realm(
   realm_state : RealmState,
   eval : () -> T raise Error,
 ) -> T raise Error {
-  match Some(realm_state) {
-    Some(realm_state) => {
-      let prev_function_proto = realm_state.active_function_prototype_override.val
-      let prev_object_proto = realm_state.active_object_prototype_override.val
-      realm_state.active_function_prototype_override.val = None
-      realm_state.active_object_prototype_override.val = None
-      try {
-        let result = eval()
-        realm_state.active_function_prototype_override.val = prev_function_proto
-        realm_state.active_object_prototype_override.val = prev_object_proto
-        result
-      } catch {
-        e => {
-          realm_state.active_function_prototype_override.val = prev_function_proto
-          realm_state.active_object_prototype_override.val = prev_object_proto
-          raise e
-        }
-      }
+  let prev = active_realm_protos(realm_state)
+  apply_active_realm_protos(realm_state, empty_function_realm_protos())
+  try {
+    let result = eval()
+    apply_active_realm_protos(realm_state, prev)
+    result
+  } catch {
+    e => {
+      apply_active_realm_protos(realm_state, prev)
+      raise e
     }
-    None => eval()
   }
 }
 
@@ -618,18 +1049,10 @@ fn with_cleared_active_callee_realm_unit(
   realm_state : RealmState,
   eval : () -> Unit,
 ) -> Unit {
-  match Some(realm_state) {
-    Some(realm_state) => {
-      let prev_function_proto = realm_state.active_function_prototype_override.val
-      let prev_object_proto = realm_state.active_object_prototype_override.val
-      realm_state.active_function_prototype_override.val = None
-      realm_state.active_object_prototype_override.val = None
-      eval()
-      realm_state.active_function_prototype_override.val = prev_function_proto
-      realm_state.active_object_prototype_override.val = prev_object_proto
-    }
-    None => eval()
-  }
+  let prev = active_realm_protos(realm_state)
+  apply_active_realm_protos(realm_state, empty_function_realm_protos())
+  eval()
+  apply_active_realm_protos(realm_state, prev)
 }
 
 ///|

@@ -258,7 +258,11 @@ pub fn setup_object_builtins(
       let arg = if args.length() > 0 { args[0] } else { Undefined }
       let mut current : Value = match arg {
         Object(data) => data.prototype
-        Array(_) => interp.realm_state.get_array_proto()
+        Array(data) =>
+          match @runtime.get_array_prototype_override(data) {
+            Some(proto) => proto
+            None => interp.realm_state.get_array_proto()
+          }
         Promise(_) => Null
         _ => return Value::Bool(false)
       }
@@ -1152,13 +1156,36 @@ pub fn setup_object_builtins(
                   )
                 Object(data) => data.prototype
                 Array(data) =>
-                  @runtime.get_array_prototype(interp.realm_state, data)
-                Value::String_(_) => interp.realm_state.get_string_proto()
-                Value::Number(_) => interp.realm_state.get_number_proto()
-                Bool(_) => interp.realm_state.get_boolean_proto()
-                Symbol(_) => interp.realm_state.get_symbol_proto()
-                Map(_) => interp.realm_state.get_map_proto()
-                Set(_) => interp.realm_state.get_set_proto()
+                  match @runtime.get_array_prototype_override(data) {
+                    Some(proto) => proto
+                    None => interp.realm_state.get_array_proto()
+                  }
+                Value::String_(_) =>
+                  @runtime.get_string_proto(
+                    realm_state=Some(interp.realm_state),
+                  )
+                Value::Number(_) =>
+                  @runtime.get_number_proto(
+                    realm_state=Some(interp.realm_state),
+                  )
+                Bool(_) =>
+                  @runtime.get_boolean_proto(
+                    realm_state=Some(interp.realm_state),
+                  )
+                Symbol(_) =>
+                  @runtime.get_symbol_proto(
+                    realm_state=Some(interp.realm_state),
+                  )
+                Map(data) =>
+                  match data.prototype {
+                    Null => interp.realm_state.get_map_proto()
+                    proto => proto
+                  }
+                Set(data) =>
+                  match data.prototype {
+                    Null => interp.realm_state.get_set_proto()
+                    proto => proto
+                  }
                 Promise(_) => interp.realm_state.get_promise_proto()
                 Value::Proxy(proxy_data) =>
                   @runtime.proxy_get_prototype_of(interp, proxy_data)

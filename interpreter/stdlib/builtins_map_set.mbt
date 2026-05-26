@@ -29,11 +29,7 @@ fn get_map_lookup_prototype(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match data.prototype {
-    Null =>
-      match realm_state.map_prototype.val {
-        Some(proto) => proto
-        None => Null
-      }
+    Null => realm_state.get_map_proto()
     proto => proto
   }
 }
@@ -44,11 +40,7 @@ fn get_set_lookup_prototype(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match data.prototype {
-    Null =>
-      match realm_state.set_prototype.val {
-        Some(proto) => proto
-        None => Null
-      }
+    Null => realm_state.get_set_proto()
     proto => proto
   }
 }

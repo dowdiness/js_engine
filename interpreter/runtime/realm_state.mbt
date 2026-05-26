@@ -33,6 +33,14 @@ pub(all) struct RealmState {
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
   active_function_prototype_override : Ref[Value?]
   active_object_prototype_override : Ref[Value?]
+  active_string_prototype_override : Ref[Value?]
+  active_number_prototype_override : Ref[Value?]
+  active_boolean_prototype_override : Ref[Value?]
+  active_symbol_prototype_override : Ref[Value?]
+  active_array_prototype_override : Ref[Value?]
+  active_map_prototype_override : Ref[Value?]
+  active_set_prototype_override : Ref[Value?]
+  active_promise_prototype_override : Ref[Value?]
   object_prototype : Ref[Value?]
   function_prototype : Ref[Value?]
   string_prototype : Ref[Value?]
@@ -74,6 +82,14 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     runtime_iterator_prototypes: RuntimeIteratorPrototypeCaches(),
     active_function_prototype_override: { val: None },
     active_object_prototype_override: { val: None },
+    active_string_prototype_override: { val: None },
+    active_number_prototype_override: { val: None },
+    active_boolean_prototype_override: { val: None },
+    active_symbol_prototype_override: { val: None },
+    active_array_prototype_override: { val: None },
+    active_map_prototype_override: { val: None },
+    active_set_prototype_override: { val: None },
+    active_promise_prototype_override: { val: None },
     object_prototype: { val: None },
     function_prototype: { val: None },
     string_prototype: { val: None },

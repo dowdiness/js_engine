@@ -51,6 +51,8 @@ pub fn get_array_like_element_interp(Interpreter, Value, Int) -> Value raise
 
 pub fn get_array_named_prop(ArrayData, String) -> Value?
 
+pub fn get_array_proto(realm_state? : RealmState?) -> Value
+
 pub fn get_array_prototype(RealmState, ArrayData) -> Value
 
 pub fn get_array_prototype_override(ArrayData) -> Value?
@@ -65,15 +67,21 @@ pub fn get_func_length(Callable) -> Int
 
 pub fn get_func_proto(realm_state? : RealmState?) -> Value
 
+pub fn get_map_proto(realm_state? : RealmState?) -> Value
+
 pub fn get_number_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_obj_proto(realm_state? : RealmState?) -> Value
+
+pub fn get_promise_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_proxy_handler(ProxyData) -> Value raise
 
 pub fn get_proxy_target(ProxyData) -> Value raise
 
 pub fn get_proxy_trap(ProxyData, String, Interpreter) -> Value? raise
+
+pub fn get_set_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_string_proto(realm_state? : RealmState?) -> Value
 
@@ -197,7 +205,7 @@ pub fn sort_property_keys(Map[String, Value]) -> Array[String]
 
 pub fn stamp_function_realm(Value, realm_state? : RealmState?) -> Value
 
-pub fn stamp_function_realm_with(Value, Value, Value) -> Value
+pub fn stamp_function_realm_with(Value, Value, Value, string_proto? : Value, number_proto? : Value, boolean_proto? : Value, symbol_proto? : Value, array_proto? : Value, map_proto? : Value, set_proto? : Value, promise_proto? : Value) -> Value
 
 pub fn strict_equal(Value, Value) -> Bool
 
@@ -565,6 +573,14 @@ pub(all) struct RealmState {
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
   active_function_prototype_override : @ref.Ref[Value?]
   active_object_prototype_override : @ref.Ref[Value?]
+  active_string_prototype_override : @ref.Ref[Value?]
+  active_number_prototype_override : @ref.Ref[Value?]
+  active_boolean_prototype_override : @ref.Ref[Value?]
+  active_symbol_prototype_override : @ref.Ref[Value?]
+  active_array_prototype_override : @ref.Ref[Value?]
+  active_map_prototype_override : @ref.Ref[Value?]
+  active_set_prototype_override : @ref.Ref[Value?]
+  active_promise_prototype_override : @ref.Ref[Value?]
   object_prototype : @ref.Ref[Value?]
   function_prototype : @ref.Ref[Value?]
   string_prototype : @ref.Ref[Value?]
