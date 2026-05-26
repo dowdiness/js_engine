@@ -8,12 +8,16 @@ name: Benchmarks
 #
 # schedule — Sundays 02:00 UTC
 #   Weekly timing snapshot: run the CLI runner with --all --csv, upload the
-#   CSV as a dated artifact, and post human-readable results to the job summary.
-#   Provides a lightweight performance trend without per-commit noise.
+#   CSV as a dated artifact, post human-readable results to the job summary,
+#   and publish historical benchmark data.
 #
 # workflow_dispatch
 #   On-demand: same as the scheduled run. Useful before/after a refactor or
 #   when investigating a suspected regression.
+#
+# pull_request (same-repository branches only for comment/history steps)
+#   Run the benchmark suite and post reporting-only benchmark comments/summaries
+#   without updating the historical gh-pages baseline.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
@@ -23,7 +27,18 @@ on:
       - "interpreter/**"
       - "lexer/**"
       - "parser/**"
+      - "compiler/**"
       - "ast/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "benchmarks/**"
+      - "interpreter/**"
+      - "lexer/**"
+      - "parser/**"
+      - "compiler/**"
+      - "ast/**"
+      - ".github/workflows/bench.yml"
   schedule:
     - cron: "0 2 * * 0" # every Sunday at 02:00 UTC
   workflow_dispatch:
@@ -37,7 +52,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
       - name: Set up MoonBit
         run: |
@@ -49,7 +64,7 @@ jobs:
         run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoonBit dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
         with:
           path: |
             ~/.moon/registry
@@ -68,30 +83,30 @@ jobs:
       - name: Run @bench.T suite
         run: moon test benchmarks/ --target js
 
-      # ── CSV baseline snapshot (scheduled and manual runs only) ─────────────
+      # ── CSV baseline snapshot / PR report source ──────────────────────────
       # The CLI runner (benchmarks/main.mbt) measures the same workloads with fixed
-      # iteration counts and emits machine-readable CSV rows.  Upload as a
-      # dated artifact so snapshots can be diffed across weeks.
+      # iteration counts and emits machine-readable CSV rows.  Scheduled/manual
+      # runs update long-term history; same-repository PRs use the CSV for a
+      # reporting-only benchmark comment without updating the baseline.
       - name: Generate CSV baseline
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         run: |
           set -o pipefail
           moon run benchmarks --target js -- --all --csv | tee bench-results.csv
 
       - name: Upload CSV artifact
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v7
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: bench-results-${{ github.sha }}
           path: bench-results.csv
           retention-days: 90
 
       # ── Job summary ────────────────────────────────────────────────────────
-      # On scheduled / manual runs append human-readable results from the CLI
-      # runner to the GitHub Actions step summary so they are visible in the
-      # Actions UI without downloading the CSV artifact.
+      # Scheduled/manual/same-repository PR reporting writes a human-readable
+      # summary without needing repository-write credentials.
       - name: Post human-readable results to summary
-        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && !cancelled()
+        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && !cancelled()
         run: |
           {
             echo "## Benchmark Results"
@@ -103,13 +118,276 @@ jobs:
             echo "| Trigger | \`${{ github.event_name }}\` |"
             echo "| MoonBit | \`${{ steps.moonbit-version.outputs.version }}\` |"
             echo ""
-            echo "| benchmark | category | mean | min | max | CV |"
-            echo "| --- | --- | --- | --- | --- | --- |"
+            echo "> \`startup/tiny_program\` is the PR #153 / issue #141 guardrail for built-in realm-stamping startup cost."
+            echo ""
+            echo "| benchmark | category | stage | mean | min | max | CV |"
+            echo "| --- | --- | --- | --- | --- | --- | --- |"
             tail -n +2 bench-results.csv | awk -F, '{
-              printf "| %s | %s | %.3f ms | %.3f ms | %.3f ms | %.1f%% |\n",
-                $1, $2, $6, $7, $8, $10
+              printf "| %s | %s | %s | %.3f ms | %.3f ms | %.3f ms | %.1f%% |\n",
+                $1, $2, $3, $7, $8, $9, $11
             }'
+            echo ""
+            echo "### Stage summary"
+            echo ""
+            echo "| stage | benchmarks | total mean | slowest benchmark | slowest mean | noisy rows |"
+            echo "| --- | ---: | ---: | --- | ---: | ---: |"
+            awk -F, '
+              NR > 1 {
+                stage = $3
+                mean = $7 + 0
+                count[stage] += 1
+                total[stage] += mean
+                if (!(stage in max) || mean > max[stage]) {
+                  max[stage] = mean
+                  max_name[stage] = $1
+                }
+                if ($12 == "true") noisy[stage] += 1
+              }
+              END {
+                split("startup frontend execution", order, " ")
+                for (i = 1; i <= 3; i += 1) {
+                  stage = order[i]
+                  if (count[stage] > 0) {
+                    printf "| %s | %d | %.3f ms | %s | %.3f ms | %d |\n", stage, count[stage], total[stage], max_name[stage], max[stage], noisy[stage]
+                  }
+                }
+              }
+            ' bench-results.csv
+            echo ""
+            echo "### Mean-time chart (log scale)"
+            echo ""
+            echo "| benchmark | stage | mean | chart |"
+            echo "| --- | --- | ---: | --- |"
+            awk -F, '
+              function make_bar(n,    s, i) {
+                s = ""
+                for (i = 0; i < n; i += 1) s = s "#"
+                return s
+              }
+              NR > 1 {
+                name[NR - 1] = $1
+                stage[NR - 1] = $3
+                mean[NR - 1] = $7 + 0
+                noisy[NR - 1] = $12
+                scaled = log(mean[NR - 1] + 1)
+                log_mean[NR - 1] = scaled
+                if (scaled > max_log) max_log = scaled
+                rows = NR - 1
+              }
+              END {
+                for (i = 1; i <= rows; i += 1) {
+                  width = max_log > 0 ? int(log_mean[i] / max_log * 30) : 0
+                  if (width < 1) width = 1
+                  note = noisy[i] == "true" ? " ⚠" : ""
+                  printf "| %s | %s | %.3f ms%s | `%s` |\n", name[i], stage[i], mean[i], note, make_bar(width)
+                }
+              }
+            ' bench-results.csv
+            echo ""
+            echo "### Closure-conversion comparison"
+            echo ""
+            awk -F, '
+              NR > 1 { mean[$1] = $7; noisy[$1] = $12 }
+              END {
+                normal = "exec/closure_factory"
+                converted = "baseline/closure_conversion/closure_factory"
+                if ((normal in mean) && (converted in mean)) {
+                  note = (noisy[normal] == "true" || noisy[converted] == "true") ? " (interpret cautiously: noisy row)" : ""
+                  printf "- closure_factory: %.3f ms normal vs %.3f ms closure-converted (%.2fx)%s\n", mean[normal], mean[converted], mean[normal] / mean[converted], note
+                }
+                normal = "pipeline/exec/evaluate"
+                converted = "pipeline/closure_conversion/evaluate"
+                if ((normal in mean) && (converted in mean)) {
+                  note = (noisy[normal] == "true" || noisy[converted] == "true") ? " (interpret cautiously: noisy row)" : ""
+                  printf "- pipeline evaluate: %.3f ms normal vs %.3f ms closure-converted (%.2fx)%s\n", mean[normal], mean[converted], mean[normal] / mean[converted], note
+                }
+              }
+            ' bench-results.csv
             echo ""
             echo "Full CSV uploaded as artifact \`bench-results-${{ github.sha }}\`."
             echo "To compare two baselines: \`diff old.csv new.csv\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-benchmark-report:
+    needs: bench
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Download CSV artifact
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: bench-results-${{ github.sha }}
+          path: .
+
+      # ── Historical benchmark dashboard / PR comments ───────────────────────
+      # Scheduled / manual runs publish a GitHub Pages benchmark history through
+      # benchmark-action/github-action-benchmark.  Same-repository PRs get a
+      # reporting-only benchmark comment and job summary, but do not save data or
+      # push to gh-pages.  Fork PRs are skipped for token/write-safety.
+      - name: Convert CSV for benchmark-action
+        run: |
+          python3 - <<'PY'
+          import csv
+          import json
+
+          rows = []
+          with open("bench-results.csv", newline="") as f:
+              for r in csv.DictReader(f):
+                  rows.append({
+                      "name": f"{r['stage']}/{r['name']}",
+                      "unit": "ms",
+                      "value": float(r["mean_ms"]),
+                      "extra": f"category={r['category']}, cv={float(r['cv_pct']):.1f}%, noisy={r['noisy']}",
+                  })
+
+          with open("benchmark-action-results.json", "w") as f:
+              json.dump(rows, f, indent=2)
+          PY
+
+      - name: Publish benchmark history
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
+        with:
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-action-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: benchmarks
+          summary-always: true
+
+      - name: Compare benchmark history for PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
+        with:
+          tool: customSmallerIsBetter
+          output-file-path: benchmark-action-results.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: false
+          save-data-file: false
+          summary-always: true
+          gh-pages-branch: gh-pages
+          benchmark-data-dir-path: benchmarks
+
+      - name: Comment benchmark summary on PR
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import csv
+          import json
+          import math
+          import os
+          import urllib.request
+
+          marker = "<!-- js-engine-benchmark-report -->"
+          rows = list(csv.DictReader(open("bench-results.csv", newline="")))
+
+          def fmt_ms(value):
+              return f"{float(value):.3f} ms"
+
+          def bar(value, max_log):
+              scaled = math.log(float(value) + 1.0)
+              width = max(1, int(scaled / max_log * 30)) if max_log > 0 else 1
+              return "#" * width
+
+          stage_order = ["startup", "frontend", "execution"]
+          stage_rows = []
+          for stage in stage_order:
+              subset = [r for r in rows if r["stage"] == stage]
+              if not subset:
+                  continue
+              total = sum(float(r["mean_ms"]) for r in subset)
+              slowest = max(subset, key=lambda r: float(r["mean_ms"]))
+              noisy = sum(1 for r in subset if r["noisy"] == "true")
+              stage_rows.append(
+                  f"| {stage} | {len(subset)} | {total:.3f} ms | {slowest['name']} | {fmt_ms(slowest['mean_ms'])} | {noisy} |"
+              )
+
+          max_log = max(math.log(float(r["mean_ms"]) + 1.0) for r in rows)
+          chart_rows = [
+              f"| {r['name']} | {r['stage']} | {fmt_ms(r['mean_ms'])}{' ⚠' if r['noisy'] == 'true' else ''} | `{bar(r['mean_ms'], max_log)}` |"
+              for r in rows
+          ]
+
+          by_name = {r["name"]: r for r in rows}
+          comparisons = []
+          pairs = [
+              ("exec/closure_factory", "baseline/closure_conversion/closure_factory", "closure_factory"),
+              ("pipeline/exec/evaluate", "pipeline/closure_conversion/evaluate", "pipeline evaluate"),
+          ]
+          for normal, converted, label in pairs:
+              if normal in by_name and converted in by_name:
+                  a = float(by_name[normal]["mean_ms"])
+                  b = float(by_name[converted]["mean_ms"])
+                  note = " ⚠" if by_name[normal]["noisy"] == "true" or by_name[converted]["noisy"] == "true" else ""
+                  comparisons.append(f"- {label}: {a:.3f} ms normal vs {b:.3f} ms closure-converted (**{a / b:.2f}x**){note}")
+
+          body = "\n".join([
+              marker,
+              "## Benchmark Results",
+              "",
+              f"Run: {os.environ['RUN_URL']}",
+              "",
+              "> `startup/tiny_program` is the PR #153 / issue #141 guardrail for built-in realm-stamping startup cost.",
+              "",
+              "### Stage summary",
+              "",
+              "| stage | benchmarks | total mean | slowest benchmark | slowest mean | noisy rows |",
+              "| --- | ---: | ---: | --- | ---: | ---: |",
+              *stage_rows,
+              "",
+              "### Mean-time chart (log scale)",
+              "",
+              "| benchmark | stage | mean | chart |",
+              "| --- | --- | ---: | --- |",
+              *chart_rows,
+              "",
+              "### Closure-conversion comparison",
+              "",
+              *(comparisons or ["- unavailable"]),
+          ])
+
+          repo = os.environ["REPO"]
+          pr_number = os.environ["PR_NUMBER"]
+          token = os.environ["GH_TOKEN"]
+          base_url = f"https://api.github.com/repos/{repo}/issues/{pr_number}/comments"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": "2022-11-28",
+          }
+
+          existing = None
+          page = 1
+          while True:
+              page_url = f"{base_url}?per_page=100&page={page}"
+              req = urllib.request.Request(page_url, headers=headers)
+              with urllib.request.urlopen(req) as response:
+                  comments = json.load(response)
+              existing = next((c for c in comments if marker in c.get("body", "")), None)
+              if existing or len(comments) < 100:
+                  break
+              page += 1
+
+          payload = json.dumps({"body": body}).encode()
+          if existing:
+              req = urllib.request.Request(existing["url"], data=payload, headers=headers, method="PATCH")
+          else:
+              req = urllib.request.Request(base_url, data=payload, headers=headers, method="POST")
+          with urllib.request.urlopen(req) as response:
+              response.read()
+          PY

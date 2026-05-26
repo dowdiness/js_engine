@@ -28,9 +28,11 @@ pub const PIPELINE_EXEC_SRC : String = "(function() {\n  function makeCounter(st
 
 pub const PROPERTY_CHAIN_SRC : String = "var obj = { a: { b: { c: { d: { e: 42 } } } } };\nvar sum = 0;\nfor (var i = 0; i < 10000; i++) {\n  sum = sum + obj.a.b.c.d.e;\n}\nsum;"
 
+pub const STARTUP_TINY_SRC : String = "1 + 1"
+
 pub const STRING_OPS_SRC : String = "var result = \"\";\nfor (var i = 0; i < 100; i++) {\n  result = result + \"hello\".toUpperCase() + \" \";\n}\nresult.length;"
 
-pub fn all_bench_names() -> Array[(String, String)]
+pub fn all_bench_names() -> Array[(String, String, String)]
 
 pub fn bench_array_map_filter() -> BenchResult raise
 
@@ -58,6 +60,8 @@ pub fn bench_pipeline_exec_parse() -> BenchResult raise
 
 pub fn bench_property_chain() -> BenchResult raise
 
+pub fn bench_startup_tiny() -> BenchResult raise
+
 pub fn bench_string_ops() -> BenchResult raise
 
 pub fn now_ms() -> Double
@@ -72,7 +76,7 @@ pub fn print_result_csv(BenchResult) -> Unit
 
 pub fn run_all() -> Array[BenchResult] raise
 
-pub fn run_bench(String, Category, BenchConfig, () -> Unit raise) -> BenchResult raise
+pub fn run_bench(String, Category, BenchConfig, () -> Unit raise, stage? : BenchStage) -> BenchResult raise
 
 pub fn run_component() -> Array[BenchResult] raise
 
@@ -102,6 +106,7 @@ pub struct BenchConfig {
 pub struct BenchResult {
   name : String
   category : Category
+  stage : BenchStage
   warmup : Int
   iterations : Int
   group_size : Int
@@ -112,6 +117,13 @@ pub struct BenchResult {
   cv_pct : Double
   noisy : Bool
 }
+
+pub enum BenchStage {
+  Startup
+  Frontend
+  Execution
+}
+pub fn BenchStage::label(Self) -> String
 
 pub enum Category {
   Regression

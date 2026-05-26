@@ -20,11 +20,34 @@ pub fn Category::label(self : Category) -> String {
 }
 
 ///|
+/// Pipeline stage measured by a benchmark.
+///
+/// Stage separates the kind of work from the stability category:
+///   Startup: interpreter construction, realm setup, and builtin installation.
+///   Frontend: lexing, parsing, or compile/closure-conversion preparation.
+///   Execution: AST/compiled evaluation, function calls, properties, builtins.
+pub enum BenchStage {
+  Startup
+  Frontend
+  Execution
+}
+
+///|
+pub fn BenchStage::label(self : BenchStage) -> String {
+  match self {
+    Startup => "startup"
+    Frontend => "frontend"
+    Execution => "execution"
+  }
+}
+
+///|
 /// Immutable result snapshot produced by a single benchmark run.
 pub struct BenchResult {
   /// Stable identifier, e.g. "lexer/small" or "exec/fibonacci_30".
   name : String
   category : Category
+  stage : BenchStage
   /// Discarded warmup iterations (JIT / cache warm-up).
   warmup : Int
   /// Measured outer iterations used for statistics.
@@ -110,6 +133,7 @@ pub fn run_bench(
   category : Category,
   config : BenchConfig,
   f : () -> Unit raise,
+  stage? : BenchStage = Execution,
 ) -> BenchResult raise {
   if config.iterations <= 0 {
     abort("run_bench: iterations must be > 0")
@@ -140,6 +164,7 @@ pub fn run_bench(
   {
     name,
     category,
+    stage,
     warmup: config.warmup,
     iterations: config.iterations,
     group_size: config.group_size,
@@ -236,7 +261,7 @@ fn fmt_cv(cv : Double) -> String {
 ///     100 itr × 100 reps  mean:   0.04ms  min:   0.03ms  max:   0.07ms  CV: 5.2%
 pub fn print_result(r : BenchResult) -> Unit {
   let noise = if r.noisy { "  ⚠ NOISY" } else { "" }
-  println("  [\{r.category.label()}] \{r.name}\{noise}")
+  println("  [\{r.category.label()}/\{r.stage.label()}] \{r.name}\{noise}")
   println(
     "    \{pad5(r.iterations)} itr ×\{pad5(r.group_size)} reps  mean: \{fmt_ms(r.mean_ms)}  min: \{fmt_ms(r.min_ms)}  max: \{fmt_ms(r.max_ms)}  CV: \{fmt_cv(r.cv_pct)}",
   )
@@ -246,18 +271,18 @@ pub fn print_result(r : BenchResult) -> Unit {
 /// Print the CSV header line (call once before any print_result_csv calls).
 pub fn print_csv_header() -> Unit {
   println(
-    "name,category,warmup,iterations,group_size,mean_ms,min_ms,max_ms,stddev_ms,cv_pct,noisy",
+    "name,category,stage,warmup,iterations,group_size,mean_ms,min_ms,max_ms,stddev_ms,cv_pct,noisy",
   )
 }
 
 ///|
 /// Print one result as a CSV row for baseline tracking.
 ///
-/// Columns: name, category, warmup, iterations, group_size,
+/// Columns: name, category, stage, warmup, iterations, group_size,
 ///          mean_ms, min_ms, max_ms, stddev_ms, cv_pct, noisy
 pub fn print_result_csv(r : BenchResult) -> Unit {
   let noisy = if r.noisy { "true" } else { "false" }
   println(
-    "\{r.name},\{r.category.label()},\{r.warmup},\{r.iterations},\{r.group_size},\{r.mean_ms},\{r.min_ms},\{r.max_ms},\{r.stddev_ms},\{r.cv_pct},\{noisy}",
+    "\{r.name},\{r.category.label()},\{r.stage.label()},\{r.warmup},\{r.iterations},\{r.group_size},\{r.mean_ms},\{r.min_ms},\{r.max_ms},\{r.stddev_ms},\{r.cv_pct},\{noisy}",
   )
 }

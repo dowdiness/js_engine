@@ -190,6 +190,17 @@ pub const LEXER_LARGE_SRC : String =
 // ---------------------------------------------------------------------------
 
 ///|
+/// Minimal program used as the interpreter-startup guardrail.
+///
+/// Category: Regression
+/// Exercises: @lib.run() on a tiny source, so cost is dominated by
+///            new_interpreter() and setup_builtins() rather than JS execution.
+/// Guards: built-in realm-stamping startup regressions (issue #141 / PR #153).
+///
+/// Expected result: "2"
+pub const STARTUP_TINY_SRC : String = "1 + 1"
+
+///|
 /// Recursive Fibonacci(30).
 ///
 /// Category: Regression
