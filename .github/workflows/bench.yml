@@ -39,6 +39,7 @@ on:
       - "compiler/**"
       - "ast/**"
       - ".github/workflows/bench.yml"
+      - "scripts/render-benchmark-summary.py"
   schedule:
     - cron: "0 2 * * 0" # every Sunday at 02:00 UTC
   workflow_dispatch:
@@ -107,106 +108,18 @@ jobs:
       # summary without needing repository-write credentials.
       - name: Post human-readable results to summary
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && !cancelled()
+        env:
+          MOONBIT_VERSION: ${{ steps.moonbit-version.outputs.version }}
         run: |
-          {
-            echo "## Benchmark Results"
-            echo ""
-            echo "| | |"
-            echo "| --- | --- |"
-            echo "| Commit | \`${{ github.sha }}\` |"
-            echo "| Runner | \`${{ runner.name }}\` (${{ runner.os }}) |"
-            echo "| Trigger | \`${{ github.event_name }}\` |"
-            echo "| MoonBit | \`${{ steps.moonbit-version.outputs.version }}\` |"
-            echo ""
-            echo "> \`startup/tiny_program\` is the PR #153 / issue #141 guardrail for built-in realm-stamping startup cost."
-            echo ""
-            echo "| benchmark | category | stage | mean | min | max | CV |"
-            echo "| --- | --- | --- | --- | --- | --- | --- |"
-            tail -n +2 bench-results.csv | awk -F, '{
-              printf "| %s | %s | %s | %.3f ms | %.3f ms | %.3f ms | %.1f%% |\n",
-                $1, $2, $3, $7, $8, $9, $11
-            }'
-            echo ""
-            echo "### Stage summary"
-            echo ""
-            echo "| stage | benchmarks | total mean | slowest benchmark | slowest mean | noisy rows |"
-            echo "| --- | ---: | ---: | --- | ---: | ---: |"
-            awk -F, '
-              NR > 1 {
-                stage = $3
-                mean = $7 + 0
-                count[stage] += 1
-                total[stage] += mean
-                if (!(stage in max) || mean > max[stage]) {
-                  max[stage] = mean
-                  max_name[stage] = $1
-                }
-                if ($12 == "true") noisy[stage] += 1
-              }
-              END {
-                split("startup frontend execution", order, " ")
-                for (i = 1; i <= 3; i += 1) {
-                  stage = order[i]
-                  if (count[stage] > 0) {
-                    printf "| %s | %d | %.3f ms | %s | %.3f ms | %d |\n", stage, count[stage], total[stage], max_name[stage], max[stage], noisy[stage]
-                  }
-                }
-              }
-            ' bench-results.csv
-            echo ""
-            echo "### Mean-time chart (log scale)"
-            echo ""
-            echo "| benchmark | stage | mean | chart |"
-            echo "| --- | --- | ---: | --- |"
-            awk -F, '
-              function make_bar(n,    s, i) {
-                s = ""
-                for (i = 0; i < n; i += 1) s = s "#"
-                return s
-              }
-              NR > 1 {
-                name[NR - 1] = $1
-                stage[NR - 1] = $3
-                mean[NR - 1] = $7 + 0
-                noisy[NR - 1] = $12
-                scaled = log(mean[NR - 1] + 1)
-                log_mean[NR - 1] = scaled
-                if (scaled > max_log) max_log = scaled
-                rows = NR - 1
-              }
-              END {
-                for (i = 1; i <= rows; i += 1) {
-                  width = max_log > 0 ? int(log_mean[i] / max_log * 30) : 0
-                  if (width < 1) width = 1
-                  note = noisy[i] == "true" ? " ⚠" : ""
-                  printf "| %s | %s | %.3f ms%s | `%s` |\n", name[i], stage[i], mean[i], note, make_bar(width)
-                }
-              }
-            ' bench-results.csv
-            echo ""
-            echo "### Closure-conversion comparison"
-            echo ""
-            awk -F, '
-              NR > 1 { mean[$1] = $7; noisy[$1] = $12 }
-              END {
-                normal = "exec/closure_factory"
-                converted = "baseline/closure_conversion/closure_factory"
-                if ((normal in mean) && (converted in mean)) {
-                  note = (noisy[normal] == "true" || noisy[converted] == "true") ? " (interpret cautiously: noisy row)" : ""
-                  printf "- closure_factory: %.3f ms normal vs %.3f ms closure-converted (%.2fx)%s\n", mean[normal], mean[converted], mean[normal] / mean[converted], note
-                }
-                normal = "pipeline/exec/evaluate"
-                converted = "pipeline/closure_conversion/evaluate"
-                if ((normal in mean) && (converted in mean)) {
-                  note = (noisy[normal] == "true" || noisy[converted] == "true") ? " (interpret cautiously: noisy row)" : ""
-                  printf "- pipeline evaluate: %.3f ms normal vs %.3f ms closure-converted (%.2fx)%s\n", mean[normal], mean[converted], mean[normal] / mean[converted], note
-                }
-              }
-            ' bench-results.csv
-            echo ""
-            echo "Full CSV uploaded as artifact \`bench-results-${{ github.sha }}\`."
-            echo "To compare two baselines: \`diff old.csv new.csv\`"
-          } >> "$GITHUB_STEP_SUMMARY"
+          python3 scripts/render-benchmark-summary.py bench-results.csv \
+            --format github-summary \
+            --commit "$GITHUB_SHA" \
+            --runner-name "$RUNNER_NAME" \
+            --runner-os "$RUNNER_OS" \
+            --trigger "$GITHUB_EVENT_NAME" \
+            --moonbit-version "$MOONBIT_VERSION" \
+            --artifact-name "bench-results-$GITHUB_SHA" \
+            >> "$GITHUB_STEP_SUMMARY"
 
   publish-benchmark-report:
     needs: bench
@@ -278,88 +191,33 @@ jobs:
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: benchmarks
 
+      - name: Render benchmark PR comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 scripts/render-benchmark-summary.py bench-results.csv \
+            --format pr-comment \
+            --run-url "$RUN_URL" \
+            > benchmark-pr-comment.md
+
       - name: Comment benchmark summary on PR
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python3 - <<'PY'
-          import csv
           import json
-          import math
           import os
           import urllib.request
+          from pathlib import Path
 
           marker = "<!-- js-engine-benchmark-report -->"
-          rows = list(csv.DictReader(open("bench-results.csv", newline="")))
-
-          def fmt_ms(value):
-              return f"{float(value):.3f} ms"
-
-          def bar(value, max_log):
-              scaled = math.log(float(value) + 1.0)
-              width = max(1, int(scaled / max_log * 30)) if max_log > 0 else 1
-              return "#" * width
-
-          stage_order = ["startup", "frontend", "execution"]
-          stage_rows = []
-          for stage in stage_order:
-              subset = [r for r in rows if r["stage"] == stage]
-              if not subset:
-                  continue
-              total = sum(float(r["mean_ms"]) for r in subset)
-              slowest = max(subset, key=lambda r: float(r["mean_ms"]))
-              noisy = sum(1 for r in subset if r["noisy"] == "true")
-              stage_rows.append(
-                  f"| {stage} | {len(subset)} | {total:.3f} ms | {slowest['name']} | {fmt_ms(slowest['mean_ms'])} | {noisy} |"
-              )
-
-          max_log = max(math.log(float(r["mean_ms"]) + 1.0) for r in rows)
-          chart_rows = [
-              f"| {r['name']} | {r['stage']} | {fmt_ms(r['mean_ms'])}{' ⚠' if r['noisy'] == 'true' else ''} | `{bar(r['mean_ms'], max_log)}` |"
-              for r in rows
-          ]
-
-          by_name = {r["name"]: r for r in rows}
-          comparisons = []
-          pairs = [
-              ("exec/closure_factory", "baseline/closure_conversion/closure_factory", "closure_factory"),
-              ("pipeline/exec/evaluate", "pipeline/closure_conversion/evaluate", "pipeline evaluate"),
-          ]
-          for normal, converted, label in pairs:
-              if normal in by_name and converted in by_name:
-                  a = float(by_name[normal]["mean_ms"])
-                  b = float(by_name[converted]["mean_ms"])
-                  note = " ⚠" if by_name[normal]["noisy"] == "true" or by_name[converted]["noisy"] == "true" else ""
-                  comparisons.append(f"- {label}: {a:.3f} ms normal vs {b:.3f} ms closure-converted (**{a / b:.2f}x**){note}")
-
-          body = "\n".join([
-              marker,
-              "## Benchmark Results",
-              "",
-              f"Run: {os.environ['RUN_URL']}",
-              "",
-              "> `startup/tiny_program` is the PR #153 / issue #141 guardrail for built-in realm-stamping startup cost.",
-              "",
-              "### Stage summary",
-              "",
-              "| stage | benchmarks | total mean | slowest benchmark | slowest mean | noisy rows |",
-              "| --- | ---: | ---: | --- | ---: | ---: |",
-              *stage_rows,
-              "",
-              "### Mean-time chart (log scale)",
-              "",
-              "| benchmark | stage | mean | chart |",
-              "| --- | --- | ---: | --- |",
-              *chart_rows,
-              "",
-              "### Closure-conversion comparison",
-              "",
-              *(comparisons or ["- unavailable"]),
-          ])
+          body = Path("benchmark-pr-comment.md").read_text()
+          if marker not in body:
+              raise SystemExit("benchmark PR comment body is missing the marker")
 
           repo = os.environ["REPO"]
           pr_number = os.environ["PR_NUMBER"]

@@ -115,11 +115,13 @@ property-lookup regression need different follow-up work.
 The scheduled and manual benchmark workflow uploads the raw CSV, writes a
 GitHub Actions summary with a full table, per-stage totals, a log-scale text
 chart, and closure-conversion comparisons, and publishes historical trend data
-with `benchmark-action/github-action-benchmark` on the `gh-pages` branch.
-Same-repository PRs get reporting-only benchmark comments and summaries without
-updating the historical baseline; fork PRs skip write-token benchmark reporting
-for safety. Repository-write permissions are scoped to the publish job; the
-benchmark execution job runs with read-only repository contents permission.
+with `benchmark-action/github-action-benchmark` on the `gh-pages` branch. The
+CSV-to-Markdown renderer lives in `scripts/render-benchmark-summary.py` so the
+summary and PR comment share one formatter. Same-repository PRs get
+reporting-only benchmark comments and summaries without updating the historical
+baseline; fork PRs skip write-token benchmark reporting for safety.
+Repository-write permissions are scoped to the publish job; the benchmark
+execution job runs with read-only repository contents permission.
 
 The `startup/tiny_program` benchmark is the low-noise guardrail for interpreter
 startup and built-in installation. It intentionally measures `run("1 + 1")` in
