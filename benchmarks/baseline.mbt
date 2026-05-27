@@ -48,6 +48,30 @@ const COMPILED_COUNTER_FACTORY_EXPR : String =
   #|})
 
 ///|
+/// Closure-conversion loop microbenchmark with a braced body that contains no
+/// lexical declarations. This isolates the cost of creating a block
+/// Environment for loop bodies whose semantics do not require one.
+const COMPILED_BLOCK_BODY_LOOP_SRC : String =
+  #|(function() {
+  #|  var sum = 0;
+  #|  for (var i = 0; i < 20000; i++) {
+  #|    sum = sum + i;
+  #|  }
+  #|  return sum;
+  #|})()
+
+///|
+/// Same workload as COMPILED_BLOCK_BODY_LOOP_SRC, but without a braced loop
+/// body. Comparing the two isolates block-body environment overhead.
+const COMPILED_BARE_BODY_LOOP_SRC : String =
+  #|(function() {
+  #|  var sum = 0;
+  #|  for (var i = 0; i < 20000; i++)
+  #|    sum = sum + i;
+  #|  return sum;
+  #|})()
+
+///|
 fn keep_run_result(b : @bench.T, src : String) -> Unit {
   try {
     let (_, v) = @lib.run(src)
@@ -228,6 +252,48 @@ test "baseline/exec/arithmetic_loop" (b : @bench.T) {
     "500000500000",
   )
   b.bench(fn() { keep_run_result(b, BASELINE_ARITHMETIC_LOOP_SRC) })
+}
+
+///|
+/// Isolate closure-conversion block-body environment overhead.
+///
+/// The two programs differ only in whether the `for` body is a braced block.
+/// The braced body has no `let`, `const`, class, or function declaration, so a
+/// gap here points at avoidable block Environment allocation in the compiled
+/// statement path rather than JavaScript work performed by the loop body.
+test "isolate/closure_conversion/block_body_env" (b : @bench.T) {
+  let block_prog = @parser.parse(COMPILED_BLOCK_BODY_LOOP_SRC) catch {
+    _ => abort("block-body loop parse raised")
+  }
+  let bare_prog = @parser.parse(COMPILED_BARE_BODY_LOOP_SRC) catch {
+    _ => abort("bare-body loop parse raised")
+  }
+  let block_compiled = @compiler.compile_script_to_closure(block_prog.stmts)
+  let bare_compiled = @compiler.compile_script_to_closure(bare_prog.stmts)
+  let block_precheck = block_compiled(@interpreter.new_interpreter()) catch {
+    _ => abort("block-body loop precheck raised")
+  }
+  let bare_precheck = bare_compiled(@interpreter.new_interpreter()) catch {
+    _ => abort("bare-body loop precheck raised")
+  }
+  expect_value_string(
+    "isolate/closure_conversion/block_body_env block", block_precheck, "199990000",
+  )
+  expect_value_string(
+    "isolate/closure_conversion/block_body_env bare", bare_precheck, "199990000",
+  )
+  b.bench(name="braced body", fn() {
+    let result = block_compiled(@interpreter.new_interpreter()) catch {
+      _ => abort("compiled block-body loop raised")
+    }
+    b.keep(result)
+  })
+  b.bench(name="bare body", fn() {
+    let result = bare_compiled(@interpreter.new_interpreter()) catch {
+      _ => abort("compiled bare-body loop raised")
+    }
+    b.keep(result)
+  })
 }
 
 ///|
