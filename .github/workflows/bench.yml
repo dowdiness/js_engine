@@ -121,6 +121,24 @@ jobs:
             --artifact-name "bench-results-$GITHUB_SHA" \
             >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Render benchmark PR comment
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 scripts/render-benchmark-summary.py bench-results.csv \
+            --format pr-comment \
+            --run-url "$RUN_URL" \
+            > benchmark-pr-comment.md
+
+      - name: Upload rendered PR comment artifact
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: benchmark-pr-comment-${{ github.sha }}
+          path: benchmark-pr-comment.md
+          retention-days: 90
+
   publish-benchmark-report:
     needs: bench
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
@@ -139,6 +157,13 @@ jobs:
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
           name: bench-results-${{ github.sha }}
+          path: .
+
+      - name: Download rendered PR comment artifact
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: benchmark-pr-comment-${{ github.sha }}
           path: .
 
       # ── Historical benchmark dashboard / PR comments ───────────────────────
@@ -190,16 +215,6 @@ jobs:
           summary-always: true
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: benchmarks
-
-      - name: Render benchmark PR comment
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          python3 scripts/render-benchmark-summary.py bench-results.csv \
-            --format pr-comment \
-            --run-url "$RUN_URL" \
-            > benchmark-pr-comment.md
 
       - name: Comment benchmark summary on PR
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
