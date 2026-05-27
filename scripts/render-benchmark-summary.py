@@ -25,6 +25,7 @@ GUARDRAIL_NOTE = (
     "built-in realm-stamping startup cost."
 )
 STAGE_ORDER = ["startup", "frontend", "execution"]
+MIN_RATIO_DENOMINATOR = 1e-12
 CLOSURE_COMPARISON_PAIRS = [
     (
         "exec/closure_factory",
@@ -126,19 +127,27 @@ def render_closure_comparisons(
             continue
         normal_mean = mean_ms(normal)
         converted_mean = mean_ms(converted)
-        ratio = normal_mean / converted_mean
+        ratio_text = None
+        if abs(converted_mean) > MIN_RATIO_DENOMINATOR:
+            ratio_text = f"{normal_mean / converted_mean:.2f}x"
         noisy = is_noisy(normal) or is_noisy(converted)
         if style == "summary":
             note = " (interpret cautiously: noisy row)" if noisy else ""
+            comparison = ratio_text or "ratio unavailable: closure-converted mean is ~0 ms"
             lines.append(
                 f"- {label}: {normal_mean:.3f} ms normal vs "
-                f"{converted_mean:.3f} ms closure-converted ({ratio:.2f}x){note}"
+                f"{converted_mean:.3f} ms closure-converted ({comparison}){note}"
             )
         elif style == "pr-comment":
             note = " ⚠" if noisy else ""
+            comparison = (
+                f"**{ratio_text}**"
+                if ratio_text is not None
+                else "ratio unavailable: closure-converted mean is ~0 ms"
+            )
             lines.append(
                 f"- {label}: {normal_mean:.3f} ms normal vs "
-                f"{converted_mean:.3f} ms closure-converted (**{ratio:.2f}x**){note}"
+                f"{converted_mean:.3f} ms closure-converted ({comparison}){note}"
             )
         else:
             raise ValueError(f"unknown comparison style: {style}")
