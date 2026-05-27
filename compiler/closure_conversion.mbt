@@ -1012,6 +1012,31 @@ fn compile_body(stmts : Array[@ast.Stmt]) -> CompiledBody {
 }
 
 ///|
+/// Return true only for statement shapes that cannot introduce block-scoped
+/// bindings or require function-scoped `var` declaration handling in the
+/// current compiled subset. Conservative false keeps the old block Environment
+/// path for declarations and unsupported complex statements.
+fn block_can_reuse_env(stmts : Array[@ast.Stmt]) -> Bool {
+  for stmt in stmts {
+    guard stmt_can_reuse_block_env(stmt) else { return false }
+  }
+  true
+}
+
+///|
+fn stmt_can_reuse_block_env(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    ExprStmt(_, _)
+    | ReturnStmt(_, _)
+    | BreakStmt(_, _)
+    | ContinueStmt(_, _)
+    | ThrowStmt(_, _) => true
+    StmtList(stmts, _) => block_can_reuse_env(stmts)
+    _ => false
+  }
+}
+
+///|
 fn compile_stmt(
   stmt : @ast.Stmt,
 ) -> (Interpreter, ExecContext, Environment) -> Signal raise Error {
@@ -1141,9 +1166,13 @@ fn compile_stmt(
     }
     Block(stmts, _) => {
       let body = compile_body(stmts)
-      fn(interp, ctx, env) raise {
-        let block_env = Environment::new(parent=Some(env))
-        (body.0)(interp, ctx, block_env)
+      if block_can_reuse_env(stmts) {
+        fn(interp, ctx, env) raise { (body.0)(interp, ctx, env) }
+      } else {
+        fn(interp, ctx, env) raise {
+          let block_env = Environment::new(parent=Some(env))
+          (body.0)(interp, ctx, block_env)
+        }
       }
     }
     StmtList(stmts, _) => {

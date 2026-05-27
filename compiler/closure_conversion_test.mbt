@@ -364,6 +364,27 @@ test "closure conversion validates strict function signatures" {
 }
 
 ///|
+test "closure conversion preserves block lexical declarations" {
+  expect_script_value(
+    "var x = 1; { x = x + 41; } x;", "42", "non-lexical block assignment",
+  )
+  let parameter_redecl = "(function(x) { { var x = 2; } return x; })(1);"
+  let interpreter = run_interpreter_outcome(parameter_redecl)
+  expect_true(
+    interpreter.contains("value:"),
+    "parameter redeclaration interpreter completes",
+  )
+  expect_string(
+    run_script_outcome(parameter_redecl),
+    interpreter,
+    "block var redeclaration of parameter",
+  )
+  expect_script_value(
+    "var x = 1; { let x = 41; } x + 41;", "42", "lexical block shadowing",
+  )
+}
+
+///|
 test "closure conversion handles proxy rhs for instanceof" {
   let interp = @interpreter.new_interpreter()
   let setup = @parser.parse(
