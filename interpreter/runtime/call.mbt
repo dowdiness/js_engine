@@ -313,6 +313,7 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
       strict=data.strict,
       param_source~,
     )
+    hoist_block_tdz(data.body, body_env)
     let sig = self.exec_stmts(func_ctx, data.body, body_env)
     raise_if_break_continue(sig)
     sig
@@ -755,8 +756,9 @@ fn Interpreter::call_value_impl(
               ),
               VarBinding,
             )
-            // Hoist var declarations and function declarations within function body
+            // Hoist declarations and top-level lexical TDZ markers within the function body.
             self.hoist_declarations(data.body, func_env, strict=func_strict)
+            hoist_block_tdz(data.body, func_env)
             match data.name {
               Some(name) =>
                 if !func_env.bindings.contains(name) {
@@ -801,6 +803,7 @@ fn Interpreter::call_value_impl(
               func_env.def_parameter(data.params[i], val)
             }
             self.hoist_declarations(data.body, func_env, strict=data.strict)
+            hoist_block_tdz(data.body, func_env)
             let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
             raise_if_break_continue(exec_result)
             match exec_result {

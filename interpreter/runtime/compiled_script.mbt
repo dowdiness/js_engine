@@ -7,15 +7,19 @@ pub fn Interpreter::get_compiled_name(
   name : String,
 ) -> Value raise Error {
   env.get(name) catch {
-    @errors.ReferenceError(_) =>
-      match self.global_this {
-        Value::Object(data) =>
-          match data.bag.properties.get(name) {
-            Some(value) => value
-            None =>
-              raise @errors.ReferenceError(message="\{name} is not defined")
-          }
-        _ => raise @errors.ReferenceError(message="\{name} is not defined")
+    @errors.ReferenceError(message~) =>
+      if message == "\{name} is not defined" {
+        match self.global_this {
+          Value::Object(data) =>
+            match data.bag.properties.get(name) {
+              Some(value) => value
+              None =>
+                raise @errors.ReferenceError(message="\{name} is not defined")
+            }
+          _ => raise @errors.ReferenceError(message="\{name} is not defined")
+        }
+      } else {
+        raise @errors.ReferenceError(message~)
       }
     other => raise other
   }
@@ -142,6 +146,7 @@ pub fn Interpreter::run_compiled_script(
     let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
       self.validate_block_early_errors(stmts, strict)
       self.hoist_declarations(stmts, self.global, strict~)
+      hoist_block_tdz(stmts, self.global)
       eval(ctx, self.global)
     })
     result

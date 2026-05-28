@@ -100,16 +100,23 @@ fn Interpreter::eval_expr(
     Ident(name, _) => {
       validate_strict_identifier_reference(ctx.strict, name)
       env.get(name) catch {
-        @errors.ReferenceError(_) =>
-          // Fallback: check global object (globalThis) for properties set via this.x = y
-          match self.global_this {
-            Object(data) =>
-              match data.bag.properties.get(name) {
-                Some(v) => v
-                None =>
-                  raise @errors.ReferenceError(message="\{name} is not defined")
-              }
-            _ => raise @errors.ReferenceError(message="\{name} is not defined")
+        @errors.ReferenceError(message~) =>
+          if message == "\{name} is not defined" {
+            // Fallback: check global object (globalThis) for properties set via this.x = y
+            match self.global_this {
+              Object(data) =>
+                match data.bag.properties.get(name) {
+                  Some(v) => v
+                  None =>
+                    raise @errors.ReferenceError(
+                      message="\{name} is not defined",
+                    )
+                }
+              _ =>
+                raise @errors.ReferenceError(message="\{name} is not defined")
+            }
+          } else {
+            raise @errors.ReferenceError(message~)
           }
         other => raise other
       }
@@ -978,6 +985,7 @@ fn Interpreter::eval_expr(
                     VarBinding,
                   )
                   self.hoist_declarations(ctor_body, call_env, strict=true)
+                  hoist_block_tdz(ctor_body, call_env)
                   let super_ctor_ctx : ExecContext = {
                     strict: true,
                     current_generator: None,

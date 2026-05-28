@@ -949,6 +949,37 @@ fn BytecodeFrame::hoist_env_var_bindings(
 }
 
 ///|
+fn BytecodeFrame::hoist_lexical_bindings(
+  self : BytecodeFrame,
+) -> Unit raise Error {
+  for stmt in self.func_def.source_body {
+    self.hoist_lexical_bindings_from_stmt(stmt)
+  }
+}
+
+///|
+fn BytecodeFrame::hoist_lexical_bindings_from_stmt(
+  self : BytecodeFrame,
+  stmt : @ast.Stmt,
+) -> Unit raise Error {
+  match stmt {
+    VarDecl(LetKind, name, _, _) =>
+      if !self.env.bindings.contains(name) {
+        self.env.def_tdz(name, BindingKind::LetBinding)
+      }
+    VarDecl(ConstKind, name, _, _) =>
+      if !self.env.bindings.contains(name) {
+        self.env.def_tdz(name, BindingKind::ConstBinding)
+      }
+    StmtList(stmts, _) =>
+      for child in stmts {
+        self.hoist_lexical_bindings_from_stmt(child)
+      }
+    _ => ()
+  }
+}
+
+///|
 fn BytecodeFrame::define_function_decl(
   self : BytecodeFrame,
   interp : Interpreter,
@@ -1013,6 +1044,7 @@ fn run_bytecode_function(
 ) -> BytecodeRunResult raise Error {
   let frame = BytecodeFrame(func_def, env, ctx)
   frame.hoist_env_var_bindings(interp)
+  frame.hoist_lexical_bindings()
   frame.hoist_function_decls(interp)
   while frame.ip < frame.func_def.code.length() {
     let instr = frame.func_def.code[frame.ip]

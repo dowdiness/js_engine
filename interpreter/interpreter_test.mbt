@@ -254,6 +254,21 @@ test "function declaration and call" {
 }
 
 ///|
+test "function body lexical bindings are in TDZ before declaration execution" {
+  expect_throw(
+    (
+      #|var x = 2;
+      #|function f() {
+      #|  return x;
+      #|  let x = 1;
+      #|}
+      #|f();
+    ),
+    "ReferenceError: Cannot access 'x' before initialization",
+  )
+}
+
+///|
 test "closure" {
   let src =
     #|function makeCounter() {

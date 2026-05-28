@@ -586,8 +586,9 @@ pub fn Interpreter::run(
     let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
       // Static block-scoped redeclaration checks (block lexical-vs-var conflicts).
       self.validate_block_early_errors(stmts, strict)
-      // Hoist var declarations and function declarations at global level
+      // Hoist var/function declarations and top-level lexical TDZ markers.
       self.hoist_declarations(stmts, self.global, strict~)
+      hoist_block_tdz(stmts, self.global)
       let mut last : Value = Undefined
       for stmt in stmts {
         match self.exec_stmt(ctx, stmt, self.global) {

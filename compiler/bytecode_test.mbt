@@ -249,6 +249,21 @@ test "bytecode closure captures parent binding" {
 }
 
 ///|
+test "bytecode hoists function body lexical bindings before execution" {
+  let src =
+    #|var x = 2;
+    #|function f() {
+    #|  return x;
+    #|  let x = 1;
+    #|}
+    #|f();
+  inspect(
+    bytecode_compare(src),
+    content="throw:ReferenceError: Cannot access 'x' before initialization",
+  )
+}
+
+///|
 test "bytecode rejects direct eval until caller-env semantics are implemented" {
   let src =
     #|var x = 1;

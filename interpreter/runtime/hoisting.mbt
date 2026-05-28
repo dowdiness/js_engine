@@ -2228,6 +2228,7 @@ fn hoist_block_tdz(
         hoist_pattern_tdz(pattern, env, LetBinding)
       DestructureDecl(ConstKind, pattern, _, _) =>
         hoist_pattern_tdz(pattern, env, ConstBinding)
+      StmtList(inner_stmts, _) => hoist_block_tdz(inner_stmts, env)
       // Class declarations have TDZ (similar to let)
       ClassDecl(name, _, _, _) =>
         if !env.bindings.contains(name) {

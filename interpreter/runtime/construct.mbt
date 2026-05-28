@@ -614,6 +614,7 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
     None
   }
   self.hoist_declarations(body, body_env, strict=true, param_source~)
+  hoist_block_tdz(body, body_env)
   self.exec_stmts(ctx, body, body_env)
 }
 
@@ -769,8 +770,9 @@ fn Interpreter::construct_value_impl(
             ),
             VarBinding,
           )
-          // Hoist var declarations and function declarations
+          // Hoist declarations and top-level lexical TDZ markers.
           self.hoist_declarations(data.body, func_env, strict=func_strict)
+          hoist_block_tdz(data.body, func_env)
           match data.name {
             Some(name) =>
               if !func_env.bindings.contains(name) {
