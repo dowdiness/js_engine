@@ -142,8 +142,8 @@ The current high-level opcode surface covers:
   load/store function-local slot, define binding
 - completion and control flow: set completion, pop, jump, conditional jump,
   return, throw
-- expressions: supported binary operations, identifier update, anonymous
-  function naming
+- expressions: supported eager binary operations, jump-lowered `&&`, `||`, and
+  `??`, identifier update, anonymous function naming
 - object interaction: array creation without holes/spread, property get,
   computed get
 - calls: ordinary calls plus receiver-preserving property/computed calls
@@ -171,7 +171,8 @@ The compiler currently raises an `InternalError` prefixed
 - `for initializer`
 - `spread argument`
 - `arguments object`
-- `short-circuit or relational binary operator`
+- `in operator`
+- `instanceof operator`
 - `named function expression`
 - `array hole or spread element`
 - `console member`

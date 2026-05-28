@@ -84,6 +84,55 @@ test "bytecode constants locals and binary ops" {
 }
 
 ///|
+test "bytecode logical and skips rhs and returns original falsy operand" {
+  let src =
+    #|var rhs = 0;
+    #|var result = 0 && (rhs = 1);
+    #|result + "," + rhs;
+  inspect(bytecode_compare(src), content="value:0,0")
+}
+
+///|
+test "bytecode logical and evaluates rhs and returns rhs when lhs is truthy" {
+  let src =
+    #|var rhs = 0;
+    #|var result = 2 && (rhs = 5);
+    #|result + "," + rhs;
+  inspect(bytecode_compare(src), content="value:5,5")
+}
+
+///|
+test "bytecode logical or skips rhs and returns original truthy operand" {
+  let src =
+    #|var rhs = 0;
+    #|var result = "left" || (rhs = 1);
+    #|result + "," + rhs;
+  inspect(bytecode_compare(src), content="value:left,0")
+}
+
+///|
+test "bytecode logical or evaluates rhs and returns rhs when lhs is falsy" {
+  let src =
+    #|var rhs = 0;
+    #|var result = false || (rhs = 7);
+    #|result + "," + rhs;
+  inspect(bytecode_compare(src), content="value:7,7")
+}
+
+///|
+test "bytecode nullish coalescing only skips non-nullish lhs values" {
+  let src =
+    #|var side = 0;
+    #|var a = 0 ?? (side = side + 1);
+    #|var b = false ?? (side = side + 10);
+    #|var c = "" ?? (side = side + 100);
+    #|var d = null ?? (side = side + 1000);
+    #|var e = undefined ?? (side = side + 10000);
+    #|a + "," + b + "," + c + "," + d + "," + e + "," + side;
+  inspect(bytecode_compare(src), content="value:0,false,,1000,11000,11000")
+}
+
+///|
 test "bytecode jumps and branch completion" {
   let src =
     #|var x = 0;
@@ -324,6 +373,26 @@ test "bytecode rejects control-flow function declarations until block semantics 
   inspect(
     bytecode_outcome(src),
     content="error:InternalError: bytecode prototype unsupported: control-flow function declaration",
+  )
+}
+
+///|
+test "bytecode rejects in operator until object-key semantics are implemented" {
+  let src =
+    #|"x" in [];
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: in operator",
+  )
+}
+
+///|
+test "bytecode rejects instanceof operator until runtime helper is shared" {
+  let src =
+    #|1 instanceof function() {};
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: instanceof operator",
   )
 }
 

@@ -16,6 +16,9 @@ priv enum BytecodeInstr {
   UpdateLocal(Int, @ast.UpdateOp, Bool) // slot, op, prefix
   Jump(Int)
   JumpIfFalse(Int)
+  JumpIfFalseKeep(Int)
+  JumpIfTrueKeep(Int)
+  JumpIfNotNullishKeep(Int)
   MakeArray(Int)
   MakeFunction(Int)
   DeclareFunction(String, Int)
@@ -727,6 +730,45 @@ fn BytecodeBuilder::compile_args(
 }
 
 ///|
+fn BytecodeBuilder::compile_logical_and(
+  self : BytecodeBuilder,
+  left : @ast.Expr,
+  right : @ast.Expr,
+) -> Unit raise Error {
+  self.compile_expr(left)
+  let keep_left = self.emit(JumpIfFalseKeep(-1))
+  let _ = self.emit(Pop)
+  self.compile_expr(right)
+  self.patch(keep_left, JumpIfFalseKeep(self.code.length()))
+}
+
+///|
+fn BytecodeBuilder::compile_logical_or(
+  self : BytecodeBuilder,
+  left : @ast.Expr,
+  right : @ast.Expr,
+) -> Unit raise Error {
+  self.compile_expr(left)
+  let keep_left = self.emit(JumpIfTrueKeep(-1))
+  let _ = self.emit(Pop)
+  self.compile_expr(right)
+  self.patch(keep_left, JumpIfTrueKeep(self.code.length()))
+}
+
+///|
+fn BytecodeBuilder::compile_nullish_coalesce(
+  self : BytecodeBuilder,
+  left : @ast.Expr,
+  right : @ast.Expr,
+) -> Unit raise Error {
+  self.compile_expr(left)
+  let keep_left = self.emit(JumpIfNotNullishKeep(-1))
+  let _ = self.emit(Pop)
+  self.compile_expr(right)
+  self.patch(keep_left, JumpIfNotNullishKeep(self.code.length()))
+}
+
+///|
 fn BytecodeBuilder::compile_expr(
   self : BytecodeBuilder,
   expr : @ast.Expr,
@@ -757,8 +799,12 @@ fn BytecodeBuilder::compile_expr(
           let _ = self.emit(LoadName(name))
         }
       }
-    Binary(And | Or | NullishCoalesce | In | Instanceof, _, _, _) =>
-      bytecode_unsupported("short-circuit or relational binary operator")
+    Binary(And, left, right, _) => self.compile_logical_and(left, right)
+    Binary(Or, left, right, _) => self.compile_logical_or(left, right)
+    Binary(NullishCoalesce, left, right, _) =>
+      self.compile_nullish_coalesce(left, right)
+    Binary(In, _, _, _) => bytecode_unsupported("in operator")
+    Binary(Instanceof, _, _, _) => bytecode_unsupported("instanceof operator")
     Binary(op, left, right, loc) => {
       self.compile_expr(left)
       self.compile_expr(right)
@@ -917,6 +963,14 @@ fn BytecodeFrame::pop(self : BytecodeFrame) -> Value raise Error {
     Some(value) => value
     None => raise @errors.InternalError(message="bytecode stack underflow")
   }
+}
+
+///|
+fn BytecodeFrame::peek(self : BytecodeFrame) -> Value raise Error {
+  guard self.stack.length() > 0 else {
+    raise @errors.InternalError(message="bytecode stack underflow")
+  }
+  self.stack[self.stack.length() - 1]
 }
 
 ///|
@@ -1134,6 +1188,23 @@ fn run_bytecode_function(
           frame.ip = target
         }
       }
+      JumpIfFalseKeep(target) => {
+        let cond = frame.peek()
+        if !@runtime.is_truthy(cond) {
+          frame.ip = target
+        }
+      }
+      JumpIfTrueKeep(target) => {
+        let cond = frame.peek()
+        if @runtime.is_truthy(cond) {
+          frame.ip = target
+        }
+      }
+      JumpIfNotNullishKeep(target) =>
+        match frame.peek() {
+          Null | Undefined => ()
+          _ => frame.ip = target
+        }
       MakeArray(count) => {
         let elements = pop_args(frame, count)
         frame.stack.push(@runtime.make_array(elements))
