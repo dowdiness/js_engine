@@ -11,11 +11,19 @@ pub fn compile_expr_to_closure(@ast.Expr) -> (@runtime.Interpreter, @runtime.Exe
 
 pub fn compile_program_to_closure(Array[@ast.Stmt]) -> (@runtime.Interpreter, @runtime.ExecContext, @runtime.Environment) -> @runtime.Value raise
 
+pub fn compile_script_to_bytecode(Array[@ast.Stmt]) -> BytecodeProgram raise
+
 pub fn compile_script_to_closure(Array[@ast.Stmt]) -> (@runtime.Interpreter) -> @runtime.Value raise
+
+pub fn run_bytecode_script(@runtime.Interpreter, Array[@ast.Stmt]) -> @runtime.Value raise
 
 // Errors
 
 // Types and methods
+pub struct BytecodeProgram {
+  // private fields
+}
+pub fn BytecodeProgram::run(Self, @runtime.Interpreter) -> @runtime.Value raise
 
 // Type aliases
 

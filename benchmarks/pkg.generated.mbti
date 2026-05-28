@@ -36,6 +36,8 @@ pub fn all_bench_names() -> Array[(String, String, String)]
 
 pub fn bench_array_map_filter() -> BenchResult raise
 
+pub fn bench_bytecode_closure_factory() -> BenchResult raise
+
 pub fn bench_closure_conversion_closure_factory() -> BenchResult raise
 
 pub fn bench_closure_factory() -> BenchResult raise
@@ -49,6 +51,10 @@ pub fn bench_lexer_small() -> BenchResult raise
 pub fn bench_object_construction() -> BenchResult raise
 
 pub fn bench_parse_heavy() -> BenchResult raise
+
+pub fn bench_pipeline_bytecode_compile() -> BenchResult raise
+
+pub fn bench_pipeline_bytecode_evaluate() -> BenchResult raise
 
 pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise
 
