@@ -125,6 +125,12 @@ fn run_compiled_counter_factory() -> Value raise Error {
 }
 
 ///|
+fn compile_bytecode_closure_factory() -> @compiler.BytecodeProgram raise Error {
+  let prog = @parser.parse(CLOSURE_FACTORY_SRC)
+  @compiler.compile_script_to_bytecode(prog.stmts)
+}
+
+///|
 fn expect_value_string(name : String, actual : Value, want : String) -> Unit {
   let got = actual.to_string()
   guard got == want else {
@@ -216,6 +222,29 @@ test "baseline/closure_conversion/closure_factory" (b : @bench.T) {
     let interp = @interpreter.new_interpreter()
     let result = compiled(interp) catch {
       _ => abort("compiled closure_factory raised")
+    }
+    b.keep(result)
+  })
+}
+
+///|
+/// Opt-in bytecode/IR prototype script-level closure factory.
+///
+/// What it measures: evaluating a pre-parsed, pre-compiled bytecode program for
+/// the same JavaScript source as baseline/exec/closure_factory.
+/// What it answers: whether the first bytecode skeleton can run the primary
+/// closure-factory shape without changing the default interpreter.
+test "baseline/bytecode/closure_factory" (b : @bench.T) {
+  let compiled = compile_bytecode_closure_factory() catch {
+    _ => abort("bytecode compile raised")
+  }
+  let got = compiled.run(@interpreter.new_interpreter()) catch {
+    _ => abort("bytecode precheck raised")
+  }
+  expect_value_string("baseline/bytecode/closure_factory", got, "500500")
+  b.bench(fn() {
+    let result = compiled.run(@interpreter.new_interpreter()) catch {
+      _ => abort("bytecode closure_factory raised")
     }
     b.keep(result)
   })

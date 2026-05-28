@@ -141,6 +141,28 @@ pub fn bench_closure_conversion_closure_factory() -> BenchResult raise {
 }
 
 ///|
+pub fn bench_bytecode_closure_factory() -> BenchResult raise {
+  verify(CLOSURE_FACTORY_SRC, "500500")
+  let prog = @parser.parse(CLOSURE_FACTORY_SRC)
+  let bytecode = @compiler.compile_script_to_bytecode(prog.stmts)
+  let got = bytecode.run(@interpreter.new_interpreter()).to_string()
+  if got != "500500" {
+    abort(
+      "bench correctness check failed\n  source:   CLOSURE_FACTORY_SRC bytecode\n  expected: 500500\n  got:      \{got}",
+    )
+  }
+  run_bench(
+    "baseline/bytecode/closure_factory",
+    Component,
+    { warmup: 3, iterations: 20, group_size: 3 },
+    fn() raise {
+      let interp = @interpreter.new_interpreter()
+      let _ = bytecode.run(interp)
+    },
+  )
+}
+
+///|
 pub fn bench_object_construction() -> BenchResult raise {
   verify(OBJECT_CONSTRUCTION_SRC, "1000")
   run_bench(
@@ -230,6 +252,47 @@ pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise {
 }
 
 ///|
+pub fn bench_pipeline_bytecode_compile() -> BenchResult raise {
+  verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let prog = @parser.parse(PIPELINE_EXEC_SRC)
+  let bytecode = @compiler.compile_script_to_bytecode(prog.stmts)
+  let got = bytecode.run(@interpreter.new_interpreter()).to_string()
+  if got != PIPELINE_EXEC_EXPECTED {
+    abort(
+      "bench correctness check failed\n  source:   PIPELINE_EXEC_SRC bytecode compile\n  expected: \{PIPELINE_EXEC_EXPECTED}\n  got:      \{got}",
+    )
+  }
+  run_bench(
+    "pipeline/bytecode/compile",
+    Workflow,
+    { warmup: 3, iterations: 30, group_size: 200 },
+    fn() raise { let _ = @compiler.compile_script_to_bytecode(prog.stmts) },
+    stage=Frontend,
+  )
+}
+
+///|
+pub fn bench_pipeline_bytecode_evaluate() -> BenchResult raise {
+  verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
+  let prog = @parser.parse(PIPELINE_EXEC_SRC)
+  let bytecode = @compiler.compile_script_to_bytecode(prog.stmts)
+  let precheck_interp = @interpreter.new_interpreter()
+  let got = bytecode.run(precheck_interp).to_string()
+  if got != PIPELINE_EXEC_EXPECTED {
+    abort(
+      "bench correctness check failed\n  source:   PIPELINE_EXEC_SRC bytecode\n  expected: \{PIPELINE_EXEC_EXPECTED}\n  got:      \{got}",
+    )
+  }
+  let interp = @interpreter.new_interpreter()
+  run_bench(
+    "pipeline/bytecode/evaluate",
+    Workflow,
+    { warmup: 3, iterations: 20, group_size: 5 },
+    fn() raise { let _ = bytecode.run(interp) },
+  )
+}
+
+///|
 pub fn bench_parse_heavy() -> BenchResult raise {
   run_bench(
     "pipeline/parse_heavy",
@@ -261,6 +324,7 @@ pub fn run_component() -> Array[BenchResult] raise {
     bench_array_map_filter(),
     bench_closure_factory(),
     bench_closure_conversion_closure_factory(),
+    bench_bytecode_closure_factory(),
     bench_arithmetic_loop(),
     bench_object_construction(),
     bench_string_ops(),
@@ -274,6 +338,8 @@ pub fn run_workflow() -> Array[BenchResult] raise {
     bench_pipeline_exec_parse(),
     bench_pipeline_exec_evaluate(),
     bench_pipeline_closure_conversion_evaluate(),
+    bench_pipeline_bytecode_compile(),
+    bench_pipeline_bytecode_evaluate(),
     bench_parse_heavy(),
   ]
 }
@@ -306,6 +372,7 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("exec/array_map_filter", "component", "execution"),
     ("exec/closure_factory", "component", "execution"),
     ("baseline/closure_conversion/closure_factory", "component", "execution"),
+    ("baseline/bytecode/closure_factory", "component", "execution"),
     ("exec/arithmetic_loop", "component", "execution"),
     ("exec/object_construction", "component", "execution"),
     ("exec/string_ops", "component", "execution"),
@@ -313,6 +380,8 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("pipeline/exec/parse", "workflow", "frontend"),
     ("pipeline/exec/evaluate", "workflow", "execution"),
     ("pipeline/closure_conversion/evaluate", "workflow", "execution"),
+    ("pipeline/bytecode/compile", "workflow", "frontend"),
+    ("pipeline/bytecode/evaluate", "workflow", "execution"),
     ("pipeline/parse_heavy", "workflow", "frontend"),
   ]
 }

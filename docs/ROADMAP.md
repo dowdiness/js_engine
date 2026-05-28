@@ -320,10 +320,11 @@ out of module globals before reducing the runtime public surface. See
 ## Execution Optimization Track
 
 Closure conversion is available as an opt-in prototype and benchmark path, but
-it should not be expanded into a second full interpreter. The next execution
-optimization direction is a compact bytecode or IR interpreter that keeps
-JavaScript semantics centralized in runtime helpers while reducing AST dispatch
-overhead. See [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md).
+it should not be expanded into a second full interpreter. An initial opt-in
+bytecode prototype now covers the closure-factory and pipeline-evaluate
+benchmark workloads while keeping JavaScript semantics centralized in runtime
+helpers and leaving default `run` on the tree-walking interpreter. See
+[closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md).
 
 ## Architecture
 

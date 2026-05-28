@@ -8,10 +8,10 @@ execution path.
 Closure conversion stays as an experimental, opt-in benchmark path. Do not keep
 expanding it into a second complete JavaScript interpreter.
 
-Future execution-speed work should move toward a compact bytecode or IR
-interpreter. Closure analysis remains useful there, but the representation
-should be explicit locals, environment slots, and captured variables rather
-than one MoonBit closure per AST node.
+Execution-speed work now has an initial compact, opt-in bytecode prototype.
+Future broadening should continue in that direction. Closure analysis remains
+useful there, but the representation should be explicit locals, environment
+slots, and captured variables rather than one MoonBit closure per AST node.
 
 ## Current Closure-Conversion Role
 
@@ -106,8 +106,22 @@ runtime helpers and keep one semantic owner for each JavaScript behavior.
 
 ## Bytecode / IR Direction
 
-The next optimization track should introduce a small bytecode or IR layer with
-these constraints:
+An initial opt-in stack-bytecode prototype shipped in `50bcb94`. It does not
+change `run`; ordinary library and CLI execution still use the tree-walking
+interpreter. The prototype is entered explicitly through
+`compile_script_to_bytecode`, `run_bytecode_script`, or `BytecodeProgram::run`,
+and benchmark coverage includes the closure-factory and pipeline-evaluate
+bytecode rows.
+
+The prototype's job is to reduce AST dispatch on the primary workload shape
+without creating a second semantic owner. It routes script setup and core
+JavaScript operations through runtime helpers: static early errors and hoisting
+use the compiled-script runtime envelope; name lookup, assignment, update,
+binary operations, array creation, property/computed lookup, calls, function
+naming/signature validation, and JavaScript exception raising delegate back to
+runtime code.
+
+Continue the bytecode/IR track with these constraints:
 
 1. Keep `run` on the existing interpreter until bytecode has enough correctness
    coverage and benchmark evidence.
@@ -116,33 +130,70 @@ these constraints:
    the compiler.
 3. Represent execution state explicitly: instruction pointer, value stack or
    registers, locals, lexical environment slots, and captured upvalues.
-4. Start with the closure-factory and pipeline-evaluate benchmark subset before
+4. Keep the closure-factory and pipeline-evaluate benchmark subset stable before
    broadening syntax.
 5. Compare bytecode results against the existing interpreter in tests for every
    supported construct.
+6. Reject unsupported semantics explicitly instead of silently changing behavior.
 
-An initial opcode set should stay high-level enough to avoid duplicating spec
-algorithms:
+The current high-level opcode surface covers:
 
-- constants and simple moves: load constant, load/store local, load/store
-  lexical binding
-- control flow: jump, conditional jump, return, throw
-- expressions: unary, binary, ternary lowering
-- object interaction: get property, set property, get computed, set computed
-- calls: call, construct, spread argument expansion
-- closures: create function, create arrow function, bind captured slots
+- constants and simple moves: load constant/`undefined`, load/store name,
+  load/store function-local slot, define binding
+- completion and control flow: set completion, pop, jump, conditional jump,
+  return, throw
+- expressions: supported binary operations, identifier update, anonymous
+  function naming
+- object interaction: array creation without holes/spread, property get,
+  computed get
+- calls: ordinary calls plus receiver-preserving property/computed calls
+- closures: function declarations and anonymous function expressions backed by
+  runtime compiled functions
 
-The first milestone should compile the existing primary workload shape:
-function declarations and expressions, calls, arrays, member access, assignments,
-`for`/`while` loops, `return`, `break`, `continue`, and `throw`. New syntax
-should be added only after the benchmark subset is stable.
+The shipped milestone covers the primary workload shape: function declarations
+and anonymous expressions, calls, arrays, member/computed access, assignments,
+`for`/`while` loops, `return`, and `throw`. `break`, `continue`, construction,
+spread, and broader syntax remain future work and should land only with
+compare-against-tree-walker tests.
+
+## Current Explicit Bytecode Rejections
+
+The compiler currently raises an `InternalError` prefixed
+`bytecode prototype unsupported:` for these cases:
+
+- `block lexical declaration`
+- `block function declaration`
+- `block var declaration`
+- `control-flow function declaration`
+- `control-flow var declaration`
+- `for lexical initializer`
+- `statement kind`
+- `for initializer`
+- `spread argument`
+- `arguments object`
+- `short-circuit or relational binary operator`
+- `named function expression`
+- `array hole or spread element`
+- `console member`
+- `direct eval call`
+- `expression kind`
+- `rest parameter`
+- `default or destructuring parameter`
+
+Keep this list fail-fast. When broadening bytecode syntax, remove a rejection
+only after adding tests that compare the bytecode path with the tree-walking
+interpreter for the newly supported construct.
 
 ## Guardrails
 
 - Before designing a performance optimization, add or reuse a benchmark that
   reproduces the bottleneck.
-- Keep the closure-conversion prototype behind its opt-in flag.
+- Keep both closure conversion and bytecode behind opt-in entry points.
+- Keep `run` on the tree-walking interpreter until bytecode has stronger
+  correctness coverage and benchmark evidence.
 - Avoid expanding closure conversion unless a small patch is needed to keep the
   benchmark path honest.
+- Reuse runtime helpers; reject unsupported semantics explicitly.
+- Do not broaden bytecode syntax without compare-against-tree-walker tests.
 - Prefer bytecode/IR work that removes dispatch overhead while preserving one
   semantic owner for JavaScript behavior.

@@ -4,11 +4,11 @@
 
 ## Shape
 
-`js_engine` is a tree-walking interpreter over a three-stage pipeline:
+`js_engine` defaults to a tree-walking interpreter over a three-stage pipeline:
 
 - **Lexer** (`lexer/`) — source to tokens
 - **Parser** (`parser/`) — tokens to AST, recursive descent with Pratt precedence for expressions
-- **Interpreter** (`interpreter/`) — AST evaluated directly; no bytecode, no JIT
+- **Interpreter** (`interpreter/`) — AST evaluated directly by default; bytecode experiments are opt-in; no JIT
 
 The CLI (`cmd/main/`) wraps the pipeline. Library consumers use the facade exported from the top-level `js_engine` package.
 

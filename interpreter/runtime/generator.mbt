@@ -726,6 +726,7 @@ fn create_generator_instance(
       strict=gen_strict,
       param_source~,
     )
+    hoist_block_tdz(body, body_exec_env)
     let gen_id = interp.gen_id_counter.val
     interp.gen_id_counter.val = gen_id + 1
     let gen_obj : GeneratorObject = {
