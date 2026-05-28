@@ -478,8 +478,8 @@ Remaining:
    context.
 2. Only then reduce runtime public API surface and consider internal package
    extraction.
-3. Keep closure conversion frozen as an opt-in benchmark path while any
-   bytecode/IR prototype is designed around shared runtime operations.
+3. Keep closure conversion frozen as an opt-in benchmark path while the
+   bytecode/IR prototype grows around shared runtime operations.
 
 ## Evidence Checked
 

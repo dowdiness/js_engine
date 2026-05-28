@@ -260,27 +260,21 @@ The JS interpreter domain forces all meaningful callbacks to raise. Every `each`
 
 ## Small follow-ups (2026-05-10)
 
-### Start bytecode/IR execution prototype
+### ~~Start bytecode/IR execution prototype~~ — DONE (2026-05-28, `50bcb94`)
 
 **Source:** closure-conversion benchmark work and the decision recorded in
 [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md).
 
-**Goal:** Add a minimal bytecode or IR prototype for the closure-factory and
-pipeline-evaluate benchmark subset. Keep `run` on the tree-walking interpreter;
-the prototype must remain opt-in until it has stronger correctness coverage.
+**Result:** The first opt-in stack-bytecode prototype shipped in `50bcb94`.
+Default `run` remains on the tree-walking interpreter. The prototype exposes
+`compile_script_to_bytecode`, `run_bytecode_script`, and `BytecodeProgram::run`;
+adds compare-against-tree-walker tests for supported constructs and the primary
+closure-factory / pipeline-evaluate workloads; and adds bytecode benchmark rows
+for those workloads.
 
-**Scope for the first patch:** define an instruction representation, a compiled
-function/program container, and a tiny interpreter loop. Support only constants,
-locals or lexical bindings, binary operations, jumps, calls, return, and the
-function/closure shape needed by the primary benchmarks.
-
-**Guardrail:** Reuse runtime helpers for JavaScript semantics. Do not duplicate
-property, call, construction, operator, or error rules in the bytecode compiler
-unless the runtime has no shared helper yet.
-
-**Verification:** Compare bytecode output against the tree-walking interpreter
-for each supported construct. Run `moon check`, `moon test`, JS-target tests,
-and the primary benchmark CSV command.
+**Guardrails carried forward:** Keep bytecode opt-in, reuse runtime helpers, and
+reject unsupported semantics explicitly. The current fail-fast rejection list is
+tracked in [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-explicit-bytecode-rejections).
 
 ### ~~Migrate remaining deprecated `inspect` snapshots~~ — DONE (2026-05-14)
 
