@@ -1998,6 +1998,64 @@ test "bytecode rejects destructuring assignment defaults until pattern expressio
 }
 
 ///|
+test "bytecode var destructuring declarations bind identifiers" {
+  let src =
+    #|var [a,,b] = [1, 2, 3];
+    #|var { x: c, ...rest } = { x: 4, y: 5 };
+    #|a + "," + b + "," + c + ":" + rest.y + "," + ("x" in rest);
+  inspect(bytecode_compare(src), content="value:1,3,4:5,false")
+}
+
+///|
+test "bytecode var destructuring declarations update function bindings" {
+  let src =
+    #|function f(a) {
+    #|  var [a] = [3];
+    #|  return a;
+    #|}
+    #|f(1);
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode var destructuring declarations can be captured" {
+  let src =
+    #|function outer() {
+    #|  var [x] = [4];
+    #|  return function() { return x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:4")
+}
+
+///|
+test "bytecode rejects unsupported destructuring declaration contexts and kinds" {
+  let control_flow =
+    #|if (true) {
+    #|  var [x] = [1];
+    #|}
+  inspect(
+    bytecode_outcome(control_flow),
+    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  )
+  inspect(
+    bytecode_outcome("let [x] = [1];"),
+    content="error:InternalError: bytecode prototype unsupported: destructuring declaration kind",
+  )
+}
+
+///|
+test "bytecode rejects var destructuring declaration defaults until pattern expressions are compiled" {
+  let src =
+    #|var [x = 1] = [undefined];
+    #|x;
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: destructuring assignment pattern",
+  )
+}
+
+///|
 test "bytecode console log writes through shared host output helper" {
   let src =
     #|console.log(1, "two");

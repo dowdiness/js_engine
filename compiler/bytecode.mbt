@@ -475,6 +475,53 @@ fn switch_cases_have_function_decl(cases : Array[@ast.SwitchCase]) -> Bool {
 }
 
 ///|
+fn stmt_has_destructure_decl(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    DestructureDecl(_, _, _, _) => true
+    StmtList(stmts, _) | Block(stmts, _) => stmts_have_destructure_decl(stmts)
+    IfStmt(_, then_branch, else_branch, _) => {
+      let else_has = match else_branch {
+        Some(stmt) => stmt_has_destructure_decl(stmt)
+        None => false
+      }
+      stmt_has_destructure_decl(then_branch) || else_has
+    }
+    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
+      stmt_has_destructure_decl(body)
+    ForStmt(init, _, _, body, _) => {
+      let init_has = match init {
+        Some(stmt) => stmt_has_destructure_decl(stmt)
+        None => false
+      }
+      init_has || stmt_has_destructure_decl(body)
+    }
+    SwitchStmt(_, cases, _) => switch_cases_have_destructure_decl(cases)
+    LabeledStmt(_, body, _) => stmt_has_destructure_decl(body)
+    _ => false
+  }
+}
+
+///|
+fn stmts_have_destructure_decl(stmts : Array[@ast.Stmt]) -> Bool {
+  for stmt in stmts {
+    if stmt_has_destructure_decl(stmt) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn switch_cases_have_destructure_decl(cases : Array[@ast.SwitchCase]) -> Bool {
+  for case in cases {
+    if stmts_have_destructure_decl(case.body) {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn stmt_is_iteration_label_target(stmt : @ast.Stmt) -> Bool {
   match stmt {
     WhileStmt(_, _, _)
@@ -521,6 +568,8 @@ fn collect_current_var_names_from_stmt(
 ) -> Unit {
   match stmt {
     VarDecl(VarKind, name, _, _) | FuncDecl(name, _, _, _) => out.push(name)
+    DestructureDecl(VarKind, pattern, _, _) =>
+      collect_current_var_names_from_pattern(pattern, out)
     StmtList(stmts, _) | Block(stmts, _) =>
       collect_current_var_names_from_stmts(stmts, out)
     IfStmt(_, then_branch, else_branch, _) => {
@@ -549,6 +598,39 @@ fn collect_current_var_names_from_stmt(
 }
 
 ///|
+fn collect_current_var_names_from_pattern(
+  pattern : @ast.Pattern,
+  out : Array[String],
+) -> Unit {
+  match pattern {
+    IdentPat(name) => out.push(name)
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) => collect_current_var_names_from_pattern(pat, out)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => collect_current_var_names_from_pattern(pat, out)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        collect_current_var_names_from_pattern(prop.value, out)
+      }
+      match rest {
+        Some(pat) => collect_current_var_names_from_pattern(pat, out)
+        None => ()
+      }
+    }
+    DefaultPat(inner, _) => collect_current_var_names_from_pattern(inner, out)
+    AssignTarget(_) => ()
+  }
+}
+
+///|
 fn collect_nested_function_refs_from_stmts(
   stmts : Array[@ast.Stmt],
   refs : Map[String, Bool],
@@ -569,6 +651,10 @@ fn collect_nested_function_refs_from_stmt(
     | ExprStmt(expr, _)
     | ReturnStmt(Some(expr), _)
     | ThrowStmt(expr, _) => collect_nested_function_refs_from_expr(expr, refs)
+    DestructureDecl(_, pattern, init, _) => {
+      collect_nested_function_refs_from_pattern(pattern, refs)
+      collect_nested_function_refs_from_expr(init, refs)
+    }
     StmtList(stmts, _) | Block(stmts, _) =>
       collect_nested_function_refs_from_stmts(stmts, refs)
     IfStmt(cond, then_branch, else_branch, _) => {
@@ -771,6 +857,10 @@ fn collect_name_refs_from_stmt(
     | ExprStmt(expr, _)
     | ReturnStmt(Some(expr), _)
     | ThrowStmt(expr, _) => collect_name_refs_from_expr(expr, refs)
+    DestructureDecl(_, pattern, init, _) => {
+      collect_name_refs_from_binding_pattern_exprs(pattern, refs)
+      collect_name_refs_from_expr(init, refs)
+    }
     FuncDecl(_, _, body, _) | StmtList(body, _) | Block(body, _) =>
       collect_name_refs_from_stmts(body, refs)
     IfStmt(cond, then_branch, else_branch, _) => {
@@ -955,6 +1045,50 @@ fn collect_name_refs_from_pattern(
 }
 
 ///|
+fn collect_name_refs_from_binding_pattern_exprs(
+  pattern : @ast.Pattern,
+  refs : Map[String, Bool],
+) -> Unit {
+  match pattern {
+    IdentPat(_) => ()
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) => collect_name_refs_from_binding_pattern_exprs(pat, refs)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => collect_name_refs_from_binding_pattern_exprs(pat, refs)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          None => ()
+        }
+        match prop.default_val {
+          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          None => ()
+        }
+        collect_name_refs_from_binding_pattern_exprs(prop.value, refs)
+      }
+      match rest {
+        Some(pat) => collect_name_refs_from_binding_pattern_exprs(pat, refs)
+        None => ()
+      }
+    }
+    DefaultPat(inner, expr) => {
+      collect_name_refs_from_binding_pattern_exprs(inner, refs)
+      collect_name_refs_from_expr(expr, refs)
+    }
+    AssignTarget(expr) => collect_name_refs_from_expr(expr, refs)
+  }
+}
+
+///|
 fn bytecode_body_references_arguments(body : Array[@ast.Stmt]) -> Bool {
   let refs : Map[String, Bool] = {}
   collect_name_refs_from_stmts(body, refs)
@@ -974,6 +1108,7 @@ fn bytecode_body_contains_destructure_assign(body : Array[@ast.Stmt]) -> Bool {
 ///|
 fn bytecode_stmt_contains_destructure_assign(stmt : @ast.Stmt) -> Bool {
   match stmt {
+    DestructureDecl(_, _, _, _) => true
     VarDecl(_, _, Some(expr), _)
     | ExprStmt(expr, _)
     | ReturnStmt(Some(expr), _)
@@ -1255,6 +1390,9 @@ fn BytecodeBuilder::compile_switch(
   if switch_cases_have_function_decl(cases) {
     bytecode_unsupported("control-flow function declaration")
   }
+  if switch_cases_have_destructure_decl(cases) {
+    bytecode_unsupported("destructuring declaration context")
+  }
   self.emit_undefined_completion()
   self.compile_expr(discriminant)
   let case_jumps = Array::make(cases.length(), -1)
@@ -1333,7 +1471,21 @@ fn BytecodeBuilder::compile_stmt(
         self.emit_undefined_completion()
       }
     }
+    DestructureDecl(VarKind, pattern, init, _) => {
+      bytecode_validate_destructure_assignment_pattern(pattern)
+      self.compile_expr(init)
+      let _ = self.emit(AssignPattern(pattern))
+      let _ = self.emit(Pop)
+      if declaration_updates_completion {
+        self.emit_undefined_completion()
+      }
+    }
+    DestructureDecl(_, _, _, _) =>
+      bytecode_unsupported("destructuring declaration kind")
     StmtList(stmts, _) => {
+      if stmts_have_destructure_decl(stmts) {
+        bytecode_unsupported("destructuring declaration context")
+      }
       self.emit_undefined_completion()
       for child in stmts {
         self.compile_stmt(child, declaration_updates_completion=false)
@@ -1345,6 +1497,9 @@ fn BytecodeBuilder::compile_stmt(
       }
       if stmts_have_function_decl(stmts) {
         bytecode_unsupported("block function declaration")
+      }
+      if stmts_have_destructure_decl(stmts) {
+        bytecode_unsupported("destructuring declaration context")
       }
       self.emit_undefined_completion()
       for child in stmts {
@@ -1362,6 +1517,16 @@ fn BytecodeBuilder::compile_stmt(
           }
         None => ()
       }
+      if stmt_has_destructure_decl(then_branch) {
+        bytecode_unsupported("destructuring declaration context")
+      }
+      match else_branch {
+        Some(stmt) =>
+          if stmt_has_destructure_decl(stmt) {
+            bytecode_unsupported("destructuring declaration context")
+          }
+        None => ()
+      }
       self.compile_expr(cond)
       let else_jump = self.emit(JumpIfFalse(-1))
       self.compile_stmt(then_branch)
@@ -1376,6 +1541,9 @@ fn BytecodeBuilder::compile_stmt(
     WhileStmt(cond, body, _) => {
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
+      }
+      if stmt_has_destructure_decl(body) {
+        bytecode_unsupported("destructuring declaration context")
       }
       self.emit_undefined_completion()
       let cond_pos = self.code.length()
@@ -1395,6 +1563,9 @@ fn BytecodeBuilder::compile_stmt(
     DoWhileStmt(body, cond, _) => {
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
+      }
+      if stmt_has_destructure_decl(body) {
+        bytecode_unsupported("destructuring declaration context")
       }
       self.emit_undefined_completion()
       let body_pos = self.code.length()
@@ -1416,10 +1587,16 @@ fn BytecodeBuilder::compile_stmt(
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
       }
+      if stmt_has_destructure_decl(body) {
+        bytecode_unsupported("destructuring declaration context")
+      }
       match init {
         Some(stmt) => {
           if stmt_has_lexical_decl(stmt) {
             bytecode_unsupported("for lexical initializer")
+          }
+          if stmt_has_destructure_decl(stmt) {
+            bytecode_unsupported("destructuring declaration context")
           }
           self.compile_for_init(stmt)
         }
@@ -1478,6 +1655,9 @@ fn BytecodeBuilder::compile_stmt(
     LabeledStmt(label, body, _) => {
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
+      }
+      if stmt_has_destructure_decl(body) {
+        bytecode_unsupported("destructuring declaration context")
       }
       if stmt_is_iteration_label_target(body) {
         self.pending_loop_labels.push(label)
