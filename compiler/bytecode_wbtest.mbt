@@ -50,6 +50,19 @@ test "bytecode lowers unary minus to a unary value instruction" {
 }
 
 ///|
+test "bytecode lowers instanceof to the shared binary op instruction" {
+  let bytecode = parse_bytecode_for_wb("var r = 1 instanceof function() {};")
+  let mut saw_instanceof = false
+  for instr in bytecode.main.code {
+    match instr {
+      BinaryOp(Instanceof, _) => saw_instanceof = true
+      _ => ()
+    }
+  }
+  guard saw_instanceof else { abort("expected instanceof binary op") }
+}
+
+///|
 test "bytecode lowers template literals to append instructions" {
   let bytecode = parse_bytecode_for_wb("var x = 1; `a${x}b`;")
   let mut saw_template = false

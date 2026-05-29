@@ -142,10 +142,11 @@ The current high-level opcode surface covers:
   name, load/store function-local slot, define binding
 - completion and control flow: set completion, pop, jump, conditional jump,
   return, throw
-- expressions: supported eager binary operations, selected value unary
-  operations (`-`, `+`, `!`, `~`, and `void`), jump-lowered `&&`, `||`, `??`,
-  ternary conditionals, comma expressions, template literals, regex literals,
-  identifier update, anonymous function naming
+- expressions: supported eager binary operations including `in` and
+  `instanceof`, selected value unary operations (`-`, `+`, `!`, `~`, and
+  `void`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
+  expressions, template literals, regex literals, identifier update,
+  anonymous function naming
 - object interaction: array creation without holes/spread, simple object
   literals with static data properties, property get, computed get, and
   property/computed assignment through runtime setters
@@ -175,7 +176,6 @@ The compiler currently raises an `InternalError` prefixed
 - `for initializer`
 - `spread argument`
 - `arguments object`
-- `instanceof operator`
 - `delete operator`
 - `typeof operator`
 - `named function expression`

@@ -953,7 +953,6 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(else_expr)
       self.patch(end_jump, Jump(self.code.length()))
     }
-    Binary(Instanceof, _, _, _) => bytecode_unsupported("instanceof operator")
     Binary(op, left, right, loc) => {
       self.compile_expr(left)
       self.compile_expr(right)

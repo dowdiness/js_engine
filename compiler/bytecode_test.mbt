@@ -773,13 +773,38 @@ test "bytecode in operator rejects primitive rhs like interpreter" {
 }
 
 ///|
-test "bytecode rejects instanceof operator until runtime helper is shared" {
+test "bytecode instanceof uses runtime prototype chain semantics" {
+  let src =
+    #|function C() {}
+    #|var o = new C();
+    #|o instanceof C;
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode instanceof returns false for primitive lhs" {
   let src =
     #|1 instanceof function() {};
+  inspect(bytecode_compare(src), content="value:false")
+}
+
+///|
+test "bytecode instanceof reuses runtime rhs error semantics" {
+  let src =
+    #|({}) instanceof {};
   inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: instanceof operator",
+    bytecode_compare(src),
+    content="throw:TypeError: Right-hand side of 'instanceof' is not callable",
   )
+}
+
+///|
+test "bytecode instanceof honors Symbol.hasInstance" {
+  let src =
+    #|var C = {};
+    #|C[Symbol.hasInstance] = function(value) { return value === 7; };
+    #|(7 instanceof C) + "," + (8 instanceof C);
+  inspect(bytecode_compare(src), content="value:true,false")
 }
 
 ///|

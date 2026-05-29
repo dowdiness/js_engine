@@ -1128,6 +1128,119 @@ fn Interpreter::eval_expr(
 }
 
 ///|
+fn Interpreter::eval_instanceof_values(
+  self : Interpreter,
+  l : Value,
+  r : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match r {
+    Object(r_data) => {
+      // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
+      let has_instance_sym = self.realm_state.well_known_symbols.has_instance
+      match
+        lookup_symbol_property_chain(
+          r,
+          r_data,
+          has_instance_sym.id,
+          interp=Some(self),
+        ) {
+        Some(Undefined) | Some(Null) | None =>
+          // No @@hasInstance — fall back to OrdinaryHasInstance.
+          // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
+          match r_data.callable {
+            None =>
+              raise @errors.TypeError(
+                message="Right-hand side of 'instanceof' is not callable",
+              )
+            Some(_) =>
+              // Step 3 of OrdinaryHasInstance: If O is not an Object, return
+              // false. MUST precede steps 4-5 so primitive LHS never triggers
+              // step 5's TypeError even when C.prototype is a non-object.
+              if !is_object_value(l) {
+                Bool(false)
+              } else {
+                // Steps 4-5: Get(C, "prototype"); if not Object, TypeError.
+                // Bound functions without own prototype property fall through
+                // to the None arm.
+                match r_data.bag.properties.get("prototype") {
+                  Some(proto) =>
+                    if is_object_value(proto) {
+                      instanceof_prototype_chain(l, proto, self)
+                    } else {
+                      raise @errors.TypeError(
+                        message="Function has non-object prototype in instanceof check",
+                      )
+                    }
+                  None => Bool(false)
+                }
+              }
+          }
+        Some(has_instance_fn) => {
+          if !is_callable(has_instance_fn) {
+            raise @errors.TypeError(
+              message="Symbol.hasInstance is not a function",
+            )
+          }
+          let result = self.call_value(has_instance_fn, r, [l], loc)
+          Bool(is_truthy(result))
+        }
+      }
+    }
+    Proxy(proxy_data) => {
+      // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
+      let has_instance_sym = self.realm_state.well_known_symbols.has_instance
+      let has_instance_method = get_symbol_method(r, has_instance_sym.id)
+      match has_instance_method {
+        Some(has_instance_fn) =>
+          match has_instance_fn {
+            Object(fn_data) =>
+              match fn_data.callable {
+                Some(_) => {
+                  let result = self.call_value(has_instance_fn, r, [l], loc)
+                  Bool(is_truthy(result))
+                }
+                None =>
+                  raise @errors.TypeError(
+                    message="Symbol.hasInstance is not a function",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Symbol.hasInstance is not a function",
+              )
+          }
+        None => {
+          // Step 2: Fall back to prototype chain check
+          let target = get_proxy_target(proxy_data)
+          let proto = self.get_property(r, "prototype", loc)
+          match proto {
+            Object(_) => instanceof_prototype_chain(l, proto, self)
+            _ =>
+              // Check if target is callable
+              match target {
+                Object(t_data) =>
+                  match t_data.callable {
+                    Some(_) => Bool(false)
+                    None =>
+                      raise @errors.TypeError(
+                        message="Right-hand side of 'instanceof' is not callable",
+                      )
+                  }
+                _ => Bool(false)
+              }
+          }
+        }
+      }
+    }
+    _ =>
+      raise @errors.TypeError(
+        message="Right-hand side of 'instanceof' is not an object",
+      )
+  }
+}
+
+///|
 fn Interpreter::eval_binary(
   self : Interpreter,
   ctx : ExecContext,
@@ -1162,113 +1275,9 @@ fn Interpreter::eval_binary(
       }
     }
     Instanceof => {
-      // instanceof - ES2015+ with Symbol.hasInstance support (spec: 7.3.21 OrdinaryHasInstance)
       let l = self.eval_expr(ctx, left_expr, env)
       let r = self.eval_expr(ctx, right_expr, env)
-      match r {
-        Object(r_data) => {
-          // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
-          let has_instance_sym = self.realm_state.well_known_symbols.has_instance
-          match
-            lookup_symbol_property_chain(
-              r,
-              r_data,
-              has_instance_sym.id,
-              interp=Some(self),
-            ) {
-            Some(Undefined) | Some(Null) | None =>
-              // No @@hasInstance — fall back to OrdinaryHasInstance.
-              // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
-              match r_data.callable {
-                None =>
-                  raise @errors.TypeError(
-                    message="Right-hand side of 'instanceof' is not callable",
-                  )
-                Some(_) =>
-                  // Step 3 of OrdinaryHasInstance: If O is not an Object, return
-                  // false. MUST precede steps 4-5 so primitive LHS never triggers
-                  // step 5's TypeError even when C.prototype is a non-object.
-                  if !is_object_value(l) {
-                    Bool(false)
-                  } else {
-                    // Steps 4-5: Get(C, "prototype"); if not Object, TypeError.
-                    // Bound functions without own prototype property fall through
-                    // to the None arm.
-                    match r_data.bag.properties.get("prototype") {
-                      Some(proto) =>
-                        if is_object_value(proto) {
-                          instanceof_prototype_chain(l, proto, self)
-                        } else {
-                          raise @errors.TypeError(
-                            message="Function has non-object prototype in instanceof check",
-                          )
-                        }
-                      None => Bool(false)
-                    }
-                  }
-              }
-            Some(has_instance_fn) => {
-              if !is_callable(has_instance_fn) {
-                raise @errors.TypeError(
-                  message="Symbol.hasInstance is not a function",
-                )
-              }
-              let result = self.call_value(has_instance_fn, r, [l], loc)
-              Bool(is_truthy(result))
-            }
-          }
-        }
-        Proxy(proxy_data) => {
-          // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
-          let has_instance_sym = self.realm_state.well_known_symbols.has_instance
-          let has_instance_method = get_symbol_method(r, has_instance_sym.id)
-          match has_instance_method {
-            Some(has_instance_fn) =>
-              match has_instance_fn {
-                Object(fn_data) =>
-                  match fn_data.callable {
-                    Some(_) => {
-                      let result = self.call_value(has_instance_fn, r, [l], loc)
-                      Bool(is_truthy(result))
-                    }
-                    None =>
-                      raise @errors.TypeError(
-                        message="Symbol.hasInstance is not a function",
-                      )
-                  }
-                _ =>
-                  raise @errors.TypeError(
-                    message="Symbol.hasInstance is not a function",
-                  )
-              }
-            None => {
-              // Step 2: Fall back to prototype chain check
-              let target = get_proxy_target(proxy_data)
-              let proto = self.get_property(r, "prototype", loc)
-              match proto {
-                Object(_) => instanceof_prototype_chain(l, proto, self)
-                _ =>
-                  // Check if target is callable
-                  match target {
-                    Object(t_data) =>
-                      match t_data.callable {
-                        Some(_) => Bool(false)
-                        None =>
-                          raise @errors.TypeError(
-                            message="Right-hand side of 'instanceof' is not callable",
-                          )
-                      }
-                    _ => Bool(false)
-                  }
-              }
-            }
-          }
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Right-hand side of 'instanceof' is not an object",
-          )
-      }
+      self.eval_instanceof_values(l, r, loc)
     }
     In => {
       let left = self.eval_expr(ctx, left_expr, env)
@@ -1434,6 +1443,15 @@ pub fn eval_binary_op(
         Number((shifted & mask).to_double())
       }
     }
+    // instanceof - ES2015+ with Symbol.hasInstance support (spec: 7.3.21 OrdinaryHasInstance)
+    (Instanceof, l, r) =>
+      match interp {
+        Some(ip) => ip.eval_instanceof_values(l, r, _loc)
+        None =>
+          raise @errors.InternalError(
+            message="Internal error: instanceof requires interpreter context",
+          )
+      }
     // in operator - ES §7.3.11 HasProperty
     (In, l, r) =>
       if is_object_value(r) {
@@ -1447,8 +1465,8 @@ pub fn eval_binary_op(
           message="Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
         )
       }
-    // And/Or/??/Instanceof already handled in eval_binary
-    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) | (Instanceof, _, _) =>
+    // And/Or/?? already handled in eval_binary
+    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) =>
       raise @errors.InternalError(
         message="Internal error: logical operators should be short-circuited",
       )
