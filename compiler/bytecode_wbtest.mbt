@@ -430,6 +430,19 @@ test "bytecode lowers computed object literal data properties" {
 }
 
 ///|
+test "bytecode lowers named function expressions with a self-name instruction" {
+  let bytecode = parse_bytecode_for_wb("var f = function g() { return g; };")
+  let mut saw_named_function = false
+  for instr in bytecode.main.code {
+    match instr {
+      MakeNamedFunction(_, "g") => saw_named_function = true
+      _ => ()
+    }
+  }
+  guard saw_named_function else { abort("expected named function expression") }
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {

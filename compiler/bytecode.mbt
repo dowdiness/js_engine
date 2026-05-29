@@ -48,6 +48,7 @@ priv enum BytecodeInstr {
   ObjectSpread(@token.Loc)
   ObjectSetProto
   MakeFunction(Int)
+  MakeNamedFunction(Int, String)
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
   GetComputed(@token.Loc)
@@ -1786,14 +1787,19 @@ fn BytecodeBuilder::compile_expr(
       )
     CompoundAssign(_, _, _, _) =>
       bytecode_unsupported("compound assignment target")
-    FuncExpr(Some(_), _, _, _) =>
-      bytecode_unsupported("named function expression")
+    FuncExpr(Some(name), params, body, _) => {
+      let fn_idx = self.add_function(Some(name), params, body)
+      let _ = self.emit(MakeNamedFunction(fn_idx, name))
+    }
     FuncExpr(None, params, body, _) => {
       let fn_idx = self.add_function(None, params, body)
       let _ = self.emit(MakeFunction(fn_idx))
     }
-    FuncExprExt(Some(_), _, _, _, _) =>
-      bytecode_unsupported("named function expression")
+    FuncExprExt(Some(name), params, rest_param, body, _) => {
+      let simple_params = simple_ext_param_names(params, rest_param)
+      let fn_idx = self.add_function(Some(name), simple_params, body)
+      let _ = self.emit(MakeNamedFunction(fn_idx, name))
+    }
     FuncExprExt(None, params, rest_param, body, _) => {
       let simple_params = simple_ext_param_names(params, rest_param)
       let fn_idx = self.add_function(None, simple_params, body)
@@ -2165,6 +2171,19 @@ fn make_bytecode_func(
 }
 
 ///|
+fn make_named_bytecode_func(
+  func_def : BytecodeFunction,
+  closure : Environment,
+  enclosing_ctx : ExecContext,
+  name : String,
+) -> Value raise Error {
+  let self_name_env = Environment::new(parent=Some(closure))
+  let func = make_bytecode_func(func_def, self_name_env, enclosing_ctx)
+  self_name_env.def(name, func, LetBinding)
+  func
+}
+
+///|
 fn run_bytecode_function(
   interp : Interpreter,
   ctx : ExecContext,
@@ -2481,6 +2500,12 @@ fn run_bytecode_function(
       MakeFunction(index) => {
         let child = frame.func_def.children[index]
         frame.stack.push(make_bytecode_func(child, frame.env, frame.ctx))
+      }
+      MakeNamedFunction(index, name) => {
+        let child = frame.func_def.children[index]
+        frame.stack.push(
+          make_named_bytecode_func(child, frame.env, frame.ctx, name),
+        )
       }
       DeclareFunction(_, _) => ()
       GetProperty(prop, loc) => {

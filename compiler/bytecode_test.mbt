@@ -1533,14 +1533,36 @@ test "bytecode strict function call keeps undefined this" {
 }
 
 ///|
-test "bytecode rejects named function expressions until self-name binding is implemented" {
+test "bytecode named function expressions bind self name inside function only" {
   let src =
-    #|var f = function g() { return g; };
-    #|f();
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: named function expression",
-  )
+    #|var f = function g(n) {
+    #|  if (n === 0) {
+    #|    return g;
+    #|  }
+    #|  return g(n - 1);
+    #|};
+    #|var outside = typeof g;
+    #|(f(2) === f) + "," + outside + "," + f.name;
+  inspect(bytecode_compare(src), content="value:true,undefined,g")
+}
+
+///|
+test "bytecode named function expressions do not overwrite outer bindings" {
+  let src =
+    #|var g = "outer";
+    #|var f = function g() { g = "inner"; return g; };
+    #|f() + "," + g;
+  inspect(bytecode_compare(src), content="value:inner,outer")
+}
+
+///|
+test "bytecode nested closures capture named function expression self binding" {
+  let src =
+    #|var f = function g() {
+    #|  return function() { return g === f; };
+    #|};
+    #|f()();
+  inspect(bytecode_compare(src), content="value:true")
 }
 
 ///|
