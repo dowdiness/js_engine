@@ -244,6 +244,103 @@ pub fn apply_object_literal_data_property(
 }
 
 ///|
+fn force_object_literal_accessor_name(accessor : Value, name : String) -> Unit {
+  match accessor {
+    Object(data) if data.callable is Some(_) =>
+      data.bag.properties["name"] = String_(name)
+    _ => ()
+  }
+}
+
+///|
+pub fn apply_object_literal_accessor_property(
+  target : Value,
+  key : Value,
+  accessor : Value,
+  is_getter : Bool,
+) -> Unit raise Error {
+  match target {
+    Object(data) =>
+      match key {
+        Symbol(sym) => {
+          let accessor_name = match (is_getter, sym.description) {
+            (true, Some(d)) => "get [\{d}]"
+            (true, None) => "get "
+            (false, Some(d)) => "set [\{d}]"
+            (false, None) => "set "
+          }
+          force_object_literal_accessor_name(accessor, accessor_name)
+          if !data.bag.symbol_properties.contains(sym.id) {
+            data.bag.symbol_properties[sym.id] = Undefined
+          }
+          let existing = data.bag.symbol_descriptors.get(sym.id)
+          data.bag.symbol_descriptors[sym.id] = {
+            writable: false,
+            enumerable: true,
+            configurable: true,
+            getter: if is_getter {
+              Some(accessor)
+            } else {
+              match existing {
+                Some(desc) => desc.getter
+                None => None
+              }
+            },
+            setter: if is_getter {
+              match existing {
+                Some(desc) => desc.setter
+                None => None
+              }
+            } else {
+              Some(accessor)
+            },
+            is_accessor: true,
+          }
+        }
+        _ => {
+          let key_str = to_js_string(key)
+          let accessor_name = if is_getter {
+            "get " + key_str
+          } else {
+            "set " + key_str
+          }
+          force_object_literal_accessor_name(accessor, accessor_name)
+          if !data.bag.properties.contains(key_str) {
+            data.bag.properties[key_str] = Undefined
+          }
+          let existing = data.bag.descriptors.get(key_str)
+          data.bag.descriptors[key_str] = {
+            writable: false,
+            enumerable: true,
+            configurable: true,
+            getter: if is_getter {
+              Some(accessor)
+            } else {
+              match existing {
+                Some(desc) => desc.getter
+                None => None
+              }
+            },
+            setter: if is_getter {
+              match existing {
+                Some(desc) => desc.setter
+                None => None
+              }
+            } else {
+              Some(accessor)
+            },
+            is_accessor: true,
+          }
+        }
+      }
+    _ =>
+      raise @errors.InternalError(
+        message="object literal accessor property target was not an object",
+      )
+  }
+}
+
+///|
 pub fn Interpreter::copy_object_spread_properties(
   self : Interpreter,
   target : Value,
@@ -512,7 +609,7 @@ fn Interpreter::eval_expr(
           let key_val = self.eval_expr(ctx, prop.key, env)
           let prop_key = self.to_object_literal_property_key(key_val)
           match prop_key {
-            Symbol(sym) =>
+            Symbol(_) =>
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
@@ -521,55 +618,19 @@ fn Interpreter::eval_expr(
                 }
                 Get => {
                   let getter = self.eval_prop_value(ctx, prop, method_env)
-                  let sym_name = match sym.description {
-                    Some(d) => "get [\{d}]"
-                    None => "get "
-                  }
-                  set_function_name(getter, sym_name)
-                  // Store accessor in descriptor, use Undefined as placeholder in properties
-                  if !symbol_properties.contains(sym.id) {
-                    symbol_properties[sym.id] = Undefined
-                  }
-                  let existing = symbol_descriptors.get(sym.id)
-                  symbol_descriptors[sym.id] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: Some(getter),
-                    setter: match existing {
-                      Some(d) => d.setter
-                      None => None
-                    },
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, getter, true,
+                  )
                 }
                 Set => {
                   let setter = self.eval_prop_value(ctx, prop, method_env)
-                  let sym_name = match sym.description {
-                    Some(d) => "set [\{d}]"
-                    None => "set "
-                  }
-                  set_function_name(setter, sym_name)
-                  if !symbol_properties.contains(sym.id) {
-                    symbol_properties[sym.id] = Undefined
-                  }
-                  let existing = symbol_descriptors.get(sym.id)
-                  symbol_descriptors[sym.id] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: match existing {
-                      Some(d) => d.getter
-                      None => None
-                    },
-                    setter: Some(setter),
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, setter, false,
+                  )
                 }
                 Spread => () // handled above
               }
-            _ => {
-              let key_str = to_js_string(prop_key)
+            _ =>
               match prop.kind {
                 Init => {
                   let val = self.eval_prop_value(ctx, prop, method_env)
@@ -577,45 +638,18 @@ fn Interpreter::eval_expr(
                 }
                 Get => {
                   let getter = self.eval_prop_value(ctx, prop, method_env)
-                  set_function_name(getter, "get " + key_str)
-                  if !properties.contains(key_str) {
-                    properties[key_str] = Undefined
-                  }
-                  let existing = descriptors.get(key_str)
-                  descriptors[key_str] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: Some(getter),
-                    setter: match existing {
-                      Some(d) => d.setter
-                      None => None
-                    },
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, getter, true,
+                  )
                 }
                 Set => {
                   let setter = self.eval_prop_value(ctx, prop, method_env)
-                  set_function_name(setter, "set " + key_str)
-                  if !properties.contains(key_str) {
-                    properties[key_str] = Undefined
-                  }
-                  let existing = descriptors.get(key_str)
-                  descriptors[key_str] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: match existing {
-                      Some(d) => d.getter
-                      None => None
-                    },
-                    setter: Some(setter),
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, setter, false,
+                  )
                 }
                 Spread => () // handled above
               }
-            }
           }
         } else {
           // Static key - extract from StringLit
@@ -646,51 +680,21 @@ fn Interpreter::eval_expr(
               }
             Get => {
               let getter = self.eval_prop_value(ctx, prop, method_env)
-              // Force set name with "get " prefix per spec
-              match getter {
-                Object(d) =>
-                  d.bag.properties["name"] = String_("get " + key_str)
-                _ => ()
-              }
-              if !properties.contains(key_str) {
-                properties[key_str] = Undefined
-              }
-              let existing = descriptors.get(key_str)
-              descriptors[key_str] = {
-                writable: false,
-                enumerable: true,
-                configurable: true,
-                getter: Some(getter),
-                setter: match existing {
-                  Some(d) => d.setter
-                  None => None
-                },
-                is_accessor: true,
-              }
+              apply_object_literal_accessor_property(
+                home_object,
+                String_(key_str),
+                getter,
+                true,
+              )
             }
             Set => {
               let setter = self.eval_prop_value(ctx, prop, method_env)
-              // Force set name with "set " prefix per spec
-              match setter {
-                Object(d) =>
-                  d.bag.properties["name"] = String_("set " + key_str)
-                _ => ()
-              }
-              if !properties.contains(key_str) {
-                properties[key_str] = Undefined
-              }
-              let existing = descriptors.get(key_str)
-              descriptors[key_str] = {
-                writable: false,
-                enumerable: true,
-                configurable: true,
-                getter: match existing {
-                  Some(d) => d.getter
-                  None => None
-                },
-                setter: Some(setter),
-                is_accessor: true,
-              }
+              apply_object_literal_accessor_property(
+                home_object,
+                String_(key_str),
+                setter,
+                false,
+              )
             }
             Spread => () // handled above
           }

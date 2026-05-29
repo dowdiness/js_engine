@@ -548,6 +548,24 @@ test "bytecode lowers object literal methods to method functions" {
 }
 
 ///|
+test "bytecode lowers object literal static accessors to accessor instructions" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { get x() { return 1; }, set x(v) { this.v = v; } };",
+  )
+  let mut saw_getter = false
+  let mut saw_setter = false
+  for instr in bytecode.main.code {
+    match instr {
+      ObjectSetStaticGetter("x") => saw_getter = true
+      ObjectSetStaticSetter("x") => saw_setter = true
+      _ => ()
+    }
+  }
+  guard saw_getter else { abort("expected static getter instruction") }
+  guard saw_setter else { abort("expected static setter instruction") }
+}
+
+///|
 test "bytecode treats names inside nested object literal methods as captured" {
   let src =
     #|function outer() {

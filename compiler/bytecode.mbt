@@ -51,6 +51,8 @@ priv enum BytecodeInstr {
   MakeObject(Array[String])
   StartObject
   ObjectSetStatic(String)
+  ObjectSetStaticGetter(String)
+  ObjectSetStaticSetter(String)
   ToObjectLiteralPropertyKey
   ObjectSetComputed
   ObjectSpread(@token.Loc)
@@ -2381,7 +2383,7 @@ fn bytecode_object_lit_uses_incremental(props : Array[@ast.Property]) -> Bool {
             None => ()
           }
         }
-      Get | Set => ()
+      Get | Set => return true
     }
   }
   false
@@ -2450,7 +2452,29 @@ fn BytecodeBuilder::compile_object_lit(
           continue
         }
         Init => ()
-        Get | Set => bytecode_unsupported("object literal accessor property")
+        Get | Set => {
+          if prop.computed {
+            bytecode_unsupported("object literal computed accessor property")
+          }
+          let key = match bytecode_static_object_key(prop.key) {
+            Some(key) => key
+            None => {
+              bytecode_unsupported("object literal property key")
+              ""
+            }
+          }
+          self.compile_object_method(prop)
+          match prop.kind {
+            Get => {
+              let _ = self.emit(ObjectSetStaticGetter(key))
+            }
+            Set => {
+              let _ = self.emit(ObjectSetStaticSetter(key))
+            }
+            _ => ()
+          }
+          continue
+        }
       }
       if prop.is_method {
         if prop.computed {
@@ -2500,7 +2524,8 @@ fn BytecodeBuilder::compile_object_lit(
     let keys : Array[String] = []
     for prop in props {
       match prop.kind {
-        Get | Set => bytecode_unsupported("object literal accessor property")
+        Get | Set =>
+          bytecode_unsupported("object literal computed accessor property")
         _ => ()
       }
       if prop.computed {
@@ -3557,6 +3582,24 @@ fn run_bytecode_function(
               message="bytecode object accumulator was not an object",
             )
         }
+      }
+      ObjectSetStaticGetter(key) => {
+        let getter = frame.pop()
+        @runtime.apply_object_literal_accessor_property(
+          frame.peek(),
+          Value::String_(key),
+          getter,
+          true,
+        )
+      }
+      ObjectSetStaticSetter(key) => {
+        let setter = frame.pop()
+        @runtime.apply_object_literal_accessor_property(
+          frame.peek(),
+          Value::String_(key),
+          setter,
+          false,
+        )
       }
       ToObjectLiteralPropertyKey => {
         let key = frame.pop()

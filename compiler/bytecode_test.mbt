@@ -1543,6 +1543,39 @@ test "bytecode object literal computed symbol methods" {
 }
 
 ///|
+test "bytecode object literal static accessors use descriptors and receivers" {
+  let src =
+    #|var log = "";
+    #|var o = {
+    #|  value: 1,
+    #|  get x() { log = log + "g"; return this.value + 1; },
+    #|  set x(v) { log = log + "s" + v; this.value = v; }
+    #|};
+    #|var desc = Object.getOwnPropertyDescriptor(o, "x");
+    #|var read = o.x;
+    #|o.x = 5;
+    #|read + ":" + desc.get.name + "," + desc.set.name + ":" + o.value + ":" + log;
+  inspect(bytecode_compare(src), content="value:2:get x,set x:5:gs5")
+}
+
+///|
+test "bytecode object literal static accessors capture outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var value = 3;
+    #|  return {
+    #|    get x() { return value; },
+    #|    set x(next) { value = next; }
+    #|  };
+    #|}
+    #|var o = outer();
+    #|var before = o.x;
+    #|o.x = 7;
+    #|before + "," + o.x;
+  inspect(bytecode_compare(src), content="value:3,7")
+}
+
+///|
 test "bytecode object methods read super properties" {
   let src =
     #|var proto = { x: 3 };
@@ -1718,8 +1751,8 @@ test "bytecode object literal computed properties capture outer keys" {
 ///|
 test "bytecode rejects unsupported object literal forms explicitly" {
   inspect(
-    bytecode_outcome("({ get x() { return 1; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal accessor property",
+    bytecode_outcome("var key = 'x'; ({ get [key]() { return 1; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal computed accessor property",
   )
   inspect(
     bytecode_outcome("({ m() { return m; } });"),
