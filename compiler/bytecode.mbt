@@ -16,6 +16,8 @@ priv enum BytecodeInstr {
   BinaryOp(@ast.BinOp, @token.Loc)
   UnaryValueOp(@ast.UnaryOp, @token.Loc)
   TypeofName(String)
+  DeleteProperty(String)
+  DeleteComputed
   AppendTemplate(String)
   MakeRegExp(String, String)
   SetFunctionName(String)
@@ -1068,7 +1070,16 @@ fn BytecodeBuilder::compile_expr(
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
     Binary(NullishCoalesce, left, right, _) =>
       self.compile_nullish_coalesce(left, right)
-    Unary(Delete, _, _) => bytecode_unsupported("delete operator")
+    Unary(Delete, Member(obj, prop, _), _) => {
+      self.compile_expr(obj)
+      let _ = self.emit(DeleteProperty(prop))
+    }
+    Unary(Delete, ComputedMember(obj, key, _), _) => {
+      self.compile_expr(obj)
+      self.compile_expr(key)
+      let _ = self.emit(DeleteComputed)
+    }
+    Unary(Delete, _, _) => bytecode_unsupported("delete non-property operator")
     Unary(Typeof, Ident("arguments", _), _) =>
       bytecode_unsupported("arguments object")
     Unary(Typeof, Ident(name, _), loc) =>
@@ -1512,6 +1523,24 @@ fn run_bytecode_function(
         frame.stack.push(
           interp.typeof_compiled_name(frame.ctx, frame.env, name),
         )
+      DeleteProperty(prop) => {
+        let obj = frame.pop()
+        frame.stack.push(
+          @runtime.eval_delete_property(interp, obj, prop, frame.ctx.strict),
+        )
+      }
+      DeleteComputed => {
+        let key = frame.pop()
+        let obj = frame.pop()
+        frame.stack.push(
+          @runtime.eval_delete_computed_property(
+            interp,
+            obj,
+            key,
+            frame.ctx.strict,
+          ),
+        )
+      }
       AppendTemplate(tail) => {
         let value = frame.pop()
         let acc = frame.pop()

@@ -321,13 +321,52 @@ test "bytecode unary captured vars use environment fallback" {
 }
 
 ///|
-test "bytecode rejects delete operator until delete semantics are shared" {
+test "bytecode delete member property removes own object property" {
   let src =
-    #|var xs = [1];
-    #|delete xs[0];
+    #|var o = { x: 1, y: 2 };
+    #|var r = delete o.x;
+    #|r + "," + ("x" in o) + "," + o.x + "," + o.y;
+  inspect(bytecode_compare(src), content="value:true,false,undefined,2")
+}
+
+///|
+test "bytecode delete computed array element creates a hole" {
+  let src =
+    #|var xs = [1, 2, 3];
+    #|var r = delete xs[1];
+    #|xs.length + ":" + r + "," + (1 in xs) + "," + xs[1];
+  inspect(bytecode_compare(src), content="value:3:true,false,undefined")
+}
+
+///|
+test "bytecode delete computed property preserves object key order" {
+  let src =
+    #|var log = "";
+    #|var o = { x: 1 };
+    #|function obj() { log = log + "o"; return o; }
+    #|function key() { log = log + "k"; return "x"; }
+    #|var r = delete obj()[key()];
+    #|r + ":" + log + ":" + ("x" in o);
+  inspect(bytecode_compare(src), content="value:true:ok:false")
+}
+
+///|
+test "bytecode delete property handles primitive and null receivers like interpreter" {
+  inspect(bytecode_compare("var n = 1; delete n.x;"), content="value:true")
+  inspect(
+    bytecode_compare("var target = null; delete target.x;"),
+    content="throw:TypeError: Cannot convert undefined or null to object",
+  )
+}
+
+///|
+test "bytecode rejects non-property delete until reference semantics are shared" {
+  let src =
+    #|var x = 1;
+    #|delete x;
   inspect(
     bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: delete operator",
+    content="error:InternalError: bytecode prototype unsupported: delete non-property operator",
   )
 }
 

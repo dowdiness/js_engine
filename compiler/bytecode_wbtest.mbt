@@ -82,6 +82,24 @@ test "bytecode lowers unary minus to a unary value instruction" {
 }
 
 ///|
+test "bytecode lowers property delete expressions to delete instructions" {
+  let bytecode = parse_bytecode_for_wb(
+    "var xs = []; delete xs.foo; delete xs[0];",
+  )
+  let mut saw_property_delete = false
+  let mut saw_computed_delete = false
+  for instr in bytecode.main.code {
+    match instr {
+      DeleteProperty("foo") => saw_property_delete = true
+      DeleteComputed => saw_computed_delete = true
+      _ => ()
+    }
+  }
+  guard saw_property_delete else { abort("expected property delete") }
+  guard saw_computed_delete else { abort("expected computed delete") }
+}
+
+///|
 test "bytecode lowers typeof identifiers to a typeof-name instruction" {
   let bytecode = parse_bytecode_for_wb("typeof missing;")
   let mut saw_typeof = false

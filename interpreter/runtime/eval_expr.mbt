@@ -1621,6 +1621,135 @@ fn loose_equal(a : Value, b : Value) -> Bool {
 }
 
 ///|
+fn delete_string_property_from_bag(
+  bag : PropertyBag,
+  prop : String,
+  strict : Bool,
+) -> Bool raise Error {
+  match bag.descriptors.get(prop) {
+    Some(desc) =>
+      if !desc.configurable {
+        if strict {
+          raise @errors.TypeError(message="Cannot delete property '\{prop}'")
+        }
+        return false
+      }
+    None => ()
+  }
+  let _ = bag.properties.remove(prop)
+  let _ = bag.descriptors.remove(prop)
+  true
+}
+
+///|
+fn delete_symbol_property_from_bag(
+  bag : PropertyBag,
+  sym_id : Int,
+  strict : Bool,
+) -> Bool raise Error {
+  match bag.symbol_descriptors.get(sym_id) {
+    Some(desc) =>
+      if !desc.configurable {
+        if strict {
+          raise @errors.TypeError(message="Cannot delete property")
+        }
+        return false
+      }
+    None => ()
+  }
+  let _ = bag.symbol_properties.remove(sym_id)
+  let _ = bag.symbol_descriptors.remove(sym_id)
+  true
+}
+
+///|
+fn mark_array_hole_if_index(data : ArrayData, prop : String) -> Unit {
+  let idx = @string.parse_int(prop) catch { _ => -1 }
+  if idx >= 0 && idx.to_string() == prop && idx < data.elements.length() {
+    data.holes.set(idx, ())
+    data.elements[idx] = Undefined
+  }
+}
+
+///|
+pub fn eval_delete_property(
+  interp : Interpreter,
+  obj : Value,
+  prop : String,
+  strict : Bool,
+) -> Value raise Error {
+  match obj {
+    Proxy(proxy_data) => {
+      let result = proxy_delete_property(interp, proxy_data, prop)
+      if !result && strict {
+        raise @errors.TypeError(message="Cannot delete property '\{prop}'")
+      }
+      Bool(result)
+    }
+    Object(data) =>
+      Bool(delete_string_property_from_bag(data.bag, prop, strict))
+    Array(data) => {
+      let result = delete_string_property_from_bag(data.bag, prop, strict)
+      if result {
+        mark_array_hole_if_index(data, prop)
+      }
+      Bool(result)
+    }
+    Undefined | Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ => Bool(true)
+  }
+}
+
+///|
+pub fn eval_delete_computed_property(
+  interp : Interpreter,
+  obj : Value,
+  key : Value,
+  strict : Bool,
+) -> Value raise Error {
+  match obj {
+    Proxy(proxy_data) => {
+      let k = to_js_string(key)
+      let result = proxy_delete_property(interp, proxy_data, k)
+      if !result && strict {
+        raise @errors.TypeError(message="Cannot delete property '\{k}'")
+      }
+      Bool(result)
+    }
+    Object(data) =>
+      match key {
+        Symbol(sym) =>
+          Bool(delete_symbol_property_from_bag(data.bag, sym.id, strict))
+        _ => {
+          let k = to_js_string(key)
+          Bool(delete_string_property_from_bag(data.bag, k, strict))
+        }
+      }
+    Array(data) =>
+      match key {
+        Symbol(sym) =>
+          Bool(delete_symbol_property_from_bag(data.bag, sym.id, strict))
+        _ => {
+          let k = to_js_string(key)
+          let result = delete_string_property_from_bag(data.bag, k, strict)
+          if result {
+            mark_array_hole_if_index(data, k)
+          }
+          Bool(result)
+        }
+      }
+    Undefined | Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ => Bool(true)
+  }
+}
+
+///|
 /// Check whether `name` is a non-writable property on the global object
 /// (undefined, NaN, Infinity). These are { writable:false } per ES spec §19.1.
 fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
@@ -1672,167 +1801,12 @@ fn Interpreter::eval_unary(
       match operand {
         Member(obj_expr, prop, _) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
-          match obj {
-            Proxy(proxy_data) => {
-              let result = proxy_delete_property(self, proxy_data, prop)
-              if !result && ctx.strict {
-                raise @errors.TypeError(
-                  message="Cannot delete property '\{prop}'",
-                )
-              }
-              Bool(result)
-            }
-            Object(data) => {
-              match data.bag.descriptors.get(prop) {
-                Some(desc) =>
-                  if !desc.configurable {
-                    if ctx.strict {
-                      raise @errors.TypeError(
-                        message="Cannot delete property '\{prop}'",
-                      )
-                    }
-                    return Bool(false)
-                  }
-                None => ()
-              }
-              let _ = data.bag.properties.remove(prop)
-              let _ = data.bag.descriptors.remove(prop)
-              Bool(true)
-            }
-            Array(data) => {
-              match data.bag.descriptors.get(prop) {
-                Some(desc) =>
-                  if !desc.configurable {
-                    if ctx.strict {
-                      raise @errors.TypeError(
-                        message="Cannot delete property '\{prop}'",
-                      )
-                    }
-                    return Bool(false)
-                  }
-                None => ()
-              }
-              let _ = data.bag.properties.remove(prop)
-              let _ = data.bag.descriptors.remove(prop)
-              // Same hole-marking logic as ComputedMember below — prop is already a string.
-              let idx = @string.parse_int(prop) catch { _ => -1 }
-              if idx >= 0 &&
-                idx.to_string() == prop &&
-                idx < data.elements.length() {
-                data.holes.set(idx, ())
-                data.elements[idx] = Undefined
-              }
-              Bool(true)
-            }
-            Undefined | Null =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            _ => Bool(true)
-          }
+          eval_delete_property(self, obj, prop, ctx.strict)
         }
         ComputedMember(obj_expr, key_expr, _) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
           let key = self.eval_expr(ctx, key_expr, env)
-          match obj {
-            Proxy(proxy_data) => {
-              let k = to_js_string(key)
-              let result = proxy_delete_property(self, proxy_data, k)
-              if !result && ctx.strict {
-                raise @errors.TypeError(message="Cannot delete property '\{k}'")
-              }
-              Bool(result)
-            }
-            Object(data) =>
-              match key {
-                Symbol(sym) => {
-                  // Delete a symbol-keyed property
-                  match data.bag.symbol_descriptors.get(sym.id) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.symbol_properties.remove(sym.id)
-                  let _ = data.bag.symbol_descriptors.remove(sym.id)
-                  Bool(true)
-                }
-                _ => {
-                  let k = to_js_string(key)
-                  match data.bag.descriptors.get(k) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property '\{k}'",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.properties.remove(k)
-                  let _ = data.bag.descriptors.remove(k)
-                  Bool(true)
-                }
-              }
-            Array(data) =>
-              match key {
-                Symbol(sym) => {
-                  match data.bag.symbol_descriptors.get(sym.id) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.symbol_properties.remove(sym.id)
-                  let _ = data.bag.symbol_descriptors.remove(sym.id)
-                  Bool(true)
-                }
-                _ => {
-                  let k = to_js_string(key)
-                  match data.bag.descriptors.get(k) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property '\{k}'",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.properties.remove(k)
-                  let _ = data.bag.descriptors.remove(k)
-                  let idx = @string.parse_int(k) catch { _ => -1 }
-                  if idx >= 0 &&
-                    idx.to_string() == k &&
-                    idx < data.elements.length() {
-                    data.holes.set(idx, ())
-                    data.elements[idx] = Undefined
-                  }
-                  Bool(true)
-                }
-              }
-            Undefined | Null =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            _ => Bool(true)
-          }
+          eval_delete_computed_property(self, obj, key, ctx.strict)
         }
         Ident(name, _) =>
           // delete of an unqualified identifier is a SyntaxError in strict mode

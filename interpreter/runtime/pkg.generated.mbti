@@ -39,6 +39,10 @@ pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
 
 pub fn eval_binary_op(@ast.BinOp, Value, Value, @token.Loc, interp? : Interpreter?) -> Value raise
 
+pub fn eval_delete_computed_property(Interpreter, Value, Value, Bool) -> Value raise
+
+pub fn eval_delete_property(Interpreter, Value, String, Bool) -> Value raise
+
 pub fn eval_this_value(Environment) -> Value raise
 
 pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise

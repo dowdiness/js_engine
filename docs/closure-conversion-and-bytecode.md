@@ -150,8 +150,9 @@ The current high-level opcode surface covers:
   identifier and non-logical member/computed compound assignment, anonymous
   function naming
 - object interaction: array creation including holes but without spread, simple
-  object literals with static data properties, property get, computed get, and
-  property/computed assignment through runtime setters
+  object literals with static data properties, property get, computed get,
+  property/computed assignment through runtime setters, and property/computed
+  deletion through shared runtime helpers
 - calls and construction: ordinary calls, host `console.log` calls/member reads,
   receiver-preserving property/computed calls, and non-spread `new` expressions
 - closures: function declarations and anonymous function expressions backed by
@@ -176,7 +177,7 @@ The compiler currently raises an `InternalError` prefixed
 - `for initializer`
 - `spread argument`
 - `arguments object`
-- `delete operator`
+- `delete non-property operator`
 - `named function expression`
 - `compound assignment target`
 - `array spread element`
