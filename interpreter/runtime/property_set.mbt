@@ -1518,23 +1518,15 @@ pub fn get_func_length(callable : Callable) -> Int {
       }
       len
     }
-    BoundFunc(target, _, bound_args) =>
-      match target {
-        Object(td) =>
-          match td.callable {
-            Some(inner) => {
-              let target_len = get_func_length(inner)
-              let diff = target_len - bound_args.length()
-              if diff < 0 {
-                0
-              } else {
-                diff
-              }
-            }
-            None => 0
-          }
-        _ => 0
+    BoundFunc(target, _, bound_args) => {
+      let target_len = get_function_length(target)
+      let diff = target_len - bound_args.length()
+      if diff < 0 {
+        0
+      } else {
+        diff
       }
+    }
     NativeCallable(_, _) => 0
     NativeCallableWithContext(_, _) => 0
     NonConstructableCallable(_, _) => 0
@@ -1550,5 +1542,24 @@ pub fn get_func_length(callable : Callable) -> Int {
         Some((params, _, _)) => params.length()
         None => 0
       }
+  }
+}
+
+///|
+/// Return the observable function length used by Function.prototype.bind.
+/// Prefer an own numeric `length` property, falling back to callable metadata
+/// for older function objects that synthesize length from their Callable tag.
+pub fn get_function_length(target : Value) -> Int {
+  match target {
+    Object(data) =>
+      match data.bag.properties.get("length") {
+        Some(Number(n)) => if n <= 0.0 { 0 } else { n.to_int() }
+        _ =>
+          match data.callable {
+            Some(callable) => get_func_length(callable)
+            None => 0
+          }
+      }
+    _ => 0
   }
 }

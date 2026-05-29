@@ -463,7 +463,7 @@ fn Interpreter::get_property_of_object(
             )
           } else if prop == "bind" {
             let target = obj
-            let target_length = get_func_length(callable)
+            let target_length = get_function_length(target)
             let target_proto = data.prototype
             return make_native_func(
               name="bind",
@@ -1175,7 +1175,7 @@ fn Interpreter::get_computed_property_impl(
                 )
               } else if prop == "bind" {
                 let target = obj
-                let target_length = get_func_length(callable)
+                let target_length = get_function_length(target)
                 let target_proto = data.prototype
                 return make_native_func(
                   name="bind",

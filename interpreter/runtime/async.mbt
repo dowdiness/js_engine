@@ -473,30 +473,67 @@ fn make_async_gen_function_inner(
     Some(binding) => binding.value
     None => Null
   }
+  let func_name = match name {
+    Some(n) => n
+    None => ""
+  }
+  // ES262 §10.2.4 ExpectedArgumentCount: count params before first
+  // default or rest. See factories.mbt for the destructuring-rest note.
+  let func_length = match params_ext {
+    Some(pext) => {
+      let mut count = 0
+      for p in pext {
+        if p.default_val is Some(_) {
+          break
+        }
+        if rest_param is Some(rn) && p.name == rn && p.pattern is Some(_) {
+          break
+        }
+        count += 1
+      }
+      count
+    }
+    None => params.length()
+  }
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
+  fn_props["name"] = String_(func_name)
+  fn_props["length"] = Number(func_length.to_double())
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   stamp_function_realm(
     Object({
       bag: {
         properties: fn_props,
         symbol_properties: {},
-        descriptors: {},
+        descriptors: {
+          "name": nf_desc,
+          "length": nf_desc,
+          "prototype": {
+            writable: true,
+            enumerable: false,
+            configurable: false,
+            getter: None,
+            setter: None,
+            is_accessor: false,
+          },
+        },
         symbol_descriptors: {},
       },
       prototype: gen_func_proto,
       callable: Some(
-        InterpreterCallable(
-          match name {
-            Some(n) => n
-            None => "anonymous"
-          },
-          fn(ip, this_val, args) raise {
-            create_generator_instance(
-              ip, this_val, args, name, params, params_ext, rest_param, body, strict,
-              closure, func_prototype,
-            )
-          },
-        ),
+        InterpreterCallable(func_name, fn(ip, this_val, args) raise {
+          create_generator_instance(
+            ip, this_val, args, name, params, params_ext, rest_param, body, strict,
+            closure, func_prototype,
+          )
+        }),
       ),
       class_name: "AsyncGeneratorFunction",
       extensible: true,

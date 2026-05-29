@@ -151,14 +151,7 @@ fn setup_function_builtins(
         bound_args.push(args[i])
       }
       let bound_name = @runtime.get_bound_func_name(this_val)
-      let target_length = match this_val {
-        Object(data) =>
-          match data.callable {
-            Some(c) => @runtime.get_func_length(c)
-            None => 0
-          }
-        _ => 0
-      }
+      let target_length = @runtime.get_function_length(this_val)
       let bound_length = {
         let diff = target_length - bound_args.length()
         if diff < 0 {
