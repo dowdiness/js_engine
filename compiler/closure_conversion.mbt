@@ -1333,6 +1333,7 @@ fn make_compiled_func(
   func_props["name"] = Value::String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
+  let func_ref : Ref[Value?] = { val: None }
   let func_obj = @runtime.stamp_function_realm(
     Value::Object({
       bag: {
@@ -1349,10 +1350,12 @@ fn make_compiled_func(
           this_val,
           args,
         ) raise {
+          let callee = func_ref.val.unwrap_or(Value::Undefined)
           if constructable && context.is_constructing() {
             let new_obj = make_compiled_constructor_instance(proto)
             let result = call_compiled_func(
               interp,
+              callee,
               new_obj,
               args,
               params,
@@ -1368,7 +1371,7 @@ fn make_compiled_func(
             }
           } else {
             call_compiled_func(
-              interp, this_val, args, params, closure, strict, body,
+              interp, callee, this_val, args, params, closure, strict, body,
             )
           }
         }),
@@ -1379,6 +1382,7 @@ fn make_compiled_func(
     }),
     realm_state~,
   )
+  func_ref.val = Some(func_obj)
   if constructable {
     match proto {
       Value::Object(proto_data) => {
@@ -1447,6 +1451,7 @@ fn make_compiled_arrow_func(
 ///|
 fn call_compiled_func(
   interp : Interpreter,
+  callee : Value,
   this_val : Value,
   args : Array[Value],
   params : Array[String],
@@ -1476,6 +1481,9 @@ fn call_compiled_func(
       BindingKind::LetBinding,
     )
     bind_simple_params(func_env, params, args)
+    interp.define_simple_arguments_object(
+      func_env, args, callee, strict, params,
+    )
     reduce_body_signal((body.0)(interp, func_ctx, func_env))
   } catch {
     err => {

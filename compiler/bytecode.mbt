@@ -857,6 +857,13 @@ fn collect_name_refs_from_props(
 }
 
 ///|
+fn bytecode_body_references_arguments(body : Array[@ast.Stmt]) -> Bool {
+  let refs : Map[String, Bool] = {}
+  collect_name_refs_from_stmts(body, refs)
+  refs.contains("arguments")
+}
+
+///|
 fn plan_bytecode_locals(
   params : Array[String],
   body : Array[@ast.Stmt],
@@ -864,7 +871,7 @@ fn plan_bytecode_locals(
 ) -> BytecodeLocalPlan {
   let names : Array[String] = []
   let indices : Map[String, Int] = {}
-  if use_local_slots {
+  if use_local_slots && !bytecode_body_references_arguments(body) {
     let captured : Map[String, Bool] = {}
     collect_nested_function_refs_from_stmts(body, captured)
     for param in params {
@@ -1632,9 +1639,6 @@ fn BytecodeBuilder::compile_identifier_compound_assign(
   value : @ast.Expr,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  if name == "arguments" {
-    bytecode_unsupported("arguments object")
-  }
   match op {
     LogicalAndAssign | LogicalOrAssign | NullishAssign =>
       self.compile_identifier_logical_assign(op, name, value)
@@ -1852,7 +1856,6 @@ fn BytecodeBuilder::compile_expr(
     NewTargetExpr(_) => {
       let _ = self.emit(LoadNewTarget)
     }
-    Ident("arguments", _) => bytecode_unsupported("arguments object")
     Ident(name, _) => self.compile_identifier_load(name)
     Binary(And, left, right, _) => self.compile_logical_and(left, right)
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
@@ -1871,8 +1874,6 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(DeleteName(name))
     }
     Unary(Delete, _, _) => bytecode_unsupported("delete non-property operator")
-    Unary(Typeof, Ident("arguments", _), _) =>
-      bytecode_unsupported("arguments object")
     Unary(Typeof, Ident(name, _), loc) =>
       match self.local_slot(name) {
         Some(slot) => {
@@ -1957,7 +1958,6 @@ fn BytecodeBuilder::compile_expr(
     RegexLit(pattern, flags, _) => {
       let _ = self.emit(MakeRegExp(pattern, flags))
     }
-    Assign("arguments", _, _) => bytecode_unsupported("arguments object")
     Assign(name, value, _) => {
       self.compile_expr(value)
       if bytecode_is_anonymous_function_definition(value) {
@@ -1965,8 +1965,6 @@ fn BytecodeBuilder::compile_expr(
       }
       self.compile_identifier_store(name)
     }
-    UpdateExpr(_, Ident("arguments", _), _, _) =>
-      bytecode_unsupported("arguments object")
     UpdateExpr(op, Ident(name, _), prefix, loc) =>
       match self.local_slot(name) {
         Some(slot) => {

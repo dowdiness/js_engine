@@ -22,6 +22,30 @@ test "bytecode uses local slots for function params and vars" {
 }
 
 ///|
+test "bytecode keeps arguments functions on environment bindings" {
+  let src =
+    #|function f(a) {
+    #|  var b = a;
+    #|  return arguments[0] + b;
+    #|}
+    #|f(1);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = bytecode.main.children[0]
+  json_inspect(child.local_names, content=[])
+  let mut saw_arguments_load = false
+  for instr in child.code {
+    match instr {
+      LoadName("arguments") => saw_arguments_load = true
+      _ => ()
+    }
+  }
+  guard saw_arguments_load else { abort("expected arguments name load") }
+}
+
+///|
 test "bytecode plans block var declarations as function locals" {
   let src =
     #|function f() {

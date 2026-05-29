@@ -162,7 +162,8 @@ The current high-level opcode surface covers:
   arguments, host `console.log` calls/member reads, receiver-preserving
   property/computed calls, and `new` expressions including spread arguments
 - closures: function declarations, anonymous or named function expressions,
-  and simple arrow functions backed by runtime compiled functions
+  ordinary function `arguments` objects, and simple arrow functions backed by
+  runtime compiled functions
 
 The shipped milestone covers the primary workload shape: function declarations
 and anonymous expressions, calls, construction including spread arguments,
@@ -187,7 +188,6 @@ The compiler currently raises an `InternalError` prefixed
 - `continue statement` outside a bytecode-supported loop
 - `labeled break statement` (unresolved label targets only)
 - `labeled continue statement` (unresolved or non-loop label targets only)
-- `arguments object`
 - `delete non-property operator` (for non-identifier/non-property operands)
 - `compound assignment target` (invalid/non-reference targets only)
 - `object literal accessor property`

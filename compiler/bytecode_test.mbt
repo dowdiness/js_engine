@@ -1824,16 +1824,72 @@ test "bytecode rejects unsupported arrow parameter forms explicitly" {
 }
 
 ///|
-test "bytecode rejects arguments object until function call setup supports it" {
+test "bytecode arguments object exposes call arguments" {
   let src =
     #|function f() {
-    #|  return arguments[0];
+    #|  return arguments.length + ":" + arguments[0] + "," + arguments[1];
     #|}
-    #|f(42);
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: arguments object",
-  )
+    #|f("a", "b");
+  inspect(bytecode_compare(src), content="value:2:a,b")
+}
+
+///|
+test "bytecode arguments object stays mapped to simple parameters" {
+  let src =
+    #|function f(a) {
+    #|  arguments[0] = 5;
+    #|  a = a + 1;
+    #|  return arguments[0] + "," + a;
+    #|}
+    #|f(1);
+  inspect(bytecode_compare(src), content="value:6,6")
+}
+
+///|
+test "bytecode arrow functions capture outer arguments object" {
+  let src =
+    #|function outer(a) {
+    #|  var read = () => arguments[0];
+    #|  a = 4;
+    #|  return read();
+    #|}
+    #|outer(1);
+  inspect(bytecode_compare(src), content="value:4")
+}
+
+///|
+test "bytecode arguments parameter shadows arguments object" {
+  let src =
+    #|function f(arguments) {
+    #|  return arguments;
+    #|}
+    #|f(7);
+  inspect(bytecode_compare(src), content="value:7")
+}
+
+///|
+test "bytecode var arguments declaration preserves arguments object without initializer" {
+  let src =
+    #|function f() {
+    #|  var before = arguments.length;
+    #|  var arguments;
+    #|  return before + ":" + arguments.length;
+    #|}
+    #|f(1, 2);
+  inspect(bytecode_compare(src), content="value:2:2")
+}
+
+///|
+test "bytecode arguments callee points at the compiled function" {
+  let src =
+    #|function f(n) {
+    #|  if (n === 0) {
+    #|    return "done";
+    #|  }
+    #|  return arguments.callee(n - 1);
+    #|}
+    #|f(2);
+  inspect(bytecode_compare(src), content="value:done")
 }
 
 ///|

@@ -264,6 +264,39 @@ fn make_constructor_instance(proto : Value, class_name : String) -> Value {
 }
 
 ///|
+pub fn Interpreter::define_simple_arguments_object(
+  self : Interpreter,
+  env : Environment,
+  args : Array[Value],
+  callee : Value,
+  strict : Bool,
+  params : Array[String],
+) -> Unit raise Error {
+  if params_include_arguments(params, None) {
+    return
+  }
+  let tte : Value? = if env.has("[[ThrowTypeError]]") {
+    Some(env.get("[[ThrowTypeError]]"))
+  } else {
+    None
+  }
+  env.def(
+    "arguments",
+    make_arguments_object(
+      self.realm_state,
+      self.realm_state.well_known_symbols,
+      args,
+      callee,
+      strict,
+      throw_type_error=tte,
+      mapped_names=params,
+      mapped_env=Some(env),
+    ),
+    VarBinding,
+  )
+}
+
+///|
 fn make_arguments_object(
   realm_state : RealmState,
   well_known_symbols : WellKnownSymbols,
