@@ -584,6 +584,43 @@ test "bytecode lowers computed object literal methods with computed home object"
 }
 
 ///|
+test "bytecode lowers super property access and calls inside methods" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { m() { super.x; super['m'](); } };",
+  )
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one method child")
+  }
+  let method_child = bytecode.main.children[0]
+  let mut saw_property = false
+  let mut saw_computed_call = false
+  for instr in method_child.code {
+    match instr {
+      LoadSuperProperty("x", _) => saw_property = true
+      PrepareSuperComputedCall(_) => saw_computed_call = true
+      _ => ()
+    }
+  }
+  guard saw_property else { abort("expected super property load") }
+  guard saw_computed_call else { abort("expected super computed call") }
+}
+
+///|
+test "bytecode treats names inside nested super computed keys as captured" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return { m() { return super[key]; } };
+    #|}
+    #|outer().m();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers object spreads to incremental object instructions" {
   let bytecode = parse_bytecode_for_wb("var o = { a: 1, ...src, b: 2 };")
   let mut saw_start = false

@@ -4,6 +4,8 @@ priv enum BytecodeInstr {
   LoadUndefined
   LoadThis
   LoadNewTarget
+  LoadSuperProperty(String, @token.Loc)
+  LoadSuperComputed(@token.Loc)
   LoadConsoleMember(String)
   LoadName(String)
   LoadAssignmentName(String)
@@ -72,6 +74,8 @@ priv enum BytecodeInstr {
   AssignPattern(@ast.Pattern)
   PreparePropertyCall(String, @token.Loc)
   PrepareComputedCall(@token.Loc)
+  PrepareSuperPropertyCall(String, @token.Loc)
+  PrepareSuperComputedCall(@token.Loc)
   Call(Int, @token.Loc)
   CallWithReceiver(Int, @token.Loc)
   CallSpread(@token.Loc)
@@ -764,6 +768,8 @@ fn collect_nested_function_refs_from_expr(
       collect_nested_function_refs_from_expr(obj, refs)
       collect_nested_function_refs_from_expr(key, refs)
     }
+    SuperComputedMember(key, _) =>
+      collect_nested_function_refs_from_expr(key, refs)
     MemberAssign(obj, _, value, _) => {
       collect_nested_function_refs_from_expr(obj, refs)
       collect_nested_function_refs_from_expr(value, refs)
@@ -982,6 +988,7 @@ fn collect_name_refs_from_expr(
       collect_name_refs_from_expr(obj, refs)
       collect_name_refs_from_expr(key, refs)
     }
+    SuperComputedMember(key, _) => collect_name_refs_from_expr(key, refs)
     MemberAssign(obj, _, value, _) => {
       collect_name_refs_from_expr(obj, refs)
       collect_name_refs_from_expr(value, refs)
@@ -1261,6 +1268,8 @@ fn bytecode_expr_contains_destructure_assign(expr : @ast.Expr) -> Bool {
       bytecode_expr_contains_destructure_assign(obj)
     ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) =>
       bytecode_expr_contains_destructure_assign(obj) ||
+      bytecode_expr_contains_destructure_assign(key)
+    SuperComputedMember(key, _) =>
       bytecode_expr_contains_destructure_assign(key)
     MemberAssign(obj, _, value, _) =>
       bytecode_expr_contains_destructure_assign(obj) ||
@@ -2578,6 +2587,13 @@ fn BytecodeBuilder::compile_expr(
     NewTargetExpr(_) => {
       let _ = self.emit(LoadNewTarget)
     }
+    SuperMember(prop, loc) => {
+      let _ = self.emit(LoadSuperProperty(prop, loc))
+    }
+    SuperComputedMember(key, loc) => {
+      self.compile_expr(key)
+      let _ = self.emit(LoadSuperComputed(loc))
+    }
     Ident(name, _) => self.compile_identifier_load(name)
     Binary(And, left, right, _) => self.compile_logical_and(left, right)
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
@@ -2868,6 +2884,15 @@ fn BytecodeBuilder::compile_expr(
     Call(Member(Ident("console", _), prop, _), args, loc) => {
       let _ = self.emit(LoadConsoleMember(prop))
       self.emit_call(args, loc)
+    }
+    Call(SuperMember(prop, member_loc), args, loc) => {
+      let _ = self.emit(PrepareSuperPropertyCall(prop, member_loc))
+      self.emit_call_with_receiver(args, loc)
+    }
+    Call(SuperComputedMember(key, member_loc), args, loc) => {
+      self.compile_expr(key)
+      let _ = self.emit(PrepareSuperComputedCall(member_loc))
+      self.emit_call_with_receiver(args, loc)
     }
     Call(Member(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
@@ -3212,6 +3237,14 @@ fn run_bytecode_function(
       LoadThis => frame.stack.push(@runtime.eval_this_value(frame.env))
       LoadNewTarget =>
         frame.stack.push(@runtime.eval_new_target_value(frame.env))
+      LoadSuperProperty(prop, loc) =>
+        frame.stack.push(interp.eval_super_property(frame.env, prop, loc))
+      LoadSuperComputed(loc) => {
+        let key = frame.pop()
+        frame.stack.push(
+          interp.eval_super_computed_property(frame.env, key, loc),
+        )
+      }
       LoadConsoleMember(prop) =>
         frame.stack.push(interp.get_console_member(prop))
       LoadName(name) =>
@@ -3674,6 +3707,25 @@ fn run_bytecode_function(
         let obj = frame.pop()
         let callee = interp.get_computed_property(obj, key, loc)
         frame.stack.push(obj)
+        frame.stack.push(callee)
+      }
+      PrepareSuperPropertyCall(prop, loc) => {
+        let (receiver, callee) = interp.eval_super_property_call_reference(
+          frame.env,
+          prop,
+          loc,
+        )
+        frame.stack.push(receiver)
+        frame.stack.push(callee)
+      }
+      PrepareSuperComputedCall(loc) => {
+        let key = frame.pop()
+        let (receiver, callee) = interp.eval_super_computed_call_reference(
+          frame.env,
+          key,
+          loc,
+        )
+        frame.stack.push(receiver)
         frame.stack.push(callee)
       }
       Call(arg_count, loc) => {

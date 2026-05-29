@@ -490,6 +490,10 @@ pub fn Interpreter::define_own_property(Self, Value, Value, PartialDescriptor, @
 pub fn Interpreter::define_simple_arguments_object(Self, Environment, Array[Value], Value, Bool, Array[String]) -> Unit raise
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::eval_destructure_assign(Self, ExecContext, @ast.Pattern, Value, Environment) -> Value raise
+pub fn Interpreter::eval_super_computed_call_reference(Self, Environment, Value, @token.Loc) -> (Value, Value) raise
+pub fn Interpreter::eval_super_computed_property(Self, Environment, Value, @token.Loc) -> Value raise
+pub fn Interpreter::eval_super_property(Self, Environment, String, @token.Loc) -> Value raise
+pub fn Interpreter::eval_super_property_call_reference(Self, Environment, String, @token.Loc) -> (Value, Value) raise
 pub fn Interpreter::eval_update_computed_property(Self, ExecContext, Value, Value, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) -> Value raise
 pub fn Interpreter::eval_update_property(Self, ExecContext, Value, String, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) -> Value raise
 pub fn Interpreter::get_compiled_name(Self, Environment, String) -> Value raise

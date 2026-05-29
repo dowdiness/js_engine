@@ -1543,6 +1543,46 @@ test "bytecode object literal computed symbol methods" {
 }
 
 ///|
+test "bytecode object methods read super properties" {
+  let src =
+    #|var proto = { x: 3 };
+    #|var o = { __proto__: proto, own: 4, m() { return super.x + this.own; } };
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:7")
+}
+
+///|
+test "bytecode object methods call super methods with the current receiver" {
+  let src =
+    #|var proto = { getX: function() { return this.x + ":" + this.flag; } };
+    #|var o = { __proto__: proto, x: 5, flag: "ok", m() { return super.getX(); } };
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:5:ok")
+}
+
+///|
+test "bytecode object methods call computed super methods in order" {
+  let src =
+    #|var log = "";
+    #|var proto = { f: function(v) { return this.x + ":" + v + ":" + log; } };
+    #|var o = { __proto__: proto, x: 2, m() { return super[(log = log + "k", "f")]((log = log + "a", "v")); } };
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:2:v:ka")
+}
+
+///|
+test "bytecode object methods capture super computed keys" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  var proto = { x: 9 };
+    #|  return { __proto__: proto, m() { return super[key]; } };
+    #|}
+    #|outer().m();
+  inspect(bytecode_compare(src), content="value:9")
+}
+
+///|
 test "bytecode rejects __proto__ methods until object method semantics are settled" {
   inspect(
     bytecode_outcome("({ __proto__() { return 7; } });"),

@@ -607,19 +607,17 @@ fn Interpreter::eval_call(
           self.call_value(func_val, obj, args, loc)
         }
         SuperMember(prop, sloc) => {
-          // super.method() - look up on super target, call with current this
-          let super_proto = resolve_super_target(env)
-          let func_val = self.get_property(super_proto, prop, sloc)
-          let this_val = env.get("this") catch { _ => Undefined }
+          let (this_val, func_val) = self.eval_super_property_call_reference(
+            env, prop, sloc,
+          )
           let args = self.eval_args_with_spread(ctx, arg_exprs, env)
           self.call_value(func_val, this_val, args, loc)
         }
         SuperComputedMember(key_expr, sloc) => {
-          // super[expr]() - look up on super target, call with current this
-          let super_proto = resolve_super_target(env)
           let key = self.eval_expr(ctx, key_expr, env)
-          let func_val = self.get_computed_property(super_proto, key, sloc)
-          let this_val = env.get("this") catch { _ => Undefined }
+          let (this_val, func_val) = self.eval_super_computed_call_reference(
+            env, key, sloc,
+          )
           let args = self.eval_args_with_spread(ctx, arg_exprs, env)
           self.call_value(func_val, this_val, args, loc)
         }

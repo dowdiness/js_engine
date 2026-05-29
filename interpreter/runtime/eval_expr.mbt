@@ -23,6 +23,66 @@ fn resolve_super_target(env : Environment) -> Value {
 }
 
 ///|
+pub fn Interpreter::eval_super_property(
+  self : Interpreter,
+  env : Environment,
+  prop : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let super_proto = resolve_super_target(env)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => self.get_property(super_proto, prop, loc)
+  }
+}
+
+///|
+pub fn Interpreter::eval_super_computed_property(
+  self : Interpreter,
+  env : Environment,
+  key : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let super_proto = resolve_super_target(env)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => self.get_computed_property(super_proto, key, loc)
+  }
+}
+
+///|
+pub fn Interpreter::eval_super_property_call_reference(
+  self : Interpreter,
+  env : Environment,
+  prop : String,
+  loc : @token.Loc,
+) -> (Value, Value) raise Error {
+  let super_proto = resolve_super_target(env)
+  let func_val = self.get_property(super_proto, prop, loc)
+  let this_val = env.get("this") catch { _ => Undefined }
+  (this_val, func_val)
+}
+
+///|
+pub fn Interpreter::eval_super_computed_call_reference(
+  self : Interpreter,
+  env : Environment,
+  key : Value,
+  loc : @token.Loc,
+) -> (Value, Value) raise Error {
+  let super_proto = resolve_super_target(env)
+  let func_val = self.get_computed_property(super_proto, key, loc)
+  let this_val = env.get("this") catch { _ => Undefined }
+  (this_val, func_val)
+}
+
+///|
 /// Resolve `this` with the same TDZ-to-derived-constructor error mapping used
 /// by expression evaluation. Compiled execution uses this helper instead of
 /// treating `this` as an ordinary identifier.
@@ -1152,28 +1212,10 @@ fn Interpreter::eval_expr(
           )
       }
     }
-    SuperMember(prop, loc) => {
-      // super.prop - access parent prototype property
-      let super_proto = resolve_super_target(env)
-      match super_proto {
-        Null | Undefined =>
-          raise @errors.ReferenceError(
-            message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
-          )
-        _ => self.get_property(super_proto, prop, loc)
-      }
-    }
+    SuperMember(prop, loc) => self.eval_super_property(env, prop, loc)
     SuperComputedMember(key_expr, loc) => {
-      // super[expr] - access parent prototype property with computed key
-      let super_proto = resolve_super_target(env)
       let key = self.eval_expr(ctx, key_expr, env)
-      match super_proto {
-        Null | Undefined =>
-          raise @errors.ReferenceError(
-            message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
-          )
-        _ => self.get_computed_property(super_proto, key, loc)
-      }
+      self.eval_super_computed_property(env, key, loc)
     }
     NewTargetExpr(_) => eval_new_target_value(env)
   }
