@@ -140,9 +140,10 @@ The current high-level opcode surface covers:
 
 - constants and simple moves: load constant/`undefined`/`this`, load/store
   name, load/store function-local slot, define binding
-- completion and control flow: set completion, pop, jump, conditional jump,
-  return, throw, unlabeled and labeled `break`/`continue` for supported loops,
-  labeled block breaks, block statements and control-flow bodies with `var`
+- completion and control flow: set completion, pop, duplicate stack value, jump,
+  conditional jump, return, throw, unlabeled and labeled `break`/`continue` for
+  supported loops, labeled block breaks, switch statements without lexical or
+  function declarations, block statements and control-flow bodies with `var`
   declarations but without lexical or function declarations
 - expressions: supported eager binary operations including `in` and
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`,
@@ -179,6 +180,7 @@ The compiler currently raises an `InternalError` prefixed
 - `block function declaration`
 - `control-flow function declaration`
 - `for lexical initializer`
+- `switch lexical declaration`
 - `statement kind`
 - `for initializer`
 - `break statement` outside a bytecode-supported loop

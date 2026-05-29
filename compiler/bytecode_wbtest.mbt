@@ -69,6 +69,24 @@ test "bytecode plans labeled var declarations as function locals" {
 }
 
 ///|
+test "bytecode plans switch var declarations as function locals" {
+  let src =
+    #|function f(flag) {
+    #|  switch (flag) {
+    #|    case true:
+    #|      var x = 1;
+    #|  }
+    #|  return x;
+    #|}
+    #|f(true);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=["flag", "x"])
+}
+
+///|
 test "bytecode treats names inside nested labeled statements as captured" {
   let src =
     #|function outer() {
@@ -585,6 +603,56 @@ test "bytecode treats names inside nested do while statements as captured" {
     #|  };
     #|}
     #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
+test "bytecode lowers switch statements with duplicated discriminant dispatch" {
+  let bytecode = parse_bytecode_for_wb(
+    "switch (x) { case 1: 'one'; break; default: 'default'; }",
+  )
+  let mut saw_dup = false
+  let mut saw_strict_equal = false
+  let mut saw_patched_jump = false
+  for instr in bytecode.main.code {
+    match instr {
+      Dup => saw_dup = true
+      BinaryOp(EqEqEq, _) => saw_strict_equal = true
+      Jump(target) => {
+        if target == -1 {
+          abort("unpatched switch jump")
+        }
+        saw_patched_jump = true
+      }
+      JumpIfFalse(target) =>
+        if target == -1 {
+          abort("unpatched switch test jump")
+        }
+      _ => ()
+    }
+  }
+  guard saw_dup else { abort("expected switch discriminant duplication") }
+  guard saw_strict_equal else { abort("expected strict equality test") }
+  guard saw_patched_jump else { abort("expected switch dispatch jump") }
+}
+
+///|
+test "bytecode treats names inside nested switch statements as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function(flag) {
+    #|    switch (flag) {
+    #|      case true:
+    #|        return x;
+    #|    }
+    #|  };
+    #|}
+    #|outer()(true);
   let bytecode = parse_bytecode_for_wb(src)
   guard bytecode.main.children.length() == 1 else {
     abort("expected one child function")

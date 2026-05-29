@@ -14,6 +14,7 @@ priv enum BytecodeInstr {
   DefineLocal(Int, Bool) // slot, initializer-present
   SetCompletion
   Pop
+  Dup
   BinaryOp(@ast.BinOp, @token.Loc)
   UnaryValueOp(@ast.UnaryOp, @token.Loc)
   TypeofName(String)
@@ -90,6 +91,7 @@ priv struct BytecodeBuilder {
   local_names : Array[String]
   local_indices : Map[String, Int]
   loop_contexts : Array[LoopPatchContext]
+  break_contexts : Array[BreakPatchContext]
   label_contexts : Array[LabelPatchContext]
   pending_loop_labels : Array[String]
 }
@@ -105,6 +107,17 @@ priv struct LoopPatchContext {
 priv struct LabelPatchContext {
   label : String
   break_jumps : Array[Int]
+}
+
+///|
+priv struct SwitchPatchContext {
+  break_jumps : Array[Int]
+}
+
+///|
+priv enum BreakPatchContext {
+  LoopBreakContext(LoopPatchContext)
+  SwitchBreakContext(SwitchPatchContext)
 }
 
 ///|
@@ -135,6 +148,7 @@ fn BytecodeBuilder::BytecodeBuilder(
     local_names: plan.names,
     local_indices: plan.indices,
     loop_contexts: [],
+    break_contexts: [],
     label_contexts: [],
     pending_loop_labels: [],
   }
@@ -193,20 +207,56 @@ fn BytecodeBuilder::push_loop_context(
   self : BytecodeBuilder,
   labels : Array[String],
 ) -> Unit {
-  self.loop_contexts.push({ labels, break_jumps: [], continue_jumps: [] })
+  let ctx = { labels, break_jumps: [], continue_jumps: [] }
+  self.loop_contexts.push(ctx)
+  self.break_contexts.push(LoopBreakContext(ctx))
 }
 
 ///|
 fn BytecodeBuilder::pop_loop_context(
   self : BytecodeBuilder,
 ) -> LoopPatchContext raise Error {
-  match self.loop_contexts.pop() {
-    Some(ctx) => ctx
-    None => {
+  let break_ctx = self.break_contexts.pop()
+  match (self.loop_contexts.pop(), break_ctx) {
+    (Some(ctx), Some(LoopBreakContext(_))) => ctx
+    (Some(ctx), _) => {
+      bytecode_unsupported("loop context")
+      ctx
+    }
+    (None, _) => {
       bytecode_unsupported("loop context")
       { labels: [], break_jumps: [], continue_jumps: [] }
     }
   }
+}
+
+///|
+fn BytecodeBuilder::push_switch_context(self : BytecodeBuilder) -> Unit {
+  self.break_contexts.push(SwitchBreakContext({ break_jumps: [] }))
+}
+
+///|
+fn BytecodeBuilder::pop_switch_context(
+  self : BytecodeBuilder,
+) -> SwitchPatchContext raise Error {
+  match self.break_contexts.pop() {
+    Some(SwitchBreakContext(ctx)) => ctx
+    _ => {
+      bytecode_unsupported("switch context")
+      { break_jumps: [] }
+    }
+  }
+}
+
+///|
+fn BytecodeBuilder::current_break_context(
+  self : BytecodeBuilder,
+  unsupported_kind : String,
+) -> BreakPatchContext raise Error {
+  if self.break_contexts.length() == 0 {
+    bytecode_unsupported(unsupported_kind)
+  }
+  self.break_contexts[self.break_contexts.length() - 1]
 }
 
 ///|
@@ -272,9 +322,11 @@ fn BytecodeBuilder::emit_loop_break(
       }
     }
     None => {
-      let ctx = self.current_loop_context("break statement")
       let jump = self.emit(Jump(-1))
-      ctx.break_jumps.push(jump)
+      match self.current_break_context("break statement") {
+        LoopBreakContext(ctx) => ctx.break_jumps.push(jump)
+        SwitchBreakContext(ctx) => ctx.break_jumps.push(jump)
+      }
     }
   }
 }
@@ -325,6 +377,7 @@ fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
     | DestructureDecl(LetKind, _, _, _)
     | DestructureDecl(ConstKind, _, _, _) => true
     StmtList(stmts, _) | Block(stmts, _) => stmts_have_lexical_decl(stmts)
+    SwitchStmt(_, cases, _) => switch_cases_have_lexical_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_lexical_decl(body)
     _ => false
   }
@@ -334,6 +387,16 @@ fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
 fn stmts_have_lexical_decl(stmts : Array[@ast.Stmt]) -> Bool {
   for stmt in stmts {
     if stmt_has_lexical_decl(stmt) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn switch_cases_have_lexical_decl(cases : Array[@ast.SwitchCase]) -> Bool {
+  for case in cases {
+    if stmts_have_lexical_decl(case.body) {
       return true
     }
   }
@@ -379,6 +442,7 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_function_decl(body)
     }
+    SwitchStmt(_, cases, _) => switch_cases_have_function_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_function_decl(body)
     _ => false
   }
@@ -388,6 +452,16 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
 fn stmts_have_function_decl(stmts : Array[@ast.Stmt]) -> Bool {
   for stmt in stmts {
     if stmt_has_function_decl(stmt) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn switch_cases_have_function_decl(cases : Array[@ast.SwitchCase]) -> Bool {
+  for case in cases {
+    if stmts_have_function_decl(case.body) {
       return true
     }
   }
@@ -459,6 +533,10 @@ fn collect_current_var_names_from_stmt(
       }
       collect_current_var_names_from_stmt(body, out)
     }
+    SwitchStmt(_, cases, _) =>
+      for case in cases {
+        collect_current_var_names_from_stmts(case.body, out)
+      }
     LabeledStmt(_, body, _) => collect_current_var_names_from_stmt(body, out)
     _ => ()
   }
@@ -517,6 +595,16 @@ fn collect_nested_function_refs_from_stmt(
         None => ()
       }
       collect_nested_function_refs_from_stmt(body, refs)
+    }
+    SwitchStmt(discriminant, cases, _) => {
+      collect_nested_function_refs_from_expr(discriminant, refs)
+      for case in cases {
+        match case.condition {
+          Some(expr) => collect_nested_function_refs_from_expr(expr, refs)
+          None => ()
+        }
+        collect_nested_function_refs_from_stmts(case.body, refs)
+      }
     }
     LabeledStmt(_, body, _) =>
       collect_nested_function_refs_from_stmt(body, refs)
@@ -659,6 +747,16 @@ fn collect_name_refs_from_stmt(
         None => ()
       }
       collect_name_refs_from_stmt(body, refs)
+    }
+    SwitchStmt(discriminant, cases, _) => {
+      collect_name_refs_from_expr(discriminant, refs)
+      for case in cases {
+        match case.condition {
+          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          None => ()
+        }
+        collect_name_refs_from_stmts(case.body, refs)
+      }
     }
     LabeledStmt(_, body, _) => collect_name_refs_from_stmt(body, refs)
     _ => ()
@@ -843,6 +941,61 @@ fn BytecodeBuilder::add_function(
 }
 
 ///|
+fn BytecodeBuilder::compile_switch(
+  self : BytecodeBuilder,
+  discriminant : @ast.Expr,
+  cases : Array[@ast.SwitchCase],
+) -> Unit raise Error {
+  if switch_cases_have_lexical_decl(cases) {
+    bytecode_unsupported("switch lexical declaration")
+  }
+  if switch_cases_have_function_decl(cases) {
+    bytecode_unsupported("control-flow function declaration")
+  }
+  self.emit_undefined_completion()
+  self.compile_expr(discriminant)
+  let case_jumps = Array::make(cases.length(), -1)
+  let mut default_idx = -1
+  for i, case in cases {
+    match case.condition {
+      Some(cond) => {
+        let _ = self.emit(Dup)
+        self.compile_expr(cond)
+        let _ = self.emit(BinaryOp(EqEqEq, @token.Loc::default()))
+        let no_match = self.emit(JumpIfFalse(-1))
+        let _ = self.emit(Pop)
+        case_jumps[i] = self.emit(Jump(-1))
+        self.patch(no_match, JumpIfFalse(self.code.length()))
+      }
+      None => default_idx = i
+    }
+  }
+  let _ = self.emit(Pop)
+  let no_match_jump = self.emit(Jump(-1))
+  self.push_switch_context()
+  let case_starts = Array::make(cases.length(), 0)
+  for i, case in cases {
+    case_starts[i] = self.code.length()
+    for child in case.body {
+      self.compile_stmt(child)
+    }
+  }
+  let switch_ctx = self.pop_switch_context()
+  let exit_pos = self.code.length()
+  for i, jump in case_jumps {
+    if jump >= 0 {
+      self.patch(jump, Jump(case_starts[i]))
+    }
+  }
+  if default_idx >= 0 {
+    self.patch(no_match_jump, Jump(case_starts[default_idx]))
+  } else {
+    self.patch(no_match_jump, Jump(exit_pos))
+  }
+  self.patch_loop_jumps(switch_ctx.break_jumps, exit_pos)
+}
+
+///|
 fn BytecodeBuilder::compile_stmt(
   self : BytecodeBuilder,
   stmt : @ast.Stmt,
@@ -997,6 +1150,8 @@ fn BytecodeBuilder::compile_stmt(
       self.patch(exit_jump, JumpIfFalse(exit_pos))
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
+    SwitchStmt(discriminant, cases, _) =>
+      self.compile_switch(discriminant, cases)
     FuncDecl(name, params, body, _) => {
       let fn_idx = self.add_function(Some(name), params, body)
       let _ = self.emit(DeclareFunction(name, fn_idx))
@@ -2290,6 +2445,7 @@ fn run_bytecode_function(
       Pop => {
         let _ = frame.pop()
       }
+      Dup => frame.stack.push(frame.peek())
       BinaryOp(op, loc) => {
         let right = frame.pop()
         let left = frame.pop()

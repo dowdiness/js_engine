@@ -589,6 +589,102 @@ test "bytecode do while captures outer bindings" {
 }
 
 ///|
+test "bytecode switch dispatch skips later case tests and falls through" {
+  let src =
+    #|var log = "";
+    #|switch ((log = log + "d", 2)) {
+    #|  case (log = log + "a", 1):
+    #|    log = log + "A";
+    #|    break;
+    #|  case (log = log + "b", 2):
+    #|    log = log + "B";
+    #|  case (log = log + "c", 3):
+    #|    log = log + "C";
+    #|    break;
+    #|  default:
+    #|    log = log + "D";
+    #|}
+    #|log;
+  inspect(bytecode_compare(src), content="value:dabBC")
+}
+
+///|
+test "bytecode switch default evaluates tests then falls through from default" {
+  let src =
+    #|var log = "";
+    #|switch (9) {
+    #|  case (log = log + "a", 1):
+    #|    log = log + "A";
+    #|  default:
+    #|    log = log + "D";
+    #|  case (log = log + "b", 2):
+    #|    log = log + "B";
+    #|}
+    #|log;
+  inspect(bytecode_compare(src), content="value:abDB")
+}
+
+///|
+test "bytecode switch completion and empty no-match result" {
+  inspect(
+    bytecode_compare("switch (1) { case 1: 'before'; break; 'after'; }"),
+    content="value:before",
+  )
+  inspect(
+    bytecode_compare("switch (3) { case 1: 'one'; }"),
+    content="value:undefined",
+  )
+}
+
+///|
+test "bytecode switch break and continue target the right enclosing statement" {
+  let src =
+    #|var log = "";
+    #|for (var i = 0; i < 3; i = i + 1) {
+    #|  switch (i) {
+    #|    case 0:
+    #|      log = log + "a";
+    #|      break;
+    #|    case 1:
+    #|      log = log + "b";
+    #|      continue;
+    #|    default:
+    #|      log = log + "c";
+    #|  }
+    #|  log = log + "x";
+    #|}
+    #|log + ":" + i;
+  inspect(bytecode_compare(src), content="value:axbcx:3")
+}
+
+///|
+test "bytecode switch var declarations can be captured" {
+  let src =
+    #|function outer(flag) {
+    #|  switch (flag) {
+    #|    case true:
+    #|      var x = 4;
+    #|      break;
+    #|  }
+    #|  return function() { return x; };
+    #|}
+    #|outer(true)() + "," + outer(false)();
+  inspect(bytecode_compare(src), content="value:4,undefined")
+}
+
+///|
+test "bytecode rejects switch lexical and function declarations explicitly" {
+  inspect(
+    bytecode_outcome("switch (1) { case 1: let x = 1; }"),
+    content="error:InternalError: bytecode prototype unsupported: switch lexical declaration",
+  )
+  inspect(
+    bytecode_outcome("switch (1) { case 1: function f() { return 1; } }"),
+    content="error:InternalError: bytecode prototype unsupported: control-flow function declaration",
+  )
+}
+
+///|
 test "bytecode break exits while loops" {
   let src =
     #|var i = 0;
