@@ -46,6 +46,9 @@ pub(all) struct Environment {
 }
 
 ///|
+const THIS_INITIALIZED_BY_SUPER_MARKER = "[[ThisInitializedBySuper]]"
+
+///|
 pub fn Environment::new(parent? : Environment? = None) -> Environment {
   let (realm_state, interpreter_context) = match parent {
     Some(parent) => (parent.realm_state, parent.interpreter_context)
@@ -172,7 +175,9 @@ pub fn Environment::initialize(
 /// initialize it with `value`. Unlike `initialize`, which only looks at
 /// the local env, this climbs parents. Needed for `super()` to write
 /// `this` back to the derived class's param env when body execution
-/// happens in a separate body env (§10.2.11 split).
+/// happens in a separate body env (§10.2.11 split). For derived-constructor
+/// TDZ `this`, the write follows BindThisValue and rejects a second
+/// initialization.
 pub fn Environment::initialize_in_chain(
   self : Environment,
   name : String,
@@ -180,8 +185,28 @@ pub fn Environment::initialize_in_chain(
 ) -> Unit raise Error {
   match self.bindings.get(name) {
     Some(binding) => {
+      if name == "this" {
+        let initialized_by_super = self.bindings.contains(
+          THIS_INITIALIZED_BY_SUPER_MARKER,
+        )
+        if binding.initialized &&
+          (binding.kind == LetBinding || initialized_by_super) {
+          raise @errors.ReferenceError(
+            message="Super constructor may only be called once",
+          )
+        }
+      }
       binding.value = value
       binding.initialized = true
+      if name == "this" {
+        self.bindings[THIS_INITIALIZED_BY_SUPER_MARKER] = {
+          value: Bool(true),
+          kind: VarBinding,
+          initialized: true,
+          annex_b_hoisted: false,
+          is_parameter: false,
+        }
+      }
     }
     None =>
       match self.parent {
