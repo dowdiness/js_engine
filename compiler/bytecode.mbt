@@ -1959,6 +1959,7 @@ fn BytecodeBuilder::compile_stmt(
       }
     }
     ClassDecl(_, _, _, _) => bytecode_unsupported("class declaration")
+    WithStmt(_, _, _) => bytecode_unsupported("with statement")
     _ => bytecode_unsupported("statement kind")
   }
 }

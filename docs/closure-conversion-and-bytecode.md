@@ -193,6 +193,7 @@ The compiler currently raises an `InternalError` prefixed
 - `for-of statement`
 - `switch lexical declaration`
 - `class declaration`
+- `with statement`
 - `statement kind`
 - `for initializer`
 - `break statement` outside a bytecode-supported loop

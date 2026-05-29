@@ -2873,6 +2873,19 @@ test "bytecode rejects class declarations and expressions explicitly" {
 }
 
 ///|
+test "bytecode rejects with statements explicitly" {
+  let src =
+    #|var obj = { x: 1 };
+    #|with (obj) {
+    #|  x;
+    #|}
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: with statement",
+  )
+}
+
+///|
 test "bytecode in operator finds own array index property" {
   let src =
     #|var xs = [10];
