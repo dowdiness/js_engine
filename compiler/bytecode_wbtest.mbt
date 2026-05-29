@@ -63,6 +63,19 @@ test "bytecode lowers template literals to append instructions" {
 }
 
 ///|
+test "bytecode lowers regex literals to a runtime regexp instruction" {
+  let bytecode = parse_bytecode_for_wb("var r = /a/i;")
+  let mut saw_regexp = false
+  for instr in bytecode.main.code {
+    match instr {
+      MakeRegExp("a", "i") => saw_regexp = true
+      _ => ()
+    }
+  }
+  guard saw_regexp else { abort("expected regexp instruction") }
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {

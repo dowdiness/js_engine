@@ -148,6 +148,30 @@ test "bytecode template literal captures outer bindings" {
 }
 
 ///|
+test "bytecode regex literal uses runtime regexp semantics" {
+  let src =
+    #|var r = /a+/;
+    #|r.test("caaat") + "," + r.test("bbb");
+  inspect(bytecode_compare(src), content="value:true,false")
+}
+
+///|
+test "bytecode regex literal honors flags" {
+  let src =
+    #|var r = /a/i;
+    #|r.test("A");
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode regex literal creates a fresh object each evaluation" {
+  let src =
+    #|function make() { return /x/g; }
+    #|make() === make();
+  inspect(bytecode_compare(src), content="value:false")
+}
+
+///|
 test "bytecode logical and skips rhs and returns original falsy operand" {
   let src =
     #|var rhs = 0;

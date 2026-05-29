@@ -14,6 +14,7 @@ priv enum BytecodeInstr {
   BinaryOp(@ast.BinOp, @token.Loc)
   UnaryValueOp(@ast.UnaryOp, @token.Loc)
   AppendTemplate(String)
+  MakeRegExp(String, String)
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
   UpdateLocal(Int, @ast.UpdateOp, Bool) // slot, op, prefix
@@ -880,6 +881,9 @@ fn BytecodeBuilder::compile_expr(
         let _ = self.emit(AppendTemplate(tail))
       }
     }
+    RegexLit(pattern, flags, _) => {
+      let _ = self.emit(MakeRegExp(pattern, flags))
+    }
     Assign("arguments", _, _) => bytecode_unsupported("arguments object")
     Assign(name, value, _) => {
       self.compile_expr(value)
@@ -1251,6 +1255,14 @@ fn run_bytecode_function(
             )
         }
       }
+      MakeRegExp(pattern, flags) =>
+        frame.stack.push(
+          (interp.stdlib_hooks.make_regexp_object)(
+            interp.realm_state,
+            pattern,
+            flags,
+          ),
+        )
       SetFunctionName(name) => {
         let value = frame.pop()
         @runtime.set_function_name(value, name)
