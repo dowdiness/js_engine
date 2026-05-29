@@ -147,40 +147,6 @@ fn stmts_have_lexical_decl(stmts : Array[@ast.Stmt]) -> Bool {
 }
 
 ///|
-fn stmt_has_var_decl(stmt : @ast.Stmt) -> Bool {
-  match stmt {
-    VarDecl(VarKind, _, _, _) | DestructureDecl(VarKind, _, _, _) => true
-    StmtList(stmts, _) | Block(stmts, _) => stmts_have_var_decl(stmts)
-    IfStmt(_, then_branch, else_branch, _) => {
-      let else_has = match else_branch {
-        Some(stmt) => stmt_has_var_decl(stmt)
-        None => false
-      }
-      stmt_has_var_decl(then_branch) || else_has
-    }
-    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) => stmt_has_var_decl(body)
-    ForStmt(init, _, _, body, _) => {
-      let init_has = match init {
-        Some(stmt) => stmt_has_var_decl(stmt)
-        None => false
-      }
-      init_has || stmt_has_var_decl(body)
-    }
-    _ => false
-  }
-}
-
-///|
-fn stmts_have_var_decl(stmts : Array[@ast.Stmt]) -> Bool {
-  for stmt in stmts {
-    if stmt_has_var_decl(stmt) {
-      return true
-    }
-  }
-  false
-}
-
-///|
 fn bytecode_is_direct_eval_callee(expr : @ast.Expr) -> Bool {
   match expr {
     Ident("eval", _) => true
@@ -644,6 +610,7 @@ fn BytecodeBuilder::add_function(
 fn BytecodeBuilder::compile_stmt(
   self : BytecodeBuilder,
   stmt : @ast.Stmt,
+  declaration_updates_completion? : Bool = true,
 ) -> Unit raise Error {
   match stmt {
     ExprStmt(expr, _) => {
@@ -670,12 +637,16 @@ fn BytecodeBuilder::compile_stmt(
           let _ = self.emit(DefineBinding(kind, name, init is Some(_)))
         }
       }
-      self.emit_undefined_completion()
-    }
-    StmtList(stmts, _) =>
-      for child in stmts {
-        self.compile_stmt(child)
+      if declaration_updates_completion {
+        self.emit_undefined_completion()
       }
+    }
+    StmtList(stmts, _) => {
+      self.emit_undefined_completion()
+      for child in stmts {
+        self.compile_stmt(child, declaration_updates_completion=false)
+      }
+    }
     Block(stmts, _) => {
       if stmts_have_lexical_decl(stmts) {
         bytecode_unsupported("block lexical declaration")
@@ -685,7 +656,7 @@ fn BytecodeBuilder::compile_stmt(
       }
       self.emit_undefined_completion()
       for child in stmts {
-        self.compile_stmt(child)
+        self.compile_stmt(child, declaration_updates_completion=false)
       }
     }
     IfStmt(cond, then_branch, else_branch, _) => {
@@ -696,16 +667,6 @@ fn BytecodeBuilder::compile_stmt(
         Some(stmt) =>
           if stmt_has_function_decl(stmt) {
             bytecode_unsupported("control-flow function declaration")
-          }
-        None => ()
-      }
-      if stmt_has_var_decl(then_branch) {
-        bytecode_unsupported("control-flow var declaration")
-      }
-      match else_branch {
-        Some(stmt) =>
-          if stmt_has_var_decl(stmt) {
-            bytecode_unsupported("control-flow var declaration")
           }
         None => ()
       }
@@ -725,9 +686,6 @@ fn BytecodeBuilder::compile_stmt(
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
       }
-      if stmt_has_var_decl(body) {
-        bytecode_unsupported("control-flow var declaration")
-      }
       self.emit_undefined_completion()
       let cond_pos = self.code.length()
       self.compile_expr(cond)
@@ -740,9 +698,6 @@ fn BytecodeBuilder::compile_stmt(
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
       }
-      if stmt_has_var_decl(body) {
-        bytecode_unsupported("control-flow var declaration")
-      }
       self.emit_undefined_completion()
       let body_pos = self.code.length()
       self.compile_stmt(body)
@@ -754,9 +709,6 @@ fn BytecodeBuilder::compile_stmt(
     ForStmt(init, cond, update, body, _) => {
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
-      }
-      if stmt_has_var_decl(body) {
-        bytecode_unsupported("control-flow var declaration")
       }
       match init {
         Some(stmt) => {

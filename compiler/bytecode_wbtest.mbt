@@ -37,6 +37,23 @@ test "bytecode plans block var declarations as function locals" {
 }
 
 ///|
+test "bytecode plans control-flow var declarations as function locals" {
+  let src =
+    #|function f(flag) {
+    #|  if (flag) {
+    #|    var x = 1;
+    #|  }
+    #|  return x;
+    #|}
+    #|f(true);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=["flag", "x"])
+}
+
+///|
 test "bytecode omits captured vars from local slots" {
   let src =
     #|function outer(a) {

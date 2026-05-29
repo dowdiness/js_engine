@@ -966,6 +966,7 @@ test "bytecode block var declarations use function-local slots" {
 test "bytecode block var declaration completion matches interpreter" {
   inspect(bytecode_compare("{ var x = 1; }"), content="value:undefined")
   inspect(bytecode_compare("{ var x = 1; 'done'; }"), content="value:done")
+  inspect(bytecode_compare("{ 'before'; var x = 1; }"), content="value:before")
 }
 
 ///|
@@ -1008,16 +1009,52 @@ test "bytecode rejects for lexical initializers until loop scoping is implemente
 }
 
 ///|
-test "bytecode rejects control-flow var declarations until completion tracking is implemented" {
+test "bytecode control-flow var declarations preserve prior completion" {
   let src =
     #|if (true) {
     #|  1;
     #|  var x = 2;
     #|}
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: control-flow var declaration",
-  )
+  inspect(bytecode_compare(src), content="value:1")
+}
+
+///|
+test "bytecode control-flow var declarations are hoisted when skipped" {
+  let src =
+    #|var before = typeof x;
+    #|if (false) {
+    #|  var x = 2;
+    #|}
+    #|before + "," + x;
+  inspect(bytecode_compare(src), content="value:undefined,undefined")
+}
+
+///|
+test "bytecode loop var declarations use function-local slots" {
+  let src =
+    #|function f() {
+    #|  var i = 0;
+    #|  while (i < 3) {
+    #|    var x = i;
+    #|    i = i + 1;
+    #|  }
+    #|  return x;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:2")
+}
+
+///|
+test "bytecode control-flow var declarations can be captured" {
+  let src =
+    #|function outer(flag) {
+    #|  if (flag) {
+    #|    var x = 4;
+    #|  }
+    #|  return function() { return x; };
+    #|}
+    #|outer(true)() + "," + outer(false)();
+  inspect(bytecode_compare(src), content="value:4,undefined")
 }
 
 ///|
