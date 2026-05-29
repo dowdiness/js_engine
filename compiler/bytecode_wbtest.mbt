@@ -577,6 +577,22 @@ test "bytecode lowers object literal methods to method functions" {
 }
 
 ///|
+test "bytecode marks named object methods for call self binding" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { m() { return m; }, get x() { return x; } };",
+  )
+  guard bytecode.main.children.length() == 2 else {
+    abort("expected method and getter children")
+  }
+  guard bytecode.main.children[0].call_self_name else {
+    abort("expected method self binding")
+  }
+  guard bytecode.main.children[1].call_self_name else {
+    abort("expected getter self binding")
+  }
+}
+
+///|
 test "bytecode lowers object literal static accessors to accessor instructions" {
   let bytecode = parse_bytecode_for_wb(
     "var o = { get x() { return 1; }, set x(v) { this.v = v; } };",

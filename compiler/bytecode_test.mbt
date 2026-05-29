@@ -1511,6 +1511,39 @@ test "bytecode object literal methods preserve receiver and names" {
 }
 
 ///|
+test "bytecode object literal methods expose their method name binding" {
+  let src =
+    #|var outer = "outer";
+    #|var o = { m() { return (m === o.m) + ":" + outer; } };
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:true:outer")
+}
+
+///|
+test "bytecode object literal method self binding respects local declarations" {
+  let src =
+    #|var o = { m() { var m; return m; } };
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:undefined")
+}
+
+///|
+test "bytecode object literal methods capture their self binding in nested functions" {
+  let src =
+    #|var o = { m() { return function() { return m === o.m; }; } };
+    #|o.m()();
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode object literal accessors expose their method name binding" {
+  let src =
+    #|var o = { get x() { return x === Object.getOwnPropertyDescriptor(o, "x").get; } };
+    #|o.x;
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
 test "bytecode object literal methods capture outer bindings" {
   let src =
     #|function outer() {
@@ -1807,10 +1840,6 @@ test "bytecode object literal computed properties capture outer keys" {
 
 ///|
 test "bytecode rejects unsupported object literal forms explicitly" {
-  inspect(
-    bytecode_outcome("({ m() { return m; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal method self reference",
-  )
   inspect(
     bytecode_outcome("({ async m() { return 1; } });"),
     content="error:InternalError: bytecode prototype unsupported: object literal method property",

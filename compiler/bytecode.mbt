@@ -97,6 +97,7 @@ priv struct BytecodeFunction {
   rest_param : String?
   source_body : Array[@ast.Stmt]
   body_has_use_strict : Bool
+  call_self_name : Bool
   local_names : Array[String]
   code : Array[BytecodeInstr]
   children : Array[BytecodeFunction]
@@ -1405,6 +1406,7 @@ fn compile_bytecode_function(
   body : Array[@ast.Stmt],
   rest_param : String?,
   use_local_slots? : Bool = true,
+  call_self_name? : Bool = false,
 ) -> BytecodeFunction raise Error {
   let plan = plan_bytecode_locals(
     params,
@@ -1421,6 +1423,7 @@ fn compile_bytecode_function(
     rest_param,
     source_body: body,
     body_has_use_strict: @runtime.has_use_strict(body),
+    call_self_name,
     local_names: builder.local_names,
     code: builder.code,
     children: builder.children,
@@ -1474,9 +1477,12 @@ fn BytecodeBuilder::add_function(
   params : Array[String],
   body : Array[@ast.Stmt],
   rest_param : String?,
+  call_self_name? : Bool = false,
 ) -> Int raise Error {
   let idx = self.children.length()
-  self.children.push(compile_bytecode_function(name, params, body, rest_param))
+  self.children.push(
+    compile_bytecode_function(name, params, body, rest_param, call_self_name~),
+  )
   idx
 }
 
@@ -2489,38 +2495,27 @@ fn bytecode_object_lit_uses_incremental(props : Array[@ast.Property]) -> Bool {
 }
 
 ///|
-fn bytecode_method_body_references_name(
-  name : String,
-  body : Array[@ast.Stmt],
-) -> Bool {
-  let refs : Map[String, Bool] = {}
-  collect_name_refs_from_stmts(body, refs)
-  refs.contains(name)
-}
-
-///|
 fn BytecodeBuilder::compile_object_method(
   self : BytecodeBuilder,
   prop : @ast.Property,
   computed_key_on_stack? : Bool = false,
 ) -> Unit raise Error {
   let fn_idx = match prop.value {
-    FuncExpr(Some(name), params, body, _) => {
-      if bytecode_method_body_references_name(name, body) {
-        bytecode_unsupported("object literal method self reference")
-      }
-      self.add_function(Some(name), params, body, None)
-    }
+    FuncExpr(Some(name), params, body, _) =>
+      self.add_function(Some(name), params, body, None, call_self_name=true)
     FuncExpr(None, params, body, _) =>
       self.add_function(None, params, body, None)
     FuncExprExt(Some(name), params, rest_param, body, _) => {
-      if bytecode_method_body_references_name(name, body) {
-        bytecode_unsupported("object literal method self reference")
-      }
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
-      self.add_function(Some(name), simple_params, body, simple_rest)
+      self.add_function(
+        Some(name),
+        simple_params,
+        body,
+        simple_rest,
+        call_self_name=true,
+      )
     }
     FuncExprExt(None, params, rest_param, body, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
@@ -3357,7 +3352,21 @@ fn make_bytecode_method_func(
     }),
     rest_param=func_def.rest_param,
     constructable=false,
+    call_self_name=func_def.call_self_name,
   )
+}
+
+///|
+fn BytecodeFrame::bind_call_self_name(self : BytecodeFrame) -> Unit raise Error {
+  if self.func_def.call_self_name {
+    match self.func_def.name {
+      Some(name) =>
+        if !self.env.bindings.contains(name) {
+          self.env.def(name, self.env.get("[[BytecodeCallee]]"), LetBinding)
+        }
+      None => ()
+    }
+  }
 }
 
 ///|
@@ -3476,6 +3485,7 @@ fn run_bytecode_function(
   frame.hoist_env_var_bindings(interp)
   frame.hoist_lexical_bindings()
   frame.hoist_function_decls(interp)
+  frame.bind_call_self_name()
   while frame.ip < frame.func_def.code.length() {
     let instr = frame.func_def.code[frame.ip]
     frame.ip += 1

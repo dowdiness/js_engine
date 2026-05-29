@@ -1288,6 +1288,7 @@ fn make_compiled_func(
   body : CompiledBody,
   rest_param? : String? = None,
   constructable? : Bool = true,
+  call_self_name? : Bool = false,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1365,6 +1366,7 @@ fn make_compiled_func(
               body,
               rest_param~,
               new_target=context.new_target(),
+              call_self_name~,
             )
             if is_constructor_return_object(result) {
               result
@@ -1382,6 +1384,7 @@ fn make_compiled_func(
               strict,
               body,
               rest_param~,
+              call_self_name~,
             )
           }
         }),
@@ -1470,6 +1473,7 @@ fn call_compiled_func(
   body : CompiledBody,
   rest_param? : String? = None,
   new_target? : Value? = None,
+  call_self_name? : Bool = false,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
@@ -1504,6 +1508,9 @@ fn call_compiled_func(
         interp.define_simple_arguments_object(
           func_env, args, callee, strict, params,
         )
+    }
+    if call_self_name {
+      func_env.def_builtin("[[BytecodeCallee]]", callee)
     }
     reduce_body_signal((body.0)(interp, func_ctx, func_env))
   } catch {

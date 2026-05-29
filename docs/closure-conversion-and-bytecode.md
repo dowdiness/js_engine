@@ -202,7 +202,6 @@ The compiler currently raises an `InternalError` prefixed
 - `destructuring declaration kind` (non-`var` destructuring declarations)
 - `destructuring declaration context` (control-flow/block/switch/for contexts)
 - `object literal __proto__ method property`
-- `object literal method self reference`
 - `object literal method property`
 - `object literal property key`
 - `direct eval call`
