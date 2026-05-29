@@ -2361,6 +2361,45 @@ test "bytecode for-in assignment captures outer target and object" {
 }
 
 ///|
+test "bytecode for-in member assignment writes each key through property assignment" {
+  let src =
+    #|var target = { last: "" };
+    #|for (target.last in { a: 1, b: 2 }) {
+    #|}
+    #|target.last;
+  inspect(bytecode_compare(src), content="value:b")
+}
+
+///|
+test "bytecode for-in computed assignment preserves target evaluation order" {
+  let src =
+    #|var log = "";
+    #|var target = {};
+    #|function getTarget() { log = log + "t"; return target; }
+    #|function getKey() { log = log + "k"; return "slot"; }
+    #|for (getTarget()[getKey()] in { a: 1, b: 2 }) {
+    #|  log = log + target.slot;
+    #|}
+    #|log + ":" + target.slot;
+  inspect(bytecode_compare(src), content="value:tkatkb:b")
+}
+
+///|
+test "bytecode for-in computed assignment captures outer target and key" {
+  let src =
+    #|function outer() {
+    #|  var target = {};
+    #|  var key = "slot";
+    #|  return function(src) {
+    #|    for (target[key] in src) {}
+    #|    return target.slot;
+    #|  };
+    #|}
+    #|outer()({ x: 1 });
+  inspect(bytecode_compare(src), content="value:x")
+}
+
+///|
 test "bytecode rejects for-in declarations until loop binding semantics are shared" {
   inspect(
     bytecode_outcome("for (var k in { a: 1 }) {}"),

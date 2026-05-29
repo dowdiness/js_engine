@@ -878,6 +878,40 @@ test "bytecode treats names inside nested for-in assignment loops as captured" {
 }
 
 ///|
+test "bytecode lowers for-in member and computed assignment targets" {
+  let bytecode = parse_bytecode_for_wb(
+    "var target = {}; for (target.x in obj) {} for (target[key] in obj) {}",
+  )
+  let mut saw_property_set = false
+  let mut saw_computed_set = false
+  for instr in bytecode.main.code {
+    match instr {
+      SetForInProperty("x", _) => saw_property_set = true
+      SetForInComputed(_) => saw_computed_set = true
+      _ => ()
+    }
+  }
+  guard saw_property_set else { abort("expected for-in property set") }
+  guard saw_computed_set else { abort("expected for-in computed set") }
+}
+
+///|
+test "bytecode treats names inside nested for-in expression targets as captured" {
+  let src =
+    #|function outer() {
+    #|  var target = {};
+    #|  var key = "x";
+    #|  return function(obj) { for (target[key] in obj) {} };
+    #|}
+    #|outer()({ x: 1 });
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode patches unlabeled break and continue jumps" {
   let break_bytecode = parse_bytecode_for_wb("while (true) break;")
   let mut saw_break_to_exit = false

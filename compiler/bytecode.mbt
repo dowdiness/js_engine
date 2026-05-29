@@ -67,6 +67,8 @@ priv enum BytecodeInstr {
   DropComputedAssignReference
   SetProperty(String, @token.Loc)
   SetComputed(@token.Loc)
+  SetForInProperty(String, @token.Loc)
+  SetForInComputed(@token.Loc)
   AssignPattern(@ast.Pattern)
   PreparePropertyCall(String, @token.Loc)
   PrepareComputedCall(@token.Loc)
@@ -386,7 +388,8 @@ fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
     StmtList(stmts, _) | Block(stmts, _) => stmts_have_lexical_decl(stmts)
     ForInStmt(Some(LetKind), _, _, _, _)
     | ForInStmt(Some(ConstKind), _, _, _, _) => true
-    ForInStmt(_, _, _, body, _) => stmt_has_lexical_decl(body)
+    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
+      stmt_has_lexical_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_lexical_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_lexical_decl(body)
     _ => false
@@ -455,7 +458,8 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_function_decl(body)
     }
-    ForInStmt(_, _, _, body, _) => stmt_has_function_decl(body)
+    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
+      stmt_has_function_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_function_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_function_decl(body)
     _ => false
@@ -503,7 +507,8 @@ fn stmt_has_destructure_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_destructure_decl(body)
     }
-    ForInStmt(_, _, _, body, _) => stmt_has_destructure_decl(body)
+    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
+      stmt_has_destructure_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_destructure_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_destructure_decl(body)
     _ => false
@@ -601,7 +606,7 @@ fn collect_current_var_names_from_stmt(
       out.push(name)
       collect_current_var_names_from_stmt(body, out)
     }
-    ForInStmt(_, _, _, body, _) =>
+    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
       collect_current_var_names_from_stmt(body, out)
     SwitchStmt(_, cases, _) =>
       for case in cases {
@@ -704,6 +709,11 @@ fn collect_nested_function_refs_from_stmt(
       collect_nested_function_refs_from_stmt(body, refs)
     }
     ForInStmt(_, _, obj_expr, body, _) => {
+      collect_nested_function_refs_from_expr(obj_expr, refs)
+      collect_nested_function_refs_from_stmt(body, refs)
+    }
+    ForInExpr(lhs_expr, obj_expr, body, _) => {
+      collect_nested_function_refs_from_expr(lhs_expr, refs)
       collect_nested_function_refs_from_expr(obj_expr, refs)
       collect_nested_function_refs_from_stmt(body, refs)
     }
@@ -919,6 +929,11 @@ fn collect_name_refs_from_stmt(
       collect_name_refs_from_stmt(body, refs)
     }
     ForInStmt(Some(_), _, obj_expr, body, _) => {
+      collect_name_refs_from_expr(obj_expr, refs)
+      collect_name_refs_from_stmt(body, refs)
+    }
+    ForInExpr(lhs_expr, obj_expr, body, _) => {
+      collect_name_refs_from_expr(lhs_expr, refs)
       collect_name_refs_from_expr(obj_expr, refs)
       collect_name_refs_from_stmt(body, refs)
     }
@@ -1186,6 +1201,10 @@ fn bytecode_stmt_contains_destructure_assign(stmt : @ast.Stmt) -> Bool {
       bytecode_stmt_contains_destructure_assign(body)
     }
     ForInStmt(_, _, obj_expr, body, _) =>
+      bytecode_expr_contains_destructure_assign(obj_expr) ||
+      bytecode_stmt_contains_destructure_assign(body)
+    ForInExpr(lhs_expr, obj_expr, body, _) =>
+      bytecode_expr_contains_destructure_assign(lhs_expr) ||
       bytecode_expr_contains_destructure_assign(obj_expr) ||
       bytecode_stmt_contains_destructure_assign(body)
     SwitchStmt(discriminant, cases, _) => {
@@ -1510,6 +1529,60 @@ fn BytecodeBuilder::compile_for_in_identifier(
 }
 
 ///|
+fn BytecodeBuilder::compile_for_in_expr_target_store(
+  self : BytecodeBuilder,
+  target : @ast.Expr,
+) -> Unit raise Error {
+  match target {
+    Member(obj, prop, loc) => {
+      self.compile_expr(obj)
+      let _ = self.emit(SetForInProperty(prop, loc))
+    }
+    ComputedMember(obj, key, loc) => {
+      self.compile_expr(obj)
+      self.compile_expr(key)
+      let _ = self.emit(SetForInComputed(loc))
+    }
+    _ => bytecode_unsupported("for-in assignment target")
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_for_in_expr(
+  self : BytecodeBuilder,
+  target : @ast.Expr,
+  obj_expr : @ast.Expr,
+  body : @ast.Stmt,
+) -> Unit raise Error {
+  if stmt_has_function_decl(body) {
+    bytecode_unsupported("control-flow function declaration")
+  }
+  if stmt_has_destructure_decl(body) {
+    bytecode_unsupported("destructuring declaration context")
+  }
+  self.emit_undefined_completion()
+  self.compile_expr(obj_expr)
+  let _ = self.emit(StartForIn)
+  let loop_pos = self.code.length()
+  let done_jump = self.emit(ForInNext(-1))
+  self.compile_for_in_expr_target_store(target)
+  let _ = self.emit(Pop)
+  let labels = self.take_pending_loop_labels()
+  self.push_loop_context(labels)
+  self.compile_stmt(body)
+  let loop_ctx = self.pop_loop_context()
+  self.restore_pending_loop_labels(labels)
+  let continue_pos = self.code.length()
+  self.patch_loop_jumps(loop_ctx.continue_jumps, continue_pos)
+  let _ = self.emit(Jump(loop_pos))
+  let cleanup_pos = self.code.length()
+  let _ = self.emit(EndForIn)
+  let exit_pos = self.code.length()
+  self.patch(done_jump, ForInNext(exit_pos))
+  self.patch_loop_jumps(loop_ctx.break_jumps, cleanup_pos)
+}
+
+///|
 fn BytecodeBuilder::compile_stmt(
   self : BytecodeBuilder,
   stmt : @ast.Stmt,
@@ -1705,6 +1778,8 @@ fn BytecodeBuilder::compile_stmt(
     }
     ForInStmt(var_kind, name, obj_expr, body, _) =>
       self.compile_for_in_identifier(var_kind, name, obj_expr, body)
+    ForInExpr(target, obj_expr, body, _) =>
+      self.compile_for_in_expr(target, obj_expr, body)
     SwitchStmt(discriminant, cases, _) =>
       self.compile_switch(discriminant, cases)
     FuncDecl(name, params, body, _) => {
@@ -3551,6 +3626,27 @@ fn run_bytecode_function(
         let value = frame.pop()
         let key = frame.pop()
         let obj = frame.pop()
+        frame.stack.push(
+          interp.set_computed_property(
+            obj,
+            key,
+            value,
+            loc,
+            strict=frame.ctx.strict,
+          ),
+        )
+      }
+      SetForInProperty(prop, loc) => {
+        let obj = frame.pop()
+        let value = frame.pop()
+        frame.stack.push(
+          interp.set_property(obj, prop, value, loc, strict=frame.ctx.strict),
+        )
+      }
+      SetForInComputed(loc) => {
+        let key = frame.pop()
+        let obj = frame.pop()
+        let value = frame.pop()
         frame.stack.push(
           interp.set_computed_property(
             obj,
