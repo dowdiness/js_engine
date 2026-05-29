@@ -192,6 +192,7 @@ The compiler currently raises an `InternalError` prefixed
 - `for-in lexical declaration`
 - `for-of statement`
 - `switch lexical declaration`
+- `try/catch statement`
 - `class declaration`
 - `with statement`
 - `statement kind`

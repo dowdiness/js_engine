@@ -1934,6 +1934,7 @@ fn BytecodeBuilder::compile_stmt(
       self.compile_expr(expr)
       let _ = self.emit(Throw)
     }
+    TryCatchStmt(_, _, _, _, _) => bytecode_unsupported("try/catch statement")
     LabeledStmt(label, body, _) => {
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")

@@ -2886,6 +2886,18 @@ test "bytecode rejects with statements explicitly" {
 }
 
 ///|
+test "bytecode rejects try catch and finally statements explicitly" {
+  inspect(
+    bytecode_outcome("try { throw 1; } catch (e) { e; }"),
+    content="error:InternalError: bytecode prototype unsupported: try/catch statement",
+  )
+  inspect(
+    bytecode_outcome("try { 1; } finally { 2; }"),
+    content="error:InternalError: bytecode prototype unsupported: try/catch statement",
+  )
+}
+
+///|
 test "bytecode in operator finds own array index property" {
   let src =
     #|var xs = [10];
