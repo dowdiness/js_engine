@@ -21,6 +21,8 @@ pub fn clear_array_length_override(ArrayData) -> Unit
 
 pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
 
+pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
+
 pub fn create_data_property_or_throw(Interpreter, Value, Int, Value) -> Unit raise
 
 pub fn create_iter_result(Value, Bool) -> Value
@@ -62,6 +64,8 @@ pub fn get_array_prototype(RealmState, ArrayData) -> Value
 pub fn get_array_prototype_override(ArrayData) -> Value?
 
 pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
+
+pub fn get_assignment_name_value(ExecContext, Environment, String) -> Value raise
 
 pub fn get_boolean_proto(realm_state? : RealmState?) -> Value
 

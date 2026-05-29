@@ -522,6 +522,93 @@ test "bytecode reuses runtime name assignment semantics" {
 }
 
 ///|
+test "bytecode identifier compound assignment reuses binary semantics" {
+  let src =
+    #|var x = "4";
+    #|x += 2;
+    #|x;
+  inspect(bytecode_compare(src), content="value:42")
+}
+
+///|
+test "bytecode identifier compound assignment updates local slots" {
+  let src =
+    #|function f(a) {
+    #|  var x = a;
+    #|  x *= 3;
+    #|  return x;
+    #|}
+    #|f(4);
+  inspect(bytecode_compare(src), content="value:12")
+}
+
+///|
+test "bytecode logical compound assignment short-circuits identifiers" {
+  let src =
+    #|var log = "";
+    #|function rhs(v) { log = log + v; return v; }
+    #|var a = 0;
+    #|var b = 1;
+    #|a &&= rhs("a");
+    #|b &&= rhs("b");
+    #|a + "," + b + "," + log;
+  inspect(bytecode_compare(src), content="value:0,b,b")
+}
+
+///|
+test "bytecode nullish and or compound assignment short-circuits identifiers" {
+  let src =
+    #|var log = "";
+    #|function rhs(v) { log = log + v; return v; }
+    #|var a = 1;
+    #|var b = 0;
+    #|var c = null;
+    #|var d = "x";
+    #|var e = undefined;
+    #|a ||= rhs("a");
+    #|b ||= rhs("b");
+    #|c ??= rhs("c");
+    #|d ??= rhs("d");
+    #|e ??= rhs("e");
+    #|a + "," + b + "," + c + "," + d + "," + e + "," + log;
+  inspect(bytecode_compare(src), content="value:1,b,c,x,e,bce")
+}
+
+///|
+test "bytecode identifier compound assignment captures outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() { x += 2; return x; };
+    #|}
+    #|var f = outer();
+    #|f() + "," + f();
+  inspect(bytecode_compare(src), content="value:3,5")
+}
+
+///|
+test "bytecode identifier compound assignment uses assignment reference reads" {
+  let src =
+    #|globalThis.x = 1;
+    #|x += 2;
+  inspect(
+    bytecode_compare(src),
+    content="throw:ReferenceError: x is not defined",
+  )
+}
+
+///|
+test "bytecode rejects member compound assignment until target references are implemented" {
+  let src =
+    #|var o = { x: 1 };
+    #|o.x += 2;
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: compound assignment target",
+  )
+}
+
+///|
 test "bytecode resolves computed callees before arguments" {
   let src =
     #|var fns = [

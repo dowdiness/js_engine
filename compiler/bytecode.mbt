@@ -5,6 +5,7 @@ priv enum BytecodeInstr {
   LoadThis
   LoadConsoleMember(String)
   LoadName(String)
+  LoadAssignmentName(String)
   StoreName(String)
   LoadLocal(Int)
   StoreLocal(Int)
@@ -377,6 +378,10 @@ fn collect_nested_function_refs_from_expr(
       collect_nested_function_refs_from_expr(key, refs)
       collect_nested_function_refs_from_expr(value, refs)
     }
+    CompoundAssign(_, target, value, _) => {
+      collect_nested_function_refs_from_expr(target, refs)
+      collect_nested_function_refs_from_expr(value, refs)
+    }
     UpdateExpr(_, operand, _, _) =>
       collect_nested_function_refs_from_expr(operand, refs)
     Grouping(inner, _) => collect_nested_function_refs_from_expr(inner, refs)
@@ -502,6 +507,10 @@ fn collect_name_refs_from_expr(
     ComputedAssign(obj, key, value, _) => {
       collect_name_refs_from_expr(obj, refs)
       collect_name_refs_from_expr(key, refs)
+      collect_name_refs_from_expr(value, refs)
+    }
+    CompoundAssign(_, target, value, _) => {
+      collect_name_refs_from_expr(target, refs)
       collect_name_refs_from_expr(value, refs)
     }
     UpdateExpr(_, operand, _, _) => collect_name_refs_from_expr(operand, refs)
@@ -871,6 +880,112 @@ fn BytecodeBuilder::compile_nullish_coalesce(
 }
 
 ///|
+fn BytecodeBuilder::compile_identifier_load(
+  self : BytecodeBuilder,
+  name : String,
+) -> Unit {
+  match self.local_slot(name) {
+    Some(slot) => {
+      let _ = self.emit(LoadLocal(slot))
+    }
+    None => {
+      let _ = self.emit(LoadName(name))
+    }
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_identifier_store(
+  self : BytecodeBuilder,
+  name : String,
+) -> Unit {
+  match self.local_slot(name) {
+    Some(slot) => {
+      let _ = self.emit(StoreLocal(slot))
+    }
+    None => {
+      let _ = self.emit(StoreName(name))
+    }
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_identifier_compound_load(
+  self : BytecodeBuilder,
+  name : String,
+) -> Unit {
+  match self.local_slot(name) {
+    Some(slot) => {
+      let _ = self.emit(LoadLocal(slot))
+    }
+    None => {
+      let _ = self.emit(LoadAssignmentName(name))
+    }
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_identifier_logical_assign(
+  self : BytecodeBuilder,
+  op : @ast.CompoundOp,
+  name : String,
+  value : @ast.Expr,
+) -> Unit raise Error {
+  self.compile_identifier_compound_load(name)
+  let keep_current = match op {
+    LogicalAndAssign => self.emit(JumpIfFalseKeep(-1))
+    LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
+    NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
+    _ => {
+      bytecode_unsupported("logical assignment operator")
+      -1
+    }
+  }
+  let _ = self.emit(Pop)
+  self.compile_expr(value)
+  self.compile_identifier_store(name)
+  match op {
+    LogicalAndAssign =>
+      self.patch(keep_current, JumpIfFalseKeep(self.code.length()))
+    LogicalOrAssign =>
+      self.patch(keep_current, JumpIfTrueKeep(self.code.length()))
+    NullishAssign =>
+      self.patch(keep_current, JumpIfNotNullishKeep(self.code.length()))
+    _ => ()
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_identifier_compound_assign(
+  self : BytecodeBuilder,
+  op : @ast.CompoundOp,
+  name : String,
+  value : @ast.Expr,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  if name == "arguments" {
+    bytecode_unsupported("arguments object")
+  }
+  match op {
+    LogicalAndAssign | LogicalOrAssign | NullishAssign =>
+      self.compile_identifier_logical_assign(op, name, value)
+    _ => {
+      let bin_op = match @runtime.compound_assign_binary_op(op) {
+        Some(bin_op) => bin_op
+        None => {
+          bytecode_unsupported("logical assignment operator")
+          Add
+        }
+      }
+      self.compile_identifier_compound_load(name)
+      self.compile_expr(value)
+      let _ = self.emit(BinaryOp(bin_op, loc))
+      self.compile_identifier_store(name)
+    }
+  }
+}
+
+///|
 fn bytecode_static_object_key(expr : @ast.Expr) -> String? {
   match expr {
     StringLit(s, _, _, _) => Some(s)
@@ -947,15 +1062,7 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(LoadThis)
     }
     Ident("arguments", _) => bytecode_unsupported("arguments object")
-    Ident(name, _) =>
-      match self.local_slot(name) {
-        Some(slot) => {
-          let _ = self.emit(LoadLocal(slot))
-        }
-        None => {
-          let _ = self.emit(LoadName(name))
-        }
-      }
+    Ident(name, _) => self.compile_identifier_load(name)
     Binary(And, left, right, _) => self.compile_logical_and(left, right)
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
     Binary(NullishCoalesce, left, right, _) =>
@@ -1023,14 +1130,7 @@ fn BytecodeBuilder::compile_expr(
       if bytecode_is_anonymous_function_definition(value) {
         let _ = self.emit(SetFunctionName(name))
       }
-      match self.local_slot(name) {
-        Some(slot) => {
-          let _ = self.emit(StoreLocal(slot))
-        }
-        None => {
-          let _ = self.emit(StoreName(name))
-        }
-      }
+      self.compile_identifier_store(name)
     }
     UpdateExpr(_, Ident("arguments", _), _, _) =>
       bytecode_unsupported("arguments object")
@@ -1043,6 +1143,10 @@ fn BytecodeBuilder::compile_expr(
           let _ = self.emit(UpdateName(name, op, prefix, loc))
         }
       }
+    CompoundAssign(op, Ident(name, _), value, loc) =>
+      self.compile_identifier_compound_assign(op, name, value, loc)
+    CompoundAssign(_, _, _, _) =>
+      bytecode_unsupported("compound assignment target")
     FuncExpr(Some(_), _, _, _) =>
       bytecode_unsupported("named function expression")
     FuncExpr(None, params, body, _) => {
@@ -1340,6 +1444,10 @@ fn run_bytecode_function(
         frame.stack.push(interp.get_console_member(prop))
       LoadName(name) =>
         frame.stack.push(interp.get_compiled_name(frame.env, name))
+      LoadAssignmentName(name) =>
+        frame.stack.push(
+          @runtime.get_assignment_name_value(frame.ctx, frame.env, name),
+        )
       StoreName(name) => {
         let value = frame.pop()
         frame.stack.push(

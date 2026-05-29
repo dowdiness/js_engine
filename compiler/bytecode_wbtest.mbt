@@ -265,6 +265,55 @@ test "bytecode lowers member and computed assignments to property set instructio
 }
 
 ///|
+test "bytecode lowers identifier compound assignment through binary op and local store" {
+  let bytecode = parse_bytecode_for_wb(
+    "function f() { var x = 1; x += 2; return x; } f();",
+  )
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let mut saw_add = false
+  let mut saw_store_local = false
+  for instr in bytecode.main.children[0].code {
+    match instr {
+      BinaryOp(Add, _) => saw_add = true
+      StoreLocal(0) => saw_store_local = true
+      _ => ()
+    }
+  }
+  guard saw_add else { abort("expected compound binary add") }
+  guard saw_store_local else { abort("expected compound local store") }
+}
+
+///|
+test "bytecode lowers global compound assignment reads through assignment names" {
+  let bytecode = parse_bytecode_for_wb("x += 1;")
+  let mut saw_assignment_load = false
+  for instr in bytecode.main.code {
+    match instr {
+      LoadAssignmentName("x") => saw_assignment_load = true
+      _ => ()
+    }
+  }
+  guard saw_assignment_load else { abort("expected assignment-name load") }
+}
+
+///|
+test "bytecode treats names inside nested compound assignments as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() { x += 1; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers new expressions to construct instructions" {
   let bytecode = parse_bytecode_for_wb("function C() {} new C();")
   let mut saw_construct = false
