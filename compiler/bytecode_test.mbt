@@ -2861,6 +2861,18 @@ test "bytecode rejects for-of loops until iterator-close semantics are shared" {
 }
 
 ///|
+test "bytecode rejects class declarations and expressions explicitly" {
+  inspect(
+    bytecode_outcome("class C {}"),
+    content="error:InternalError: bytecode prototype unsupported: class declaration",
+  )
+  inspect(
+    bytecode_outcome("var C = class { method() { return 1; } };"),
+    content="error:InternalError: bytecode prototype unsupported: class expression",
+  )
+}
+
+///|
 test "bytecode in operator finds own array index property" {
   let src =
     #|var xs = [10];

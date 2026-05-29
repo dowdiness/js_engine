@@ -1958,6 +1958,7 @@ fn BytecodeBuilder::compile_stmt(
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
       }
     }
+    ClassDecl(_, _, _, _) => bytecode_unsupported("class declaration")
     _ => bytecode_unsupported("statement kind")
   }
 }
@@ -3074,6 +3075,7 @@ fn BytecodeBuilder::compile_expr(
         self.compile_expr(callee)
         self.emit_call(args, loc)
       }
+    ClassExpr(_, _, _, _) => bytecode_unsupported("class expression")
     _ => bytecode_unsupported("expression kind")
   }
 }

@@ -192,6 +192,7 @@ The compiler currently raises an `InternalError` prefixed
 - `for-in lexical declaration`
 - `for-of statement`
 - `switch lexical declaration`
+- `class declaration`
 - `statement kind`
 - `for initializer`
 - `break statement` outside a bytecode-supported loop
@@ -206,6 +207,7 @@ The compiler currently raises an `InternalError` prefixed
 - `object literal __proto__ method property`
 - `object literal method property`
 - `object literal property key`
+- `class expression`
 - `expression kind`
 - `default or destructuring parameter`
 
