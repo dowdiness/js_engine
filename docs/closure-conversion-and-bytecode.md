@@ -154,17 +154,17 @@ The current high-level opcode surface covers:
   object literals with static data properties, property get, computed get,
   optional property/computed get, property/computed assignment through runtime
   setters, and property/computed deletion through shared runtime helpers
-- calls and construction: ordinary calls, optional calls, host `console.log`
-  calls/member reads, receiver-preserving property/computed calls, and
-  non-spread `new` expressions
+- calls and construction: ordinary calls and optional calls, including spread
+  arguments, host `console.log` calls/member reads, receiver-preserving
+  property/computed calls, and `new` expressions including spread arguments
 - closures: function declarations and anonymous function expressions backed by
   runtime compiled functions
 
 The shipped milestone covers the primary workload shape: function declarations
-and anonymous expressions, calls, non-spread construction, arrays,
-member/computed access, assignments, `for`/`while`/`do while` loops,
+and anonymous expressions, calls, construction including spread arguments,
+arrays, member/computed access, assignments, `for`/`while`/`do while` loops,
 `return`, `throw`, unlabeled `break`/`continue`, and labels that do not need
-label-target resolution. Labeled `break`/`continue`, argument/object spread,
+label-target resolution. Labeled `break`/`continue`, object-literal spread,
 and broader syntax remain future work and should land only with
 compare-against-tree-walker tests.
 
@@ -183,7 +183,6 @@ The compiler currently raises an `InternalError` prefixed
 - `continue statement` outside a bytecode-supported loop
 - `labeled break statement`
 - `labeled continue statement`
-- `spread argument`
 - `arguments object`
 - `delete non-property operator` (for non-identifier/non-property operands)
 - `named function expression`

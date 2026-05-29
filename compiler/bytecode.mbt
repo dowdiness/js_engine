@@ -37,6 +37,9 @@ priv enum BytecodeInstr {
   ArrayPushValue
   ArrayPushSpread(@token.Loc)
   ArrayPushHole
+  StartArgs
+  ArgPushValue
+  ArgPushSpread(@token.Loc)
   MakeObject(Array[String])
   MakeFunction(Int)
   DeclareFunction(String, Int)
@@ -52,7 +55,10 @@ priv enum BytecodeInstr {
   PrepareComputedCall(@token.Loc)
   Call(Int, @token.Loc)
   CallWithReceiver(Int, @token.Loc)
+  CallSpread(@token.Loc)
+  CallSpreadWithReceiver(@token.Loc)
   Construct(Int, @token.Loc)
+  ConstructSpread(@token.Loc)
   Return
   Throw
 }
@@ -905,15 +911,96 @@ fn BytecodeBuilder::compile_for_init(
 }
 
 ///|
-fn BytecodeBuilder::compile_args(
+fn bytecode_args_have_spread(args : Array[@ast.Expr]) -> Bool {
+  for arg in args {
+    match arg {
+      SpreadExpr(_, _) => return true
+      _ => ()
+    }
+  }
+  false
+}
+
+///|
+fn BytecodeBuilder::compile_fixed_args(
   self : BytecodeBuilder,
   args : Array[@ast.Expr],
 ) -> Unit raise Error {
   for arg in args {
+    self.compile_expr(arg)
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_dynamic_args(
+  self : BytecodeBuilder,
+  args : Array[@ast.Expr],
+) -> Unit raise Error {
+  let _ = self.emit(StartArgs)
+  for arg in args {
     match arg {
-      SpreadExpr(_, _) => bytecode_unsupported("spread argument")
-      _ => self.compile_expr(arg)
+      SpreadExpr(inner, loc) => {
+        self.compile_expr(inner)
+        let _ = self.emit(ArgPushSpread(loc))
+      }
+      _ => {
+        self.compile_expr(arg)
+        let _ = self.emit(ArgPushValue)
+      }
     }
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_call_args(
+  self : BytecodeBuilder,
+  args : Array[@ast.Expr],
+) -> Bool raise Error {
+  if bytecode_args_have_spread(args) {
+    self.compile_dynamic_args(args)
+    true
+  } else {
+    self.compile_fixed_args(args)
+    false
+  }
+}
+
+///|
+fn BytecodeBuilder::emit_call(
+  self : BytecodeBuilder,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+) -> Unit raise Error {
+  if self.compile_call_args(args) {
+    let _ = self.emit(CallSpread(loc))
+  } else {
+    let _ = self.emit(Call(args.length(), loc))
+  }
+}
+
+///|
+fn BytecodeBuilder::emit_call_with_receiver(
+  self : BytecodeBuilder,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+) -> Unit raise Error {
+  if self.compile_call_args(args) {
+    let _ = self.emit(CallSpreadWithReceiver(loc))
+  } else {
+    let _ = self.emit(CallWithReceiver(args.length(), loc))
+  }
+}
+
+///|
+fn BytecodeBuilder::emit_construct(
+  self : BytecodeBuilder,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+) -> Unit raise Error {
+  if self.compile_call_args(args) {
+    let _ = self.emit(ConstructSpread(loc))
+  } else {
+    let _ = self.emit(Construct(args.length(), loc))
   }
 }
 
@@ -1004,8 +1091,7 @@ fn BytecodeBuilder::compile_optional_plain_call(
   let _ = self.emit(LoadUndefined)
   let end_jump = self.emit(Jump(-1))
   self.patch(call_jump, JumpIfNotNullishKeep(self.code.length()))
-  self.compile_args(args)
-  let _ = self.emit(Call(args.length(), loc))
+  self.emit_call(args, loc)
   self.patch(end_jump, Jump(self.code.length()))
 }
 
@@ -1022,8 +1108,7 @@ fn BytecodeBuilder::compile_optional_call_with_receiver_tail(
   let _ = self.emit(LoadUndefined)
   end_jumps.push(self.emit(Jump(-1)))
   self.patch(call_jump, JumpIfNotNullishKeep(self.code.length()))
-  self.compile_args(args)
-  let _ = self.emit(CallWithReceiver(args.length(), loc))
+  self.emit_call_with_receiver(args, loc)
   for jump in end_jumps {
     self.patch(jump, Jump(self.code.length()))
   }
@@ -1600,8 +1685,7 @@ fn BytecodeBuilder::compile_expr(
     }
     NewExpr(callee, args, loc) => {
       self.compile_expr(callee)
-      self.compile_args(args)
-      let _ = self.emit(Construct(args.length(), loc))
+      self.emit_construct(args, loc)
     }
     OptionalCall(callee, args, loc) =>
       match callee {
@@ -1645,29 +1729,25 @@ fn BytecodeBuilder::compile_expr(
       }
     Call(Member(Ident("console", _), prop, _), args, loc) => {
       let _ = self.emit(LoadConsoleMember(prop))
-      self.compile_args(args)
-      let _ = self.emit(Call(args.length(), loc))
+      self.emit_call(args, loc)
     }
     Call(Member(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
       let _ = self.emit(PreparePropertyCall(prop, member_loc))
-      self.compile_args(args)
-      let _ = self.emit(CallWithReceiver(args.length(), loc))
+      self.emit_call_with_receiver(args, loc)
     }
     Call(ComputedMember(obj, key, member_loc), args, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
       let _ = self.emit(PrepareComputedCall(member_loc))
-      self.compile_args(args)
-      let _ = self.emit(CallWithReceiver(args.length(), loc))
+      self.emit_call_with_receiver(args, loc)
     }
     Call(callee, args, loc) => {
       if bytecode_is_direct_eval_callee(callee) {
         bytecode_unsupported("direct eval call")
       }
       self.compile_expr(callee)
-      self.compile_args(args)
-      let _ = self.emit(Call(args.length(), loc))
+      self.emit_call(args, loc)
     }
     _ => bytecode_unsupported("expression kind")
   }
@@ -1711,6 +1791,7 @@ fn string_array_contains(xs : Array[String], name : String) -> Bool {
 priv struct BytecodeFrame {
   func_def : BytecodeFunction
   stack : Array[Value]
+  arg_lists : Array[Array[Value]]
   locals : Array[Value]
   env : Environment
   ctx : ExecContext
@@ -1730,7 +1811,16 @@ fn BytecodeFrame::BytecodeFrame(
       locals[i] = env.get(name)
     }
   }
-  { func_def, stack: [], locals, env, ctx, ip: 0, completion: Value::Undefined }
+  {
+    func_def,
+    stack: [],
+    arg_lists: [],
+    locals,
+    env,
+    ctx,
+    ip: 0,
+    completion: Value::Undefined,
+  }
 }
 
 ///|
@@ -1756,6 +1846,27 @@ fn pop_args(frame : BytecodeFrame, arg_count : Int) -> Array[Value] raise Error 
     args[i] = frame.pop()
   }
   args
+}
+
+///|
+fn BytecodeFrame::current_arg_list(
+  self : BytecodeFrame,
+) -> Array[Value] raise Error {
+  guard self.arg_lists.length() > 0 else {
+    raise @errors.InternalError(message="bytecode argument list underflow")
+  }
+  self.arg_lists[self.arg_lists.length() - 1]
+}
+
+///|
+fn BytecodeFrame::pop_dynamic_args(
+  self : BytecodeFrame,
+) -> Array[Value] raise Error {
+  match self.arg_lists.pop() {
+    Some(args) => args
+    None =>
+      raise @errors.InternalError(message="bytecode argument list underflow")
+  }
 }
 
 ///|
@@ -2117,6 +2228,20 @@ fn run_bytecode_function(
               message="bytecode array accumulator was not an array",
             )
         }
+      StartArgs => frame.arg_lists.push([])
+      ArgPushValue => {
+        let value = frame.pop()
+        let args = frame.current_arg_list()
+        args.push(value)
+      }
+      ArgPushSpread(loc) => {
+        let value = frame.pop()
+        let spread_values = interp.spread_iterable(value, loc)
+        let args = frame.current_arg_list()
+        for spread_value in spread_values {
+          args.push(spread_value)
+        }
+      }
       MakeObject(keys) => {
         let values = pop_args(frame, keys.length())
         let properties : Map[String, Value] = {}
@@ -2219,8 +2344,24 @@ fn run_bytecode_function(
         let receiver = frame.pop()
         frame.stack.push(interp.call_value(callee, receiver, args, loc))
       }
+      CallSpread(loc) => {
+        let args = frame.pop_dynamic_args()
+        let callee = frame.pop()
+        frame.stack.push(interp.call_value(callee, Value::Undefined, args, loc))
+      }
+      CallSpreadWithReceiver(loc) => {
+        let args = frame.pop_dynamic_args()
+        let callee = frame.pop()
+        let receiver = frame.pop()
+        frame.stack.push(interp.call_value(callee, receiver, args, loc))
+      }
       Construct(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
+        let ctor = frame.pop()
+        frame.stack.push(interp.construct_value(ctor, args, loc))
+      }
+      ConstructSpread(loc) => {
+        let args = frame.pop_dynamic_args()
         let ctor = frame.pop()
         frame.stack.push(interp.construct_value(ctor, args, loc))
       }

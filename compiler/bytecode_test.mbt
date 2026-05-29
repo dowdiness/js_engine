@@ -1020,6 +1020,79 @@ test "bytecode array spread captures outer bindings" {
 }
 
 ///|
+test "bytecode spread call arguments expand arrays and strings" {
+  let src =
+    #|function join(a, b, c, d, e) {
+    #|  return a + ":" + b + ":" + c + ":" + d + e;
+    #|}
+    #|join("x", ...[1, 2], ..."ab");
+  inspect(bytecode_compare(src), content="value:x:1:2:ab")
+}
+
+///|
+test "bytecode spread call arguments exhaust iterators before later args" {
+  let src =
+    #|var log = "";
+    #|var iterable = {};
+    #|iterable[Symbol.iterator] = function() {
+    #|  var done = false;
+    #|  return {
+    #|    next: function() {
+    #|      if (done) {
+    #|        return { done: true };
+    #|      }
+    #|      done = true;
+    #|      log = log + "n";
+    #|      return { value: 1, done: false };
+    #|    }
+    #|  };
+    #|};
+    #|function pair(a, b) { return log + ":" + a + "," + b; }
+    #|pair(...iterable, (log = log + "e", 2));
+  inspect(bytecode_compare(src), content="value:ne:1,2")
+}
+
+///|
+test "bytecode spread method call preserves receiver" {
+  let src =
+    #|var obj = { x: 4, get: function(a, b) { return this.x + a + b; } };
+    #|obj.get(...[1, 2]);
+  inspect(bytecode_compare(src), content="value:7")
+}
+
+///|
+test "bytecode optional spread call skips arguments for nullish callees" {
+  let src =
+    #|var hit = 0;
+    #|var fn = null;
+    #|var result = fn?.(...(hit = 1, [2]));
+    #|(result === undefined) + "," + hit;
+  inspect(bytecode_compare(src), content="value:true,0")
+}
+
+///|
+test "bytecode spread call arguments capture outer iterables" {
+  let src =
+    #|function outer() {
+    #|  var xs = [2, 3];
+    #|  return function(fn) { return fn(1, ...xs); };
+    #|}
+    #|outer()(function(a, b, c) { return a + b + c; });
+  inspect(bytecode_compare(src), content="value:6")
+}
+
+///|
+test "bytecode spread call arguments reuse runtime iterable errors" {
+  let src =
+    #|function f() {}
+    #|f(...1);
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: number is not iterable",
+  )
+}
+
+///|
 test "bytecode resolves computed callees before arguments" {
   let src =
     #|var fns = [
@@ -1268,14 +1341,11 @@ test "bytecode new expression captures outer constructor binding" {
 }
 
 ///|
-test "bytecode rejects spread arguments in new expressions" {
+test "bytecode spread new expression constructs with expanded arguments" {
   let src =
-    #|function C() {}
-    #|new C(...[]);
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: spread argument",
-  )
+    #|function C(a, b) { this.sum = a + b; }
+    #|new C(...[2, 3]).sum;
+  inspect(bytecode_compare(src), content="value:5")
 }
 
 ///|

@@ -302,6 +302,36 @@ test "bytecode lowers array spreads to incremental append instructions" {
 }
 
 ///|
+test "bytecode lowers spread call arguments to dynamic arg instructions" {
+  let bytecode = parse_bytecode_for_wb(
+    "f(1, ...xs); obj.m(...ys); new C(...zs);",
+  )
+  let mut saw_start = false
+  let mut saw_value = false
+  let mut saw_spread = false
+  let mut saw_call = false
+  let mut saw_receiver_call = false
+  let mut saw_construct = false
+  for instr in bytecode.main.code {
+    match instr {
+      StartArgs => saw_start = true
+      ArgPushValue => saw_value = true
+      ArgPushSpread(_) => saw_spread = true
+      CallSpread(_) => saw_call = true
+      CallSpreadWithReceiver(_) => saw_receiver_call = true
+      ConstructSpread(_) => saw_construct = true
+      _ => ()
+    }
+  }
+  guard saw_start else { abort("expected dynamic argument list") }
+  guard saw_value else { abort("expected plain argument append") }
+  guard saw_spread else { abort("expected spread argument append") }
+  guard saw_call else { abort("expected spread call") }
+  guard saw_receiver_call else { abort("expected spread receiver call") }
+  guard saw_construct else { abort("expected spread construct") }
+}
+
+///|
 test "bytecode treats names inside nested array spreads as captured" {
   let src =
     #|function outer() {
