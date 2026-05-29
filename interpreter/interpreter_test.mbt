@@ -5099,6 +5099,92 @@ test "class constructor has arguments object through super call" {
 }
 
 ///|
+test "derived super double init throws ReferenceError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  class B {}
+      #|  class D extends B { constructor() { super(); super(); } }
+      #|  new D();
+      #|  console.log("no error");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["ReferenceError"])
+}
+
+///|
+test "derived super double init throws when super returns object" {
+  let output = run_output(
+    (
+      #|try {
+      #|  class B { constructor() { return { tag: "override" }; } }
+      #|  class D extends B { constructor() { super(); super(); } }
+      #|  new D();
+      #|  console.log("no error");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["ReferenceError"])
+}
+
+///|
+test "derived super double init does not rerun field initializers" {
+  let output = run_output(
+    (
+      #|let count = 0;
+      #|class B {}
+      #|class D extends B {
+      #|  x = (count = count + 1);
+      #|  constructor() {
+      #|    super();
+      #|    try { super(); } catch (e) { console.log(e.name); }
+      #|  }
+      #|}
+      #|new D();
+      #|console.log(count);
+    ),
+  )
+  json_inspect(output, content=["ReferenceError", "1"])
+}
+
+///|
+test "derived super double init guard preserves nested derived super chains" {
+  let output = run_output(
+    (
+      #|class A { constructor() { this.a = 1; } }
+      #|class B extends A { constructor() { super(); this.b = 2; } }
+      #|class D extends B { constructor() { super(); this.d = 3; } }
+      #|let d = new D();
+      #|console.log(d.a + d.b + d.d);
+    ),
+  )
+  json_inspect(output, content=["6"])
+}
+
+///|
+test "derived super double init throws in intermediate constructor" {
+  let output = run_output(
+    (
+      #|try {
+      #|  class A {}
+      #|  class B extends A { constructor() { super(); super(); } }
+      #|  class D extends B { constructor() { super(); } }
+      #|  new D();
+      #|  console.log("no error");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["ReferenceError"])
+}
+
+///|
 test "defineProperty getter only (no setter)" {
   let output = run_output(
     (

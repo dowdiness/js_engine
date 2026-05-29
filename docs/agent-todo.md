@@ -808,11 +808,10 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
      Sloppy simple, extended, constructor, generator, and async call paths now
      suppress the arguments object when parameter names include `arguments`;
      strict-mode validations remain unchanged.
-   - **`super()` double-init check.** `Environment::initialize_in_chain`
-     overwrites unconditionally; spec `BindThisValue` (§9.1.1.3.1) throws
-     on re-init. Add an initialized-guard in `initialize_in_chain` at
-     the binding-write site, or route super() through a dedicated
-     `initialize_this_once` helper.
+   - ~~**`super()` double-init check.** `Environment::initialize_in_chain`
+     overwrote unconditionally; spec `BindThisValue` (§9.1.1.3.1) throws
+     on re-init.~~ DONE (2026-05-29): `initialize_in_chain` now rejects a
+     second `this` initialization before instance fields run again.
 8. ~~**Refactor: extract shared Ext-callable param/body helper.**~~
    DONE (2026-04-19, PR #67 merge `9b97f4c`). `call.mbt` UserFuncExt
    and ArrowFuncExt now share `Interpreter::bind_ext_params_and_exec_body`
