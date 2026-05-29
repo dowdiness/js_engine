@@ -2038,9 +2038,60 @@ test "bytecode rejects unsupported arrow parameter forms explicitly" {
 }
 
 ///|
-test "bytecode rejects non-arrow rest parameters until compiled binding semantics are shared" {
+test "bytecode ordinary rest functions collect trailing arguments" {
+  let src =
+    #|function f(first, ...rest) {
+    #|  return f.length + ":" + first + ":" + rest.length + ":" + rest[0] + ":" + rest[1];
+    #|}
+    #|f(1, 2, 3);
+  inspect(bytecode_compare(src), content="value:1:1:2:2:3")
+}
+
+///|
+test "bytecode ordinary rest functions keep arguments objects unmapped" {
+  let src =
+    #|function f(a, ...rest) {
+    #|  arguments[0] = 9;
+    #|  rest[0] = 8;
+    #|  return a + ":" + arguments[0] + ":" + rest[0];
+    #|}
+    #|f(1, 2);
+  inspect(bytecode_compare(src), content="value:1:9:8")
+}
+
+///|
+test "bytecode ordinary rest functions allow rest arguments shadowing" {
+  let src =
+    #|(function(...arguments) {
+    #|  return arguments.length + ":" + arguments[1];
+    #|})(4, 5);
+  inspect(bytecode_compare(src), content="value:2:5")
+}
+
+///|
+test "bytecode ordinary rest functions capture rest bindings" {
+  let src =
+    #|function make(...xs) {
+    #|  return function() { return xs[1]; };
+    #|}
+    #|make(4, 5)();
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
+test "bytecode rest constructors bind rest arrays" {
+  let src =
+    #|function C(label, ...xs) {
+    #|  this.value = label + ":" + xs[1];
+    #|}
+    #|new C("v", 1, 2).value;
+  inspect(bytecode_compare(src), content="value:v:2")
+}
+
+///|
+test "bytecode still rejects method rest parameters until method binding semantics are shared" {
   inspect(
-    bytecode_outcome("(function(...xs) { return xs.length; })(1);"),
+    bytecode_outcome("({ m(...xs) { return xs.length; } }).m(1);"),
     content="error:InternalError: bytecode prototype unsupported: rest parameter",
   )
 }

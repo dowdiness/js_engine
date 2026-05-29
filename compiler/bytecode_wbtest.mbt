@@ -787,6 +787,21 @@ test "bytecode lowers rest arrow functions as environment-backed children" {
 }
 
 ///|
+test "bytecode lowers ordinary rest functions as environment-backed children" {
+  let bytecode = parse_bytecode_for_wb(
+    "function f(a, ...rest) { return rest[0]; } f(1, 2);",
+  )
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one function child")
+  }
+  let child = bytecode.main.children[0]
+  guard child.rest_param is Some("rest") else {
+    abort("expected rest parameter metadata")
+  }
+  json_inspect(child.local_names, content=[])
+}
+
+///|
 test "bytecode treats names inside nested arrow functions as captured" {
   let src =
     #|function outer() {

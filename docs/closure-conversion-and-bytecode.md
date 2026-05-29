@@ -167,8 +167,8 @@ The current high-level opcode surface covers:
   arguments, host `console.log` calls/member reads, receiver-preserving
   property/computed calls, and `new` expressions including spread arguments
 - closures: function declarations, anonymous or named function expressions,
-  ordinary function `arguments` objects, and simple/rest-parameter arrow
-  functions backed by runtime compiled functions
+  ordinary/rest-parameter functions, ordinary function `arguments` objects, and
+  simple/rest-parameter arrow functions backed by runtime compiled functions
 
 The shipped milestone covers the primary workload shape: function declarations
 and anonymous expressions, calls, construction including spread arguments,
@@ -207,7 +207,7 @@ The compiler currently raises an `InternalError` prefixed
 - `direct eval call`
 - `tagged template optional member call`
 - `expression kind`
-- `rest parameter` (non-arrow functions and methods)
+- `rest parameter` (methods only)
 - `default or destructuring parameter`
 
 Keep this list fail-fast. When broadening bytecode syntax, remove a rejection

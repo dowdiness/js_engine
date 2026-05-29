@@ -297,6 +297,33 @@ pub fn Interpreter::define_simple_arguments_object(
 }
 
 ///|
+pub fn Interpreter::define_unmapped_arguments_object(
+  self : Interpreter,
+  env : Environment,
+  args : Array[Value],
+  callee : Value,
+  strict : Bool,
+) -> Unit raise Error {
+  let tte : Value? = if env.has("[[ThrowTypeError]]") {
+    Some(env.get("[[ThrowTypeError]]"))
+  } else {
+    None
+  }
+  env.def(
+    "arguments",
+    make_arguments_object(
+      self.realm_state,
+      self.realm_state.well_known_symbols,
+      args,
+      callee,
+      strict,
+      throw_type_error=tte,
+    ),
+    VarBinding,
+  )
+}
+
+///|
 fn make_arguments_object(
   realm_state : RealmState,
   well_known_symbols : WellKnownSymbols,

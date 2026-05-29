@@ -1286,6 +1286,7 @@ fn make_compiled_func(
   closure : Environment,
   strict : Bool,
   body : CompiledBody,
+  rest_param? : String? = None,
   constructable? : Bool = true,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
@@ -1362,6 +1363,7 @@ fn make_compiled_func(
               closure,
               strict,
               body,
+              rest_param~,
               new_target=context.new_target(),
             )
             if is_constructor_return_object(result) {
@@ -1371,7 +1373,15 @@ fn make_compiled_func(
             }
           } else {
             call_compiled_func(
-              interp, callee, this_val, args, params, closure, strict, body,
+              interp,
+              callee,
+              this_val,
+              args,
+              params,
+              closure,
+              strict,
+              body,
+              rest_param~,
             )
           }
         }),
@@ -1458,6 +1468,7 @@ fn call_compiled_func(
   closure : Environment,
   strict : Bool,
   body : CompiledBody,
+  rest_param? : String? = None,
   new_target? : Value? = None,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
@@ -1481,9 +1492,19 @@ fn call_compiled_func(
       BindingKind::LetBinding,
     )
     bind_simple_params(func_env, params, args)
-    interp.define_simple_arguments_object(
-      func_env, args, callee, strict, params,
-    )
+    bind_rest_param(func_env, params.length(), rest_param, args)
+    match rest_param {
+      Some(_) =>
+        if !compiled_params_include_arguments(params, rest_param) {
+          interp.define_unmapped_arguments_object(
+            func_env, args, callee, strict,
+          )
+        }
+      None =>
+        interp.define_simple_arguments_object(
+          func_env, args, callee, strict, params,
+        )
+    }
     reduce_body_signal((body.0)(interp, func_ctx, func_env))
   } catch {
     err => {
@@ -1520,6 +1541,38 @@ fn call_compiled_arrow_func(
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
   result
+}
+
+///|
+fn compiled_params_include_arguments(
+  params : Array[String],
+  rest_param : String?,
+) -> Bool {
+  for param in params {
+    if param == "arguments" {
+      return true
+    }
+  }
+  rest_param is Some("arguments")
+}
+
+///|
+fn bind_rest_param(
+  env : Environment,
+  positional_count : Int,
+  rest_param : String?,
+  args : Array[Value],
+) -> Unit raise Error {
+  match rest_param {
+    Some(name) => {
+      let rest_elements : Array[Value] = []
+      for i = positional_count; i < args.length(); i = i + 1 {
+        rest_elements.push(args[i])
+      }
+      env.def_parameter(name, @runtime.make_array(rest_elements))
+    }
+    None => ()
+  }
 }
 
 ///|

@@ -594,7 +594,9 @@ fn collect_current_var_names_from_stmt(
   out : Array[String],
 ) -> Unit {
   match stmt {
-    VarDecl(VarKind, name, _, _) | FuncDecl(name, _, _, _) => out.push(name)
+    VarDecl(VarKind, name, _, _)
+    | FuncDecl(name, _, _, _)
+    | FuncDeclExt(name, _, _, _, _) => out.push(name)
     DestructureDecl(VarKind, pattern, _, _) =>
       collect_current_var_names_from_pattern(pattern, out)
     StmtList(stmts, _) | Block(stmts, _) =>
@@ -679,7 +681,8 @@ fn collect_nested_function_refs_from_stmt(
   refs : Map[String, Bool],
 ) -> Unit {
   match stmt {
-    FuncDecl(_, _, body, _) => collect_name_refs_from_stmts(body, refs)
+    FuncDecl(_, _, body, _) | FuncDeclExt(_, _, _, body, _) =>
+      collect_name_refs_from_stmts(body, refs)
     VarDecl(_, _, Some(expr), _)
     | ExprStmt(expr, _)
     | ReturnStmt(Some(expr), _)
@@ -910,8 +913,10 @@ fn collect_name_refs_from_stmt(
       collect_name_refs_from_binding_pattern_exprs(pattern, refs)
       collect_name_refs_from_expr(init, refs)
     }
-    FuncDecl(_, _, body, _) | StmtList(body, _) | Block(body, _) =>
-      collect_name_refs_from_stmts(body, refs)
+    FuncDecl(_, _, body, _)
+    | FuncDeclExt(_, _, _, body, _)
+    | StmtList(body, _)
+    | Block(body, _) => collect_name_refs_from_stmts(body, refs)
     IfStmt(cond, then_branch, else_branch, _) => {
       collect_name_refs_from_expr(cond, refs)
       collect_name_refs_from_stmt(then_branch, refs)
@@ -1876,6 +1881,19 @@ fn BytecodeBuilder::compile_stmt(
       self.compile_switch(discriminant, cases)
     FuncDecl(name, params, body, _) => {
       let fn_idx = self.add_function(Some(name), params, body, None)
+      let _ = self.emit(DeclareFunction(name, fn_idx))
+      self.emit_undefined_completion()
+    }
+    FuncDeclExt(name, params, rest_param, body, _) => {
+      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+        params, rest_param,
+      )
+      let fn_idx = self.add_function(
+        Some(name),
+        simple_params,
+        body,
+        simple_rest,
+      )
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
@@ -2866,13 +2884,22 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(MakeFunction(fn_idx))
     }
     FuncExprExt(Some(name), params, rest_param, body, _) => {
-      let simple_params = simple_ext_param_names(params, rest_param)
-      let fn_idx = self.add_function(Some(name), simple_params, body, None)
+      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+        params, rest_param,
+      )
+      let fn_idx = self.add_function(
+        Some(name),
+        simple_params,
+        body,
+        simple_rest,
+      )
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
     }
     FuncExprExt(None, params, rest_param, body, _) => {
-      let simple_params = simple_ext_param_names(params, rest_param)
-      let fn_idx = self.add_function(None, simple_params, body, None)
+      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+        params, rest_param,
+      )
+      let fn_idx = self.add_function(None, simple_params, body, simple_rest)
       let _ = self.emit(MakeFunction(fn_idx))
     }
     ArrowFunc(params, body, _) => {
@@ -3262,12 +3289,23 @@ fn make_bytecode_func(
   closure : Environment,
   enclosing_ctx : ExecContext,
 ) -> Value raise Error {
-  @runtime.validate_function_signature(
-    enclosing_ctx.strict,
-    func_def.name,
-    func_def.params,
-    func_def.source_body,
-  )
+  match func_def.rest_param {
+    Some(rest_param) =>
+      @runtime.validate_function_signature_ext(
+        enclosing_ctx.strict,
+        func_def.name,
+        bytecode_ext_params_from_names(func_def.params),
+        Some(rest_param),
+        func_def.source_body,
+      )
+    None =>
+      @runtime.validate_function_signature(
+        enclosing_ctx.strict,
+        func_def.name,
+        func_def.params,
+        func_def.source_body,
+      )
+  }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
   make_compiled_func(
     func_def.name,
@@ -3280,6 +3318,7 @@ fn make_bytecode_func(
         BytecodeReturn(value) => Signal::ReturnSignal(value)
       }
     }),
+    rest_param=func_def.rest_param,
   )
 }
 
