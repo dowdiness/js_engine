@@ -305,7 +305,9 @@ Rest-param check added across `factories.mbt`, `generator.mbt`, `eval_expr.mbt` 
 
 ---
 
-### Structural fix: identify destructuring-rest by flag, not name
+### ~~Structural fix: identify destructuring-rest by flag, not name~~ — DONE (2026-05-29, PR #163, `e26e730`)
+
+Completed by adding `Param.is_rest_pattern`, setting it only for destructuring-rest params, and replacing rest-name equality consumers. Regressions cover runtime binding, function length, dynamic constructors, and class constructors.
 
 **Source:** Codex review of PR #117 (2026-05-15).
 
@@ -322,6 +324,18 @@ No test262 cohort exercises this — `$0` is a valid but unusual identifier — 
 **Estimated scope:** ~11 Param construction sites in parser + AST struct update + ~7 consumer sites. Larger than PR #117 alone but eliminates the entire ambiguity, not patches one symptom.
 
 **Refactoring workflow (use `moonbit-refactoring`):** Treat this as one focused API/data-model refactor, not a drive-by cleanup. First add `is_rest_pattern : Bool` to `@ast.Param`, then run `moon check` to surface all construction sites. Update parser construction next, setting the flag to `true` only for destructuring rest (`...[pattern]`) and `false` everywhere else. Then replace consumer name-equality checks with the flag. Add black-box regressions for `function f({a}, ...$0) {}` runtime binding, length/counting behavior, dynamic constructor destructuring rest, and class constructor destructuring rest. Run `moon check` after each edit batch, then targeted tests, `moon test`, `moon info`, and `moon fmt`.
+
+---
+
+### Small cleanup: helper for ExpectedArgumentCount over extended params
+
+**Source:** Follow-up after PR #163 (2026-05-29).
+
+**Why:** PR #163 fixed the ambiguity by changing each length loop to stop on `p.default_val is Some(_) || p.is_rest_pattern`, but that logic is still duplicated across runtime factories (`factories.mbt`, `generator.mbt`, `async.mbt`, `eval_expr.mbt`, `class.mbt`), dynamic `Function` construction (`interpreter/stdlib/builtins_function.mbt`), and `compiler/closure_conversion.mbt`.
+
+**Fix:** Add a small helper such as `expected_argument_count_ext(params : Array[@ast.Param]) -> Int` and use it at the duplicated call sites. If the helper must be shared outside `interpreter/runtime`, make the public API change explicit and regenerate `.mbti` with `moon info`; otherwise keep it package-local and leave the compiler with a local equivalent. This should be a no-behavior-change cleanup.
+
+**Validation:** Run the existing function-length regression tests, then `moon check`, `moon test`, `moon info`, and targeted `moon fmt`.
 
 ---
 
