@@ -195,6 +195,8 @@ The compiler currently raises an `InternalError` prefixed
 - `try/catch statement`
 - `class declaration`
 - `with statement`
+- `import declaration`
+- `export declaration`
 - `statement kind`
 - `for initializer`
 - `break statement` outside a bytecode-supported loop

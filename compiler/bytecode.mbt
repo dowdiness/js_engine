@@ -1961,6 +1961,10 @@ fn BytecodeBuilder::compile_stmt(
     }
     ClassDecl(_, _, _, _) => bytecode_unsupported("class declaration")
     WithStmt(_, _, _) => bytecode_unsupported("with statement")
+    ImportDecl(_, _, _, _, _, _) => bytecode_unsupported("import declaration")
+    ExportNamedDecl(_, _, _, _, _)
+    | ExportDefaultDecl(_, _)
+    | ExportAllDecl(_, _, _, _) => bytecode_unsupported("export declaration")
     _ => bytecode_unsupported("statement kind")
   }
 }

@@ -2873,6 +2873,26 @@ test "bytecode rejects class declarations and expressions explicitly" {
 }
 
 ///|
+test "bytecode rejects module declarations explicitly" {
+  inspect(
+    bytecode_outcome("import 'dep';"),
+    content="error:InternalError: bytecode prototype unsupported: import declaration",
+  )
+  inspect(
+    bytecode_outcome("export { x };"),
+    content="error:InternalError: bytecode prototype unsupported: export declaration",
+  )
+  inspect(
+    bytecode_outcome("export default 1;"),
+    content="error:InternalError: bytecode prototype unsupported: export declaration",
+  )
+  inspect(
+    bytecode_outcome("export * from 'dep';"),
+    content="error:InternalError: bytecode prototype unsupported: export declaration",
+  )
+}
+
+///|
 test "bytecode rejects with statements explicitly" {
   let src =
     #|var obj = { x: 1 };
