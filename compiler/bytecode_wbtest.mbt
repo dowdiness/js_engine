@@ -7,6 +7,52 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
+fn bytecode_compile_error_for_wb(stmts : Array[@ast.Stmt]) -> String {
+  try {
+    let _ = compile_script_to_bytecode(stmts)
+    "ok"
+  } catch {
+    err => err.to_string()
+  }
+}
+
+///|
+test "bytecode rejects unsupported synthetic expression variants explicitly" {
+  let loc = @token.Loc::default()
+  inspect(
+    bytecode_compile_error_for_wb([ExprStmt(ArrayHole(loc), loc)]),
+    content="InternalError: bytecode prototype unsupported: array hole expression",
+  )
+  inspect(
+    bytecode_compile_error_for_wb([
+      ExprStmt(SpreadExpr(Ident("x", loc), loc), loc),
+    ]),
+    content="InternalError: bytecode prototype unsupported: spread expression",
+  )
+  inspect(
+    bytecode_compile_error_for_wb([
+      ExprStmt(
+        UpdateExpr(Increment, NumberLit(1.0, LexNormal, loc), true, loc),
+        loc,
+      ),
+    ]),
+    content="InternalError: bytecode prototype unsupported: update target",
+  )
+  inspect(
+    bytecode_compile_error_for_wb([
+      ExprStmt(YieldExpr(Some(UndefinedLit(loc)), false, loc), loc),
+    ]),
+    content="InternalError: bytecode prototype unsupported: yield expression",
+  )
+  inspect(
+    bytecode_compile_error_for_wb([
+      ExprStmt(AwaitExpr(UndefinedLit(loc), loc), loc),
+    ]),
+    content="InternalError: bytecode prototype unsupported: await expression",
+  )
+}
+
+///|
 test "bytecode uses local slots for function params and vars" {
   let src =
     #|function f(a) {

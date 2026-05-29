@@ -194,26 +194,43 @@ The compiler currently raises an `InternalError` prefixed
 - `switch lexical declaration`
 - `try/catch statement`
 - `class declaration`
+- `generator declaration`
+- `async function declaration`
+- `async generator declaration`
 - `with statement`
 - `import declaration`
 - `export declaration`
-- `statement kind`
 - `for initializer`
 - `break statement` outside a bytecode-supported loop
 - `continue statement` outside a bytecode-supported loop
 - `labeled break statement` (unresolved label targets only)
 - `labeled continue statement` (unresolved or non-loop label targets only)
 - `delete non-property operator` (for non-identifier/non-property operands)
+- `array hole expression` (outside array literal lowering)
+- `spread expression` (outside array/call/new/object literal lowering)
+- `update target` (invalid/non-reference targets only)
 - `compound assignment target` (invalid/non-reference targets only)
-- `destructuring assignment pattern` (defaults, computed keys, or member targets)
+- `destructuring pattern default`
+- `destructuring pattern computed key`
+- `destructuring pattern member target`
 - `destructuring declaration kind` (non-`var` destructuring declarations)
 - `destructuring declaration context` (control-flow/block/switch/for contexts)
+- `super call`
 - `object literal __proto__ method property`
+- `object literal generator method property`
+- `object literal async method property`
+- `object literal async generator method property`
 - `object literal method property`
 - `object literal property key`
 - `class expression`
-- `expression kind`
-- `default or destructuring parameter`
+- `generator expression`
+- `yield expression`
+- `async function expression`
+- `async arrow function`
+- `async generator expression`
+- `await expression`
+- `default parameter`
+- `destructuring parameter`
 
 Keep this list fail-fast. When broadening bytecode syntax, remove a rejection
 only after adding tests that compare the bytecode path with the tree-walking

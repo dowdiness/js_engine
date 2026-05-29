@@ -1959,13 +1959,18 @@ fn BytecodeBuilder::compile_stmt(
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
       }
     }
+    GeneratorDecl(_, _, _, _) | GeneratorDeclExt(_, _, _, _, _) =>
+      bytecode_unsupported("generator declaration")
+    AsyncFuncDecl(_, _, _, _) | AsyncFuncDeclExt(_, _, _, _, _) =>
+      bytecode_unsupported("async function declaration")
+    AsyncGeneratorDecl(_, _, _, _) | AsyncGeneratorDeclExt(_, _, _, _, _) =>
+      bytecode_unsupported("async generator declaration")
     ClassDecl(_, _, _, _) => bytecode_unsupported("class declaration")
     WithStmt(_, _, _) => bytecode_unsupported("with statement")
     ImportDecl(_, _, _, _, _, _) => bytecode_unsupported("import declaration")
     ExportNamedDecl(_, _, _, _, _)
     | ExportDefaultDecl(_, _)
     | ExportAllDecl(_, _, _, _) => bytecode_unsupported("export declaration")
-    _ => bytecode_unsupported("statement kind")
   }
 }
 
@@ -2546,6 +2551,18 @@ fn BytecodeBuilder::compile_object_method(
       )
       self.add_function(None, simple_params, body, simple_rest)
     }
+    GeneratorExpr(_, _, _, _) | GeneratorExprExt(_, _, _, _, _) => {
+      bytecode_unsupported("object literal generator method property")
+      0
+    }
+    AsyncFuncExpr(_, _, _, _) | AsyncFuncExprExt(_, _, _, _, _) => {
+      bytecode_unsupported("object literal async method property")
+      0
+    }
+    AsyncGeneratorExpr(_, _, _, _) | AsyncGeneratorExprExt(_, _, _, _, _) => {
+      bytecode_unsupported("object literal async generator method property")
+      0
+    }
     _ => {
       bytecode_unsupported("object literal method property")
       0
@@ -2703,9 +2720,13 @@ fn bytecode_validate_destructure_assignment_pattern(
     }
     ObjectPat(props, rest) => {
       for prop in props {
-        match (prop.default_val, prop.computed_key) {
-          (None, None) => ()
-          _ => bytecode_unsupported("destructuring assignment pattern")
+        match prop.default_val {
+          Some(_) => bytecode_unsupported("destructuring pattern default")
+          None => ()
+        }
+        match prop.computed_key {
+          Some(_) => bytecode_unsupported("destructuring pattern computed key")
+          None => ()
         }
         bytecode_validate_destructure_assignment_pattern(prop.value)
       }
@@ -2714,8 +2735,9 @@ fn bytecode_validate_destructure_assignment_pattern(
         None => ()
       }
     }
-    DefaultPat(_, _) | AssignTarget(_) =>
-      bytecode_unsupported("destructuring assignment pattern")
+    DefaultPat(_, _) => bytecode_unsupported("destructuring pattern default")
+    AssignTarget(_) =>
+      bytecode_unsupported("destructuring pattern member target")
   }
 }
 
@@ -2740,12 +2762,14 @@ fn BytecodeBuilder::compile_expr(
     UndefinedLit(_) => {
       let _ = self.emit(LoadUndefined)
     }
+    ArrayHole(_) => bytecode_unsupported("array hole expression")
     ThisExpr(_) => {
       let _ = self.emit(LoadThis)
     }
     NewTargetExpr(_) => {
       let _ = self.emit(LoadNewTarget)
     }
+    SuperCall(_, _) => bytecode_unsupported("super call")
     SuperMember(prop, loc) => {
       let _ = self.emit(LoadSuperProperty(prop, loc))
     }
@@ -2882,6 +2906,7 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(UpdateComputed(op, prefix, member_loc, loc))
     }
+    UpdateExpr(_, _, _, _) => bytecode_unsupported("update target")
     CompoundAssign(op, Ident(name, _), value, loc) =>
       self.compile_identifier_compound_assign(op, name, value, loc)
     CompoundAssign(op, Member(obj, prop, member_loc), value, loc) =>
@@ -3081,8 +3106,18 @@ fn BytecodeBuilder::compile_expr(
         self.compile_expr(callee)
         self.emit_call(args, loc)
       }
+    SpreadExpr(_, _) => bytecode_unsupported("spread expression")
+    GeneratorExpr(_, _, _, _) | GeneratorExprExt(_, _, _, _, _) =>
+      bytecode_unsupported("generator expression")
+    YieldExpr(_, _, _) => bytecode_unsupported("yield expression")
+    AsyncFuncExpr(_, _, _, _) | AsyncFuncExprExt(_, _, _, _, _) =>
+      bytecode_unsupported("async function expression")
+    AsyncArrowFunc(_, _, _) | AsyncArrowFuncExt(_, _, _, _) =>
+      bytecode_unsupported("async arrow function")
+    AsyncGeneratorExpr(_, _, _, _) | AsyncGeneratorExprExt(_, _, _, _, _) =>
+      bytecode_unsupported("async generator expression")
+    AwaitExpr(_, _) => bytecode_unsupported("await expression")
     ClassExpr(_, _, _, _) => bytecode_unsupported("class expression")
-    _ => bytecode_unsupported("expression kind")
   }
 }
 
@@ -3095,7 +3130,9 @@ fn simple_ext_param_names_with_rest(
   for param in params {
     match (param.default_val, param.pattern, param.is_rest_pattern) {
       (None, None, false) => names.push(param.name)
-      _ => bytecode_unsupported("default or destructuring parameter")
+      (Some(_), _, _) => bytecode_unsupported("default parameter")
+      (_, Some(_), _) | (_, _, true) =>
+        bytecode_unsupported("destructuring parameter")
     }
   }
   (names, rest_param)

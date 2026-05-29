@@ -1706,6 +1706,26 @@ test "bytecode object methods capture super computed keys" {
 }
 
 ///|
+test "bytecode super property outside methods shares runtime errors" {
+  inspect(
+    bytecode_compare("super.x;"),
+    content="throw:ReferenceError: super.prop used but no [[SuperPrototype]] in scope at line 1",
+  )
+  inspect(
+    bytecode_compare("super['x'];"),
+    content="throw:ReferenceError: super[expr] used but no [[SuperPrototype]] in scope at line 1",
+  )
+}
+
+///|
+test "bytecode rejects super calls explicitly" {
+  inspect(
+    bytecode_outcome("super();"),
+    content="error:InternalError: bytecode prototype unsupported: super call",
+  )
+}
+
+///|
 test "bytecode rejects __proto__ methods until object method semantics are settled" {
   inspect(
     bytecode_outcome("({ __proto__() { return 7; } });"),
@@ -1839,10 +1859,18 @@ test "bytecode object literal computed properties capture outer keys" {
 }
 
 ///|
-test "bytecode rejects unsupported object literal forms explicitly" {
+test "bytecode rejects unsupported object literal method forms explicitly" {
+  inspect(
+    bytecode_outcome("({ *m() { yield 1; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal generator method property",
+  )
   inspect(
     bytecode_outcome("({ async m() { return 1; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal method property",
+    content="error:InternalError: bytecode prototype unsupported: object literal async method property",
+  )
+  inspect(
+    bytecode_outcome("({ async *m() { yield 1; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal async generator method property",
   )
 }
 
@@ -2079,11 +2107,11 @@ test "bytecode rest arrow functions capture rest bindings" {
 test "bytecode rejects unsupported arrow parameter forms explicitly" {
   inspect(
     bytecode_outcome("((x = 1) => x)();"),
-    content="error:InternalError: bytecode prototype unsupported: default or destructuring parameter",
+    content="error:InternalError: bytecode prototype unsupported: default parameter",
   )
   inspect(
     bytecode_outcome("(({ x }) => x)({ x: 1 });"),
-    content="error:InternalError: bytecode prototype unsupported: default or destructuring parameter",
+    content="error:InternalError: bytecode prototype unsupported: destructuring parameter",
   )
 }
 
@@ -2308,14 +2336,29 @@ test "bytecode destructuring assignment captures outer targets" {
 }
 
 ///|
-test "bytecode rejects destructuring assignment defaults until pattern expressions are compiled" {
-  let src =
+test "bytecode rejects unsupported destructuring assignment patterns explicitly" {
+  let default_src =
     #|var x = 0;
     #|[x = 1] = [undefined];
     #|x;
   inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring assignment pattern",
+    bytecode_outcome(default_src),
+    content="error:InternalError: bytecode prototype unsupported: destructuring pattern default",
+  )
+  let computed_src =
+    #|var key = "x";
+    #|var x = 0;
+    #|({ [key]: x } = { x: 1 });
+  inspect(
+    bytecode_outcome(computed_src),
+    content="error:InternalError: bytecode prototype unsupported: destructuring pattern computed key",
+  )
+  let member_target_src =
+    #|var obj = {};
+    #|[obj.x] = [1];
+  inspect(
+    bytecode_outcome(member_target_src),
+    content="error:InternalError: bytecode prototype unsupported: destructuring pattern member target",
   )
 }
 
@@ -2399,7 +2442,7 @@ test "bytecode rejects var destructuring declaration defaults until pattern expr
     #|x;
   inspect(
     bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring assignment pattern",
+    content="error:InternalError: bytecode prototype unsupported: destructuring pattern default",
   )
 }
 
@@ -2820,7 +2863,7 @@ test "bytecode rejects unsupported for-in destructuring assignment patterns" {
     #|}
   inspect(
     bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring assignment pattern",
+    content="error:InternalError: bytecode prototype unsupported: destructuring pattern default",
   )
 }
 
@@ -2869,6 +2912,42 @@ test "bytecode rejects class declarations and expressions explicitly" {
   inspect(
     bytecode_outcome("var C = class { method() { return 1; } };"),
     content="error:InternalError: bytecode prototype unsupported: class expression",
+  )
+}
+
+///|
+test "bytecode rejects generator forms explicitly" {
+  inspect(
+    bytecode_outcome("function* g() { yield 1; }"),
+    content="error:InternalError: bytecode prototype unsupported: generator declaration",
+  )
+  inspect(
+    bytecode_outcome("var g = function*() { yield 1; };"),
+    content="error:InternalError: bytecode prototype unsupported: generator expression",
+  )
+}
+
+///|
+test "bytecode rejects async function forms explicitly" {
+  inspect(
+    bytecode_outcome("async function f() { return 1; }"),
+    content="error:InternalError: bytecode prototype unsupported: async function declaration",
+  )
+  inspect(
+    bytecode_outcome("var f = async function() { return 1; };"),
+    content="error:InternalError: bytecode prototype unsupported: async function expression",
+  )
+  inspect(
+    bytecode_outcome("var f = async () => 1;"),
+    content="error:InternalError: bytecode prototype unsupported: async arrow function",
+  )
+  inspect(
+    bytecode_outcome("async function* g() { yield 1; }"),
+    content="error:InternalError: bytecode prototype unsupported: async generator declaration",
+  )
+  inspect(
+    bytecode_outcome("var g = async function*() { yield 1; };"),
+    content="error:InternalError: bytecode prototype unsupported: async generator expression",
   )
 }
 
