@@ -142,8 +142,9 @@ The current high-level opcode surface covers:
   load/store function-local slot, define binding
 - completion and control flow: set completion, pop, jump, conditional jump,
   return, throw
-- expressions: supported eager binary operations, jump-lowered `&&`, `||`, and
-  `??`, comma expressions, identifier update, anonymous function naming
+- expressions: supported eager binary operations, jump-lowered `&&`, `||`, `??`,
+  and ternary conditionals, comma expressions, identifier update, anonymous
+  function naming
 - object interaction: array creation without holes/spread, property get,
   computed get
 - calls: ordinary calls plus receiver-preserving property/computed calls

@@ -803,6 +803,15 @@ fn BytecodeBuilder::compile_expr(
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
     Binary(NullishCoalesce, left, right, _) =>
       self.compile_nullish_coalesce(left, right)
+    Ternary(cond, then_expr, else_expr, _) => {
+      self.compile_expr(cond)
+      let else_jump = self.emit(JumpIfFalse(-1))
+      self.compile_expr(then_expr)
+      let end_jump = self.emit(Jump(-1))
+      self.patch(else_jump, JumpIfFalse(self.code.length()))
+      self.compile_expr(else_expr)
+      self.patch(end_jump, Jump(self.code.length()))
+    }
     Binary(Instanceof, _, _, _) => bytecode_unsupported("instanceof operator")
     Binary(op, left, right, loc) => {
       self.compile_expr(left)

@@ -166,6 +166,32 @@ test "bytecode nullish coalescing only skips non-nullish lhs values" {
 }
 
 ///|
+test "bytecode ternary uses truthiness and returns selected branch" {
+  let src =
+    #|var a = 0 ? "bad" : "zero";
+    #|var b = "x" ? "string" : "bad";
+    #|a + "," + b;
+  inspect(bytecode_compare(src), content="value:zero,string")
+}
+
+///|
+test "bytecode ternary skips unselected branch side effects" {
+  let src =
+    #|var hits = 0;
+    #|var a = true ? (hits = hits + 1) : (hits = hits + 100);
+    #|var b = false ? (hits = hits + 1000) : (hits = hits + 10);
+    #|a + "," + b + "," + hits;
+  inspect(bytecode_compare(src), content="value:1,11,11")
+}
+
+///|
+test "bytecode ternary expression statement updates completion" {
+  let src =
+    #|false ? "then" : "else";
+  inspect(bytecode_compare(src), content="value:else")
+}
+
+///|
 test "bytecode jumps and branch completion" {
   let src =
     #|var x = 0;
