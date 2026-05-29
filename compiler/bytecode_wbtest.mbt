@@ -142,6 +142,19 @@ test "bytecode lowers member and computed assignments to property set instructio
 }
 
 ///|
+test "bytecode lowers new expressions to construct instructions" {
+  let bytecode = parse_bytecode_for_wb("function C() {} new C();")
+  let mut saw_construct = false
+  for instr in bytecode.main.code {
+    match instr {
+      Construct(0, _) => saw_construct = true
+      _ => ()
+    }
+  }
+  guard saw_construct else { abort("expected construct instruction") }
+}
+
+///|
 test "bytecode treats names inside nested computed assignments as captured" {
   let src =
     #|function outer() {

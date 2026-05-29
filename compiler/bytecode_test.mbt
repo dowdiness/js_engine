@@ -449,6 +449,69 @@ test "bytecode computed assignment captures outer key binding" {
 }
 
 ///|
+test "bytecode new expression constructs bytecode functions" {
+  let src =
+    #|function C(x) {
+    #|  this.x = x;
+    #|}
+    #|var o = new C(4);
+    #|o.x + "," + (o.constructor === C);
+  inspect(bytecode_compare(src), content="value:4,true")
+}
+
+///|
+test "bytecode new expression ignores primitive constructor return" {
+  let src =
+    #|function C() {
+    #|  this.x = 1;
+    #|  return 9;
+    #|}
+    #|new C().x;
+  inspect(bytecode_compare(src), content="value:1")
+}
+
+///|
+test "bytecode new expression preserves object constructor return" {
+  let src =
+    #|function C() {
+    #|  return [1, 2, 3];
+    #|}
+    #|var o = new C();
+    #|o.length + "," + o[1];
+  inspect(bytecode_compare(src), content="value:3,2")
+}
+
+///|
+test "bytecode new expression reuses builtin constructor semantics" {
+  let src =
+    #|var xs = new Array(2);
+    #|xs.length;
+  inspect(bytecode_compare(src), content="value:2")
+}
+
+///|
+test "bytecode new expression captures outer constructor binding" {
+  let src =
+    #|function outer() {
+    #|  var C = function() { this.x = 5; };
+    #|  return function() { return new C().x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
+test "bytecode rejects spread arguments in new expressions" {
+  let src =
+    #|function C() {}
+    #|new C(...[]);
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: spread argument",
+  )
+}
+
+///|
 test "bytecode top-level this resolves global object" {
   let src =
     #|this === globalThis;

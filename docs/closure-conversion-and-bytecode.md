@@ -148,15 +148,16 @@ The current high-level opcode surface covers:
   identifier update, anonymous function naming
 - object interaction: array creation without holes/spread, property get,
   computed get, and property/computed assignment through runtime setters
-- calls: ordinary calls plus receiver-preserving property/computed calls
+- calls and construction: ordinary calls, receiver-preserving
+  property/computed calls, and non-spread `new` expressions
 - closures: function declarations and anonymous function expressions backed by
   runtime compiled functions
 
 The shipped milestone covers the primary workload shape: function declarations
-and anonymous expressions, calls, arrays, member/computed access, assignments,
-`for`/`while` loops, `return`, and `throw`. `break`, `continue`, construction,
-spread, and broader syntax remain future work and should land only with
-compare-against-tree-walker tests.
+and anonymous expressions, calls, non-spread construction, arrays,
+member/computed access, assignments, `for`/`while` loops, `return`, and `throw`.
+`break`, `continue`, spread, and broader syntax remain future work and should
+land only with compare-against-tree-walker tests.
 
 ## Current Explicit Bytecode Rejections
 

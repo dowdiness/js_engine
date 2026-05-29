@@ -34,6 +34,7 @@ priv enum BytecodeInstr {
   PrepareComputedCall(@token.Loc)
   Call(Int, @token.Loc)
   CallWithReceiver(Int, @token.Loc)
+  Construct(Int, @token.Loc)
   Return
   Throw
 }
@@ -347,7 +348,7 @@ fn collect_nested_function_refs_from_expr(
       collect_nested_function_refs_from_expr(right, refs)
     }
     Assign(_, value, _) => collect_nested_function_refs_from_expr(value, refs)
-    Call(callee, args, _) => {
+    Call(callee, args, _) | NewExpr(callee, args, _) => {
       collect_nested_function_refs_from_expr(callee, refs)
       for arg in args {
         collect_nested_function_refs_from_expr(arg, refs)
@@ -451,7 +452,7 @@ fn collect_name_refs_from_expr(
       collect_name_refs_from_expr(left, refs)
       collect_name_refs_from_expr(right, refs)
     }
-    Call(callee, args, _) => {
+    Call(callee, args, _) | NewExpr(callee, args, _) => {
       collect_name_refs_from_expr(callee, refs)
       for arg in args {
         collect_name_refs_from_expr(arg, refs)
@@ -955,6 +956,11 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(value)
       let _ = self.emit(SetComputed(loc))
     }
+    NewExpr(callee, args, loc) => {
+      self.compile_expr(callee)
+      self.compile_args(args)
+      let _ = self.emit(Construct(args.length(), loc))
+    }
     Call(Member(Ident("console", _), _, _), _, _) =>
       bytecode_unsupported("console member")
     Call(Member(obj, prop, member_loc), args, loc) => {
@@ -1383,6 +1389,11 @@ fn run_bytecode_function(
         let callee = frame.pop()
         let receiver = frame.pop()
         frame.stack.push(interp.call_value(callee, receiver, args, loc))
+      }
+      Construct(arg_count, loc) => {
+        let args = pop_args(frame, arg_count)
+        let ctor = frame.pop()
+        frame.stack.push(interp.construct_value(ctor, args, loc))
       }
       Return => return BytecodeReturn(frame.pop())
       Throw => {
