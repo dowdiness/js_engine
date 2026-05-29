@@ -346,6 +346,54 @@ test "bytecode resolves computed callees before arguments" {
 }
 
 ///|
+test "bytecode member assignment writes through runtime property semantics" {
+  let src =
+    #|var xs = [];
+    #|xs.label = 3;
+    #|xs.label = xs.label + 4;
+    #|xs.label;
+  inspect(bytecode_compare(src), content="value:7")
+}
+
+///|
+test "bytecode computed assignment preserves object key value order" {
+  let src =
+    #|var log = "";
+    #|var xs = [];
+    #|function obj() { log = log + "o"; return xs; }
+    #|function key() { log = log + "k"; return 0; }
+    #|function val() { log = log + "v"; return 9; }
+    #|obj()[key()] = val();
+    #|log + ":" + xs[0];
+  inspect(bytecode_compare(src), content="value:okv:9")
+}
+
+///|
+test "bytecode member assignment null receiver throws like interpreter" {
+  let src =
+    #|var target = null;
+    #|target.x = 1;
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Cannot set properties of null (setting 'x')",
+  )
+}
+
+///|
+test "bytecode computed assignment captures outer key binding" {
+  let src =
+    #|function outer() {
+    #|  var key = 0;
+    #|  return function(xs) {
+    #|    xs[key] = 5;
+    #|    return xs[0];
+    #|  };
+    #|}
+    #|outer()([]);
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
 test "bytecode rejects named function expressions until self-name binding is implemented" {
   let src =
     #|var f = function g() { return g; };

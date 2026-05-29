@@ -147,7 +147,7 @@ The current high-level opcode surface covers:
   and ternary conditionals, comma expressions, identifier update, anonymous
   function naming
 - object interaction: array creation without holes/spread, property get,
-  computed get
+  computed get, and property/computed assignment through runtime setters
 - calls: ordinary calls plus receiver-preserving property/computed calls
 - closures: function declarations and anonymous function expressions backed by
   runtime compiled functions

@@ -63,3 +63,38 @@ test "bytecode treats names inside nested unary expressions as captured" {
   }
   json_inspect(bytecode.main.children[0].local_names, content=[])
 }
+
+///|
+test "bytecode lowers member and computed assignments to property set instructions" {
+  let src =
+    #|var xs = [];
+    #|xs.foo = 1;
+    #|xs[0] = 2;
+  let bytecode = parse_bytecode_for_wb(src)
+  let mut saw_property_set = false
+  let mut saw_computed_set = false
+  for instr in bytecode.main.code {
+    match instr {
+      SetProperty("foo", _) => saw_property_set = true
+      SetComputed(_) => saw_computed_set = true
+      _ => ()
+    }
+  }
+  guard saw_property_set else { abort("expected property set instruction") }
+  guard saw_computed_set else { abort("expected computed set instruction") }
+}
+
+///|
+test "bytecode treats names inside nested computed assignments as captured" {
+  let src =
+    #|function outer() {
+    #|  var key = 0;
+    #|  return function(xs) { xs[key] = 1; };
+    #|}
+    #|outer()([]);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}

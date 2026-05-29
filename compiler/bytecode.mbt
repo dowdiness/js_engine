@@ -25,6 +25,8 @@ priv enum BytecodeInstr {
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
   GetComputed(@token.Loc)
+  SetProperty(String, @token.Loc)
+  SetComputed(@token.Loc)
   PreparePropertyCall(String, @token.Loc)
   PrepareComputedCall(@token.Loc)
   Call(Int, @token.Loc)
@@ -353,6 +355,15 @@ fn collect_nested_function_refs_from_expr(
       collect_nested_function_refs_from_expr(obj, refs)
       collect_nested_function_refs_from_expr(key, refs)
     }
+    MemberAssign(obj, _, value, _) => {
+      collect_nested_function_refs_from_expr(obj, refs)
+      collect_nested_function_refs_from_expr(value, refs)
+    }
+    ComputedAssign(obj, key, value, _) => {
+      collect_nested_function_refs_from_expr(obj, refs)
+      collect_nested_function_refs_from_expr(key, refs)
+      collect_nested_function_refs_from_expr(value, refs)
+    }
     UpdateExpr(_, operand, _, _) =>
       collect_nested_function_refs_from_expr(operand, refs)
     Grouping(inner, _) => collect_nested_function_refs_from_expr(inner, refs)
@@ -443,6 +454,15 @@ fn collect_name_refs_from_expr(
     ComputedMember(obj, key, _) => {
       collect_name_refs_from_expr(obj, refs)
       collect_name_refs_from_expr(key, refs)
+    }
+    MemberAssign(obj, _, value, _) => {
+      collect_name_refs_from_expr(obj, refs)
+      collect_name_refs_from_expr(value, refs)
+    }
+    ComputedAssign(obj, key, value, _) => {
+      collect_name_refs_from_expr(obj, refs)
+      collect_name_refs_from_expr(key, refs)
+      collect_name_refs_from_expr(value, refs)
     }
     UpdateExpr(_, operand, _, _) => collect_name_refs_from_expr(operand, refs)
     FuncExpr(_, _, body, _) | FuncExprExt(_, _, _, body, _) =>
@@ -898,6 +918,17 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(GetComputed(loc))
     }
+    MemberAssign(obj, prop, value, loc) => {
+      self.compile_expr(obj)
+      self.compile_expr(value)
+      let _ = self.emit(SetProperty(prop, loc))
+    }
+    ComputedAssign(obj, key, value, loc) => {
+      self.compile_expr(obj)
+      self.compile_expr(key)
+      self.compile_expr(value)
+      let _ = self.emit(SetComputed(loc))
+    }
     Call(Member(Ident("console", _), _, _), _, _) =>
       bytecode_unsupported("console member")
     Call(Member(obj, prop, member_loc), args, loc) => {
@@ -1254,6 +1285,27 @@ fn run_bytecode_function(
         let key = frame.pop()
         let obj = frame.pop()
         frame.stack.push(interp.get_computed_property(obj, key, loc))
+      }
+      SetProperty(prop, loc) => {
+        let value = frame.pop()
+        let obj = frame.pop()
+        frame.stack.push(
+          interp.set_property(obj, prop, value, loc, strict=frame.ctx.strict),
+        )
+      }
+      SetComputed(loc) => {
+        let value = frame.pop()
+        let key = frame.pop()
+        let obj = frame.pop()
+        frame.stack.push(
+          interp.set_computed_property(
+            obj,
+            key,
+            value,
+            loc,
+            strict=frame.ctx.strict,
+          ),
+        )
       }
       PreparePropertyCall(prop, loc) => {
         let obj = frame.pop()
