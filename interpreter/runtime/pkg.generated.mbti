@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub fn apply_object_literal_data_property(Value, Value, Value) -> Unit raise
+
 pub fn apply_object_literal_proto_property(Value, Value) -> Unit raise
 
 pub fn array_species_create(Interpreter, Value, Int) -> Value raise
@@ -502,6 +504,7 @@ pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict?
 pub fn Interpreter::spread_iterable(Self, Value, @token.Loc) -> Array[Value] raise
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
+pub fn Interpreter::to_object_literal_property_key(Self, Value) -> Value raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
 pub fn Interpreter::typeof_compiled_name(Self, ExecContext, Environment, String) -> Value raise
 pub fn Interpreter::update_compiled_name(Self, ExecContext, Environment, String, @ast.UpdateOp, Bool, @token.Loc) -> Value raise

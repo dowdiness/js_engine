@@ -1341,11 +1341,56 @@ test "bytecode object literal __proto__ works with spread and captures" {
 }
 
 ///|
+test "bytecode object literal computed properties define data properties" {
+  let src =
+    #|var key = "x";
+    #|var o = { [key]: 4, y: 5 };
+    #|o.x + "," + o.y;
+  inspect(bytecode_compare(src), content="value:4,5")
+}
+
+///|
+test "bytecode object literal computed keys canonicalize before values" {
+  let src =
+    #|var log = "";
+    #|var key = { toString: function() { log = log + "k"; return "x"; } };
+    #|function val() { log = log + "v"; return 7; }
+    #|var o = { [key]: val() };
+    #|log + ":" + o.x;
+  inspect(bytecode_compare(src), content="value:kv:7")
+}
+
+///|
+test "bytecode object literal computed symbol keys" {
+  let src =
+    #|var sym = Symbol("s");
+    #|var o = { [sym]: 9 };
+    #|o[sym];
+  inspect(bytecode_compare(src), content="value:9")
+}
+
+///|
+test "bytecode object literal computed __proto__ remains data property" {
+  let src =
+    #|var proto = { p: 1 };
+    #|var o = { ["__proto__"]: proto, x: 2 };
+    #|(Object.getPrototypeOf(o) === Object.prototype) + "," + (o.__proto__ === proto) + "," + o.x;
+  inspect(bytecode_compare(src), content="value:true,true,2")
+}
+
+///|
+test "bytecode object literal computed properties capture outer keys" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return function() { return ({ [key]: 6 }).x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:6")
+}
+
+///|
 test "bytecode rejects unsupported object literal forms explicitly" {
-  inspect(
-    bytecode_outcome("var k = 'x'; ({ [k]: 1 });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal computed property",
-  )
   inspect(
     bytecode_outcome("({ get x() { return 1; } });"),
     content="error:InternalError: bytecode prototype unsupported: object literal accessor property",

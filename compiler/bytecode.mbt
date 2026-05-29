@@ -43,6 +43,8 @@ priv enum BytecodeInstr {
   MakeObject(Array[String])
   StartObject
   ObjectSetStatic(String)
+  ToObjectLiteralPropertyKey
+  ObjectSetComputed
   ObjectSpread(@token.Loc)
   ObjectSetProto
   MakeFunction(Int)
@@ -1434,7 +1436,9 @@ fn bytecode_object_lit_uses_incremental(props : Array[@ast.Property]) -> Bool {
     match prop.kind {
       Spread => return true
       Init =>
-        if !prop.computed && !prop.is_method {
+        if prop.computed {
+          return true
+        } else if !prop.is_method {
           match bytecode_static_object_key(prop.key) {
             Some(key) => if key == "__proto__" { return true }
             None => ()
@@ -1464,11 +1468,15 @@ fn BytecodeBuilder::compile_object_lit(
         Init => ()
         Get | Set => bytecode_unsupported("object literal accessor property")
       }
-      if prop.computed {
-        bytecode_unsupported("object literal computed property")
-      }
       if prop.is_method {
         bytecode_unsupported("object literal method property")
+      }
+      if prop.computed {
+        self.compile_expr(prop.key)
+        let _ = self.emit(ToObjectLiteralPropertyKey)
+        self.compile_expr(prop.value)
+        let _ = self.emit(ObjectSetComputed)
+        continue
       }
       let key = match bytecode_static_object_key(prop.key) {
         Some(key) => key
@@ -2326,6 +2334,15 @@ fn run_bytecode_function(
               message="bytecode object accumulator was not an object",
             )
         }
+      }
+      ToObjectLiteralPropertyKey => {
+        let key = frame.pop()
+        frame.stack.push(interp.to_object_literal_property_key(key))
+      }
+      ObjectSetComputed => {
+        let value = frame.pop()
+        let key = frame.pop()
+        @runtime.apply_object_literal_data_property(frame.peek(), key, value)
       }
       ObjectSpread(loc) => {
         let source = frame.pop()

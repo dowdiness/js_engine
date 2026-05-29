@@ -409,6 +409,27 @@ test "bytecode lowers object literal __proto__ through proto instruction" {
 }
 
 ///|
+test "bytecode lowers computed object literal data properties" {
+  let bytecode = parse_bytecode_for_wb(
+    "var key = 'x'; var o = { [key]: 1, after: 2 };",
+  )
+  let mut saw_key = false
+  let mut saw_computed = false
+  let mut saw_after = false
+  for instr in bytecode.main.code {
+    match instr {
+      ToObjectLiteralPropertyKey => saw_key = true
+      ObjectSetComputed => saw_computed = true
+      ObjectSetStatic("after") => saw_after = true
+      _ => ()
+    }
+  }
+  guard saw_key else { abort("expected object literal key canonicalization") }
+  guard saw_computed else { abort("expected computed data property set") }
+  guard saw_after else { abort("expected static property after computed") }
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {
@@ -536,6 +557,21 @@ test "bytecode treats names inside nested object literals as captured" {
     #|function outer() {
     #|  var x = 1;
     #|  return function() { return { value: x }.value; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
+test "bytecode treats names inside nested computed object literal keys as captured" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return function() { return ({ [key]: 1 }).x; };
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)

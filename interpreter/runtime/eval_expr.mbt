@@ -121,6 +121,44 @@ pub fn apply_object_literal_proto_property(
 }
 
 ///|
+pub fn Interpreter::to_object_literal_property_key(
+  self : Interpreter,
+  key : Value,
+) -> Value raise Error {
+  to_property_key(key, interp=Some(self))
+}
+
+///|
+pub fn apply_object_literal_data_property(
+  target : Value,
+  key : Value,
+  value : Value,
+) -> Unit raise Error {
+  match target {
+    Object(data) =>
+      match key {
+        Symbol(sym) => {
+          let sym_name = match sym.description {
+            Some(d) => "[\{d}]"
+            None => ""
+          }
+          set_function_name(value, sym_name)
+          data.bag.symbol_properties[sym.id] = value
+        }
+        _ => {
+          let key_str = to_js_string(key)
+          set_function_name(value, key_str)
+          data.bag.properties[key_str] = value
+        }
+      }
+    _ =>
+      raise @errors.InternalError(
+        message="object literal data property target was not an object",
+      )
+  }
+}
+
+///|
 pub fn Interpreter::copy_object_spread_properties(
   self : Interpreter,
   target : Value,
@@ -385,21 +423,16 @@ fn Interpreter::eval_expr(
           continue
         }
         if prop.computed {
-          // Evaluate the computed key
+          // Evaluate and canonicalize the computed key before the value.
           let key_val = self.eval_expr(ctx, prop.key, env)
-          match key_val {
+          let prop_key = self.to_object_literal_property_key(key_val)
+          match prop_key {
             Symbol(sym) =>
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
                   let val = self.eval_prop_value(ctx, prop, method_env)
-                  // SetFunctionName with symbol description
-                  let sym_name = match sym.description {
-                    Some(d) => "[\{d}]"
-                    None => ""
-                  }
-                  set_function_name(val, sym_name)
-                  symbol_properties[sym.id] = val
+                  apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
                   let getter = self.eval_prop_value(ctx, prop, method_env)
@@ -451,13 +484,11 @@ fn Interpreter::eval_expr(
                 Spread => () // handled above
               }
             _ => {
-              // Convert to string key using ECMAScript ToString
-              let key_str = to_js_string(key_val)
+              let key_str = to_js_string(prop_key)
               match prop.kind {
                 Init => {
                   let val = self.eval_prop_value(ctx, prop, method_env)
-                  set_function_name(val, key_str)
-                  properties[key_str] = val
+                  apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
                   let getter = self.eval_prop_value(ctx, prop, method_env)
