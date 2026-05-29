@@ -2517,12 +2517,16 @@ fn BytecodeBuilder::compile_object_method(
       if bytecode_method_body_references_name(name, body) {
         bytecode_unsupported("object literal method self reference")
       }
-      let simple_params = simple_ext_param_names(params, rest_param)
-      self.add_function(Some(name), simple_params, body, None)
+      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+        params, rest_param,
+      )
+      self.add_function(Some(name), simple_params, body, simple_rest)
     }
     FuncExprExt(None, params, rest_param, body, _) => {
-      let simple_params = simple_ext_param_names(params, rest_param)
-      self.add_function(None, simple_params, body, None)
+      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+        params, rest_param,
+      )
+      self.add_function(None, simple_params, body, simple_rest)
     }
     _ => {
       bytecode_unsupported("object literal method property")
@@ -3065,25 +3069,6 @@ fn BytecodeBuilder::compile_expr(
 }
 
 ///|
-fn simple_ext_param_names(
-  params : Array[@ast.Param],
-  rest_param : String?,
-) -> Array[String] raise Error {
-  match rest_param {
-    Some(_) => bytecode_unsupported("rest parameter")
-    None => ()
-  }
-  let names : Array[String] = []
-  for param in params {
-    match (param.default_val, param.pattern, param.is_rest_pattern) {
-      (None, None, false) => names.push(param.name)
-      _ => bytecode_unsupported("default or destructuring parameter")
-    }
-  }
-  names
-}
-
-///|
 fn simple_ext_param_names_with_rest(
   params : Array[@ast.Param],
   rest_param : String?,
@@ -3342,12 +3327,23 @@ fn make_bytecode_method_func(
   enclosing_ctx : ExecContext,
   home_object : Value,
 ) -> Value raise Error {
-  @runtime.validate_function_signature(
-    enclosing_ctx.strict,
-    None,
-    func_def.params,
-    func_def.source_body,
-  )
+  match func_def.rest_param {
+    Some(rest_param) =>
+      @runtime.validate_function_signature_ext(
+        enclosing_ctx.strict,
+        None,
+        bytecode_ext_params_from_names(func_def.params),
+        Some(rest_param),
+        func_def.source_body,
+      )
+    None =>
+      @runtime.validate_function_signature(
+        enclosing_ctx.strict,
+        None,
+        func_def.params,
+        func_def.source_body,
+      )
+  }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
   let method_env = Environment::new(parent=Some(closure))
   method_env.def_builtin("[[HomeObject]]", home_object)
@@ -3362,6 +3358,7 @@ fn make_bytecode_method_func(
         BytecodeReturn(value) => Signal::ReturnSignal(value)
       }
     }),
+    rest_param=func_def.rest_param,
     constructable=false,
   )
 }

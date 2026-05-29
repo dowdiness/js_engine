@@ -158,8 +158,9 @@ The current high-level opcode surface covers:
   calls, anonymous function naming
 - object interaction: array creation including holes and spread, simple
   object literals with static and computed data properties, selected static and
-  computed method properties, selected static and computed accessor properties,
-  `__proto__` prototype overrides, and spread properties, property
+  computed method properties including rest parameters, selected static and
+  computed accessor properties, `__proto__` prototype overrides, and spread
+  properties, property
   get, computed get, optional property/computed get, property/computed
   assignment through runtime setters, and property/computed deletion through
   shared runtime helpers
@@ -207,7 +208,6 @@ The compiler currently raises an `InternalError` prefixed
 - `direct eval call`
 - `tagged template optional member call`
 - `expression kind`
-- `rest parameter` (methods only)
 - `default or destructuring parameter`
 
 Keep this list fail-fast. When broadening bytecode syntax, remove a rejection

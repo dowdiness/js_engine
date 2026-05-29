@@ -802,6 +802,21 @@ test "bytecode lowers ordinary rest functions as environment-backed children" {
 }
 
 ///|
+test "bytecode lowers object method rest functions as environment-backed children" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { m(a, ...rest) { return rest[0]; } }; o.m(1, 2);",
+  )
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one method child")
+  }
+  let child = bytecode.main.children[0]
+  guard child.rest_param is Some("rest") else {
+    abort("expected rest parameter metadata")
+  }
+  json_inspect(child.local_names, content=[])
+}
+
+///|
 test "bytecode treats names inside nested arrow functions as captured" {
   let src =
     #|function outer() {

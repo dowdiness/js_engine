@@ -2089,11 +2089,56 @@ test "bytecode rest constructors bind rest arrays" {
 }
 
 ///|
-test "bytecode still rejects method rest parameters until method binding semantics are shared" {
-  inspect(
-    bytecode_outcome("({ m(...xs) { return xs.length; } }).m(1);"),
-    content="error:InternalError: bytecode prototype unsupported: rest parameter",
-  )
+test "bytecode object methods support rest parameters" {
+  let src =
+    #|var o = {
+    #|  base: 10,
+    #|  m(first, ...rest) {
+    #|    return this.base + first + ":" + rest.length + ":" + rest[0] + ":" + this.m.length;
+    #|  }
+    #|};
+    #|o.m(1, 2, 3);
+  inspect(bytecode_compare(src), content="value:11:2:2:1")
+}
+
+///|
+test "bytecode computed object methods support rest parameters" {
+  let src =
+    #|var key = "m";
+    #|var o = {
+    #|  base: 3,
+    #|  [key](...rest) {
+    #|    return this.base + rest[1] + ":" + this.m.name;
+    #|  }
+    #|};
+    #|o.m(1, 4);
+  inspect(bytecode_compare(src), content="value:7:m")
+}
+
+///|
+test "bytecode object method rest parameters use unmapped arguments" {
+  let src =
+    #|var o = {
+    #|  m(a, ...rest) {
+    #|    arguments[0] = 9;
+    #|    rest[0] = 8;
+    #|    return a + ":" + arguments[0] + ":" + rest[0];
+    #|  }
+    #|};
+    #|o.m(1, 2);
+  inspect(bytecode_compare(src), content="value:1:9:8")
+}
+
+///|
+test "bytecode object method rest parameters capture rest bindings" {
+  let src =
+    #|var o = {
+    #|  make(...xs) {
+    #|    return function() { return xs[1]; };
+    #|  }
+    #|};
+    #|o.make(4, 5)();
+  inspect(bytecode_compare(src), content="value:5")
 }
 
 ///|
