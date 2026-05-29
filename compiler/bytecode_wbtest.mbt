@@ -46,6 +46,46 @@ test "bytecode keeps arguments functions on environment bindings" {
 }
 
 ///|
+test "bytecode keeps destructuring assignment functions on environment bindings" {
+  let src =
+    #|function f() {
+    #|  var x = 0;
+    #|  [x] = [1];
+    #|  return x;
+    #|}
+    #|f();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = bytecode.main.children[0]
+  json_inspect(child.local_names, content=[])
+  let mut saw_assign_pattern = false
+  for instr in child.code {
+    match instr {
+      AssignPattern(_) => saw_assign_pattern = true
+      _ => ()
+    }
+  }
+  guard saw_assign_pattern else { abort("expected destructuring assignment") }
+}
+
+///|
+test "bytecode treats destructuring assignment targets as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 0;
+    #|  return function() { [x] = [1]; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode plans block var declarations as function locals" {
   let src =
     #|function f() {

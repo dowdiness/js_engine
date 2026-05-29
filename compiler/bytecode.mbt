@@ -62,6 +62,7 @@ priv enum BytecodeInstr {
   DropComputedAssignReference
   SetProperty(String, @token.Loc)
   SetComputed(@token.Loc)
+  AssignPattern(@ast.Pattern)
   PreparePropertyCall(String, @token.Loc)
   PrepareComputedCall(@token.Loc)
   Call(Int, @token.Loc)
@@ -660,6 +661,10 @@ fn collect_nested_function_refs_from_expr(
       collect_nested_function_refs_from_expr(target, refs)
       collect_nested_function_refs_from_expr(value, refs)
     }
+    DestructureAssign(pattern, value, _) => {
+      collect_nested_function_refs_from_pattern(pattern, refs)
+      collect_nested_function_refs_from_expr(value, refs)
+    }
     UpdateExpr(_, operand, _, _) =>
       collect_nested_function_refs_from_expr(operand, refs)
     Grouping(inner, _) => collect_nested_function_refs_from_expr(inner, refs)
@@ -698,6 +703,50 @@ fn collect_nested_function_refs_from_props(
         collect_nested_function_refs_from_expr(prop.value, refs)
       }
     }
+  }
+}
+
+///|
+fn collect_nested_function_refs_from_pattern(
+  pattern : @ast.Pattern,
+  refs : Map[String, Bool],
+) -> Unit {
+  match pattern {
+    IdentPat(_) => ()
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) => collect_nested_function_refs_from_pattern(pat, refs)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => collect_nested_function_refs_from_pattern(pat, refs)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(expr) => collect_nested_function_refs_from_expr(expr, refs)
+          None => ()
+        }
+        match prop.default_val {
+          Some(expr) => collect_nested_function_refs_from_expr(expr, refs)
+          None => ()
+        }
+        collect_nested_function_refs_from_pattern(prop.value, refs)
+      }
+      match rest {
+        Some(pat) => collect_nested_function_refs_from_pattern(pat, refs)
+        None => ()
+      }
+    }
+    DefaultPat(inner, expr) => {
+      collect_nested_function_refs_from_pattern(inner, refs)
+      collect_nested_function_refs_from_expr(expr, refs)
+    }
+    AssignTarget(expr) => collect_nested_function_refs_from_expr(expr, refs)
   }
 }
 
@@ -812,6 +861,10 @@ fn collect_name_refs_from_expr(
       collect_name_refs_from_expr(target, refs)
       collect_name_refs_from_expr(value, refs)
     }
+    DestructureAssign(pattern, value, _) => {
+      collect_name_refs_from_pattern(pattern, refs)
+      collect_name_refs_from_expr(value, refs)
+    }
     UpdateExpr(_, operand, _, _) => collect_name_refs_from_expr(operand, refs)
     FuncExpr(_, _, body, _)
     | FuncExprExt(_, _, _, body, _)
@@ -857,10 +910,242 @@ fn collect_name_refs_from_props(
 }
 
 ///|
+fn collect_name_refs_from_pattern(
+  pattern : @ast.Pattern,
+  refs : Map[String, Bool],
+) -> Unit {
+  match pattern {
+    IdentPat(name) => refs[name] = true
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) => collect_name_refs_from_pattern(pat, refs)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => collect_name_refs_from_pattern(pat, refs)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          None => ()
+        }
+        match prop.default_val {
+          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          None => ()
+        }
+        collect_name_refs_from_pattern(prop.value, refs)
+      }
+      match rest {
+        Some(pat) => collect_name_refs_from_pattern(pat, refs)
+        None => ()
+      }
+    }
+    DefaultPat(inner, expr) => {
+      collect_name_refs_from_pattern(inner, refs)
+      collect_name_refs_from_expr(expr, refs)
+    }
+    AssignTarget(expr) => collect_name_refs_from_expr(expr, refs)
+  }
+}
+
+///|
 fn bytecode_body_references_arguments(body : Array[@ast.Stmt]) -> Bool {
   let refs : Map[String, Bool] = {}
   collect_name_refs_from_stmts(body, refs)
   refs.contains("arguments")
+}
+
+///|
+fn bytecode_body_contains_destructure_assign(body : Array[@ast.Stmt]) -> Bool {
+  for stmt in body {
+    if bytecode_stmt_contains_destructure_assign(stmt) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn bytecode_stmt_contains_destructure_assign(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    VarDecl(_, _, Some(expr), _)
+    | ExprStmt(expr, _)
+    | ReturnStmt(Some(expr), _)
+    | ThrowStmt(expr, _) => bytecode_expr_contains_destructure_assign(expr)
+    StmtList(stmts, _) | Block(stmts, _) =>
+      bytecode_body_contains_destructure_assign(stmts)
+    IfStmt(cond, then_branch, else_branch, _) => {
+      if bytecode_expr_contains_destructure_assign(cond) {
+        return true
+      }
+      if bytecode_stmt_contains_destructure_assign(then_branch) {
+        return true
+      }
+      match else_branch {
+        Some(stmt) => bytecode_stmt_contains_destructure_assign(stmt)
+        None => false
+      }
+    }
+    WhileStmt(cond, body, _) =>
+      bytecode_expr_contains_destructure_assign(cond) ||
+      bytecode_stmt_contains_destructure_assign(body)
+    DoWhileStmt(body, cond, _) =>
+      bytecode_stmt_contains_destructure_assign(body) ||
+      bytecode_expr_contains_destructure_assign(cond)
+    ForStmt(init, cond, update, body, _) => {
+      match init {
+        Some(stmt) =>
+          if bytecode_stmt_contains_destructure_assign(stmt) {
+            return true
+          }
+        None => ()
+      }
+      match cond {
+        Some(expr) =>
+          if bytecode_expr_contains_destructure_assign(expr) {
+            return true
+          }
+        None => ()
+      }
+      match update {
+        Some(expr) =>
+          if bytecode_expr_contains_destructure_assign(expr) {
+            return true
+          }
+        None => ()
+      }
+      bytecode_stmt_contains_destructure_assign(body)
+    }
+    SwitchStmt(discriminant, cases, _) => {
+      if bytecode_expr_contains_destructure_assign(discriminant) {
+        return true
+      }
+      for case in cases {
+        match case.condition {
+          Some(expr) =>
+            if bytecode_expr_contains_destructure_assign(expr) {
+              return true
+            }
+          None => ()
+        }
+        if bytecode_body_contains_destructure_assign(case.body) {
+          return true
+        }
+      }
+      false
+    }
+    LabeledStmt(_, body, _) => bytecode_stmt_contains_destructure_assign(body)
+    _ => false
+  }
+}
+
+///|
+fn bytecode_expr_contains_destructure_assign(expr : @ast.Expr) -> Bool {
+  match expr {
+    DestructureAssign(_, _, _) => true
+    Unary(_, operand, _) | Grouping(operand, _) | SpreadExpr(operand, _) =>
+      bytecode_expr_contains_destructure_assign(operand)
+    Binary(_, left, right, _) | Comma(left, right, _) =>
+      bytecode_expr_contains_destructure_assign(left) ||
+      bytecode_expr_contains_destructure_assign(right)
+    Ternary(cond, then_expr, else_expr, _) =>
+      bytecode_expr_contains_destructure_assign(cond) ||
+      bytecode_expr_contains_destructure_assign(then_expr) ||
+      bytecode_expr_contains_destructure_assign(else_expr)
+    Assign(_, value, _) => bytecode_expr_contains_destructure_assign(value)
+    Call(callee, args, _)
+    | OptionalCall(callee, args, _)
+    | NewExpr(callee, args, _) => {
+      if bytecode_expr_contains_destructure_assign(callee) {
+        return true
+      }
+      for arg in args {
+        if bytecode_expr_contains_destructure_assign(arg) {
+          return true
+        }
+      }
+      false
+    }
+    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+      bytecode_expr_contains_destructure_assign(obj)
+    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) =>
+      bytecode_expr_contains_destructure_assign(obj) ||
+      bytecode_expr_contains_destructure_assign(key)
+    MemberAssign(obj, _, value, _) =>
+      bytecode_expr_contains_destructure_assign(obj) ||
+      bytecode_expr_contains_destructure_assign(value)
+    ComputedAssign(obj, key, value, _) =>
+      bytecode_expr_contains_destructure_assign(obj) ||
+      bytecode_expr_contains_destructure_assign(key) ||
+      bytecode_expr_contains_destructure_assign(value)
+    CompoundAssign(_, target, value, _) =>
+      bytecode_expr_contains_destructure_assign(target) ||
+      bytecode_expr_contains_destructure_assign(value)
+    UpdateExpr(_, operand, _, _) =>
+      bytecode_expr_contains_destructure_assign(operand)
+    FuncExpr(_, _, body, _)
+    | FuncExprExt(_, _, _, body, _)
+    | ArrowFunc(_, body, _)
+    | ArrowFuncExt(_, _, body, _) =>
+      bytecode_body_contains_destructure_assign(body)
+    ArrayLit(elements, _) => {
+      for element in elements {
+        if bytecode_expr_contains_destructure_assign(element) {
+          return true
+        }
+      }
+      false
+    }
+    ObjectLit(props, _) => bytecode_props_contain_destructure_assign(props)
+    TemplateLit(_, exprs, _) => {
+      for expr in exprs {
+        if bytecode_expr_contains_destructure_assign(expr) {
+          return true
+        }
+      }
+      false
+    }
+    TaggedTemplate(tag, _, exprs, _) => {
+      if bytecode_expr_contains_destructure_assign(tag) {
+        return true
+      }
+      for expr in exprs {
+        if bytecode_expr_contains_destructure_assign(expr) {
+          return true
+        }
+      }
+      false
+    }
+    _ => false
+  }
+}
+
+///|
+fn bytecode_props_contain_destructure_assign(
+  props : Array[@ast.Property],
+) -> Bool {
+  for prop in props {
+    match prop.kind {
+      Spread =>
+        if bytecode_expr_contains_destructure_assign(prop.key) {
+          return true
+        }
+      _ => {
+        if prop.computed && bytecode_expr_contains_destructure_assign(prop.key) {
+          return true
+        }
+        if bytecode_expr_contains_destructure_assign(prop.value) {
+          return true
+        }
+      }
+    }
+  }
+  false
 }
 
 ///|
@@ -871,7 +1156,9 @@ fn plan_bytecode_locals(
 ) -> BytecodeLocalPlan {
   let names : Array[String] = []
   let indices : Map[String, Int] = {}
-  if use_local_slots && !bytecode_body_references_arguments(body) {
+  if use_local_slots &&
+    !bytecode_body_references_arguments(body) &&
+    !bytecode_body_contains_destructure_assign(body) {
     let captured : Map[String, Bool] = {}
     collect_nested_function_refs_from_stmts(body, captured)
     for param in params {
@@ -1830,6 +2117,42 @@ fn BytecodeBuilder::compile_object_lit(
 }
 
 ///|
+fn bytecode_validate_destructure_assignment_pattern(
+  pattern : @ast.Pattern,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(_) => ()
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) => bytecode_validate_destructure_assignment_pattern(pat)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => bytecode_validate_destructure_assignment_pattern(pat)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match (prop.default_val, prop.computed_key) {
+          (None, None) => ()
+          _ => bytecode_unsupported("destructuring assignment pattern")
+        }
+        bytecode_validate_destructure_assignment_pattern(prop.value)
+      }
+      match rest {
+        Some(pat) => bytecode_validate_destructure_assignment_pattern(pat)
+        None => ()
+      }
+    }
+    DefaultPat(_, _) | AssignTarget(_) =>
+      bytecode_unsupported("destructuring assignment pattern")
+  }
+}
+
+///|
 fn BytecodeBuilder::compile_expr(
   self : BytecodeBuilder,
   expr : @ast.Expr,
@@ -1957,6 +2280,11 @@ fn BytecodeBuilder::compile_expr(
     }
     RegexLit(pattern, flags, _) => {
       let _ = self.emit(MakeRegExp(pattern, flags))
+    }
+    DestructureAssign(pattern, value, _) => {
+      bytecode_validate_destructure_assignment_pattern(pattern)
+      self.compile_expr(value)
+      let _ = self.emit(AssignPattern(pattern))
     }
     Assign(name, value, _) => {
       self.compile_expr(value)
@@ -2818,6 +3146,12 @@ fn run_bytecode_function(
             loc,
             strict=frame.ctx.strict,
           ),
+        )
+      }
+      AssignPattern(pattern) => {
+        let value = frame.pop()
+        frame.stack.push(
+          interp.eval_destructure_assign(frame.ctx, pattern, value, frame.env),
         )
       }
       PreparePropertyCall(prop, loc) => {

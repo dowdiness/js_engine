@@ -843,8 +843,7 @@ fn Interpreter::eval_expr(
       )
     DestructureAssign(pattern, value_expr, _) => {
       let value = self.eval_expr(ctx, value_expr, env)
-      self.assign_pattern(ctx, pattern, value, env)
-      value
+      self.eval_destructure_assign(ctx, pattern, value, env)
     }
     OptionalMember(obj_expr, prop, loc) => {
       // obj?.prop - return undefined if obj is null/undefined

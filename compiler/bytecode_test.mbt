@@ -1893,6 +1893,65 @@ test "bytecode arguments callee points at the compiled function" {
 }
 
 ///|
+test "bytecode array destructuring assignment swaps identifiers" {
+  let src =
+    #|var a = 1;
+    #|var b = 2;
+    #|[a, b] = [b, a];
+    #|a + "," + b;
+  inspect(bytecode_compare(src), content="value:2,1")
+}
+
+///|
+test "bytecode object destructuring assignment handles rest properties" {
+  let src =
+    #|var a = 0;
+    #|var rest;
+    #|({ x: a, ...rest } = { x: 3, y: 4 });
+    #|a + ":" + rest.y + "," + ("x" in rest);
+  inspect(bytecode_compare(src), content="value:3:4,false")
+}
+
+///|
+test "bytecode destructuring assignment updates function bindings" {
+  let src =
+    #|function f() {
+    #|  var x = 0;
+    #|  [x] = [3];
+    #|  return x;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode destructuring assignment captures outer targets" {
+  let src =
+    #|function outer() {
+    #|  var x = 0;
+    #|  return function() {
+    #|    [x] = [x + 1];
+    #|    return x;
+    #|  };
+    #|}
+    #|var f = outer();
+    #|f() + "," + f();
+  inspect(bytecode_compare(src), content="value:1,2")
+}
+
+///|
+test "bytecode rejects destructuring assignment defaults until pattern expressions are compiled" {
+  let src =
+    #|var x = 0;
+    #|[x = 1] = [undefined];
+    #|x;
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: destructuring assignment pattern",
+  )
+}
+
+///|
 test "bytecode console log writes through shared host output helper" {
   let src =
     #|console.log(1, "two");

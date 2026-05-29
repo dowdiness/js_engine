@@ -147,8 +147,9 @@ The current high-level opcode surface covers:
   declarations but without lexical or function declarations
 - expressions: supported eager binary operations including `in` and
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`,
-  `typeof`, and identifier `delete`), jump-lowered `&&`, `||`, `??`, ternary
-  conditionals, comma expressions, template literals, tagged template calls
+  `typeof`, and identifier `delete`), simple destructuring assignments,
+  jump-lowered `&&`, `||`, `??`, ternary conditionals, comma expressions,
+  template literals, tagged template calls
   with plain/member/computed tags, regex literals,
   identifier/member/computed update, identifier and member/computed compound
   assignment, `new.target`, anonymous function naming
@@ -190,6 +191,7 @@ The compiler currently raises an `InternalError` prefixed
 - `labeled continue statement` (unresolved or non-loop label targets only)
 - `delete non-property operator` (for non-identifier/non-property operands)
 - `compound assignment target` (invalid/non-reference targets only)
+- `destructuring assignment pattern` (defaults, computed keys, or member targets)
 - `object literal accessor property`
 - `object literal method property`
 - `object literal property key`

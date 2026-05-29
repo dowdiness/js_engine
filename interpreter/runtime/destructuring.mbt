@@ -622,6 +622,18 @@ fn Interpreter::assign_pattern(
 }
 
 ///|
+pub fn Interpreter::eval_destructure_assign(
+  self : Interpreter,
+  ctx : ExecContext,
+  pattern : @ast.Pattern,
+  value : Value,
+  env : Environment,
+) -> Value raise Error {
+  self.assign_pattern(ctx, pattern, value, env)
+  value
+}
+
+///|
 fn Interpreter::assign_to_expr(
   self : Interpreter,
   ctx : ExecContext,
