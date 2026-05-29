@@ -410,12 +410,27 @@ test "bytecode rejects control-flow function declarations until block semantics 
 }
 
 ///|
-test "bytecode rejects in operator until object-key semantics are implemented" {
+test "bytecode in operator finds own array index property" {
   let src =
-    #|"x" in [];
+    #|var xs = [10];
+    #|0 in xs;
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode in operator walks array prototype chain" {
+  let src =
+    #|"push" in [];
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode in operator rejects primitive rhs like interpreter" {
+  let src =
+    #|"x" in 1;
   inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: in operator",
+    bytecode_compare(src),
+    content="throw:TypeError: Cannot use 'in' operator to search for 'x' in number",
   )
 }
 

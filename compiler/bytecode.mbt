@@ -803,7 +803,6 @@ fn BytecodeBuilder::compile_expr(
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
     Binary(NullishCoalesce, left, right, _) =>
       self.compile_nullish_coalesce(left, right)
-    Binary(In, _, _, _) => bytecode_unsupported("in operator")
     Binary(Instanceof, _, _, _) => bytecode_unsupported("instanceof operator")
     Binary(op, left, right, loc) => {
       self.compile_expr(left)

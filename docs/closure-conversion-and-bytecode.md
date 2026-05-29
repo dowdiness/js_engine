@@ -171,7 +171,6 @@ The compiler currently raises an `InternalError` prefixed
 - `for initializer`
 - `spread argument`
 - `arguments object`
-- `in operator`
 - `instanceof operator`
 - `named function expression`
 - `array hole or spread element`
