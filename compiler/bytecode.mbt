@@ -24,6 +24,7 @@ priv enum BytecodeInstr {
   JumpIfTrueKeep(Int)
   JumpIfNotNullishKeep(Int)
   MakeArray(Int)
+  MakeObject(Array[String])
   MakeFunction(Int)
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
@@ -375,11 +376,30 @@ fn collect_nested_function_refs_from_expr(
       for element in elements {
         collect_nested_function_refs_from_expr(element, refs)
       }
+    ObjectLit(props, _) => collect_nested_function_refs_from_props(props, refs)
     TemplateLit(_, exprs, _) =>
       for expr in exprs {
         collect_nested_function_refs_from_expr(expr, refs)
       }
     _ => ()
+  }
+}
+
+///|
+fn collect_nested_function_refs_from_props(
+  props : Array[@ast.Property],
+  refs : Map[String, Bool],
+) -> Unit {
+  for prop in props {
+    match prop.kind {
+      Spread => collect_nested_function_refs_from_expr(prop.key, refs)
+      _ => {
+        if prop.computed {
+          collect_nested_function_refs_from_expr(prop.key, refs)
+        }
+        collect_nested_function_refs_from_expr(prop.value, refs)
+      }
+    }
   }
 }
 
@@ -480,11 +500,30 @@ fn collect_name_refs_from_expr(
       for element in elements {
         collect_name_refs_from_expr(element, refs)
       }
+    ObjectLit(props, _) => collect_name_refs_from_props(props, refs)
     TemplateLit(_, exprs, _) =>
       for expr in exprs {
         collect_name_refs_from_expr(expr, refs)
       }
     _ => ()
+  }
+}
+
+///|
+fn collect_name_refs_from_props(
+  props : Array[@ast.Property],
+  refs : Map[String, Bool],
+) -> Unit {
+  for prop in props {
+    match prop.kind {
+      Spread => collect_name_refs_from_expr(prop.key, refs)
+      _ => {
+        if prop.computed {
+          collect_name_refs_from_expr(prop.key, refs)
+        }
+        collect_name_refs_from_expr(prop.value, refs)
+      }
+    }
   }
 }
 
@@ -805,6 +844,58 @@ fn BytecodeBuilder::compile_nullish_coalesce(
 }
 
 ///|
+fn bytecode_static_object_key(expr : @ast.Expr) -> String? {
+  match expr {
+    StringLit(s, _, _, _) => Some(s)
+    Ident(name, _) => Some(name)
+    NumberLit(n, _, _) => {
+      let i = n.to_int()
+      if i.to_double() == n {
+        Some(i.to_string())
+      } else {
+        Some(n.to_string())
+      }
+    }
+    _ => None
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_object_lit(
+  self : BytecodeBuilder,
+  props : Array[@ast.Property],
+) -> Unit raise Error {
+  let keys : Array[String] = []
+  for prop in props {
+    match prop.kind {
+      Init => ()
+      Get | Set => bytecode_unsupported("object literal accessor property")
+      Spread => bytecode_unsupported("object literal spread property")
+    }
+    if prop.computed {
+      bytecode_unsupported("object literal computed property")
+    }
+    if prop.is_method {
+      bytecode_unsupported("object literal method property")
+    }
+    let key = match bytecode_static_object_key(prop.key) {
+      Some(key) => key
+      None => {
+        bytecode_unsupported("object literal property key")
+        ""
+      }
+    }
+    if key == "__proto__" {
+      bytecode_unsupported("object literal __proto__ property")
+    }
+    self.compile_expr(prop.value)
+    let _ = self.emit(SetFunctionName(key))
+    keys.push(key)
+  }
+  let _ = self.emit(MakeObject(keys))
+}
+
+///|
 fn BytecodeBuilder::compile_expr(
   self : BytecodeBuilder,
   expr : @ast.Expr,
@@ -925,6 +1016,7 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(MakeFunction(fn_idx))
     }
     Grouping(inner, _) => self.compile_expr(inner)
+    ObjectLit(props, _) => self.compile_object_lit(props)
     ArrayLit(elements, _) => {
       for element in elements {
         match element {
@@ -1330,6 +1422,19 @@ fn run_bytecode_function(
       MakeArray(count) => {
         let elements = pop_args(frame, count)
         frame.stack.push(@runtime.make_array(elements))
+      }
+      MakeObject(keys) => {
+        let values = pop_args(frame, keys.length())
+        let properties : Map[String, Value] = {}
+        for i, key in keys {
+          properties[key] = values[i]
+        }
+        let prototype = frame.env.get("[[ObjectPrototype]]") catch {
+          _ => Value::Null
+        }
+        frame.stack.push(
+          @runtime.make_object(properties, prototype, None, "Object", {}, true),
+        )
       }
       MakeFunction(index) => {
         let child = frame.func_def.children[index]

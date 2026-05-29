@@ -146,8 +146,9 @@ The current high-level opcode surface covers:
   operations (`-`, `+`, `!`, `~`, and `void`), jump-lowered `&&`, `||`, `??`,
   ternary conditionals, comma expressions, template literals, regex literals,
   identifier update, anonymous function naming
-- object interaction: array creation without holes/spread, property get,
-  computed get, and property/computed assignment through runtime setters
+- object interaction: array creation without holes/spread, simple object
+  literals with static data properties, property get, computed get, and
+  property/computed assignment through runtime setters
 - calls and construction: ordinary calls, receiver-preserving
   property/computed calls, and non-spread `new` expressions
 - closures: function declarations and anonymous function expressions backed by
@@ -179,6 +180,12 @@ The compiler currently raises an `InternalError` prefixed
 - `typeof operator`
 - `named function expression`
 - `array hole or spread element`
+- `object literal accessor property`
+- `object literal spread property`
+- `object literal computed property`
+- `object literal method property`
+- `object literal __proto__ property`
+- `object literal property key`
 - `console member`
 - `direct eval call`
 - `expression kind`

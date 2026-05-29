@@ -76,6 +76,22 @@ test "bytecode lowers regex literals to a runtime regexp instruction" {
 }
 
 ///|
+test "bytecode lowers simple object literals to a make object instruction" {
+  let bytecode = parse_bytecode_for_wb("var o = { a: 1, b: 2 };")
+  let mut saw_object = false
+  for instr in bytecode.main.code {
+    match instr {
+      MakeObject(keys) => {
+        saw_object = true
+        json_inspect(keys, content=["a", "b"])
+      }
+      _ => ()
+    }
+  }
+  guard saw_object else { abort("expected make object instruction") }
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {
@@ -112,6 +128,21 @@ test "bytecode treats names inside nested template expressions as captured" {
     #|function outer() {
     #|  var x = 1;
     #|  return function() { return `${x}`; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
+test "bytecode treats names inside nested object literals as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() { return { value: x }.value; };
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)

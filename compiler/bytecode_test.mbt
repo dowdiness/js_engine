@@ -449,6 +449,74 @@ test "bytecode computed assignment captures outer key binding" {
 }
 
 ///|
+test "bytecode object literal evaluates static data properties" {
+  let src =
+    #|var o = { a: 1, b: 2 };
+    #|o.a + o.b;
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode object literal preserves value evaluation order" {
+  let src =
+    #|var log = "";
+    #|function side(x) { log = log + x; return x; }
+    #|var o = { a: side("a"), b: side("b") };
+    #|log + ":" + o.a + o.b;
+  inspect(bytecode_compare(src), content="value:ab:ab")
+}
+
+///|
+test "bytecode object literal uses the runtime object prototype" {
+  let src =
+    #|"toString" in {};
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode object literal sets anonymous function property names" {
+  let src =
+    #|var o = { f: function() {} };
+    #|o.f.name;
+  inspect(bytecode_compare(src), content="value:f")
+}
+
+///|
+test "bytecode object literal captures outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 7;
+    #|  return function() { return { value: x }.value; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:7")
+}
+
+///|
+test "bytecode rejects unsupported object literal forms explicitly" {
+  inspect(
+    bytecode_outcome("var k = 'x'; ({ [k]: 1 });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal computed property",
+  )
+  inspect(
+    bytecode_outcome("({ ...{ x: 1 } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal spread property",
+  )
+  inspect(
+    bytecode_outcome("({ get x() { return 1; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal accessor property",
+  )
+  inspect(
+    bytecode_outcome("({ m() { return 1; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal method property",
+  )
+  inspect(
+    bytecode_outcome("({ __proto__: null });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal __proto__ property",
+  )
+}
+
+///|
 test "bytecode new expression constructs bytecode functions" {
   let src =
     #|function C(x) {
