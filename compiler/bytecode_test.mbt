@@ -939,6 +939,49 @@ test "bytecode rejects direct eval until caller-env semantics are implemented" {
 }
 
 ///|
+test "bytecode block var declarations bind in the outer scope" {
+  let src =
+    #|var x = 1;
+    #|{
+    #|  var x = 2;
+    #|}
+    #|x;
+  inspect(bytecode_compare(src), content="value:2")
+}
+
+///|
+test "bytecode block var declarations use function-local slots" {
+  let src =
+    #|function f() {
+    #|  {
+    #|    var x = 3;
+    #|  }
+    #|  return x;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode block var declaration completion matches interpreter" {
+  inspect(bytecode_compare("{ var x = 1; }"), content="value:undefined")
+  inspect(bytecode_compare("{ var x = 1; 'done'; }"), content="value:done")
+}
+
+///|
+test "bytecode block var declarations can be captured" {
+  let src =
+    #|function outer() {
+    #|  {
+    #|    var x = 4;
+    #|  }
+    #|  return function() { return x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:4")
+}
+
+///|
 test "bytecode rejects block lexical declarations until block envs are implemented" {
   let src =
     #|var x = 1;

@@ -22,6 +22,21 @@ test "bytecode uses local slots for function params and vars" {
 }
 
 ///|
+test "bytecode plans block var declarations as function locals" {
+  let src =
+    #|function f() {
+    #|  { var x = 1; }
+    #|  return x;
+    #|}
+    #|f();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=["x"])
+}
+
+///|
 test "bytecode omits captured vars from local slots" {
   let src =
     #|function outer(a) {

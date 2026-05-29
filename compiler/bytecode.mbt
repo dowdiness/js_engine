@@ -683,9 +683,6 @@ fn BytecodeBuilder::compile_stmt(
       if stmts_have_function_decl(stmts) {
         bytecode_unsupported("block function declaration")
       }
-      if stmts_have_var_decl(stmts) {
-        bytecode_unsupported("block var declaration")
-      }
       self.emit_undefined_completion()
       for child in stmts {
         self.compile_stmt(child)
