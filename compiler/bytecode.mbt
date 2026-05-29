@@ -39,6 +39,8 @@ priv enum BytecodeInstr {
   GetComputed(@token.Loc)
   ReadPropertyForAssign(String, @token.Loc)
   ReadComputedForAssign(@token.Loc)
+  DropPropertyAssignReference
+  DropComputedAssignReference
   SetProperty(String, @token.Loc)
   SetComputed(@token.Loc)
   PreparePropertyCall(String, @token.Loc)
@@ -1132,6 +1134,83 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
 }
 
 ///|
+fn BytecodeBuilder::compile_property_logical_assign(
+  self : BytecodeBuilder,
+  op : @ast.CompoundOp,
+  obj : @ast.Expr,
+  prop : String,
+  value : @ast.Expr,
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  self.compile_expr(obj)
+  let _ = self.emit(ReadPropertyForAssign(prop, member_loc))
+  let keep_current = match op {
+    LogicalAndAssign => self.emit(JumpIfFalseKeep(-1))
+    LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
+    NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
+    _ => {
+      bytecode_unsupported("logical assignment operator")
+      -1
+    }
+  }
+  let _ = self.emit(Pop)
+  self.compile_expr(value)
+  let _ = self.emit(SetProperty(prop, loc))
+  let end_jump = self.emit(Jump(-1))
+  match op {
+    LogicalAndAssign =>
+      self.patch(keep_current, JumpIfFalseKeep(self.code.length()))
+    LogicalOrAssign =>
+      self.patch(keep_current, JumpIfTrueKeep(self.code.length()))
+    NullishAssign =>
+      self.patch(keep_current, JumpIfNotNullishKeep(self.code.length()))
+    _ => ()
+  }
+  let _ = self.emit(DropPropertyAssignReference)
+  self.patch(end_jump, Jump(self.code.length()))
+}
+
+///|
+fn BytecodeBuilder::compile_computed_logical_assign(
+  self : BytecodeBuilder,
+  op : @ast.CompoundOp,
+  obj : @ast.Expr,
+  key : @ast.Expr,
+  value : @ast.Expr,
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  self.compile_expr(obj)
+  self.compile_expr(key)
+  let _ = self.emit(ReadComputedForAssign(member_loc))
+  let keep_current = match op {
+    LogicalAndAssign => self.emit(JumpIfFalseKeep(-1))
+    LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
+    NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
+    _ => {
+      bytecode_unsupported("logical assignment operator")
+      -1
+    }
+  }
+  let _ = self.emit(Pop)
+  self.compile_expr(value)
+  let _ = self.emit(SetComputed(loc))
+  let end_jump = self.emit(Jump(-1))
+  match op {
+    LogicalAndAssign =>
+      self.patch(keep_current, JumpIfFalseKeep(self.code.length()))
+    LogicalOrAssign =>
+      self.patch(keep_current, JumpIfTrueKeep(self.code.length()))
+    NullishAssign =>
+      self.patch(keep_current, JumpIfNotNullishKeep(self.code.length()))
+    _ => ()
+  }
+  let _ = self.emit(DropComputedAssignReference)
+  self.patch(end_jump, Jump(self.code.length()))
+}
+
+///|
 fn BytecodeBuilder::compile_identifier_compound_assign(
   self : BytecodeBuilder,
   op : @ast.CompoundOp,
@@ -1171,6 +1250,13 @@ fn BytecodeBuilder::compile_property_compound_assign(
   member_loc : @token.Loc,
   loc : @token.Loc,
 ) -> Unit raise Error {
+  match op {
+    LogicalAndAssign | LogicalOrAssign | NullishAssign =>
+      return self.compile_property_logical_assign(
+        op, obj, prop, value, member_loc, loc,
+      )
+    _ => ()
+  }
   let bin_op = match @runtime.compound_assign_binary_op(op) {
     Some(bin_op) => bin_op
     None => {
@@ -1195,6 +1281,13 @@ fn BytecodeBuilder::compile_computed_compound_assign(
   member_loc : @token.Loc,
   loc : @token.Loc,
 ) -> Unit raise Error {
+  match op {
+    LogicalAndAssign | LogicalOrAssign | NullishAssign =>
+      return self.compile_computed_logical_assign(
+        op, obj, key, value, member_loc, loc,
+      )
+    _ => ()
+  }
   let bin_op = match @runtime.compound_assign_binary_op(op) {
     Some(bin_op) => bin_op
     None => {
@@ -1981,6 +2074,17 @@ fn run_bytecode_function(
         let current = interp.get_computed_property(obj, prop_key, loc)
         frame.stack.push(obj)
         frame.stack.push(prop_key)
+        frame.stack.push(current)
+      }
+      DropPropertyAssignReference => {
+        let current = frame.pop()
+        let _ = frame.pop()
+        frame.stack.push(current)
+      }
+      DropComputedAssignReference => {
+        let current = frame.pop()
+        let _ = frame.pop()
+        let _ = frame.pop()
         frame.stack.push(current)
       }
       SetProperty(prop, loc) => {

@@ -809,10 +809,64 @@ test "bytecode computed compound assignment captures outer key binding" {
 }
 
 ///|
-test "bytecode rejects non-identifier logical compound assignment targets" {
+test "bytecode member logical compound assignment preserves short-circuit semantics" {
   let src =
+    #|var log = "";
+    #|function rhs(v) { log = log + v; return v; }
+    #|var o = { a: 0, b: 1, c: null, d: "x", e: undefined };
+    #|var r1 = o.a &&= rhs("a");
+    #|var r2 = o.b &&= rhs("b");
+    #|var r3 = o.a ||= rhs("o");
+    #|var r4 = o.d ||= rhs("d");
+    #|var r5 = o.c ??= rhs("c");
+    #|var r6 = o.e ??= rhs("e");
+    #|var r7 = o.d ??= rhs("n");
+    #|r1 + "," + r2 + "," + r3 + "," + r4 + "," + r5 + "," + r6 + "," + r7 + "," + log + "," + o.a + "," + o.b + "," + o.c + "," + o.d + "," + o.e;
+  inspect(bytecode_compare(src), content="value:0,b,o,x,c,e,x,boce,o,b,c,x,e")
+}
+
+///|
+test "bytecode computed logical compound assignment canonicalizes key once" {
+  let src =
+    #|var log = "";
     #|var o = { x: 0 };
-    #|o.x ||= 1;
+    #|var key = { toString: function() { log = log + "k"; return "x"; } };
+    #|function rhs() { log = log + "r"; return 2; }
+    #|var a = o[key] ||= rhs();
+    #|var b = o[key] &&= rhs();
+    #|var c = o[key] ??= rhs();
+    #|a + "," + b + "," + c + ":" + o.x + ":" + log;
+  inspect(bytecode_compare(src), content="value:2,2,2:2:krkrk")
+}
+
+///|
+test "bytecode member logical compound assignment null receiver throws like interpreter" {
+  let src =
+    #|var target = null;
+    #|target.x ||= 1;
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Cannot read properties of null (reading 'x')",
+  )
+}
+
+///|
+test "bytecode computed logical compound assignment captures outer key binding" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return function(o) { o[key] ||= 3; return o.x; };
+    #|}
+    #|outer()({ x: 0 });
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode rejects invalid compound assignment targets" {
+  let src =
+    #|var x = 1;
+    #|var y = 2;
+    #|(x + y) += 1;
   inspect(
     bytecode_outcome(src),
     content="error:InternalError: bytecode prototype unsupported: compound assignment target",

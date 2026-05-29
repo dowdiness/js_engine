@@ -148,7 +148,7 @@ The current high-level opcode surface covers:
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`, and
   `typeof`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
   expressions, template literals, regex literals, identifier/member/computed
-  update, identifier and non-logical member/computed compound assignment,
+  update, identifier and member/computed compound assignment,
   anonymous function naming
 - object interaction: array creation including holes but without spread, simple
   object literals with static data properties, property get, computed get,
@@ -186,7 +186,7 @@ The compiler currently raises an `InternalError` prefixed
 - `arguments object`
 - `delete non-property operator`
 - `named function expression`
-- `compound assignment target`
+- `compound assignment target` (invalid/non-reference targets only)
 - `array spread element`
 - `object literal accessor property`
 - `object literal spread property`

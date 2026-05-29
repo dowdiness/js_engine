@@ -533,6 +533,44 @@ test "bytecode lowers computed compound assignments through canonicalized keys" 
 }
 
 ///|
+test "bytecode lowers logical member compound assignments with reference cleanup" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { x: 0 }; o.x ||= 1; o['x'] &&= 2;",
+  )
+  let mut saw_or_guard = false
+  let mut saw_and_guard = false
+  let mut saw_property_cleanup = false
+  let mut saw_computed_cleanup = false
+  for instr in bytecode.main.code {
+    match instr {
+      JumpIfTrueKeep(target) => {
+        if target == -1 {
+          abort("unpatched property logical assignment guard")
+        }
+        saw_or_guard = true
+      }
+      JumpIfFalseKeep(target) => {
+        if target == -1 {
+          abort("unpatched computed logical assignment guard")
+        }
+        saw_and_guard = true
+      }
+      DropPropertyAssignReference => saw_property_cleanup = true
+      DropComputedAssignReference => saw_computed_cleanup = true
+      _ => ()
+    }
+  }
+  guard saw_or_guard else { abort("expected logical-or guard") }
+  guard saw_and_guard else { abort("expected logical-and guard") }
+  guard saw_property_cleanup else {
+    abort("expected property reference cleanup")
+  }
+  guard saw_computed_cleanup else {
+    abort("expected computed reference cleanup")
+  }
+}
+
+///|
 test "bytecode treats names inside nested computed compound assignments as captured" {
   let src =
     #|function outer() {
