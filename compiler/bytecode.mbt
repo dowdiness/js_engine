@@ -20,6 +20,7 @@ priv enum BytecodeInstr {
   DeleteProperty(String)
   DeleteComputed
   AppendTemplate(String)
+  MakeTemplateObject(Array[String])
   MakeRegExp(String, String)
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
@@ -576,6 +577,12 @@ fn collect_nested_function_refs_from_expr(
       for expr in exprs {
         collect_nested_function_refs_from_expr(expr, refs)
       }
+    TaggedTemplate(tag, _, exprs, _) => {
+      collect_nested_function_refs_from_expr(tag, refs)
+      for expr in exprs {
+        collect_nested_function_refs_from_expr(expr, refs)
+      }
+    }
     SpreadExpr(inner, _) => collect_nested_function_refs_from_expr(inner, refs)
     _ => ()
   }
@@ -713,6 +720,12 @@ fn collect_name_refs_from_expr(
       for expr in exprs {
         collect_name_refs_from_expr(expr, refs)
       }
+    TaggedTemplate(tag, _, exprs, _) => {
+      collect_name_refs_from_expr(tag, refs)
+      for expr in exprs {
+        collect_name_refs_from_expr(expr, refs)
+      }
+    }
     SpreadExpr(inner, _) => collect_name_refs_from_expr(inner, refs)
     _ => ()
   }
@@ -1744,6 +1757,19 @@ fn BytecodeBuilder::compile_expr(
         let _ = self.emit(AppendTemplate(tail))
       }
     }
+    TaggedTemplate(Member(_, _, _), _, _, _)
+    | TaggedTemplate(ComputedMember(_, _, _), _, _, _)
+    | TaggedTemplate(OptionalMember(_, _, _), _, _, _)
+    | TaggedTemplate(OptionalComputedMember(_, _, _), _, _, _) =>
+      bytecode_unsupported("tagged template member call")
+    TaggedTemplate(tag, strings, exprs, loc) => {
+      self.compile_expr(tag)
+      let _ = self.emit(MakeTemplateObject(strings))
+      for expr in exprs {
+        self.compile_expr(expr)
+      }
+      let _ = self.emit(Call(1 + exprs.length(), loc))
+    }
     RegexLit(pattern, flags, _) => {
       let _ = self.emit(MakeRegExp(pattern, flags))
     }
@@ -2296,6 +2322,8 @@ fn run_bytecode_function(
             )
         }
       }
+      MakeTemplateObject(strings) =>
+        frame.stack.push(@runtime.make_tagged_template_object(strings))
       MakeRegExp(pattern, flags) =>
         frame.stack.push(
           (interp.stdlib_hooks.make_regexp_object)(

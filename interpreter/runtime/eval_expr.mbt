@@ -129,6 +129,21 @@ pub fn Interpreter::to_object_literal_property_key(
 }
 
 ///|
+pub fn make_tagged_template_object(strings : Array[String]) -> Value {
+  let raw_vals : Array[Value] = []
+  for s in strings {
+    raw_vals.push(String_(s))
+  }
+  let raw_arr = make_array(raw_vals)
+  let template_obj = make_array(raw_vals.copy())
+  match template_obj {
+    Array(data) => set_array_named_prop(data, "raw", raw_arr)
+    _ => ()
+  }
+  template_obj
+}
+
+///|
 pub fn apply_object_literal_data_property(
   target : Value,
   key : Value,
@@ -675,20 +690,8 @@ fn Interpreter::eval_expr(
     }
     TaggedTemplate(tag_expr, strings, exprs, loc) => {
       let tag = self.eval_expr(ctx, tag_expr, env)
-      // Build the raw array (same as cooked for now - raw doesn't process escapes)
-      let raw_vals : Array[Value] = []
-      for s in strings {
-        raw_vals.push(String_(s))
-      }
-      let raw_arr = make_array(raw_vals)
-      // Template strings objects are array-like and inherit Array methods.
-      let template_obj = make_array(raw_vals.copy())
-      match template_obj {
-        Array(data) => set_array_named_prop(data, "raw", raw_arr)
-        _ => ()
-      }
       // Build args: [templateObj, ...substitutions]
-      let args : Array[Value] = [template_obj]
+      let args : Array[Value] = [make_tagged_template_object(strings)]
       for e in exprs {
         args.push(self.eval_expr(ctx, e, env))
       }

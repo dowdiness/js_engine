@@ -167,6 +167,8 @@ pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, Pro
 
 pub fn make_plain_object() -> Value
 
+pub fn make_tagged_template_object(Array[String]) -> Value
+
 pub fn mark_as_method(Value) -> Value
 
 pub fn new_promise_data() -> PromiseData

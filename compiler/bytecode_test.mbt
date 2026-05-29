@@ -194,6 +194,51 @@ test "bytecode template literal captures outer bindings" {
 }
 
 ///|
+test "bytecode tagged template passes template object and substitutions" {
+  let src =
+    #|function tag(strings, a, b) {
+    #|  return strings[0] + "," + strings[1] + "," + strings[2] + ":" + strings.raw[0] + ":" + a + ":" + b;
+    #|}
+    #|tag`a${1 + 1}b${"x"}c`;
+  inspect(bytecode_compare(src), content="value:a,b,c:a:2:x")
+}
+
+///|
+test "bytecode tagged template evaluates tag before substitutions" {
+  let src =
+    #|var log = "";
+    #|function getTag() {
+    #|  log = log + "t";
+    #|  return function(strings, value) { return log + ":" + value; };
+    #|}
+    #|getTag()`a${(log = log + "e", "v")}b`;
+  inspect(bytecode_compare(src), content="value:te:v")
+}
+
+///|
+test "bytecode tagged template captures tag and substitution bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 3;
+    #|  function tag(strings, value) { return value; }
+    #|  return function() { return tag`${x}`; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode rejects member tagged templates until receiver semantics are shared" {
+  let src =
+    #|var obj = { tag: function(strings) { return this === obj; } };
+    #|obj.tag`x`;
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: tagged template member call",
+  )
+}
+
+///|
 test "bytecode regex literal uses runtime regexp semantics" {
   let src =
     #|var r = /a+/;

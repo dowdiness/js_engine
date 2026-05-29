@@ -147,7 +147,8 @@ The current high-level opcode surface covers:
 - expressions: supported eager binary operations including `in` and
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`,
   `typeof`, and identifier `delete`), jump-lowered `&&`, `||`, `??`, ternary
-  conditionals, comma expressions, template literals, regex literals,
+  conditionals, comma expressions, template literals, non-member tagged
+  template calls, regex literals,
   identifier/member/computed update, identifier and member/computed compound
   assignment, anonymous function naming
 - object interaction: array creation including holes and spread, simple
@@ -191,6 +192,7 @@ The compiler currently raises an `InternalError` prefixed
 - `object literal method property`
 - `object literal property key`
 - `direct eval call`
+- `tagged template member call`
 - `expression kind`
 - `rest parameter`
 - `default or destructuring parameter`

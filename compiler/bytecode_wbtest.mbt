@@ -251,6 +251,41 @@ test "bytecode lowers template literals to append instructions" {
 }
 
 ///|
+test "bytecode lowers tagged templates to template-object calls" {
+  let bytecode = parse_bytecode_for_wb("tag`a${x}b`;")
+  let mut saw_template_object = false
+  let mut saw_call = false
+  for instr in bytecode.main.code {
+    match instr {
+      MakeTemplateObject(strings) => {
+        saw_template_object = true
+        json_inspect(strings, content=["a", "b"])
+      }
+      Call(2, _) => saw_call = true
+      _ => ()
+    }
+  }
+  guard saw_template_object else { abort("expected tagged template object") }
+  guard saw_call else { abort("expected tagged template call") }
+}
+
+///|
+test "bytecode treats names inside nested tagged templates as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  function tag(strings, value) { return value; }
+    #|  return function() { return tag`${x}`; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers regex literals to a runtime regexp instruction" {
   let bytecode = parse_bytecode_for_wb("var r = /a/i;")
   let mut saw_regexp = false
