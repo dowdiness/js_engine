@@ -41,6 +41,16 @@ pub fn eval_this_value(env : Environment) -> Value raise Error {
 }
 
 ///|
+/// Resolve `new.target` from the current function environment. Scripts and
+/// ordinary calls without a constructor binding match the tree-walker fallback
+/// to `undefined`.
+pub fn eval_new_target_value(env : Environment) -> Value {
+  env.get("<new.target>") catch {
+    _ => Undefined
+  }
+}
+
+///|
 /// Evaluate an object-literal property's value. For method-shorthand
 /// props the returned function must not carry the §15.2.5 self-name
 /// binding (methods have no FunctionExpressionName), so we strip it
@@ -1166,11 +1176,7 @@ fn Interpreter::eval_expr(
         _ => self.get_computed_property(super_proto, key, loc)
       }
     }
-    NewTargetExpr(_) =>
-      // new.target - returns the constructor called with new, or undefined
-      env.get("<new.target>") catch {
-        _ => Undefined
-      }
+    NewTargetExpr(_) => eval_new_target_value(env)
   }
 }
 

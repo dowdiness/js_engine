@@ -1609,6 +1609,37 @@ test "bytecode strict function call keeps undefined this" {
 }
 
 ///|
+test "bytecode new.target sees constructor calls" {
+  let src =
+    #|function C() {
+    #|  this.isCtor = new.target === C;
+    #|}
+    #|new C().isCtor;
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode new.target is undefined in ordinary calls" {
+  let src =
+    #|function f() {
+    #|  return new.target === undefined;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode new.target respects Reflect.construct newTarget" {
+  let src =
+    #|function F() {
+    #|  return new.target;
+    #|}
+    #|function G() {}
+    #|Reflect.construct(F, [], G) === G;
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
 test "bytecode named function expressions bind self name inside function only" {
   let src =
     #|var f = function g(n) {

@@ -1352,7 +1352,14 @@ fn make_compiled_func(
           if constructable && context.is_constructing() {
             let new_obj = make_compiled_constructor_instance(proto)
             let result = call_compiled_func(
-              interp, new_obj, args, params, closure, strict, body,
+              interp,
+              new_obj,
+              args,
+              params,
+              closure,
+              strict,
+              body,
+              new_target=context.new_target(),
             )
             if is_constructor_return_object(result) {
               result
@@ -1446,6 +1453,7 @@ fn call_compiled_func(
   closure : Environment,
   strict : Bool,
   body : CompiledBody,
+  new_target? : Value? = None,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
@@ -1462,7 +1470,11 @@ fn call_compiled_func(
       }
     }
     func_env.def("this", effective_this, BindingKind::LetBinding)
-    func_env.def("<new.target>", Value::Undefined, BindingKind::LetBinding)
+    func_env.def(
+      "<new.target>",
+      new_target.unwrap_or(Value::Undefined),
+      BindingKind::LetBinding,
+    )
     bind_simple_params(func_env, params, args)
     reduce_body_signal((body.0)(interp, func_ctx, func_env))
   } catch {

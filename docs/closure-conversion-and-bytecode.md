@@ -150,7 +150,7 @@ The current high-level opcode surface covers:
   conditionals, comma expressions, template literals, tagged template calls
   with plain/member/computed tags, regex literals,
   identifier/member/computed update, identifier and member/computed compound
-  assignment, anonymous function naming
+  assignment, `new.target`, anonymous function naming
 - object interaction: array creation including holes and spread, simple
   object literals with static and computed data properties, `__proto__`
   prototype overrides, and spread properties, property

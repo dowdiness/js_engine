@@ -3,6 +3,7 @@ priv enum BytecodeInstr {
   LoadConst(Value)
   LoadUndefined
   LoadThis
+  LoadNewTarget
   LoadConsoleMember(String)
   LoadName(String)
   LoadAssignmentName(String)
@@ -1685,6 +1686,9 @@ fn BytecodeBuilder::compile_expr(
     ThisExpr(_) => {
       let _ = self.emit(LoadThis)
     }
+    NewTargetExpr(_) => {
+      let _ = self.emit(LoadNewTarget)
+    }
     Ident("arguments", _) => bytecode_unsupported("arguments object")
     Ident(name, _) => self.compile_identifier_load(name)
     Binary(And, left, right, _) => self.compile_logical_and(left, right)
@@ -2244,6 +2248,8 @@ fn run_bytecode_function(
       LoadConst(value) => frame.stack.push(value)
       LoadUndefined => frame.stack.push(Value::Undefined)
       LoadThis => frame.stack.push(@runtime.eval_this_value(frame.env))
+      LoadNewTarget =>
+        frame.stack.push(@runtime.eval_new_target_value(frame.env))
       LoadConsoleMember(prop) =>
         frame.stack.push(interp.get_console_member(prop))
       LoadName(name) =>

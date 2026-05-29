@@ -515,6 +515,24 @@ test "bytecode lowers this expressions to a dedicated load instruction" {
 }
 
 ///|
+test "bytecode lowers new.target expressions to a dedicated load instruction" {
+  let bytecode = parse_bytecode_for_wb(
+    "function f() { return new.target; } new f();",
+  )
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let mut saw_new_target = false
+  for instr in bytecode.main.children[0].code {
+    match instr {
+      LoadNewTarget => saw_new_target = true
+      _ => ()
+    }
+  }
+  guard saw_new_target else { abort("expected load new.target instruction") }
+}
+
+///|
 test "bytecode lowers console members to a shared host helper load" {
   let bytecode = parse_bytecode_for_wb("console.log(1);")
   let mut saw_console = false

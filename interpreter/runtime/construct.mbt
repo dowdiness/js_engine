@@ -923,7 +923,8 @@ fn Interpreter::construct_value_impl(
           )
         }
         Some(NativeCallable(_, func)) => func(args)
-        Some(NativeCallableWithContext(_, func)) => func(Construct, args)
+        Some(NativeCallableWithContext(_, func)) =>
+          func(ConstructWithTarget(new_target), args)
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
@@ -946,7 +947,7 @@ fn Interpreter::construct_value_impl(
               message=format_loc_context(_name + " is not a constructor", loc),
             )
           }
-          func(self, Construct, Undefined, args)
+          func(self, ConstructWithTarget(new_target), Undefined, args)
         }
         Some(MethodCallable(name, _)) =>
           raise @errors.TypeError(

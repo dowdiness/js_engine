@@ -49,6 +49,8 @@ pub fn eval_delete_identifier(Interpreter, ExecContext, Environment, String) -> 
 
 pub fn eval_delete_property(Interpreter, Value, String, Bool) -> Value raise
 
+pub fn eval_new_target_value(Environment) -> Value
+
 pub fn eval_this_value(Environment) -> Value raise
 
 pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise
@@ -320,8 +322,10 @@ pub impl Show for BindingKind
 pub(all) enum CallContext {
   Call
   Construct
+  ConstructWithTarget(Value)
 }
 pub fn CallContext::is_constructing(Self) -> Bool
+pub fn CallContext::new_target(Self) -> Value?
 
 pub(all) enum Callable {
   UserFunc(FuncData)
