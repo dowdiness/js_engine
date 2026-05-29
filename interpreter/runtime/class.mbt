@@ -173,7 +173,13 @@ fn Interpreter::create_class(
               validate_function_signature(true, None, param_names, strict_body)
               // Wrap plain names as Param objects (no defaults/rest/patterns)
               let params : Array[@ast.Param] = param_names.map(fn(n) {
-                ({ name: n, default_val: None, pattern: None } : @ast.Param)
+                (
+                  {
+                    name: n,
+                    default_val: None,
+                    pattern: None,
+                    is_rest_pattern: false,
+                  } : @ast.Param)
               })
               ctor_fn = Some((params, None, strict_body))
               ctor_param_count = param_names.length()
@@ -189,14 +195,13 @@ fn Interpreter::create_class(
               )
               ctor_fn = Some((params, rest, strict_body))
               // ES262 §10.2.4 ExpectedArgumentCount: count params before
-              // first default or rest. See factories.mbt for the
-              // destructuring-rest note.
+              // first default or rest.
               let mut count = 0
               for p in params {
                 if p.default_val is Some(_) {
                   break
                 }
-                if rest is Some(rn) && p.name == rn {
+                if p.is_rest_pattern {
                   break
                 }
                 count += 1

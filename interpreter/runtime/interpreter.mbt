@@ -333,26 +333,76 @@ fn check_duplicate_params(params : Array[String]) -> Unit raise Error {
 
 ///|
 /// Check for duplicate parameter names from Param array (extended params).
+fn params_have_rest_pattern(params : Array[@ast.Param]) -> Bool {
+  for p in params {
+    if p.is_rest_pattern {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn check_duplicate_binding_name(
+  seen : Map[String, Bool],
+  name : String,
+) -> Unit raise Error {
+  if seen.contains(name) {
+    raise @errors.SyntaxError(
+      message="Duplicate parameter name not allowed in this context",
+    )
+  }
+  seen[name] = true
+}
+
+///|
+fn check_duplicate_pattern_binding_names(
+  pattern : @ast.Pattern,
+  seen : Map[String, Bool],
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) => check_duplicate_binding_name(seen, name)
+    DefaultPat(inner, _) => check_duplicate_pattern_binding_names(inner, seen)
+    AssignTarget(_) => ()
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        check_duplicate_pattern_binding_names(prop.value, seen)
+      }
+      match rest {
+        Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
 fn check_duplicate_params_ext(
   params : Array[@ast.Param],
   rest_param : String?,
 ) -> Unit raise Error {
   let seen : Map[String, Bool] = {}
+  let has_rest_pattern = params_have_rest_pattern(params)
   for p in params {
-    if seen.contains(p.name) {
-      raise @errors.SyntaxError(
-        message="Duplicate parameter name not allowed in this context",
-      )
+    match p.pattern {
+      Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
+      None => check_duplicate_binding_name(seen, p.name)
     }
-    seen[p.name] = true
   }
   match rest_param {
-    Some(rn) =>
-      if seen.contains(rn) {
-        raise @errors.SyntaxError(
-          message="Duplicate parameter name not allowed in this context",
-        )
-      }
+    Some(rn) => if !has_rest_pattern { check_duplicate_binding_name(seen, rn) }
     None => ()
   }
 }
@@ -456,15 +506,15 @@ fn validate_strict_param_binding_names_ext(
   params : Array[@ast.Param],
   rest_param : String?,
 ) -> Unit raise Error {
+  let has_rest_pattern = params_have_rest_pattern(params)
   for p in params {
-    validate_strict_binding_name(p.name)
     match p.pattern {
       Some(pat) => validate_strict_pattern_binding_names(pat)
-      None => ()
+      None => validate_strict_binding_name(p.name)
     }
   }
   match rest_param {
-    Some(rn) => validate_strict_binding_name(rn)
+    Some(rn) => if !has_rest_pattern { validate_strict_binding_name(rn) }
     None => ()
   }
 }
@@ -523,6 +573,20 @@ pub fn validate_function_constructor_params(
       None => ()
     }
   }
+}
+
+///|
+pub fn validate_function_constructor_params_ext(
+  params : Array[@ast.Param],
+  rest_param : String?,
+  body : Array[@ast.Stmt],
+) -> Unit raise Error {
+  if has_use_strict(body) {
+    raise @errors.SyntaxError(
+      message="Illegal 'use strict' directive in function with non-simple parameter list",
+    )
+  }
+  check_duplicate_params_ext(params, rest_param)
 }
 
 ///|

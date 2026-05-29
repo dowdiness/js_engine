@@ -164,6 +164,7 @@ pub(all) struct Param {
   name : String
   default_val : Expr?
   pattern : Pattern? // For destructuring parameters like ({x, y}) or ([a, b])
+  is_rest_pattern : Bool // true only for destructuring rest parameters like ...[x]
 } derive(Debug, Eq)
 
 ///|
@@ -301,96 +302,96 @@ pub(all) struct Program {
 // Show impls delegating to Debug (derive(Show) is deprecated in MoonBit v0.9)
 
 ///|
-pub impl Show for BinOp with output(self, logger) {
+pub impl Show for BinOp with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for UnaryOp with output(self, logger) {
+pub impl Show for UnaryOp with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for UpdateOp with output(self, logger) {
+pub impl Show for UpdateOp with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for CompoundOp with output(self, logger) {
+pub impl Show for CompoundOp with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for VarKind with output(self, logger) {
+pub impl Show for VarKind with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for PropKind with output(self, logger) {
+pub impl Show for PropKind with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for Property with output(self, logger) {
+pub impl Show for Property with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for SwitchCase with output(self, logger) {
+pub impl Show for SwitchCase with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for Expr with output(self, logger) {
+pub impl Show for Expr with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for Param with output(self, logger) {
+pub impl Show for Param with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for Pattern with output(self, logger) {
+pub impl Show for Pattern with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for PropPat with output(self, logger) {
+pub impl Show for PropPat with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for ImportSpecifier with output(self, logger) {
+pub impl Show for ImportSpecifier with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for ExportSpecifier with output(self, logger) {
+pub impl Show for ExportSpecifier with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for ClassMethod with output(self, logger) {
+pub impl Show for ClassMethod with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for ClassField with output(self, logger) {
+pub impl Show for ClassField with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for ClassMember with output(self, logger) {
+pub impl Show for ClassMember with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for Stmt with output(self, logger) {
+pub impl Show for Stmt with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
 ///|
-pub impl Show for Program with output(self, logger) {
+pub impl Show for Program with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }

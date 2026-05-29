@@ -1792,6 +1792,9 @@ fn arrow_ext_length(params : Array[@ast.Param]) -> Int {
     if param.default_val is Some(_) {
       break
     }
+    if param.is_rest_pattern {
+      break
+    }
     length += 1
   }
   length

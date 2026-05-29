@@ -11406,6 +11406,64 @@ test "function length: destructuring rest halts count across factories" {
 }
 
 ///|
+test "destructuring param name collision does not masquerade as rest" {
+  let src =
+    #|function f({a}, ...$0) {
+    #|  console.log(a);
+    #|  console.log($0.length);
+    #|  console.log($0[0].b);
+    #|}
+    #|f({a: "first"}, {b: "second"}, {b: "third"});
+  let output = run_output(src)
+  json_inspect(output, content=["first", "2", "second"])
+}
+
+///|
+test "function length: ordinary $rest before destructuring rest counts normally" {
+  let src =
+    #|function f($rest, ...[b]) {}
+    #|console.log(f.length);
+    #|function* g($rest, ...[b]) {}
+    #|console.log(g.length);
+    #|const arrow = ($rest, ...[b]) => {};
+    #|console.log(arrow.length);
+    #|async function af($rest, ...[b]) {}
+    #|console.log(af.length);
+    #|async function* ag($rest, ...[b]) {}
+    #|console.log(ag.length);
+    #|class C { constructor($rest, ...[b]) {} }
+    #|console.log(C.length);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "1", "1", "1", "1", "1"])
+}
+
+///|
+test "dynamic function constructors accept destructuring rest" {
+  let src =
+    #|let f = new Function("a", "...[b]", "return a + ':' + b;");
+    #|console.log(f("first", "second", "third"));
+    #|let GF = (function*(){}).constructor;
+    #|let g = new GF("a", "...[b]", "yield a + ':' + b;");
+    #|console.log(g("first", "second", "third").next().value);
+    #|let AF = (async function(){}).constructor;
+    #|let af = new AF("a", "...[b]", "return a + ':' + b;");
+    #|af("first", "second", "third").then(function(v) { console.log(v); });
+  let output = run_output_async(src)
+  json_inspect(output, content=["first:second", "first:second", "first:second"])
+}
+
+///|
+test "class constructor accepts destructuring rest" {
+  let src =
+    #|class C {
+    #|  constructor(a, ...[b]) { this.value = a + ':' + b; }
+    #|}
+    #|console.log(new C("first", "second", "third").value);
+  let output = run_output(src)
+  json_inspect(output, content=["first:second"])
+}
+
+///|
 test "class constructor length: stops at first default" {
   let src =
     #|class A { constructor(a, b = 1) {} }

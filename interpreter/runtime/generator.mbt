@@ -296,10 +296,7 @@ pub fn setup_generator_function_constructor(
           GeneratorDeclExt(_, params, rest_param, body, _) => {
             // Validate static early errors against the function's strict context.
             let body_strict = has_use_strict(body)
-            let param_names : Array[String] = params.map(p => p.name)
-            validate_function_constructor_params(
-              false, param_names, rest_param, body,
-            )
+            validate_function_constructor_params_ext(params, rest_param, body)
             interp.validate_block_early_errors(body, body_strict)
             return interp.make_generator_function_ext(
               Some("anonymous"),
@@ -491,13 +488,13 @@ fn Interpreter::make_generator_function_ext(
     None => ""
   }
   // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-  // default or rest. See factories.mbt for the destructuring-rest note.
+  // default or rest.
   let mut expected_arg_count = 0
   for p in params {
     if p.default_val is Some(_) {
       break
     }
-    if rest_param is Some(rn) && p.name == rn {
+    if p.is_rest_pattern {
       break
     }
     expected_arg_count += 1
@@ -602,7 +599,7 @@ fn create_generator_instance(
         let mut effective_count = 0
         for i = 0; i < pext.length(); i = i + 1 {
           let param = pext[i]
-          if rest_param is Some(rn) && param.name == rn {
+          if param.is_rest_pattern {
             continue
           }
           let val : Value = if effective_count < args.length() &&
@@ -624,11 +621,10 @@ fn create_generator_instance(
                 }
             }
           }
-          func_env.def_parameter(param.name, val)
           match param.pattern {
             Some(pat) =>
               interp.bind_pattern(pat, val, func_env, LetBinding, ctx=setup_ctx)
-            None => ()
+            None => func_env.def_parameter(param.name, val)
           }
           effective_count = effective_count + 1
         }
@@ -639,9 +635,9 @@ fn create_generator_instance(
               rest_elems.push(args[i])
             }
             let rest_val = make_array(rest_elems)
-            func_env.def_parameter(rp, rest_val)
+            let mut bound_rest_pattern = false
             for p in pext {
-              if p.name == rp {
+              if p.is_rest_pattern {
                 match p.pattern {
                   Some(pat) =>
                     interp.bind_pattern(
@@ -653,8 +649,12 @@ fn create_generator_instance(
                     )
                   None => ()
                 }
+                bound_rest_pattern = true
                 break
               }
+            }
+            if !bound_rest_pattern {
+              func_env.def_parameter(rp, rest_val)
             }
           }
           None => ()

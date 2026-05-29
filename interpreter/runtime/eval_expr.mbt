@@ -722,13 +722,13 @@ fn Interpreter::eval_expr(
         is_accessor: false,
       }
       // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-      // default or rest. See factories.mbt for the destructuring-rest note.
+      // default or rest.
       let mut arrow_len = 0
       for p in params {
         if p.default_val is Some(_) {
           break
         }
-        if rest_param is Some(rn) && p.name == rn {
+        if p.is_rest_pattern {
           break
         }
         arrow_len += 1

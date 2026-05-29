@@ -153,6 +153,7 @@ pub(all) struct Param {
   name : String
   default_val : Expr?
   pattern : Pattern?
+  is_rest_pattern : Bool
 } derive(Eq, @debug.Debug)
 pub impl Show for Param
 
