@@ -53,6 +53,7 @@ priv enum BytecodeInstr {
   MakeFunction(Int)
   MakeNamedFunction(Int, String)
   MakeMethodFunction(Int)
+  MakeComputedMethodFunction(Int)
   MakeArrowFunction(Int)
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
@@ -2242,6 +2243,7 @@ fn bytecode_method_body_references_name(
 fn BytecodeBuilder::compile_object_method(
   self : BytecodeBuilder,
   prop : @ast.Property,
+  computed_key_on_stack? : Bool = false,
 ) -> Unit raise Error {
   let fn_idx = match prop.value {
     FuncExpr(Some(name), params, body, _) => {
@@ -2267,7 +2269,11 @@ fn BytecodeBuilder::compile_object_method(
       0
     }
   }
-  let _ = self.emit(MakeMethodFunction(fn_idx))
+  if computed_key_on_stack {
+    let _ = self.emit(MakeComputedMethodFunction(fn_idx))
+  } else {
+    let _ = self.emit(MakeMethodFunction(fn_idx))
+  }
 }
 
 ///|
@@ -2290,7 +2296,11 @@ fn BytecodeBuilder::compile_object_lit(
       }
       if prop.is_method {
         if prop.computed {
-          bytecode_unsupported("object literal computed method property")
+          self.compile_expr(prop.key)
+          let _ = self.emit(ToObjectLiteralPropertyKey)
+          self.compile_object_method(prop, computed_key_on_stack=true)
+          let _ = self.emit(ObjectSetComputed)
+          continue
         }
         let key = match bytecode_static_object_key(prop.key) {
           Some(key) => key
@@ -3357,6 +3367,18 @@ fn run_bytecode_function(
       MakeMethodFunction(index) => {
         let child = frame.func_def.children[index]
         let home_object = frame.peek()
+        frame.stack.push(
+          make_bytecode_method_func(child, frame.env, frame.ctx, home_object),
+        )
+      }
+      MakeComputedMethodFunction(index) => {
+        let child = frame.func_def.children[index]
+        guard frame.stack.length() >= 2 else {
+          raise @errors.InternalError(
+            message="bytecode computed method missing home object",
+          )
+        }
+        let home_object = frame.stack[frame.stack.length() - 2]
         frame.stack.push(
           make_bytecode_method_func(child, frame.env, frame.ctx, home_object),
         )

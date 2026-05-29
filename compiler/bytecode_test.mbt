@@ -1509,6 +1509,40 @@ test "bytecode object literal methods do not expose prototype properties" {
 }
 
 ///|
+test "bytecode object literal computed methods preserve receiver and inferred names" {
+  let src =
+    #|var key = "m";
+    #|var o = {
+    #|  x: 4,
+    #|  [key]() { return this.x + ":" + this.m.name; }
+    #|};
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:4:m")
+}
+
+///|
+test "bytecode object literal computed methods canonicalize keys before later values" {
+  let src =
+    #|var log = "";
+    #|var key = { toString: function() { log = log + "k"; return "m"; } };
+    #|var o = {
+    #|  [key]() { return log; },
+    #|  after: (log = log + "v", 0)
+    #|};
+    #|o.m() + ":" + log;
+  inspect(bytecode_compare(src), content="value:kv:kv")
+}
+
+///|
+test "bytecode object literal computed symbol methods" {
+  let src =
+    #|var sym = Symbol("m");
+    #|var o = { [sym]() { return this === o; } };
+    #|o[sym].name + ":" + o[sym]();
+  inspect(bytecode_compare(src), content="value:[m]:true")
+}
+
+///|
 test "bytecode rejects __proto__ methods until object method semantics are settled" {
   inspect(
     bytecode_outcome("({ __proto__() { return 7; } });"),
@@ -1646,10 +1680,6 @@ test "bytecode rejects unsupported object literal forms explicitly" {
   inspect(
     bytecode_outcome("({ get x() { return 1; } });"),
     content="error:InternalError: bytecode prototype unsupported: object literal accessor property",
-  )
-  inspect(
-    bytecode_outcome("({ ['m']() { return 1; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal computed method property",
   )
   inspect(
     bytecode_outcome("({ m() { return m; } });"),

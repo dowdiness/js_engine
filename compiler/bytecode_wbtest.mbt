@@ -563,6 +563,27 @@ test "bytecode treats names inside nested object literal methods as captured" {
 }
 
 ///|
+test "bytecode lowers computed object literal methods with computed home object" {
+  let bytecode = parse_bytecode_for_wb(
+    "var key = 'm'; var o = { [key]() { return this; } };",
+  )
+  let mut saw_key = false
+  let mut saw_method = false
+  let mut saw_computed = false
+  for instr in bytecode.main.code {
+    match instr {
+      ToObjectLiteralPropertyKey => saw_key = true
+      MakeComputedMethodFunction(_) => saw_method = true
+      ObjectSetComputed => saw_computed = true
+      _ => ()
+    }
+  }
+  guard saw_key else { abort("expected computed method key canonicalization") }
+  guard saw_method else { abort("expected computed method function") }
+  guard saw_computed else { abort("expected computed method property set") }
+}
+
+///|
 test "bytecode lowers object spreads to incremental object instructions" {
   let bytecode = parse_bytecode_for_wb("var o = { a: 1, ...src, b: 2 };")
   let mut saw_start = false

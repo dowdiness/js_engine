@@ -154,8 +154,8 @@ The current high-level opcode surface covers:
   identifier/member/computed update, identifier and member/computed compound
   assignment, `new.target`, anonymous function naming
 - object interaction: array creation including holes and spread, simple
-  object literals with static and computed data properties, selected static
-  method properties, `__proto__` prototype overrides, and spread properties, property
+  object literals with static and computed data properties, selected static and
+  computed method properties, `__proto__` prototype overrides, and spread properties, property
   get, computed get, optional property/computed get, property/computed
   assignment through runtime setters, and property/computed deletion through
   shared runtime helpers
@@ -195,7 +195,6 @@ The compiler currently raises an `InternalError` prefixed
 - `destructuring declaration kind` (non-`var` destructuring declarations)
 - `destructuring declaration context` (control-flow/block/switch/for contexts)
 - `object literal accessor property`
-- `object literal computed method property`
 - `object literal __proto__ method property`
 - `object literal method self reference`
 - `object literal method property`
