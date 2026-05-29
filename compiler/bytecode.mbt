@@ -53,6 +53,8 @@ priv enum BytecodeInstr {
   ObjectSetStatic(String)
   ObjectSetStaticGetter(String)
   ObjectSetStaticSetter(String)
+  ObjectSetComputedGetter
+  ObjectSetComputedSetter
   ToObjectLiteralPropertyKey
   ObjectSetComputed
   ObjectSpread(@token.Loc)
@@ -2454,7 +2456,19 @@ fn BytecodeBuilder::compile_object_lit(
         Init => ()
         Get | Set => {
           if prop.computed {
-            bytecode_unsupported("object literal computed accessor property")
+            self.compile_expr(prop.key)
+            let _ = self.emit(ToObjectLiteralPropertyKey)
+            self.compile_object_method(prop, computed_key_on_stack=true)
+            match prop.kind {
+              Get => {
+                let _ = self.emit(ObjectSetComputedGetter)
+              }
+              Set => {
+                let _ = self.emit(ObjectSetComputedSetter)
+              }
+              _ => ()
+            }
+            continue
           }
           let key = match bytecode_static_object_key(prop.key) {
             Some(key) => key
@@ -3597,6 +3611,26 @@ fn run_bytecode_function(
         @runtime.apply_object_literal_accessor_property(
           frame.peek(),
           Value::String_(key),
+          setter,
+          false,
+        )
+      }
+      ObjectSetComputedGetter => {
+        let getter = frame.pop()
+        let key = frame.pop()
+        @runtime.apply_object_literal_accessor_property(
+          frame.peek(),
+          key,
+          getter,
+          true,
+        )
+      }
+      ObjectSetComputedSetter => {
+        let setter = frame.pop()
+        let key = frame.pop()
+        @runtime.apply_object_literal_accessor_property(
+          frame.peek(),
+          key,
           setter,
           false,
         )

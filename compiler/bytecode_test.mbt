@@ -1576,6 +1576,42 @@ test "bytecode object literal static accessors capture outer bindings" {
 }
 
 ///|
+test "bytecode object literal computed accessors use descriptors receivers and key order" {
+  let src =
+    #|var log = "";
+    #|var key = { toString: function() { log = log + "k"; return "x"; } };
+    #|var o = {
+    #|  value: 1,
+    #|  get [key]() { log = log + "g"; return this.value + 2; },
+    #|  set [key](v) { log = log + "s" + v; this.value = v; },
+    #|  after: (log = log + "a", 0)
+    #|};
+    #|var desc = Object.getOwnPropertyDescriptor(o, "x");
+    #|var read = o.x;
+    #|o.x = 6;
+    #|read + ":" + desc.get.name + "," + desc.set.name + ":" + o.value + ":" + log;
+  inspect(bytecode_compare(src), content="value:3:get x,set x:6:kkags6")
+}
+
+///|
+test "bytecode object literal computed accessors capture keys and bodies" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  var value = 3;
+    #|  return {
+    #|    get [key]() { return value; },
+    #|    set [key](next) { value = next; }
+    #|  };
+    #|}
+    #|var o = outer();
+    #|var before = o.x;
+    #|o.x = 9;
+    #|before + "," + o.x;
+  inspect(bytecode_compare(src), content="value:3,9")
+}
+
+///|
 test "bytecode object methods read super properties" {
   let src =
     #|var proto = { x: 3 };
@@ -1750,10 +1786,6 @@ test "bytecode object literal computed properties capture outer keys" {
 
 ///|
 test "bytecode rejects unsupported object literal forms explicitly" {
-  inspect(
-    bytecode_outcome("var key = 'x'; ({ get [key]() { return 1; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal computed accessor property",
-  )
   inspect(
     bytecode_outcome("({ m() { return m; } });"),
     content="error:InternalError: bytecode prototype unsupported: object literal method self reference",

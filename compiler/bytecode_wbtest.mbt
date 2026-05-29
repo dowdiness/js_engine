@@ -566,6 +566,48 @@ test "bytecode lowers object literal static accessors to accessor instructions" 
 }
 
 ///|
+test "bytecode lowers object literal computed accessors to computed accessor instructions" {
+  let bytecode = parse_bytecode_for_wb(
+    "var key = 'x'; var o = { get [key]() { return 1; }, set [key](v) { this.v = v; } };",
+  )
+  let mut saw_key = false
+  let mut saw_method = false
+  let mut saw_getter = false
+  let mut saw_setter = false
+  for instr in bytecode.main.code {
+    match instr {
+      ToObjectLiteralPropertyKey => saw_key = true
+      MakeComputedMethodFunction(_) => saw_method = true
+      ObjectSetComputedGetter => saw_getter = true
+      ObjectSetComputedSetter => saw_setter = true
+      _ => ()
+    }
+  }
+  guard saw_key else {
+    abort("expected computed accessor key canonicalization")
+  }
+  guard saw_method else { abort("expected computed accessor method function") }
+  guard saw_getter else { abort("expected computed getter instruction") }
+  guard saw_setter else { abort("expected computed setter instruction") }
+}
+
+///|
+test "bytecode treats names inside nested computed accessors as captured" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  var value = 1;
+    #|  return function() { return ({ get [key]() { return value; } }).x; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode treats names inside nested object literal methods as captured" {
   let src =
     #|function outer() {
