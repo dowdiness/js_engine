@@ -652,6 +652,43 @@ test "bytecode rejects non-identifier logical compound assignment targets" {
 }
 
 ///|
+test "bytecode array literal holes preserve length and absent indices" {
+  let src =
+    #|var xs = [1,,3];
+    #|xs.length + ":" + (0 in xs) + "," + (1 in xs) + "," + (2 in xs) + ":" + xs[1];
+  inspect(bytecode_compare(src), content="value:3:true,false,true:undefined")
+}
+
+///|
+test "bytecode array literal holes skip value evaluation" {
+  let src =
+    #|var log = "";
+    #|function side(x) { log = log + x; return x; }
+    #|var xs = [side("a"),,side("b")];
+    #|log + ":" + xs.length + ":" + (1 in xs);
+  inspect(bytecode_compare(src), content="value:ab:3:false")
+}
+
+///|
+test "bytecode array literal holes fall through to prototypes" {
+  let src =
+    #|Array.prototype[1] = "proto";
+    #|var xs = [0,,2];
+    #|xs[1] + "," + (1 in xs);
+  inspect(bytecode_compare(src), content="value:proto,true")
+}
+
+///|
+test "bytecode rejects array spread elements explicitly" {
+  let src =
+    #|var xs = [0, ...[1]];
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: array spread element",
+  )
+}
+
+///|
 test "bytecode resolves computed callees before arguments" {
   let src =
     #|var fns = [

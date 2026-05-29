@@ -564,7 +564,6 @@ fn Interpreter::eval_expr(
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
-      let mut has_holes = false
       let hole_idxs : Array[Int] = []
       for e in elements {
         match e {
@@ -579,22 +578,11 @@ fn Interpreter::eval_expr(
           ArrayHole(_) => {
             hole_idxs.push(vals.length())
             vals.push(Undefined)
-            has_holes = true
           }
           _ => vals.push(self.eval_expr(ctx, e, env))
         }
       }
-      let arr = make_array(vals)
-      if has_holes {
-        match arr {
-          Array(data) =>
-            for i in hole_idxs {
-              data.holes[i] = ()
-            }
-          _ => ()
-        }
-      }
-      arr
+      make_array_with_holes(vals, hole_idxs)
     }
     ComputedMember(obj_expr, key_expr, loc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)

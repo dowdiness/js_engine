@@ -149,8 +149,8 @@ The current high-level opcode surface covers:
   expressions, template literals, regex literals, identifier update,
   identifier and non-logical member/computed compound assignment, anonymous
   function naming
-- object interaction: array creation without holes/spread, simple object
-  literals with static data properties, property get, computed get, and
+- object interaction: array creation including holes but without spread, simple
+  object literals with static data properties, property get, computed get, and
   property/computed assignment through runtime setters
 - calls and construction: ordinary calls, host `console.log` calls/member reads,
   receiver-preserving property/computed calls, and non-spread `new` expressions
@@ -179,7 +179,7 @@ The compiler currently raises an `InternalError` prefixed
 - `delete operator`
 - `named function expression`
 - `compound assignment target`
-- `array hole or spread element`
+- `array spread element`
 - `object literal accessor property`
 - `object literal spread property`
 - `object literal computed property`

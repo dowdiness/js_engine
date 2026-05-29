@@ -137,6 +137,8 @@ pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interprete
 
 pub fn make_array(Array[Value]) -> Value
 
+pub fn make_array_with_holes(Array[Value], Array[Int]) -> Value
+
 pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value

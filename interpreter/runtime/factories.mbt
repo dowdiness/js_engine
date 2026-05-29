@@ -1197,3 +1197,20 @@ pub fn make_array(elements : Array[Value]) -> Value {
     extensible: true,
   })
 }
+
+///|
+/// Wrap an Array[Value] and mark selected indices as array holes.
+pub fn make_array_with_holes(
+  elements : Array[Value],
+  hole_indices : Array[Int],
+) -> Value {
+  let arr = make_array(elements)
+  match arr {
+    Array(data) =>
+      for i in hole_indices {
+        data.holes[i] = ()
+      }
+    _ => ()
+  }
+  arr
+}

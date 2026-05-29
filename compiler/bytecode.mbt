@@ -27,6 +27,7 @@ priv enum BytecodeInstr {
   JumpIfTrueKeep(Int)
   JumpIfNotNullishKeep(Int)
   MakeArray(Int)
+  MakeArrayWithHoles(Int, Array[Int])
   MakeObject(Array[String])
   MakeFunction(Int)
   DeclareFunction(String, Int)
@@ -1171,14 +1172,22 @@ fn BytecodeBuilder::compile_expr(
     Grouping(inner, _) => self.compile_expr(inner)
     ObjectLit(props, _) => self.compile_object_lit(props)
     ArrayLit(elements, _) => {
-      for element in elements {
+      let hole_idxs : Array[Int] = []
+      for i, element in elements {
         match element {
-          ArrayHole(_) | SpreadExpr(_, _) =>
-            bytecode_unsupported("array hole or spread element")
+          ArrayHole(_) => {
+            hole_idxs.push(i)
+            let _ = self.emit(LoadUndefined)
+          }
+          SpreadExpr(_, _) => bytecode_unsupported("array spread element")
           _ => self.compile_expr(element)
         }
       }
-      let _ = self.emit(MakeArray(elements.length()))
+      if hole_idxs.length() > 0 {
+        let _ = self.emit(MakeArrayWithHoles(elements.length(), hole_idxs))
+      } else {
+        let _ = self.emit(MakeArray(elements.length()))
+      }
     }
     Member(Ident("console", _), prop, _) => {
       let _ = self.emit(LoadConsoleMember(prop))
@@ -1590,6 +1599,10 @@ fn run_bytecode_function(
       MakeArray(count) => {
         let elements = pop_args(frame, count)
         frame.stack.push(@runtime.make_array(elements))
+      }
+      MakeArrayWithHoles(count, hole_idxs) => {
+        let elements = pop_args(frame, count)
+        frame.stack.push(@runtime.make_array_with_holes(elements, hole_idxs))
       }
       MakeObject(keys) => {
         let values = pop_args(frame, keys.length())

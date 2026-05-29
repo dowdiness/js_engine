@@ -170,6 +170,22 @@ test "bytecode lowers regex literals to a runtime regexp instruction" {
 }
 
 ///|
+test "bytecode lowers array holes to sparse make array instruction" {
+  let bytecode = parse_bytecode_for_wb("var xs = [1,,3];")
+  let mut saw_sparse_array = false
+  for instr in bytecode.main.code {
+    match instr {
+      MakeArrayWithHoles(3, holes) => {
+        saw_sparse_array = true
+        json_inspect(holes, content=[1])
+      }
+      _ => ()
+    }
+  }
+  guard saw_sparse_array else { abort("expected sparse array instruction") }
+}
+
+///|
 test "bytecode lowers simple object literals to a make object instruction" {
   let bytecode = parse_bytecode_for_wb("var o = { a: 1, b: 2 };")
   let mut saw_object = false
