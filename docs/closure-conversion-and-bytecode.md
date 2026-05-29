@@ -151,7 +151,8 @@ The current high-level opcode surface covers:
   identifier/member/computed update, identifier and member/computed compound
   assignment, anonymous function naming
 - object interaction: array creation including holes and spread, simple
-  object literals with static data properties and spread properties, property
+  object literals with static data properties, `__proto__` prototype overrides,
+  and spread properties, property
   get, computed get, optional property/computed get, property/computed
   assignment through runtime setters, and property/computed deletion through
   shared runtime helpers
@@ -190,7 +191,6 @@ The compiler currently raises an `InternalError` prefixed
 - `object literal accessor property`
 - `object literal computed property`
 - `object literal method property`
-- `object literal __proto__ property`
 - `object literal property key`
 - `direct eval call`
 - `expression kind`

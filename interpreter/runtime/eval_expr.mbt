@@ -102,6 +102,25 @@ fn Interpreter::eval_prop_value(
 }
 
 ///|
+pub fn apply_object_literal_proto_property(
+  target : Value,
+  value : Value,
+) -> Unit raise Error {
+  match target {
+    Object(data) =>
+      match value {
+        Object(_) | Array(_) | Map(_) | Set(_) => data.prototype = value
+        Null => data.prototype = Null
+        _ => data.bag.properties["__proto__"] = value
+      }
+    _ =>
+      raise @errors.InternalError(
+        message="object literal __proto__ target was not an object",
+      )
+  }
+}
+
+///|
 pub fn Interpreter::copy_object_spread_properties(
   self : Interpreter,
   target : Value,
@@ -339,14 +358,13 @@ fn Interpreter::eval_expr(
       let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
       let symbol_descriptors : Map[Int, PropDescriptor] = {}
-      let mut proto_override : Value? = None
       // Build the object eagerly so methods captured during the prop loop can
       // reference it as [[HomeObject]] (ES2022 §13.2.5.5). The bag's Maps are
       // shared by reference, so later inserts populate the live object; the
-      // mutable `prototype` field is fixed up after the loop if a __proto__
-      // override is seen. This is what makes `super.x` resolve dynamically
-      // against `Object.getPrototypeOf(homeObject)` even after
-      // Object.setPrototypeOf is called on the literal.
+      // mutable `prototype` field is updated when a __proto__ override is seen.
+      // This is what makes `super.x` resolve dynamically against
+      // `Object.getPrototypeOf(homeObject)` even after Object.setPrototypeOf is
+      // called on the literal.
       let default_obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
       let object_data : ObjectData = {
         bag: { properties, symbol_properties, descriptors, symbol_descriptors },
@@ -503,12 +521,7 @@ fn Interpreter::eval_expr(
               // Handle __proto__ as special syntax per B.3.1
               if key_str == "__proto__" {
                 let val = self.eval_prop_value(ctx, prop, method_env)
-                match val {
-                  Object(_) | Array(_) | Map(_) | Set(_) =>
-                    proto_override = Some(val)
-                  Null => proto_override = Some(Null)
-                  _ => properties[key_str] = val // primitives don't set proto
-                }
+                apply_object_literal_proto_property(home_object, val)
               } else {
                 let val = self.eval_prop_value(ctx, prop, method_env)
                 // SetFunctionName: infer name for anonymous functions
@@ -566,12 +579,6 @@ fn Interpreter::eval_expr(
             Spread => () // handled above
           }
         }
-      }
-      // The bag was populated in place; only fix up the prototype if a
-      // __proto__: override appeared in the literal.
-      match proto_override {
-        Some(p) => object_data.prototype = p
-        None => ()
       }
       home_object
     }

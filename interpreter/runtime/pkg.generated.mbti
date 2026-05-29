@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub fn apply_object_literal_proto_property(Value, Value) -> Unit raise
+
 pub fn array_species_create(Interpreter, Value, Int) -> Value raise
 
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise

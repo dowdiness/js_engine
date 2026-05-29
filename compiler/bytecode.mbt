@@ -44,6 +44,7 @@ priv enum BytecodeInstr {
   StartObject
   ObjectSetStatic(String)
   ObjectSpread(@token.Loc)
+  ObjectSetProto
   MakeFunction(Int)
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
@@ -1428,19 +1429,30 @@ fn bytecode_static_object_key(expr : @ast.Expr) -> String? {
 }
 
 ///|
+fn bytecode_object_lit_uses_incremental(props : Array[@ast.Property]) -> Bool {
+  for prop in props {
+    match prop.kind {
+      Spread => return true
+      Init =>
+        if !prop.computed && !prop.is_method {
+          match bytecode_static_object_key(prop.key) {
+            Some(key) => if key == "__proto__" { return true }
+            None => ()
+          }
+        }
+      Get | Set => ()
+    }
+  }
+  false
+}
+
+///|
 fn BytecodeBuilder::compile_object_lit(
   self : BytecodeBuilder,
   props : Array[@ast.Property],
   loc : @token.Loc,
 ) -> Unit raise Error {
-  let mut has_spread = false
-  for prop in props {
-    match prop.kind {
-      Spread => has_spread = true
-      _ => ()
-    }
-  }
-  if has_spread {
+  if bytecode_object_lit_uses_incremental(props) {
     let _ = self.emit(StartObject)
     for prop in props {
       match prop.kind {
@@ -1465,12 +1477,13 @@ fn BytecodeBuilder::compile_object_lit(
           ""
         }
       }
-      if key == "__proto__" {
-        bytecode_unsupported("object literal __proto__ property")
-      }
       self.compile_expr(prop.value)
-      let _ = self.emit(SetFunctionName(key))
-      let _ = self.emit(ObjectSetStatic(key))
+      if key == "__proto__" {
+        let _ = self.emit(ObjectSetProto)
+      } else {
+        let _ = self.emit(SetFunctionName(key))
+        let _ = self.emit(ObjectSetStatic(key))
+      }
     }
   } else {
     let keys : Array[String] = []
@@ -1491,9 +1504,6 @@ fn BytecodeBuilder::compile_object_lit(
           bytecode_unsupported("object literal property key")
           ""
         }
-      }
-      if key == "__proto__" {
-        bytecode_unsupported("object literal __proto__ property")
       }
       self.compile_expr(prop.value)
       let _ = self.emit(SetFunctionName(key))
@@ -2320,6 +2330,10 @@ fn run_bytecode_function(
       ObjectSpread(loc) => {
         let source = frame.pop()
         interp.copy_object_spread_properties(frame.peek(), source, loc)
+      }
+      ObjectSetProto => {
+        let value = frame.pop()
+        @runtime.apply_object_literal_proto_property(frame.peek(), value)
       }
       MakeFunction(index) => {
         let child = frame.func_def.children[index]

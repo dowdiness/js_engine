@@ -385,6 +385,30 @@ test "bytecode lowers object spreads to incremental object instructions" {
 }
 
 ///|
+test "bytecode lowers object literal __proto__ through proto instruction" {
+  let bytecode = parse_bytecode_for_wb(
+    "var proto = {}; var o = { a: 1, __proto__: proto, b: 2 };",
+  )
+  let mut saw_start = false
+  let mut saw_proto = false
+  let mut saw_a = false
+  let mut saw_b = false
+  for instr in bytecode.main.code {
+    match instr {
+      StartObject => saw_start = true
+      ObjectSetStatic("a") => saw_a = true
+      ObjectSetProto => saw_proto = true
+      ObjectSetStatic("b") => saw_b = true
+      _ => ()
+    }
+  }
+  guard saw_start else { abort("expected object accumulator") }
+  guard saw_a else { abort("expected static property before __proto__") }
+  guard saw_proto else { abort("expected object __proto__ instruction") }
+  guard saw_b else { abort("expected static property after __proto__") }
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {

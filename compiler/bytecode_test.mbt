@@ -1309,6 +1309,38 @@ test "bytecode object spread captures outer source bindings" {
 }
 
 ///|
+test "bytecode object literal __proto__ sets object and null prototypes" {
+  let src =
+    #|var proto = { inherited: 4 };
+    #|var a = { __proto__: proto, own: 1 };
+    #|var b = { __proto__: null, own: 2 };
+    #|(Object.getPrototypeOf(a) === proto) + "," + a.inherited + "," + a.own + "," + (Object.getPrototypeOf(b) === null) + "," + ("toString" in b);
+  inspect(bytecode_compare(src), content="value:true,4,1,true,false")
+}
+
+///|
+test "bytecode object literal primitive __proto__ remains a data property" {
+  let src =
+    #|var o = { __proto__: 1, x: 2 };
+    #|(Object.getPrototypeOf(o) === Object.prototype) + "," + o.__proto__ + "," + o.x;
+  inspect(bytecode_compare(src), content="value:true,1,2")
+}
+
+///|
+test "bytecode object literal __proto__ works with spread and captures" {
+  let src =
+    #|function outer() {
+    #|  var proto = { p: 5 };
+    #|  return function() {
+    #|    var o = { before: 1, ...{ x: 2 }, __proto__: proto, after: 3 };
+    #|    return (Object.getPrototypeOf(o) === proto) + "," + o.p + "," + o.x + "," + o.after;
+    #|  };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:true,5,2,3")
+}
+
+///|
 test "bytecode rejects unsupported object literal forms explicitly" {
   inspect(
     bytecode_outcome("var k = 'x'; ({ [k]: 1 });"),
@@ -1321,10 +1353,6 @@ test "bytecode rejects unsupported object literal forms explicitly" {
   inspect(
     bytecode_outcome("({ m() { return 1; } });"),
     content="error:InternalError: bytecode prototype unsupported: object literal method property",
-  )
-  inspect(
-    bytecode_outcome("({ __proto__: null });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal __proto__ property",
   )
 }
 
