@@ -358,6 +358,118 @@ fn check_duplicate_params_ext(
 }
 
 ///|
+fn params_include_arguments(
+  params : Array[String],
+  rest_param : String?,
+) -> Bool {
+  for p in params {
+    if p == "arguments" {
+      return true
+    }
+  }
+  rest_param is Some("arguments")
+}
+
+///|
+fn pattern_includes_arguments(pattern : @ast.Pattern) -> Bool {
+  match pattern {
+    IdentPat(name) => name == "arguments"
+    DefaultPat(inner, _) => pattern_includes_arguments(inner)
+    AssignTarget(_) => false
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(pat) => if pattern_includes_arguments(pat) { return true }
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => pattern_includes_arguments(pat)
+        None => false
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        if pattern_includes_arguments(prop.value) {
+          return true
+        }
+      }
+      match rest {
+        Some(pat) => pattern_includes_arguments(pat)
+        None => false
+      }
+    }
+  }
+}
+
+///|
+fn ext_params_include_arguments(
+  params : Array[@ast.Param],
+  rest_param : String?,
+) -> Bool {
+  for p in params {
+    if p.name == "arguments" {
+      return true
+    }
+    match p.pattern {
+      Some(pat) => if pattern_includes_arguments(pat) { return true }
+      None => ()
+    }
+  }
+  rest_param is Some("arguments")
+}
+
+///|
+fn validate_strict_pattern_binding_names(
+  pattern : @ast.Pattern,
+) -> Unit raise Error {
+  match pattern {
+    IdentPat(name) => validate_strict_binding_name(name)
+    DefaultPat(inner, _) => validate_strict_pattern_binding_names(inner)
+    AssignTarget(_) => ()
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(pat) => validate_strict_pattern_binding_names(pat)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => validate_strict_pattern_binding_names(pat)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        validate_strict_pattern_binding_names(prop.value)
+      }
+      match rest {
+        Some(pat) => validate_strict_pattern_binding_names(pat)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
+fn validate_strict_param_binding_names_ext(
+  params : Array[@ast.Param],
+  rest_param : String?,
+) -> Unit raise Error {
+  for p in params {
+    validate_strict_binding_name(p.name)
+    match p.pattern {
+      Some(pat) => validate_strict_pattern_binding_names(pat)
+      None => ()
+    }
+  }
+  match rest_param {
+    Some(rn) => validate_strict_binding_name(rn)
+    None => ()
+  }
+}
+
+///|
 /// Apply parameter-list early errors for functions built via the
 /// Function / GeneratorFunction / AsyncFunction / AsyncGeneratorFunction
 /// constructors. Per spec these fire at construction time, not at call.
@@ -521,13 +633,7 @@ pub fn validate_function_signature_ext(
       None => ()
     }
     check_duplicate_params_ext(params, rest_param)
-    for p in params {
-      validate_strict_binding_name(p.name)
-    }
-    match rest_param {
-      Some(rn) => validate_strict_binding_name(rn)
-      None => ()
-    }
+    validate_strict_param_binding_names_ext(params, rest_param)
   }
 }
 

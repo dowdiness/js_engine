@@ -800,11 +800,14 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
      via parent scope. Fix: first pass `def_tdz` every parameter name
      on `param_env`, then swap `def_parameter` for `initialize` in the
      existing loop. Interacts with rest + destructuring.
-   - **`arguments` in parameterNames.** `function f(arguments = 1)`
+   - ~~**`arguments` in parameterNames.** `function f(arguments = 1)`
      should suppress the arguments-object install per step 17.
      Currently collides — the arguments-object install throws on
      re-def of `arguments`. Gate the install on
-     `!parameter_names.contains("arguments")`.
+     `!parameter_names.contains("arguments")`.~~ DONE (2026-05-29).
+     Sloppy simple, extended, constructor, generator, and async call paths now
+     suppress the arguments object when parameter names include `arguments`;
+     strict-mode validations remain unchanged.
    - **`super()` double-init check.** `Environment::initialize_in_chain`
      overwrites unconditionally; spec `BindThisValue` (§9.1.1.3.1) throws
      on re-init. Add an initialized-guard in `initialize_in_chain` at

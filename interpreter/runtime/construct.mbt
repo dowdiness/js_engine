@@ -751,25 +751,27 @@ fn Interpreter::construct_value_impl(
               func_env.def_parameter(data.params[i], val)
             }
           }
-          let tte : Value? = if func_env.has("[[ThrowTypeError]]") {
-            Some(func_env.get("[[ThrowTypeError]]"))
-          } else {
-            None
+          if !params_include_arguments(data.params, None) {
+            let tte : Value? = if func_env.has("[[ThrowTypeError]]") {
+              Some(func_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            func_env.def(
+              "arguments",
+              make_arguments_object(
+                self.realm_state,
+                self.realm_state.well_known_symbols,
+                args,
+                ctor,
+                func_strict,
+                throw_type_error=tte,
+                mapped_names=data.params,
+                mapped_env=Some(func_env),
+              ),
+              VarBinding,
+            )
           }
-          func_env.def(
-            "arguments",
-            make_arguments_object(
-              self.realm_state,
-              self.realm_state.well_known_symbols,
-              args,
-              ctor,
-              func_strict,
-              throw_type_error=tte,
-              mapped_names=data.params,
-              mapped_env=Some(func_env),
-            ),
-            VarBinding,
-          )
           // Hoist declarations and top-level lexical TDZ markers.
           self.hoist_declarations(data.body, func_env, strict=func_strict)
           hoist_block_tdz(data.body, func_env)
@@ -808,13 +810,10 @@ fn Interpreter::construct_value_impl(
           if func_strict {
             // Strict mode: check for duplicate parameters and reserved names
             check_duplicate_params_ext(data.params, data.rest_param)
-            for p in data.params {
-              validate_strict_binding_name(p.name)
-            }
-            match data.rest_param {
-              Some(rn) => validate_strict_binding_name(rn)
-              None => ()
-            }
+            validate_strict_param_binding_names_ext(
+              data.params,
+              data.rest_param,
+            )
           }
           let proto = match proto_override {
             Some(p) => p
@@ -847,24 +846,27 @@ fn Interpreter::construct_value_impl(
           param_env.is_var_scope = true
           param_env.def("this", new_obj, LetBinding)
           param_env.def("<new.target>", new_target, LetBinding)
-          // Create arguments object BEFORE binding params so defaults can reference it
-          let tte2 : Value? = if param_env.has("[[ThrowTypeError]]") {
-            Some(param_env.get("[[ThrowTypeError]]"))
-          } else {
-            None
+          if !ext_params_include_arguments(data.params, data.rest_param) {
+            // Create arguments object before binding params so defaults can reference it,
+            // unless a formal parameter is named `arguments`.
+            let tte2 : Value? = if param_env.has("[[ThrowTypeError]]") {
+              Some(param_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            param_env.def(
+              "arguments",
+              make_arguments_object(
+                self.realm_state,
+                self.realm_state.well_known_symbols,
+                args,
+                ctor,
+                func_strict,
+                throw_type_error=tte2,
+              ),
+              VarBinding,
+            )
           }
-          param_env.def(
-            "arguments",
-            make_arguments_object(
-              self.realm_state,
-              self.realm_state.well_known_symbols,
-              args,
-              ctor,
-              func_strict,
-              throw_type_error=tte2,
-            ),
-            VarBinding,
-          )
           // ES §10.2.2 [[Construct]] steps 13-14: object-like return
           // replaces the instance; anything else yields `new_obj`.
           match
@@ -1011,13 +1013,7 @@ fn Interpreter::construct_value_impl(
               Some((params, rest_param, body)) => {
                 // Class constructors are always strict — validate params
                 check_duplicate_params_ext(params, rest_param)
-                for p in params {
-                  validate_strict_binding_name(p.name)
-                }
-                match rest_param {
-                  Some(rn) => validate_strict_binding_name(rn)
-                  None => ()
-                }
+                validate_strict_param_binding_names_ext(params, rest_param)
                 let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
                   params, rest_param, body, ctor, args, ctor_env, class_ctx,
                 )
