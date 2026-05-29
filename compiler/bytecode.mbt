@@ -52,6 +52,7 @@ priv enum BytecodeInstr {
   ObjectSetProto
   MakeFunction(Int)
   MakeNamedFunction(Int, String)
+  MakeMethodFunction(Int)
   MakeArrowFunction(Int)
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
@@ -2031,9 +2032,11 @@ fn bytecode_object_lit_uses_incremental(props : Array[@ast.Property]) -> Bool {
     match prop.kind {
       Spread => return true
       Init =>
-        if prop.computed {
+        if prop.is_method {
           return true
-        } else if !prop.is_method {
+        } else if prop.computed {
+          return true
+        } else {
           match bytecode_static_object_key(prop.key) {
             Some(key) => if key == "__proto__" { return true }
             None => ()
@@ -2043,6 +2046,48 @@ fn bytecode_object_lit_uses_incremental(props : Array[@ast.Property]) -> Bool {
     }
   }
   false
+}
+
+///|
+fn bytecode_method_body_references_name(
+  name : String,
+  body : Array[@ast.Stmt],
+) -> Bool {
+  let refs : Map[String, Bool] = {}
+  collect_name_refs_from_stmts(body, refs)
+  refs.contains(name)
+}
+
+///|
+fn BytecodeBuilder::compile_object_method(
+  self : BytecodeBuilder,
+  prop : @ast.Property,
+) -> Unit raise Error {
+  let fn_idx = match prop.value {
+    FuncExpr(Some(name), params, body, _) => {
+      if bytecode_method_body_references_name(name, body) {
+        bytecode_unsupported("object literal method self reference")
+      }
+      self.add_function(Some(name), params, body)
+    }
+    FuncExpr(None, params, body, _) => self.add_function(None, params, body)
+    FuncExprExt(Some(name), params, rest_param, body, _) => {
+      if bytecode_method_body_references_name(name, body) {
+        bytecode_unsupported("object literal method self reference")
+      }
+      let simple_params = simple_ext_param_names(params, rest_param)
+      self.add_function(Some(name), simple_params, body)
+    }
+    FuncExprExt(None, params, rest_param, body, _) => {
+      let simple_params = simple_ext_param_names(params, rest_param)
+      self.add_function(None, simple_params, body)
+    }
+    _ => {
+      bytecode_unsupported("object literal method property")
+      0
+    }
+  }
+  let _ = self.emit(MakeMethodFunction(fn_idx))
 }
 
 ///|
@@ -2064,7 +2109,22 @@ fn BytecodeBuilder::compile_object_lit(
         Get | Set => bytecode_unsupported("object literal accessor property")
       }
       if prop.is_method {
-        bytecode_unsupported("object literal method property")
+        if prop.computed {
+          bytecode_unsupported("object literal computed method property")
+        }
+        let key = match bytecode_static_object_key(prop.key) {
+          Some(key) => key
+          None => {
+            bytecode_unsupported("object literal property key")
+            ""
+          }
+        }
+        if key == "__proto__" {
+          bytecode_unsupported("object literal __proto__ method property")
+        }
+        self.compile_object_method(prop)
+        let _ = self.emit(ObjectSetStatic(key))
+        continue
       }
       if prop.computed {
         self.compile_expr(prop.key)
@@ -2729,6 +2789,37 @@ fn make_named_bytecode_func(
 }
 
 ///|
+fn make_bytecode_method_func(
+  func_def : BytecodeFunction,
+  closure : Environment,
+  enclosing_ctx : ExecContext,
+  home_object : Value,
+) -> Value raise Error {
+  @runtime.validate_function_signature(
+    enclosing_ctx.strict,
+    None,
+    func_def.params,
+    func_def.source_body,
+  )
+  let strict = enclosing_ctx.strict || func_def.body_has_use_strict
+  let method_env = Environment::new(parent=Some(closure))
+  method_env.def_builtin("[[HomeObject]]", home_object)
+  make_compiled_func(
+    func_def.name,
+    func_def.params,
+    method_env,
+    strict,
+    CompiledBody(fn(interp, ctx, env) raise {
+      match run_bytecode_function(interp, ctx, env, func_def) {
+        BytecodeNormal(value) => Signal::Normal(value)
+        BytecodeReturn(value) => Signal::ReturnSignal(value)
+      }
+    }),
+    constructable=false,
+  )
+}
+
+///|
 fn make_bytecode_arrow_func(
   func_def : BytecodeFunction,
   closure : Environment,
@@ -3081,6 +3172,13 @@ fn run_bytecode_function(
         let child = frame.func_def.children[index]
         frame.stack.push(
           make_named_bytecode_func(child, frame.env, frame.ctx, name),
+        )
+      }
+      MakeMethodFunction(index) => {
+        let child = frame.func_def.children[index]
+        let home_object = frame.peek()
+        frame.stack.push(
+          make_bytecode_method_func(child, frame.env, frame.ctx, home_object),
         )
       }
       MakeArrowFunction(index) => {

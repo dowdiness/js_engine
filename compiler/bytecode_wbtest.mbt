@@ -501,6 +501,42 @@ test "bytecode lowers simple object literals to a make object instruction" {
 }
 
 ///|
+test "bytecode lowers object literal methods to method functions" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { x: 1, m() { return this.x; } };",
+  )
+  let mut saw_start = false
+  let mut saw_method = false
+  let mut saw_set = false
+  for instr in bytecode.main.code {
+    match instr {
+      StartObject => saw_start = true
+      MakeMethodFunction(_) => saw_method = true
+      ObjectSetStatic("m") => saw_set = true
+      _ => ()
+    }
+  }
+  guard saw_start else { abort("expected object accumulator") }
+  guard saw_method else { abort("expected method function") }
+  guard saw_set else { abort("expected method static property") }
+}
+
+///|
+test "bytecode treats names inside nested object literal methods as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return { m() { return x; } };
+    #|}
+    #|outer().m();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers object spreads to incremental object instructions" {
   let bytecode = parse_bytecode_for_wb("var o = { a: 1, ...src, b: 2 };")
   let mut saw_start = false

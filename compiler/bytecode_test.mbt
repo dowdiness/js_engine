@@ -1479,6 +1479,44 @@ test "bytecode object literal captures outer bindings" {
 }
 
 ///|
+test "bytecode object literal methods preserve receiver and names" {
+  let src =
+    #|var o = {
+    #|  x: 4,
+    #|  m() { return this.x + ":" + this.m.name; }
+    #|};
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:4:m")
+}
+
+///|
+test "bytecode object literal methods capture outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 5;
+    #|  return { m() { return x + 1; } };
+    #|}
+    #|outer().m();
+  inspect(bytecode_compare(src), content="value:6")
+}
+
+///|
+test "bytecode object literal methods do not expose prototype properties" {
+  let src =
+    #|var o = { m() { return 1; } };
+    #|("prototype" in o.m) + "," + typeof o.m;
+  inspect(bytecode_compare(src), content="value:false,function")
+}
+
+///|
+test "bytecode rejects __proto__ methods until object method semantics are settled" {
+  inspect(
+    bytecode_outcome("({ __proto__() { return 7; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal __proto__ method property",
+  )
+}
+
+///|
 test "bytecode object spread copies enumerable own properties in order" {
   let src =
     #|var a = { x: 1, y: 2 };
@@ -1610,7 +1648,15 @@ test "bytecode rejects unsupported object literal forms explicitly" {
     content="error:InternalError: bytecode prototype unsupported: object literal accessor property",
   )
   inspect(
-    bytecode_outcome("({ m() { return 1; } });"),
+    bytecode_outcome("({ ['m']() { return 1; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal computed method property",
+  )
+  inspect(
+    bytecode_outcome("({ m() { return m; } });"),
+    content="error:InternalError: bytecode prototype unsupported: object literal method self reference",
+  )
+  inspect(
+    bytecode_outcome("({ async m() { return 1; } });"),
     content="error:InternalError: bytecode prototype unsupported: object literal method property",
   )
 }
