@@ -143,8 +143,8 @@ The current high-level opcode surface covers:
 - completion and control flow: set completion, pop, jump, conditional jump,
   return, throw
 - expressions: supported eager binary operations including `in` and
-  `instanceof`, selected value unary operations (`-`, `+`, `!`, `~`, and
-  `void`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
+  `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`, and
+  `typeof`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
   expressions, template literals, regex literals, identifier update,
   anonymous function naming
 - object interaction: array creation without holes/spread, simple object
@@ -177,7 +177,6 @@ The compiler currently raises an `InternalError` prefixed
 - `spread argument`
 - `arguments object`
 - `delete operator`
-- `typeof operator`
 - `named function expression`
 - `array hole or spread element`
 - `object literal accessor property`

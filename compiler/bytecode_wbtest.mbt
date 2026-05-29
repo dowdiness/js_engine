@@ -50,6 +50,55 @@ test "bytecode lowers unary minus to a unary value instruction" {
 }
 
 ///|
+test "bytecode lowers typeof identifiers to a typeof-name instruction" {
+  let bytecode = parse_bytecode_for_wb("typeof missing;")
+  let mut saw_typeof = false
+  for instr in bytecode.main.code {
+    match instr {
+      TypeofName("missing") => saw_typeof = true
+      _ => ()
+    }
+  }
+  guard saw_typeof else { abort("expected typeof-name instruction") }
+}
+
+///|
+test "bytecode lowers typeof local slots through value typeof" {
+  let bytecode = parse_bytecode_for_wb(
+    "function f(a) { return typeof a; } f(1);",
+  )
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let mut saw_local = false
+  let mut saw_typeof = false
+  for instr in bytecode.main.children[0].code {
+    match instr {
+      LoadLocal(0) => saw_local = true
+      UnaryValueOp(Typeof, _) => saw_typeof = true
+      _ => ()
+    }
+  }
+  guard saw_local else { abort("expected local load") }
+  guard saw_typeof else { abort("expected value typeof") }
+}
+
+///|
+test "bytecode treats names inside nested typeof expressions as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() { return typeof x; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers instanceof to the shared binary op instruction" {
   let bytecode = parse_bytecode_for_wb("var r = 1 instanceof function() {};")
   let mut saw_instanceof = false

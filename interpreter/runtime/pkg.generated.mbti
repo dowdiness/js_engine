@@ -485,6 +485,7 @@ pub fn Interpreter::spread_iterable(Self, Value, @token.Loc) -> Array[Value] rai
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
+pub fn Interpreter::typeof_compiled_name(Self, ExecContext, Environment, String) -> Value raise
 pub fn Interpreter::update_compiled_name(Self, ExecContext, Environment, String, @ast.UpdateOp, Bool, @token.Loc) -> Value raise
 pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) -> Unit raise
 pub fn Interpreter::with_active_value(Self, () -> Value raise) -> Value raise

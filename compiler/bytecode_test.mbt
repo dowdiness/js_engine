@@ -286,13 +286,53 @@ test "bytecode rejects delete operator until delete semantics are shared" {
 }
 
 ///|
-test "bytecode rejects typeof operator until reference semantics are shared" {
+test "bytecode typeof handles missing and resolved identifiers" {
   let src =
-    #|typeof missing;
+    #|var x = 1;
+    #|var f = function() {};
+    #|typeof missing + "," + typeof x + "," + typeof f;
+  inspect(bytecode_compare(src), content="value:undefined,number,function")
+}
+
+///|
+test "bytecode typeof reads function local slots" {
+  let src =
+    #|function f(a) {
+    #|  var b = "x";
+    #|  return typeof a + "," + typeof b;
+    #|}
+    #|f(1);
+  inspect(bytecode_compare(src), content="value:number,string")
+}
+
+///|
+test "bytecode typeof evaluates non-identifier operands" {
+  let src =
+    #|var x = 1;
+    #|typeof (x + 1);
+  inspect(bytecode_compare(src), content="value:number")
+}
+
+///|
+test "bytecode typeof keeps lexical TDZ errors" {
+  let src =
+    #|typeof x;
+    #|let x = 1;
   inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: typeof operator",
+    bytecode_compare(src),
+    content="throw:ReferenceError: Cannot access 'x' before initialization",
   )
+}
+
+///|
+test "bytecode typeof captures outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() { return typeof x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:number")
 }
 
 ///|

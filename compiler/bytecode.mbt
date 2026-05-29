@@ -13,6 +13,7 @@ priv enum BytecodeInstr {
   Pop
   BinaryOp(@ast.BinOp, @token.Loc)
   UnaryValueOp(@ast.UnaryOp, @token.Loc)
+  TypeofName(String)
   AppendTemplate(String)
   MakeRegExp(String, String)
   SetFunctionName(String)
@@ -934,7 +935,22 @@ fn BytecodeBuilder::compile_expr(
     Binary(NullishCoalesce, left, right, _) =>
       self.compile_nullish_coalesce(left, right)
     Unary(Delete, _, _) => bytecode_unsupported("delete operator")
-    Unary(Typeof, _, _) => bytecode_unsupported("typeof operator")
+    Unary(Typeof, Ident("arguments", _), _) =>
+      bytecode_unsupported("arguments object")
+    Unary(Typeof, Ident(name, _), loc) =>
+      match self.local_slot(name) {
+        Some(slot) => {
+          let _ = self.emit(LoadLocal(slot))
+          let _ = self.emit(UnaryValueOp(Typeof, loc))
+        }
+        None => {
+          let _ = self.emit(TypeofName(name))
+        }
+      }
+    Unary(Typeof, operand, loc) => {
+      self.compile_expr(operand)
+      let _ = self.emit(UnaryValueOp(Typeof, loc))
+    }
     Unary(Void, operand, _) => {
       self.compile_expr(operand)
       let _ = self.emit(Pop)
@@ -1334,6 +1350,10 @@ fn run_bytecode_function(
         let value = frame.pop()
         frame.stack.push(@runtime.eval_unary_value_op(op, value, loc))
       }
+      TypeofName(name) =>
+        frame.stack.push(
+          interp.typeof_compiled_name(frame.ctx, frame.env, name),
+        )
       AppendTemplate(tail) => {
         let value = frame.pop()
         let acc = frame.pop()

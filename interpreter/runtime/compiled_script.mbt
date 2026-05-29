@@ -26,6 +26,31 @@ pub fn Interpreter::get_compiled_name(
 }
 
 ///|
+/// Resolve `typeof name` for compiled execution using the same identifier
+/// reference special case as the tree-walking interpreter: unresolved names
+/// produce "undefined", while TDZ bindings still raise.
+pub fn Interpreter::typeof_compiled_name(
+  self : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+) -> Value raise Error {
+  validate_strict_identifier_reference(ctx.strict, name)
+  if env.has(name) {
+    String_(type_of(env.get(name)))
+  } else {
+    match self.global_this {
+      Value::Object(data) =>
+        match data.bag.properties.get(name) {
+          Some(value) => String_(type_of(value))
+          None => String_("undefined")
+        }
+      _ => String_("undefined")
+    }
+  }
+}
+
+///|
 /// Assign an identifier for compiled execution without duplicating global
 /// object, strict-mode, or implicit-global assignment rules in the compiler.
 pub fn Interpreter::assign_compiled_name(

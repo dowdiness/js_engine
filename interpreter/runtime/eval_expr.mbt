@@ -1312,7 +1312,8 @@ pub fn eval_unary_value_op(
     Pos => Number(to_number(value, interp~))
     Not => Bool(!is_truthy(value))
     BitNot => Number(to_int32(to_number(value, interp~)).lnot().to_double())
-    Typeof | Void | Delete =>
+    Typeof => String_(type_of(value))
+    Void | Delete =>
       raise @errors.InternalError(
         message="Unexpected unary operator at line \{loc.line}, col \{loc.col}",
       )
