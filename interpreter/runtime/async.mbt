@@ -90,13 +90,13 @@ fn Interpreter::make_async_function_ext(
   }
   let async_proto = get_function_prototype(self)
   // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-  // default or rest. See factories.mbt for the destructuring-rest note.
+  // default or rest.
   let mut func_length = 0
   for p in params {
     if p.default_val is Some(_) {
       break
     }
-    if rest_param is Some(rn) && p.name == rn {
+    if p.is_rest_pattern {
       break
     }
     func_length += 1
@@ -478,7 +478,7 @@ fn make_async_gen_function_inner(
     None => ""
   }
   // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-  // default or rest. See factories.mbt for the destructuring-rest note.
+  // default or rest.
   let func_length = match params_ext {
     Some(pext) => {
       let mut count = 0
@@ -486,7 +486,7 @@ fn make_async_gen_function_inner(
         if p.default_val is Some(_) {
           break
         }
-        if rest_param is Some(rn) && p.name == rn && p.pattern is Some(_) {
+        if p.is_rest_pattern {
           break
         }
         count += 1
@@ -761,10 +761,7 @@ pub fn setup_async_function_constructor(
           AsyncFuncDeclExt(_, params, rest_param, body, _) => {
             // Validate static early errors against the function's strict context.
             let body_strict = has_use_strict(body)
-            let param_names : Array[String] = params.map(p => p.name)
-            validate_function_constructor_params(
-              false, param_names, rest_param, body,
-            )
+            validate_function_constructor_params_ext(params, rest_param, body)
             interp.validate_block_early_errors(body, body_strict)
             return interp.make_async_function_ext(
               Some("anonymous"),

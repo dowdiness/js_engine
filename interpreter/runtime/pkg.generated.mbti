@@ -241,6 +241,8 @@ pub fn utf16_length(String) -> Int
 
 pub fn validate_function_constructor_params(Bool, Array[String], String?, Array[@ast.Stmt]) -> Unit raise
 
+pub fn validate_function_constructor_params_ext(Array[@ast.Param], String?, Array[@ast.Stmt]) -> Unit raise
+
 pub fn validate_function_signature(Bool, String?, Array[String], Array[@ast.Stmt]) -> Unit raise
 
 pub fn validate_function_signature_ext(Bool, String?, Array[@ast.Param], String?, Array[@ast.Stmt]) -> Unit raise

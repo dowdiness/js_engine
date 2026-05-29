@@ -313,7 +313,12 @@ fn Parser::parse_params_ext(
         let pat = self.parse_pattern()
         let sname = "$rest"
         rest_param = Some(sname)
-        params.push({ name: sname, default_val: None, pattern: Some(pat) })
+        params.push({
+          name: sname,
+          default_val: None,
+          pattern: Some(pat),
+          is_rest_pattern: true,
+        })
       } else {
         rest_param = Some(self.expect_ident())
       }
@@ -327,7 +332,12 @@ fn Parser::parse_params_ext(
       } else {
         None
       }
-      params.push({ name: sname, default_val, pattern: Some(pat) })
+      params.push({
+        name: sname,
+        default_val,
+        pattern: Some(pat),
+        is_rest_pattern: false,
+      })
     } else {
       let name = self.expect_ident()
       let default_val : @ast.Expr? = if self.eat(Assign) {
@@ -335,7 +345,7 @@ fn Parser::parse_params_ext(
       } else {
         None
       }
-      params.push({ name, default_val, pattern: None })
+      params.push({ name, default_val, pattern: None, is_rest_pattern: false })
     }
     while self.eat(Comma) {
       if rest_param is Some(_) {
@@ -352,7 +362,12 @@ fn Parser::parse_params_ext(
           let pat = self.parse_pattern()
           let sname = "$rest"
           rest_param = Some(sname)
-          params.push({ name: sname, default_val: None, pattern: Some(pat) })
+          params.push({
+            name: sname,
+            default_val: None,
+            pattern: Some(pat),
+            is_rest_pattern: true,
+          })
         } else {
           rest_param = Some(self.expect_ident())
         }
@@ -365,7 +380,12 @@ fn Parser::parse_params_ext(
         } else {
           None
         }
-        params.push({ name: sname, default_val: pdefault, pattern: Some(pat) })
+        params.push({
+          name: sname,
+          default_val: pdefault,
+          pattern: Some(pat),
+          is_rest_pattern: false,
+        })
       } else {
         let pname = self.expect_ident()
         let pdefault : @ast.Expr? = if self.eat(Assign) {
@@ -373,7 +393,12 @@ fn Parser::parse_params_ext(
         } else {
           None
         }
-        params.push({ name: pname, default_val: pdefault, pattern: None })
+        params.push({
+          name: pname,
+          default_val: pdefault,
+          pattern: None,
+          is_rest_pattern: false,
+        })
       }
     }
   }

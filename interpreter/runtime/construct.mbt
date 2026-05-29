@@ -555,7 +555,7 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
   let mut effective_param_count = 0
   for i = 0; i < params.length(); i = i + 1 {
     let param = params[i]
-    if rest_param is Some(rn) && param.name == rn {
+    if param.is_rest_pattern {
       continue
     }
     let val : Value = if effective_param_count < args.length() &&
@@ -572,10 +572,9 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
           }
       }
     }
-    param_env.def_parameter(param.name, val)
     match param.pattern {
       Some(pat) => self.bind_pattern(pat, val, param_env, LetBinding, ctx~)
-      None => ()
+      None => param_env.def_parameter(param.name, val)
     }
     effective_param_count += 1
   }
@@ -586,16 +585,20 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
         rest_elements.push(args[i])
       }
       let rest_val = make_array(rest_elements)
-      param_env.def_parameter(rest_name, rest_val)
+      let mut bound_rest_pattern = false
       for p in params {
-        if p.name == rest_name {
+        if p.is_rest_pattern {
           match p.pattern {
             Some(pat) =>
               self.bind_pattern(pat, rest_val, param_env, LetBinding, ctx~)
             None => ()
           }
+          bound_rest_pattern = true
           break
         }
+      }
+      if !bound_rest_pattern {
+        param_env.def_parameter(rest_name, rest_val)
       }
     }
     None => ()

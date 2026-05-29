@@ -1691,9 +1691,20 @@ fn expr_to_ext_arrow_params(
   let mut synth_idx = 0
   fn collect(e : @ast.Expr) -> Unit raise Error {
     match e {
-      Ident(name, _) => params.push({ name, default_val: None, pattern: None })
+      Ident(name, _) =>
+        params.push({
+          name,
+          default_val: None,
+          pattern: None,
+          is_rest_pattern: false,
+        })
       Assign(name, default_expr, _) =>
-        params.push({ name, default_val: Some(default_expr), pattern: None })
+        params.push({
+          name,
+          default_val: Some(default_expr),
+          pattern: None,
+          is_rest_pattern: false,
+        })
       Grouping(inner, _) => collect(inner)
       Comma(left, right, _) => {
         collect(left)
@@ -1704,7 +1715,12 @@ fn expr_to_ext_arrow_params(
         let pat = expr_to_pattern(e)
         let sname = "$" + synth_idx.to_string()
         synth_idx = synth_idx + 1
-        params.push({ name: sname, default_val: None, pattern: Some(pat) })
+        params.push({
+          name: sname,
+          default_val: None,
+          pattern: Some(pat),
+          is_rest_pattern: false,
+        })
       }
       DestructureAssign(pat, default_expr, _) => {
         let sname = "$" + synth_idx.to_string()
@@ -1713,6 +1729,7 @@ fn expr_to_ext_arrow_params(
           name: sname,
           default_val: Some(default_expr),
           pattern: Some(pat),
+          is_rest_pattern: false,
         })
       }
       _ =>

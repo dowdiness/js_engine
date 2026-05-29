@@ -168,16 +168,13 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     None => ""
   }
   // ES262 §10.2.4 ExpectedArgumentCount: count params before the first
-  // one with a default initializer or rest. Destructuring rest is
-  // represented as both `rest_param = Some(name)` and a synthetic Param
-  // with the same name pushed into `params` (parser/stmt.mbt:314, :353),
-  // so the rest-name check is required to avoid overcounting it.
+  // one with a default initializer or rest.
   let mut func_length = 0
   for p in data.params {
     if p.default_val is Some(_) {
       break
     }
-    if data.rest_param is Some(rn) && p.name == rn {
+    if p.is_rest_pattern {
       break
     }
     func_length += 1

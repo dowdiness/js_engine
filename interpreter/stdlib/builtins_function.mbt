@@ -424,14 +424,13 @@ fn setup_function_builtins(
             FuncDeclExt(_, params, rest_param, body, _) => {
               let fn_props : Map[String, Value] = {}
               // ES262 §10.2.4 ExpectedArgumentCount: count params before
-              // first default or rest. See factories.mbt for the
-              // destructuring-rest note.
+              // first default or rest.
               let mut fn_length = 0
               for p in params {
                 if p.default_val is Some(_) {
                   break
                 }
-                if rest_param is Some(rn) && p.name == rn {
+                if p.is_rest_pattern {
                   break
                 }
                 fn_length += 1
@@ -439,9 +438,8 @@ fn setup_function_builtins(
               fn_props["length"] = Value::Number(fn_length.to_double())
               // Validate static early errors against the function's strict context.
               let body_strict = @runtime.has_use_strict(body)
-              let param_names : Array[String] = params.map(p => p.name)
-              @runtime.validate_function_constructor_params(
-                false, param_names, rest_param, body,
+              @runtime.validate_function_constructor_params_ext(
+                params, rest_param, body,
               )
               interp.validate_block_early_errors(body, body_strict)
               return @runtime.stamp_function_realm(
