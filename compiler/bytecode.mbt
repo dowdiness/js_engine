@@ -156,7 +156,7 @@ fn stmt_has_var_decl(stmt : @ast.Stmt) -> Bool {
       }
       stmt_has_var_decl(then_branch) || else_has
     }
-    WhileStmt(_, body, _) => stmt_has_var_decl(body)
+    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) => stmt_has_var_decl(body)
     ForStmt(init, _, _, body, _) => {
       let init_has = match init {
         Some(stmt) => stmt_has_var_decl(stmt)
@@ -208,7 +208,8 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
       }
       stmt_has_function_decl(then_branch) || else_has
     }
-    WhileStmt(_, body, _) => stmt_has_function_decl(body)
+    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
+      stmt_has_function_decl(body)
     ForStmt(init, _, _, body, _) => {
       let init_has = match init {
         Some(stmt) => stmt_has_function_decl(stmt)
@@ -269,7 +270,8 @@ fn collect_current_var_names_from_stmt(
         None => ()
       }
     }
-    WhileStmt(_, body, _) => collect_current_var_names_from_stmt(body, out)
+    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
+      collect_current_var_names_from_stmt(body, out)
     ForStmt(init, _, _, body, _) => {
       match init {
         Some(stmt) => collect_current_var_names_from_stmt(stmt, out)
@@ -315,6 +317,10 @@ fn collect_nested_function_refs_from_stmt(
     WhileStmt(cond, body, _) => {
       collect_nested_function_refs_from_expr(cond, refs)
       collect_nested_function_refs_from_stmt(body, refs)
+    }
+    DoWhileStmt(body, cond, _) => {
+      collect_nested_function_refs_from_stmt(body, refs)
+      collect_nested_function_refs_from_expr(cond, refs)
     }
     ForStmt(init, cond, update, body, _) => {
       match init {
@@ -437,6 +443,10 @@ fn collect_name_refs_from_stmt(
     WhileStmt(cond, body, _) => {
       collect_name_refs_from_expr(cond, refs)
       collect_name_refs_from_stmt(body, refs)
+    }
+    DoWhileStmt(body, cond, _) => {
+      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_expr(cond, refs)
     }
     ForStmt(init, cond, update, body, _) => {
       match init {
@@ -717,6 +727,21 @@ fn BytecodeBuilder::compile_stmt(
       let exit_jump = self.emit(JumpIfFalse(-1))
       self.compile_stmt(body)
       let _ = self.emit(Jump(cond_pos))
+      self.patch(exit_jump, JumpIfFalse(self.code.length()))
+    }
+    DoWhileStmt(body, cond, _) => {
+      if stmt_has_function_decl(body) {
+        bytecode_unsupported("control-flow function declaration")
+      }
+      if stmt_has_var_decl(body) {
+        bytecode_unsupported("control-flow var declaration")
+      }
+      self.emit_undefined_completion()
+      let body_pos = self.code.length()
+      self.compile_stmt(body)
+      self.compile_expr(cond)
+      let exit_jump = self.emit(JumpIfFalse(-1))
+      let _ = self.emit(Jump(body_pos))
       self.patch(exit_jump, JumpIfFalse(self.code.length()))
     }
     ForStmt(init, cond, update, body, _) => {

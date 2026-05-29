@@ -157,9 +157,9 @@ The current high-level opcode surface covers:
 
 The shipped milestone covers the primary workload shape: function declarations
 and anonymous expressions, calls, non-spread construction, arrays,
-member/computed access, assignments, `for`/`while` loops, `return`, and `throw`.
-`break`, `continue`, spread, and broader syntax remain future work and should
-land only with compare-against-tree-walker tests.
+member/computed access, assignments, `for`/`while`/`do while` loops, `return`,
+and `throw`. `break`, `continue`, spread, and broader syntax remain future work
+and should land only with compare-against-tree-walker tests.
 
 ## Current Explicit Bytecode Rejections
 

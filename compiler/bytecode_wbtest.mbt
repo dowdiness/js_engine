@@ -200,6 +200,23 @@ test "bytecode treats names inside nested template expressions as captured" {
 }
 
 ///|
+test "bytecode treats names inside nested do while statements as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() {
+    #|    do { x = x + 1; } while (false);
+    #|  };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode treats names inside nested object literals as captured" {
   let src =
     #|function outer() {

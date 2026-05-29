@@ -349,6 +349,56 @@ test "bytecode jumps and branch completion" {
 }
 
 ///|
+test "bytecode do while runs body before checking condition" {
+  let src =
+    #|var x = 0;
+    #|do {
+    #|  x = x + 1;
+    #|} while (false);
+    #|x;
+  inspect(bytecode_compare(src), content="value:1")
+}
+
+///|
+test "bytecode do while preserves condition order and repeats" {
+  let src =
+    #|var x = 0;
+    #|var log = "";
+    #|do {
+    #|  log = log + "b";
+    #|  x = x + 1;
+    #|} while ((log = log + "c", x < 3));
+    #|log + ":" + x;
+  inspect(bytecode_compare(src), content="value:bcbcbc:3")
+}
+
+///|
+test "bytecode do while statement completion comes from body" {
+  let src =
+    #|do {
+    #|  "body";
+    #|} while (false);
+  inspect(bytecode_compare(src), content="value:body")
+}
+
+///|
+test "bytecode do while captures outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 0;
+    #|  return function() {
+    #|    do {
+    #|      x = x + 1;
+    #|    } while (false);
+    #|    return x;
+    #|  };
+    #|}
+    #|var f = outer();
+    #|f() + "," + f();
+  inspect(bytecode_compare(src), content="value:1,2")
+}
+
+///|
 test "bytecode calls and return" {
   let src =
     #|function add(a, b) {
