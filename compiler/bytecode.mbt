@@ -3,6 +3,7 @@ priv enum BytecodeInstr {
   LoadConst(Value)
   LoadUndefined
   LoadThis
+  LoadConsoleMember(String)
   LoadName(String)
   StoreName(String)
   LoadLocal(Int)
@@ -1067,7 +1068,9 @@ fn BytecodeBuilder::compile_expr(
       }
       let _ = self.emit(MakeArray(elements.length()))
     }
-    Member(Ident("console", _), _, _) => bytecode_unsupported("console member")
+    Member(Ident("console", _), prop, _) => {
+      let _ = self.emit(LoadConsoleMember(prop))
+    }
     Member(obj, prop, loc) => {
       self.compile_expr(obj)
       let _ = self.emit(GetProperty(prop, loc))
@@ -1093,8 +1096,11 @@ fn BytecodeBuilder::compile_expr(
       self.compile_args(args)
       let _ = self.emit(Construct(args.length(), loc))
     }
-    Call(Member(Ident("console", _), _, _), _, _) =>
-      bytecode_unsupported("console member")
+    Call(Member(Ident("console", _), prop, _), args, loc) => {
+      let _ = self.emit(LoadConsoleMember(prop))
+      self.compile_args(args)
+      let _ = self.emit(Call(args.length(), loc))
+    }
     Call(Member(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
       let _ = self.emit(PreparePropertyCall(prop, member_loc))
@@ -1330,6 +1336,8 @@ fn run_bytecode_function(
       LoadConst(value) => frame.stack.push(value)
       LoadUndefined => frame.stack.push(Value::Undefined)
       LoadThis => frame.stack.push(@runtime.eval_this_value(frame.env))
+      LoadConsoleMember(prop) =>
+        frame.stack.push(interp.get_console_member(prop))
       LoadName(name) =>
         frame.stack.push(interp.get_compiled_name(frame.env, name))
       StoreName(name) => {

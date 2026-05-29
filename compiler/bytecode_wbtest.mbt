@@ -170,6 +170,19 @@ test "bytecode lowers this expressions to a dedicated load instruction" {
 }
 
 ///|
+test "bytecode lowers console members to a shared host helper load" {
+  let bytecode = parse_bytecode_for_wb("console.log(1);")
+  let mut saw_console = false
+  for instr in bytecode.main.code {
+    match instr {
+      LoadConsoleMember("log") => saw_console = true
+      _ => ()
+    }
+  }
+  guard saw_console else { abort("expected console member load") }
+}
+
+///|
 test "bytecode treats names inside nested unary expressions as captured" {
   let src =
     #|function outer() {

@@ -150,8 +150,8 @@ The current high-level opcode surface covers:
 - object interaction: array creation without holes/spread, simple object
   literals with static data properties, property get, computed get, and
   property/computed assignment through runtime setters
-- calls and construction: ordinary calls, receiver-preserving
-  property/computed calls, and non-spread `new` expressions
+- calls and construction: ordinary calls, host `console.log` calls/member reads,
+  receiver-preserving property/computed calls, and non-spread `new` expressions
 - closures: function declarations and anonymous function expressions backed by
   runtime compiled functions
 
@@ -185,7 +185,6 @@ The compiler currently raises an `InternalError` prefixed
 - `object literal method property`
 - `object literal __proto__ property`
 - `object literal property key`
-- `console member`
 - `direct eval call`
 - `expression kind`
 - `rest parameter`

@@ -75,6 +75,52 @@ fn bytecode_compare(src : String) -> String {
 }
 
 ///|
+fn bytecode_interpreter_output_outcome(src : String) -> String {
+  let interp = @interpreter.new_interpreter()
+  try {
+    let prog = @parser.parse(src)
+    "value:" +
+    interp.run(prog.stmts).to_string() +
+    "; output:" +
+    interp.host.output.join("|")
+  } catch {
+    @runtime.JsException(value) =>
+      "throw:" + value.to_string() + "; output:" + interp.host.output.join("|")
+    err =>
+      "error:" + err.to_string() + "; output:" + interp.host.output.join("|")
+  }
+}
+
+///|
+fn bytecode_output_outcome(src : String) -> String {
+  let interp = @interpreter.new_interpreter()
+  try {
+    let prog = @parser.parse(src)
+    let bytecode = compile_script_to_bytecode(prog.stmts)
+    "value:" +
+    bytecode.run(interp).to_string() +
+    "; output:" +
+    interp.host.output.join("|")
+  } catch {
+    @runtime.JsException(value) =>
+      "throw:" + value.to_string() + "; output:" + interp.host.output.join("|")
+    err =>
+      "error:" + err.to_string() + "; output:" + interp.host.output.join("|")
+  }
+}
+
+///|
+fn bytecode_compare_with_output(src : String) -> String {
+  let expected = bytecode_interpreter_output_outcome(src)
+  let actual = bytecode_output_outcome(src)
+  if actual == expected {
+    actual
+  } else {
+    "expected \{expected}; got \{actual}"
+  }
+}
+
+///|
 test "bytecode constants locals and binary ops" {
   let src =
     #|var x = 1;
@@ -723,12 +769,32 @@ test "bytecode rejects arguments object until function call setup supports it" {
 }
 
 ///|
-test "bytecode rejects console member special case until runtime helper is shared" {
+test "bytecode console log writes through shared host output helper" {
   let src =
-    #|console.log(1);
+    #|console.log(1, "two");
+    #|console.log(true);
   inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: console member",
+    bytecode_compare_with_output(src),
+    content="value:undefined; output:1 two|true",
+  )
+}
+
+///|
+test "bytecode console member expression returns callable log function" {
+  let src =
+    #|var log = console.log;
+    #|log("saved");
+    #|"done";
+  inspect(bytecode_compare_with_output(src), content="value:done; output:saved")
+}
+
+///|
+test "bytecode console member errors like interpreter for unsupported methods" {
+  let src =
+    #|console.warn(1);
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: console.warn is not supported",
   )
 }
 
