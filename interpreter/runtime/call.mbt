@@ -736,26 +736,28 @@ fn Interpreter::call_value_impl(
                 func_env.def_parameter(data.params[i], val)
               }
             }
-            // Create arguments object
-            let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
-              Some(func_env.get("[[ThrowTypeError]]"))
-            } else {
-              None
+            if !params_include_arguments(data.params, None) {
+              // Create arguments object unless a formal parameter is named `arguments`.
+              let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
+                Some(func_env.get("[[ThrowTypeError]]"))
+              } else {
+                None
+              }
+              func_env.def(
+                "arguments",
+                make_arguments_object(
+                  self.realm_state,
+                  self.realm_state.well_known_symbols,
+                  args,
+                  callee,
+                  func_strict,
+                  throw_type_error=tte_val,
+                  mapped_names=data.params,
+                  mapped_env=Some(func_env),
+                ),
+                VarBinding,
+              )
             }
-            func_env.def(
-              "arguments",
-              make_arguments_object(
-                self.realm_state,
-                self.realm_state.well_known_symbols,
-                args,
-                callee,
-                func_strict,
-                throw_type_error=tte_val,
-                mapped_names=data.params,
-                mapped_env=Some(func_env),
-              ),
-              VarBinding,
-            )
             // Hoist declarations and top-level lexical TDZ markers within the function body.
             self.hoist_declarations(data.body, func_env, strict=func_strict)
             hoist_block_tdz(data.body, func_env)
@@ -867,24 +869,27 @@ fn Interpreter::call_value_impl(
           }
           param_env.def("this", effective_this, LetBinding)
           param_env.def("<new.target>", Undefined, LetBinding)
-          // Create arguments object BEFORE binding params so defaults can reference it
-          let tte_val2 : Value? = if param_env.has("[[ThrowTypeError]]") {
-            Some(param_env.get("[[ThrowTypeError]]"))
-          } else {
-            None
+          if !ext_params_include_arguments(data.params, data.rest_param) {
+            // Create arguments object before binding params so defaults can reference it,
+            // unless a formal parameter is named `arguments`.
+            let tte_val2 : Value? = if param_env.has("[[ThrowTypeError]]") {
+              Some(param_env.get("[[ThrowTypeError]]"))
+            } else {
+              None
+            }
+            param_env.def(
+              "arguments",
+              make_arguments_object(
+                self.realm_state,
+                self.realm_state.well_known_symbols,
+                args,
+                callee,
+                func_strict,
+                throw_type_error=tte_val2,
+              ),
+              VarBinding,
+            )
           }
-          param_env.def(
-            "arguments",
-            make_arguments_object(
-              self.realm_state,
-              self.realm_state.well_known_symbols,
-              args,
-              callee,
-              func_strict,
-              throw_type_error=tte_val2,
-            ),
-            VarBinding,
-          )
           // Self-name lives on self_name_env; body-local `var/let/const`
           // of the same name naturally shadows via lexical lookup, and a
           // param of the same name sits on param_env which shadows too.

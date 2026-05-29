@@ -677,30 +677,37 @@ fn create_generator_instance(
         }
       }
     }
-    // Create arguments object on func_env (param env when split, single env
-    // otherwise). Ext / simple both install arguments here.
-    let args_props : Map[String, Value] = {}
-    for i = 0; i < args.length(); i = i + 1 {
-      args_props[i.to_string()] = args[i]
+    let has_arguments_param = match params_ext {
+      Some(pext) => ext_params_include_arguments(pext, rest_param)
+      None => params_include_arguments(params, rest_param)
     }
-    args_props["length"] = Number(args.length().to_double())
-    func_env.def(
-      "arguments",
-      Object({
-        bag: {
-          properties: args_props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-        },
-        prototype: Null,
-        callable: None,
-        class_name: "Arguments",
-        extensible: true,
-        arraybuffer_state: None,
-      }),
-      VarBinding,
-    )
+    if !has_arguments_param {
+      // Create arguments object on func_env (param env when split, single env
+      // otherwise). Ext / simple both install arguments here unless a formal
+      // parameter is named `arguments`.
+      let args_props : Map[String, Value] = {}
+      for i = 0; i < args.length(); i = i + 1 {
+        args_props[i.to_string()] = args[i]
+      }
+      args_props["length"] = Number(args.length().to_double())
+      func_env.def(
+        "arguments",
+        Object({
+          bag: {
+            properties: args_props,
+            symbol_properties: {},
+            descriptors: {},
+            symbol_descriptors: {},
+          },
+          prototype: Null,
+          callable: None,
+          class_name: "Arguments",
+          extensible: true,
+          arraybuffer_state: None,
+        }),
+        VarBinding,
+      )
+    }
     // Split body env iff Ext shape AND HasParameterExpressions; simple
     // params + plain-rest Ext both stay single-env per §10.2.11 step 26.
     let split_scope = match params_ext {

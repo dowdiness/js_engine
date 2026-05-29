@@ -8503,6 +8503,81 @@ test "sloppy: duplicate parameters are allowed" {
 }
 
 ///|
+test "sloppy: simple arguments parameter shadows arguments object" {
+  let src =
+    #|function f(arguments) { return arguments; }
+    #|function g(arguments, arguments) { return arguments; }
+    #|console.log(f(2));
+    #|console.log(g(1, 3));
+  let output = run_output(src)
+  json_inspect(output, content=["2", "3"])
+}
+
+///|
+test "sloppy: extended arguments parameter suppresses arguments object" {
+  let src =
+    #|function f(arguments = 1) { return arguments; }
+    #|function g(arguments, b = arguments) { return b; }
+    #|function h(...arguments) { return arguments.length + ":" + arguments[0]; }
+    #|function d({arguments}) { return arguments; }
+    #|function k({arguments: x = arguments.length}) { return x; }
+    #|function r(...[arguments]) { return arguments; }
+    #|console.log(f());
+    #|console.log(f(2));
+    #|console.log(g(7));
+    #|console.log(h(4, 5));
+    #|console.log(d({arguments: 9}));
+    #|console.log(k({}));
+    #|console.log(r(10));
+  let output = run_output(src)
+  json_inspect(output, content=["1", "2", "7", "2:4", "9", "1", "10"])
+}
+
+///|
+test "sloppy: constructor arguments parameter shadows arguments object" {
+  let src =
+    #|function F(arguments) { this.value = arguments; }
+    #|function G(arguments = 4) { this.value = arguments; }
+    #|console.log(new F(3).value);
+    #|console.log(new G().value);
+  let output = run_output(src)
+  json_inspect(output, content=["3", "4"])
+}
+
+///|
+test "sloppy: generator arguments parameter shadows arguments object" {
+  let src =
+    #|function* f(arguments) { yield arguments; }
+    #|function* g(arguments = 8) { yield arguments; }
+    #|console.log(f(6).next().value);
+    #|console.log(g().next().value);
+  let output = run_output(src)
+  json_inspect(output, content=["6", "8"])
+}
+
+///|
+test "sloppy: async arguments parameter shadows arguments object" {
+  let src =
+    #|async function f(arguments) { return arguments; }
+    #|async function g(arguments = 10) { return arguments; }
+    #|f(9).then(function(v) { console.log(v); });
+    #|g().then(function(v) { console.log(v); });
+  let output = run_output_async(src)
+  json_inspect(output, content=["9", "10"])
+}
+
+///|
+test "sloppy: async generator arguments parameter shadows arguments object" {
+  let src =
+    #|async function* f(arguments) { yield arguments; }
+    #|async function* g(arguments = 12) { yield arguments; }
+    #|f(11).next().then(function(r) { console.log(r.value); });
+    #|g().next().then(function(r) { console.log(r.value); });
+  let output = run_output_async(src)
+  json_inspect(output, content=["11", "12"])
+}
+
+///|
 test "strict: parameter named eval throws SyntaxError" {
   let src =
     #|"use strict";
