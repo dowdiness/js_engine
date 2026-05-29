@@ -346,6 +346,61 @@ test "bytecode treats names inside nested compound assignments as captured" {
 }
 
 ///|
+test "bytecode lowers member compound assignments through reference-preserving reads" {
+  let bytecode = parse_bytecode_for_wb("var o = { x: 1 }; o.x += 2;")
+  let mut saw_add = false
+  let mut saw_property_read = false
+  let mut saw_property_set = false
+  for instr in bytecode.main.code {
+    match instr {
+      ReadPropertyForAssign("x", _) => saw_property_read = true
+      BinaryOp(Add, _) => saw_add = true
+      SetProperty("x", _) => saw_property_set = true
+      _ => ()
+    }
+  }
+  guard saw_property_read else { abort("expected property assignment read") }
+  guard saw_add else { abort("expected compound binary add") }
+  guard saw_property_set else { abort("expected property set") }
+}
+
+///|
+test "bytecode lowers computed compound assignments through canonicalized keys" {
+  let bytecode = parse_bytecode_for_wb(
+    "var o = { x: 1 }; var k = 'x'; o[k] *= 3;",
+  )
+  let mut saw_mul = false
+  let mut saw_computed_read = false
+  let mut saw_computed_set = false
+  for instr in bytecode.main.code {
+    match instr {
+      ReadComputedForAssign(_) => saw_computed_read = true
+      BinaryOp(Mul, _) => saw_mul = true
+      SetComputed(_) => saw_computed_set = true
+      _ => ()
+    }
+  }
+  guard saw_computed_read else { abort("expected computed assignment read") }
+  guard saw_mul else { abort("expected compound binary multiply") }
+  guard saw_computed_set else { abort("expected computed set") }
+}
+
+///|
+test "bytecode treats names inside nested computed compound assignments as captured" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return function(o) { o[key] += 1; };
+    #|}
+    #|outer()({ x: 1 });
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers new expressions to construct instructions" {
   let bytecode = parse_bytecode_for_wb("function C() {} new C();")
   let mut saw_construct = false

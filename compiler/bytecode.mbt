@@ -32,6 +32,8 @@ priv enum BytecodeInstr {
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
   GetComputed(@token.Loc)
+  ReadPropertyForAssign(String, @token.Loc)
+  ReadComputedForAssign(@token.Loc)
   SetProperty(String, @token.Loc)
   SetComputed(@token.Loc)
   PreparePropertyCall(String, @token.Loc)
@@ -935,6 +937,55 @@ fn BytecodeBuilder::compile_identifier_compound_assign(
 }
 
 ///|
+fn BytecodeBuilder::compile_property_compound_assign(
+  self : BytecodeBuilder,
+  op : @ast.CompoundOp,
+  obj : @ast.Expr,
+  prop : String,
+  value : @ast.Expr,
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let bin_op = match @runtime.compound_assign_binary_op(op) {
+    Some(bin_op) => bin_op
+    None => {
+      bytecode_unsupported("compound assignment target")
+      Add
+    }
+  }
+  self.compile_expr(obj)
+  let _ = self.emit(ReadPropertyForAssign(prop, member_loc))
+  self.compile_expr(value)
+  let _ = self.emit(BinaryOp(bin_op, loc))
+  let _ = self.emit(SetProperty(prop, loc))
+}
+
+///|
+fn BytecodeBuilder::compile_computed_compound_assign(
+  self : BytecodeBuilder,
+  op : @ast.CompoundOp,
+  obj : @ast.Expr,
+  key : @ast.Expr,
+  value : @ast.Expr,
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let bin_op = match @runtime.compound_assign_binary_op(op) {
+    Some(bin_op) => bin_op
+    None => {
+      bytecode_unsupported("compound assignment target")
+      Add
+    }
+  }
+  self.compile_expr(obj)
+  self.compile_expr(key)
+  let _ = self.emit(ReadComputedForAssign(member_loc))
+  self.compile_expr(value)
+  let _ = self.emit(BinaryOp(bin_op, loc))
+  let _ = self.emit(SetComputed(loc))
+}
+
+///|
 fn bytecode_static_object_key(expr : @ast.Expr) -> String? {
   match expr {
     StringLit(s, _, _, _) => Some(s)
@@ -1094,6 +1145,14 @@ fn BytecodeBuilder::compile_expr(
       }
     CompoundAssign(op, Ident(name, _), value, loc) =>
       self.compile_identifier_compound_assign(op, name, value, loc)
+    CompoundAssign(op, Member(obj, prop, member_loc), value, loc) =>
+      self.compile_property_compound_assign(
+        op, obj, prop, value, member_loc, loc,
+      )
+    CompoundAssign(op, ComputedMember(obj, key, member_loc), value, loc) =>
+      self.compile_computed_compound_assign(
+        op, obj, key, value, member_loc, loc,
+      )
     CompoundAssign(_, _, _, _) =>
       bytecode_unsupported("compound assignment target")
     FuncExpr(Some(_), _, _, _) =>
@@ -1558,6 +1617,25 @@ fn run_bytecode_function(
         let key = frame.pop()
         let obj = frame.pop()
         frame.stack.push(interp.get_computed_property(obj, key, loc))
+      }
+      ReadPropertyForAssign(prop, loc) => {
+        let obj = frame.peek()
+        frame.stack.push(interp.get_property(obj, prop, loc))
+      }
+      ReadComputedForAssign(loc) => {
+        let key = frame.pop()
+        let obj = frame.pop()
+        if obj is Null {
+          raise @errors.TypeError(message="Cannot read properties of null")
+        }
+        if obj is Undefined {
+          raise @errors.TypeError(message="Cannot read properties of undefined")
+        }
+        let prop_key = @runtime.to_property_key(key, interp=Some(interp))
+        let current = interp.get_computed_property(obj, prop_key, loc)
+        frame.stack.push(obj)
+        frame.stack.push(prop_key)
+        frame.stack.push(current)
       }
       SetProperty(prop, loc) => {
         let value = frame.pop()

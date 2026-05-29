@@ -147,7 +147,8 @@ The current high-level opcode surface covers:
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`, and
   `typeof`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
   expressions, template literals, regex literals, identifier update,
-  identifier compound assignment, anonymous function naming
+  identifier and non-logical member/computed compound assignment, anonymous
+  function naming
 - object interaction: array creation without holes/spread, simple object
   literals with static data properties, property get, computed get, and
   property/computed assignment through runtime setters

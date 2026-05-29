@@ -598,10 +598,53 @@ test "bytecode identifier compound assignment uses assignment reference reads" {
 }
 
 ///|
-test "bytecode rejects member compound assignment until target references are implemented" {
+test "bytecode member compound assignment reuses property semantics" {
   let src =
-    #|var o = { x: 1 };
+    #|var o = { x: "4" };
     #|o.x += 2;
+    #|o.x;
+  inspect(bytecode_compare(src), content="value:42")
+}
+
+///|
+test "bytecode computed compound assignment canonicalizes key once" {
+  let src =
+    #|var log = "";
+    #|var o = { x: 1 };
+    #|var key = { toString: function() { log = log + "k"; return "x"; } };
+    #|function rhs() { log = log + "r"; return 2; }
+    #|o[key] += rhs();
+    #|o.x + ":" + log;
+  inspect(bytecode_compare(src), content="value:3:kr")
+}
+
+///|
+test "bytecode member compound assignment null receiver throws like interpreter" {
+  let src =
+    #|var target = null;
+    #|target.x += 1;
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Cannot read properties of null (reading 'x')",
+  )
+}
+
+///|
+test "bytecode computed compound assignment captures outer key binding" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return function(o) { o[key] += 2; return o.x; };
+    #|}
+    #|outer()({ x: 1 });
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode rejects non-identifier logical compound assignment targets" {
+  let src =
+    #|var o = { x: 0 };
+    #|o.x ||= 1;
   inspect(
     bytecode_outcome(src),
     content="error:InternalError: bytecode prototype unsupported: compound assignment target",
