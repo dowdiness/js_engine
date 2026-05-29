@@ -2,6 +2,7 @@
 priv enum BytecodeInstr {
   LoadConst(Value)
   LoadUndefined
+  LoadThis
   LoadName(String)
   StoreName(String)
   LoadLocal(Int)
@@ -813,6 +814,9 @@ fn BytecodeBuilder::compile_expr(
     UndefinedLit(_) => {
       let _ = self.emit(LoadUndefined)
     }
+    ThisExpr(_) => {
+      let _ = self.emit(LoadThis)
+    }
     Ident("arguments", _) => bytecode_unsupported("arguments object")
     Ident(name, _) =>
       match self.local_slot(name) {
@@ -1165,6 +1169,7 @@ fn run_bytecode_function(
     match instr {
       LoadConst(value) => frame.stack.push(value)
       LoadUndefined => frame.stack.push(Value::Undefined)
+      LoadThis => frame.stack.push(@runtime.eval_this_value(frame.env))
       LoadName(name) =>
         frame.stack.push(interp.get_compiled_name(frame.env, name))
       StoreName(name) => {

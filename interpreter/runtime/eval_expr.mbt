@@ -23,6 +23,24 @@ fn resolve_super_target(env : Environment) -> Value {
 }
 
 ///|
+/// Resolve `this` with the same TDZ-to-derived-constructor error mapping used
+/// by expression evaluation. Compiled execution uses this helper instead of
+/// treating `this` as an ordinary identifier.
+pub fn eval_this_value(env : Environment) -> Value raise Error {
+  env.get("this") catch {
+    @errors.ReferenceError(message~) => {
+      if message.contains("before initialization") {
+        raise @errors.ReferenceError(
+          message="Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
+        )
+      }
+      Value::Undefined
+    }
+    other => raise other
+  }
+}
+
+///|
 /// Evaluate an object-literal property's value. For method-shorthand
 /// props the returned function must not carry the §15.2.5 self-name
 /// binding (methods have no FunctionExpressionName), so we strip it
@@ -596,20 +614,7 @@ fn Interpreter::eval_expr(
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(ctx, callee_expr, arg_exprs, env, loc)
-    ThisExpr(_) =>
-      env.get("this") catch {
-        @errors.ReferenceError(message~) => {
-          // In derived class constructors, 'this' is in TDZ until super() is called
-          if message.contains("before initialization") {
-            raise @errors.ReferenceError(
-              message="Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
-            )
-          }
-          // Otherwise, 'this' is just not defined (global arrow function, etc.)
-          Undefined
-        }
-        other => raise other
-      }
+    ThisExpr(_) => eval_this_value(env)
     UpdateExpr(op, operand, prefix, loc) =>
       self.eval_update(ctx, op, operand, prefix, env, loc)
     CompoundAssign(op, target, value_expr, loc) =>

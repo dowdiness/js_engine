@@ -50,6 +50,22 @@ test "bytecode lowers unary minus to a unary value instruction" {
 }
 
 ///|
+test "bytecode lowers this expressions to a dedicated load instruction" {
+  let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let mut saw_this = false
+  for instr in bytecode.main.children[0].code {
+    match instr {
+      LoadThis => saw_this = true
+      _ => ()
+    }
+  }
+  guard saw_this else { abort("expected load this instruction") }
+}
+
+///|
 test "bytecode treats names inside nested unary expressions as captured" {
   let src =
     #|function outer() {

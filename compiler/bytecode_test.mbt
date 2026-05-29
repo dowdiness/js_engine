@@ -394,6 +394,35 @@ test "bytecode computed assignment captures outer key binding" {
 }
 
 ///|
+test "bytecode top-level this resolves global object" {
+  let src =
+    #|this === globalThis;
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
+test "bytecode this uses call receiver and sloppy global fallback" {
+  let src =
+    #|var obj = [];
+    #|obj.x = 4;
+    #|obj.get = function() { return this.x; };
+    #|function plain() { return this === globalThis; }
+    #|obj.get() + "," + plain();
+  inspect(bytecode_compare(src), content="value:4,true")
+}
+
+///|
+test "bytecode strict function call keeps undefined this" {
+  let src =
+    #|function strictThis() {
+    #|  "use strict";
+    #|  return this === undefined;
+    #|}
+    #|strictThis();
+  inspect(bytecode_compare(src), content="value:true")
+}
+
+///|
 test "bytecode rejects named function expressions until self-name binding is implemented" {
   let src =
     #|var f = function g() { return g; };

@@ -138,8 +138,8 @@ Continue the bytecode/IR track with these constraints:
 
 The current high-level opcode surface covers:
 
-- constants and simple moves: load constant/`undefined`, load/store name,
-  load/store function-local slot, define binding
+- constants and simple moves: load constant/`undefined`/`this`, load/store
+  name, load/store function-local slot, define binding
 - completion and control flow: set completion, pop, jump, conditional jump,
   return, throw
 - expressions: supported eager binary operations, selected value unary
