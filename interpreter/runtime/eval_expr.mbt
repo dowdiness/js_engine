@@ -689,17 +689,22 @@ fn Interpreter::eval_expr(
       String_(buf.to_string())
     }
     TaggedTemplate(tag_expr, strings, exprs, loc) => {
-      let tag = self.eval_expr(ctx, tag_expr, env)
+      let (tag, this_val) = match tag_expr {
+        Member(obj_expr, prop, member_loc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          (self.get_property(obj, prop, member_loc), obj)
+        }
+        ComputedMember(obj_expr, key_expr, member_loc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let key = self.eval_expr(ctx, key_expr, env)
+          (self.get_computed_property(obj, key, member_loc), obj)
+        }
+        _ => (self.eval_expr(ctx, tag_expr, env), Undefined)
+      }
       // Build args: [templateObj, ...substitutions]
       let args : Array[Value] = [make_tagged_template_object(strings)]
       for e in exprs {
         args.push(self.eval_expr(ctx, e, env))
-      }
-      // Resolve this binding for member expression tags (e.g., String.raw`...`)
-      let this_val : Value = match tag_expr {
-        Member(obj_expr, _, _) | ComputedMember(obj_expr, _, _) =>
-          self.eval_expr(ctx, obj_expr, env)
-        _ => Undefined
       }
       self.call_value(tag, this_val, args, loc)
     }

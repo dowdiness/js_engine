@@ -228,13 +228,44 @@ test "bytecode tagged template captures tag and substitution bindings" {
 }
 
 ///|
-test "bytecode rejects member tagged templates until receiver semantics are shared" {
+test "bytecode member tagged template preserves receiver" {
+  let src =
+    #|var obj = { x: "ok", tag: function(strings) { return this.x + ":" + strings[0]; } };
+    #|obj.tag`hello`;
+  inspect(bytecode_compare(src), content="value:ok:hello")
+}
+
+///|
+test "bytecode computed tagged template preserves receiver and evaluation order" {
+  let src =
+    #|var log = "";
+    #|var obj = { x: 2 };
+    #|obj.tag = function(strings, value) { return this.x + ":" + log + ":" + strings[0] + strings[1] + ":" + value; };
+    #|function getObj() { log = log + "o"; return obj; }
+    #|function key() { log = log + "k"; return "tag"; }
+    #|getObj()[key()]`a${(log = log + "e", "v")}b`;
+  inspect(bytecode_compare(src), content="value:2:oke:ab:v")
+}
+
+///|
+test "bytecode member tagged template captures receiver bindings" {
+  let src =
+    #|function outer() {
+    #|  var obj = { x: 4, tag: function(strings, value) { return this.x + ":" + value; } };
+    #|  return function() { return obj.tag`${1}`; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:4:1")
+}
+
+///|
+test "bytecode rejects optional member tagged templates until optional tag semantics are shared" {
   let src =
     #|var obj = { tag: function(strings) { return this === obj; } };
-    #|obj.tag`x`;
+    #|obj?.tag`x`;
   inspect(
     bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: tagged template member call",
+    content="error:InternalError: bytecode prototype unsupported: tagged template optional member call",
   )
 }
 

@@ -270,6 +270,27 @@ test "bytecode lowers tagged templates to template-object calls" {
 }
 
 ///|
+test "bytecode lowers member tagged templates to receiver calls" {
+  let bytecode = parse_bytecode_for_wb("obj.tag`a${x}b`; obj[key]`c`; ")
+  let mut saw_property_prepare = false
+  let mut saw_computed_prepare = false
+  let mut saw_receiver_call = false
+  for instr in bytecode.main.code {
+    match instr {
+      PreparePropertyCall("tag", _) => saw_property_prepare = true
+      PrepareComputedCall(_) => saw_computed_prepare = true
+      CallWithReceiver(_, _) => saw_receiver_call = true
+      _ => ()
+    }
+  }
+  guard saw_property_prepare else { abort("expected property tag receiver") }
+  guard saw_computed_prepare else { abort("expected computed tag receiver") }
+  guard saw_receiver_call else {
+    abort("expected tagged template receiver call")
+  }
+}
+
+///|
 test "bytecode treats names inside nested tagged templates as captured" {
   let src =
     #|function outer() {

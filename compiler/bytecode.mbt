@@ -1757,11 +1757,28 @@ fn BytecodeBuilder::compile_expr(
         let _ = self.emit(AppendTemplate(tail))
       }
     }
-    TaggedTemplate(Member(_, _, _), _, _, _)
-    | TaggedTemplate(ComputedMember(_, _, _), _, _, _)
-    | TaggedTemplate(OptionalMember(_, _, _), _, _, _)
+    TaggedTemplate(Member(obj, prop, member_loc), strings, exprs, loc) => {
+      self.compile_expr(obj)
+      let _ = self.emit(PreparePropertyCall(prop, member_loc))
+      let _ = self.emit(MakeTemplateObject(strings))
+      for expr in exprs {
+        self.compile_expr(expr)
+      }
+      let _ = self.emit(CallWithReceiver(1 + exprs.length(), loc))
+    }
+    TaggedTemplate(ComputedMember(obj, key, member_loc), strings, exprs, loc) => {
+      self.compile_expr(obj)
+      self.compile_expr(key)
+      let _ = self.emit(PrepareComputedCall(member_loc))
+      let _ = self.emit(MakeTemplateObject(strings))
+      for expr in exprs {
+        self.compile_expr(expr)
+      }
+      let _ = self.emit(CallWithReceiver(1 + exprs.length(), loc))
+    }
+    TaggedTemplate(OptionalMember(_, _, _), _, _, _)
     | TaggedTemplate(OptionalComputedMember(_, _, _), _, _, _) =>
-      bytecode_unsupported("tagged template member call")
+      bytecode_unsupported("tagged template optional member call")
     TaggedTemplate(tag, strings, exprs, loc) => {
       self.compile_expr(tag)
       let _ = self.emit(MakeTemplateObject(strings))
