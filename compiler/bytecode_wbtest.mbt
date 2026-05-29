@@ -163,6 +163,19 @@ test "bytecode lowers property delete expressions to delete instructions" {
 }
 
 ///|
+test "bytecode lowers identifier delete expressions to delete-name instructions" {
+  let bytecode = parse_bytecode_for_wb("delete missing;")
+  let mut saw_name_delete = false
+  for instr in bytecode.main.code {
+    match instr {
+      DeleteName("missing") => saw_name_delete = true
+      _ => ()
+    }
+  }
+  guard saw_name_delete else { abort("expected identifier delete") }
+}
+
+///|
 test "bytecode lowers typeof identifiers to a typeof-name instruction" {
   let bytecode = parse_bytecode_for_wb("typeof missing;")
   let mut saw_typeof = false

@@ -360,10 +360,39 @@ test "bytecode delete property handles primitive and null receivers like interpr
 }
 
 ///|
-test "bytecode rejects non-property delete until reference semantics are shared" {
+test "bytecode delete identifiers uses shared runtime semantics" {
+  let src =
+    #|function f() { return delete arguments; }
+    #|var missing_delete = delete missing;
+    #|missing_delete + "," + f();
+  inspect(bytecode_compare(src), content="value:true,true")
+}
+
+///|
+test "bytecode delete var binding matches interpreter global descriptor behavior" {
   let src =
     #|var x = 1;
+    #|var r = delete x;
+    #|r + "," + x;
+  inspect(bytecode_compare(src), content="value:false,1")
+}
+
+///|
+test "bytecode delete identifiers preserves strict mode SyntaxError" {
+  let src =
+    #|"use strict";
     #|delete x;
+  inspect(
+    bytecode_compare(src),
+    content="throw:SyntaxError: Delete of an unqualified identifier in strict mode.",
+  )
+}
+
+///|
+test "bytecode rejects non-identifier non-property delete until reference semantics are shared" {
+  let src =
+    #|var x = 1;
+    #|delete (x = 2);
   inspect(
     bytecode_outcome(src),
     content="error:InternalError: bytecode prototype unsupported: delete non-property operator",

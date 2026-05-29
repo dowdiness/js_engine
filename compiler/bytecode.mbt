@@ -16,6 +16,7 @@ priv enum BytecodeInstr {
   BinaryOp(@ast.BinOp, @token.Loc)
   UnaryValueOp(@ast.UnaryOp, @token.Loc)
   TypeofName(String)
+  DeleteName(String)
   DeleteProperty(String)
   DeleteComputed
   AppendTemplate(String)
@@ -1406,6 +1407,9 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(DeleteComputed)
     }
+    Unary(Delete, Ident(name, _), _) => {
+      let _ = self.emit(DeleteName(name))
+    }
     Unary(Delete, _, _) => bytecode_unsupported("delete non-property operator")
     Unary(Typeof, Ident("arguments", _), _) =>
       bytecode_unsupported("arguments object")
@@ -1902,6 +1906,10 @@ fn run_bytecode_function(
       TypeofName(name) =>
         frame.stack.push(
           interp.typeof_compiled_name(frame.ctx, frame.env, name),
+        )
+      DeleteName(name) =>
+        frame.stack.push(
+          @runtime.eval_delete_identifier(interp, frame.ctx, frame.env, name),
         )
       DeleteProperty(prop) => {
         let obj = frame.pop()

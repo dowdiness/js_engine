@@ -145,11 +145,11 @@ The current high-level opcode surface covers:
   `break`/`continue`, block statements and control-flow bodies with `var`
   declarations but without lexical or function declarations
 - expressions: supported eager binary operations including `in` and
-  `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`, and
-  `typeof`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
-  expressions, template literals, regex literals, identifier/member/computed
-  update, identifier and member/computed compound assignment,
-  anonymous function naming
+  `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`,
+  `typeof`, and identifier `delete`), jump-lowered `&&`, `||`, `??`, ternary
+  conditionals, comma expressions, template literals, regex literals,
+  identifier/member/computed update, identifier and member/computed compound
+  assignment, anonymous function naming
 - object interaction: array creation including holes but without spread, simple
   object literals with static data properties, property get, computed get,
   optional property/computed get, property/computed assignment through runtime
@@ -184,7 +184,7 @@ The compiler currently raises an `InternalError` prefixed
 - `labeled continue statement`
 - `spread argument`
 - `arguments object`
-- `delete non-property operator`
+- `delete non-property operator` (for non-identifier/non-property operands)
 - `named function expression`
 - `compound assignment target` (invalid/non-reference targets only)
 - `array spread element`

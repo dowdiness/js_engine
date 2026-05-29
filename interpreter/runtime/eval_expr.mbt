@@ -1750,6 +1750,51 @@ pub fn eval_delete_computed_property(
 }
 
 ///|
+pub fn eval_delete_identifier(
+  interp : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+) -> Value raise Error {
+  // delete of an unqualified identifier is a SyntaxError in strict mode
+  if ctx.strict {
+    raise @errors.SyntaxError(
+      message="Delete of an unqualified identifier in strict mode.",
+    )
+  }
+  // Check if this identifier is in a with-object first
+  match env.find_with_object(name) {
+    Some(Object(with_data)) => {
+      match with_data.bag.descriptors.get(name) {
+        Some(desc) => if !desc.configurable { return Bool(false) }
+        None => ()
+      }
+      let _ = with_data.bag.properties.remove(name)
+      let _ = with_data.bag.descriptors.remove(name)
+      Bool(true)
+    }
+    _ =>
+      // In non-strict mode, check if the identifier is a non-configurable
+      // property on the global object (e.g. undefined, NaN, Infinity).
+      match interp.global_this {
+        Object(data) =>
+          match data.bag.descriptors.get(name) {
+            Some(desc) =>
+              if !desc.configurable {
+                Bool(false)
+              } else {
+                let _ = data.bag.properties.remove(name)
+                let _ = data.bag.descriptors.remove(name)
+                Bool(true)
+              }
+            None => Bool(true)
+          }
+        _ => Bool(true)
+      }
+  }
+}
+
+///|
 /// Check whether `name` is a non-writable property on the global object
 /// (undefined, NaN, Infinity). These are { writable:false } per ES spec §19.1.
 fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
@@ -1808,44 +1853,7 @@ fn Interpreter::eval_unary(
           let key = self.eval_expr(ctx, key_expr, env)
           eval_delete_computed_property(self, obj, key, ctx.strict)
         }
-        Ident(name, _) =>
-          // delete of an unqualified identifier is a SyntaxError in strict mode
-          if ctx.strict {
-            raise @errors.SyntaxError(
-              message="Delete of an unqualified identifier in strict mode.",
-            )
-          } else {
-            // Check if this identifier is in a with-object first
-            match env.find_with_object(name) {
-              Some(Object(with_data)) => {
-                match with_data.bag.descriptors.get(name) {
-                  Some(desc) => if !desc.configurable { return Bool(false) }
-                  None => ()
-                }
-                let _ = with_data.bag.properties.remove(name)
-                let _ = with_data.bag.descriptors.remove(name)
-                Bool(true)
-              }
-              _ =>
-                // In non-strict mode, check if the identifier is a non-configurable
-                // property on the global object (e.g. undefined, NaN, Infinity).
-                match self.global_this {
-                  Object(data) =>
-                    match data.bag.descriptors.get(name) {
-                      Some(desc) =>
-                        if !desc.configurable {
-                          Bool(false)
-                        } else {
-                          let _ = data.bag.properties.remove(name)
-                          let _ = data.bag.descriptors.remove(name)
-                          Bool(true)
-                        }
-                      None => Bool(true)
-                    }
-                  _ => Bool(true)
-                }
-            }
-          }
+        Ident(name, _) => eval_delete_identifier(self, ctx, env, name)
         _ => Bool(true)
       }
     _ => {

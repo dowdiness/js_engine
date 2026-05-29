@@ -41,6 +41,8 @@ pub fn eval_binary_op(@ast.BinOp, Value, Value, @token.Loc, interp? : Interprete
 
 pub fn eval_delete_computed_property(Interpreter, Value, Value, Bool) -> Value raise
 
+pub fn eval_delete_identifier(Interpreter, ExecContext, Environment, String) -> Value raise
+
 pub fn eval_delete_property(Interpreter, Value, String, Bool) -> Value raise
 
 pub fn eval_this_value(Environment) -> Value raise
