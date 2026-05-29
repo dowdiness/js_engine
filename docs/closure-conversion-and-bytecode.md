@@ -151,9 +151,10 @@ The current high-level opcode surface covers:
   identifier/member/computed update, identifier and member/computed compound
   assignment, anonymous function naming
 - object interaction: array creation including holes and spread, simple
-  object literals with static data properties, property get, computed get,
-  optional property/computed get, property/computed assignment through runtime
-  setters, and property/computed deletion through shared runtime helpers
+  object literals with static data properties and spread properties, property
+  get, computed get, optional property/computed get, property/computed
+  assignment through runtime setters, and property/computed deletion through
+  shared runtime helpers
 - calls and construction: ordinary calls and optional calls, including spread
   arguments, host `console.log` calls/member reads, receiver-preserving
   property/computed calls, and `new` expressions including spread arguments
@@ -164,9 +165,8 @@ The shipped milestone covers the primary workload shape: function declarations
 and anonymous expressions, calls, construction including spread arguments,
 arrays, member/computed access, assignments, `for`/`while`/`do while` loops,
 `return`, `throw`, unlabeled `break`/`continue`, and labels that do not need
-label-target resolution. Labeled `break`/`continue`, object-literal spread,
-and broader syntax remain future work and should land only with
-compare-against-tree-walker tests.
+label-target resolution. Labeled `break`/`continue` and broader syntax remain
+future work and should land only with compare-against-tree-walker tests.
 
 ## Current Explicit Bytecode Rejections
 
@@ -188,7 +188,6 @@ The compiler currently raises an `InternalError` prefixed
 - `named function expression`
 - `compound assignment target` (invalid/non-reference targets only)
 - `object literal accessor property`
-- `object literal spread property`
 - `object literal computed property`
 - `object literal method property`
 - `object literal __proto__ property`

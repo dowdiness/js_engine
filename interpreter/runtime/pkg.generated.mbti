@@ -472,6 +472,7 @@ pub fn Interpreter::array_set_length(Self, ArrayData, PartialDescriptor) -> Bool
 pub fn Interpreter::assign_compiled_name(Self, ExecContext, Environment, String, Value) -> Value raise
 pub fn Interpreter::call_value(Self, Value, Value, Array[Value], @token.Loc) -> Value raise
 pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?, new_target? : Value?) -> Value raise
+pub fn Interpreter::copy_object_spread_properties(Self, Value, Value, @token.Loc) -> Unit raise
 pub fn Interpreter::define_compiled_binding(Self, Environment, @ast.VarKind, String, Value, Bool) -> Unit raise
 pub fn Interpreter::define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit

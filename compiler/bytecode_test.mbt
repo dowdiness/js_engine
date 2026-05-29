@@ -1265,14 +1265,54 @@ test "bytecode object literal captures outer bindings" {
 }
 
 ///|
+test "bytecode object spread copies enumerable own properties in order" {
+  let src =
+    #|var a = { x: 1, y: 2 };
+    #|var b = { y: 20, z: 30 };
+    #|var o = { first: 0, ...a, y: 3, ...b };
+    #|o.first + ":" + o.x + "," + o.y + "," + o.z;
+  inspect(bytecode_compare(src), content="value:0:1,20,30")
+}
+
+///|
+test "bytecode object spread skips non-enumerable properties and invokes getters" {
+  let src =
+    #|var log = "";
+    #|var source = { a: 1 };
+    #|Object.defineProperty(source, "hidden", { value: 2, enumerable: false });
+    #|Object.defineProperty(source, "x", {
+    #|  get: function() { log = log + "g"; return 4; },
+    #|  enumerable: true
+    #|});
+    #|var o = { before: (log = log + "b", 0), ...source, after: log };
+    #|o.a + "," + o.x + "," + ("hidden" in o) + "," + o.after + "," + log;
+  inspect(bytecode_compare(src), content="value:1,4,false,bg,bg")
+}
+
+///|
+test "bytecode object spread handles nullish and primitive sources" {
+  let src =
+    #|var o = { ...null, ...undefined, ...1, ...true, ..."ab" };
+    #|o[0] + o[1] + "," + ("x" in o);
+  inspect(bytecode_compare(src), content="value:ab,false")
+}
+
+///|
+test "bytecode object spread captures outer source bindings" {
+  let src =
+    #|function outer() {
+    #|  var source = { x: 7 };
+    #|  return function() { return ({ ...source }).x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:7")
+}
+
+///|
 test "bytecode rejects unsupported object literal forms explicitly" {
   inspect(
     bytecode_outcome("var k = 'x'; ({ [k]: 1 });"),
     content="error:InternalError: bytecode prototype unsupported: object literal computed property",
-  )
-  inspect(
-    bytecode_outcome("({ ...{ x: 1 } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal spread property",
   )
   inspect(
     bytecode_outcome("({ get x() { return 1; } });"),

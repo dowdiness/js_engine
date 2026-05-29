@@ -41,6 +41,9 @@ priv enum BytecodeInstr {
   ArgPushValue
   ArgPushSpread(@token.Loc)
   MakeObject(Array[String])
+  StartObject
+  ObjectSetStatic(String)
+  ObjectSpread(@token.Loc)
   MakeFunction(Int)
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
@@ -1428,35 +1431,76 @@ fn bytecode_static_object_key(expr : @ast.Expr) -> String? {
 fn BytecodeBuilder::compile_object_lit(
   self : BytecodeBuilder,
   props : Array[@ast.Property],
+  loc : @token.Loc,
 ) -> Unit raise Error {
-  let keys : Array[String] = []
+  let mut has_spread = false
   for prop in props {
     match prop.kind {
-      Init => ()
-      Get | Set => bytecode_unsupported("object literal accessor property")
-      Spread => bytecode_unsupported("object literal spread property")
+      Spread => has_spread = true
+      _ => ()
     }
-    if prop.computed {
-      bytecode_unsupported("object literal computed property")
-    }
-    if prop.is_method {
-      bytecode_unsupported("object literal method property")
-    }
-    let key = match bytecode_static_object_key(prop.key) {
-      Some(key) => key
-      None => {
-        bytecode_unsupported("object literal property key")
-        ""
-      }
-    }
-    if key == "__proto__" {
-      bytecode_unsupported("object literal __proto__ property")
-    }
-    self.compile_expr(prop.value)
-    let _ = self.emit(SetFunctionName(key))
-    keys.push(key)
   }
-  let _ = self.emit(MakeObject(keys))
+  if has_spread {
+    let _ = self.emit(StartObject)
+    for prop in props {
+      match prop.kind {
+        Spread => {
+          self.compile_expr(prop.key)
+          let _ = self.emit(ObjectSpread(loc))
+          continue
+        }
+        Init => ()
+        Get | Set => bytecode_unsupported("object literal accessor property")
+      }
+      if prop.computed {
+        bytecode_unsupported("object literal computed property")
+      }
+      if prop.is_method {
+        bytecode_unsupported("object literal method property")
+      }
+      let key = match bytecode_static_object_key(prop.key) {
+        Some(key) => key
+        None => {
+          bytecode_unsupported("object literal property key")
+          ""
+        }
+      }
+      if key == "__proto__" {
+        bytecode_unsupported("object literal __proto__ property")
+      }
+      self.compile_expr(prop.value)
+      let _ = self.emit(SetFunctionName(key))
+      let _ = self.emit(ObjectSetStatic(key))
+    }
+  } else {
+    let keys : Array[String] = []
+    for prop in props {
+      match prop.kind {
+        Get | Set => bytecode_unsupported("object literal accessor property")
+        _ => ()
+      }
+      if prop.computed {
+        bytecode_unsupported("object literal computed property")
+      }
+      if prop.is_method {
+        bytecode_unsupported("object literal method property")
+      }
+      let key = match bytecode_static_object_key(prop.key) {
+        Some(key) => key
+        None => {
+          bytecode_unsupported("object literal property key")
+          ""
+        }
+      }
+      if key == "__proto__" {
+        bytecode_unsupported("object literal __proto__ property")
+      }
+      self.compile_expr(prop.value)
+      let _ = self.emit(SetFunctionName(key))
+      keys.push(key)
+    }
+    let _ = self.emit(MakeObject(keys))
+  }
 }
 
 ///|
@@ -1612,7 +1656,7 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(MakeFunction(fn_idx))
     }
     Grouping(inner, _) => self.compile_expr(inner)
-    ObjectLit(props, _) => self.compile_object_lit(props)
+    ObjectLit(props, loc) => self.compile_object_lit(props, loc)
     ArrayLit(elements, _) => {
       let mut has_spread = false
       for element in elements {
@@ -2254,6 +2298,28 @@ fn run_bytecode_function(
         frame.stack.push(
           @runtime.make_object(properties, prototype, None, "Object", {}, true),
         )
+      }
+      StartObject => {
+        let prototype = frame.env.get("[[ObjectPrototype]]") catch {
+          _ => Value::Null
+        }
+        frame.stack.push(
+          @runtime.make_object({}, prototype, None, "Object", {}, true),
+        )
+      }
+      ObjectSetStatic(key) => {
+        let value = frame.pop()
+        match frame.peek() {
+          Object(data) => data.bag.properties[key] = value
+          _ =>
+            raise @errors.InternalError(
+              message="bytecode object accumulator was not an object",
+            )
+        }
+      }
+      ObjectSpread(loc) => {
+        let source = frame.pop()
+        interp.copy_object_spread_properties(frame.peek(), source, loc)
       }
       MakeFunction(index) => {
         let child = frame.func_def.children[index]

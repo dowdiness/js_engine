@@ -102,6 +102,67 @@ fn Interpreter::eval_prop_value(
 }
 
 ///|
+pub fn Interpreter::copy_object_spread_properties(
+  self : Interpreter,
+  target : Value,
+  source : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let (properties, symbol_properties) = match target {
+    Object(data) => (data.bag.properties, data.bag.symbol_properties)
+    _ =>
+      raise @errors.InternalError(
+        message="object spread target was not an object",
+      )
+  }
+  match source {
+    Object(data) => {
+      // Copy all enumerable own properties. Per ES spec, spread invokes [[Get]]
+      // (which triggers getters) and creates data properties (not accessor
+      // descriptors).
+      for key, raw_value in data.bag.properties {
+        match data.bag.descriptors.get(key) {
+          Some(desc) =>
+            if desc.enumerable {
+              let val : Value = match desc.getter {
+                Some(getter) => self.call_value(getter, source, [], loc)
+                None => raw_value
+              }
+              properties[key] = val
+            }
+          None => properties[key] = raw_value
+        }
+      }
+      // Copy symbol properties too, matching the existing object-literal spread
+      // path's descriptor handling.
+      for sym_id, value in data.bag.symbol_properties {
+        match data.bag.symbol_descriptors.get(sym_id) {
+          Some(desc) => if desc.enumerable { symbol_properties[sym_id] = value }
+          None => symbol_properties[sym_id] = value
+        }
+      }
+    }
+    Array(arr_data) =>
+      // Spread array into object: only enumerable own properties. The current
+      // interpreter representation treats dense element slots as enumerable.
+      for i, value in arr_data.elements {
+        properties[i.to_string()] = value
+      }
+    String_(s) => {
+      // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b" }.
+      let mut idx = 0
+      for ch in s {
+        properties[idx.to_string()] = String_(ch.to_string())
+        idx = idx + 1
+      }
+    }
+    Null | Undefined => () // Skip null/undefined per spec.
+    Number(_) | Bool(_) => () // Primitives have no enumerable own properties.
+    _ => ()
+  }
+}
+
+///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -302,55 +363,7 @@ fn Interpreter::eval_expr(
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
           let spread_val = self.eval_expr(ctx, prop.key, env)
-          match spread_val {
-            Object(data) => {
-              // Copy all enumerable own properties
-              // Per ES spec, spread invokes [[Get]] (which triggers getters)
-              // and creates data properties (not accessor descriptors)
-              for key, _value in data.bag.properties {
-                match data.bag.descriptors.get(key) {
-                  Some(desc) =>
-                    if desc.enumerable {
-                      // Invoke getter if present, otherwise use raw value
-                      let val : Value = match desc.getter {
-                        Some(getter) =>
-                          self.call_value(getter, spread_val, [], obj_loc)
-                        None => _value
-                      }
-                      properties[key] = val
-                    }
-                  None => properties[key] = _value
-                }
-              }
-              // Copy symbol properties too
-              for sym_id, value in data.bag.symbol_properties {
-                match data.bag.symbol_descriptors.get(sym_id) {
-                  Some(desc) =>
-                    if desc.enumerable {
-                      symbol_properties[sym_id] = value
-                    }
-                  None => symbol_properties[sym_id] = value
-                }
-              }
-            }
-            Array(arr_data) =>
-              // Spread array into object: only enumerable own properties
-              // length is non-enumerable per spec, so only copy indexed elements
-              for i, value in arr_data.elements {
-                properties[i.to_string()] = value
-              }
-            String_(s) => {
-              // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b", "2": "c" }
-              let mut idx = 0
-              for ch in s {
-                properties[idx.to_string()] = String_(ch.to_string())
-                idx = idx + 1
-              }
-            }
-            Null | Undefined => () // Skip null/undefined per spec
-            Number(_) | Bool(_) => () // Primitives have no enumerable own properties
-            _ => ()
-          }
+          self.copy_object_spread_properties(home_object, spread_val, obj_loc)
           continue
         }
         if prop.computed {

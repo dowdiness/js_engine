@@ -363,6 +363,28 @@ test "bytecode lowers simple object literals to a make object instruction" {
 }
 
 ///|
+test "bytecode lowers object spreads to incremental object instructions" {
+  let bytecode = parse_bytecode_for_wb("var o = { a: 1, ...src, b: 2 };")
+  let mut saw_start = false
+  let mut saw_a = false
+  let mut saw_spread = false
+  let mut saw_b = false
+  for instr in bytecode.main.code {
+    match instr {
+      StartObject => saw_start = true
+      ObjectSetStatic("a") => saw_a = true
+      ObjectSpread(_) => saw_spread = true
+      ObjectSetStatic("b") => saw_b = true
+      _ => ()
+    }
+  }
+  guard saw_start else { abort("expected object accumulator") }
+  guard saw_a else { abort("expected static property before spread") }
+  guard saw_spread else { abort("expected object spread") }
+  guard saw_b else { abort("expected static property after spread") }
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {
@@ -490,6 +512,21 @@ test "bytecode treats names inside nested object literals as captured" {
     #|function outer() {
     #|  var x = 1;
     #|  return function() { return { value: x }.value; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
+test "bytecode treats names inside nested object spreads as captured" {
+  let src =
+    #|function outer() {
+    #|  var source = { x: 1 };
+    #|  return function() { return { ...source }.x; };
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)
