@@ -150,7 +150,7 @@ The current high-level opcode surface covers:
   conditionals, comma expressions, template literals, regex literals,
   identifier/member/computed update, identifier and member/computed compound
   assignment, anonymous function naming
-- object interaction: array creation including holes but without spread, simple
+- object interaction: array creation including holes and spread, simple
   object literals with static data properties, property get, computed get,
   optional property/computed get, property/computed assignment through runtime
   setters, and property/computed deletion through shared runtime helpers
@@ -164,8 +164,9 @@ The shipped milestone covers the primary workload shape: function declarations
 and anonymous expressions, calls, non-spread construction, arrays,
 member/computed access, assignments, `for`/`while`/`do while` loops,
 `return`, `throw`, unlabeled `break`/`continue`, and labels that do not need
-label-target resolution. Labeled `break`/`continue`, spread, and broader syntax
-remain future work and should land only with compare-against-tree-walker tests.
+label-target resolution. Labeled `break`/`continue`, argument/object spread,
+and broader syntax remain future work and should land only with
+compare-against-tree-walker tests.
 
 ## Current Explicit Bytecode Rejections
 
@@ -187,7 +188,6 @@ The compiler currently raises an `InternalError` prefixed
 - `delete non-property operator` (for non-identifier/non-property operands)
 - `named function expression`
 - `compound assignment target` (invalid/non-reference targets only)
-- `array spread element`
 - `object literal accessor property`
 - `object literal spread property`
 - `object literal computed property`

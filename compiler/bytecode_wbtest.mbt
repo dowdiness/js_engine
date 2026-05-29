@@ -280,6 +280,43 @@ test "bytecode lowers array holes to sparse make array instruction" {
 }
 
 ///|
+test "bytecode lowers array spreads to incremental append instructions" {
+  let bytecode = parse_bytecode_for_wb("var xs = [0, ...ys,, 3];")
+  let mut saw_start = false
+  let mut saw_value = false
+  let mut saw_spread = false
+  let mut saw_hole = false
+  for instr in bytecode.main.code {
+    match instr {
+      StartArray => saw_start = true
+      ArrayPushValue => saw_value = true
+      ArrayPushSpread(_) => saw_spread = true
+      ArrayPushHole => saw_hole = true
+      _ => ()
+    }
+  }
+  guard saw_start else { abort("expected array accumulator") }
+  guard saw_value else { abort("expected array value append") }
+  guard saw_spread else { abort("expected array spread append") }
+  guard saw_hole else { abort("expected array hole append") }
+}
+
+///|
+test "bytecode treats names inside nested array spreads as captured" {
+  let src =
+    #|function outer() {
+    #|  var xs = [1, 2];
+    #|  return function() { return [...xs][1]; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers simple object literals to a make object instruction" {
   let bytecode = parse_bytecode_for_wb("var o = { a: 1, b: 2 };")
   let mut saw_object = false

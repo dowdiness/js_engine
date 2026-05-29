@@ -967,13 +967,56 @@ test "bytecode array literal holes fall through to prototypes" {
 }
 
 ///|
-test "bytecode rejects array spread elements explicitly" {
+test "bytecode array spread elements expand arrays and strings" {
   let src =
-    #|var xs = [0, ...[1]];
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: array spread element",
-  )
+    #|var xs = [0, ...[1, 2], ..."ab"];
+    #|xs.length + ":" + xs[0] + "," + xs[1] + "," + xs[2] + "," + xs[3] + xs[4];
+  inspect(bytecode_compare(src), content="value:5:0,1,2,ab")
+}
+
+///|
+test "bytecode array spread exhausts iterators before later elements" {
+  let src =
+    #|var log = "";
+    #|var iterable = {};
+    #|iterable[Symbol.iterator] = function() {
+    #|  var done = false;
+    #|  return {
+    #|    next: function() {
+    #|      if (done) {
+    #|        return { done: true };
+    #|      }
+    #|      done = true;
+    #|      log = log + "n";
+    #|      return { value: 1, done: false };
+    #|    }
+    #|  };
+    #|};
+    #|var xs = [...iterable, (log = log + "e", 2)];
+    #|log + ":" + xs[0] + "," + xs[1];
+  inspect(bytecode_compare(src), content="value:ne:1,2")
+}
+
+///|
+test "bytecode array spread preserves surrounding holes" {
+  let src =
+    #|var xs = [0,,...[2]];
+    #|xs.length + ":" + (1 in xs) + "," + xs[1] + "," + xs[2];
+  inspect(bytecode_compare(src), content="value:3:false,undefined,2")
+}
+
+///|
+test "bytecode array spread captures outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var xs = [1, 2];
+    #|  return function() {
+    #|    var ys = [0, ...xs];
+    #|    return ys[2];
+    #|  };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:2")
 }
 
 ///|

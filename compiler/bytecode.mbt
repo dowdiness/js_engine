@@ -33,6 +33,10 @@ priv enum BytecodeInstr {
   JumpIfNotNullishKeep(Int)
   MakeArray(Int)
   MakeArrayWithHoles(Int, Array[Int])
+  StartArray
+  ArrayPushValue
+  ArrayPushSpread(@token.Loc)
+  ArrayPushHole
   MakeObject(Array[String])
   MakeFunction(Int)
   DeclareFunction(String, Int)
@@ -454,6 +458,7 @@ fn collect_nested_function_refs_from_expr(
       for expr in exprs {
         collect_nested_function_refs_from_expr(expr, refs)
       }
+    SpreadExpr(inner, _) => collect_nested_function_refs_from_expr(inner, refs)
     _ => ()
   }
 }
@@ -590,6 +595,7 @@ fn collect_name_refs_from_expr(
       for expr in exprs {
         collect_name_refs_from_expr(expr, refs)
       }
+    SpreadExpr(inner, _) => collect_name_refs_from_expr(inner, refs)
     _ => ()
   }
 }
@@ -1523,21 +1529,46 @@ fn BytecodeBuilder::compile_expr(
     Grouping(inner, _) => self.compile_expr(inner)
     ObjectLit(props, _) => self.compile_object_lit(props)
     ArrayLit(elements, _) => {
-      let hole_idxs : Array[Int] = []
-      for i, element in elements {
+      let mut has_spread = false
+      for element in elements {
         match element {
-          ArrayHole(_) => {
-            hole_idxs.push(i)
-            let _ = self.emit(LoadUndefined)
-          }
-          SpreadExpr(_, _) => bytecode_unsupported("array spread element")
-          _ => self.compile_expr(element)
+          SpreadExpr(_, _) => has_spread = true
+          _ => ()
         }
       }
-      if hole_idxs.length() > 0 {
-        let _ = self.emit(MakeArrayWithHoles(elements.length(), hole_idxs))
+      if has_spread {
+        let _ = self.emit(StartArray)
+        for element in elements {
+          match element {
+            ArrayHole(_) => {
+              let _ = self.emit(ArrayPushHole)
+            }
+            SpreadExpr(inner, loc) => {
+              self.compile_expr(inner)
+              let _ = self.emit(ArrayPushSpread(loc))
+            }
+            _ => {
+              self.compile_expr(element)
+              let _ = self.emit(ArrayPushValue)
+            }
+          }
+        }
       } else {
-        let _ = self.emit(MakeArray(elements.length()))
+        let hole_idxs : Array[Int] = []
+        for i, element in elements {
+          match element {
+            ArrayHole(_) => {
+              hole_idxs.push(i)
+              let _ = self.emit(LoadUndefined)
+            }
+            _ => self.compile_expr(element)
+          }
+        }
+        if hole_idxs.length() > 0 {
+          let _ = self.emit(MakeArrayWithHoles(elements.length(), hole_idxs))
+        } else {
+          let _ = self.emit(MakeArray(elements.length()))
+        }
       }
     }
     Member(Ident("console", _), prop, _) => {
@@ -2050,6 +2081,42 @@ fn run_bytecode_function(
         let elements = pop_args(frame, count)
         frame.stack.push(@runtime.make_array_with_holes(elements, hole_idxs))
       }
+      StartArray => frame.stack.push(@runtime.make_array([]))
+      ArrayPushValue => {
+        let value = frame.pop()
+        match frame.peek() {
+          Array(data) => data.elements.push(value)
+          _ =>
+            raise @errors.InternalError(
+              message="bytecode array accumulator was not an array",
+            )
+        }
+      }
+      ArrayPushSpread(loc) => {
+        let value = frame.pop()
+        let spread_values = interp.spread_iterable(value, loc)
+        match frame.peek() {
+          Array(data) =>
+            for spread_value in spread_values {
+              data.elements.push(spread_value)
+            }
+          _ =>
+            raise @errors.InternalError(
+              message="bytecode array accumulator was not an array",
+            )
+        }
+      }
+      ArrayPushHole =>
+        match frame.peek() {
+          Array(data) => {
+            data.holes[data.elements.length()] = ()
+            data.elements.push(Value::Undefined)
+          }
+          _ =>
+            raise @errors.InternalError(
+              message="bytecode array accumulator was not an array",
+            )
+        }
       MakeObject(keys) => {
         let values = pop_args(frame, keys.length())
         let properties : Map[String, Value] = {}
