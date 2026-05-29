@@ -810,6 +810,11 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(right)
       let _ = self.emit(BinaryOp(op, loc))
     }
+    Comma(left, right, _) => {
+      self.compile_expr(left)
+      let _ = self.emit(Pop)
+      self.compile_expr(right)
+    }
     Assign("arguments", _, _) => bytecode_unsupported("arguments object")
     Assign(name, value, _) => {
       self.compile_expr(value)

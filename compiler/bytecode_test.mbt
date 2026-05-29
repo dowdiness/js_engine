@@ -84,6 +84,39 @@ test "bytecode constants locals and binary ops" {
 }
 
 ///|
+test "bytecode comma expression returns right value" {
+  let src =
+    #|(0, "right");
+  inspect(bytecode_compare(src), content="value:right")
+}
+
+///|
+test "bytecode comma expression runs left side effects before right" {
+  let src =
+    #|var x = 0;
+    #|(x = 1, x = x + 1);
+    #|x;
+  inspect(bytecode_compare(src), content="value:2")
+}
+
+///|
+test "bytecode comma in assignment expression statement returns right value" {
+  let src =
+    #|var x = 0;
+    #|x = (1, 2);
+  inspect(bytecode_compare(src), content="value:2")
+}
+
+///|
+test "bytecode nested grouped comma expressions preserve evaluation order" {
+  let src =
+    #|var order = "";
+    #|var result = ((order = order + "a", order = order + "b"), (order = order + "c", order = order + "d"));
+    #|order + ":" + result;
+  inspect(bytecode_compare(src), content="value:abcd:abcd")
+}
+
+///|
 test "bytecode logical and skips rhs and returns original falsy operand" {
   let src =
     #|var rhs = 0;
