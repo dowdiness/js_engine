@@ -259,14 +259,35 @@ test "bytecode member tagged template captures receiver bindings" {
 }
 
 ///|
-test "bytecode rejects optional member tagged templates until optional tag semantics are shared" {
+test "bytecode optional member tagged template follows value-call semantics" {
   let src =
-    #|var obj = { tag: function(strings) { return this === obj; } };
-    #|obj?.tag`x`;
+    #|var obj = { tag: function(strings, value) { "use strict"; return (this === undefined) + ":" + strings[0] + strings[1] + ":" + value; } };
+    #|obj?.tag`a${1}b`;
+  inspect(bytecode_compare(src), content="value:true:ab:1")
+}
+
+///|
+test "bytecode optional computed tagged template skips nullish key before throwing" {
+  let src =
+    #|var obj = null;
+    #|function key() { console.log("key"); return "tag"; }
+    #|obj?.[key()]`${console.log("sub")}`;
   inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: tagged template optional member call",
+    bytecode_compare_with_output(src),
+    content="throw:TypeError: is not a function; output:sub",
   )
+}
+
+///|
+test "bytecode optional tagged template captures tag and substitution bindings" {
+  let src =
+    #|function outer() {
+    #|  var obj = { tag: function(strings, value) { return value; } };
+    #|  var x = 5;
+    #|  return function() { return obj?.tag`${x}`; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:5")
 }
 
 ///|

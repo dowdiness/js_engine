@@ -152,7 +152,7 @@ The current high-level opcode surface covers:
   `typeof`, and identifier `delete`), simple destructuring assignments and
   direct `var` destructuring declarations, jump-lowered `&&`, `||`, `??`,
   ternary conditionals, comma expressions, template literals, tagged template calls
-  with plain/member/computed tags, regex literals,
+  with plain/member/computed/optional member/optional computed tags, regex literals,
   identifier/member/computed update, identifier and member/computed compound
   assignment, `new.target`, method-body `super` property/computed reads and
   calls, anonymous function naming
@@ -206,7 +206,6 @@ The compiler currently raises an `InternalError` prefixed
 - `object literal method property`
 - `object literal property key`
 - `direct eval call`
-- `tagged template optional member call`
 - `expression kind`
 - `default or destructuring parameter`
 

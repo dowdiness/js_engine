@@ -2823,9 +2823,6 @@ fn BytecodeBuilder::compile_expr(
       }
       let _ = self.emit(CallWithReceiver(1 + exprs.length(), loc))
     }
-    TaggedTemplate(OptionalMember(_, _, _), _, _, _)
-    | TaggedTemplate(OptionalComputedMember(_, _, _), _, _, _) =>
-      bytecode_unsupported("tagged template optional member call")
     TaggedTemplate(tag, strings, exprs, loc) => {
       self.compile_expr(tag)
       let _ = self.emit(MakeTemplateObject(strings))
