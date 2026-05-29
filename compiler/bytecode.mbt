@@ -87,12 +87,21 @@ priv struct BytecodeBuilder {
   local_names : Array[String]
   local_indices : Map[String, Int]
   loop_contexts : Array[LoopPatchContext]
+  label_contexts : Array[LabelPatchContext]
+  pending_loop_labels : Array[String]
 }
 
 ///|
 priv struct LoopPatchContext {
+  labels : Array[String]
   break_jumps : Array[Int]
   continue_jumps : Array[Int]
+}
+
+///|
+priv struct LabelPatchContext {
+  label : String
+  break_jumps : Array[Int]
 }
 
 ///|
@@ -123,6 +132,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     local_names: plan.names,
     local_indices: plan.indices,
     loop_contexts: [],
+    label_contexts: [],
+    pending_loop_labels: [],
   }
 }
 
@@ -154,8 +165,32 @@ fn BytecodeBuilder::emit_undefined_completion(self : BytecodeBuilder) -> Unit {
 }
 
 ///|
-fn BytecodeBuilder::push_loop_context(self : BytecodeBuilder) -> Unit {
-  self.loop_contexts.push({ break_jumps: [], continue_jumps: [] })
+fn BytecodeBuilder::take_pending_loop_labels(
+  self : BytecodeBuilder,
+) -> Array[String] {
+  let labels = self.pending_loop_labels.copy()
+  while self.pending_loop_labels.length() > 0 {
+    let _ = self.pending_loop_labels.pop()
+  }
+  labels
+}
+
+///|
+fn BytecodeBuilder::restore_pending_loop_labels(
+  self : BytecodeBuilder,
+  labels : Array[String],
+) -> Unit {
+  for label in labels {
+    self.pending_loop_labels.push(label)
+  }
+}
+
+///|
+fn BytecodeBuilder::push_loop_context(
+  self : BytecodeBuilder,
+  labels : Array[String],
+) -> Unit {
+  self.loop_contexts.push({ labels, break_jumps: [], continue_jumps: [] })
 }
 
 ///|
@@ -166,7 +201,7 @@ fn BytecodeBuilder::pop_loop_context(
     Some(ctx) => ctx
     None => {
       bytecode_unsupported("loop context")
-      { break_jumps: [], continue_jumps: [] }
+      { labels: [], break_jumps: [], continue_jumps: [] }
     }
   }
 }
@@ -183,17 +218,62 @@ fn BytecodeBuilder::current_loop_context(
 }
 
 ///|
+fn BytecodeBuilder::find_label_context(
+  self : BytecodeBuilder,
+  label : String,
+) -> LabelPatchContext? {
+  for i = self.label_contexts.length() - 1; i >= 0; i = i - 1 {
+    let ctx = self.label_contexts[i]
+    if ctx.label == label {
+      return Some(ctx)
+    }
+  }
+  None
+}
+
+///|
+fn BytecodeBuilder::find_labeled_loop_context(
+  self : BytecodeBuilder,
+  label : String,
+) -> LoopPatchContext? {
+  for i = self.loop_contexts.length() - 1; i >= 0; i = i - 1 {
+    let ctx = self.loop_contexts[i]
+    if string_array_contains(ctx.labels, label) {
+      return Some(ctx)
+    }
+  }
+  None
+}
+
+///|
 fn BytecodeBuilder::emit_loop_break(
   self : BytecodeBuilder,
   label : String?,
 ) -> Unit raise Error {
   match label {
-    Some(_) => bytecode_unsupported("labeled break statement")
-    None => ()
+    Some(target) => {
+      match self.find_label_context(target) {
+        Some(ctx) => {
+          let jump = self.emit(Jump(-1))
+          ctx.break_jumps.push(jump)
+          return
+        }
+        None => ()
+      }
+      match self.find_labeled_loop_context(target) {
+        Some(ctx) => {
+          let jump = self.emit(Jump(-1))
+          ctx.break_jumps.push(jump)
+        }
+        None => bytecode_unsupported("labeled break statement")
+      }
+    }
+    None => {
+      let ctx = self.current_loop_context("break statement")
+      let jump = self.emit(Jump(-1))
+      ctx.break_jumps.push(jump)
+    }
   }
-  let ctx = self.current_loop_context("break statement")
-  let jump = self.emit(Jump(-1))
-  ctx.break_jumps.push(jump)
 }
 
 ///|
@@ -202,12 +282,20 @@ fn BytecodeBuilder::emit_loop_continue(
   label : String?,
 ) -> Unit raise Error {
   match label {
-    Some(_) => bytecode_unsupported("labeled continue statement")
-    None => ()
+    Some(target) =>
+      match self.find_labeled_loop_context(target) {
+        Some(ctx) => {
+          let jump = self.emit(Jump(-1))
+          ctx.continue_jumps.push(jump)
+        }
+        None => bytecode_unsupported("labeled continue statement")
+      }
+    None => {
+      let ctx = self.current_loop_context("continue statement")
+      let jump = self.emit(Jump(-1))
+      ctx.continue_jumps.push(jump)
+    }
   }
-  let ctx = self.current_loop_context("continue statement")
-  let jump = self.emit(Jump(-1))
-  ctx.continue_jumps.push(jump)
 }
 
 ///|
@@ -301,6 +389,23 @@ fn stmts_have_function_decl(stmts : Array[@ast.Stmt]) -> Bool {
     }
   }
   false
+}
+
+///|
+fn stmt_is_iteration_label_target(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    WhileStmt(_, _, _)
+    | DoWhileStmt(_, _, _)
+    | ForStmt(_, _, _, _, _)
+    | ForInStmt(_, _, _, _, _)
+    | ForOfStmt(_, _, _, _, _)
+    | ForInStmtPat(_, _, _, _, _)
+    | ForOfStmtPat(_, _, _, _, _)
+    | ForInExpr(_, _, _, _)
+    | ForOfExpr(_, _, _, _) => true
+    LabeledStmt(_, body, _) => stmt_is_iteration_label_target(body)
+    _ => false
+  }
 }
 
 ///|
@@ -805,9 +910,11 @@ fn BytecodeBuilder::compile_stmt(
       let cond_pos = self.code.length()
       self.compile_expr(cond)
       let exit_jump = self.emit(JumpIfFalse(-1))
-      self.push_loop_context()
+      let labels = self.take_pending_loop_labels()
+      self.push_loop_context(labels)
       self.compile_stmt(body)
       let loop_ctx = self.pop_loop_context()
+      self.restore_pending_loop_labels(labels)
       let _ = self.emit(Jump(cond_pos))
       let exit_pos = self.code.length()
       self.patch(exit_jump, JumpIfFalse(exit_pos))
@@ -820,9 +927,11 @@ fn BytecodeBuilder::compile_stmt(
       }
       self.emit_undefined_completion()
       let body_pos = self.code.length()
-      self.push_loop_context()
+      let labels = self.take_pending_loop_labels()
+      self.push_loop_context(labels)
       self.compile_stmt(body)
       let loop_ctx = self.pop_loop_context()
+      self.restore_pending_loop_labels(labels)
       let cond_pos = self.code.length()
       self.patch_loop_jumps(loop_ctx.continue_jumps, cond_pos)
       self.compile_expr(cond)
@@ -854,9 +963,11 @@ fn BytecodeBuilder::compile_stmt(
         }
       }
       let exit_jump = self.emit(JumpIfFalse(-1))
-      self.push_loop_context()
+      let labels = self.take_pending_loop_labels()
+      self.push_loop_context(labels)
       self.compile_stmt(body)
       let loop_ctx = self.pop_loop_context()
+      self.restore_pending_loop_labels(labels)
       let update_pos = self.code.length()
       self.patch_loop_jumps(loop_ctx.continue_jumps, update_pos)
       match update {
@@ -891,11 +1002,26 @@ fn BytecodeBuilder::compile_stmt(
       self.compile_expr(expr)
       let _ = self.emit(Throw)
     }
-    LabeledStmt(_, body, _) => {
+    LabeledStmt(label, body, _) => {
       if stmt_has_function_decl(body) {
         bytecode_unsupported("control-flow function declaration")
       }
-      self.compile_stmt(body, declaration_updates_completion~)
+      if stmt_is_iteration_label_target(body) {
+        self.pending_loop_labels.push(label)
+        self.compile_stmt(body, declaration_updates_completion~)
+        let _ = self.pending_loop_labels.pop()
+      } else {
+        self.label_contexts.push({ label, break_jumps: [] })
+        self.compile_stmt(body, declaration_updates_completion~)
+        let label_ctx = match self.label_contexts.pop() {
+          Some(ctx) => ctx
+          None => {
+            bytecode_unsupported("label context")
+            { label, break_jumps: [] }
+          }
+        }
+        self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
+      }
     }
     _ => bytecode_unsupported("statement kind")
   }

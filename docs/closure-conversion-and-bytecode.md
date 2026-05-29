@@ -141,8 +141,8 @@ The current high-level opcode surface covers:
 - constants and simple moves: load constant/`undefined`/`this`, load/store
   name, load/store function-local slot, define binding
 - completion and control flow: set completion, pop, jump, conditional jump,
-  return, throw, unlabeled `break`/`continue`, labels without labeled
-  `break`/`continue`, block statements and control-flow bodies with `var`
+  return, throw, unlabeled and labeled `break`/`continue` for supported loops,
+  labeled block breaks, block statements and control-flow bodies with `var`
   declarations but without lexical or function declarations
 - expressions: supported eager binary operations including `in` and
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`,
@@ -165,9 +165,9 @@ The current high-level opcode surface covers:
 The shipped milestone covers the primary workload shape: function declarations
 and anonymous expressions, calls, construction including spread arguments,
 arrays, member/computed access, assignments, `for`/`while`/`do while` loops,
-`return`, `throw`, unlabeled `break`/`continue`, and labels that do not need
-label-target resolution. Labeled `break`/`continue` and broader syntax remain
-future work and should land only with compare-against-tree-walker tests.
+`return`, `throw`, unlabeled and labeled `break`/`continue` for supported loops,
+and labeled block breaks. Broader syntax remains future work and should land
+only with compare-against-tree-walker tests.
 
 ## Current Explicit Bytecode Rejections
 
@@ -182,8 +182,8 @@ The compiler currently raises an `InternalError` prefixed
 - `for initializer`
 - `break statement` outside a bytecode-supported loop
 - `continue statement` outside a bytecode-supported loop
-- `labeled break statement`
-- `labeled continue statement`
+- `labeled break statement` (unresolved label targets only)
+- `labeled continue statement` (unresolved or non-loop label targets only)
 - `arguments object`
 - `delete non-property operator` (for non-identifier/non-property operands)
 - `named function expression`

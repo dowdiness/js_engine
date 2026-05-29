@@ -612,13 +612,55 @@ test "bytecode labeled statements can capture outer bindings" {
 }
 
 ///|
-test "bytecode rejects labeled break and continue until label resolution is implemented" {
+test "bytecode labeled break exits labeled blocks" {
+  let src =
+    #|label: {
+    #|  "before";
+    #|  break label;
+    #|  "after";
+    #|}
+  inspect(bytecode_compare(src), content="value:before")
+}
+
+///|
+test "bytecode labeled break exits outer loops" {
+  let src =
+    #|var log = "";
+    #|outer: while (true) {
+    #|  log = log + "o";
+    #|  while (true) {
+    #|    log = log + "i";
+    #|    break outer;
+    #|  }
+    #|  log = log + "x";
+    #|}
+    #|log;
+  inspect(bytecode_compare(src), content="value:oi")
+}
+
+///|
+test "bytecode labeled continue targets outer loops" {
+  let src =
+    #|var log = "";
+    #|outer: for (var i = 0; i < 3; i = i + 1) {
+    #|  log = log + "b" + i;
+    #|  for (var j = 0; j < 2; j = j + 1) {
+    #|    continue outer;
+    #|  }
+    #|  log = log + "x";
+    #|}
+    #|log + ":" + i;
+  inspect(bytecode_compare(src), content="value:b0b1b2:3")
+}
+
+///|
+test "bytecode rejects unresolved labeled breaks and non-loop labeled continues" {
   inspect(
     bytecode_outcome("while (true) { break label; }"),
     content="error:InternalError: bytecode prototype unsupported: labeled break statement",
   )
   inspect(
-    bytecode_outcome("while (true) { continue label; }"),
+    bytecode_outcome("label: { continue label; }"),
     content="error:InternalError: bytecode prototype unsupported: labeled continue statement",
   )
 }

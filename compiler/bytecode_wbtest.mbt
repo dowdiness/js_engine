@@ -552,6 +552,50 @@ test "bytecode patches unlabeled break and continue jumps" {
 }
 
 ///|
+test "bytecode patches labeled break and continue jumps" {
+  let break_bytecode = parse_bytecode_for_wb("label: { break label; }")
+  let mut saw_labeled_break = false
+  for instr in break_bytecode.main.code {
+    match instr {
+      Jump(target) => {
+        if target == -1 {
+          abort("unpatched labeled break jump")
+        }
+        if target == break_bytecode.main.code.length() {
+          saw_labeled_break = true
+        }
+      }
+      _ => ()
+    }
+  }
+  guard saw_labeled_break else { abort("expected labeled break to label exit") }
+  let continue_bytecode = parse_bytecode_for_wb(
+    "outer: do continue outer; while (false);",
+  )
+  let mut saw_labeled_continue = false
+  for i, instr in continue_bytecode.main.code {
+    match instr {
+      Jump(target) => {
+        if target == -1 {
+          abort("unpatched labeled continue jump")
+        }
+        if target == i + 1 {
+          saw_labeled_continue = true
+        }
+      }
+      JumpIfFalse(target) =>
+        if target == -1 {
+          abort("unpatched labeled do-while exit jump")
+        }
+      _ => ()
+    }
+  }
+  guard saw_labeled_continue else {
+    abort("expected labeled continue to loop condition")
+  }
+}
+
+///|
 test "bytecode treats names inside nested object literals as captured" {
   let src =
     #|function outer() {
