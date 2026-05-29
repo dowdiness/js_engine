@@ -217,6 +217,7 @@ fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
     | DestructureDecl(LetKind, _, _, _)
     | DestructureDecl(ConstKind, _, _, _) => true
     StmtList(stmts, _) | Block(stmts, _) => stmts_have_lexical_decl(stmts)
+    LabeledStmt(_, body, _) => stmt_has_lexical_decl(body)
     _ => false
   }
 }
@@ -270,6 +271,7 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_function_decl(body)
     }
+    LabeledStmt(_, body, _) => stmt_has_function_decl(body)
     _ => false
   }
 }
@@ -332,6 +334,7 @@ fn collect_current_var_names_from_stmt(
       }
       collect_current_var_names_from_stmt(body, out)
     }
+    LabeledStmt(_, body, _) => collect_current_var_names_from_stmt(body, out)
     _ => ()
   }
 }
@@ -390,6 +393,8 @@ fn collect_nested_function_refs_from_stmt(
       }
       collect_nested_function_refs_from_stmt(body, refs)
     }
+    LabeledStmt(_, body, _) =>
+      collect_nested_function_refs_from_stmt(body, refs)
     _ => ()
   }
 }
@@ -523,6 +528,7 @@ fn collect_name_refs_from_stmt(
       }
       collect_name_refs_from_stmt(body, refs)
     }
+    LabeledStmt(_, body, _) => collect_name_refs_from_stmt(body, refs)
     _ => ()
   }
 }
@@ -865,6 +871,12 @@ fn BytecodeBuilder::compile_stmt(
     ThrowStmt(expr, _) => {
       self.compile_expr(expr)
       let _ = self.emit(Throw)
+    }
+    LabeledStmt(_, body, _) => {
+      if stmt_has_function_decl(body) {
+        bytecode_unsupported("control-flow function declaration")
+      }
+      self.compile_stmt(body, declaration_updates_completion~)
     }
     _ => bytecode_unsupported("statement kind")
   }

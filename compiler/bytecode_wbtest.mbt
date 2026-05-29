@@ -54,6 +54,38 @@ test "bytecode plans control-flow var declarations as function locals" {
 }
 
 ///|
+test "bytecode plans labeled var declarations as function locals" {
+  let src =
+    #|function f() {
+    #|  label: { var x = 1; }
+    #|  return x;
+    #|}
+    #|f();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=["x"])
+}
+
+///|
+test "bytecode treats names inside nested labeled statements as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  label: {
+    #|    return function() { return x; };
+    #|  }
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode omits captured vars from local slots" {
   let src =
     #|function outer(a) {

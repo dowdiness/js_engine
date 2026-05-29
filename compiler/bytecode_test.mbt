@@ -558,6 +558,31 @@ test "bytecode continue in do while loops still evaluates the condition" {
 }
 
 ///|
+test "bytecode labeled statements run unlabeled inner statements" {
+  inspect(bytecode_compare("label: { 'inside'; }"), content="value:inside")
+  let loop_src =
+    #|label: while (true) {
+    #|  "body";
+    #|  break;
+    #|  "after";
+    #|}
+  inspect(bytecode_compare(loop_src), content="value:body")
+}
+
+///|
+test "bytecode labeled statements can capture outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 5;
+    #|  label: {
+    #|    return function() { return x; };
+    #|  }
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
 test "bytecode rejects labeled break and continue until label resolution is implemented" {
   inspect(
     bytecode_outcome("while (true) { break label; }"),
@@ -566,6 +591,18 @@ test "bytecode rejects labeled break and continue until label resolution is impl
   inspect(
     bytecode_outcome("while (true) { continue label; }"),
     content="error:InternalError: bytecode prototype unsupported: labeled continue statement",
+  )
+}
+
+///|
+test "bytecode rejects labeled function declarations until label semantics are implemented" {
+  let src =
+    #|label: {
+    #|  function f() { return 1; }
+    #|}
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: control-flow function declaration",
   )
 }
 

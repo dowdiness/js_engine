@@ -141,9 +141,9 @@ The current high-level opcode surface covers:
 - constants and simple moves: load constant/`undefined`/`this`, load/store
   name, load/store function-local slot, define binding
 - completion and control flow: set completion, pop, jump, conditional jump,
-  return, throw, unlabeled `break`/`continue`, block statements and
-  control-flow bodies with `var` declarations but without lexical or function
-  declarations
+  return, throw, unlabeled `break`/`continue`, labels without labeled
+  `break`/`continue`, block statements and control-flow bodies with `var`
+  declarations but without lexical or function declarations
 - expressions: supported eager binary operations including `in` and
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`, and
   `typeof`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
@@ -163,9 +163,9 @@ The current high-level opcode surface covers:
 The shipped milestone covers the primary workload shape: function declarations
 and anonymous expressions, calls, non-spread construction, arrays,
 member/computed access, assignments, `for`/`while`/`do while` loops,
-`return`, `throw`, and unlabeled `break`/`continue`. Labels, spread, and broader
-syntax remain future work and should land only with compare-against-tree-walker
-tests.
+`return`, `throw`, unlabeled `break`/`continue`, and labels that do not need
+label-target resolution. Labeled `break`/`continue`, spread, and broader syntax
+remain future work and should land only with compare-against-tree-walker tests.
 
 ## Current Explicit Bytecode Rejections
 
