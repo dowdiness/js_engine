@@ -647,6 +647,49 @@ test "bytecode reuses runtime name assignment semantics" {
 }
 
 ///|
+test "bytecode member update preserves prefix and postfix results" {
+  let src =
+    #|var o = { x: 41 };
+    #|var post = o.x++;
+    #|var pre = ++o.x;
+    #|post + "," + pre + "," + o.x;
+  inspect(bytecode_compare(src), content="value:41,43,43")
+}
+
+///|
+test "bytecode computed update canonicalizes key once" {
+  let src =
+    #|var log = "";
+    #|var o = { x: 1 };
+    #|var key = { toString: function() { log = log + "k"; return "x"; } };
+    #|var post = o[key]++;
+    #|post + ":" + o.x + ":" + log;
+  inspect(bytecode_compare(src), content="value:1:2:k")
+}
+
+///|
+test "bytecode member update null receiver throws like interpreter" {
+  let src =
+    #|var target = null;
+    #|target.x++;
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Cannot read properties of null (reading 'x')",
+  )
+}
+
+///|
+test "bytecode computed update captures outer key binding" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return function(o) { return ++o[key]; };
+    #|}
+    #|outer()({ x: 2 });
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
 test "bytecode identifier compound assignment reuses binary semantics" {
   let src =
     #|var x = "4";

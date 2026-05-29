@@ -23,6 +23,8 @@ priv enum BytecodeInstr {
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
   UpdateLocal(Int, @ast.UpdateOp, Bool) // slot, op, prefix
+  UpdateProperty(String, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) // prop, op, prefix, member loc, op loc
+  UpdateComputed(@ast.UpdateOp, Bool, @token.Loc, @token.Loc) // op, prefix, member loc, op loc
   Jump(Int)
   JumpIfFalse(Int)
   JumpIfFalseKeep(Int)
@@ -1375,6 +1377,15 @@ fn BytecodeBuilder::compile_expr(
           let _ = self.emit(UpdateName(name, op, prefix, loc))
         }
       }
+    UpdateExpr(op, Member(obj, prop, member_loc), prefix, loc) => {
+      self.compile_expr(obj)
+      let _ = self.emit(UpdateProperty(prop, op, prefix, member_loc, loc))
+    }
+    UpdateExpr(op, ComputedMember(obj, key, member_loc), prefix, loc) => {
+      self.compile_expr(obj)
+      self.compile_expr(key)
+      let _ = self.emit(UpdateComputed(op, prefix, member_loc, loc))
+    }
     CompoundAssign(op, Ident(name, _), value, loc) =>
       self.compile_identifier_compound_assign(op, name, value, loc)
     CompoundAssign(op, Member(obj, prop, member_loc), value, loc) =>
@@ -1863,6 +1874,35 @@ fn run_bytecode_function(
           } else {
             Value::Number(old_number)
           },
+        )
+      }
+      UpdateProperty(prop, op, prefix, member_loc, loc) => {
+        let obj = frame.pop()
+        frame.stack.push(
+          interp.eval_update_property(
+            frame.ctx,
+            obj,
+            prop,
+            op,
+            prefix,
+            member_loc,
+            loc,
+          ),
+        )
+      }
+      UpdateComputed(op, prefix, member_loc, loc) => {
+        let key = frame.pop()
+        let obj = frame.pop()
+        frame.stack.push(
+          interp.eval_update_computed_property(
+            frame.ctx,
+            obj,
+            key,
+            op,
+            prefix,
+            member_loc,
+            loc,
+          ),
         )
       }
       Jump(target) => frame.ip = target

@@ -147,9 +147,9 @@ The current high-level opcode surface covers:
 - expressions: supported eager binary operations including `in` and
   `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`, and
   `typeof`), jump-lowered `&&`, `||`, `??`, ternary conditionals, comma
-  expressions, template literals, regex literals, identifier update,
-  identifier and non-logical member/computed compound assignment, anonymous
-  function naming
+  expressions, template literals, regex literals, identifier/member/computed
+  update, identifier and non-logical member/computed compound assignment,
+  anonymous function naming
 - object interaction: array creation including holes but without spread, simple
   object literals with static data properties, property get, computed get,
   optional property/computed get, property/computed assignment through runtime

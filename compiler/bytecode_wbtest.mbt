@@ -82,6 +82,37 @@ test "bytecode lowers unary minus to a unary value instruction" {
 }
 
 ///|
+test "bytecode lowers member and computed updates to update instructions" {
+  let bytecode = parse_bytecode_for_wb("var o = { x: 1 }; o.x++; ++o['x'];")
+  let mut saw_property_update = false
+  let mut saw_computed_update = false
+  for instr in bytecode.main.code {
+    match instr {
+      UpdateProperty("x", Increment, false, _, _) => saw_property_update = true
+      UpdateComputed(Increment, true, _, _) => saw_computed_update = true
+      _ => ()
+    }
+  }
+  guard saw_property_update else { abort("expected property update") }
+  guard saw_computed_update else { abort("expected computed update") }
+}
+
+///|
+test "bytecode treats names inside nested computed updates as captured" {
+  let src =
+    #|function outer() {
+    #|  var key = "x";
+    #|  return function(o) { return o[key]++; };
+    #|}
+    #|outer()({ x: 1 });
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers property delete expressions to delete instructions" {
   let bytecode = parse_bytecode_for_wb(
     "var xs = []; delete xs.foo; delete xs[0];",
