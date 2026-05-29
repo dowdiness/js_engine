@@ -2322,6 +2322,24 @@ test "bytecode var destructuring declarations can be captured" {
 }
 
 ///|
+test "bytecode rejects for initializer var destructuring until loop binding semantics are shared" {
+  let direct =
+    #|for (var [i] = [0]; i < 1; i = i + 1) {
+    #|}
+  inspect(
+    bytecode_outcome(direct),
+    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  )
+  let comma_decl =
+    #|for (var i = 0, [x] = [1]; i < 1; i = i + 1) {
+    #|}
+  inspect(
+    bytecode_outcome(comma_decl),
+    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  )
+}
+
+///|
 test "bytecode rejects unsupported destructuring declaration contexts and kinds" {
   let control_flow =
     #|if (true) {
@@ -2329,6 +2347,14 @@ test "bytecode rejects unsupported destructuring declaration contexts and kinds"
     #|}
   inspect(
     bytecode_outcome(control_flow),
+    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  )
+  let for_body =
+    #|for (var i = 0; i < 1; i = i + 1) {
+    #|  var [x] = [1];
+    #|}
+  inspect(
+    bytecode_outcome(for_body),
     content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
   )
   inspect(
