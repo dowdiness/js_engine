@@ -117,6 +117,37 @@ test "bytecode nested grouped comma expressions preserve evaluation order" {
 }
 
 ///|
+test "bytecode template literal interpolates values" {
+  let src =
+    #|var x = 2;
+    #|var y = true;
+    #|`a${x + 1}b${y}c`;
+  inspect(bytecode_compare(src), content="value:a3btruec")
+}
+
+///|
+test "bytecode template literal converts substitutions before later expressions" {
+  let src =
+    #|var log = "";
+    #|var f = function() {};
+    #|f.toString = function() { log = log + "s"; return "F"; };
+    #|var result = `${f}${(log = log + "e", "E")}`;
+    #|result + ":" + log;
+  inspect(bytecode_compare(src), content="value:FE:se")
+}
+
+///|
+test "bytecode template literal captures outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = "cap";
+    #|  return function() { return `:${x}:`; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value::cap:")
+}
+
+///|
 test "bytecode logical and skips rhs and returns original falsy operand" {
   let src =
     #|var rhs = 0;

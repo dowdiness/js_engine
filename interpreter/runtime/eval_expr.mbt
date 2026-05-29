@@ -629,7 +629,7 @@ fn Interpreter::eval_expr(
         buf.write_string(strings[i])
         if i < exprs.length() {
           let val = self.eval_expr(ctx, exprs[i], env)
-          buf.write_string(to_js_string(val))
+          buf.write_string(to_js_string(val, interp=Some(self)))
         }
       }
       String_(buf.to_string())

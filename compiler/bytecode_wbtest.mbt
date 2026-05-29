@@ -50,6 +50,19 @@ test "bytecode lowers unary minus to a unary value instruction" {
 }
 
 ///|
+test "bytecode lowers template literals to append instructions" {
+  let bytecode = parse_bytecode_for_wb("var x = 1; `a${x}b`;")
+  let mut saw_template = false
+  for instr in bytecode.main.code {
+    match instr {
+      AppendTemplate("b") => saw_template = true
+      _ => ()
+    }
+  }
+  guard saw_template else { abort("expected template append instruction") }
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {
@@ -71,6 +84,21 @@ test "bytecode treats names inside nested unary expressions as captured" {
     #|function outer() {
     #|  var x = 1;
     #|  return function() { return -x; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
+test "bytecode treats names inside nested template expressions as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() { return `${x}`; };
     #|}
     #|outer()();
   let bytecode = parse_bytecode_for_wb(src)

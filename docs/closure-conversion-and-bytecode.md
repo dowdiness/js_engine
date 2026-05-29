@@ -144,8 +144,8 @@ The current high-level opcode surface covers:
   return, throw
 - expressions: supported eager binary operations, selected value unary
   operations (`-`, `+`, `!`, `~`, and `void`), jump-lowered `&&`, `||`, `??`,
-  and ternary conditionals, comma expressions, identifier update, anonymous
-  function naming
+  ternary conditionals, comma expressions, template literals, identifier
+  update, anonymous function naming
 - object interaction: array creation without holes/spread, property get,
   computed get, and property/computed assignment through runtime setters
 - calls: ordinary calls plus receiver-preserving property/computed calls

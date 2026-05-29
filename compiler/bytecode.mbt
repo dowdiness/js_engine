@@ -13,6 +13,7 @@ priv enum BytecodeInstr {
   Pop
   BinaryOp(@ast.BinOp, @token.Loc)
   UnaryValueOp(@ast.UnaryOp, @token.Loc)
+  AppendTemplate(String)
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
   UpdateLocal(Int, @ast.UpdateOp, Bool) // slot, op, prefix
@@ -372,6 +373,10 @@ fn collect_nested_function_refs_from_expr(
       for element in elements {
         collect_nested_function_refs_from_expr(element, refs)
       }
+    TemplateLit(_, exprs, _) =>
+      for expr in exprs {
+        collect_nested_function_refs_from_expr(expr, refs)
+      }
     _ => ()
   }
 }
@@ -472,6 +477,10 @@ fn collect_name_refs_from_expr(
     ArrayLit(elements, _) =>
       for element in elements {
         collect_name_refs_from_expr(element, refs)
+      }
+    TemplateLit(_, exprs, _) =>
+      for expr in exprs {
+        collect_name_refs_from_expr(expr, refs)
       }
     _ => ()
   }
@@ -862,6 +871,15 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(Pop)
       self.compile_expr(right)
     }
+    TemplateLit(strings, exprs, _) => {
+      let first = if strings.length() > 0 { strings[0] } else { "" }
+      let _ = self.emit(LoadConst(Value::String_(first)))
+      for i, expr in exprs {
+        self.compile_expr(expr)
+        let tail = if i + 1 < strings.length() { strings[i + 1] } else { "" }
+        let _ = self.emit(AppendTemplate(tail))
+      }
+    }
     Assign("arguments", _, _) => bytecode_unsupported("arguments object")
     Assign(name, value, _) => {
       self.compile_expr(value)
@@ -1214,6 +1232,24 @@ fn run_bytecode_function(
       UnaryValueOp(op, loc) => {
         let value = frame.pop()
         frame.stack.push(@runtime.eval_unary_value_op(op, value, loc))
+      }
+      AppendTemplate(tail) => {
+        let value = frame.pop()
+        let acc = frame.pop()
+        match acc {
+          String_(prefix) =>
+            frame.stack.push(
+              Value::String_(
+                prefix +
+                @runtime.to_js_string(value, interp=Some(interp)) +
+                tail,
+              ),
+            )
+          _ =>
+            raise @errors.InternalError(
+              message="bytecode template accumulator was not a string",
+            )
+        }
       }
       SetFunctionName(name) => {
         let value = frame.pop()
