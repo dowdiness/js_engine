@@ -158,6 +158,35 @@ fn is_eval_function(val : Value) -> Bool {
 }
 
 ///|
+pub fn load_direct_eval_callee(env : Environment) -> Value raise Error {
+  env.get("eval") catch {
+    _ => raise @errors.ReferenceError(message="eval is not defined")
+  }
+}
+
+///|
+pub fn Interpreter::call_direct_eval_or_shadowed(
+  self : Interpreter,
+  callee : Value,
+  args : Array[Value],
+  env : Environment,
+  loc : @token.Loc,
+  caller_strict~ : Bool,
+) -> Value raise Error {
+  if is_eval_function(callee) {
+    if args.length() == 0 {
+      return Undefined
+    }
+    match args[0] {
+      String_(code) => self.perform_eval(code, env, true, caller_strict~)
+      other => other
+    }
+  } else {
+    self.call_value(callee, Undefined, args, loc)
+  }
+}
+
+///|
 /// Recursively strip Grouping nodes from an expression.
 /// Per ES spec, grouping parentheses do not change the Reference type,
 /// so ((eval))("code") is still a direct eval call.

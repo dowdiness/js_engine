@@ -2475,15 +2475,74 @@ test "bytecode hoists function body lexical bindings before execution" {
 }
 
 ///|
-test "bytecode rejects direct eval until caller-env semantics are implemented" {
+test "bytecode direct eval runs in caller environment" {
   let src =
-    #|var x = 1;
-    #|eval("x = 2");
-    #|x;
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: direct eval call",
-  )
+    #|function f() {
+    #|  var x = 1;
+    #|  var result = eval("x = x + 2; x;");
+    #|  return result + ":" + x;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:3:3")
+}
+
+///|
+test "bytecode direct eval var declarations leak to caller var scope" {
+  let src =
+    #|function f() {
+    #|  eval("var y = 4;");
+    #|  return y;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:4")
+}
+
+///|
+test "bytecode direct eval respects shadowed eval bindings" {
+  let src =
+    #|function f() {
+    #|  var eval = function(code) { return "shadow:" + code; };
+    #|  return eval("x");
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:shadow:x")
+}
+
+///|
+test "bytecode direct eval supports spread arguments" {
+  let src =
+    #|function f() {
+    #|  var x = 1;
+    #|  eval(...["x = 5"]);
+    #|  return x;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
+test "bytecode direct eval inherits caller strictness" {
+  let src =
+    #|function f() {
+    #|  "use strict";
+    #|  eval("var y = 2;");
+    #|  return typeof y;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:undefined")
+}
+
+///|
+test "bytecode nested direct eval can update outer bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  function inner() { eval("x = 7"); }
+    #|  inner();
+    #|  return x;
+    #|}
+    #|outer();
+  inspect(bytecode_compare(src), content="value:7")
 }
 
 ///|

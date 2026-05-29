@@ -149,6 +149,8 @@ pub fn js_error_to_value(Error) -> Value
 
 pub fn js_error_to_value_with_env(Error, Environment?) -> Value
 
+pub fn load_direct_eval_callee(Environment) -> Value raise
+
 pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interpreter?) -> Value? raise
 
 pub fn make_array(Array[Value]) -> Value
@@ -484,6 +486,7 @@ pub(all) struct Interpreter {
 pub fn Interpreter::array_define_own_property(Self, ArrayData, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::array_set_length(Self, ArrayData, PartialDescriptor) -> Bool raise
 pub fn Interpreter::assign_compiled_name(Self, ExecContext, Environment, String, Value) -> Value raise
+pub fn Interpreter::call_direct_eval_or_shadowed(Self, Value, Array[Value], Environment, @token.Loc, caller_strict~ : Bool) -> Value raise
 pub fn Interpreter::call_value(Self, Value, Value, Array[Value], @token.Loc) -> Value raise
 pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?, new_target? : Value?) -> Value raise
 pub fn Interpreter::copy_object_spread_properties(Self, Value, Value, @token.Loc) -> Unit raise

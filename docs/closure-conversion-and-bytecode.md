@@ -164,9 +164,10 @@ The current high-level opcode surface covers:
   get, computed get, optional property/computed get, property/computed
   assignment through runtime setters, and property/computed deletion through
   shared runtime helpers
-- calls and construction: ordinary calls and optional calls, including spread
-  arguments, host `console.log` calls/member reads, receiver-preserving
-  property/computed calls, and `new` expressions including spread arguments
+- calls and construction: ordinary calls, direct eval calls, and optional calls,
+  including spread arguments, host `console.log` calls/member reads,
+  receiver-preserving property/computed calls, and `new` expressions including
+  spread arguments
 - closures: function declarations, anonymous or named function expressions,
   ordinary/rest-parameter functions, ordinary function `arguments` objects, and
   simple/rest-parameter arrow functions backed by runtime compiled functions
@@ -204,7 +205,6 @@ The compiler currently raises an `InternalError` prefixed
 - `object literal __proto__ method property`
 - `object literal method property`
 - `object literal property key`
-- `direct eval call`
 - `expression kind`
 - `default or destructuring parameter`
 

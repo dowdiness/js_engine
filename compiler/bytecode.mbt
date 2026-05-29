@@ -7,6 +7,7 @@ priv enum BytecodeInstr {
   LoadSuperProperty(String, @token.Loc)
   LoadSuperComputed(@token.Loc)
   LoadConsoleMember(String)
+  LoadDirectEvalCallee
   LoadName(String)
   LoadAssignmentName(String)
   StoreName(String)
@@ -80,6 +81,7 @@ priv enum BytecodeInstr {
   PrepareComputedCall(@token.Loc)
   PrepareSuperPropertyCall(String, @token.Loc)
   PrepareSuperComputedCall(@token.Loc)
+  CallDirectEval(@token.Loc)
   Call(Int, @token.Loc)
   CallWithReceiver(Int, @token.Loc)
   CallSpread(@token.Loc)
@@ -1375,6 +1377,16 @@ fn bytecode_props_contain_destructure_assign(
 }
 
 ///|
+// Direct eval can read or declare caller bindings by string, so any visible
+// `eval` reference keeps this function and enclosing compiled functions on
+// environment bindings instead of local slots.
+fn bytecode_body_references_eval(body : Array[@ast.Stmt]) -> Bool {
+  let refs : Map[String, Bool] = {}
+  collect_name_refs_from_stmts(body, refs)
+  refs.contains("eval")
+}
+
+///|
 fn plan_bytecode_locals(
   params : Array[String],
   body : Array[@ast.Stmt],
@@ -1384,6 +1396,7 @@ fn plan_bytecode_locals(
   let indices : Map[String, Int] = {}
   if use_local_slots &&
     !bytecode_body_references_arguments(body) &&
+    !bytecode_body_references_eval(body) &&
     !bytecode_body_contains_destructure_assign(body) {
     let captured : Map[String, Bool] = {}
     collect_nested_function_refs_from_stmts(body, captured)
@@ -3049,13 +3062,15 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(PrepareComputedCall(member_loc))
       self.emit_call_with_receiver(args, loc)
     }
-    Call(callee, args, loc) => {
+    Call(callee, args, loc) =>
       if bytecode_is_direct_eval_callee(callee) {
-        bytecode_unsupported("direct eval call")
+        let _ = self.emit(LoadDirectEvalCallee)
+        self.compile_dynamic_args(args)
+        let _ = self.emit(CallDirectEval(loc))
+      } else {
+        self.compile_expr(callee)
+        self.emit_call(args, loc)
       }
-      self.compile_expr(callee)
-      self.emit_call(args, loc)
-    }
     _ => bytecode_unsupported("expression kind")
   }
 }
@@ -3505,6 +3520,8 @@ fn run_bytecode_function(
       }
       LoadConsoleMember(prop) =>
         frame.stack.push(interp.get_console_member(prop))
+      LoadDirectEvalCallee =>
+        frame.stack.push(@runtime.load_direct_eval_callee(frame.env))
       LoadName(name) =>
         frame.stack.push(interp.get_compiled_name(frame.env, name))
       LoadAssignmentName(name) =>
@@ -4023,6 +4040,19 @@ fn run_bytecode_function(
         )
         frame.stack.push(receiver)
         frame.stack.push(callee)
+      }
+      CallDirectEval(loc) => {
+        let args = frame.pop_dynamic_args()
+        let callee = frame.pop()
+        frame.stack.push(
+          interp.call_direct_eval_or_shadowed(
+            callee,
+            args,
+            frame.env,
+            loc,
+            caller_strict=frame.ctx.strict,
+          ),
+        )
       }
       Call(arg_count, loc) => {
         let args = pop_args(frame, arg_count)

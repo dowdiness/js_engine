@@ -46,6 +46,44 @@ test "bytecode keeps arguments functions on environment bindings" {
 }
 
 ///|
+test "bytecode keeps direct eval functions on environment bindings" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  function inner() { eval("x = 2"); }
+    #|  inner();
+    #|  return x;
+    #|}
+    #|outer();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let outer = bytecode.main.children[0]
+  json_inspect(outer.local_names, content=[])
+  guard outer.children.length() == 1 else {
+    abort("expected nested child function")
+  }
+  json_inspect(outer.children[0].local_names, content=[])
+}
+
+///|
+test "bytecode lowers direct eval calls to direct-eval instructions" {
+  let bytecode = parse_bytecode_for_wb("eval(...[\"1\"]);")
+  let mut saw_load = false
+  let mut saw_call = false
+  for instr in bytecode.main.code {
+    match instr {
+      LoadDirectEvalCallee => saw_load = true
+      CallDirectEval(_) => saw_call = true
+      _ => ()
+    }
+  }
+  guard saw_load else { abort("expected direct eval callee load") }
+  guard saw_call else { abort("expected direct eval call") }
+}
+
+///|
 test "bytecode keeps destructuring assignment functions on environment bindings" {
   let src =
     #|function f() {
