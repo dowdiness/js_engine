@@ -35,3 +35,31 @@ test "bytecode omits captured vars from local slots" {
   }
   json_inspect(bytecode.main.children[0].local_names, content=["a"])
 }
+
+///|
+test "bytecode lowers unary minus to a unary value instruction" {
+  let bytecode = parse_bytecode_for_wb("var x = -1;")
+  let mut saw_unary = false
+  for instr in bytecode.main.code {
+    match instr {
+      UnaryValueOp(Neg, _) => saw_unary = true
+      _ => ()
+    }
+  }
+  guard saw_unary else { abort("expected unary value op") }
+}
+
+///|
+test "bytecode treats names inside nested unary expressions as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return function() { return -x; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}

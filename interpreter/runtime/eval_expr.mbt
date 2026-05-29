@@ -1287,6 +1287,25 @@ fn Interpreter::eval_binary(
 }
 
 ///|
+pub fn eval_unary_value_op(
+  op : @ast.UnaryOp,
+  value : Value,
+  loc : @token.Loc,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  match op {
+    Neg => Number(-to_number(value, interp~))
+    Pos => Number(to_number(value, interp~))
+    Not => Bool(!is_truthy(value))
+    BitNot => Number(to_int32(to_number(value, interp~)).lnot().to_double())
+    Typeof | Void | Delete =>
+      raise @errors.InternalError(
+        message="Unexpected unary operator at line \{loc.line}, col \{loc.col}",
+      )
+  }
+}
+
+///|
 pub fn eval_binary_op(
   op : @ast.BinOp,
   left : Value,
@@ -1845,16 +1864,7 @@ fn Interpreter::eval_unary(
       }
     _ => {
       let val = self.eval_expr(ctx, operand, env)
-      match op {
-        Neg => Number(-to_number(val))
-        Pos => Number(to_number(val))
-        Not => Bool(!is_truthy(val))
-        BitNot => Number(to_int32(to_number(val)).lnot().to_double())
-        _ =>
-          raise @errors.InternalError(
-            message="Unexpected unary operator at line \{loc.line}, col \{loc.col}",
-          )
-      }
+      eval_unary_value_op(op, val, loc)
     }
   }
 }

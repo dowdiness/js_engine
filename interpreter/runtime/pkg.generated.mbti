@@ -37,6 +37,8 @@ pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
 
 pub fn eval_binary_op(@ast.BinOp, Value, Value, @token.Loc, interp? : Interpreter?) -> Value raise
 
+pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise
+
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
 pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit

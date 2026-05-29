@@ -11,6 +11,7 @@ priv enum BytecodeInstr {
   SetCompletion
   Pop
   BinaryOp(@ast.BinOp, @token.Loc)
+  UnaryValueOp(@ast.UnaryOp, @token.Loc)
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
   UpdateLocal(Int, @ast.UpdateOp, Bool) // slot, op, prefix
@@ -334,6 +335,8 @@ fn collect_nested_function_refs_from_expr(
   match expr {
     FuncExpr(_, _, body, _) | FuncExprExt(_, _, _, body, _) =>
       collect_name_refs_from_stmts(body, refs)
+    Unary(_, operand, _) =>
+      collect_nested_function_refs_from_expr(operand, refs)
     Binary(_, left, right, _) | Comma(left, right, _) => {
       collect_nested_function_refs_from_expr(left, refs)
       collect_nested_function_refs_from_expr(right, refs)
@@ -425,6 +428,7 @@ fn collect_name_refs_from_expr(
       refs[name] = true
       collect_name_refs_from_expr(value, refs)
     }
+    Unary(_, operand, _) => collect_name_refs_from_expr(operand, refs)
     Binary(_, left, right, _) | Comma(left, right, _) => {
       collect_name_refs_from_expr(left, refs)
       collect_name_refs_from_expr(right, refs)
@@ -803,6 +807,17 @@ fn BytecodeBuilder::compile_expr(
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
     Binary(NullishCoalesce, left, right, _) =>
       self.compile_nullish_coalesce(left, right)
+    Unary(Delete, _, _) => bytecode_unsupported("delete operator")
+    Unary(Typeof, _, _) => bytecode_unsupported("typeof operator")
+    Unary(Void, operand, _) => {
+      self.compile_expr(operand)
+      let _ = self.emit(Pop)
+      let _ = self.emit(LoadUndefined)
+    }
+    Unary(op, operand, loc) => {
+      self.compile_expr(operand)
+      let _ = self.emit(UnaryValueOp(op, loc))
+    }
     Ternary(cond, then_expr, else_expr, _) => {
       self.compile_expr(cond)
       let else_jump = self.emit(JumpIfFalse(-1))
@@ -1159,6 +1174,10 @@ fn run_bytecode_function(
         frame.stack.push(
           @runtime.eval_binary_op(op, left, right, loc, interp=Some(interp)),
         )
+      }
+      UnaryValueOp(op, loc) => {
+        let value = frame.pop()
+        frame.stack.push(@runtime.eval_unary_value_op(op, value, loc))
       }
       SetFunctionName(name) => {
         let value = frame.pop()

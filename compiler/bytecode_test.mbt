@@ -192,6 +192,55 @@ test "bytecode ternary expression statement updates completion" {
 }
 
 ///|
+test "bytecode unary numeric logical and bitwise operators" {
+  let src =
+    #|var x = "2";
+    #|(-x) + "," + (+true) + "," + (!0) + "," + (~1);
+  inspect(bytecode_compare(src), content="value:-2,1,true,-2")
+}
+
+///|
+test "bytecode void evaluates operand effects and yields undefined" {
+  let src =
+    #|var x = 0;
+    #|var r = void (x = 42);
+    #|(r === undefined) + "," + x;
+  inspect(bytecode_compare(src), content="value:true,42")
+}
+
+///|
+test "bytecode unary captured vars use environment fallback" {
+  let src =
+    #|function outer() {
+    #|  var x = 2;
+    #|  return function() { return -x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:-2")
+}
+
+///|
+test "bytecode rejects delete operator until delete semantics are shared" {
+  let src =
+    #|var xs = [1];
+    #|delete xs[0];
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: delete operator",
+  )
+}
+
+///|
+test "bytecode rejects typeof operator until reference semantics are shared" {
+  let src =
+    #|typeof missing;
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: typeof operator",
+  )
+}
+
+///|
 test "bytecode jumps and branch completion" {
   let src =
     #|var x = 0;
