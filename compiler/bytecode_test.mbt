@@ -2505,13 +2505,69 @@ test "bytecode for-in computed assignment captures outer target and key" {
 }
 
 ///|
+test "bytecode for-in destructuring assignment targets receive keys" {
+  let src =
+    #|var first = "";
+    #|var second = "";
+    #|for ([first, second] in { ab: 1, cd: 2 }) {
+    #|}
+    #|first + second;
+  inspect(bytecode_compare(src), content="value:cd")
+}
+
+///|
+test "bytecode for-in destructuring assignment supports loop control completion" {
+  let src =
+    #|var first = "";
+    #|for ([first] in { ab: 1, cd: 2 }) {
+    #|  "body";
+    #|  break;
+    #|}
+  inspect(bytecode_compare(src), content="value:body")
+}
+
+///|
+test "bytecode for-in destructuring assignment captures outer targets" {
+  let src =
+    #|function outer() {
+    #|  var first = "";
+    #|  return function(src) {
+    #|    for ([first] in src) {}
+    #|    return first;
+    #|  };
+    #|}
+    #|outer()({ xy: 1 });
+  inspect(bytecode_compare(src), content="value:x")
+}
+
+///|
+test "bytecode rejects unsupported for-in destructuring assignment patterns" {
+  let src =
+    #|var x = 0;
+    #|for ([x = 1] in { a: 1 }) {
+    #|}
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: destructuring assignment pattern",
+  )
+}
+
+///|
 test "bytecode rejects for-in declarations until loop binding semantics are shared" {
   inspect(
     bytecode_outcome("for (var k in { a: 1 }) {}"),
     content="error:InternalError: bytecode prototype unsupported: for-in var declaration",
   )
   inspect(
+    bytecode_outcome("for (var [k] in { a: 1 }) {}"),
+    content="error:InternalError: bytecode prototype unsupported: for-in var declaration",
+  )
+  inspect(
     bytecode_outcome("for (let k in { a: 1 }) {}"),
+    content="error:InternalError: bytecode prototype unsupported: for-in lexical declaration",
+  )
+  inspect(
+    bytecode_outcome("for (let [k] in { a: 1 }) {}"),
     content="error:InternalError: bytecode prototype unsupported: for-in lexical declaration",
   )
 }

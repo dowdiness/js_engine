@@ -395,9 +395,12 @@ fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
     | DestructureDecl(ConstKind, _, _, _) => true
     StmtList(stmts, _) | Block(stmts, _) => stmts_have_lexical_decl(stmts)
     ForInStmt(Some(LetKind), _, _, _, _)
-    | ForInStmt(Some(ConstKind), _, _, _, _) => true
-    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
-      stmt_has_lexical_decl(body)
+    | ForInStmt(Some(ConstKind), _, _, _, _)
+    | ForInStmtPat(Some(LetKind), _, _, _, _)
+    | ForInStmtPat(Some(ConstKind), _, _, _, _) => true
+    ForInStmt(_, _, _, body, _)
+    | ForInStmtPat(_, _, _, body, _)
+    | ForInExpr(_, _, body, _) => stmt_has_lexical_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_lexical_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_lexical_decl(body)
     _ => false
@@ -466,8 +469,9 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_function_decl(body)
     }
-    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
-      stmt_has_function_decl(body)
+    ForInStmt(_, _, _, body, _)
+    | ForInStmtPat(_, _, _, body, _)
+    | ForInExpr(_, _, body, _) => stmt_has_function_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_function_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_function_decl(body)
     _ => false
@@ -720,6 +724,11 @@ fn collect_nested_function_refs_from_stmt(
       collect_nested_function_refs_from_expr(obj_expr, refs)
       collect_nested_function_refs_from_stmt(body, refs)
     }
+    ForInStmtPat(_, pattern, obj_expr, body, _) => {
+      collect_nested_function_refs_from_pattern(pattern, refs)
+      collect_nested_function_refs_from_expr(obj_expr, refs)
+      collect_nested_function_refs_from_stmt(body, refs)
+    }
     ForInExpr(lhs_expr, obj_expr, body, _) => {
       collect_nested_function_refs_from_expr(lhs_expr, refs)
       collect_nested_function_refs_from_expr(obj_expr, refs)
@@ -939,6 +948,16 @@ fn collect_name_refs_from_stmt(
       collect_name_refs_from_stmt(body, refs)
     }
     ForInStmt(Some(_), _, obj_expr, body, _) => {
+      collect_name_refs_from_expr(obj_expr, refs)
+      collect_name_refs_from_stmt(body, refs)
+    }
+    ForInStmtPat(None, pattern, obj_expr, body, _) => {
+      collect_name_refs_from_pattern(pattern, refs)
+      collect_name_refs_from_expr(obj_expr, refs)
+      collect_name_refs_from_stmt(body, refs)
+    }
+    ForInStmtPat(Some(_), pattern, obj_expr, body, _) => {
+      collect_name_refs_from_binding_pattern_exprs(pattern, refs)
       collect_name_refs_from_expr(obj_expr, refs)
       collect_name_refs_from_stmt(body, refs)
     }
@@ -1211,6 +1230,7 @@ fn bytecode_stmt_contains_destructure_assign(stmt : @ast.Stmt) -> Bool {
       }
       bytecode_stmt_contains_destructure_assign(body)
     }
+    ForInStmtPat(_, _, _, _, _) => true
     ForInStmt(_, _, obj_expr, body, _) =>
       bytecode_expr_contains_destructure_assign(obj_expr) ||
       bytecode_stmt_contains_destructure_assign(body)
@@ -1542,6 +1562,49 @@ fn BytecodeBuilder::compile_for_in_identifier(
 }
 
 ///|
+fn BytecodeBuilder::compile_for_in_pattern(
+  self : BytecodeBuilder,
+  var_kind : @ast.VarKind?,
+  pattern : @ast.Pattern,
+  obj_expr : @ast.Expr,
+  body : @ast.Stmt,
+) -> Unit raise Error {
+  match var_kind {
+    Some(VarKind) => bytecode_unsupported("for-in var declaration")
+    Some(LetKind) | Some(ConstKind) =>
+      bytecode_unsupported("for-in lexical declaration")
+    None => ()
+  }
+  bytecode_validate_destructure_assignment_pattern(pattern)
+  if stmt_has_function_decl(body) {
+    bytecode_unsupported("control-flow function declaration")
+  }
+  if stmt_has_destructure_decl(body) {
+    bytecode_unsupported("destructuring declaration context")
+  }
+  self.emit_undefined_completion()
+  self.compile_expr(obj_expr)
+  let _ = self.emit(StartForIn)
+  let loop_pos = self.code.length()
+  let done_jump = self.emit(ForInNext(-1))
+  let _ = self.emit(AssignPattern(pattern))
+  let _ = self.emit(Pop)
+  let labels = self.take_pending_loop_labels()
+  self.push_loop_context(labels)
+  self.compile_stmt(body)
+  let loop_ctx = self.pop_loop_context()
+  self.restore_pending_loop_labels(labels)
+  let continue_pos = self.code.length()
+  self.patch_loop_jumps(loop_ctx.continue_jumps, continue_pos)
+  let _ = self.emit(Jump(loop_pos))
+  let cleanup_pos = self.code.length()
+  let _ = self.emit(EndForIn)
+  let exit_pos = self.code.length()
+  self.patch(done_jump, ForInNext(exit_pos))
+  self.patch_loop_jumps(loop_ctx.break_jumps, cleanup_pos)
+}
+
+///|
 fn BytecodeBuilder::compile_for_in_expr_target_store(
   self : BytecodeBuilder,
   target : @ast.Expr,
@@ -1791,6 +1854,8 @@ fn BytecodeBuilder::compile_stmt(
     }
     ForInStmt(var_kind, name, obj_expr, body, _) =>
       self.compile_for_in_identifier(var_kind, name, obj_expr, body)
+    ForInStmtPat(var_kind, pattern, obj_expr, body, _) =>
+      self.compile_for_in_pattern(var_kind, pattern, obj_expr, body)
     ForInExpr(target, obj_expr, body, _) =>
       self.compile_for_in_expr(target, obj_expr, body)
     SwitchStmt(discriminant, cases, _) =>

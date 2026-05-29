@@ -142,7 +142,7 @@ The current high-level opcode surface covers:
   name, load/store function-local slot, define binding
 - completion and control flow: set completion, pop, duplicate stack value, jump,
   conditional jump, return, throw, unlabeled and labeled `break`/`continue` for
-  supported loops, labeled block breaks, identifier/member/computed-target
+  supported loops, labeled block breaks, identifier/member/computed/destructuring-target
   `for...in` assignment loops without loop declarations, switch statements
   without lexical or function declarations, block statements and control-flow
   bodies with `var` declarations

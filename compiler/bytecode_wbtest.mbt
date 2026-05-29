@@ -993,6 +993,37 @@ test "bytecode lowers for-in member and computed assignment targets" {
 }
 
 ///|
+test "bytecode lowers for-in destructuring assignment targets" {
+  let bytecode = parse_bytecode_for_wb("var first; for ([first] in obj) {}")
+  let mut saw_start = false
+  let mut saw_assign_pattern = false
+  for instr in bytecode.main.code {
+    match instr {
+      StartForIn => saw_start = true
+      AssignPattern(_) => saw_assign_pattern = true
+      _ => ()
+    }
+  }
+  guard saw_start else { abort("expected for-in iterator start") }
+  guard saw_assign_pattern else { abort("expected for-in pattern assignment") }
+}
+
+///|
+test "bytecode treats names inside nested for-in destructuring targets as captured" {
+  let src =
+    #|function outer() {
+    #|  var first = "";
+    #|  return function(src) { for ([first] in src) {} };
+    #|}
+    #|outer()({ xy: 1 });
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode treats names inside nested for-in expression targets as captured" {
   let src =
     #|function outer() {
