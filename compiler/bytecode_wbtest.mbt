@@ -296,6 +296,52 @@ test "bytecode treats names inside nested do while statements as captured" {
 }
 
 ///|
+test "bytecode patches unlabeled break and continue jumps" {
+  let break_bytecode = parse_bytecode_for_wb("while (true) break;")
+  let mut saw_break_to_exit = false
+  for instr in break_bytecode.main.code {
+    match instr {
+      Jump(target) => {
+        if target == -1 {
+          abort("unpatched break jump")
+        }
+        if target == break_bytecode.main.code.length() {
+          saw_break_to_exit = true
+        }
+      }
+      JumpIfFalse(target) =>
+        if target == -1 {
+          abort("unpatched loop exit jump")
+        }
+      _ => ()
+    }
+  }
+  guard saw_break_to_exit else { abort("expected break jump to loop exit") }
+  let continue_bytecode = parse_bytecode_for_wb("do continue; while (false);")
+  let mut saw_continue_to_condition = false
+  for i, instr in continue_bytecode.main.code {
+    match instr {
+      Jump(target) => {
+        if target == -1 {
+          abort("unpatched continue jump")
+        }
+        if target == i + 1 {
+          saw_continue_to_condition = true
+        }
+      }
+      JumpIfFalse(target) =>
+        if target == -1 {
+          abort("unpatched do-while exit jump")
+        }
+      _ => ()
+    }
+  }
+  guard saw_continue_to_condition else {
+    abort("expected continue jump to condition")
+  }
+}
+
+///|
 test "bytecode treats names inside nested object literals as captured" {
   let src =
     #|function outer() {

@@ -65,6 +65,13 @@ priv struct BytecodeBuilder {
   children : Array[BytecodeFunction]
   local_names : Array[String]
   local_indices : Map[String, Int]
+  loop_contexts : Array[LoopPatchContext]
+}
+
+///|
+priv struct LoopPatchContext {
+  break_jumps : Array[Int]
+  continue_jumps : Array[Int]
 }
 
 ///|
@@ -94,6 +101,7 @@ fn BytecodeBuilder::BytecodeBuilder(
     children: [],
     local_names: plan.names,
     local_indices: plan.indices,
+    loop_contexts: [],
   }
 }
 
@@ -122,6 +130,74 @@ fn BytecodeBuilder::local_slot(self : BytecodeBuilder, name : String) -> Int? {
 fn BytecodeBuilder::emit_undefined_completion(self : BytecodeBuilder) -> Unit {
   let _ = self.emit(LoadUndefined)
   let _ = self.emit(SetCompletion)
+}
+
+///|
+fn BytecodeBuilder::push_loop_context(self : BytecodeBuilder) -> Unit {
+  self.loop_contexts.push({ break_jumps: [], continue_jumps: [] })
+}
+
+///|
+fn BytecodeBuilder::pop_loop_context(
+  self : BytecodeBuilder,
+) -> LoopPatchContext raise Error {
+  match self.loop_contexts.pop() {
+    Some(ctx) => ctx
+    None => {
+      bytecode_unsupported("loop context")
+      { break_jumps: [], continue_jumps: [] }
+    }
+  }
+}
+
+///|
+fn BytecodeBuilder::current_loop_context(
+  self : BytecodeBuilder,
+  unsupported_kind : String,
+) -> LoopPatchContext raise Error {
+  if self.loop_contexts.length() == 0 {
+    bytecode_unsupported(unsupported_kind)
+  }
+  self.loop_contexts[self.loop_contexts.length() - 1]
+}
+
+///|
+fn BytecodeBuilder::emit_loop_break(
+  self : BytecodeBuilder,
+  label : String?,
+) -> Unit raise Error {
+  match label {
+    Some(_) => bytecode_unsupported("labeled break statement")
+    None => ()
+  }
+  let ctx = self.current_loop_context("break statement")
+  let jump = self.emit(Jump(-1))
+  ctx.break_jumps.push(jump)
+}
+
+///|
+fn BytecodeBuilder::emit_loop_continue(
+  self : BytecodeBuilder,
+  label : String?,
+) -> Unit raise Error {
+  match label {
+    Some(_) => bytecode_unsupported("labeled continue statement")
+    None => ()
+  }
+  let ctx = self.current_loop_context("continue statement")
+  let jump = self.emit(Jump(-1))
+  ctx.continue_jumps.push(jump)
+}
+
+///|
+fn BytecodeBuilder::patch_loop_jumps(
+  self : BytecodeBuilder,
+  jumps : Array[Int],
+  target : Int,
+) -> Unit {
+  for jump in jumps {
+    self.patch(jump, Jump(target))
+  }
 }
 
 ///|
@@ -675,7 +751,6 @@ fn BytecodeBuilder::compile_stmt(
           }
         None => ()
       }
-      self.emit_undefined_completion()
       self.compile_expr(cond)
       let else_jump = self.emit(JumpIfFalse(-1))
       self.compile_stmt(then_branch)
@@ -683,7 +758,7 @@ fn BytecodeBuilder::compile_stmt(
       self.patch(else_jump, JumpIfFalse(self.code.length()))
       match else_branch {
         Some(stmt) => self.compile_stmt(stmt)
-        None => ()
+        None => self.emit_undefined_completion()
       }
       self.patch(end_jump, Jump(self.code.length()))
     }
@@ -695,9 +770,14 @@ fn BytecodeBuilder::compile_stmt(
       let cond_pos = self.code.length()
       self.compile_expr(cond)
       let exit_jump = self.emit(JumpIfFalse(-1))
+      self.push_loop_context()
       self.compile_stmt(body)
+      let loop_ctx = self.pop_loop_context()
       let _ = self.emit(Jump(cond_pos))
-      self.patch(exit_jump, JumpIfFalse(self.code.length()))
+      let exit_pos = self.code.length()
+      self.patch(exit_jump, JumpIfFalse(exit_pos))
+      self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
+      self.patch_loop_jumps(loop_ctx.continue_jumps, cond_pos)
     }
     DoWhileStmt(body, cond, _) => {
       if stmt_has_function_decl(body) {
@@ -705,11 +785,17 @@ fn BytecodeBuilder::compile_stmt(
       }
       self.emit_undefined_completion()
       let body_pos = self.code.length()
+      self.push_loop_context()
       self.compile_stmt(body)
+      let loop_ctx = self.pop_loop_context()
+      let cond_pos = self.code.length()
+      self.patch_loop_jumps(loop_ctx.continue_jumps, cond_pos)
       self.compile_expr(cond)
       let exit_jump = self.emit(JumpIfFalse(-1))
       let _ = self.emit(Jump(body_pos))
-      self.patch(exit_jump, JumpIfFalse(self.code.length()))
+      let exit_pos = self.code.length()
+      self.patch(exit_jump, JumpIfFalse(exit_pos))
+      self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
     ForStmt(init, cond, update, body, _) => {
       if stmt_has_function_decl(body) {
@@ -733,7 +819,11 @@ fn BytecodeBuilder::compile_stmt(
         }
       }
       let exit_jump = self.emit(JumpIfFalse(-1))
+      self.push_loop_context()
       self.compile_stmt(body)
+      let loop_ctx = self.pop_loop_context()
+      let update_pos = self.code.length()
+      self.patch_loop_jumps(loop_ctx.continue_jumps, update_pos)
       match update {
         Some(expr) => {
           self.compile_expr(expr)
@@ -742,7 +832,9 @@ fn BytecodeBuilder::compile_stmt(
         None => ()
       }
       let _ = self.emit(Jump(cond_pos))
-      self.patch(exit_jump, JumpIfFalse(self.code.length()))
+      let exit_pos = self.code.length()
+      self.patch(exit_jump, JumpIfFalse(exit_pos))
+      self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
     FuncDecl(name, params, body, _) => {
       let fn_idx = self.add_function(Some(name), params, body)
@@ -758,6 +850,8 @@ fn BytecodeBuilder::compile_stmt(
       }
       let _ = self.emit(Return)
     }
+    BreakStmt(label, _) => self.emit_loop_break(label)
+    ContinueStmt(label, _) => self.emit_loop_continue(label)
     ThrowStmt(expr, _) => {
       self.compile_expr(expr)
       let _ = self.emit(Throw)

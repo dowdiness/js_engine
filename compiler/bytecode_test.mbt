@@ -484,6 +484,92 @@ test "bytecode do while captures outer bindings" {
 }
 
 ///|
+test "bytecode break exits while loops" {
+  let src =
+    #|var i = 0;
+    #|while (true) {
+    #|  i = i + 1;
+    #|  if (i === 3) {
+    #|    break;
+    #|  }
+    #|}
+    #|i;
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode break preserves prior loop completion" {
+  let src =
+    #|while (true) {
+    #|  "body";
+    #|  break;
+    #|  "after";
+    #|}
+  inspect(bytecode_compare(src), content="value:body")
+  let nested =
+    #|while (true) {
+    #|  "body";
+    #|  if (true) break;
+    #|}
+  inspect(bytecode_compare(nested), content="value:body")
+}
+
+///|
+test "bytecode continue preserves prior loop completion" {
+  let src =
+    #|var i = 0;
+    #|while (i < 1) {
+    #|  i = i + 1;
+    #|  "body";
+    #|  if (true) continue;
+    #|  "after";
+    #|}
+  inspect(bytecode_compare(src), content="value:body")
+}
+
+///|
+test "bytecode continue in for loops runs the update expression" {
+  let src =
+    #|var log = "";
+    #|for (var i = 0; i < 3; i = i + 1) {
+    #|  log = log + "b" + i;
+    #|  continue;
+    #|  log = log + "x";
+    #|}
+    #|log + ":" + i;
+  inspect(bytecode_compare(src), content="value:b0b1b2:3")
+}
+
+///|
+test "bytecode continue in do while loops still evaluates the condition" {
+  let src =
+    #|var i = 0;
+    #|var log = "";
+    #|do {
+    #|  i = i + 1;
+    #|  log = log + "b";
+    #|  if (i < 2) {
+    #|    continue;
+    #|  }
+    #|  log = log + "x";
+    #|} while ((log = log + "c", i < 3));
+    #|log + ":" + i;
+  inspect(bytecode_compare(src), content="value:bcbxcbxc:3")
+}
+
+///|
+test "bytecode rejects labeled break and continue until label resolution is implemented" {
+  inspect(
+    bytecode_outcome("while (true) { break label; }"),
+    content="error:InternalError: bytecode prototype unsupported: labeled break statement",
+  )
+  inspect(
+    bytecode_outcome("while (true) { continue label; }"),
+    content="error:InternalError: bytecode prototype unsupported: labeled continue statement",
+  )
+}
+
+///|
 test "bytecode calls and return" {
   let src =
     #|function add(a, b) {
