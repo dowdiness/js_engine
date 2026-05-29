@@ -1993,13 +1993,54 @@ test "bytecode arrow function names are inferred from bindings" {
 }
 
 ///|
+test "bytecode rest arrow functions collect trailing arguments" {
+  let src =
+    #|var f = (first, ...rest) => first + ":" + rest.length + ":" + rest[0] + ":" + rest[1];
+    #|f(1, 2, 3);
+  inspect(bytecode_compare(src), content="value:1:2:2:3")
+}
+
+///|
+test "bytecode rest arrow functions preserve lexical arguments" {
+  let src =
+    #|function outer(a) {
+    #|  return (...rest) => arguments[0] + ":" + rest.length;
+    #|}
+    #|outer("outer")(1, 2);
+  inspect(bytecode_compare(src), content="value:outer:2")
+}
+
+///|
+test "bytecode rest arrow parameters can shadow arguments" {
+  let src =
+    #|((...arguments) => arguments.length + ":" + arguments[1])(4, 5);
+  inspect(bytecode_compare(src), content="value:2:5")
+}
+
+///|
+test "bytecode rest arrow functions capture rest bindings" {
+  let src =
+    #|var make = (...xs) => function() { return xs[1]; };
+    #|make(4, 5)();
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
 test "bytecode rejects unsupported arrow parameter forms explicitly" {
   inspect(
     bytecode_outcome("((x = 1) => x)();"),
     content="error:InternalError: bytecode prototype unsupported: default or destructuring parameter",
   )
   inspect(
-    bytecode_outcome("((...xs) => xs.length)(1);"),
+    bytecode_outcome("(({ x }) => x)({ x: 1 });"),
+    content="error:InternalError: bytecode prototype unsupported: default or destructuring parameter",
+  )
+}
+
+///|
+test "bytecode rejects non-arrow rest parameters until compiled binding semantics are shared" {
+  inspect(
+    bytecode_outcome("(function(...xs) { return xs.length; })(1);"),
     content="error:InternalError: bytecode prototype unsupported: rest parameter",
   )
 }

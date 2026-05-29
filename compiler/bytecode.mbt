@@ -94,6 +94,7 @@ priv enum BytecodeInstr {
 priv struct BytecodeFunction {
   name : String?
   params : Array[String]
+  rest_param : String?
   source_body : Array[@ast.Stmt]
   body_has_use_strict : Bool
   local_names : Array[String]
@@ -1397,9 +1398,14 @@ fn compile_bytecode_function(
   name : String?,
   params : Array[String],
   body : Array[@ast.Stmt],
+  rest_param : String?,
   use_local_slots? : Bool = true,
 ) -> BytecodeFunction raise Error {
-  let plan = plan_bytecode_locals(params, body, use_local_slots~)
+  let plan = plan_bytecode_locals(
+    params,
+    body,
+    use_local_slots=use_local_slots && rest_param is None,
+  )
   let builder = BytecodeBuilder::BytecodeBuilder(plan)
   for stmt in body {
     builder.compile_stmt(stmt)
@@ -1407,6 +1413,7 @@ fn compile_bytecode_function(
   {
     name,
     params,
+    rest_param,
     source_body: body,
     body_has_use_strict: @runtime.has_use_strict(body),
     local_names: builder.local_names,
@@ -1421,7 +1428,13 @@ pub fn compile_script_to_bytecode(
 ) -> BytecodeProgram raise Error {
   {
     source_stmts: stmts,
-    main: compile_bytecode_function(None, [], stmts, use_local_slots=false),
+    main: compile_bytecode_function(
+      None,
+      [],
+      stmts,
+      None,
+      use_local_slots=false,
+    ),
   }
 }
 
@@ -1455,9 +1468,10 @@ fn BytecodeBuilder::add_function(
   name : String?,
   params : Array[String],
   body : Array[@ast.Stmt],
+  rest_param : String?,
 ) -> Int raise Error {
   let idx = self.children.length()
-  self.children.push(compile_bytecode_function(name, params, body))
+  self.children.push(compile_bytecode_function(name, params, body, rest_param))
   idx
 }
 
@@ -1861,7 +1875,7 @@ fn BytecodeBuilder::compile_stmt(
     SwitchStmt(discriminant, cases, _) =>
       self.compile_switch(discriminant, cases)
     FuncDecl(name, params, body, _) => {
-      let fn_idx = self.add_function(Some(name), params, body)
+      let fn_idx = self.add_function(Some(name), params, body, None)
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
@@ -2477,19 +2491,20 @@ fn BytecodeBuilder::compile_object_method(
       if bytecode_method_body_references_name(name, body) {
         bytecode_unsupported("object literal method self reference")
       }
-      self.add_function(Some(name), params, body)
+      self.add_function(Some(name), params, body, None)
     }
-    FuncExpr(None, params, body, _) => self.add_function(None, params, body)
+    FuncExpr(None, params, body, _) =>
+      self.add_function(None, params, body, None)
     FuncExprExt(Some(name), params, rest_param, body, _) => {
       if bytecode_method_body_references_name(name, body) {
         bytecode_unsupported("object literal method self reference")
       }
       let simple_params = simple_ext_param_names(params, rest_param)
-      self.add_function(Some(name), simple_params, body)
+      self.add_function(Some(name), simple_params, body, None)
     }
     FuncExprExt(None, params, rest_param, body, _) => {
       let simple_params = simple_ext_param_names(params, rest_param)
-      self.add_function(None, simple_params, body)
+      self.add_function(None, simple_params, body, None)
     }
     _ => {
       bytecode_unsupported("object literal method property")
@@ -2843,30 +2858,32 @@ fn BytecodeBuilder::compile_expr(
     CompoundAssign(_, _, _, _) =>
       bytecode_unsupported("compound assignment target")
     FuncExpr(Some(name), params, body, _) => {
-      let fn_idx = self.add_function(Some(name), params, body)
+      let fn_idx = self.add_function(Some(name), params, body, None)
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
     }
     FuncExpr(None, params, body, _) => {
-      let fn_idx = self.add_function(None, params, body)
+      let fn_idx = self.add_function(None, params, body, None)
       let _ = self.emit(MakeFunction(fn_idx))
     }
     FuncExprExt(Some(name), params, rest_param, body, _) => {
       let simple_params = simple_ext_param_names(params, rest_param)
-      let fn_idx = self.add_function(Some(name), simple_params, body)
+      let fn_idx = self.add_function(Some(name), simple_params, body, None)
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
     }
     FuncExprExt(None, params, rest_param, body, _) => {
       let simple_params = simple_ext_param_names(params, rest_param)
-      let fn_idx = self.add_function(None, simple_params, body)
+      let fn_idx = self.add_function(None, simple_params, body, None)
       let _ = self.emit(MakeFunction(fn_idx))
     }
     ArrowFunc(params, body, _) => {
-      let fn_idx = self.add_function(None, params, body)
+      let fn_idx = self.add_function(None, params, body, None)
       let _ = self.emit(MakeArrowFunction(fn_idx))
     }
     ArrowFuncExt(params, rest_param, body, _) => {
-      let simple_params = simple_ext_param_names(params, rest_param)
-      let fn_idx = self.add_function(None, simple_params, body)
+      let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
+        params, rest_param,
+      )
+      let fn_idx = self.add_function(None, simple_params, body, simple_rest)
       let _ = self.emit(MakeArrowFunction(fn_idx))
     }
     Grouping(inner, _) => self.compile_expr(inner)
@@ -3031,12 +3048,27 @@ fn simple_ext_param_names(
   }
   let names : Array[String] = []
   for param in params {
-    match (param.default_val, param.pattern) {
-      (None, None) => names.push(param.name)
+    match (param.default_val, param.pattern, param.is_rest_pattern) {
+      (None, None, false) => names.push(param.name)
       _ => bytecode_unsupported("default or destructuring parameter")
     }
   }
   names
+}
+
+///|
+fn simple_ext_param_names_with_rest(
+  params : Array[@ast.Param],
+  rest_param : String?,
+) -> (Array[String], String?) raise Error {
+  let names : Array[String] = []
+  for param in params {
+    match (param.default_val, param.pattern, param.is_rest_pattern) {
+      (None, None, false) => names.push(param.name)
+      _ => bytecode_unsupported("default or destructuring parameter")
+    }
+  }
+  (names, rest_param)
 }
 
 ///|
@@ -3296,28 +3328,107 @@ fn make_bytecode_method_func(
 }
 
 ///|
+fn bytecode_ext_params_from_names(params : Array[String]) -> Array[@ast.Param] {
+  let ext_params : Array[@ast.Param] = []
+  for name in params {
+    ext_params.push({
+      name,
+      default_val: None,
+      pattern: None,
+      is_rest_pattern: false,
+    })
+  }
+  ext_params
+}
+
+///|
+fn bind_bytecode_arrow_params(
+  env : Environment,
+  params : Array[String],
+  rest_param : String?,
+  args : Array[Value],
+) -> Unit raise Error {
+  bind_simple_params(env, params, args)
+  match rest_param {
+    Some(name) => {
+      let rest_elements : Array[Value] = []
+      for i = params.length(); i < args.length(); i = i + 1 {
+        rest_elements.push(args[i])
+      }
+      env.def_parameter(name, @runtime.make_array(rest_elements))
+    }
+    None => ()
+  }
+}
+
+///|
+fn call_bytecode_arrow_func(
+  interp : Interpreter,
+  args : Array[Value],
+  func_def : BytecodeFunction,
+  closure : Environment,
+  strict : Bool,
+) -> Value raise Error {
+  let saved_in_default = interp.in_nonarrow_param_default_eval
+  interp.in_nonarrow_param_default_eval = false
+  let result : Value = try {
+    let func_env = Environment::new(parent=Some(closure))
+    func_env.is_var_scope = true
+    let func_ctx : ExecContext = { strict, current_generator: None }
+    bind_bytecode_arrow_params(
+      func_env,
+      func_def.params,
+      func_def.rest_param,
+      args,
+    )
+    match run_bytecode_function(interp, func_ctx, func_env, func_def) {
+      BytecodeNormal(value) | BytecodeReturn(value) => value
+    }
+  } catch {
+    err => {
+      interp.in_nonarrow_param_default_eval = saved_in_default
+      raise err
+    }
+  }
+  interp.in_nonarrow_param_default_eval = saved_in_default
+  result
+}
+
+///|
 fn make_bytecode_arrow_func(
   func_def : BytecodeFunction,
   closure : Environment,
   enclosing_ctx : ExecContext,
 ) -> Value raise Error {
-  @runtime.validate_function_signature(
-    enclosing_ctx.strict,
-    None,
-    func_def.params,
-    func_def.source_body,
-  )
+  match func_def.rest_param {
+    Some(_) =>
+      @runtime.validate_function_signature_ext(
+        enclosing_ctx.strict,
+        None,
+        bytecode_ext_params_from_names(func_def.params),
+        func_def.rest_param,
+        func_def.source_body,
+      )
+    None =>
+      @runtime.validate_function_signature(
+        enclosing_ctx.strict,
+        None,
+        func_def.params,
+        func_def.source_body,
+      )
+  }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  make_compiled_arrow_func(
-    func_def.params,
-    closure,
-    strict,
-    CompiledBody(fn(interp, ctx, env) raise {
-      match run_bytecode_function(interp, ctx, env, func_def) {
-        BytecodeNormal(value) => Signal::Normal(value)
-        BytecodeReturn(value) => Signal::ReturnSignal(value)
-      }
-    }),
+  let realm_state = match closure.interpreter_context {
+    Some(interp) => Some(interp.realm_state)
+    None => closure.realm_state
+  }
+  @runtime.make_interp_method_func(
+    name="",
+    length=func_def.params.length(),
+    realm_state~,
+    fn(interp, _this_val, args) raise {
+      call_bytecode_arrow_func(interp, args, func_def, closure, strict)
+    },
   )
 }
 
