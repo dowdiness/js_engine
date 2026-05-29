@@ -321,17 +321,19 @@ No test262 cohort exercises this — `$0` is a valid but unusual identifier — 
 
 **Estimated scope:** ~11 Param construction sites in parser + AST struct update + ~7 consumer sites. Larger than PR #117 alone but eliminates the entire ambiguity, not patches one symptom.
 
+**Refactoring workflow (use `moonbit-refactoring`):** Treat this as one focused API/data-model refactor, not a drive-by cleanup. First add `is_rest_pattern : Bool` to `@ast.Param`, then run `moon check` to surface all construction sites. Update parser construction next, setting the flag to `true` only for destructuring rest (`...[pattern]`) and `false` everywhere else. Then replace consumer name-equality checks with the flag. Add black-box regressions for `function f({a}, ...$0) {}` runtime binding, length/counting behavior, dynamic constructor destructuring rest, and class constructor destructuring rest. Run `moon check` after each edit batch, then targeted tests, `moon test`, `moon info`, and `moon fmt`.
+
 ---
 
-### Async generator length / name (latent gap)
+### ~~Async generator length / name (latent gap)~~ — DONE (2026-05-29)
 
 **Source:** Codex review of PR #117 (2026-05-15).
 
-**Bug:** `make_async_gen_function_inner` at `interpreter/runtime/async.mbt:424` doesn't set `length` or `name` on async generator function objects (the `fn_props` map only has `"prototype"`). Both `make_async_generator_function` (simple) and `make_async_generator_function_ext` (with defaults) delegate to it.
+**Bug:** `make_async_gen_function_inner` at `interpreter/runtime/async.mbt:424` didn't set `length` or `name` on async generator function objects (the `fn_props` map only had `"prototype"`). Both `make_async_generator_function` (simple) and `make_async_generator_function_ext` (with defaults) delegate to it.
 
-No test262 impact today because async-iteration is skipped via the feature flag. When async-iteration is unlocked, async generator function length and name will be wrong.
+No test262 impact today because async-iteration is skipped via the feature flag. When async-iteration is unlocked, async generator function length and name would have been wrong.
 
-**Fix:** Mirror the length-and-name install logic from `make_generator_function_ext` into `make_async_gen_function_inner`, including the rest-param check. Branch on `params_ext is Some(_)` to choose simple-vs-ext counting.
+**Fix:** Mirrored the length-and-name install logic from `make_generator_function_ext` into `make_async_gen_function_inner`, including the rest-param check. Branches on `params_ext is Some(_)` to choose simple-vs-ext counting.
 
 ---
 

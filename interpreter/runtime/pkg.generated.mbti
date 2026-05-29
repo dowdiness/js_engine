@@ -67,6 +67,8 @@ pub fn get_func_length(Callable) -> Int
 
 pub fn get_func_proto(realm_state? : RealmState?) -> Value
 
+pub fn get_function_length(Value) -> Int
+
 pub fn get_map_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_number_proto(realm_state? : RealmState?) -> Value

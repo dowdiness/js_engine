@@ -11317,6 +11317,34 @@ test "async functions and generators expose well-known symbol protocol hooks" {
   json_inspect(output, content=["[object AsyncFunction]", "function", "true"])
 }
 
+///|
+test "async generator function name and length" {
+  let output = run_output(
+    (
+      #|async function* simple(a, b) {}
+      #|async function* def(a, b = 1, c) {}
+      #|async function* rest(a, ...r) {}
+      #|async function* destruct(a, ...[b]) {}
+      #|async function* collision($rest, ...[x]) {}
+      #|let expr = async function* named(a, b = 1) {};
+      #|console.log(simple.name + ":" + simple.length);
+      #|console.log(def.name + ":" + def.length);
+      #|console.log(rest.name + ":" + rest.length);
+      #|console.log(destruct.name + ":" + destruct.length);
+      #|console.log(collision.name + ":" + collision.length);
+      #|console.log(expr.name + ":" + expr.length);
+      #|console.log(simple.bind(null).length);
+      #|console.log(simple.bind(null, 1).length);
+      #|let desc = Object.getOwnPropertyDescriptor(simple, "name");
+      #|console.log(desc.writable + ":" + desc.enumerable + ":" + desc.configurable);
+    ),
+  )
+  json_inspect(output, content=[
+    "simple:2", "def:1", "rest:1", "destruct:1", "collision:1", "named:1", "2", "1",
+    "false:false:true",
+  ])
+}
+
 // ES262 §10.2.4 ExpectedArgumentCount: function `length` reports the
 // count of parameters before the first one with a default initializer
 // (or rest). Non-async siblings already handle this; PR #103
