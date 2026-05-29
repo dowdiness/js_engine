@@ -152,10 +152,11 @@ The current high-level opcode surface covers:
   function naming
 - object interaction: array creation including holes but without spread, simple
   object literals with static data properties, property get, computed get,
-  property/computed assignment through runtime setters, and property/computed
-  deletion through shared runtime helpers
-- calls and construction: ordinary calls, host `console.log` calls/member reads,
-  receiver-preserving property/computed calls, and non-spread `new` expressions
+  optional property/computed get, property/computed assignment through runtime
+  setters, and property/computed deletion through shared runtime helpers
+- calls and construction: ordinary calls, optional calls, host `console.log`
+  calls/member reads, receiver-preserving property/computed calls, and
+  non-spread `new` expressions
 - closures: function declarations and anonymous function expressions backed by
   runtime compiled functions
 

@@ -405,14 +405,17 @@ fn collect_nested_function_refs_from_expr(
       collect_nested_function_refs_from_expr(right, refs)
     }
     Assign(_, value, _) => collect_nested_function_refs_from_expr(value, refs)
-    Call(callee, args, _) | NewExpr(callee, args, _) => {
+    Call(callee, args, _)
+    | OptionalCall(callee, args, _)
+    | NewExpr(callee, args, _) => {
       collect_nested_function_refs_from_expr(callee, refs)
       for arg in args {
         collect_nested_function_refs_from_expr(arg, refs)
       }
     }
-    Member(obj, _, _) => collect_nested_function_refs_from_expr(obj, refs)
-    ComputedMember(obj, key, _) => {
+    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+      collect_nested_function_refs_from_expr(obj, refs)
+    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) => {
       collect_nested_function_refs_from_expr(obj, refs)
       collect_nested_function_refs_from_expr(key, refs)
     }
@@ -536,14 +539,17 @@ fn collect_name_refs_from_expr(
       collect_name_refs_from_expr(left, refs)
       collect_name_refs_from_expr(right, refs)
     }
-    Call(callee, args, _) | NewExpr(callee, args, _) => {
+    Call(callee, args, _)
+    | OptionalCall(callee, args, _)
+    | NewExpr(callee, args, _) => {
       collect_name_refs_from_expr(callee, refs)
       for arg in args {
         collect_name_refs_from_expr(arg, refs)
       }
     }
-    Member(obj, _, _) => collect_name_refs_from_expr(obj, refs)
-    ComputedMember(obj, key, _) => {
+    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+      collect_name_refs_from_expr(obj, refs)
+    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) => {
       collect_name_refs_from_expr(obj, refs)
       collect_name_refs_from_expr(key, refs)
     }
@@ -928,6 +934,126 @@ fn BytecodeBuilder::compile_nullish_coalesce(
 }
 
 ///|
+fn BytecodeBuilder::compile_optional_member(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  prop : String,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  self.compile_expr(obj)
+  let get_jump = self.emit(JumpIfNotNullishKeep(-1))
+  let _ = self.emit(Pop)
+  let _ = self.emit(LoadUndefined)
+  let end_jump = self.emit(Jump(-1))
+  self.patch(get_jump, JumpIfNotNullishKeep(self.code.length()))
+  let _ = self.emit(GetProperty(prop, loc))
+  self.patch(end_jump, Jump(self.code.length()))
+}
+
+///|
+fn BytecodeBuilder::compile_optional_computed_member(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  key : @ast.Expr,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  self.compile_expr(obj)
+  let get_jump = self.emit(JumpIfNotNullishKeep(-1))
+  let _ = self.emit(Pop)
+  let _ = self.emit(LoadUndefined)
+  let end_jump = self.emit(Jump(-1))
+  self.patch(get_jump, JumpIfNotNullishKeep(self.code.length()))
+  self.compile_expr(key)
+  let _ = self.emit(GetComputed(loc))
+  self.patch(end_jump, Jump(self.code.length()))
+}
+
+///|
+fn BytecodeBuilder::compile_optional_plain_call(
+  self : BytecodeBuilder,
+  callee : @ast.Expr,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+) -> Unit raise Error {
+  self.compile_expr(callee)
+  let call_jump = self.emit(JumpIfNotNullishKeep(-1))
+  let _ = self.emit(Pop)
+  let _ = self.emit(LoadUndefined)
+  let end_jump = self.emit(Jump(-1))
+  self.patch(call_jump, JumpIfNotNullishKeep(self.code.length()))
+  self.compile_args(args)
+  let _ = self.emit(Call(args.length(), loc))
+  self.patch(end_jump, Jump(self.code.length()))
+}
+
+///|
+fn BytecodeBuilder::compile_optional_call_with_receiver_tail(
+  self : BytecodeBuilder,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+  end_jumps : Array[Int],
+) -> Unit raise Error {
+  let call_jump = self.emit(JumpIfNotNullishKeep(-1))
+  let _ = self.emit(Pop)
+  let _ = self.emit(Pop)
+  let _ = self.emit(LoadUndefined)
+  end_jumps.push(self.emit(Jump(-1)))
+  self.patch(call_jump, JumpIfNotNullishKeep(self.code.length()))
+  self.compile_args(args)
+  let _ = self.emit(CallWithReceiver(args.length(), loc))
+  for jump in end_jumps {
+    self.patch(jump, Jump(self.code.length()))
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_optional_property_call(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  prop : String,
+  args : Array[@ast.Expr],
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+  optional_obj~ : Bool,
+) -> Unit raise Error {
+  let end_jumps : Array[Int] = []
+  self.compile_expr(obj)
+  if optional_obj {
+    let member_jump = self.emit(JumpIfNotNullishKeep(-1))
+    let _ = self.emit(Pop)
+    let _ = self.emit(LoadUndefined)
+    end_jumps.push(self.emit(Jump(-1)))
+    self.patch(member_jump, JumpIfNotNullishKeep(self.code.length()))
+  }
+  let _ = self.emit(PreparePropertyCall(prop, member_loc))
+  self.compile_optional_call_with_receiver_tail(args, loc, end_jumps)
+}
+
+///|
+fn BytecodeBuilder::compile_optional_computed_call(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  key : @ast.Expr,
+  args : Array[@ast.Expr],
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+  optional_obj~ : Bool,
+) -> Unit raise Error {
+  let end_jumps : Array[Int] = []
+  self.compile_expr(obj)
+  if optional_obj {
+    let member_jump = self.emit(JumpIfNotNullishKeep(-1))
+    let _ = self.emit(Pop)
+    let _ = self.emit(LoadUndefined)
+    end_jumps.push(self.emit(Jump(-1)))
+    self.patch(member_jump, JumpIfNotNullishKeep(self.code.length()))
+  }
+  self.compile_expr(key)
+  let _ = self.emit(PrepareComputedCall(member_loc))
+  self.compile_optional_call_with_receiver_tail(args, loc, end_jumps)
+}
+
+///|
 fn BytecodeBuilder::compile_identifier_load(
   self : BytecodeBuilder,
   name : String,
@@ -1306,6 +1432,10 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(GetComputed(loc))
     }
+    OptionalMember(obj, prop, loc) =>
+      self.compile_optional_member(obj, prop, loc)
+    OptionalComputedMember(obj, key, loc) =>
+      self.compile_optional_computed_member(obj, key, loc)
     MemberAssign(obj, prop, value, loc) => {
       self.compile_expr(obj)
       self.compile_expr(value)
@@ -1322,6 +1452,46 @@ fn BytecodeBuilder::compile_expr(
       self.compile_args(args)
       let _ = self.emit(Construct(args.length(), loc))
     }
+    OptionalCall(callee, args, loc) =>
+      match callee {
+        OptionalMember(obj, prop, member_loc) =>
+          self.compile_optional_property_call(
+            obj,
+            prop,
+            args,
+            member_loc,
+            loc,
+            optional_obj=true,
+          )
+        OptionalComputedMember(obj, key, member_loc) =>
+          self.compile_optional_computed_call(
+            obj,
+            key,
+            args,
+            member_loc,
+            loc,
+            optional_obj=true,
+          )
+        Member(obj, prop, member_loc) =>
+          self.compile_optional_property_call(
+            obj,
+            prop,
+            args,
+            member_loc,
+            loc,
+            optional_obj=false,
+          )
+        ComputedMember(obj, key, member_loc) =>
+          self.compile_optional_computed_call(
+            obj,
+            key,
+            args,
+            member_loc,
+            loc,
+            optional_obj=false,
+          )
+        _ => self.compile_optional_plain_call(callee, args, loc)
+      }
     Call(Member(Ident("console", _), prop, _), args, loc) => {
       let _ = self.emit(LoadConsoleMember(prop))
       self.compile_args(args)

@@ -829,6 +829,71 @@ test "bytecode resolves computed callees before arguments" {
 }
 
 ///|
+test "bytecode optional member access reads present receivers and short-circuits nullish receivers" {
+  let src =
+    #|var present = { x: 3 };
+    #|var missing = null;
+    #|var a = present?.x;
+    #|var b = missing?.x;
+    #|a + "," + (b === undefined);
+  inspect(bytecode_compare(src), content="value:3,true")
+}
+
+///|
+test "bytecode optional computed member skips key evaluation for nullish receivers" {
+  let src =
+    #|var log = "";
+    #|var base = null;
+    #|var value = base?.[(log = "k", "x")];
+    #|(value === undefined) + ":" + log;
+  inspect(bytecode_compare(src), content="value:true:")
+}
+
+///|
+test "bytecode optional call skips arguments for nullish callees" {
+  let src =
+    #|var hit = 0;
+    #|var fn = null;
+    #|var result = fn?.(hit = 1);
+    #|(result === undefined) + "," + hit;
+  inspect(bytecode_compare(src), content="value:true,0")
+}
+
+///|
+test "bytecode optional method call preserves receivers and skips nullish functions" {
+  let src =
+    #|var obj = [];
+    #|obj.x = 4;
+    #|obj.get = function() { return this.x; };
+    #|var a = obj.get?.();
+    #|var hit = 0;
+    #|var b = obj.missing?.(hit = 1);
+    #|a + "," + (b === undefined) + "," + hit;
+  inspect(bytecode_compare(src), content="value:4,true,0")
+}
+
+///|
+test "bytecode optional member calls skip property and arguments for nullish receivers" {
+  let src =
+    #|var hit = 0;
+    #|var obj = null;
+    #|var result = obj?.get(hit = 1);
+    #|(result === undefined) + "," + hit;
+  inspect(bytecode_compare(src), content="value:true,0")
+}
+
+///|
+test "bytecode optional chaining captures outer receiver bindings" {
+  let src =
+    #|function outer() {
+    #|  var obj = { x: 5 };
+    #|  return function() { return obj?.x; };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
 test "bytecode member assignment writes through runtime property semantics" {
   let src =
     #|var xs = [];

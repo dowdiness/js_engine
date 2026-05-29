@@ -357,6 +357,42 @@ test "bytecode treats names inside nested object literals as captured" {
 }
 
 ///|
+test "bytecode lowers optional member access with a nullish guard" {
+  let bytecode = parse_bytecode_for_wb("var r = obj?.x;")
+  let mut saw_guard = false
+  let mut saw_get = false
+  for instr in bytecode.main.code {
+    match instr {
+      JumpIfNotNullishKeep(target) => {
+        if target == -1 {
+          abort("unpatched optional member guard")
+        }
+        saw_guard = true
+      }
+      GetProperty("x", _) => saw_get = true
+      _ => ()
+    }
+  }
+  guard saw_guard else { abort("expected optional nullish guard") }
+  guard saw_get else { abort("expected optional property get") }
+}
+
+///|
+test "bytecode treats names inside nested optional chains as captured" {
+  let src =
+    #|function outer() {
+    #|  var obj = { x: 1 };
+    #|  return function() { return obj?.x; };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers member and computed assignments to property set instructions" {
   let src =
     #|var xs = [];
