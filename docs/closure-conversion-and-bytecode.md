@@ -190,6 +190,7 @@ The compiler currently raises an `InternalError` prefixed
 - `for lexical initializer`
 - `for-in var declaration`
 - `for-in lexical declaration`
+- `for-of statement`
 - `switch lexical declaration`
 - `statement kind`
 - `for initializer`

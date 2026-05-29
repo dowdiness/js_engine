@@ -1890,6 +1890,9 @@ fn BytecodeBuilder::compile_stmt(
       self.patch(exit_jump, JumpIfFalse(exit_pos))
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
+    ForOfStmt(_, _, _, _, _)
+    | ForOfStmtPat(_, _, _, _, _)
+    | ForOfExpr(_, _, _, _) => bytecode_unsupported("for-of statement")
     ForInStmt(var_kind, name, obj_expr, body, _) =>
       self.compile_for_in_identifier(var_kind, name, obj_expr, body)
     ForInStmtPat(var_kind, pattern, obj_expr, body, _) =>

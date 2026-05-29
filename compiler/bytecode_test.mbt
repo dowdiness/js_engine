@@ -2845,6 +2845,22 @@ test "bytecode rejects for-in declarations until loop binding semantics are shar
 }
 
 ///|
+test "bytecode rejects for-of loops until iterator-close semantics are shared" {
+  inspect(
+    bytecode_outcome("var x; for (x of [1]) {}"),
+    content="error:InternalError: bytecode prototype unsupported: for-of statement",
+  )
+  inspect(
+    bytecode_outcome("for (var x of [1]) {}"),
+    content="error:InternalError: bytecode prototype unsupported: for-of statement",
+  )
+  inspect(
+    bytecode_outcome("var target = {}; for (target.x of [1]) {}"),
+    content="error:InternalError: bytecode prototype unsupported: for-of statement",
+  )
+}
+
+///|
 test "bytecode in operator finds own array index property" {
   let src =
     #|var xs = [10];
