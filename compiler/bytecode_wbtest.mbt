@@ -517,6 +517,34 @@ test "bytecode lowers named function expressions with a self-name instruction" {
 }
 
 ///|
+test "bytecode lowers arrow functions with a dedicated arrow instruction" {
+  let bytecode = parse_bytecode_for_wb("var f = a => a + 1;")
+  let mut saw_arrow_function = false
+  for instr in bytecode.main.code {
+    match instr {
+      MakeArrowFunction(_) => saw_arrow_function = true
+      _ => ()
+    }
+  }
+  guard saw_arrow_function else { abort("expected arrow function") }
+}
+
+///|
+test "bytecode treats names inside nested arrow functions as captured" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return () => x;
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode lowers this expressions to a dedicated load instruction" {
   let bytecode = parse_bytecode_for_wb("function f() { return this; } f();")
   guard bytecode.main.children.length() == 1 else {

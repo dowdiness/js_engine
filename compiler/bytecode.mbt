@@ -52,6 +52,7 @@ priv enum BytecodeInstr {
   ObjectSetProto
   MakeFunction(Int)
   MakeNamedFunction(Int, String)
+  MakeArrowFunction(Int)
   DeclareFunction(String, Int)
   GetProperty(String, @token.Loc)
   GetComputed(@token.Loc)
@@ -415,7 +416,10 @@ fn bytecode_is_direct_eval_callee(expr : @ast.Expr) -> Bool {
 ///|
 fn bytecode_is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
   match expr {
-    FuncExpr(None, _, _, _) | FuncExprExt(None, _, _, _, _) => true
+    FuncExpr(None, _, _, _)
+    | FuncExprExt(None, _, _, _, _)
+    | ArrowFunc(_, _, _)
+    | ArrowFuncExt(_, _, _, _) => true
     Grouping(inner, _) => bytecode_is_anonymous_function_definition(inner)
     _ => false
   }
@@ -618,8 +622,10 @@ fn collect_nested_function_refs_from_expr(
   refs : Map[String, Bool],
 ) -> Unit {
   match expr {
-    FuncExpr(_, _, body, _) | FuncExprExt(_, _, _, body, _) =>
-      collect_name_refs_from_stmts(body, refs)
+    FuncExpr(_, _, body, _)
+    | FuncExprExt(_, _, _, body, _)
+    | ArrowFunc(_, body, _)
+    | ArrowFuncExt(_, _, body, _) => collect_name_refs_from_stmts(body, refs)
     Unary(_, operand, _) =>
       collect_nested_function_refs_from_expr(operand, refs)
     Binary(_, left, right, _) | Comma(left, right, _) => {
@@ -807,8 +813,10 @@ fn collect_name_refs_from_expr(
       collect_name_refs_from_expr(value, refs)
     }
     UpdateExpr(_, operand, _, _) => collect_name_refs_from_expr(operand, refs)
-    FuncExpr(_, _, body, _) | FuncExprExt(_, _, _, body, _) =>
-      collect_name_refs_from_stmts(body, refs)
+    FuncExpr(_, _, body, _)
+    | FuncExprExt(_, _, _, body, _)
+    | ArrowFunc(_, body, _)
+    | ArrowFuncExt(_, _, body, _) => collect_name_refs_from_stmts(body, refs)
     Grouping(inner, _) => collect_name_refs_from_expr(inner, refs)
     ArrayLit(elements, _) =>
       for element in elements {
@@ -2007,6 +2015,15 @@ fn BytecodeBuilder::compile_expr(
       let fn_idx = self.add_function(None, simple_params, body)
       let _ = self.emit(MakeFunction(fn_idx))
     }
+    ArrowFunc(params, body, _) => {
+      let fn_idx = self.add_function(None, params, body)
+      let _ = self.emit(MakeArrowFunction(fn_idx))
+    }
+    ArrowFuncExt(params, rest_param, body, _) => {
+      let simple_params = simple_ext_param_names(params, rest_param)
+      let fn_idx = self.add_function(None, simple_params, body)
+      let _ = self.emit(MakeArrowFunction(fn_idx))
+    }
     Grouping(inner, _) => self.compile_expr(inner)
     ObjectLit(props, loc) => self.compile_object_lit(props, loc)
     ArrayLit(elements, _) => {
@@ -2386,6 +2403,32 @@ fn make_named_bytecode_func(
 }
 
 ///|
+fn make_bytecode_arrow_func(
+  func_def : BytecodeFunction,
+  closure : Environment,
+  enclosing_ctx : ExecContext,
+) -> Value raise Error {
+  @runtime.validate_function_signature(
+    enclosing_ctx.strict,
+    None,
+    func_def.params,
+    func_def.source_body,
+  )
+  let strict = enclosing_ctx.strict || func_def.body_has_use_strict
+  make_compiled_arrow_func(
+    func_def.params,
+    closure,
+    strict,
+    CompiledBody(fn(interp, ctx, env) raise {
+      match run_bytecode_function(interp, ctx, env, func_def) {
+        BytecodeNormal(value) => Signal::Normal(value)
+        BytecodeReturn(value) => Signal::ReturnSignal(value)
+      }
+    }),
+  )
+}
+
+///|
 fn run_bytecode_function(
   interp : Interpreter,
   ctx : ExecContext,
@@ -2713,6 +2756,10 @@ fn run_bytecode_function(
         frame.stack.push(
           make_named_bytecode_func(child, frame.env, frame.ctx, name),
         )
+      }
+      MakeArrowFunction(index) => {
+        let child = frame.func_def.children[index]
+        frame.stack.push(make_bytecode_arrow_func(child, frame.env, frame.ctx))
       }
       DeclareFunction(_, _) => ()
       GetProperty(prop, loc) => {

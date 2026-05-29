@@ -1769,6 +1769,61 @@ test "bytecode nested closures capture named function expression self binding" {
 }
 
 ///|
+test "bytecode arrow functions capture lexical bindings" {
+  let src =
+    #|function outer(a) {
+    #|  var b = a + 1;
+    #|  return () => b + 1;
+    #|}
+    #|outer(2)();
+  inspect(bytecode_compare(src), content="value:4")
+}
+
+///|
+test "bytecode arrow functions preserve lexical this" {
+  let src =
+    #|var obj = {
+    #|  x: 5,
+    #|  make: function() { return () => this.x; }
+    #|};
+    #|var f = obj.make();
+    #|f();
+  inspect(bytecode_compare(src), content="value:5")
+}
+
+///|
+test "bytecode arrow functions preserve lexical new.target" {
+  let src =
+    #|function C() {
+    #|  var f = () => new.target === C;
+    #|  this.ok = f();
+    #|}
+    #|var top = () => new.target === undefined;
+    #|new C().ok + "," + top();
+  inspect(bytecode_compare(src), content="value:true,true")
+}
+
+///|
+test "bytecode arrow function names are inferred from bindings" {
+  let src =
+    #|var f = () => 1;
+    #|f.name + ":" + f();
+  inspect(bytecode_compare(src), content="value:f:1")
+}
+
+///|
+test "bytecode rejects unsupported arrow parameter forms explicitly" {
+  inspect(
+    bytecode_outcome("((x = 1) => x)();"),
+    content="error:InternalError: bytecode prototype unsupported: default or destructuring parameter",
+  )
+  inspect(
+    bytecode_outcome("((...xs) => xs.length)(1);"),
+    content="error:InternalError: bytecode prototype unsupported: rest parameter",
+  )
+}
+
+///|
 test "bytecode rejects arguments object until function call setup supports it" {
   let src =
     #|function f() {
