@@ -34,6 +34,9 @@ priv enum BytecodeInstr {
   JumpIfFalseKeep(Int)
   JumpIfTrueKeep(Int)
   JumpIfNotNullishKeep(Int)
+  StartForIn
+  ForInNext(Int)
+  EndForIn
   MakeArray(Int)
   MakeArrayWithHoles(Int, Array[Int])
   StartArray
@@ -381,6 +384,9 @@ fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
     | DestructureDecl(LetKind, _, _, _)
     | DestructureDecl(ConstKind, _, _, _) => true
     StmtList(stmts, _) | Block(stmts, _) => stmts_have_lexical_decl(stmts)
+    ForInStmt(Some(LetKind), _, _, _, _)
+    | ForInStmt(Some(ConstKind), _, _, _, _) => true
+    ForInStmt(_, _, _, body, _) => stmt_has_lexical_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_lexical_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_lexical_decl(body)
     _ => false
@@ -449,6 +455,7 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_function_decl(body)
     }
+    ForInStmt(_, _, _, body, _) => stmt_has_function_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_function_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_function_decl(body)
     _ => false
@@ -496,6 +503,7 @@ fn stmt_has_destructure_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_destructure_decl(body)
     }
+    ForInStmt(_, _, _, body, _) => stmt_has_destructure_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_destructure_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_destructure_decl(body)
     _ => false
@@ -589,6 +597,12 @@ fn collect_current_var_names_from_stmt(
       }
       collect_current_var_names_from_stmt(body, out)
     }
+    ForInStmt(Some(VarKind), name, _, body, _) => {
+      out.push(name)
+      collect_current_var_names_from_stmt(body, out)
+    }
+    ForInStmt(_, _, _, body, _) =>
+      collect_current_var_names_from_stmt(body, out)
     SwitchStmt(_, cases, _) =>
       for case in cases {
         collect_current_var_names_from_stmts(case.body, out)
@@ -687,6 +701,10 @@ fn collect_nested_function_refs_from_stmt(
         Some(expr) => collect_nested_function_refs_from_expr(expr, refs)
         None => ()
       }
+      collect_nested_function_refs_from_stmt(body, refs)
+    }
+    ForInStmt(_, _, obj_expr, body, _) => {
+      collect_nested_function_refs_from_expr(obj_expr, refs)
       collect_nested_function_refs_from_stmt(body, refs)
     }
     SwitchStmt(discriminant, cases, _) => {
@@ -893,6 +911,15 @@ fn collect_name_refs_from_stmt(
         Some(expr) => collect_name_refs_from_expr(expr, refs)
         None => ()
       }
+      collect_name_refs_from_stmt(body, refs)
+    }
+    ForInStmt(None, name, obj_expr, body, _) => {
+      refs[name] = true
+      collect_name_refs_from_expr(obj_expr, refs)
+      collect_name_refs_from_stmt(body, refs)
+    }
+    ForInStmt(Some(_), _, obj_expr, body, _) => {
+      collect_name_refs_from_expr(obj_expr, refs)
       collect_name_refs_from_stmt(body, refs)
     }
     SwitchStmt(discriminant, cases, _) => {
@@ -1158,6 +1185,9 @@ fn bytecode_stmt_contains_destructure_assign(stmt : @ast.Stmt) -> Bool {
       }
       bytecode_stmt_contains_destructure_assign(body)
     }
+    ForInStmt(_, _, obj_expr, body, _) =>
+      bytecode_expr_contains_destructure_assign(obj_expr) ||
+      bytecode_stmt_contains_destructure_assign(body)
     SwitchStmt(discriminant, cases, _) => {
       if bytecode_expr_contains_destructure_assign(discriminant) {
         return true
@@ -1438,6 +1468,48 @@ fn BytecodeBuilder::compile_switch(
 }
 
 ///|
+fn BytecodeBuilder::compile_for_in_identifier(
+  self : BytecodeBuilder,
+  var_kind : @ast.VarKind?,
+  name : String,
+  obj_expr : @ast.Expr,
+  body : @ast.Stmt,
+) -> Unit raise Error {
+  match var_kind {
+    Some(VarKind) => bytecode_unsupported("for-in var declaration")
+    Some(LetKind) | Some(ConstKind) =>
+      bytecode_unsupported("for-in lexical declaration")
+    None => ()
+  }
+  if stmt_has_function_decl(body) {
+    bytecode_unsupported("control-flow function declaration")
+  }
+  if stmt_has_destructure_decl(body) {
+    bytecode_unsupported("destructuring declaration context")
+  }
+  self.emit_undefined_completion()
+  self.compile_expr(obj_expr)
+  let _ = self.emit(StartForIn)
+  let loop_pos = self.code.length()
+  let done_jump = self.emit(ForInNext(-1))
+  self.compile_identifier_store(name)
+  let _ = self.emit(Pop)
+  let labels = self.take_pending_loop_labels()
+  self.push_loop_context(labels)
+  self.compile_stmt(body)
+  let loop_ctx = self.pop_loop_context()
+  self.restore_pending_loop_labels(labels)
+  let continue_pos = self.code.length()
+  self.patch_loop_jumps(loop_ctx.continue_jumps, continue_pos)
+  let _ = self.emit(Jump(loop_pos))
+  let cleanup_pos = self.code.length()
+  let _ = self.emit(EndForIn)
+  let exit_pos = self.code.length()
+  self.patch(done_jump, ForInNext(exit_pos))
+  self.patch_loop_jumps(loop_ctx.break_jumps, cleanup_pos)
+}
+
+///|
 fn BytecodeBuilder::compile_stmt(
   self : BytecodeBuilder,
   stmt : @ast.Stmt,
@@ -1631,6 +1703,8 @@ fn BytecodeBuilder::compile_stmt(
       self.patch(exit_jump, JumpIfFalse(exit_pos))
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
+    ForInStmt(var_kind, name, obj_expr, body, _) =>
+      self.compile_for_in_identifier(var_kind, name, obj_expr, body)
     SwitchStmt(discriminant, cases, _) =>
       self.compile_switch(discriminant, cases)
     FuncDecl(name, params, body, _) => {
@@ -2777,10 +2851,17 @@ fn string_array_contains(xs : Array[String], name : String) -> Bool {
 }
 
 ///|
+priv struct BytecodeForInState {
+  keys : Array[String]
+  mut index : Int
+}
+
+///|
 priv struct BytecodeFrame {
   func_def : BytecodeFunction
   stack : Array[Value]
   arg_lists : Array[Array[Value]]
+  for_in_iters : Array[BytecodeForInState]
   locals : Array[Value]
   env : Environment
   ctx : ExecContext
@@ -2804,6 +2885,7 @@ fn BytecodeFrame::BytecodeFrame(
     func_def,
     stack: [],
     arg_lists: [],
+    for_in_iters: [],
     locals,
     env,
     ctx,
@@ -3247,6 +3329,37 @@ fn run_bytecode_function(
         match frame.peek() {
           Null | Undefined => ()
           _ => frame.ip = target
+        }
+      StartForIn => {
+        let obj = frame.pop()
+        frame.for_in_iters.push({
+          keys: @runtime.collect_for_in_keys(obj, interp),
+          index: 0,
+        })
+      }
+      ForInNext(target) => {
+        guard frame.for_in_iters.length() > 0 else {
+          raise @errors.InternalError(
+            message="bytecode for-in iterator underflow",
+          )
+        }
+        let state = frame.for_in_iters[frame.for_in_iters.length() - 1]
+        if state.index >= state.keys.length() {
+          let _ = frame.for_in_iters.pop()
+          frame.ip = target
+        } else {
+          let key = state.keys[state.index]
+          state.index += 1
+          frame.stack.push(Value::String_(key))
+        }
+      }
+      EndForIn =>
+        match frame.for_in_iters.pop() {
+          Some(_) => ()
+          None =>
+            raise @errors.InternalError(
+              message="bytecode for-in iterator underflow",
+            )
         }
       MakeArray(count) => {
         let elements = pop_args(frame, count)

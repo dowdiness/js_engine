@@ -836,6 +836,48 @@ test "bytecode treats names inside nested switch statements as captured" {
 }
 
 ///|
+test "bytecode lowers for-in assignment loops to iterator instructions" {
+  let bytecode = parse_bytecode_for_wb(
+    "var k; for (k in obj) { if (k === 'a') break; }",
+  )
+  let mut saw_start = false
+  let mut saw_next = false
+  let mut saw_end = false
+  for instr in bytecode.main.code {
+    match instr {
+      StartForIn => saw_start = true
+      ForInNext(target) => {
+        if target == -1 {
+          abort("unpatched for-in exit jump")
+        }
+        saw_next = true
+      }
+      EndForIn => saw_end = true
+      _ => ()
+    }
+  }
+  guard saw_start else { abort("expected for-in iterator start") }
+  guard saw_next else { abort("expected for-in next instruction") }
+  guard saw_end else { abort("expected for-in break cleanup") }
+}
+
+///|
+test "bytecode treats names inside nested for-in assignment loops as captured" {
+  let src =
+    #|function outer() {
+    #|  var obj = { a: 1 };
+    #|  var k = "";
+    #|  return function() { for (k in obj) {} };
+    #|}
+    #|outer()();
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  json_inspect(bytecode.main.children[0].local_names, content=[])
+}
+
+///|
 test "bytecode patches unlabeled break and continue jumps" {
   let break_bytecode = parse_bytecode_for_wb("while (true) break;")
   let mut saw_break_to_exit = false

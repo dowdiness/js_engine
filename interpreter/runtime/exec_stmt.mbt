@@ -1526,7 +1526,7 @@ fn Interpreter::exec_stmt(
 }
 
 ///|
-fn collect_for_in_keys(
+pub fn collect_for_in_keys(
   obj : Value,
   interp : Interpreter,
 ) -> Array[String] raise Error {

@@ -2301,6 +2301,78 @@ test "bytecode rejects control-flow function declarations until block semantics 
 }
 
 ///|
+test "bytecode for-in assignment iterates enumerable keys" {
+  let src =
+    #|var obj = { a: 1, b: 2 };
+    #|var k = "";
+    #|var out = "";
+    #|for (k in obj) {
+    #|  out = out + k + obj[k];
+    #|}
+    #|out + ":" + k;
+  inspect(bytecode_compare(src), content="value:a1b2:b")
+}
+
+///|
+test "bytecode for-in assignment reuses runtime key enumeration" {
+  let src =
+    #|var proto = { p: 3 };
+    #|var obj = { a: 1 };
+    #|Object.defineProperty(obj, "hidden", { value: 2, enumerable: false });
+    #|Object.setPrototypeOf(obj, proto);
+    #|var k;
+    #|var out = "";
+    #|for (k in obj) {
+    #|  out = out + k;
+    #|}
+    #|out;
+  inspect(bytecode_compare(src), content="value:ap")
+}
+
+///|
+test "bytecode for-in assignment supports break continue and completion" {
+  let src =
+    #|var obj = { a: 1, b: 2, c: 3 };
+    #|var k;
+    #|var out = "";
+    #|for (k in obj) {
+    #|  out = out + k;
+    #|  if (k === "a") continue;
+    #|  "body";
+    #|  if (k === "b") break;
+    #|  out = out + "x";
+    #|}
+  inspect(bytecode_compare(src), content="value:body")
+}
+
+///|
+test "bytecode for-in assignment captures outer target and object" {
+  let src =
+    #|function outer() {
+    #|  var obj = { a: 1 };
+    #|  var k = "";
+    #|  return function() {
+    #|    for (k in obj) {}
+    #|    return k;
+    #|  };
+    #|}
+    #|outer()();
+  inspect(bytecode_compare(src), content="value:a")
+}
+
+///|
+test "bytecode rejects for-in declarations until loop binding semantics are shared" {
+  inspect(
+    bytecode_outcome("for (var k in { a: 1 }) {}"),
+    content="error:InternalError: bytecode prototype unsupported: for-in var declaration",
+  )
+  inspect(
+    bytecode_outcome("for (let k in { a: 1 }) {}"),
+    content="error:InternalError: bytecode prototype unsupported: for-in lexical declaration",
+  )
+}
+
+///|
 test "bytecode in operator finds own array index property" {
   let src =
     #|var xs = [10];

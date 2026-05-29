@@ -23,6 +23,8 @@ pub fn cleanup_holes_above_length(Map[Int, Unit], Int64) -> Unit
 
 pub fn clear_array_length_override(ArrayData) -> Unit
 
+pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
+
 pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
 
 pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
