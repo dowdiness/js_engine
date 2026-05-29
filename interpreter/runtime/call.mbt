@@ -854,13 +854,10 @@ fn Interpreter::call_value_impl(
           if func_strict {
             // Strict mode: check for duplicate parameters and reserved names
             check_duplicate_params_ext(data.params, data.rest_param)
-            for p in data.params {
-              validate_strict_binding_name(p.name)
-            }
-            match data.rest_param {
-              Some(rn) => validate_strict_binding_name(rn)
-              None => ()
-            }
+            validate_strict_param_binding_names_ext(
+              data.params,
+              data.rest_param,
+            )
           }
           let effective_this = if func_strict {
             this_val

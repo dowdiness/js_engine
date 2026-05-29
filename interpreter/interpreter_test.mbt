@@ -8612,6 +8612,38 @@ test "strict: parameter named arguments throws SyntaxError" {
 }
 
 ///|
+test "strict: destructured arguments parameter throws SyntaxError" {
+  let src =
+    #|function f({arguments}) { "use strict"; return arguments; }
+    #|f({arguments: 1});
+  expect_throw(src, "SyntaxError: Unexpected eval or arguments in strict mode")
+}
+
+///|
+test "strict: generator destructured arguments parameter throws SyntaxError" {
+  let src =
+    #|function* f({arguments}) { "use strict"; yield arguments; }
+    #|f({arguments: 1}).next();
+  expect_throw(src, "SyntaxError: Unexpected eval or arguments in strict mode")
+}
+
+///|
+test "strict: async destructured arguments parameter throws SyntaxError" {
+  let src =
+    #|async function f({arguments}) { "use strict"; return arguments; }
+    #|f({arguments: 1});
+  expect_throw(src, "SyntaxError: Unexpected eval or arguments in strict mode")
+}
+
+///|
+test "strict: async generator destructured arguments parameter throws SyntaxError" {
+  let src =
+    #|async function* f({arguments}) { "use strict"; yield arguments; }
+    #|f({arguments: 1}).next();
+  expect_throw(src, "SyntaxError: Unexpected eval or arguments in strict mode")
+}
+
+///|
 test "strict: reserved word 'implements' as var name throws SyntaxError" {
   let src =
     #|"use strict";

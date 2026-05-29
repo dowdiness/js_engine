@@ -810,13 +810,10 @@ fn Interpreter::construct_value_impl(
           if func_strict {
             // Strict mode: check for duplicate parameters and reserved names
             check_duplicate_params_ext(data.params, data.rest_param)
-            for p in data.params {
-              validate_strict_binding_name(p.name)
-            }
-            match data.rest_param {
-              Some(rn) => validate_strict_binding_name(rn)
-              None => ()
-            }
+            validate_strict_param_binding_names_ext(
+              data.params,
+              data.rest_param,
+            )
           }
           let proto = match proto_override {
             Some(p) => p
@@ -1016,13 +1013,7 @@ fn Interpreter::construct_value_impl(
               Some((params, rest_param, body)) => {
                 // Class constructors are always strict — validate params
                 check_duplicate_params_ext(params, rest_param)
-                for p in params {
-                  validate_strict_binding_name(p.name)
-                }
-                match rest_param {
-                  Some(rn) => validate_strict_binding_name(rn)
-                  None => ()
-                }
+                validate_strict_param_binding_names_ext(params, rest_param)
                 let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
                   params, rest_param, body, ctor, args, ctor_env, class_ctx,
                 )
