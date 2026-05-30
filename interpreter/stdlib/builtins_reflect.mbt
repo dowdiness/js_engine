@@ -69,37 +69,21 @@ fn setup_reflect_builtins(
       }
       let arg_list = create_list_from_array_like(interp, args[1])
       let loc = @token.Loc::default()
-      // Per spec §28.1.2: when newTarget is provided, create instance with
-      // newTarget.prototype and pass newTarget as [[Construct]] newTarget.
-      let (proto_override, new_target_opt) : (Value?, Value?) = if args.length() >
-        2 {
+      // Per spec §28.1.2: when newTarget is provided, pass it as the
+      // [[Construct]] newTarget. Constructor paths derive the instance
+      // prototype with GetPrototypeFromConstructor(newTarget, %Object.prototype%).
+      let new_target_opt : Value? = if args.length() > 2 {
         let nt = args[2]
         if !@runtime.is_constructor_value(nt) {
           raise @errors.TypeError(
             message="Reflect.construct: newTarget is not a constructor",
           )
         }
-        let proto = match nt {
-          Object(nt_data) =>
-            Some(
-              match nt_data.bag.properties.get("prototype") {
-                Some(p) => p
-                None => Null
-              },
-            )
-          _ => None
-        }
-        (proto, Some(nt))
+        Some(nt)
       } else {
-        (None, None)
+        None
       }
-      interp.construct_value(
-        target,
-        arg_list,
-        loc,
-        proto_override~,
-        new_target=new_target_opt,
-      )
+      interp.construct_value(target, arg_list, loc, new_target=new_target_opt)
     },
   )
 

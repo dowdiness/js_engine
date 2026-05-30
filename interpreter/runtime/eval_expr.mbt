@@ -23,6 +23,202 @@ fn resolve_super_target(env : Environment) -> Value {
 }
 
 ///|
+fn Interpreter::get_symbol_property_from_prototype(
+  self : Interpreter,
+  receiver : Value,
+  proto : Value,
+  sym : SymbolData,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let key = Value::Symbol(sym)
+  let mut current = proto
+  while true {
+    match current {
+      Object(data) => {
+        match data.bag.symbol_descriptors.get(sym.id) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter) => return self.call_value(getter, receiver, [], loc)
+              None => if desc.setter is Some(_) { return Undefined }
+            }
+          None => ()
+        }
+        match data.bag.symbol_properties.get(sym.id) {
+          Some(value) => return value
+          None => current = data.prototype
+        }
+      }
+      Array(data) => {
+        match data.bag.symbol_descriptors.get(sym.id) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter) => return self.call_value(getter, receiver, [], loc)
+              None => if desc.setter is Some(_) { return Undefined }
+            }
+          None => ()
+        }
+        match get_array_symbol_prop(data, sym.id) {
+          Some(value) => return value
+          None => current = get_array_prototype(self.realm_state, data)
+        }
+      }
+      Proxy(proxy_data) =>
+        match get_proxy_trap(proxy_data, "get", self) {
+          Some(trap_fn) => {
+            let target = get_proxy_target(proxy_data)
+            let handler = get_proxy_handler(proxy_data)
+            return self.call_value(
+              trap_fn,
+              handler,
+              [target, key, receiver],
+              loc,
+            )
+          }
+          None => current = get_proxy_target(proxy_data)
+        }
+      Null => return Undefined
+      _ => return self.get_computed_property(current, key, loc)
+    }
+  }
+  Undefined
+}
+
+///|
+fn Interpreter::get_computed_property_from_prototype(
+  self : Interpreter,
+  receiver : Value,
+  proto : Value,
+  key : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match key {
+    Symbol(sym) =>
+      self.get_symbol_property_from_prototype(receiver, proto, sym, loc)
+    _ =>
+      self.get_property_from_prototype(
+        receiver,
+        proto,
+        to_js_string(key, interp=Some(self)),
+        loc,
+      )
+  }
+}
+
+///|
+pub fn Interpreter::eval_super_property(
+  self : Interpreter,
+  env : Environment,
+  prop : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let super_proto = resolve_super_target(env)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => {
+      let this_val = eval_this_value(env)
+      self.get_property_from_prototype(this_val, super_proto, prop, loc)
+    }
+  }
+}
+
+///|
+pub fn Interpreter::eval_super_computed_property(
+  self : Interpreter,
+  env : Environment,
+  key : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let super_proto = resolve_super_target(env)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => {
+      let this_val = eval_this_value(env)
+      self.get_computed_property_from_prototype(this_val, super_proto, key, loc)
+    }
+  }
+}
+
+///|
+pub fn Interpreter::eval_super_property_call_reference(
+  self : Interpreter,
+  env : Environment,
+  prop : String,
+  loc : @token.Loc,
+) -> (Value, Value) raise Error {
+  let super_proto = resolve_super_target(env)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => {
+      let this_val = eval_this_value(env)
+      let func_val = self.get_property_from_prototype(
+        this_val, super_proto, prop, loc,
+      )
+      (this_val, func_val)
+    }
+  }
+}
+
+///|
+pub fn Interpreter::eval_super_computed_call_reference(
+  self : Interpreter,
+  env : Environment,
+  key : Value,
+  loc : @token.Loc,
+) -> (Value, Value) raise Error {
+  let super_proto = resolve_super_target(env)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => {
+      let this_val = eval_this_value(env)
+      let func_val = self.get_computed_property_from_prototype(
+        this_val, super_proto, key, loc,
+      )
+      (this_val, func_val)
+    }
+  }
+}
+
+///|
+/// Resolve `this` with the same TDZ-to-derived-constructor error mapping used
+/// by expression evaluation. Compiled execution uses this helper instead of
+/// treating `this` as an ordinary identifier.
+pub fn eval_this_value(env : Environment) -> Value raise Error {
+  env.get("this") catch {
+    @errors.ReferenceError(message~) => {
+      if message.contains("before initialization") {
+        raise @errors.ReferenceError(
+          message="Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
+        )
+      }
+      Value::Undefined
+    }
+    other => raise other
+  }
+}
+
+///|
+/// Resolve `new.target` from the current function environment. Scripts and
+/// ordinary calls without a constructor binding match the tree-walker fallback
+/// to `undefined`.
+pub fn eval_new_target_value(env : Environment) -> Value {
+  env.get("<new.target>") catch {
+    _ => Undefined
+  }
+}
+
+///|
 /// Evaluate an object-literal property's value. For method-shorthand
 /// props the returned function must not carry the §15.2.5 self-name
 /// binding (methods have no FunctionExpressionName), so we strip it
@@ -80,6 +276,349 @@ fn Interpreter::eval_prop_value(
     mark_as_method(strip_self_name_binding(v))
   } else {
     v
+  }
+}
+
+///|
+pub fn apply_object_literal_proto_property(
+  target : Value,
+  value : Value,
+) -> Unit raise Error {
+  match target {
+    Object(data) =>
+      match value {
+        Object(_) | Array(_) | Map(_) | Set(_) => data.prototype = value
+        Null => data.prototype = Null
+        _ => data.bag.properties["__proto__"] = value
+      }
+    _ =>
+      raise @errors.InternalError(
+        message="object literal __proto__ target was not an object",
+      )
+  }
+}
+
+///|
+pub fn Interpreter::to_object_literal_property_key(
+  self : Interpreter,
+  key : Value,
+) -> Value raise Error {
+  to_property_key(key, interp=Some(self))
+}
+
+///|
+fn frozen_template_data_descriptor(enumerable : Bool) -> PropDescriptor {
+  {
+    writable: false,
+    enumerable,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn freeze_template_array(value : Value) -> Unit {
+  match value {
+    Array(data) => {
+      data.extensible = false
+      data.length_writable = false
+      for i = 0; i < data.elements.length(); i = i + 1 {
+        data.bag.descriptors[i.to_string()] = frozen_template_data_descriptor(
+          true,
+        )
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
+pub fn make_tagged_template_object(strings : Array[String]) -> Value {
+  let raw_vals : Array[Value] = []
+  for s in strings {
+    raw_vals.push(String_(s))
+  }
+  let raw_arr = make_array(raw_vals)
+  freeze_template_array(raw_arr)
+  let template_obj = make_array(raw_vals.copy())
+  match template_obj {
+    Array(data) => {
+      set_array_named_prop(data, "raw", raw_arr)
+      data.bag.descriptors["raw"] = frozen_template_data_descriptor(false)
+    }
+    _ => ()
+  }
+  freeze_template_array(template_obj)
+  template_obj
+}
+
+///|
+fn tagged_template_cache_key(
+  loc : @token.Loc,
+  strings : Array[String],
+) -> String {
+  let buf = StringBuilder::new()
+  buf.write_string(loc.line.to_string())
+  buf.write_string(":")
+  buf.write_string(loc.col.to_string())
+  buf.write_string(":")
+  buf.write_string(loc.offset.to_string())
+  for s in strings {
+    buf.write_string(":")
+    buf.write_string(s.length().to_string())
+    buf.write_string(":")
+    buf.write_string(s)
+  }
+  buf.to_string()
+}
+
+///|
+const TEMPLATE_OBJECT_CACHE_BINDING = "[[TemplateObjectCache]]"
+
+///|
+fn Interpreter::get_template_object_cache(self : Interpreter) -> ObjectData {
+  match self.global.bindings.get(TEMPLATE_OBJECT_CACHE_BINDING) {
+    Some(binding) =>
+      match binding.value {
+        Object(data) => return data
+        _ => ()
+      }
+    None => ()
+  }
+  let cache_data : ObjectData = {
+    bag: PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  }
+  self.global.bindings[TEMPLATE_OBJECT_CACHE_BINDING] = {
+    value: Object(cache_data),
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+  cache_data
+}
+
+///|
+pub fn Interpreter::get_cached_tagged_template_object(
+  self : Interpreter,
+  key : String,
+  strings : Array[String],
+) -> Value {
+  let cache = self.get_template_object_cache()
+  match cache.bag.properties.get(key) {
+    Some(value) => value
+    None => {
+      let value = make_tagged_template_object(strings)
+      cache.bag.properties[key] = value
+      value
+    }
+  }
+}
+
+///|
+fn Interpreter::get_tagged_template_object(
+  self : Interpreter,
+  loc : @token.Loc,
+  strings : Array[String],
+) -> Value {
+  self.get_cached_tagged_template_object(
+    tagged_template_cache_key(loc, strings),
+    strings,
+  )
+}
+
+///|
+pub fn apply_object_literal_data_property(
+  target : Value,
+  key : Value,
+  value : Value,
+) -> Unit raise Error {
+  match target {
+    Object(data) =>
+      match key {
+        Symbol(sym) => {
+          let sym_name = match sym.description {
+            Some(d) => "[\{d}]"
+            None => ""
+          }
+          set_function_name(value, sym_name)
+          data.bag.symbol_properties[sym.id] = value
+        }
+        _ => {
+          let key_str = to_js_string(key)
+          set_function_name(value, key_str)
+          data.bag.properties[key_str] = value
+        }
+      }
+    _ =>
+      raise @errors.InternalError(
+        message="object literal data property target was not an object",
+      )
+  }
+}
+
+///|
+fn force_object_literal_accessor_name(accessor : Value, name : String) -> Unit {
+  match accessor {
+    Object(data) if data.callable is Some(_) =>
+      data.bag.properties["name"] = String_(name)
+    _ => ()
+  }
+}
+
+///|
+pub fn apply_object_literal_accessor_property(
+  target : Value,
+  key : Value,
+  accessor : Value,
+  is_getter : Bool,
+) -> Unit raise Error {
+  match target {
+    Object(data) =>
+      match key {
+        Symbol(sym) => {
+          let accessor_name = match (is_getter, sym.description) {
+            (true, Some(d)) => "get [\{d}]"
+            (true, None) => "get "
+            (false, Some(d)) => "set [\{d}]"
+            (false, None) => "set "
+          }
+          force_object_literal_accessor_name(accessor, accessor_name)
+          if !data.bag.symbol_properties.contains(sym.id) {
+            data.bag.symbol_properties[sym.id] = Undefined
+          }
+          let existing = data.bag.symbol_descriptors.get(sym.id)
+          data.bag.symbol_descriptors[sym.id] = {
+            writable: false,
+            enumerable: true,
+            configurable: true,
+            getter: if is_getter {
+              Some(accessor)
+            } else {
+              match existing {
+                Some(desc) => desc.getter
+                None => None
+              }
+            },
+            setter: if is_getter {
+              match existing {
+                Some(desc) => desc.setter
+                None => None
+              }
+            } else {
+              Some(accessor)
+            },
+            is_accessor: true,
+          }
+        }
+        _ => {
+          let key_str = to_js_string(key)
+          let accessor_name = if is_getter {
+            "get " + key_str
+          } else {
+            "set " + key_str
+          }
+          force_object_literal_accessor_name(accessor, accessor_name)
+          if !data.bag.properties.contains(key_str) {
+            data.bag.properties[key_str] = Undefined
+          }
+          let existing = data.bag.descriptors.get(key_str)
+          data.bag.descriptors[key_str] = {
+            writable: false,
+            enumerable: true,
+            configurable: true,
+            getter: if is_getter {
+              Some(accessor)
+            } else {
+              match existing {
+                Some(desc) => desc.getter
+                None => None
+              }
+            },
+            setter: if is_getter {
+              match existing {
+                Some(desc) => desc.setter
+                None => None
+              }
+            } else {
+              Some(accessor)
+            },
+            is_accessor: true,
+          }
+        }
+      }
+    _ =>
+      raise @errors.InternalError(
+        message="object literal accessor property target was not an object",
+      )
+  }
+}
+
+///|
+pub fn Interpreter::copy_object_spread_properties(
+  self : Interpreter,
+  target : Value,
+  source : Value,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  let (properties, symbol_properties) = match target {
+    Object(data) => (data.bag.properties, data.bag.symbol_properties)
+    _ =>
+      raise @errors.InternalError(
+        message="object spread target was not an object",
+      )
+  }
+  match source {
+    Object(data) => {
+      // Copy all enumerable own properties. Per ES spec, spread invokes [[Get]]
+      // (which triggers getters) and creates data properties (not accessor
+      // descriptors).
+      for key, raw_value in data.bag.properties {
+        match data.bag.descriptors.get(key) {
+          Some(desc) =>
+            if desc.enumerable {
+              let val : Value = match desc.getter {
+                Some(getter) => self.call_value(getter, source, [], loc)
+                None => raw_value
+              }
+              properties[key] = val
+            }
+          None => properties[key] = raw_value
+        }
+      }
+      // Copy symbol properties too, matching the existing object-literal spread
+      // path's descriptor handling.
+      for sym_id, value in data.bag.symbol_properties {
+        match data.bag.symbol_descriptors.get(sym_id) {
+          Some(desc) => if desc.enumerable { symbol_properties[sym_id] = value }
+          None => symbol_properties[sym_id] = value
+        }
+      }
+    }
+    Array(arr_data) =>
+      // Spread array into object: only enumerable own properties. The current
+      // interpreter representation treats dense element slots as enumerable.
+      for i, value in arr_data.elements {
+        properties[i.to_string()] = value
+      }
+    String_(s) => {
+      // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b" }.
+      let mut idx = 0
+      for ch in s {
+        properties[idx.to_string()] = String_(ch.to_string())
+        idx = idx + 1
+      }
+    }
+    Null | Undefined => () // Skip null/undefined per spec.
+    Number(_) | Bool(_) => () // Primitives have no enumerable own properties.
+    _ => ()
   }
 }
 
@@ -260,14 +799,13 @@ fn Interpreter::eval_expr(
       let symbol_properties : Map[Int, Value] = {}
       let descriptors : Map[String, PropDescriptor] = {}
       let symbol_descriptors : Map[Int, PropDescriptor] = {}
-      let mut proto_override : Value? = None
       // Build the object eagerly so methods captured during the prop loop can
       // reference it as [[HomeObject]] (ES2022 §13.2.5.5). The bag's Maps are
       // shared by reference, so later inserts populate the live object; the
-      // mutable `prototype` field is fixed up after the loop if a __proto__
-      // override is seen. This is what makes `super.x` resolve dynamically
-      // against `Object.getPrototypeOf(homeObject)` even after
-      // Object.setPrototypeOf is called on the literal.
+      // mutable `prototype` field is updated when a __proto__ override is seen.
+      // This is what makes `super.x` resolve dynamically against
+      // `Object.getPrototypeOf(homeObject)` even after Object.setPrototypeOf is
+      // called on the literal.
       let default_obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
       let object_data : ObjectData = {
         bag: { properties, symbol_properties, descriptors, symbol_descriptors },
@@ -284,173 +822,55 @@ fn Interpreter::eval_expr(
         // Handle spread property: { ...expr }
         if prop.kind == @ast.Spread {
           let spread_val = self.eval_expr(ctx, prop.key, env)
-          match spread_val {
-            Object(data) => {
-              // Copy all enumerable own properties
-              // Per ES spec, spread invokes [[Get]] (which triggers getters)
-              // and creates data properties (not accessor descriptors)
-              for key, _value in data.bag.properties {
-                match data.bag.descriptors.get(key) {
-                  Some(desc) =>
-                    if desc.enumerable {
-                      // Invoke getter if present, otherwise use raw value
-                      let val : Value = match desc.getter {
-                        Some(getter) =>
-                          self.call_value(getter, spread_val, [], obj_loc)
-                        None => _value
-                      }
-                      properties[key] = val
-                    }
-                  None => properties[key] = _value
-                }
-              }
-              // Copy symbol properties too
-              for sym_id, value in data.bag.symbol_properties {
-                match data.bag.symbol_descriptors.get(sym_id) {
-                  Some(desc) =>
-                    if desc.enumerable {
-                      symbol_properties[sym_id] = value
-                    }
-                  None => symbol_properties[sym_id] = value
-                }
-              }
-            }
-            Array(arr_data) =>
-              // Spread array into object: only enumerable own properties
-              // length is non-enumerable per spec, so only copy indexed elements
-              for i, value in arr_data.elements {
-                properties[i.to_string()] = value
-              }
-            String_(s) => {
-              // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b", "2": "c" }
-              let mut idx = 0
-              for ch in s {
-                properties[idx.to_string()] = String_(ch.to_string())
-                idx = idx + 1
-              }
-            }
-            Null | Undefined => () // Skip null/undefined per spec
-            Number(_) | Bool(_) => () // Primitives have no enumerable own properties
-            _ => ()
-          }
+          self.copy_object_spread_properties(home_object, spread_val, obj_loc)
           continue
         }
         if prop.computed {
-          // Evaluate the computed key
+          // Evaluate and canonicalize the computed key before the value.
           let key_val = self.eval_expr(ctx, prop.key, env)
-          match key_val {
-            Symbol(sym) =>
+          let prop_key = self.to_object_literal_property_key(key_val)
+          match prop_key {
+            Symbol(_) =>
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
                   let val = self.eval_prop_value(ctx, prop, method_env)
-                  // SetFunctionName with symbol description
-                  let sym_name = match sym.description {
-                    Some(d) => "[\{d}]"
-                    None => ""
-                  }
-                  set_function_name(val, sym_name)
-                  symbol_properties[sym.id] = val
+                  apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
                   let getter = self.eval_prop_value(ctx, prop, method_env)
-                  let sym_name = match sym.description {
-                    Some(d) => "get [\{d}]"
-                    None => "get "
-                  }
-                  set_function_name(getter, sym_name)
-                  // Store accessor in descriptor, use Undefined as placeholder in properties
-                  if !symbol_properties.contains(sym.id) {
-                    symbol_properties[sym.id] = Undefined
-                  }
-                  let existing = symbol_descriptors.get(sym.id)
-                  symbol_descriptors[sym.id] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: Some(getter),
-                    setter: match existing {
-                      Some(d) => d.setter
-                      None => None
-                    },
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, getter, true,
+                  )
                 }
                 Set => {
                   let setter = self.eval_prop_value(ctx, prop, method_env)
-                  let sym_name = match sym.description {
-                    Some(d) => "set [\{d}]"
-                    None => "set "
-                  }
-                  set_function_name(setter, sym_name)
-                  if !symbol_properties.contains(sym.id) {
-                    symbol_properties[sym.id] = Undefined
-                  }
-                  let existing = symbol_descriptors.get(sym.id)
-                  symbol_descriptors[sym.id] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: match existing {
-                      Some(d) => d.getter
-                      None => None
-                    },
-                    setter: Some(setter),
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, setter, false,
+                  )
                 }
                 Spread => () // handled above
               }
-            _ => {
-              // Convert to string key using ECMAScript ToString
-              let key_str = to_js_string(key_val)
+            _ =>
               match prop.kind {
                 Init => {
                   let val = self.eval_prop_value(ctx, prop, method_env)
-                  set_function_name(val, key_str)
-                  properties[key_str] = val
+                  apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
                   let getter = self.eval_prop_value(ctx, prop, method_env)
-                  set_function_name(getter, "get " + key_str)
-                  if !properties.contains(key_str) {
-                    properties[key_str] = Undefined
-                  }
-                  let existing = descriptors.get(key_str)
-                  descriptors[key_str] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: Some(getter),
-                    setter: match existing {
-                      Some(d) => d.setter
-                      None => None
-                    },
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, getter, true,
+                  )
                 }
                 Set => {
                   let setter = self.eval_prop_value(ctx, prop, method_env)
-                  set_function_name(setter, "set " + key_str)
-                  if !properties.contains(key_str) {
-                    properties[key_str] = Undefined
-                  }
-                  let existing = descriptors.get(key_str)
-                  descriptors[key_str] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: true,
-                    getter: match existing {
-                      Some(d) => d.getter
-                      None => None
-                    },
-                    setter: Some(setter),
-                    is_accessor: true,
-                  }
+                  apply_object_literal_accessor_property(
+                    home_object, prop_key, setter, false,
+                  )
                 }
                 Spread => () // handled above
               }
-            }
           }
         } else {
           // Static key - extract from StringLit
@@ -472,12 +892,7 @@ fn Interpreter::eval_expr(
               // Handle __proto__ as special syntax per B.3.1
               if key_str == "__proto__" {
                 let val = self.eval_prop_value(ctx, prop, method_env)
-                match val {
-                  Object(_) | Array(_) | Map(_) | Set(_) =>
-                    proto_override = Some(val)
-                  Null => proto_override = Some(Null)
-                  _ => properties[key_str] = val // primitives don't set proto
-                }
+                apply_object_literal_proto_property(home_object, val)
               } else {
                 let val = self.eval_prop_value(ctx, prop, method_env)
                 // SetFunctionName: infer name for anonymous functions
@@ -486,67 +901,30 @@ fn Interpreter::eval_expr(
               }
             Get => {
               let getter = self.eval_prop_value(ctx, prop, method_env)
-              // Force set name with "get " prefix per spec
-              match getter {
-                Object(d) =>
-                  d.bag.properties["name"] = String_("get " + key_str)
-                _ => ()
-              }
-              if !properties.contains(key_str) {
-                properties[key_str] = Undefined
-              }
-              let existing = descriptors.get(key_str)
-              descriptors[key_str] = {
-                writable: false,
-                enumerable: true,
-                configurable: true,
-                getter: Some(getter),
-                setter: match existing {
-                  Some(d) => d.setter
-                  None => None
-                },
-                is_accessor: true,
-              }
+              apply_object_literal_accessor_property(
+                home_object,
+                String_(key_str),
+                getter,
+                true,
+              )
             }
             Set => {
               let setter = self.eval_prop_value(ctx, prop, method_env)
-              // Force set name with "set " prefix per spec
-              match setter {
-                Object(d) =>
-                  d.bag.properties["name"] = String_("set " + key_str)
-                _ => ()
-              }
-              if !properties.contains(key_str) {
-                properties[key_str] = Undefined
-              }
-              let existing = descriptors.get(key_str)
-              descriptors[key_str] = {
-                writable: false,
-                enumerable: true,
-                configurable: true,
-                getter: match existing {
-                  Some(d) => d.getter
-                  None => None
-                },
-                setter: Some(setter),
-                is_accessor: true,
-              }
+              apply_object_literal_accessor_property(
+                home_object,
+                String_(key_str),
+                setter,
+                false,
+              )
             }
             Spread => () // handled above
           }
         }
       }
-      // The bag was populated in place; only fix up the prototype if a
-      // __proto__: override appeared in the literal.
-      match proto_override {
-        Some(p) => object_data.prototype = p
-        None => ()
-      }
       home_object
     }
     ArrayLit(elements, _) => {
       let vals : Array[Value] = []
-      let mut has_holes = false
       let hole_idxs : Array[Int] = []
       for e in elements {
         match e {
@@ -561,22 +939,11 @@ fn Interpreter::eval_expr(
           ArrayHole(_) => {
             hole_idxs.push(vals.length())
             vals.push(Undefined)
-            has_holes = true
           }
           _ => vals.push(self.eval_expr(ctx, e, env))
         }
       }
-      let arr = make_array(vals)
-      if has_holes {
-        match arr {
-          Array(data) =>
-            for i in hole_idxs {
-              data.holes[i] = ()
-            }
-          _ => ()
-        }
-      }
-      arr
+      make_array_with_holes(vals, hole_idxs)
     }
     ComputedMember(obj_expr, key_expr, loc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
@@ -596,20 +963,7 @@ fn Interpreter::eval_expr(
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(ctx, callee_expr, arg_exprs, env, loc)
-    ThisExpr(_) =>
-      env.get("this") catch {
-        @errors.ReferenceError(message~) => {
-          // In derived class constructors, 'this' is in TDZ until super() is called
-          if message.contains("before initialization") {
-            raise @errors.ReferenceError(
-              message="Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
-            )
-          }
-          // Otherwise, 'this' is just not defined (global arrow function, etc.)
-          Undefined
-        }
-        other => raise other
-      }
+    ThisExpr(_) => eval_this_value(env)
     UpdateExpr(op, operand, prefix, loc) =>
       self.eval_update(ctx, op, operand, prefix, env, loc)
     CompoundAssign(op, target, value_expr, loc) =>
@@ -624,35 +978,28 @@ fn Interpreter::eval_expr(
         buf.write_string(strings[i])
         if i < exprs.length() {
           let val = self.eval_expr(ctx, exprs[i], env)
-          buf.write_string(to_js_string(val))
+          buf.write_string(to_js_string(val, interp=Some(self)))
         }
       }
       String_(buf.to_string())
     }
     TaggedTemplate(tag_expr, strings, exprs, loc) => {
-      let tag = self.eval_expr(ctx, tag_expr, env)
-      // Build the raw array (same as cooked for now - raw doesn't process escapes)
-      let raw_vals : Array[Value] = []
-      for s in strings {
-        raw_vals.push(String_(s))
-      }
-      let raw_arr = make_array(raw_vals)
-      // Template strings objects are array-like and inherit Array methods.
-      let template_obj = make_array(raw_vals.copy())
-      match template_obj {
-        Array(data) => set_array_named_prop(data, "raw", raw_arr)
-        _ => ()
+      let (tag, this_val) = match tag_expr {
+        Member(obj_expr, prop, member_loc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          (self.get_property(obj, prop, member_loc), obj)
+        }
+        ComputedMember(obj_expr, key_expr, member_loc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let key = self.eval_expr(ctx, key_expr, env)
+          (self.get_computed_property(obj, key, member_loc), obj)
+        }
+        _ => (self.eval_expr(ctx, tag_expr, env), Undefined)
       }
       // Build args: [templateObj, ...substitutions]
-      let args : Array[Value] = [template_obj]
+      let args : Array[Value] = [self.get_tagged_template_object(loc, strings)]
       for e in exprs {
         args.push(self.eval_expr(ctx, e, env))
-      }
-      // Resolve this binding for member expression tags (e.g., String.raw`...`)
-      let this_val : Value = match tag_expr {
-        Member(obj_expr, _, _) | ComputedMember(obj_expr, _, _) =>
-          self.eval_expr(ctx, obj_expr, env)
-        _ => Undefined
       }
       self.call_value(tag, this_val, args, loc)
     }
@@ -781,8 +1128,7 @@ fn Interpreter::eval_expr(
       )
     DestructureAssign(pattern, value_expr, _) => {
       let value = self.eval_expr(ctx, value_expr, env)
-      self.assign_pattern(ctx, pattern, value, env)
-      value
+      self.eval_destructure_assign(ctx, pattern, value, env)
     }
     OptionalMember(obj_expr, prop, loc) => {
       // obj?.prop - return undefined if obj is null/undefined
@@ -1091,34 +1437,125 @@ fn Interpreter::eval_expr(
           )
       }
     }
-    SuperMember(prop, loc) => {
-      // super.prop - access parent prototype property
-      let super_proto = resolve_super_target(env)
-      match super_proto {
-        Null | Undefined =>
-          raise @errors.ReferenceError(
-            message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
-          )
-        _ => self.get_property(super_proto, prop, loc)
-      }
-    }
+    SuperMember(prop, loc) => self.eval_super_property(env, prop, loc)
     SuperComputedMember(key_expr, loc) => {
-      // super[expr] - access parent prototype property with computed key
-      let super_proto = resolve_super_target(env)
       let key = self.eval_expr(ctx, key_expr, env)
-      match super_proto {
-        Null | Undefined =>
-          raise @errors.ReferenceError(
-            message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
-          )
-        _ => self.get_computed_property(super_proto, key, loc)
+      self.eval_super_computed_property(env, key, loc)
+    }
+    NewTargetExpr(_) => eval_new_target_value(env)
+  }
+}
+
+///|
+fn Interpreter::eval_instanceof_values(
+  self : Interpreter,
+  l : Value,
+  r : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match r {
+    Object(r_data) => {
+      // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
+      let has_instance_sym = self.realm_state.well_known_symbols.has_instance
+      match
+        lookup_symbol_property_chain(
+          r,
+          r_data,
+          has_instance_sym.id,
+          interp=Some(self),
+        ) {
+        Some(Undefined) | Some(Null) | None =>
+          // No @@hasInstance — fall back to OrdinaryHasInstance.
+          // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
+          match r_data.callable {
+            None =>
+              raise @errors.TypeError(
+                message="Right-hand side of 'instanceof' is not callable",
+              )
+            Some(_) =>
+              // Step 3 of OrdinaryHasInstance: If O is not an Object, return
+              // false. MUST precede steps 4-5 so primitive LHS never triggers
+              // step 5's TypeError even when C.prototype is a non-object.
+              if !is_object_value(l) {
+                Bool(false)
+              } else {
+                // Steps 4-5: Get(C, "prototype"); if not Object, TypeError.
+                // Bound functions without own prototype property fall through
+                // to the None arm.
+                match r_data.bag.properties.get("prototype") {
+                  Some(proto) =>
+                    if is_object_value(proto) {
+                      instanceof_prototype_chain(l, proto, self)
+                    } else {
+                      raise @errors.TypeError(
+                        message="Function has non-object prototype in instanceof check",
+                      )
+                    }
+                  None => Bool(false)
+                }
+              }
+          }
+        Some(has_instance_fn) => {
+          if !is_callable(has_instance_fn) {
+            raise @errors.TypeError(
+              message="Symbol.hasInstance is not a function",
+            )
+          }
+          let result = self.call_value(has_instance_fn, r, [l], loc)
+          Bool(is_truthy(result))
+        }
       }
     }
-    NewTargetExpr(_) =>
-      // new.target - returns the constructor called with new, or undefined
-      env.get("<new.target>") catch {
-        _ => Undefined
+    Proxy(proxy_data) => {
+      // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
+      let has_instance_sym = self.realm_state.well_known_symbols.has_instance
+      let has_instance_method = get_symbol_method(r, has_instance_sym.id)
+      match has_instance_method {
+        Some(has_instance_fn) =>
+          match has_instance_fn {
+            Object(fn_data) =>
+              match fn_data.callable {
+                Some(_) => {
+                  let result = self.call_value(has_instance_fn, r, [l], loc)
+                  Bool(is_truthy(result))
+                }
+                None =>
+                  raise @errors.TypeError(
+                    message="Symbol.hasInstance is not a function",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Symbol.hasInstance is not a function",
+              )
+          }
+        None => {
+          // Step 2: Fall back to prototype chain check
+          let target = get_proxy_target(proxy_data)
+          let proto = self.get_property(r, "prototype", loc)
+          match proto {
+            Object(_) => instanceof_prototype_chain(l, proto, self)
+            _ =>
+              // Check if target is callable
+              match target {
+                Object(t_data) =>
+                  match t_data.callable {
+                    Some(_) => Bool(false)
+                    None =>
+                      raise @errors.TypeError(
+                        message="Right-hand side of 'instanceof' is not callable",
+                      )
+                  }
+                _ => Bool(false)
+              }
+          }
+        }
       }
+    }
+    _ =>
+      raise @errors.TypeError(
+        message="Right-hand side of 'instanceof' is not an object",
+      )
   }
 }
 
@@ -1157,113 +1594,9 @@ fn Interpreter::eval_binary(
       }
     }
     Instanceof => {
-      // instanceof - ES2015+ with Symbol.hasInstance support (spec: 7.3.21 OrdinaryHasInstance)
       let l = self.eval_expr(ctx, left_expr, env)
       let r = self.eval_expr(ctx, right_expr, env)
-      match r {
-        Object(r_data) => {
-          // Step 1: GetMethod(C, @@hasInstance) — must invoke accessor getters per spec.
-          let has_instance_sym = self.realm_state.well_known_symbols.has_instance
-          match
-            lookup_symbol_property_chain(
-              r,
-              r_data,
-              has_instance_sym.id,
-              interp=Some(self),
-            ) {
-            Some(Undefined) | Some(Null) | None =>
-              // No @@hasInstance — fall back to OrdinaryHasInstance.
-              // Step 2: Check if RHS is callable (required for OrdinaryHasInstance)
-              match r_data.callable {
-                None =>
-                  raise @errors.TypeError(
-                    message="Right-hand side of 'instanceof' is not callable",
-                  )
-                Some(_) =>
-                  // Step 3 of OrdinaryHasInstance: If O is not an Object, return
-                  // false. MUST precede steps 4-5 so primitive LHS never triggers
-                  // step 5's TypeError even when C.prototype is a non-object.
-                  if !is_object_value(l) {
-                    Bool(false)
-                  } else {
-                    // Steps 4-5: Get(C, "prototype"); if not Object, TypeError.
-                    // Bound functions without own prototype property fall through
-                    // to the None arm.
-                    match r_data.bag.properties.get("prototype") {
-                      Some(proto) =>
-                        if is_object_value(proto) {
-                          instanceof_prototype_chain(l, proto, self)
-                        } else {
-                          raise @errors.TypeError(
-                            message="Function has non-object prototype in instanceof check",
-                          )
-                        }
-                      None => Bool(false)
-                    }
-                  }
-              }
-            Some(has_instance_fn) => {
-              if !is_callable(has_instance_fn) {
-                raise @errors.TypeError(
-                  message="Symbol.hasInstance is not a function",
-                )
-              }
-              let result = self.call_value(has_instance_fn, r, [l], loc)
-              Bool(is_truthy(result))
-            }
-          }
-        }
-        Proxy(proxy_data) => {
-          // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
-          let has_instance_sym = self.realm_state.well_known_symbols.has_instance
-          let has_instance_method = get_symbol_method(r, has_instance_sym.id)
-          match has_instance_method {
-            Some(has_instance_fn) =>
-              match has_instance_fn {
-                Object(fn_data) =>
-                  match fn_data.callable {
-                    Some(_) => {
-                      let result = self.call_value(has_instance_fn, r, [l], loc)
-                      Bool(is_truthy(result))
-                    }
-                    None =>
-                      raise @errors.TypeError(
-                        message="Symbol.hasInstance is not a function",
-                      )
-                  }
-                _ =>
-                  raise @errors.TypeError(
-                    message="Symbol.hasInstance is not a function",
-                  )
-              }
-            None => {
-              // Step 2: Fall back to prototype chain check
-              let target = get_proxy_target(proxy_data)
-              let proto = self.get_property(r, "prototype", loc)
-              match proto {
-                Object(_) => instanceof_prototype_chain(l, proto, self)
-                _ =>
-                  // Check if target is callable
-                  match target {
-                    Object(t_data) =>
-                      match t_data.callable {
-                        Some(_) => Bool(false)
-                        None =>
-                          raise @errors.TypeError(
-                            message="Right-hand side of 'instanceof' is not callable",
-                          )
-                      }
-                    _ => Bool(false)
-                  }
-              }
-            }
-          }
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Right-hand side of 'instanceof' is not an object",
-          )
-      }
+      self.eval_instanceof_values(l, r, loc)
     }
     In => {
       let left = self.eval_expr(ctx, left_expr, env)
@@ -1283,6 +1616,26 @@ fn Interpreter::eval_binary(
       let right = self.eval_expr(ctx, right_expr, env)
       eval_binary_op(op, left, right, loc, interp=Some(self))
     }
+  }
+}
+
+///|
+pub fn eval_unary_value_op(
+  op : @ast.UnaryOp,
+  value : Value,
+  loc : @token.Loc,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  match op {
+    Neg => Number(-to_number(value, interp~))
+    Pos => Number(to_number(value, interp~))
+    Not => Bool(!is_truthy(value))
+    BitNot => Number(to_int32(to_number(value, interp~)).lnot().to_double())
+    Typeof => String_(type_of(value))
+    Void | Delete =>
+      raise @errors.InternalError(
+        message="Unexpected unary operator at line \{loc.line}, col \{loc.col}",
+      )
   }
 }
 
@@ -1410,6 +1763,15 @@ pub fn eval_binary_op(
         Number((shifted & mask).to_double())
       }
     }
+    // instanceof - ES2015+ with Symbol.hasInstance support (spec: 7.3.21 OrdinaryHasInstance)
+    (Instanceof, l, r) =>
+      match interp {
+        Some(ip) => ip.eval_instanceof_values(l, r, _loc)
+        None =>
+          raise @errors.InternalError(
+            message="Internal error: instanceof requires interpreter context",
+          )
+      }
     // in operator - ES §7.3.11 HasProperty
     (In, l, r) =>
       if is_object_value(r) {
@@ -1423,8 +1785,8 @@ pub fn eval_binary_op(
           message="Cannot use 'in' operator to search for '\{l.to_string()}' in \{type_of(r)}",
         )
       }
-    // And/Or/??/Instanceof already handled in eval_binary
-    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) | (Instanceof, _, _) =>
+    // And/Or/?? already handled in eval_binary
+    (And, _, _) | (Or, _, _) | (NullishCoalesce, _, _) =>
       raise @errors.InternalError(
         message="Internal error: logical operators should be short-circuited",
       )
@@ -1590,6 +1952,199 @@ fn loose_equal(a : Value, b : Value) -> Bool {
 }
 
 ///|
+fn delete_string_property_from_bag(
+  bag : PropertyBag,
+  prop : String,
+  strict : Bool,
+) -> Bool raise Error {
+  match bag.descriptors.get(prop) {
+    Some(desc) =>
+      if !desc.configurable {
+        if strict {
+          raise @errors.TypeError(message="Cannot delete property '\{prop}'")
+        }
+        return false
+      }
+    None => ()
+  }
+  let _ = bag.properties.remove(prop)
+  let _ = bag.descriptors.remove(prop)
+  true
+}
+
+///|
+fn delete_symbol_property_from_bag(
+  bag : PropertyBag,
+  sym_id : Int,
+  strict : Bool,
+) -> Bool raise Error {
+  match bag.symbol_descriptors.get(sym_id) {
+    Some(desc) =>
+      if !desc.configurable {
+        if strict {
+          raise @errors.TypeError(message="Cannot delete property")
+        }
+        return false
+      }
+    None => ()
+  }
+  let _ = bag.symbol_properties.remove(sym_id)
+  let _ = bag.symbol_descriptors.remove(sym_id)
+  true
+}
+
+///|
+fn mark_array_hole_if_index(data : ArrayData, prop : String) -> Unit {
+  let idx = @string.parse_int(prop) catch { _ => -1 }
+  if idx >= 0 && idx.to_string() == prop && idx < data.elements.length() {
+    data.holes.set(idx, ())
+    data.elements[idx] = Undefined
+  }
+}
+
+///|
+pub fn eval_delete_property(
+  interp : Interpreter,
+  obj : Value,
+  prop : String,
+  strict : Bool,
+) -> Value raise Error {
+  match obj {
+    Proxy(proxy_data) => {
+      let result = proxy_delete_property(interp, proxy_data, prop)
+      if !result && strict {
+        raise @errors.TypeError(message="Cannot delete property '\{prop}'")
+      }
+      Bool(result)
+    }
+    Object(data) =>
+      Bool(delete_string_property_from_bag(data.bag, prop, strict))
+    Array(data) => {
+      let result = delete_string_property_from_bag(data.bag, prop, strict)
+      if result {
+        mark_array_hole_if_index(data, prop)
+      }
+      Bool(result)
+    }
+    Undefined | Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ => Bool(true)
+  }
+}
+
+///|
+pub fn eval_delete_computed_property(
+  interp : Interpreter,
+  obj : Value,
+  key : Value,
+  strict : Bool,
+) -> Value raise Error {
+  match obj {
+    Proxy(proxy_data) => {
+      let k = to_js_string(key)
+      let result = proxy_delete_property(interp, proxy_data, k)
+      if !result && strict {
+        raise @errors.TypeError(message="Cannot delete property '\{k}'")
+      }
+      Bool(result)
+    }
+    Object(data) =>
+      match key {
+        Symbol(sym) =>
+          Bool(delete_symbol_property_from_bag(data.bag, sym.id, strict))
+        _ => {
+          let k = to_js_string(key)
+          Bool(delete_string_property_from_bag(data.bag, k, strict))
+        }
+      }
+    Array(data) =>
+      match key {
+        Symbol(sym) =>
+          Bool(delete_symbol_property_from_bag(data.bag, sym.id, strict))
+        _ => {
+          let k = to_js_string(key)
+          let result = delete_string_property_from_bag(data.bag, k, strict)
+          if result {
+            mark_array_hole_if_index(data, k)
+          }
+          Bool(result)
+        }
+      }
+    Undefined | Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ => Bool(true)
+  }
+}
+
+///|
+fn env_has_binding_ignoring_with(env : Environment, name : String) -> Bool {
+  match env.bindings.get(name) {
+    Some(_) => true
+    None =>
+      match env.parent {
+        Some(parent) => env_has_binding_ignoring_with(parent, name)
+        None => false
+      }
+  }
+}
+
+///|
+pub fn eval_delete_identifier(
+  interp : Interpreter,
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+) -> Value raise Error {
+  // delete of an unqualified identifier is a SyntaxError in strict mode
+  if ctx.strict {
+    raise @errors.SyntaxError(
+      message="Delete of an unqualified identifier in strict mode.",
+    )
+  }
+  // Check if this identifier is in a with-object first
+  match env.find_with_object(name) {
+    Some(Object(with_data)) => {
+      match with_data.bag.descriptors.get(name) {
+        Some(desc) => if !desc.configurable { return Bool(false) }
+        None => ()
+      }
+      let _ = with_data.bag.properties.remove(name)
+      let _ = with_data.bag.descriptors.remove(name)
+      Bool(true)
+    }
+    _ =>
+      if env_has_binding_ignoring_with(env, name) {
+        Bool(false)
+      } else {
+        // In non-strict mode, check if the identifier is a non-configurable
+        // property on the global object (e.g. undefined, NaN, Infinity).
+        match interp.global_this {
+          Object(data) =>
+            match data.bag.descriptors.get(name) {
+              Some(desc) =>
+                if !desc.configurable {
+                  Bool(false)
+                } else {
+                  let _ = data.bag.properties.remove(name)
+                  let _ = data.bag.descriptors.remove(name)
+                  Bool(true)
+                }
+              None => {
+                let _ = data.bag.properties.remove(name)
+                Bool(true)
+              }
+            }
+          _ => Bool(true)
+        }
+      }
+  }
+}
+
+///|
 /// Check whether `name` is a non-writable property on the global object
 /// (undefined, NaN, Infinity). These are { writable:false } per ES spec §19.1.
 fn Interpreter::is_immutable_global(self : Interpreter, name : String) -> Bool {
@@ -1641,220 +2196,19 @@ fn Interpreter::eval_unary(
       match operand {
         Member(obj_expr, prop, _) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
-          match obj {
-            Proxy(proxy_data) => {
-              let result = proxy_delete_property(self, proxy_data, prop)
-              if !result && ctx.strict {
-                raise @errors.TypeError(
-                  message="Cannot delete property '\{prop}'",
-                )
-              }
-              Bool(result)
-            }
-            Object(data) => {
-              match data.bag.descriptors.get(prop) {
-                Some(desc) =>
-                  if !desc.configurable {
-                    if ctx.strict {
-                      raise @errors.TypeError(
-                        message="Cannot delete property '\{prop}'",
-                      )
-                    }
-                    return Bool(false)
-                  }
-                None => ()
-              }
-              let _ = data.bag.properties.remove(prop)
-              let _ = data.bag.descriptors.remove(prop)
-              Bool(true)
-            }
-            Array(data) => {
-              match data.bag.descriptors.get(prop) {
-                Some(desc) =>
-                  if !desc.configurable {
-                    if ctx.strict {
-                      raise @errors.TypeError(
-                        message="Cannot delete property '\{prop}'",
-                      )
-                    }
-                    return Bool(false)
-                  }
-                None => ()
-              }
-              let _ = data.bag.properties.remove(prop)
-              let _ = data.bag.descriptors.remove(prop)
-              // Same hole-marking logic as ComputedMember below — prop is already a string.
-              let idx = @string.parse_int(prop) catch { _ => -1 }
-              if idx >= 0 &&
-                idx.to_string() == prop &&
-                idx < data.elements.length() {
-                data.holes.set(idx, ())
-                data.elements[idx] = Undefined
-              }
-              Bool(true)
-            }
-            Undefined | Null =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            _ => Bool(true)
-          }
+          eval_delete_property(self, obj, prop, ctx.strict)
         }
         ComputedMember(obj_expr, key_expr, _) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
           let key = self.eval_expr(ctx, key_expr, env)
-          match obj {
-            Proxy(proxy_data) => {
-              let k = to_js_string(key)
-              let result = proxy_delete_property(self, proxy_data, k)
-              if !result && ctx.strict {
-                raise @errors.TypeError(message="Cannot delete property '\{k}'")
-              }
-              Bool(result)
-            }
-            Object(data) =>
-              match key {
-                Symbol(sym) => {
-                  // Delete a symbol-keyed property
-                  match data.bag.symbol_descriptors.get(sym.id) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.symbol_properties.remove(sym.id)
-                  let _ = data.bag.symbol_descriptors.remove(sym.id)
-                  Bool(true)
-                }
-                _ => {
-                  let k = to_js_string(key)
-                  match data.bag.descriptors.get(k) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property '\{k}'",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.properties.remove(k)
-                  let _ = data.bag.descriptors.remove(k)
-                  Bool(true)
-                }
-              }
-            Array(data) =>
-              match key {
-                Symbol(sym) => {
-                  match data.bag.symbol_descriptors.get(sym.id) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.symbol_properties.remove(sym.id)
-                  let _ = data.bag.symbol_descriptors.remove(sym.id)
-                  Bool(true)
-                }
-                _ => {
-                  let k = to_js_string(key)
-                  match data.bag.descriptors.get(k) {
-                    Some(desc) =>
-                      if !desc.configurable {
-                        if ctx.strict {
-                          raise @errors.TypeError(
-                            message="Cannot delete property '\{k}'",
-                          )
-                        }
-                        return Bool(false)
-                      }
-                    None => ()
-                  }
-                  let _ = data.bag.properties.remove(k)
-                  let _ = data.bag.descriptors.remove(k)
-                  let idx = @string.parse_int(k) catch { _ => -1 }
-                  if idx >= 0 &&
-                    idx.to_string() == k &&
-                    idx < data.elements.length() {
-                    data.holes.set(idx, ())
-                    data.elements[idx] = Undefined
-                  }
-                  Bool(true)
-                }
-              }
-            Undefined | Null =>
-              raise @errors.TypeError(
-                message="Cannot convert undefined or null to object",
-              )
-            _ => Bool(true)
-          }
+          eval_delete_computed_property(self, obj, key, ctx.strict)
         }
-        Ident(name, _) =>
-          // delete of an unqualified identifier is a SyntaxError in strict mode
-          if ctx.strict {
-            raise @errors.SyntaxError(
-              message="Delete of an unqualified identifier in strict mode.",
-            )
-          } else {
-            // Check if this identifier is in a with-object first
-            match env.find_with_object(name) {
-              Some(Object(with_data)) => {
-                match with_data.bag.descriptors.get(name) {
-                  Some(desc) => if !desc.configurable { return Bool(false) }
-                  None => ()
-                }
-                let _ = with_data.bag.properties.remove(name)
-                let _ = with_data.bag.descriptors.remove(name)
-                Bool(true)
-              }
-              _ =>
-                // In non-strict mode, check if the identifier is a non-configurable
-                // property on the global object (e.g. undefined, NaN, Infinity).
-                match self.global_this {
-                  Object(data) =>
-                    match data.bag.descriptors.get(name) {
-                      Some(desc) =>
-                        if !desc.configurable {
-                          Bool(false)
-                        } else {
-                          let _ = data.bag.properties.remove(name)
-                          let _ = data.bag.descriptors.remove(name)
-                          Bool(true)
-                        }
-                      None => Bool(true)
-                    }
-                  _ => Bool(true)
-                }
-            }
-          }
+        Ident(name, _) => eval_delete_identifier(self, ctx, env, name)
         _ => Bool(true)
       }
     _ => {
       let val = self.eval_expr(ctx, operand, env)
-      match op {
-        Neg => Number(-to_number(val))
-        Pos => Number(to_number(val))
-        Not => Bool(!is_truthy(val))
-        BitNot => Number(to_int32(to_number(val)).lnot().to_double())
-        _ =>
-          raise @errors.InternalError(
-            message="Unexpected unary operator at line \{loc.line}, col \{loc.col}",
-          )
-      }
+      eval_unary_value_op(op, val, loc)
     }
   }
 }

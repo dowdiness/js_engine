@@ -158,6 +158,35 @@ fn is_eval_function(val : Value) -> Bool {
 }
 
 ///|
+pub fn load_direct_eval_callee(env : Environment) -> Value raise Error {
+  env.get("eval") catch {
+    _ => raise @errors.ReferenceError(message="eval is not defined")
+  }
+}
+
+///|
+pub fn Interpreter::call_direct_eval_or_shadowed(
+  self : Interpreter,
+  callee : Value,
+  args : Array[Value],
+  env : Environment,
+  loc : @token.Loc,
+  caller_strict~ : Bool,
+) -> Value raise Error {
+  if is_eval_function(callee) {
+    if args.length() == 0 {
+      return Undefined
+    }
+    match args[0] {
+      String_(code) => self.perform_eval(code, env, true, caller_strict~)
+      other => other
+    }
+  } else {
+    self.call_value(callee, Undefined, args, loc)
+  }
+}
+
+///|
 /// Recursively strip Grouping nodes from an expression.
 /// Per ES spec, grouping parentheses do not change the Reference type,
 /// so ((eval))("code") is still a direct eval call.
@@ -585,6 +614,29 @@ fn Interpreter::eval_call(
     _ =>
       // Per ES spec (13.3.6.1), evaluate callee/receiver first, then arguments.
       match callee_expr {
+        OptionalMember(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let func_val = self.get_property(obj, prop, mloc)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        }
+        OptionalComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let key = self.eval_expr(ctx, key_expr, env)
+              let func_val = self.get_computed_property(obj, key, mloc)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        }
         Member(obj_expr, prop, mloc) =>
           match obj_expr {
             Ident("console", _) => {
@@ -607,19 +659,17 @@ fn Interpreter::eval_call(
           self.call_value(func_val, obj, args, loc)
         }
         SuperMember(prop, sloc) => {
-          // super.method() - look up on super target, call with current this
-          let super_proto = resolve_super_target(env)
-          let func_val = self.get_property(super_proto, prop, sloc)
-          let this_val = env.get("this") catch { _ => Undefined }
+          let (this_val, func_val) = self.eval_super_property_call_reference(
+            env, prop, sloc,
+          )
           let args = self.eval_args_with_spread(ctx, arg_exprs, env)
           self.call_value(func_val, this_val, args, loc)
         }
         SuperComputedMember(key_expr, sloc) => {
-          // super[expr]() - look up on super target, call with current this
-          let super_proto = resolve_super_target(env)
           let key = self.eval_expr(ctx, key_expr, env)
-          let func_val = self.get_computed_property(super_proto, key, sloc)
-          let this_val = env.get("this") catch { _ => Undefined }
+          let (this_val, func_val) = self.eval_super_computed_call_reference(
+            env, key, sloc,
+          )
           let args = self.eval_args_with_spread(ctx, arg_exprs, env)
           self.call_value(func_val, this_val, args, loc)
         }
@@ -763,12 +813,14 @@ fn Interpreter::call_value_impl(
             // Hoist declarations and top-level lexical TDZ markers within the function body.
             self.hoist_declarations(data.body, func_env, strict=func_strict)
             hoist_block_tdz(data.body, func_env)
-            match data.name {
-              Some(name) =>
-                if !func_env.bindings.contains(name) {
-                  func_env.def(name, callee, LetBinding)
-                }
-              None => ()
+            if data.has_name_binding {
+              match data.name {
+                Some(name) =>
+                  if !func_env.bindings.contains(name) {
+                    func_env.def(name, callee, LetBinding)
+                  }
+                None => ()
+              }
             }
             let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
             raise_if_break_continue(exec_result)

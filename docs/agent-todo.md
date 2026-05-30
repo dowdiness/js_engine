@@ -276,6 +276,28 @@ for those workloads.
 reject unsupported semantics explicitly. The current fail-fast rejection list is
 tracked in [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-explicit-bytecode-rejections).
 
+### Bytecode performance measurement follow-ups — OPEN (2026-05-30)
+
+**Source:** PR #164 benchmark snapshot and
+[closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-bytecode-performance-snapshot).
+
+**Finding:** On the current JS-target benchmark snapshot, bytecode is only a
+small win over tree-walking: about 1.06x on `pipeline/*/evaluate` and about
+1.01x on `closure_factory`. Do not start a broad optimization design from this
+alone; first isolate costs with microbenchmarks.
+
+**Issues:** Start with [#166](https://github.com/dowdiness/js_engine/issues/166)
+under the roadmap [#165](https://github.com/dowdiness/js_engine/issues/165).
+Only after measurement, consider [#167](https://github.com/dowdiness/js_engine/issues/167)
+(local/upvalue slotting), [#168](https://github.com/dowdiness/js_engine/issues/168)
+(call/frame setup), [#169](https://github.com/dowdiness/js_engine/issues/169)
+(VM dispatch/stack overhead), and [#170](https://github.com/dowdiness/js_engine/issues/170)
+(shared runtime helper hotspots).
+
+**Guardrails:** Do not broaden bytecode syntax in these follow-ups. Keep `run`
+on the tree-walker, keep bytecode opt-in, reuse runtime helpers, and keep
+compare-against-tree-walker tests for every supported construct touched.
+
 ### ~~Migrate remaining deprecated `inspect` snapshots~~ — DONE (2026-05-14)
 
 **Source:** PR #109 CI follow-up after MoonBit `0.1.20260512` changed `Show` rendering for `Array[String]`.

@@ -572,11 +572,12 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
         }
       }
       let _ = self.expect(RParen)
-      if in_optional_chain {
-        expr = OptionalCall(expr, args, loc)
-      } else {
-        expr = Call(expr, args, loc)
-      }
+      // A plain `()` after an optional member is not itself optional:
+      // `obj?.missing(arg)` still evaluates `arg` and throws when `missing`
+      // is not callable. The call remains part of the chain only for a
+      // previously-nullish receiver, which evaluators handle from the
+      // `Call(OptionalMember(...))` shape.
+      expr = Call(expr, args, loc)
     } else if self.at(Dot) {
       let _ = self.advance()
       let name = self.expect_ident_name()
@@ -598,6 +599,9 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
     } else if self.peek_kind() is NoSubTemplate(_) ||
       self.peek_kind() is TemplateHead(_) {
       // Tagged template: tag`string` or tag`str${expr}str`
+      if in_optional_chain {
+        raise @errors.SyntaxError(message="Bad_optional_template")
+      }
       let tloc = self.peek().loc
       match self.peek_kind() {
         NoSubTemplate(s) => {

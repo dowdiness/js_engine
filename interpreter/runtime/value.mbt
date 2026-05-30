@@ -38,11 +38,23 @@ pub(all) struct FuncDataExt {
 pub(all) enum CallContext {
   Call
   Construct
+  ConstructWithTarget(Value)
 }
 
 ///|
 pub fn CallContext::is_constructing(self : CallContext) -> Bool {
-  self is Construct
+  match self {
+    Call => false
+    Construct | ConstructWithTarget(_) => true
+  }
+}
+
+///|
+pub fn CallContext::new_target(self : CallContext) -> Value? {
+  match self {
+    ConstructWithTarget(value) => Some(value)
+    _ => None
+  }
 }
 
 ///|

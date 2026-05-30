@@ -9,6 +9,12 @@ import {
 }
 
 // Values
+pub fn apply_object_literal_accessor_property(Value, Value, Value, Bool) -> Unit raise
+
+pub fn apply_object_literal_data_property(Value, Value, Value) -> Unit raise
+
+pub fn apply_object_literal_proto_property(Value, Value) -> Unit raise
+
 pub fn array_species_create(Interpreter, Value, Int) -> Value raise
 
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
@@ -19,7 +25,11 @@ pub fn cleanup_holes_above_length(Map[Int, Unit], Int64) -> Unit
 
 pub fn clear_array_length_override(ArrayData) -> Unit
 
+pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
+
 pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
+
+pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
 
 pub fn create_data_property_or_throw(Interpreter, Value, Int, Value) -> Unit raise
 
@@ -36,6 +46,18 @@ pub fn descriptor_to_value(PropDescriptor, Value, realm_state? : RealmState?) ->
 pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
 
 pub fn eval_binary_op(@ast.BinOp, Value, Value, @token.Loc, interp? : Interpreter?) -> Value raise
+
+pub fn eval_delete_computed_property(Interpreter, Value, Value, Bool) -> Value raise
+
+pub fn eval_delete_identifier(Interpreter, ExecContext, Environment, String) -> Value raise
+
+pub fn eval_delete_property(Interpreter, Value, String, Bool) -> Value raise
+
+pub fn eval_new_target_value(Environment) -> Value
+
+pub fn eval_this_value(Environment) -> Value raise
+
+pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise
 
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
@@ -58,6 +80,8 @@ pub fn get_array_prototype(RealmState, ArrayData) -> Value
 pub fn get_array_prototype_override(ArrayData) -> Value?
 
 pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
+
+pub fn get_assignment_name_value(ExecContext, Environment, String) -> Value raise
 
 pub fn get_boolean_proto(realm_state? : RealmState?) -> Value
 
@@ -125,9 +149,13 @@ pub fn js_error_to_value(Error) -> Value
 
 pub fn js_error_to_value_with_env(Error, Environment?) -> Value
 
+pub fn load_direct_eval_callee(Environment) -> Value raise
+
 pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interpreter?) -> Value? raise
 
 pub fn make_array(Array[Value]) -> Value
+
+pub fn make_array_with_holes(Array[Value], Array[Int]) -> Value
 
 pub fn make_func(FuncData) -> Value
 
@@ -146,6 +174,8 @@ pub fn make_native_func(name~ : String, length? : Int, realm_state? : RealmState
 pub fn make_object(Map[String, Value], Value, Callable?, String, Map[String, PropDescriptor], Bool) -> Value
 
 pub fn make_plain_object() -> Value
+
+pub fn make_tagged_template_object(Array[String]) -> Value
 
 pub fn mark_as_method(Value) -> Value
 
@@ -298,8 +328,10 @@ pub impl Show for BindingKind
 pub(all) enum CallContext {
   Call
   Construct
+  ConstructWithTarget(Value)
 }
 pub fn CallContext::is_constructing(Self) -> Bool
+pub fn CallContext::new_target(Self) -> Value?
 
 pub(all) enum Callable {
   UserFunc(FuncData)
@@ -454,15 +486,29 @@ pub(all) struct Interpreter {
 pub fn Interpreter::array_define_own_property(Self, ArrayData, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::array_set_length(Self, ArrayData, PartialDescriptor) -> Bool raise
 pub fn Interpreter::assign_compiled_name(Self, ExecContext, Environment, String, Value) -> Value raise
+pub fn Interpreter::call_direct_eval_or_shadowed(Self, Value, Array[Value], Environment, @token.Loc, caller_strict~ : Bool) -> Value raise
 pub fn Interpreter::call_value(Self, Value, Value, Array[Value], @token.Loc) -> Value raise
 pub fn Interpreter::construct_value(Self, Value, Array[Value], @token.Loc, proto_override? : Value?, new_target? : Value?) -> Value raise
+pub fn Interpreter::copy_object_spread_properties(Self, Value, Value, @token.Loc) -> Unit raise
 pub fn Interpreter::define_compiled_binding(Self, Environment, @ast.VarKind, String, Value, Bool) -> Unit raise
 pub fn Interpreter::define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
+pub fn Interpreter::define_simple_arguments_object(Self, Environment, Array[Value], Value, Bool, Array[String]) -> Unit raise
+pub fn Interpreter::define_unmapped_arguments_object(Self, Environment, Array[Value], Value, Bool) -> Unit raise
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
+pub fn Interpreter::eval_destructure_assign(Self, ExecContext, @ast.Pattern, Value, Environment) -> Value raise
+pub fn Interpreter::eval_super_computed_call_reference(Self, Environment, Value, @token.Loc) -> (Value, Value) raise
+pub fn Interpreter::eval_super_computed_property(Self, Environment, Value, @token.Loc) -> Value raise
+pub fn Interpreter::eval_super_property(Self, Environment, String, @token.Loc) -> Value raise
+pub fn Interpreter::eval_super_property_call_reference(Self, Environment, String, @token.Loc) -> (Value, Value) raise
+pub fn Interpreter::eval_update_computed_property(Self, ExecContext, Value, Value, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) -> Value raise
+pub fn Interpreter::eval_update_property(Self, ExecContext, Value, String, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) -> Value raise
+pub fn Interpreter::get_cached_tagged_template_object(Self, String, Array[String]) -> Value
 pub fn Interpreter::get_compiled_name(Self, Environment, String) -> Value raise
 pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
+pub fn Interpreter::get_console_member(Self, String) -> Value raise
 pub fn Interpreter::get_own_property(Self, Value, Value) -> (PropDescriptor, Value)? raise
 pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
+pub fn Interpreter::get_prototype_from_constructor(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::has_property(Self, Value, String) -> Bool raise
 pub fn Interpreter::has_property_key(Self, Value, Value) -> Bool raise
 pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
@@ -480,7 +526,9 @@ pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict?
 pub fn Interpreter::spread_iterable(Self, Value, @token.Loc) -> Array[Value] raise
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
+pub fn Interpreter::to_object_literal_property_key(Self, Value) -> Value raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
+pub fn Interpreter::typeof_compiled_name(Self, ExecContext, Environment, String) -> Value raise
 pub fn Interpreter::update_compiled_name(Self, ExecContext, Environment, String, @ast.UpdateOp, Bool, @token.Loc) -> Value raise
 pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) -> Unit raise
 pub fn Interpreter::with_active_value(Self, () -> Value raise) -> Value raise

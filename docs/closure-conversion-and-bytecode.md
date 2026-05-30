@@ -121,6 +121,45 @@ binary operations, array creation, property/computed lookup, calls, function
 naming/signature validation, and JavaScript exception raising delegate back to
 runtime code.
 
+## Current Bytecode Performance Snapshot (unverified)
+
+Local JS-target benchmark output on 2026-05-30 from PR #164 head `8e7b9e1`
+used the command below. The raw CSV/output was not archived with this note, so
+treat the rows as unverified until regenerated from CI artifacts or a saved CSV:
+
+```bash
+moon run benchmarks --target js -- --all --csv
+```
+
+The bytecode path is currently close to tree-walking performance, not a large
+speedup:
+
+| Workload | Tree-walk | Bytecode | Result |
+|---|---:|---:|---:|
+| `pipeline/*/evaluate` | 21.39 ms | 20.27 ms | about 1.06x faster / 5.2% lower |
+| `closure_factory` | 23.37 ms | 23.20 ms | about 1.01x faster / 0.7% lower |
+
+This is expected for the current design. Bytecode removes some AST dispatch,
+but most cost still lives in shared runtime helpers, environment lookup,
+function call/frame setup, and stack-VM instruction dispatch. The next
+performance work is therefore measurement and bottleneck isolation, not syntax
+broadening.
+
+Tracking issues:
+
+- [#165](https://github.com/dowdiness/js_engine/issues/165): bytecode
+  performance roadmap
+- [#166](https://github.com/dowdiness/js_engine/issues/166): bytecode
+  dispatch, environment, and call microbenchmarks
+- [#167](https://github.com/dowdiness/js_engine/issues/167): local/upvalue
+  slotting and `Environment` lookup overhead
+- [#168](https://github.com/dowdiness/js_engine/issues/168): bytecode function
+  call and frame setup overhead
+- [#169](https://github.com/dowdiness/js_engine/issues/169): VM dispatch and
+  stack overhead
+- [#170](https://github.com/dowdiness/js_engine/issues/170): shared runtime
+  helper hotspots
+
 Continue the bytecode/IR track with these constraints:
 
 1. Keep `run` on the existing interpreter until bytecode has enough correctness
@@ -138,23 +177,46 @@ Continue the bytecode/IR track with these constraints:
 
 The current high-level opcode surface covers:
 
-- constants and simple moves: load constant/`undefined`, load/store name,
-  load/store function-local slot, define binding
-- completion and control flow: set completion, pop, jump, conditional jump,
-  return, throw
-- expressions: supported eager binary operations, jump-lowered `&&`, `||`, and
-  `??`, comma expressions, identifier update, anonymous function naming
-- object interaction: array creation without holes/spread, property get,
-  computed get
-- calls: ordinary calls plus receiver-preserving property/computed calls
-- closures: function declarations and anonymous function expressions backed by
-  runtime compiled functions
+- constants and simple moves: load constant/`undefined`/`this`, load/store
+  name, load/store function-local slot, define binding
+- completion and control flow: set completion, pop, duplicate stack value, jump,
+  conditional jump, return, throw, unlabeled and labeled `break`/`continue` for
+  supported loops, labeled block breaks, identifier/member/computed/destructuring-target
+  `for...in` assignment loops without loop declarations, switch statements
+  without lexical or function declarations, block statements and control-flow
+  bodies with `var` declarations
+  but without lexical or function declarations
+- expressions: supported eager binary operations including `in` and
+  `instanceof`, selected unary operations (`-`, `+`, `!`, `~`, `void`,
+  `typeof`, and identifier `delete`), simple destructuring assignments and
+  direct `var` destructuring declarations, jump-lowered `&&`, `||`, `??`,
+  ternary conditionals, comma expressions, template literals, tagged template calls
+  with plain/member/computed/optional member/optional computed tags, regex literals,
+  identifier/member/computed update, identifier and member/computed compound
+  assignment, `new.target`, method-body `super` property/computed reads and
+  calls, anonymous function naming
+- object interaction: array creation including holes and spread, simple
+  object literals with static and computed data properties, selected static and
+  computed method properties including rest parameters, selected static and
+  computed accessor properties, `__proto__` prototype overrides, and spread
+  properties, property
+  get, computed get, optional property/computed get, property/computed
+  assignment through runtime setters, and property/computed deletion through
+  shared runtime helpers
+- calls and construction: ordinary calls, direct eval calls, and optional calls,
+  including spread arguments, host `console.log` calls/member reads,
+  receiver-preserving property/computed calls, and `new` expressions including
+  spread arguments
+- closures: function declarations, anonymous or named function expressions,
+  ordinary/rest-parameter functions, ordinary function `arguments` objects, and
+  simple/rest-parameter arrow functions backed by runtime compiled functions
 
 The shipped milestone covers the primary workload shape: function declarations
-and anonymous expressions, calls, arrays, member/computed access, assignments,
-`for`/`while` loops, `return`, and `throw`. `break`, `continue`, construction,
-spread, and broader syntax remain future work and should land only with
-compare-against-tree-walker tests.
+and anonymous expressions, calls, construction including spread arguments,
+arrays, member/computed access, assignments, `for`/`while`/`do while` loops,
+`return`, `throw`, unlabeled and labeled `break`/`continue` for supported loops,
+and labeled block breaks. Broader syntax remains future work and should land
+only with compare-against-tree-walker tests.
 
 ## Current Explicit Bytecode Rejections
 
@@ -163,23 +225,52 @@ The compiler currently raises an `InternalError` prefixed
 
 - `block lexical declaration`
 - `block function declaration`
-- `block var declaration`
 - `control-flow function declaration`
-- `control-flow var declaration`
 - `for lexical initializer`
-- `statement kind`
+- `for-in var declaration`
+- `for-in lexical declaration`
+- `for-of statement`
+- `switch lexical declaration`
+- `try/catch statement`
+- `class declaration`
+- `generator declaration`
+- `async function declaration`
+- `async generator declaration`
+- `with statement`
+- `import declaration`
+- `export declaration`
 - `for initializer`
-- `spread argument`
-- `arguments object`
-- `in operator`
-- `instanceof operator`
-- `named function expression`
-- `array hole or spread element`
-- `console member`
-- `direct eval call`
-- `expression kind`
-- `rest parameter`
-- `default or destructuring parameter`
+- `break statement` outside a bytecode-supported loop
+- `continue statement` outside a bytecode-supported loop
+- `labeled break statement` (unresolved label targets only)
+- `labeled continue statement` (unresolved or non-loop label targets only)
+- `delete non-property operator` (for non-identifier/non-property operands)
+- `array hole expression` (outside array literal lowering)
+- `spread expression` (outside array/call/new/object literal lowering)
+- `update target` (invalid/non-reference targets only)
+- `compound assignment target` (invalid/non-reference targets only)
+- `destructuring pattern default`
+- `destructuring pattern computed key`
+- `destructuring pattern member target`
+- `destructuring declaration kind` (non-`var` destructuring declarations)
+- `destructuring declaration context` (control-flow/block/switch/for contexts)
+- `super call`
+- `object literal data property super`
+- `object literal __proto__ method property`
+- `object literal generator method property`
+- `object literal async method property`
+- `object literal async generator method property`
+- `object literal method property`
+- `object literal property key`
+- `class expression`
+- `generator expression`
+- `yield expression`
+- `async function expression`
+- `async arrow function`
+- `async generator expression`
+- `await expression`
+- `default parameter`
+- `destructuring parameter`
 
 Keep this list fail-fast. When broadening bytecode syntax, remove a rejection
 only after adding tests that compare the bytecode path with the tree-walking

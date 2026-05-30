@@ -264,6 +264,82 @@ fn make_constructor_instance(proto : Value, class_name : String) -> Value {
 }
 
 ///|
+pub fn Interpreter::get_prototype_from_constructor(
+  self : Interpreter,
+  ctor : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let prototype = self.get_property(ctor, "prototype", loc)
+  match prototype {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => prototype
+    _ =>
+      with_active_callee_realm_value(self.realm_state, ctor, fn() {
+        get_obj_proto(realm_state=Some(self.realm_state))
+      })
+  }
+}
+
+///|
+pub fn Interpreter::define_simple_arguments_object(
+  self : Interpreter,
+  env : Environment,
+  args : Array[Value],
+  callee : Value,
+  strict : Bool,
+  params : Array[String],
+) -> Unit raise Error {
+  if params_include_arguments(params, None) {
+    return
+  }
+  let tte : Value? = if env.has("[[ThrowTypeError]]") {
+    Some(env.get("[[ThrowTypeError]]"))
+  } else {
+    None
+  }
+  env.def(
+    "arguments",
+    make_arguments_object(
+      self.realm_state,
+      self.realm_state.well_known_symbols,
+      args,
+      callee,
+      strict,
+      throw_type_error=tte,
+      mapped_names=params,
+      mapped_env=Some(env),
+    ),
+    VarBinding,
+  )
+}
+
+///|
+pub fn Interpreter::define_unmapped_arguments_object(
+  self : Interpreter,
+  env : Environment,
+  args : Array[Value],
+  callee : Value,
+  strict : Bool,
+) -> Unit raise Error {
+  let tte : Value? = if env.has("[[ThrowTypeError]]") {
+    Some(env.get("[[ThrowTypeError]]"))
+  } else {
+    None
+  }
+  env.def(
+    "arguments",
+    make_arguments_object(
+      self.realm_state,
+      self.realm_state.well_known_symbols,
+      args,
+      callee,
+      strict,
+      throw_type_error=tte,
+    ),
+    VarBinding,
+  )
+}
+
+///|
 fn make_arguments_object(
   realm_state : RealmState,
   well_known_symbols : WellKnownSymbols,
@@ -730,11 +806,7 @@ fn Interpreter::construct_value_impl(
           }
           let proto = match proto_override {
             Some(p) => p
-            None =>
-              match obj_data.bag.properties.get("prototype") {
-                Some(v) => v
-                None => Null
-              }
+            None => self.get_prototype_from_constructor(new_target, loc)
           }
           let new_obj = make_constructor_instance(proto, "Object")
           let func_env = Environment::new(parent=Some(data.closure))
@@ -778,12 +850,14 @@ fn Interpreter::construct_value_impl(
           // Hoist declarations and top-level lexical TDZ markers.
           self.hoist_declarations(data.body, func_env, strict=func_strict)
           hoist_block_tdz(data.body, func_env)
-          match data.name {
-            Some(name) =>
-              if !func_env.bindings.contains(name) {
-                func_env.def(name, ctor, LetBinding)
-              }
-            None => ()
+          if data.has_name_binding {
+            match data.name {
+              Some(name) =>
+                if !func_env.bindings.contains(name) {
+                  func_env.def(name, ctor, LetBinding)
+                }
+              None => ()
+            }
           }
           let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
           raise_if_break_continue(exec_result)
@@ -820,11 +894,7 @@ fn Interpreter::construct_value_impl(
           }
           let proto = match proto_override {
             Some(p) => p
-            None =>
-              match obj_data.bag.properties.get("prototype") {
-                Some(v) => v
-                None => Null
-              }
+            None => self.get_prototype_from_constructor(new_target, loc)
           }
           let new_obj = make_constructor_instance(proto, "Object")
           // §15.2.5: install the self-name on a dedicated env between
@@ -923,7 +993,8 @@ fn Interpreter::construct_value_impl(
           )
         }
         Some(NativeCallable(_, func)) => func(args)
-        Some(NativeCallableWithContext(_, func)) => func(Construct, args)
+        Some(NativeCallableWithContext(_, func)) =>
+          func(ConstructWithTarget(new_target), args)
         Some(NonConstructableCallable(name, _)) =>
           raise @errors.TypeError(
             message=format_loc_context(name + " is not a constructor", loc),
@@ -946,7 +1017,7 @@ fn Interpreter::construct_value_impl(
               message=format_loc_context(_name + " is not a constructor", loc),
             )
           }
-          func(self, Construct, Undefined, args)
+          func(self, ConstructWithTarget(new_target), Undefined, args)
         }
         Some(MethodCallable(name, _)) =>
           raise @errors.TypeError(

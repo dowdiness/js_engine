@@ -1286,7 +1286,9 @@ fn make_compiled_func(
   closure : Environment,
   strict : Bool,
   body : CompiledBody,
+  rest_param? : String? = None,
   constructable? : Bool = true,
+  call_self_name? : Bool = false,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1333,6 +1335,7 @@ fn make_compiled_func(
   func_props["name"] = Value::String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
+  let func_ref : Ref[Value?] = { val: None }
   let func_obj = @runtime.stamp_function_realm(
     Value::Object({
       bag: {
@@ -1349,10 +1352,25 @@ fn make_compiled_func(
           this_val,
           args,
         ) raise {
+          let callee = func_ref.val.unwrap_or(Value::Undefined)
           if constructable && context.is_constructing() {
-            let new_obj = make_compiled_constructor_instance(proto)
+            let new_target = context.new_target()
+            let instance_proto = compiled_constructor_instance_proto(
+              interp, callee, new_target,
+            )
+            let new_obj = make_compiled_constructor_instance(instance_proto)
             let result = call_compiled_func(
-              interp, new_obj, args, params, closure, strict, body,
+              interp,
+              callee,
+              new_obj,
+              args,
+              params,
+              closure,
+              strict,
+              body,
+              rest_param~,
+              new_target~,
+              call_self_name~,
             )
             if is_constructor_return_object(result) {
               result
@@ -1361,7 +1379,16 @@ fn make_compiled_func(
             }
           } else {
             call_compiled_func(
-              interp, this_val, args, params, closure, strict, body,
+              interp,
+              callee,
+              this_val,
+              args,
+              params,
+              closure,
+              strict,
+              body,
+              rest_param~,
+              call_self_name~,
             )
           }
         }),
@@ -1372,6 +1399,7 @@ fn make_compiled_func(
     }),
     realm_state~,
   )
+  func_ref.val = Some(func_obj)
   if constructable {
     match proto {
       Value::Object(proto_data) => {
@@ -1389,6 +1417,16 @@ fn make_compiled_func(
     }
   }
   func_obj
+}
+
+///|
+fn compiled_constructor_instance_proto(
+  interp : Interpreter,
+  callee : Value,
+  new_target : Value?,
+) -> Value raise Error {
+  let target = new_target.unwrap_or(callee)
+  interp.get_prototype_from_constructor(target, @token.Loc::default())
 }
 
 ///|
@@ -1440,12 +1478,16 @@ fn make_compiled_arrow_func(
 ///|
 fn call_compiled_func(
   interp : Interpreter,
+  callee : Value,
   this_val : Value,
   args : Array[Value],
   params : Array[String],
   closure : Environment,
   strict : Bool,
   body : CompiledBody,
+  rest_param? : String? = None,
+  new_target? : Value? = None,
+  call_self_name? : Bool = false,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
@@ -1462,8 +1504,28 @@ fn call_compiled_func(
       }
     }
     func_env.def("this", effective_this, BindingKind::LetBinding)
-    func_env.def("<new.target>", Value::Undefined, BindingKind::LetBinding)
+    func_env.def(
+      "<new.target>",
+      new_target.unwrap_or(Value::Undefined),
+      BindingKind::LetBinding,
+    )
     bind_simple_params(func_env, params, args)
+    bind_rest_param(func_env, params.length(), rest_param, args)
+    match rest_param {
+      Some(_) =>
+        if !compiled_params_include_arguments(params, rest_param) {
+          interp.define_unmapped_arguments_object(
+            func_env, args, callee, strict,
+          )
+        }
+      None =>
+        interp.define_simple_arguments_object(
+          func_env, args, callee, strict, params,
+        )
+    }
+    if call_self_name {
+      func_env.def_builtin("[[BytecodeCallee]]", callee)
+    }
     reduce_body_signal((body.0)(interp, func_ctx, func_env))
   } catch {
     err => {
@@ -1500,6 +1562,38 @@ fn call_compiled_arrow_func(
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
   result
+}
+
+///|
+fn compiled_params_include_arguments(
+  params : Array[String],
+  rest_param : String?,
+) -> Bool {
+  for param in params {
+    if param == "arguments" {
+      return true
+    }
+  }
+  rest_param is Some("arguments")
+}
+
+///|
+fn bind_rest_param(
+  env : Environment,
+  positional_count : Int,
+  rest_param : String?,
+  args : Array[Value],
+) -> Unit raise Error {
+  match rest_param {
+    Some(name) => {
+      let rest_elements : Array[Value] = []
+      for i = positional_count; i < args.length(); i = i + 1 {
+        rest_elements.push(args[i])
+      }
+      env.def_parameter(name, @runtime.make_array(rest_elements))
+    }
+    None => ()
+  }
 }
 
 ///|

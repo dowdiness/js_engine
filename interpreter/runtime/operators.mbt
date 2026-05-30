@@ -1,4 +1,90 @@
 ///|
+pub fn compound_assign_binary_op(op : @ast.CompoundOp) -> @ast.BinOp? {
+  match op {
+    AddAssign => Some(Add)
+    SubAssign => Some(Sub)
+    MulAssign => Some(Mul)
+    ExpAssign => Some(Exp)
+    DivAssign => Some(Div)
+    ModAssign => Some(Mod)
+    BitAndAssign => Some(BitAnd)
+    BitOrAssign => Some(BitOr)
+    BitXorAssign => Some(BitXor)
+    LShiftAssign => Some(LShift)
+    RShiftAssign => Some(RShift)
+    URShiftAssign => Some(URShift)
+    LogicalAndAssign | LogicalOrAssign | NullishAssign => None
+  }
+}
+
+///|
+pub fn get_assignment_name_value(
+  ctx : ExecContext,
+  env : Environment,
+  name : String,
+) -> Value raise Error {
+  validate_strict_assignment_target_name(ctx.strict, name)
+  env.get(name)
+}
+
+///|
+pub fn Interpreter::eval_update_property(
+  self : Interpreter,
+  ctx : ExecContext,
+  obj : Value,
+  prop : String,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let current = self.get_property(obj, prop, member_loc)
+  let num = to_number(current)
+  let new_val : Value = match op {
+    Increment => Number(num + 1.0)
+    Decrement => Number(num - 1.0)
+  }
+  let _ = self.set_property(obj, prop, new_val, loc, strict=ctx.strict)
+  if prefix {
+    new_val
+  } else {
+    Number(num)
+  }
+}
+
+///|
+pub fn Interpreter::eval_update_computed_property(
+  self : Interpreter,
+  ctx : ExecContext,
+  obj : Value,
+  key : Value,
+  op : @ast.UpdateOp,
+  prefix : Bool,
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let prop_key = to_property_key(key, interp=Some(self))
+  let current = self.get_computed_property(obj, prop_key, member_loc)
+  let num = to_number(current)
+  let new_val : Value = match op {
+    Increment => Number(num + 1.0)
+    Decrement => Number(num - 1.0)
+  }
+  let _ = self.set_computed_property(
+    obj,
+    prop_key,
+    new_val,
+    loc,
+    strict=ctx.strict,
+  )
+  if prefix {
+    new_val
+  } else {
+    Number(num)
+  }
+}
+
+///|
 fn Interpreter::eval_update(
   self : Interpreter,
   ctx : ExecContext,
@@ -10,8 +96,7 @@ fn Interpreter::eval_update(
 ) -> Value raise Error {
   match operand {
     Ident(name, _) => {
-      validate_strict_assignment_target_name(ctx.strict, name)
-      let current = env.get(name)
+      let current = get_assignment_name_value(ctx, env, name)
       let num = to_number(current)
       let new_val : Value = match op {
         Increment => Number(num + 1.0)
@@ -34,41 +119,12 @@ fn Interpreter::eval_update(
     }
     Member(obj_expr, prop, mloc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
-      let current = self.get_property(obj, prop, mloc)
-      let num = to_number(current)
-      let new_val : Value = match op {
-        Increment => Number(num + 1.0)
-        Decrement => Number(num - 1.0)
-      }
-      let _ = self.set_property(obj, prop, new_val, loc, strict=ctx.strict)
-      if prefix {
-        new_val
-      } else {
-        Number(num)
-      }
+      self.eval_update_property(ctx, obj, prop, op, prefix, mloc, loc)
     }
     ComputedMember(obj_expr, key_expr, mloc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       let key = self.eval_expr(ctx, key_expr, env)
-      let prop_key = to_property_key(key, interp=Some(self))
-      let current = self.get_computed_property(obj, prop_key, mloc)
-      let num = to_number(current)
-      let new_val : Value = match op {
-        Increment => Number(num + 1.0)
-        Decrement => Number(num - 1.0)
-      }
-      let _ = self.set_computed_property(
-        obj,
-        prop_key,
-        new_val,
-        loc,
-        strict=ctx.strict,
-      )
-      if prefix {
-        new_val
-      } else {
-        Number(num)
-      }
+      self.eval_update_computed_property(ctx, obj, key, op, prefix, mloc, loc)
     }
     _ =>
       raise @errors.SyntaxError(
@@ -97,25 +153,16 @@ fn Interpreter::eval_compound_assign(
       return self.eval_nullish_assign(ctx, target, value_expr, env, loc)
     _ => ()
   }
-  let bin_op : @ast.BinOp = match op {
-    AddAssign => Add
-    SubAssign => Sub
-    MulAssign => Mul
-    ExpAssign => Exp
-    DivAssign => Div
-    ModAssign => Mod
-    BitAndAssign => BitAnd
-    BitOrAssign => BitOr
-    BitXorAssign => BitXor
-    LShiftAssign => LShift
-    RShiftAssign => RShift
-    URShiftAssign => URShift
-    LogicalAndAssign | LogicalOrAssign | NullishAssign => Add // unreachable
+  let bin_op : @ast.BinOp = match compound_assign_binary_op(op) {
+    Some(bin_op) => bin_op
+    None =>
+      raise @errors.InternalError(
+        message="unexpected logical compound assignment mapping",
+      )
   }
   match target {
     Ident(name, _) => {
-      validate_strict_assignment_target_name(ctx.strict, name)
-      let current = env.get(name)
+      let current = get_assignment_name_value(ctx, env, name)
       let rhs = self.eval_expr(ctx, value_expr, env)
       let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
       // Check if the target is a non-writable property on the global object
@@ -182,8 +229,7 @@ fn Interpreter::eval_logical_assign(
 ) -> Value raise Error {
   match target {
     Ident(name, _) => {
-      validate_strict_assignment_target_name(ctx.strict, name)
-      let current = env.get(name)
+      let current = get_assignment_name_value(ctx, env, name)
       if should_assign(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
         if self.is_immutable_global(name) {
