@@ -228,6 +228,20 @@ test "bytecode tagged template captures tag and substitution bindings" {
 }
 
 ///|
+test "bytecode tagged template reuses objects per call site" {
+  let src =
+    #|var first;
+    #|function tag(strings) {
+    #|  if (first === undefined) { first = strings; return "first"; }
+    #|  strings[0] = "x";
+    #|  return (strings === first) + ":" + strings[0] + ":" + Object.isExtensible(strings);
+    #|}
+    #|function run(value) { return tag`a${value}b`; }
+    #|run(1) + "," + run(2);
+  inspect(bytecode_compare(src), content="value:first,true:a:false")
+}
+
+///|
 test "bytecode member tagged template preserves receiver" {
   let src =
     #|var obj = { x: "ok", tag: function(strings) { return this.x + ":" + strings[0]; } };

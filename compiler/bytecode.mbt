@@ -101,6 +101,7 @@ priv struct BytecodeFunction {
   body_has_use_strict : Bool
   call_self_name : Bool
   local_names : Array[String]
+  template_cache_key_prefix : String
   code : Array[BytecodeInstr]
   children : Array[BytecodeFunction]
 }
@@ -111,6 +112,7 @@ priv struct BytecodeBuilder {
   children : Array[BytecodeFunction]
   local_names : Array[String]
   local_indices : Map[String, Int]
+  template_cache_key_prefix : String
   loop_contexts : Array[LoopPatchContext]
   break_contexts : Array[BreakPatchContext]
   label_contexts : Array[LabelPatchContext]
@@ -164,12 +166,14 @@ priv enum BytecodeRunResult {
 ///|
 fn BytecodeBuilder::BytecodeBuilder(
   plan : BytecodeLocalPlan,
+  template_cache_key_prefix : String,
 ) -> BytecodeBuilder {
   {
     code: [],
     children: [],
     local_names: plan.names,
     local_indices: plan.indices,
+    template_cache_key_prefix,
     loop_contexts: [],
     break_contexts: [],
     label_contexts: [],
@@ -1450,13 +1454,16 @@ fn compile_bytecode_function(
   rest_param : String?,
   use_local_slots? : Bool = true,
   call_self_name? : Bool = false,
+  template_cache_key_prefix? : String = "main",
 ) -> BytecodeFunction raise Error {
   let plan = plan_bytecode_locals(
     params,
     body,
     use_local_slots=use_local_slots && rest_param is None,
   )
-  let builder = BytecodeBuilder::BytecodeBuilder(plan)
+  let builder = BytecodeBuilder::BytecodeBuilder(
+    plan, template_cache_key_prefix,
+  )
   for stmt in body {
     builder.compile_stmt(stmt)
   }
@@ -1468,6 +1475,7 @@ fn compile_bytecode_function(
     body_has_use_strict: @runtime.has_use_strict(body),
     call_self_name,
     local_names: builder.local_names,
+    template_cache_key_prefix,
     code: builder.code,
     children: builder.children,
   }
@@ -1523,8 +1531,18 @@ fn BytecodeBuilder::add_function(
   call_self_name? : Bool = false,
 ) -> Int raise Error {
   let idx = self.children.length()
+  let template_cache_key_prefix = self.template_cache_key_prefix +
+    "/" +
+    idx.to_string()
   self.children.push(
-    compile_bytecode_function(name, params, body, rest_param, call_self_name~),
+    compile_bytecode_function(
+      name,
+      params,
+      body,
+      rest_param,
+      call_self_name~,
+      template_cache_key_prefix~,
+    ),
   )
   idx
 }
@@ -3941,8 +3959,14 @@ fn run_bytecode_function(
             )
         }
       }
-      MakeTemplateObject(strings) =>
-        frame.stack.push(@runtime.make_tagged_template_object(strings))
+      MakeTemplateObject(strings) => {
+        let site_key = frame.func_def.template_cache_key_prefix +
+          ":" +
+          (frame.ip - 1).to_string()
+        frame.stack.push(
+          interp.get_cached_tagged_template_object(site_key, strings),
+        )
+      }
       MakeRegExp(pattern, flags) =>
         frame.stack.push(
           (interp.stdlib_hooks.make_regexp_object)(

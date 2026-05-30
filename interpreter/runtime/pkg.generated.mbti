@@ -502,6 +502,7 @@ pub fn Interpreter::eval_super_property(Self, Environment, String, @token.Loc) -
 pub fn Interpreter::eval_super_property_call_reference(Self, Environment, String, @token.Loc) -> (Value, Value) raise
 pub fn Interpreter::eval_update_computed_property(Self, ExecContext, Value, Value, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) -> Value raise
 pub fn Interpreter::eval_update_property(Self, ExecContext, Value, String, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) -> Value raise
+pub fn Interpreter::get_cached_tagged_template_object(Self, String, Array[String]) -> Value
 pub fn Interpreter::get_compiled_name(Self, Environment, String) -> Value raise
 pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
 pub fn Interpreter::get_console_member(Self, String) -> Value raise

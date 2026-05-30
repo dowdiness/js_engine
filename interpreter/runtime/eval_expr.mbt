@@ -406,12 +406,11 @@ fn Interpreter::get_template_object_cache(self : Interpreter) -> ObjectData {
 }
 
 ///|
-fn Interpreter::get_tagged_template_object(
+pub fn Interpreter::get_cached_tagged_template_object(
   self : Interpreter,
-  loc : @token.Loc,
+  key : String,
   strings : Array[String],
 ) -> Value {
-  let key = tagged_template_cache_key(loc, strings)
   let cache = self.get_template_object_cache()
   match cache.bag.properties.get(key) {
     Some(value) => value
@@ -421,6 +420,18 @@ fn Interpreter::get_tagged_template_object(
       value
     }
   }
+}
+
+///|
+fn Interpreter::get_tagged_template_object(
+  self : Interpreter,
+  loc : @token.Loc,
+  strings : Array[String],
+) -> Value {
+  self.get_cached_tagged_template_object(
+    tagged_template_cache_key(loc, strings),
+    strings,
+  )
 }
 
 ///|
