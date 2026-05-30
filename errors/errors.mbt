@@ -65,7 +65,7 @@ pub fn JsError::get_message(self : JsError) -> String noraise {
 }
 
 ///|
-/// Format as "ErrorType: message" (for stack traces). Equivalent to to_string().
+/// Returns the error as an "ErrorType: message" string (same as to_string()).
 pub fn JsError::format(self : JsError) -> String noraise {
   self.to_string()
 }
@@ -90,6 +90,11 @@ pub fn format_if_js_error(err : Error) -> String? noraise {
 /// Lower-level companion to `format_if_js_error` for consumers that need
 /// the name and message as separate strings (e.g. to pass to a function that
 /// takes them individually).
+///
+/// MAINTAINER NOTE: Every JsError variant MUST have an explicit arm. The final
+/// `_ => None` only catches non-JsError errors — a missing arm silently returns
+/// `None` with no compile error. When adding a new variant, add an arm here and
+/// update `all_jserror_cases()` in `errors_test.mbt`.
 pub fn name_message_if_js_error(err : Error) -> (String, String)? noraise {
   match err {
     TypeError(message~) => Some(("TypeError", message))

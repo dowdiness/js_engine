@@ -23,6 +23,22 @@ fn expect_true(actual : Bool, label : String) -> Unit raise Error {
 }
 
 ///|
+/// One instance of every JsError variant. Update this when adding a new variant;
+/// all parametric tests below pull from here so nothing is silently omitted.
+fn all_jserror_cases() -> Array[@errors.JsError] {
+  [
+    TypeError(message="a"),
+    ReferenceError(message="b"),
+    SyntaxError(message="c"),
+    RangeError(message="d"),
+    URIError(message="e"),
+    EvalError(message="f"),
+    AggregateError(message="g", errors=[]),
+    InternalError(message="h"),
+  ]
+}
+
+///|
 test "name - TypeError" {
   let e = @errors.JsError::TypeError(message="x")
   expect_string(e.name(), "TypeError", "name")
@@ -108,17 +124,7 @@ test "format - AggregateError" {
 
 ///|
 test "format_if_js_error - consistent with format() for all variants" {
-  let cases : Array[@errors.JsError] = [
-    TypeError(message="a"),
-    ReferenceError(message="b"),
-    SyntaxError(message="c"),
-    RangeError(message="d"),
-    URIError(message="e"),
-    EvalError(message="f"),
-    AggregateError(message="g", errors=[]),
-    InternalError(message="h"),
-  ]
-  for e in cases {
+  for e in all_jserror_cases() {
     expect_true(
       @errors.format_if_js_error(e) == Some(e.format()),
       "format_if_js_error mismatch for " + e.name(),
@@ -137,17 +143,7 @@ test "format_if_js_error - None for non-JsError" {
 
 ///|
 test "name_message_if_js_error - consistent with name() and get_message() for all variants" {
-  let cases : Array[@errors.JsError] = [
-    TypeError(message="a"),
-    ReferenceError(message="b"),
-    SyntaxError(message="c"),
-    RangeError(message="d"),
-    URIError(message="e"),
-    EvalError(message="f"),
-    AggregateError(message="g", errors=[]),
-    InternalError(message="h"),
-  ]
-  for e in cases {
+  for e in all_jserror_cases() {
     let result = @errors.name_message_if_js_error(e)
     expect_true(
       result == Some((e.name(), e.get_message())),
@@ -167,17 +163,7 @@ test "name_message_if_js_error - None for non-JsError" {
 
 ///|
 test "format equals name + colon-space + get_message" {
-  let cases : Array[@errors.JsError] = [
-    TypeError(message="a"),
-    ReferenceError(message="b"),
-    SyntaxError(message="c"),
-    RangeError(message="d"),
-    URIError(message="e"),
-    EvalError(message="f"),
-    AggregateError(message="g", errors=[]),
-    InternalError(message="h"),
-  ]
-  for e in cases {
+  for e in all_jserror_cases() {
     let expected = e.name() + ": " + e.get_message()
     expect_true(e.format() == expected, "format mismatch for " + e.name())
   }
