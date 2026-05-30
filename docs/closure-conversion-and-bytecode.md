@@ -121,6 +121,44 @@ binary operations, array creation, property/computed lookup, calls, function
 naming/signature validation, and JavaScript exception raising delegate back to
 runtime code.
 
+## Current Bytecode Performance Snapshot
+
+Local JS-target benchmark output on 2026-05-30 from PR #164 head `8e7b9e1`
+used:
+
+```bash
+moon run benchmarks --target js -- --all --csv
+```
+
+The bytecode path is currently close to tree-walking performance, not a large
+speedup:
+
+| Workload | Tree-walk | Bytecode | Result |
+|---|---:|---:|---:|
+| `pipeline/*/evaluate` | 21.39 ms | 20.27 ms | about 1.06x faster / 5.2% lower |
+| `closure_factory` | 23.37 ms | 23.20 ms | about 1.01x faster / 0.7% lower |
+
+This is expected for the current design. Bytecode removes some AST dispatch,
+but most cost still lives in shared runtime helpers, environment lookup,
+function call/frame setup, and stack-VM instruction dispatch. The next
+performance work is therefore measurement and bottleneck isolation, not syntax
+broadening.
+
+Tracking issues:
+
+- [#165](https://github.com/dowdiness/js_engine/issues/165): bytecode
+  performance roadmap
+- [#166](https://github.com/dowdiness/js_engine/issues/166): bytecode
+  dispatch, environment, and call microbenchmarks
+- [#167](https://github.com/dowdiness/js_engine/issues/167): local/upvalue
+  slotting and `Environment` lookup overhead
+- [#168](https://github.com/dowdiness/js_engine/issues/168): bytecode function
+  call and frame setup overhead
+- [#169](https://github.com/dowdiness/js_engine/issues/169): VM dispatch and
+  stack overhead
+- [#170](https://github.com/dowdiness/js_engine/issues/170): shared runtime
+  helper hotspots
+
 Continue the bytecode/IR track with these constraints:
 
 1. Keep `run` on the existing interpreter until bytecode has enough correctness
