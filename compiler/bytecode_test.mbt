@@ -2104,6 +2104,17 @@ test "bytecode new.target respects Reflect.construct newTarget" {
 }
 
 ///|
+test "bytecode Reflect.construct uses newTarget prototype" {
+  let src =
+    #|function Base() {}
+    #|function Other() {}
+    #|Other.prototype.marker = 42;
+    #|var o = Reflect.construct(Base, [], Other);
+    #|o.marker + "," + (Object.getPrototypeOf(o) === Other.prototype);
+  inspect(bytecode_compare(src), content="value:42,true")
+}
+
+///|
 test "bytecode named function expressions bind self name inside function only" {
   let src =
     #|var f = function g(n) {

@@ -1354,7 +1354,11 @@ fn make_compiled_func(
         ) raise {
           let callee = func_ref.val.unwrap_or(Value::Undefined)
           if constructable && context.is_constructing() {
-            let new_obj = make_compiled_constructor_instance(proto)
+            let new_target = context.new_target()
+            let instance_proto = compiled_constructor_instance_proto(
+              callee, proto, new_target,
+            )
+            let new_obj = make_compiled_constructor_instance(instance_proto)
             let result = call_compiled_func(
               interp,
               callee,
@@ -1365,7 +1369,7 @@ fn make_compiled_func(
               strict,
               body,
               rest_param~,
-              new_target=context.new_target(),
+              new_target~,
               call_self_name~,
             )
             if is_constructor_return_object(result) {
@@ -1413,6 +1417,23 @@ fn make_compiled_func(
     }
   }
   func_obj
+}
+
+///|
+fn compiled_constructor_instance_proto(
+  callee : Value,
+  fallback_proto : Value,
+  new_target : Value?,
+) -> Value {
+  let target = new_target.unwrap_or(callee)
+  match target {
+    Value::Object(data) =>
+      match data.bag.properties.get("prototype") {
+        Some(proto) => proto
+        None => Value::Null
+      }
+    _ => fallback_proto
+  }
 }
 
 ///|

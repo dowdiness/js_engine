@@ -626,6 +626,19 @@ test "closure conversion constructs function expressions" {
 }
 
 ///|
+test "closure conversion Reflect.construct uses newTarget prototype" {
+  let src =
+    #|function Base() {}
+    #|function Other() {}
+    #|Other.prototype.marker = 42;
+    #|var o = Reflect.construct(Base, [], Other);
+    #|o.marker + "," + (Object.getPrototypeOf(o) === Other.prototype);
+  json_inspect([run_interpreter_outcome(src), run_script_outcome(src)], content=[
+    "value:42,true", "value:42,true",
+  ])
+}
+
+///|
 test "closure conversion constructs with spread arguments" {
   expect_script_value(
     "function C(a, b) { this.x = a + b; } var args = [40, 1]; var o = new C(...args); o.x + 1;",
