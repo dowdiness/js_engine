@@ -122,12 +122,14 @@ priv struct LoopPatchContext {
   labels : Array[String]
   break_jumps : Array[Int]
   continue_jumps : Array[Int]
+  cleanup_for_in : Bool
 }
 
 ///|
 priv struct LabelPatchContext {
   label : String
   break_jumps : Array[Int]
+  loop_depth : Int
 }
 
 ///|
@@ -227,8 +229,9 @@ fn BytecodeBuilder::restore_pending_loop_labels(
 fn BytecodeBuilder::push_loop_context(
   self : BytecodeBuilder,
   labels : Array[String],
+  cleanup_for_in? : Bool = false,
 ) -> Unit {
-  let ctx = { labels, break_jumps: [], continue_jumps: [] }
+  let ctx = { labels, break_jumps: [], continue_jumps: [], cleanup_for_in }
   self.loop_contexts.push(ctx)
   self.break_contexts.push(LoopBreakContext(ctx))
 }
@@ -246,7 +249,7 @@ fn BytecodeBuilder::pop_loop_context(
     }
     (None, _) => {
       bytecode_unsupported("loop context")
-      { labels: [], break_jumps: [], continue_jumps: [] }
+      { labels: [], break_jumps: [], continue_jumps: [], cleanup_for_in: false }
     }
   }
 }
@@ -306,17 +309,29 @@ fn BytecodeBuilder::find_label_context(
 }
 
 ///|
-fn BytecodeBuilder::find_labeled_loop_context(
+fn BytecodeBuilder::find_labeled_loop_context_index(
   self : BytecodeBuilder,
   label : String,
-) -> LoopPatchContext? {
+) -> Int? {
   for i = self.loop_contexts.length() - 1; i >= 0; i = i - 1 {
     let ctx = self.loop_contexts[i]
     if string_array_contains(ctx.labels, label) {
-      return Some(ctx)
+      return Some(i)
     }
   }
   None
+}
+
+///|
+fn BytecodeBuilder::emit_for_in_cleanups_after_loop_index(
+  self : BytecodeBuilder,
+  loop_index : Int,
+) -> Unit {
+  for i = self.loop_contexts.length() - 1; i > loop_index; i = i - 1 {
+    if self.loop_contexts[i].cleanup_for_in {
+      let _ = self.emit(EndForIn)
+    }
+  }
 }
 
 ///|
@@ -328,14 +343,17 @@ fn BytecodeBuilder::emit_loop_break(
     Some(target) => {
       match self.find_label_context(target) {
         Some(ctx) => {
+          self.emit_for_in_cleanups_after_loop_index(ctx.loop_depth - 1)
           let jump = self.emit(Jump(-1))
           ctx.break_jumps.push(jump)
           return
         }
         None => ()
       }
-      match self.find_labeled_loop_context(target) {
-        Some(ctx) => {
+      match self.find_labeled_loop_context_index(target) {
+        Some(idx) => {
+          let ctx = self.loop_contexts[idx]
+          self.emit_for_in_cleanups_after_loop_index(idx)
           let jump = self.emit(Jump(-1))
           ctx.break_jumps.push(jump)
         }
@@ -359,8 +377,10 @@ fn BytecodeBuilder::emit_loop_continue(
 ) -> Unit raise Error {
   match label {
     Some(target) =>
-      match self.find_labeled_loop_context(target) {
-        Some(ctx) => {
+      match self.find_labeled_loop_context_index(target) {
+        Some(idx) => {
+          let ctx = self.loop_contexts[idx]
+          self.emit_for_in_cleanups_after_loop_index(idx)
           let jump = self.emit(Jump(-1))
           ctx.continue_jumps.push(jump)
         }
@@ -1595,7 +1615,7 @@ fn BytecodeBuilder::compile_for_in_identifier(
   self.compile_identifier_store(name)
   let _ = self.emit(Pop)
   let labels = self.take_pending_loop_labels()
-  self.push_loop_context(labels)
+  self.push_loop_context(labels, cleanup_for_in=true)
   self.compile_stmt(body)
   let loop_ctx = self.pop_loop_context()
   self.restore_pending_loop_labels(labels)
@@ -1638,7 +1658,7 @@ fn BytecodeBuilder::compile_for_in_pattern(
   let _ = self.emit(AssignPattern(pattern))
   let _ = self.emit(Pop)
   let labels = self.take_pending_loop_labels()
-  self.push_loop_context(labels)
+  self.push_loop_context(labels, cleanup_for_in=true)
   self.compile_stmt(body)
   let loop_ctx = self.pop_loop_context()
   self.restore_pending_loop_labels(labels)
@@ -1692,7 +1712,7 @@ fn BytecodeBuilder::compile_for_in_expr(
   self.compile_for_in_expr_target_store(target)
   let _ = self.emit(Pop)
   let labels = self.take_pending_loop_labels()
-  self.push_loop_context(labels)
+  self.push_loop_context(labels, cleanup_for_in=true)
   self.compile_stmt(body)
   let loop_ctx = self.pop_loop_context()
   self.restore_pending_loop_labels(labels)
@@ -1957,13 +1977,17 @@ fn BytecodeBuilder::compile_stmt(
         self.compile_stmt(body, declaration_updates_completion~)
         let _ = self.pending_loop_labels.pop()
       } else {
-        self.label_contexts.push({ label, break_jumps: [] })
+        self.label_contexts.push({
+          label,
+          break_jumps: [],
+          loop_depth: self.loop_contexts.length(),
+        })
         self.compile_stmt(body, declaration_updates_completion~)
         let label_ctx = match self.label_contexts.pop() {
           Some(ctx) => ctx
           None => {
             bytecode_unsupported("label context")
-            { label, break_jumps: [] }
+            { label, break_jumps: [], loop_depth: self.loop_contexts.length() }
           }
         }
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())

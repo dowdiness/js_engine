@@ -893,6 +893,44 @@ test "bytecode labeled continue targets outer loops" {
 }
 
 ///|
+test "bytecode labeled continue unwinds nested for-in iterators" {
+  let src =
+    #|var log = "";
+    #|var k = "";
+    #|var j = "";
+    #|outer: for (k in { a: 1, b: 2 }) {
+    #|  log = log + "o" + k;
+    #|  for (j in { x: 1 }) {
+    #|    log = log + "i" + j;
+    #|    continue outer;
+    #|  }
+    #|  log = log + "x";
+    #|}
+    #|log + ":" + k + ":" + j;
+  inspect(bytecode_compare(src), content="value:oaixobix:b:x")
+}
+
+///|
+test "bytecode labeled break unwinds nested for-in iterators" {
+  let src =
+    #|var log = "";
+    #|var k = "";
+    #|var j = "";
+    #|outer: for (k in { a: 1, b: 2 }) {
+    #|  block: {
+    #|    for (j in { x: 1 }) {
+    #|      log = log + "i" + j;
+    #|      break block;
+    #|    }
+    #|  }
+    #|  log = log + "o" + k;
+    #|  continue outer;
+    #|}
+    #|log + ":" + k + ":" + j;
+  inspect(bytecode_compare(src), content="value:ixoaixob:b:x")
+}
+
+///|
 test "bytecode rejects unresolved labeled breaks and non-loop labeled continues" {
   inspect(
     bytecode_outcome("while (true) { break label; }"),
