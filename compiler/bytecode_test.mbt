@@ -390,6 +390,52 @@ test "bytecode ternary expression statement updates completion" {
 }
 
 ///|
+test "bytecode ternary eval reference keeps function environment backed" {
+  let src =
+    #|function f() {
+    #|  var x = 1;
+    #|  true ? eval("x = 2") : 0;
+    #|  return x;
+    #|}
+    #|f();
+  inspect(bytecode_compare(src), content="value:2")
+}
+
+///|
+test "bytecode ternary arguments reference keeps mapped arguments" {
+  let src =
+    #|function f(a) {
+    #|  (true ? arguments : 0)[0] = 3;
+    #|  return a;
+    #|}
+    #|f(1);
+  inspect(bytecode_compare(src), content="value:3")
+}
+
+///|
+test "bytecode ternary nested function reference captures outer local" {
+  let src =
+    #|function outer() {
+    #|  var x = 1;
+    #|  return (function() { return true ? x : 0; })();
+    #|}
+    #|outer();
+  inspect(bytecode_compare(src), content="value:1")
+}
+
+///|
+test "bytecode ternary branch function captures outer local" {
+  let src =
+    #|function outer(flag) {
+    #|  var x = 1;
+    #|  var f = flag ? function() { return x; } : function() { return 0; };
+    #|  return f();
+    #|}
+    #|outer(true);
+  inspect(bytecode_compare(src), content="value:1")
+}
+
+///|
 test "bytecode unary numeric logical and bitwise operators" {
   let src =
     #|var x = "2";

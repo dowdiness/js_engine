@@ -773,6 +773,11 @@ fn collect_nested_function_refs_from_expr(
       collect_nested_function_refs_from_expr(left, refs)
       collect_nested_function_refs_from_expr(right, refs)
     }
+    Ternary(cond, then_expr, else_expr, _) => {
+      collect_nested_function_refs_from_expr(cond, refs)
+      collect_nested_function_refs_from_expr(then_expr, refs)
+      collect_nested_function_refs_from_expr(else_expr, refs)
+    }
     Assign(_, value, _) => collect_nested_function_refs_from_expr(value, refs)
     Call(callee, args, _)
     | OptionalCall(callee, args, _)
@@ -1005,6 +1010,11 @@ fn collect_name_refs_from_expr(
     Binary(_, left, right, _) | Comma(left, right, _) => {
       collect_name_refs_from_expr(left, refs)
       collect_name_refs_from_expr(right, refs)
+    }
+    Ternary(cond, then_expr, else_expr, _) => {
+      collect_name_refs_from_expr(cond, refs)
+      collect_name_refs_from_expr(then_expr, refs)
+      collect_name_refs_from_expr(else_expr, refs)
     }
     Call(callee, args, _)
     | OptionalCall(callee, args, _)
