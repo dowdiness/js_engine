@@ -2786,20 +2786,14 @@ fn BytecodeBuilder::compile_object_method(
 ) -> Unit raise Error {
   let fn_idx = match prop.value {
     FuncExpr(Some(name), params, body, _) =>
-      self.add_function(Some(name), params, body, None, call_self_name=true)
+      self.add_function(Some(name), params, body, None)
     FuncExpr(None, params, body, _) =>
       self.add_function(None, params, body, None)
     FuncExprExt(Some(name), params, rest_param, body, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
-      self.add_function(
-        Some(name),
-        simple_params,
-        body,
-        simple_rest,
-        call_self_name=true,
-      )
+      self.add_function(Some(name), simple_params, body, simple_rest)
     }
     FuncExprExt(None, params, rest_param, body, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(

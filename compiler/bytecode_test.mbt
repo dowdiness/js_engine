@@ -1557,34 +1557,46 @@ test "bytecode object literal methods preserve receiver and names" {
 }
 
 ///|
-test "bytecode object literal methods expose their method name binding" {
+test "bytecode object literal methods do not create self-name bindings" {
   let src =
-    #|var outer = "outer";
-    #|var o = { m() { return (m === o.m) + ":" + outer; } };
+    #|var m = "outer";
+    #|var o = { m() { return (m === "outer") + ":" + this.m.name; } };
     #|o.m();
-  inspect(bytecode_compare(src), content="value:true:outer")
+  inspect(bytecode_compare(src), content="value:true:m")
 }
 
 ///|
-test "bytecode object literal method self binding respects local declarations" {
+test "bytecode object literal method local declarations shadow outer bindings" {
   let src =
+    #|var m = "outer";
     #|var o = { m() { var m; return m; } };
     #|o.m();
   inspect(bytecode_compare(src), content="value:undefined")
 }
 
 ///|
-test "bytecode object literal methods capture their self binding in nested functions" {
+test "bytecode object literal methods let nested closures capture outer bindings" {
   let src =
-    #|var o = { m() { return function() { return m === o.m; }; } };
+    #|var m = "outer";
+    #|var o = { m() { return function() { return m; }; } };
     #|o.m()();
-  inspect(bytecode_compare(src), content="value:true")
+  inspect(bytecode_compare(src), content="value:outer")
 }
 
 ///|
-test "bytecode object literal accessors expose their method name binding" {
+test "bytecode object literal rest methods do not create self-name bindings" {
   let src =
-    #|var o = { get x() { return x === Object.getOwnPropertyDescriptor(o, "x").get; } };
+    #|var m = "outer";
+    #|var o = { m(...args) { return m + ":" + args.length; } };
+    #|o.m(1, 2);
+  inspect(bytecode_compare(src), content="value:outer:2")
+}
+
+///|
+test "bytecode object literal accessors do not create self-name bindings" {
+  let src =
+    #|var x = "outer";
+    #|var o = { get x() { return x === "outer"; } };
     #|o.x;
   inspect(bytecode_compare(src), content="value:true")
 }

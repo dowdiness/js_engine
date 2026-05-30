@@ -12149,6 +12149,15 @@ test "§15.2.5: object shorthand method has no self-name binding" {
 }
 
 ///|
+test "§15.2.5: simple methods have no self-name binding" {
+  let src =
+    #|console.log(({ m() { return typeof m; } }).m());
+    #|console.log((new class { m() { return typeof m; } }).m());
+  let output = run_output(src)
+  json_inspect(output, content=["undefined", "undefined"])
+}
+
+///|
 /// Class methods mirror object-method semantics: no self-name binding.
 test "§15.2.5: class method has no self-name binding" {
   let src =

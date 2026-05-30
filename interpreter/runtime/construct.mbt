@@ -838,12 +838,14 @@ fn Interpreter::construct_value_impl(
           // Hoist declarations and top-level lexical TDZ markers.
           self.hoist_declarations(data.body, func_env, strict=func_strict)
           hoist_block_tdz(data.body, func_env)
-          match data.name {
-            Some(name) =>
-              if !func_env.bindings.contains(name) {
-                func_env.def(name, ctor, LetBinding)
-              }
-            None => ()
+          if data.has_name_binding {
+            match data.name {
+              Some(name) =>
+                if !func_env.bindings.contains(name) {
+                  func_env.def(name, ctor, LetBinding)
+                }
+              None => ()
+            }
           }
           let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
           raise_if_break_continue(exec_result)

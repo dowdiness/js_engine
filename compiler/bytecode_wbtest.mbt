@@ -661,18 +661,18 @@ test "bytecode lowers object literal methods to method functions" {
 }
 
 ///|
-test "bytecode marks named object methods for call self binding" {
+test "bytecode does not mark object methods for call self binding" {
   let bytecode = parse_bytecode_for_wb(
     "var o = { m() { return m; }, get x() { return x; } };",
   )
   guard bytecode.main.children.length() == 2 else {
     abort("expected method and getter children")
   }
-  guard bytecode.main.children[0].call_self_name else {
-    abort("expected method self binding")
+  guard !bytecode.main.children[0].call_self_name else {
+    abort("method should not get a self binding")
   }
-  guard bytecode.main.children[1].call_self_name else {
-    abort("expected getter self binding")
+  guard !bytecode.main.children[1].call_self_name else {
+    abort("getter should not get a self binding")
   }
 }
 
