@@ -4,6 +4,22 @@ package "dowdiness/js_engine/benchmarks"
 // Values
 pub const ARRAY_MAP_FILTER_SRC : String = "var arr = [];\nfor (var i = 0; i < 1000; i++) { arr.push(i); }\nvar result = arr\n  .map(function(x) { return x * 2; })\n  .filter(function(x) { return x % 6 === 0; });\nresult.length;"
 
+pub const BYTECODE_CALL_FRAME_SRC : String = "(function() {\n  function step(n) { return n + 1; }\n  var total = 0;\n  for (var i = 0; i < 10000; i = i + 1) {\n    total = step(total);\n  }\n  return total;\n})();"
+
+pub const BYTECODE_CAPTURED_ACCESS_SRC : String = "(function() {\n  var x = 0;\n  function read() { return x; }\n  for (var i = 0; i < 100000; i = i + 1) {\n    x = x + 1;\n  }\n  return read();\n})();"
+
+pub const BYTECODE_DISPATCH_STACK_SRC : String = "(function() {\n  for (var i = 0; i < 100000; i = i + 1) {\n    1, 2, 3, 4, 5, 6, 7, 8;\n  }\n  return i;\n})();"
+
+pub const BYTECODE_ENV_ACCESS_SRC : String = "(function() {\n  arguments;\n  var x = 0;\n  for (var i = 0; i < 100000; i = i + 1) {\n    x = x + 1;\n  }\n  return x;\n})();"
+
+pub const BYTECODE_LOCAL_ACCESS_SRC : String = "(function() {\n  var x = 0;\n  for (var i = 0; i < 100000; i = i + 1) {\n    x = x + 1;\n  }\n  return x;\n})();"
+
+pub const BYTECODE_MICRO_ACCESS_EXPECTED : String = "100000"
+
+pub const BYTECODE_MICRO_CALL_EXPECTED : String = "10000"
+
+pub const BYTECODE_RUNTIME_HELPERS_SRC : String = "(function() {\n  var obj = { value: 0, inc: function(x) { return x + 1; } };\n  for (var i = 0; i < 10000; i = i + 1) {\n    obj.value = obj.inc(obj.value);\n  }\n  return obj.value;\n})();"
+
 pub const CLOSURE_FACTORY_SRC : String = "function makeCounter(start) {\n  var count = start;\n  return function() {\n    count = count + 1;\n    return count;\n  };\n}\nvar counters = [];\nfor (var i = 0; i < 1000; i++) {\n  counters.push(makeCounter(i));\n}\nvar total = 0;\nfor (var i = 0; i < 1000; i++) {\n  total = total + counters[i]();\n}\ntotal;"
 
 pub const FIBONACCI_SMALL_SRC : String = "function fib(n) {\n  if (n <= 1) return n;\n  return fib(n - 1) + fib(n - 2);\n}\nfib(10);"
@@ -36,7 +52,19 @@ pub fn all_bench_names() -> Array[(String, String, String)]
 
 pub fn bench_array_map_filter() -> BenchResult raise
 
+pub fn bench_bytecode_call_frame() -> BenchResult raise
+
+pub fn bench_bytecode_captured_access() -> BenchResult raise
+
 pub fn bench_bytecode_closure_factory() -> BenchResult raise
+
+pub fn bench_bytecode_dispatch_stack() -> BenchResult raise
+
+pub fn bench_bytecode_env_access() -> BenchResult raise
+
+pub fn bench_bytecode_local_access() -> BenchResult raise
+
+pub fn bench_bytecode_runtime_helpers() -> BenchResult raise
 
 pub fn bench_closure_conversion_closure_factory() -> BenchResult raise
 

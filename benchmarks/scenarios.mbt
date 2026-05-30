@@ -163,6 +163,91 @@ pub fn bench_bytecode_closure_factory() -> BenchResult raise {
 }
 
 ///|
+fn prechecked_bytecode_program(
+  name : String,
+  src : String,
+  expected : String,
+) -> @compiler.BytecodeProgram raise {
+  verify(src, expected)
+  let prog = @parser.parse(src)
+  let bytecode = @compiler.compile_script_to_bytecode(prog.stmts)
+  let got = bytecode.run(@interpreter.new_interpreter()).to_string()
+  if got != expected {
+    abort(
+      "bench correctness check failed\n  source:   \{name} bytecode\n  expected: \{expected}\n  got:      \{got}",
+    )
+  }
+  bytecode
+}
+
+///|
+fn bench_bytecode_micro(
+  name : String,
+  src : String,
+  expected : String,
+) -> BenchResult raise {
+  let bytecode = prechecked_bytecode_program(name, src, expected)
+  let interp = @interpreter.new_interpreter()
+  run_bench(name, Component, { warmup: 3, iterations: 15, group_size: 3 }, fn() raise {
+    let _ = bytecode.run(interp)
+  })
+}
+
+///|
+pub fn bench_bytecode_dispatch_stack() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/dispatch_stack",
+    BYTECODE_DISPATCH_STACK_SRC,
+    BYTECODE_MICRO_ACCESS_EXPECTED,
+  )
+}
+
+///|
+pub fn bench_bytecode_local_access() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/local_access",
+    BYTECODE_LOCAL_ACCESS_SRC,
+    BYTECODE_MICRO_ACCESS_EXPECTED,
+  )
+}
+
+///|
+pub fn bench_bytecode_env_access() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/env_access",
+    BYTECODE_ENV_ACCESS_SRC,
+    BYTECODE_MICRO_ACCESS_EXPECTED,
+  )
+}
+
+///|
+pub fn bench_bytecode_captured_access() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/captured_access",
+    BYTECODE_CAPTURED_ACCESS_SRC,
+    BYTECODE_MICRO_ACCESS_EXPECTED,
+  )
+}
+
+///|
+pub fn bench_bytecode_call_frame() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/call_frame",
+    BYTECODE_CALL_FRAME_SRC,
+    BYTECODE_MICRO_CALL_EXPECTED,
+  )
+}
+
+///|
+pub fn bench_bytecode_runtime_helpers() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/runtime_helpers",
+    BYTECODE_RUNTIME_HELPERS_SRC,
+    BYTECODE_MICRO_CALL_EXPECTED,
+  )
+}
+
+///|
 pub fn bench_object_construction() -> BenchResult raise {
   verify(OBJECT_CONSTRUCTION_SRC, "1000")
   run_bench(
@@ -325,6 +410,12 @@ pub fn run_component() -> Array[BenchResult] raise {
     bench_closure_factory(),
     bench_closure_conversion_closure_factory(),
     bench_bytecode_closure_factory(),
+    bench_bytecode_dispatch_stack(),
+    bench_bytecode_local_access(),
+    bench_bytecode_env_access(),
+    bench_bytecode_captured_access(),
+    bench_bytecode_call_frame(),
+    bench_bytecode_runtime_helpers(),
     bench_arithmetic_loop(),
     bench_object_construction(),
     bench_string_ops(),
@@ -373,6 +464,12 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("exec/closure_factory", "component", "execution"),
     ("baseline/closure_conversion/closure_factory", "component", "execution"),
     ("baseline/bytecode/closure_factory", "component", "execution"),
+    ("isolate/bytecode/dispatch_stack", "component", "execution"),
+    ("isolate/bytecode/local_access", "component", "execution"),
+    ("isolate/bytecode/env_access", "component", "execution"),
+    ("isolate/bytecode/captured_access", "component", "execution"),
+    ("isolate/bytecode/call_frame", "component", "execution"),
+    ("isolate/bytecode/runtime_helpers", "component", "execution"),
     ("exec/arithmetic_loop", "component", "execution"),
     ("exec/object_construction", "component", "execution"),
     ("exec/string_ops", "component", "execution"),
