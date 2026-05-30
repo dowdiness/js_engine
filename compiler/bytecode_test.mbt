@@ -1470,6 +1470,17 @@ test "bytecode optional method call preserves receivers and skips nullish functi
 }
 
 ///|
+test "bytecode optional member call throws after arguments for missing method" {
+  let src =
+    #|var obj = {};
+    #|obj?.missing(console.log("arg"));
+  inspect(
+    bytecode_compare_with_output(src),
+    content="throw:TypeError: is not a function; output:arg",
+  )
+}
+
+///|
 test "bytecode optional member calls skip property and arguments for nullish receivers" {
   let src =
     #|var hit = 0;

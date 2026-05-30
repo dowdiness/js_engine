@@ -2232,13 +2232,16 @@ fn BytecodeBuilder::compile_optional_call_with_receiver_tail(
   args : Array[@ast.Expr],
   loc : @token.Loc,
   end_jumps : Array[Int],
+  optional_callee~ : Bool,
 ) -> Unit raise Error {
-  let call_jump = self.emit(JumpIfNotNullishKeep(-1))
-  let _ = self.emit(Pop)
-  let _ = self.emit(Pop)
-  let _ = self.emit(LoadUndefined)
-  end_jumps.push(self.emit(Jump(-1)))
-  self.patch(call_jump, JumpIfNotNullishKeep(self.code.length()))
+  if optional_callee {
+    let call_jump = self.emit(JumpIfNotNullishKeep(-1))
+    let _ = self.emit(Pop)
+    let _ = self.emit(Pop)
+    let _ = self.emit(LoadUndefined)
+    end_jumps.push(self.emit(Jump(-1)))
+    self.patch(call_jump, JumpIfNotNullishKeep(self.code.length()))
+  }
   self.emit_call_with_receiver(args, loc)
   for jump in end_jumps {
     self.patch(jump, Jump(self.code.length()))
@@ -2254,6 +2257,7 @@ fn BytecodeBuilder::compile_optional_property_call(
   member_loc : @token.Loc,
   loc : @token.Loc,
   optional_obj~ : Bool,
+  optional_callee~ : Bool,
 ) -> Unit raise Error {
   let end_jumps : Array[Int] = []
   self.compile_expr(obj)
@@ -2265,7 +2269,12 @@ fn BytecodeBuilder::compile_optional_property_call(
     self.patch(member_jump, JumpIfNotNullishKeep(self.code.length()))
   }
   let _ = self.emit(PreparePropertyCall(prop, member_loc))
-  self.compile_optional_call_with_receiver_tail(args, loc, end_jumps)
+  self.compile_optional_call_with_receiver_tail(
+    args,
+    loc,
+    end_jumps,
+    optional_callee~,
+  )
 }
 
 ///|
@@ -2277,6 +2286,7 @@ fn BytecodeBuilder::compile_optional_computed_call(
   member_loc : @token.Loc,
   loc : @token.Loc,
   optional_obj~ : Bool,
+  optional_callee~ : Bool,
 ) -> Unit raise Error {
   let end_jumps : Array[Int] = []
   self.compile_expr(obj)
@@ -2289,7 +2299,12 @@ fn BytecodeBuilder::compile_optional_computed_call(
   }
   self.compile_expr(key)
   let _ = self.emit(PrepareComputedCall(member_loc))
-  self.compile_optional_call_with_receiver_tail(args, loc, end_jumps)
+  self.compile_optional_call_with_receiver_tail(
+    args,
+    loc,
+    end_jumps,
+    optional_callee~,
+  )
 }
 
 ///|
@@ -3338,6 +3353,7 @@ fn BytecodeBuilder::compile_expr(
             member_loc,
             loc,
             optional_obj=true,
+            optional_callee=true,
           )
         OptionalComputedMember(obj, key, member_loc) =>
           self.compile_optional_computed_call(
@@ -3347,6 +3363,7 @@ fn BytecodeBuilder::compile_expr(
             member_loc,
             loc,
             optional_obj=true,
+            optional_callee=true,
           )
         Member(obj, prop, member_loc) =>
           self.compile_optional_property_call(
@@ -3356,6 +3373,7 @@ fn BytecodeBuilder::compile_expr(
             member_loc,
             loc,
             optional_obj=false,
+            optional_callee=true,
           )
         ComputedMember(obj, key, member_loc) =>
           self.compile_optional_computed_call(
@@ -3365,6 +3383,7 @@ fn BytecodeBuilder::compile_expr(
             member_loc,
             loc,
             optional_obj=false,
+            optional_callee=true,
           )
         _ => self.compile_optional_plain_call(callee, args, loc)
       }
@@ -3381,6 +3400,26 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(PrepareSuperComputedCall(member_loc))
       self.emit_call_with_receiver(args, loc)
     }
+    Call(OptionalMember(obj, prop, member_loc), args, loc) =>
+      self.compile_optional_property_call(
+        obj,
+        prop,
+        args,
+        member_loc,
+        loc,
+        optional_obj=true,
+        optional_callee=false,
+      )
+    Call(OptionalComputedMember(obj, key, member_loc), args, loc) =>
+      self.compile_optional_computed_call(
+        obj,
+        key,
+        args,
+        member_loc,
+        loc,
+        optional_obj=true,
+        optional_callee=false,
+      )
     Call(Member(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
       let _ = self.emit(PreparePropertyCall(prop, member_loc))

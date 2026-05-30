@@ -614,6 +614,29 @@ fn Interpreter::eval_call(
     _ =>
       // Per ES spec (13.3.6.1), evaluate callee/receiver first, then arguments.
       match callee_expr {
+        OptionalMember(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let func_val = self.get_property(obj, prop, mloc)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        }
+        OptionalComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Undefined
+            _ => {
+              let key = self.eval_expr(ctx, key_expr, env)
+              let func_val = self.get_computed_property(obj, key, mloc)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        }
         Member(obj_expr, prop, mloc) =>
           match obj_expr {
             Ident("console", _) => {
