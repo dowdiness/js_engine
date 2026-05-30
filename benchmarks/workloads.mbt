@@ -378,6 +378,129 @@ pub const PIPELINE_EXEC_SRC : String =
 pub const PIPELINE_EXEC_EXPECTED : String = "500500"
 
 // ---------------------------------------------------------------------------
+// Bytecode isolation workloads — pre-parsed and pre-compiled before timing
+// ---------------------------------------------------------------------------
+
+///|
+/// Bytecode dispatch / stack push-pop control workload.
+///
+/// Category: Component
+/// Exercises: a hot loop whose body is a comma expression over constants.
+///            This keeps runtime-helper work low while forcing repeated
+///            LoadConst/Pop/SetCompletion bytecode dispatch and value-stack
+///            traffic around the loop-control instructions.
+///
+/// Expected result: "100000"
+pub const BYTECODE_DISPATCH_STACK_SRC : String =
+  #|(function() {
+  #|  for (var i = 0; i < 100000; i = i + 1) {
+  #|    1, 2, 3, 4, 5, 6, 7, 8;
+  #|  }
+  #|  return i;
+  #|})();
+
+///|
+/// Function-local slot read/write workload.
+///
+/// Category: Component
+/// Exercises: LoadLocal/StoreLocal for a function-local counter in the same
+///            loop shape as the environment and captured-access workloads.
+///
+/// Expected result: "100000"
+pub const BYTECODE_LOCAL_ACCESS_SRC : String =
+  #|(function() {
+  #|  var x = 0;
+  #|  for (var i = 0; i < 100000; i = i + 1) {
+  #|    x = x + 1;
+  #|  }
+  #|  return x;
+  #|})();
+
+///|
+/// Environment-name read/write workload.
+///
+/// Category: Component
+/// Exercises: LoadName/StoreName for the same counter loop as
+///            BYTECODE_LOCAL_ACCESS_SRC. The unused `arguments` reference keeps
+///            the current prototype from planning function-local slots, so the
+///            hot variables are served by Environment name lookup instead.
+///
+/// Expected result: "100000"
+pub const BYTECODE_ENV_ACCESS_SRC : String =
+  #|(function() {
+  #|  arguments;
+  #|  var x = 0;
+  #|  for (var i = 0; i < 100000; i = i + 1) {
+  #|    x = x + 1;
+  #|  }
+  #|  return x;
+  #|})();
+
+///|
+/// Captured-binding read/write workload.
+///
+/// Category: Component
+/// Exercises: a counter that must stay in the Environment because a nested
+///            function captures it. Loop control remains slot-backed, isolating
+///            the current captured/upvalue fallback from generic no-slot mode.
+///
+/// Expected result: "100000"
+pub const BYTECODE_CAPTURED_ACCESS_SRC : String =
+  #|(function() {
+  #|  var x = 0;
+  #|  function read() { return x; }
+  #|  for (var i = 0; i < 100000; i = i + 1) {
+  #|    x = x + 1;
+  #|  }
+  #|  return read();
+  #|})();
+
+///|
+/// Bytecode function call/frame setup workload.
+///
+/// Category: Component
+/// Exercises: repeated bytecode-function calls with one numeric argument and a
+///            simple return value. Property lookup and builtin dispatch are
+///            excluded so the row focuses on Call, call_value(), parameter
+///            binding, BytecodeFrame setup, and Return.
+///
+/// Expected result: "10000"
+pub const BYTECODE_CALL_FRAME_SRC : String =
+  #|(function() {
+  #|  function step(n) { return n + 1; }
+  #|  var total = 0;
+  #|  for (var i = 0; i < 10000; i = i + 1) {
+  #|    total = step(total);
+  #|  }
+  #|  return total;
+  #|})();
+
+///|
+/// Runtime-helper-heavy bytecode workload.
+///
+/// Category: Component
+/// Exercises: property get, property set, method-call receiver preparation, and
+///            call_value() in a compact loop. This row intentionally reuses the
+///            shared runtime helpers instead of adding bytecode-specific fast
+///            paths.
+///
+/// Expected result: "10000"
+pub const BYTECODE_RUNTIME_HELPERS_SRC : String =
+  #|(function() {
+  #|  var obj = { value: 0, inc: function(x) { return x + 1; } };
+  #|  for (var i = 0; i < 10000; i = i + 1) {
+  #|    obj.value = obj.inc(obj.value);
+  #|  }
+  #|  return obj.value;
+  #|})();
+
+///|
+pub const BYTECODE_MICRO_ACCESS_EXPECTED : String = "100000"
+
+///|
+pub const BYTECODE_MICRO_CALL_EXPECTED : String = "10000"
+
+// ---------------------------------------------------------------------------
 // Pipeline workload (parser only — not executed)
 // ---------------------------------------------------------------------------
 

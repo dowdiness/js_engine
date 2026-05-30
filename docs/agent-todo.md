@@ -276,27 +276,32 @@ for those workloads.
 reject unsupported semantics explicitly. The current fail-fast rejection list is
 tracked in [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-explicit-bytecode-rejections).
 
-### Bytecode performance measurement follow-ups — OPEN (2026-05-30)
+### Bytecode performance measurement follow-ups — #166 MEASURED LOCALLY (2026-05-30)
 
-**Source:** PR #164 benchmark snapshot and
-[closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-bytecode-performance-snapshot).
+**Source:** #166 local JS-target run and
+[closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-bytecode-performance-snapshot-local-js-target-2026-05-30).
 
-**Finding:** On the current JS-target benchmark snapshot, bytecode is only a
-small win over tree-walking: about 1.06x on `pipeline/*/evaluate` and about
-1.01x on `closure_factory`. Do not start a broad optimization design from this
-alone; first isolate costs with microbenchmarks.
+**Finding:** The broad bytecode rows are still near tree-walking performance:
+`pipeline/*/evaluate` was about 1.10x faster locally, while `closure_factory`
+was about 1.02x slower. The #166 microbenchmarks confirm at least one real
+bottleneck: bytecode call/frame setup is the clearest cost (~5.8 µs per trivial
+call in the 10k-call row). Generic `Environment` lookup is also reproducibly
+slower than local slots (~1.41x on the matched counter loop), while captured
+access is only modestly slower than locals in the measured shape (~1.10x).
 
-**Issues:** Start with [#166](https://github.com/dowdiness/js_engine/issues/166)
-under the roadmap [#165](https://github.com/dowdiness/js_engine/issues/165).
-Only after measurement, consider [#167](https://github.com/dowdiness/js_engine/issues/167)
-(local/upvalue slotting), [#168](https://github.com/dowdiness/js_engine/issues/168)
-(call/frame setup), [#169](https://github.com/dowdiness/js_engine/issues/169)
-(VM dispatch/stack overhead), and [#170](https://github.com/dowdiness/js_engine/issues/170)
-(shared runtime helper hotspots).
+**Next issue order:** After the #166 benchmark rows land, prioritize
+[#168](https://github.com/dowdiness/js_engine/issues/168) (call/frame setup),
+then [#170](https://github.com/dowdiness/js_engine/issues/170) (runtime helper
+hotspots), then [#167](https://github.com/dowdiness/js_engine/issues/167)
+(local/upvalue/env slotting), then [#169](https://github.com/dowdiness/js_engine/issues/169)
+(VM dispatch/stack overhead), unless a newer JS-target benchmark contradicts
+this order. Keep [#165](https://github.com/dowdiness/js_engine/issues/165) as
+the parent roadmap.
 
 **Guardrails:** Do not broaden bytecode syntax in these follow-ups. Keep `run`
 on the tree-walker, keep bytecode opt-in, reuse runtime helpers, and keep
-compare-against-tree-walker tests for every supported construct touched.
+compare-against-tree-walker tests for every supported construct touched. Do not
+start optimization design from stale snapshots; rerun the focused row first.
 
 ### ~~Migrate remaining deprecated `inspect` snapshots~~ — DONE (2026-05-14)
 
