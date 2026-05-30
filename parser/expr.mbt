@@ -598,6 +598,9 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
     } else if self.peek_kind() is NoSubTemplate(_) ||
       self.peek_kind() is TemplateHead(_) {
       // Tagged template: tag`string` or tag`str${expr}str`
+      if in_optional_chain {
+        raise @errors.SyntaxError(message="Bad_optional_template")
+      }
       let tloc = self.peek().loc
       match self.peek_kind() {
         NoSubTemplate(s) => {

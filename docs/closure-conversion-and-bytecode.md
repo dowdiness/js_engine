@@ -121,10 +121,11 @@ binary operations, array creation, property/computed lookup, calls, function
 naming/signature validation, and JavaScript exception raising delegate back to
 runtime code.
 
-## Current Bytecode Performance Snapshot
+## Current Bytecode Performance Snapshot (unverified)
 
 Local JS-target benchmark output on 2026-05-30 from PR #164 head `8e7b9e1`
-used:
+used the command below. The raw CSV/output was not archived with this note, so
+treat the rows as unverified until regenerated from CI artifacts or a saved CSV:
 
 ```bash
 moon run benchmarks --target js -- --all --csv

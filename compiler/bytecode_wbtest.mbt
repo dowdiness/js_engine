@@ -483,32 +483,15 @@ test "bytecode lowers member tagged templates to receiver calls" {
 }
 
 ///|
-test "bytecode lowers optional tagged templates to optional loads and plain calls" {
-  let bytecode = parse_bytecode_for_wb("obj?.tag`a${x}b`; obj?.[key]`c`; ")
-  let mut saw_optional_jump = false
-  let mut saw_property_get = false
-  let mut saw_computed_get = false
-  let mut saw_plain_call = false
-  let mut saw_receiver_call = false
-  for instr in bytecode.main.code {
-    match instr {
-      JumpIfNotNullishKeep(_) => saw_optional_jump = true
-      GetProperty("tag", _) => saw_property_get = true
-      GetComputed(_) => saw_computed_get = true
-      Call(_, _) => saw_plain_call = true
-      CallWithReceiver(_, _) => saw_receiver_call = true
-      _ => ()
-    }
+test "bytecode rejects optional tagged templates at parse time" {
+  let outcome = try {
+    let _ = @parser.parse("obj?.tag`a${x}b`; obj?.[key]`c`; ")
+    "ok"
+  } catch {
+    @errors.SyntaxError(message~) => message
+    err => err.to_string()
   }
-  guard saw_optional_jump else { abort("expected optional tag guard") }
-  guard saw_property_get else { abort("expected optional property tag load") }
-  guard saw_computed_get else { abort("expected optional computed tag load") }
-  guard saw_plain_call else {
-    abort("expected optional tagged template plain call")
-  }
-  guard !saw_receiver_call else {
-    abort("optional tagged template should not use receiver call")
-  }
+  inspect(outcome, content="Bad_optional_template")
 }
 
 ///|

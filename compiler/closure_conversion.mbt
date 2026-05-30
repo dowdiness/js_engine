@@ -1356,7 +1356,7 @@ fn make_compiled_func(
           if constructable && context.is_constructing() {
             let new_target = context.new_target()
             let instance_proto = compiled_constructor_instance_proto(
-              callee, proto, new_target,
+              interp, callee, new_target,
             )
             let new_obj = make_compiled_constructor_instance(instance_proto)
             let result = call_compiled_func(
@@ -1421,19 +1421,12 @@ fn make_compiled_func(
 
 ///|
 fn compiled_constructor_instance_proto(
+  interp : Interpreter,
   callee : Value,
-  fallback_proto : Value,
   new_target : Value?,
-) -> Value {
+) -> Value raise Error {
   let target = new_target.unwrap_or(callee)
-  match target {
-    Value::Object(data) =>
-      match data.bag.properties.get("prototype") {
-        Some(proto) => proto
-        None => Value::Null
-      }
-    _ => fallback_proto
-  }
+  interp.get_prototype_from_constructor(target, @token.Loc::default())
 }
 
 ///|

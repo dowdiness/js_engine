@@ -5116,6 +5116,26 @@ test "derived super double init throws ReferenceError" {
 }
 
 ///|
+test "derived super property before super throws ReferenceError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  class B { get value() { return 1; } }
+      #|  class D extends B { constructor() { return super.value; } }
+      #|  new D();
+      #|  console.log("no error");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|  console.log(e.message);
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "ReferenceError", "Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
+  ])
+}
+
+///|
 test "derived super double init throws when super returns object" {
   let output = run_output(
     (
@@ -14792,4 +14812,32 @@ test "tagged template strings object inherits Array methods" {
     #|console.log(String.raw`x${1}y`);
   let output = run_output(src)
   json_inspect(output, content=["a|b", "ab", "x1y"])
+}
+
+///|
+test "tagged template objects are cached and frozen" {
+  let src =
+    #|var first;
+    #|var firstRaw;
+    #|function tag(strings) {
+    #|  if (!first) {
+    #|    first = strings;
+    #|    firstRaw = strings.raw;
+    #|  } else {
+    #|    console.log(strings === first);
+    #|    console.log(strings.raw === firstRaw);
+    #|  }
+    #|  strings[0] = "x";
+    #|  strings.raw[0] = "y";
+    #|  strings.raw = [];
+    #|  console.log(strings[0] + "," + strings.raw[0] + "," + (strings.raw === firstRaw));
+    #|  console.log(Object.isExtensible(strings) + "," + Object.isExtensible(strings.raw));
+    #|}
+    #|function run(value) { tag`a${value}b`; }
+    #|run(1);
+    #|run(2);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "a,a,true", "false,false", "true", "true", "a,a,true", "false,false",
+  ])
 }

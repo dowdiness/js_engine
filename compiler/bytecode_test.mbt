@@ -259,35 +259,15 @@ test "bytecode member tagged template captures receiver bindings" {
 }
 
 ///|
-test "bytecode optional member tagged template follows value-call semantics" {
-  let src =
-    #|var obj = { tag: function(strings, value) { "use strict"; return (this === undefined) + ":" + strings[0] + strings[1] + ":" + value; } };
-    #|obj?.tag`a${1}b`;
-  inspect(bytecode_compare(src), content="value:true:ab:1")
-}
-
-///|
-test "bytecode optional computed tagged template skips nullish key before throwing" {
-  let src =
-    #|var obj = null;
-    #|function key() { console.log("key"); return "tag"; }
-    #|obj?.[key()]`${console.log("sub")}`;
+test "bytecode rejects optional tagged templates at parse time" {
   inspect(
-    bytecode_compare_with_output(src),
-    content="throw:TypeError: is not a function; output:sub",
+    bytecode_outcome("var obj = {}; obj?.tag`a${1}b`;"),
+    content="error:SyntaxError: Bad_optional_template",
   )
-}
-
-///|
-test "bytecode optional tagged template captures tag and substitution bindings" {
-  let src =
-    #|function outer() {
-    #|  var obj = { tag: function(strings, value) { return value; } };
-    #|  var x = 5;
-    #|  return function() { return obj?.tag`${x}`; };
-    #|}
-    #|outer()();
-  inspect(bytecode_compare(src), content="value:5")
+  inspect(
+    bytecode_outcome("var obj = {}; obj?.[key]`c`;"),
+    content="error:SyntaxError: Bad_optional_template",
+  )
 }
 
 ///|
@@ -505,10 +485,15 @@ test "bytecode delete property handles primitive and null receivers like interpr
 ///|
 test "bytecode delete identifiers uses shared runtime semantics" {
   let src =
-    #|function f() { return delete arguments; }
+    #|function f(param) { var local = 1; return (delete arguments) + "," + (delete param) + "," + (delete local); }
+    #|globalThis.dynamic = 1;
+    #|var dynamic_delete = delete dynamic;
     #|var missing_delete = delete missing;
-    #|missing_delete + "," + f();
-  inspect(bytecode_compare(src), content="value:true,true")
+    #|missing_delete + "," + f(1) + "," + dynamic_delete + "," + ("dynamic" in globalThis);
+  inspect(
+    bytecode_compare(src),
+    content="value:true,false,false,false,true,false",
+  )
 }
 
 ///|
@@ -1771,6 +1756,16 @@ test "bytecode object methods read super properties" {
 }
 
 ///|
+test "bytecode object methods read super accessors with the current receiver" {
+  let src =
+    #|var key = "value";
+    #|var proto = { get value() { return this.x; } };
+    #|var o = { __proto__: proto, x: 7, m() { return super.value + "," + super[key]; } };
+    #|o.m();
+  inspect(bytecode_compare(src), content="value:7,7")
+}
+
+///|
 test "bytecode object methods call super methods with the current receiver" {
   let src =
     #|var proto = { getX: function() { return this.x + ":" + this.flag; } };
@@ -2108,10 +2103,14 @@ test "bytecode Reflect.construct uses newTarget prototype" {
   let src =
     #|function Base() {}
     #|function Other() {}
-    #|Other.prototype.marker = 42;
-    #|var o = Reflect.construct(Base, [], Other);
-    #|o.marker + "," + (Object.getPrototypeOf(o) === Other.prototype);
-  inspect(bytecode_compare(src), content="value:42,true")
+    #|var calls = 0;
+    #|var proto = { marker: 42 };
+    #|var NewTarget = new Proxy(Other, { get: function(target, prop, receiver) { if (prop === "prototype") { calls = calls + 1; return proto; } return Reflect.get(target, prop, receiver); } });
+    #|var o = Reflect.construct(Base, [], NewTarget);
+    #|var PrimitiveProto = new Proxy(Other, { get: function(target, prop, receiver) { if (prop === "prototype") { return 1; } return Reflect.get(target, prop, receiver); } });
+    #|var fallback = Reflect.construct(Base, [], PrimitiveProto);
+    #|calls + "," + o.marker + "," + (Object.getPrototypeOf(o) === proto) + "," + (Object.getPrototypeOf(fallback) === Object.prototype);
+  inspect(bytecode_compare(src), content="value:1,42,true,true")
 }
 
 ///|

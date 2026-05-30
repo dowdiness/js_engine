@@ -630,11 +630,15 @@ test "closure conversion Reflect.construct uses newTarget prototype" {
   let src =
     #|function Base() {}
     #|function Other() {}
-    #|Other.prototype.marker = 42;
-    #|var o = Reflect.construct(Base, [], Other);
-    #|o.marker + "," + (Object.getPrototypeOf(o) === Other.prototype);
+    #|var calls = 0;
+    #|var proto = { marker: 42 };
+    #|var NewTarget = new Proxy(Other, { get: function(target, prop, receiver) { if (prop === "prototype") { calls = calls + 1; return proto; } return Reflect.get(target, prop, receiver); } });
+    #|var o = Reflect.construct(Base, [], NewTarget);
+    #|var PrimitiveProto = new Proxy(Other, { get: function(target, prop, receiver) { if (prop === "prototype") { return 1; } return Reflect.get(target, prop, receiver); } });
+    #|var fallback = Reflect.construct(Base, [], PrimitiveProto);
+    #|calls + "," + o.marker + "," + (Object.getPrototypeOf(o) === proto) + "," + (Object.getPrototypeOf(fallback) === Object.prototype);
   json_inspect([run_interpreter_outcome(src), run_script_outcome(src)], content=[
-    "value:42,true", "value:42,true",
+    "value:1,42,true,true", "value:1,42,true,true",
   ])
 }
 

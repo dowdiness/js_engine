@@ -23,6 +23,88 @@ fn resolve_super_target(env : Environment) -> Value {
 }
 
 ///|
+fn Interpreter::get_symbol_property_from_prototype(
+  self : Interpreter,
+  receiver : Value,
+  proto : Value,
+  sym : SymbolData,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let key = Value::Symbol(sym)
+  let mut current = proto
+  while true {
+    match current {
+      Object(data) => {
+        match data.bag.symbol_descriptors.get(sym.id) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter) => return self.call_value(getter, receiver, [], loc)
+              None => if desc.setter is Some(_) { return Undefined }
+            }
+          None => ()
+        }
+        match data.bag.symbol_properties.get(sym.id) {
+          Some(value) => return value
+          None => current = data.prototype
+        }
+      }
+      Array(data) => {
+        match data.bag.symbol_descriptors.get(sym.id) {
+          Some(desc) =>
+            match desc.getter {
+              Some(getter) => return self.call_value(getter, receiver, [], loc)
+              None => if desc.setter is Some(_) { return Undefined }
+            }
+          None => ()
+        }
+        match get_array_symbol_prop(data, sym.id) {
+          Some(value) => return value
+          None => current = get_array_prototype(self.realm_state, data)
+        }
+      }
+      Proxy(proxy_data) =>
+        match get_proxy_trap(proxy_data, "get", self) {
+          Some(trap_fn) => {
+            let target = get_proxy_target(proxy_data)
+            let handler = get_proxy_handler(proxy_data)
+            return self.call_value(
+              trap_fn,
+              handler,
+              [target, key, receiver],
+              loc,
+            )
+          }
+          None => current = get_proxy_target(proxy_data)
+        }
+      Null => return Undefined
+      _ => return self.get_computed_property(current, key, loc)
+    }
+  }
+  Undefined
+}
+
+///|
+fn Interpreter::get_computed_property_from_prototype(
+  self : Interpreter,
+  receiver : Value,
+  proto : Value,
+  key : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match key {
+    Symbol(sym) =>
+      self.get_symbol_property_from_prototype(receiver, proto, sym, loc)
+    _ =>
+      self.get_property_from_prototype(
+        receiver,
+        proto,
+        to_js_string(key, interp=Some(self)),
+        loc,
+      )
+  }
+}
+
+///|
 pub fn Interpreter::eval_super_property(
   self : Interpreter,
   env : Environment,
@@ -35,7 +117,10 @@ pub fn Interpreter::eval_super_property(
       raise @errors.ReferenceError(
         message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => self.get_property(super_proto, prop, loc)
+    _ => {
+      let this_val = eval_this_value(env)
+      self.get_property_from_prototype(this_val, super_proto, prop, loc)
+    }
   }
 }
 
@@ -52,7 +137,10 @@ pub fn Interpreter::eval_super_computed_property(
       raise @errors.ReferenceError(
         message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => self.get_computed_property(super_proto, key, loc)
+    _ => {
+      let this_val = eval_this_value(env)
+      self.get_computed_property_from_prototype(this_val, super_proto, key, loc)
+    }
   }
 }
 
@@ -64,9 +152,19 @@ pub fn Interpreter::eval_super_property_call_reference(
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
   let super_proto = resolve_super_target(env)
-  let func_val = self.get_property(super_proto, prop, loc)
-  let this_val = env.get("this") catch { _ => Undefined }
-  (this_val, func_val)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => {
+      let this_val = eval_this_value(env)
+      let func_val = self.get_property_from_prototype(
+        this_val, super_proto, prop, loc,
+      )
+      (this_val, func_val)
+    }
+  }
 }
 
 ///|
@@ -77,9 +175,19 @@ pub fn Interpreter::eval_super_computed_call_reference(
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
   let super_proto = resolve_super_target(env)
-  let func_val = self.get_computed_property(super_proto, key, loc)
-  let this_val = env.get("this") catch { _ => Undefined }
-  (this_val, func_val)
+  match super_proto {
+    Null | Undefined =>
+      raise @errors.ReferenceError(
+        message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    _ => {
+      let this_val = eval_this_value(env)
+      let func_val = self.get_computed_property_from_prototype(
+        this_val, super_proto, key, loc,
+      )
+      (this_val, func_val)
+    }
+  }
 }
 
 ///|
@@ -199,18 +307,120 @@ pub fn Interpreter::to_object_literal_property_key(
 }
 
 ///|
+fn frozen_template_data_descriptor(enumerable : Bool) -> PropDescriptor {
+  {
+    writable: false,
+    enumerable,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn freeze_template_array(value : Value) -> Unit {
+  match value {
+    Array(data) => {
+      data.extensible = false
+      data.length_writable = false
+      for i = 0; i < data.elements.length(); i = i + 1 {
+        data.bag.descriptors[i.to_string()] = frozen_template_data_descriptor(
+          true,
+        )
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
 pub fn make_tagged_template_object(strings : Array[String]) -> Value {
   let raw_vals : Array[Value] = []
   for s in strings {
     raw_vals.push(String_(s))
   }
   let raw_arr = make_array(raw_vals)
+  freeze_template_array(raw_arr)
   let template_obj = make_array(raw_vals.copy())
   match template_obj {
-    Array(data) => set_array_named_prop(data, "raw", raw_arr)
+    Array(data) => {
+      set_array_named_prop(data, "raw", raw_arr)
+      data.bag.descriptors["raw"] = frozen_template_data_descriptor(false)
+    }
     _ => ()
   }
+  freeze_template_array(template_obj)
   template_obj
+}
+
+///|
+fn tagged_template_cache_key(
+  loc : @token.Loc,
+  strings : Array[String],
+) -> String {
+  let buf = StringBuilder::new()
+  buf.write_string(loc.line.to_string())
+  buf.write_string(":")
+  buf.write_string(loc.col.to_string())
+  buf.write_string(":")
+  buf.write_string(loc.offset.to_string())
+  for s in strings {
+    buf.write_string(":")
+    buf.write_string(s.length().to_string())
+    buf.write_string(":")
+    buf.write_string(s)
+  }
+  buf.to_string()
+}
+
+///|
+const TEMPLATE_OBJECT_CACHE_BINDING = "[[TemplateObjectCache]]"
+
+///|
+fn Interpreter::get_template_object_cache(self : Interpreter) -> ObjectData {
+  match self.global.bindings.get(TEMPLATE_OBJECT_CACHE_BINDING) {
+    Some(binding) =>
+      match binding.value {
+        Object(data) => return data
+        _ => ()
+      }
+    None => ()
+  }
+  let cache_data : ObjectData = {
+    bag: PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  }
+  self.global.bindings[TEMPLATE_OBJECT_CACHE_BINDING] = {
+    value: Object(cache_data),
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+  cache_data
+}
+
+///|
+fn Interpreter::get_tagged_template_object(
+  self : Interpreter,
+  loc : @token.Loc,
+  strings : Array[String],
+) -> Value {
+  let key = tagged_template_cache_key(loc, strings)
+  let cache = self.get_template_object_cache()
+  match cache.bag.properties.get(key) {
+    Some(value) => value
+    None => {
+      let value = make_tagged_template_object(strings)
+      cache.bag.properties[key] = value
+      value
+    }
+  }
 }
 
 ///|
@@ -776,7 +986,7 @@ fn Interpreter::eval_expr(
         _ => (self.eval_expr(ctx, tag_expr, env), Undefined)
       }
       // Build args: [templateObj, ...substitutions]
-      let args : Array[Value] = [make_tagged_template_object(strings)]
+      let args : Array[Value] = [self.get_tagged_template_object(loc, strings)]
       for e in exprs {
         args.push(self.eval_expr(ctx, e, env))
       }
@@ -1860,6 +2070,18 @@ pub fn eval_delete_computed_property(
 }
 
 ///|
+fn env_has_binding_ignoring_with(env : Environment, name : String) -> Bool {
+  match env.bindings.get(name) {
+    Some(_) => true
+    None =>
+      match env.parent {
+        Some(parent) => env_has_binding_ignoring_with(parent, name)
+        None => false
+      }
+  }
+}
+
+///|
 pub fn eval_delete_identifier(
   interp : Interpreter,
   ctx : ExecContext,
@@ -1884,22 +2106,29 @@ pub fn eval_delete_identifier(
       Bool(true)
     }
     _ =>
-      // In non-strict mode, check if the identifier is a non-configurable
-      // property on the global object (e.g. undefined, NaN, Infinity).
-      match interp.global_this {
-        Object(data) =>
-          match data.bag.descriptors.get(name) {
-            Some(desc) =>
-              if !desc.configurable {
-                Bool(false)
-              } else {
+      if env_has_binding_ignoring_with(env, name) {
+        Bool(false)
+      } else {
+        // In non-strict mode, check if the identifier is a non-configurable
+        // property on the global object (e.g. undefined, NaN, Infinity).
+        match interp.global_this {
+          Object(data) =>
+            match data.bag.descriptors.get(name) {
+              Some(desc) =>
+                if !desc.configurable {
+                  Bool(false)
+                } else {
+                  let _ = data.bag.properties.remove(name)
+                  let _ = data.bag.descriptors.remove(name)
+                  Bool(true)
+                }
+              None => {
                 let _ = data.bag.properties.remove(name)
-                let _ = data.bag.descriptors.remove(name)
                 Bool(true)
               }
-            None => Bool(true)
-          }
-        _ => Bool(true)
+            }
+          _ => Bool(true)
+        }
       }
   }
 }

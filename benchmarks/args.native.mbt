@@ -18,7 +18,10 @@ pub fn parse_bench_args() -> BenchArgs {
       "--all" => run_all = true
       "--csv" => csv = true
       "--list" => list_only = true
-      _ => ()
+      flag => {
+        println("error: unknown benchmark flag: \{flag}")
+        abort("unknown benchmark flag")
+      }
     }
   }
   { run_all, csv, list_only }
