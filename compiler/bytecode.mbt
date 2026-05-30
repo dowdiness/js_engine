@@ -100,6 +100,9 @@ priv struct BytecodeFunction {
   source_body : Array[@ast.Stmt]
   body_has_use_strict : Bool
   call_self_name : Bool
+  // Direct eval can read `arguments` by string, so only skip arguments-object
+  // setup when both direct references and eval references are absent.
+  needs_arguments_object : Bool
   local_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
@@ -1474,6 +1477,8 @@ fn compile_bytecode_function(
     source_body: body,
     body_has_use_strict: @runtime.has_use_strict(body),
     call_self_name,
+    needs_arguments_object: bytecode_body_references_arguments(body) ||
+    bytecode_body_references_eval(body),
     local_names: builder.local_names,
     template_cache_key_prefix,
     code: builder.code,
@@ -3693,6 +3698,7 @@ fn make_bytecode_func(
       }
     }),
     rest_param=func_def.rest_param,
+    define_arguments_object=func_def.needs_arguments_object,
   )
 }
 
@@ -3750,6 +3756,7 @@ fn make_bytecode_method_func(
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
+    define_arguments_object=func_def.needs_arguments_object,
   )
 }
 

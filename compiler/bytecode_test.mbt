@@ -2708,6 +2708,16 @@ test "bytecode direct eval supports spread arguments" {
 }
 
 ///|
+test "bytecode direct eval can read caller arguments object" {
+  let src =
+    #|function f(a) {
+    #|  return eval("arguments[0]");
+    #|}
+    #|f(6);
+  inspect(bytecode_compare(src), content="value:6")
+}
+
+///|
 test "bytecode direct eval inherits caller strictness" {
   let src =
     #|function f() {

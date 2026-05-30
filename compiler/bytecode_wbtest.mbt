@@ -64,7 +64,9 @@ test "bytecode uses local slots for function params and vars" {
   guard bytecode.main.children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=["a", "b"])
+  let child = bytecode.main.children[0]
+  json_inspect(child.local_names, content=["a", "b"])
+  inspect(child.needs_arguments_object, content="false")
 }
 
 ///|
@@ -81,6 +83,7 @@ test "bytecode keeps arguments functions on environment bindings" {
   }
   let child = bytecode.main.children[0]
   json_inspect(child.local_names, content=[])
+  inspect(child.needs_arguments_object, content="true")
   let mut saw_arguments_load = false
   for instr in child.code {
     match instr {
@@ -107,10 +110,13 @@ test "bytecode keeps direct eval functions on environment bindings" {
   }
   let outer = bytecode.main.children[0]
   json_inspect(outer.local_names, content=[])
+  inspect(outer.needs_arguments_object, content="true")
   guard outer.children.length() == 1 else {
     abort("expected nested child function")
   }
-  json_inspect(outer.children[0].local_names, content=[])
+  let inner = outer.children[0]
+  json_inspect(inner.local_names, content=[])
+  inspect(inner.needs_arguments_object, content="true")
 }
 
 ///|
