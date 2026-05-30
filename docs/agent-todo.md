@@ -276,23 +276,22 @@ for those workloads.
 reject unsupported semantics explicitly. The current fail-fast rejection list is
 tracked in [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-explicit-bytecode-rejections).
 
-### Bytecode performance measurement follow-ups — #166 MEASURED LOCALLY (2026-05-30)
+### Bytecode performance follow-ups — #168 CALL/FRAME SETUP MEASURED LOCALLY (2026-05-30)
 
-**Source:** #166 local JS-target run and
+**Source:** #166/#168 local JS-target runs and
 [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-bytecode-performance-snapshot-local-js-target-2026-05-30).
 
-**Finding:** The broad bytecode rows are still near tree-walking performance:
-`pipeline/*/evaluate` was about 1.10x faster locally, while `closure_factory`
-was about 1.02x slower. The #166 microbenchmarks confirm at least one real
-bottleneck: bytecode call/frame setup is the clearest cost (~5.8 µs per trivial
-call in the 10k-call row). Generic `Environment` lookup is also reproducibly
-slower than local slots (~1.41x on the matched counter loop), while captured
-access is only modestly slower than locals in the measured shape (~1.10x).
+**Finding:** #166 showed bytecode call/frame setup as the clearest cost (~5.8 µs
+per trivial call). The #168 local prototype skips arguments-object setup for
+bytecode functions whose bodies cannot reference `arguments` and do not contain
+direct `eval`. That drops the focused no-`arguments` call row from about 61 ms to
+about 12.9 ms on the 10k-call row, and moves the broad rows to clear local wins:
+`pipeline/*/evaluate` about 2.36x faster than tree-walking and `closure_factory`
+about 1.90x faster.
 
-**Next issue order:** After the #166 benchmark rows land, prioritize
-[#168](https://github.com/dowdiness/js_engine/issues/168) (call/frame setup),
-then [#170](https://github.com/dowdiness/js_engine/issues/170) (runtime helper
-hotspots), then [#167](https://github.com/dowdiness/js_engine/issues/167)
+**Next issue order:** After the #168 call/frame setup optimization lands,
+prioritize [#170](https://github.com/dowdiness/js_engine/issues/170) (runtime
+helper hotspots), then [#167](https://github.com/dowdiness/js_engine/issues/167)
 (local/upvalue/env slotting), then [#169](https://github.com/dowdiness/js_engine/issues/169)
 (VM dispatch/stack overhead), unless a newer JS-target benchmark contradicts
 this order. Keep [#165](https://github.com/dowdiness/js_engine/issues/165) as

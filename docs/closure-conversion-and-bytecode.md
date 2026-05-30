@@ -123,8 +123,8 @@ runtime code.
 
 ## Current Bytecode Performance Snapshot (local JS target, 2026-05-30)
 
-Local JS-target benchmark output on 2026-05-30 after adding the #166
-measurement rows used:
+Local JS-target benchmark output on 2026-05-30 after the #168 call/frame setup
+work used:
 
 ```bash
 moon run benchmarks --target js -- --all --csv
@@ -133,31 +133,33 @@ moon run benchmarks --target js -- --all --csv
 Treat these numbers as directional local evidence, not a release baseline; rerun
 from CI artifacts or a saved CSV before making cross-PR claims.
 
-The broad bytecode rows remain near tree-walking performance rather than a
-large speedup:
+The #168 change skips arguments-object setup for bytecode functions whose bodies
+cannot reference `arguments` and do not contain direct `eval`. This moved the
+broad bytecode rows from near parity to a clear win on the local JS target:
 
 | Workload | Tree-walk | Bytecode | Result |
 |---|---:|---:|---:|
-| `pipeline/*/evaluate` | 21.86 ms | 19.95 ms | about 1.10x faster / 8.8% lower |
-| `closure_factory` | 22.74 ms | 23.14 ms | about 1.02x slower / 1.8% higher |
+| `pipeline/*/evaluate` | 22.50 ms | 9.54 ms | about 2.36x faster / 57.6% lower |
+| `closure_factory` | 23.69 ms | 12.50 ms | about 1.90x faster / 47.2% lower |
 
-The #166 microbenchmarks isolate where the remaining cost is most reproducible:
+The focused rows now show call/frame setup is no longer the largest measured
+bytecode cost when `arguments` is unused:
 
 | Microbenchmark | Mean | What it confirms |
 |---|---:|---|
-| `isolate/bytecode/local_access` | 37.24 ms / 100k-loop row | Function-local slots are the cheapest measured access path. |
-| `isolate/bytecode/env_access` | 52.38 ms / 100k-loop row | Generic `Environment` lookup is about 1.41x slower than the matched local-slot row. |
-| `isolate/bytecode/captured_access` | 41.12 ms / 100k-loop row | Captured fallback is measurable but only about 1.10x slower than locals in this shape. |
-| `isolate/bytecode/dispatch_stack` | 46.36 ms / 100k-loop row | VM dispatch/stack traffic is real, but not the largest confirmed cost. |
-| `isolate/bytecode/call_frame` | 58.00 ms / 10k-call row | Trivial bytecode calls cost roughly 5.8 µs/call, making call/frame setup the clearest bottleneck. |
-| `isolate/bytecode/runtime_helpers` | 64.91 ms / 10k-helper row | Property get/set plus method-call helpers add about 12% over the simple call/frame row. |
+| `isolate/bytecode/local_access` | 36.78 ms / 100k-loop row | Function-local slots remain the cheapest measured access path. |
+| `isolate/bytecode/env_access` | 52.43 ms / 100k-loop row | Generic `Environment` lookup is still about 1.43x slower than the matched local-slot row. |
+| `isolate/bytecode/captured_access` | 42.33 ms / 100k-loop row | Captured fallback remains measurable but less urgent than generic env fallback in this shape. |
+| `isolate/bytecode/dispatch_stack` | 46.03 ms / 100k-loop row | VM dispatch/stack traffic is real, but not the largest confirmed cost. |
+| `isolate/bytecode/call_frame` | 12.93 ms / 10k-call row | Trivial no-`arguments` bytecode calls dropped to about 1.3 µs/call locally. |
+| `isolate/bytecode/runtime_helpers` | 18.47 ms / 10k-helper row | Property get/set plus method-call helpers are now the next call-shaped hotspot. |
 
-Interpretation: bytecode removes some AST dispatch, but the hot costs still
-flow through shared call/frame setup and runtime helper semantics. Prioritize
-follow-ups in this order unless a newer benchmark contradicts it: #168
-(call/frame setup), #170 (runtime helper hotspots), #167 (local/upvalue/env
-slotting), then #169 (VM dispatch/stack overhead). Keep the work measurement
-first and do not broaden bytecode syntax as part of these optimization tracks.
+Interpretation: bytecode removes AST dispatch, and avoiding unobserved
+arguments-object setup exposes a useful speedup while keeping runtime helpers as
+the semantic owner. Next prioritize #170 (runtime helper hotspots), then #167
+(local/upvalue/env slotting), then #169 (VM dispatch/stack overhead), unless a
+newer benchmark contradicts this order. Keep the work measurement first and do
+not broaden bytecode syntax as part of these optimization tracks.
 
 Tracking issues:
 
