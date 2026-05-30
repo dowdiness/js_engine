@@ -216,6 +216,7 @@ The compiler currently raises an `InternalError` prefixed
 - `destructuring declaration kind` (non-`var` destructuring declarations)
 - `destructuring declaration context` (control-flow/block/switch/for contexts)
 - `super call`
+- `object literal data property super`
 - `object literal __proto__ method property`
 - `object literal generator method property`
 - `object literal async method property`

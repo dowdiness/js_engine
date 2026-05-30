@@ -2533,6 +2533,252 @@ fn bytecode_object_lit_uses_incremental(props : Array[@ast.Property]) -> Bool {
 }
 
 ///|
+fn bytecode_stmts_contain_super(stmts : Array[@ast.Stmt]) -> Bool {
+  for stmt in stmts {
+    if bytecode_stmt_contains_super(stmt) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn bytecode_stmt_contains_super(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    VarDecl(_, _, Some(expr), _)
+    | ExprStmt(expr, _)
+    | ReturnStmt(Some(expr), _)
+    | ThrowStmt(expr, _) => bytecode_expr_contains_super(expr)
+    DestructureDecl(_, pattern, init, _) =>
+      bytecode_pattern_contains_super(pattern) ||
+      bytecode_expr_contains_super(init)
+    StmtList(stmts, _) | Block(stmts, _) => bytecode_stmts_contain_super(stmts)
+    IfStmt(cond, then_branch, else_branch, _) => {
+      if bytecode_expr_contains_super(cond) {
+        return true
+      }
+      if bytecode_stmt_contains_super(then_branch) {
+        return true
+      }
+      match else_branch {
+        Some(stmt) => bytecode_stmt_contains_super(stmt)
+        None => false
+      }
+    }
+    WhileStmt(cond, body, _) =>
+      bytecode_expr_contains_super(cond) || bytecode_stmt_contains_super(body)
+    DoWhileStmt(body, cond, _) =>
+      bytecode_stmt_contains_super(body) || bytecode_expr_contains_super(cond)
+    ForStmt(init, cond, update, body, _) => {
+      match init {
+        Some(stmt) => if bytecode_stmt_contains_super(stmt) { return true }
+        None => ()
+      }
+      match cond {
+        Some(expr) => if bytecode_expr_contains_super(expr) { return true }
+        None => ()
+      }
+      match update {
+        Some(expr) => if bytecode_expr_contains_super(expr) { return true }
+        None => ()
+      }
+      bytecode_stmt_contains_super(body)
+    }
+    ForInStmt(_, _, obj_expr, body, _) =>
+      bytecode_expr_contains_super(obj_expr) ||
+      bytecode_stmt_contains_super(body)
+    ForInStmtPat(_, pattern, obj_expr, body, _) =>
+      bytecode_pattern_contains_super(pattern) ||
+      bytecode_expr_contains_super(obj_expr) ||
+      bytecode_stmt_contains_super(body)
+    ForInExpr(lhs_expr, obj_expr, body, _) =>
+      bytecode_expr_contains_super(lhs_expr) ||
+      bytecode_expr_contains_super(obj_expr) ||
+      bytecode_stmt_contains_super(body)
+    SwitchStmt(discriminant, cases, _) => {
+      if bytecode_expr_contains_super(discriminant) {
+        return true
+      }
+      for case in cases {
+        match case.condition {
+          Some(expr) => if bytecode_expr_contains_super(expr) { return true }
+          None => ()
+        }
+        if bytecode_stmts_contain_super(case.body) {
+          return true
+        }
+      }
+      false
+    }
+    LabeledStmt(_, body, _) => bytecode_stmt_contains_super(body)
+    FuncDecl(_, _, body, _)
+    | FuncDeclExt(_, _, _, body, _)
+    | GeneratorDecl(_, _, body, _)
+    | GeneratorDeclExt(_, _, _, body, _)
+    | AsyncFuncDecl(_, _, body, _)
+    | AsyncFuncDeclExt(_, _, _, body, _)
+    | AsyncGeneratorDecl(_, _, body, _)
+    | AsyncGeneratorDeclExt(_, _, _, body, _) =>
+      bytecode_stmts_contain_super(body)
+    _ => false
+  }
+}
+
+///|
+fn bytecode_expr_contains_super(expr : @ast.Expr) -> Bool {
+  match expr {
+    SuperCall(_, _) | SuperMember(_, _) | SuperComputedMember(_, _) => true
+    Unary(_, operand, _) | Grouping(operand, _) | SpreadExpr(operand, _) =>
+      bytecode_expr_contains_super(operand)
+    Binary(_, left, right, _) | Comma(left, right, _) =>
+      bytecode_expr_contains_super(left) || bytecode_expr_contains_super(right)
+    Ternary(cond, then_expr, else_expr, _) =>
+      bytecode_expr_contains_super(cond) ||
+      bytecode_expr_contains_super(then_expr) ||
+      bytecode_expr_contains_super(else_expr)
+    Assign(_, value, _) => bytecode_expr_contains_super(value)
+    Call(callee, args, _)
+    | OptionalCall(callee, args, _)
+    | NewExpr(callee, args, _) => {
+      if bytecode_expr_contains_super(callee) {
+        return true
+      }
+      for arg in args {
+        if bytecode_expr_contains_super(arg) {
+          return true
+        }
+      }
+      false
+    }
+    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+      bytecode_expr_contains_super(obj)
+    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) =>
+      bytecode_expr_contains_super(obj) || bytecode_expr_contains_super(key)
+    MemberAssign(obj, _, value, _) =>
+      bytecode_expr_contains_super(obj) || bytecode_expr_contains_super(value)
+    ComputedAssign(obj, key, value, _) =>
+      bytecode_expr_contains_super(obj) ||
+      bytecode_expr_contains_super(key) ||
+      bytecode_expr_contains_super(value)
+    CompoundAssign(_, target, value, _) =>
+      bytecode_expr_contains_super(target) ||
+      bytecode_expr_contains_super(value)
+    DestructureAssign(pattern, value, _) =>
+      bytecode_pattern_contains_super(pattern) ||
+      bytecode_expr_contains_super(value)
+    UpdateExpr(_, operand, _, _) => bytecode_expr_contains_super(operand)
+    FuncExpr(_, _, body, _)
+    | FuncExprExt(_, _, _, body, _)
+    | ArrowFunc(_, body, _)
+    | ArrowFuncExt(_, _, body, _) => bytecode_stmts_contain_super(body)
+    ArrayLit(elements, _) => {
+      for element in elements {
+        if bytecode_expr_contains_super(element) {
+          return true
+        }
+      }
+      false
+    }
+    ObjectLit(props, _) => bytecode_object_props_contain_data_super(props)
+    TemplateLit(_, exprs, _) => {
+      for expr in exprs {
+        if bytecode_expr_contains_super(expr) {
+          return true
+        }
+      }
+      false
+    }
+    TaggedTemplate(tag, _, exprs, _) => {
+      if bytecode_expr_contains_super(tag) {
+        return true
+      }
+      for expr in exprs {
+        if bytecode_expr_contains_super(expr) {
+          return true
+        }
+      }
+      false
+    }
+    _ => false
+  }
+}
+
+///|
+fn bytecode_object_props_contain_data_super(
+  props : Array[@ast.Property],
+) -> Bool {
+  for prop in props {
+    match prop.kind {
+      Spread => if bytecode_expr_contains_super(prop.key) { return true }
+      Init => {
+        if prop.computed && bytecode_expr_contains_super(prop.key) {
+          return true
+        }
+        if !prop.is_method && bytecode_expr_contains_super(prop.value) {
+          return true
+        }
+      }
+      Get | Set =>
+        if prop.computed && bytecode_expr_contains_super(prop.key) {
+          return true
+        }
+    }
+  }
+  false
+}
+
+///|
+fn bytecode_pattern_contains_super(pattern : @ast.Pattern) -> Bool {
+  match pattern {
+    IdentPat(_) => false
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) => if bytecode_pattern_contains_super(pat) { return true }
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => bytecode_pattern_contains_super(pat)
+        None => false
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(expr) => if bytecode_expr_contains_super(expr) { return true }
+          None => ()
+        }
+        match prop.default_val {
+          Some(expr) => if bytecode_expr_contains_super(expr) { return true }
+          None => ()
+        }
+        if bytecode_pattern_contains_super(prop.value) {
+          return true
+        }
+      }
+      match rest {
+        Some(pat) => bytecode_pattern_contains_super(pat)
+        None => false
+      }
+    }
+    DefaultPat(inner, expr) =>
+      bytecode_pattern_contains_super(inner) ||
+      bytecode_expr_contains_super(expr)
+    AssignTarget(expr) => bytecode_expr_contains_super(expr)
+  }
+}
+
+///|
+fn bytecode_reject_object_data_property_super(
+  value : @ast.Expr,
+) -> Unit raise Error {
+  if bytecode_expr_contains_super(value) {
+    bytecode_unsupported("object literal data property super")
+  }
+}
+
+///|
 fn BytecodeBuilder::compile_object_method(
   self : BytecodeBuilder,
   prop : @ast.Property,
@@ -2662,6 +2908,7 @@ fn BytecodeBuilder::compile_object_lit(
       if prop.computed {
         self.compile_expr(prop.key)
         let _ = self.emit(ToObjectLiteralPropertyKey)
+        bytecode_reject_object_data_property_super(prop.value)
         self.compile_expr(prop.value)
         let _ = self.emit(ObjectSetComputed)
         continue
@@ -2673,6 +2920,7 @@ fn BytecodeBuilder::compile_object_lit(
           ""
         }
       }
+      bytecode_reject_object_data_property_super(prop.value)
       self.compile_expr(prop.value)
       if key == "__proto__" {
         let _ = self.emit(ObjectSetProto)
@@ -2702,6 +2950,7 @@ fn BytecodeBuilder::compile_object_lit(
           ""
         }
       }
+      bytecode_reject_object_data_property_super(prop.value)
       self.compile_expr(prop.value)
       let _ = self.emit(SetFunctionName(key))
       keys.push(key)

@@ -1772,6 +1772,19 @@ test "bytecode rejects super calls explicitly" {
 }
 
 ///|
+test "bytecode rejects super inside object literal data property values explicitly" {
+  let src =
+    #|({
+    #|  __proto__: { m: function() { return 1; } },
+    #|  m: function() { return super.m(); }
+    #|}).m();
+  inspect(
+    bytecode_outcome(src),
+    content="error:InternalError: bytecode prototype unsupported: object literal data property super",
+  )
+}
+
+///|
 test "bytecode rejects __proto__ methods until object method semantics are settled" {
   inspect(
     bytecode_outcome("({ __proto__() { return 7; } });"),
