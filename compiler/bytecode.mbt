@@ -25,6 +25,7 @@ priv enum BytecodeInstr {
   DefineLocal(Int, Bool) // slot, initializer-present
   DefineEnvSlot(Int, Bool) // slot, initializer-present
   SetCompletion
+  SetCompletionValue(Value) // direct completion update for constants/empty statements
   Pop
   Dup
   BinaryOp(@ast.BinOp, @token.Loc)
@@ -228,9 +229,16 @@ fn BytecodeBuilder::env_slot(self : BytecodeBuilder, name : String) -> Int? {
 }
 
 ///|
+fn BytecodeBuilder::emit_completion_value(
+  self : BytecodeBuilder,
+  value : Value,
+) -> Unit {
+  let _ = self.emit(SetCompletionValue(value))
+}
+
+///|
 fn BytecodeBuilder::emit_undefined_completion(self : BytecodeBuilder) -> Unit {
-  let _ = self.emit(LoadUndefined)
-  let _ = self.emit(SetCompletion)
+  self.emit_completion_value(Value::Undefined)
 }
 
 ///|
@@ -2195,10 +2203,7 @@ fn BytecodeBuilder::compile_stmt(
   declaration_updates_completion? : Bool = true,
 ) -> Unit raise Error {
   match stmt {
-    ExprStmt(expr, _) => {
-      self.compile_expr(expr)
-      let _ = self.emit(SetCompletion)
-    }
+    ExprStmt(expr, _) => self.compile_expr_for_completion(expr)
     VarDecl(kind, name, init, _) => {
       match init {
         Some(expr) => {
@@ -3508,6 +3513,55 @@ fn bytecode_validate_destructure_assignment_pattern(
 }
 
 ///|
+fn BytecodeBuilder::compile_expr_for_effect(
+  self : BytecodeBuilder,
+  expr : @ast.Expr,
+) -> Unit raise Error {
+  // Only elide expressions whose evaluation cannot throw or trigger user code.
+  // Identifier references, calls, member expressions, and object/array/function
+  // literals still use the value path and discard the result.
+  match expr {
+    NumberLit(_, _, _)
+    | StringLit(_, _, _, _)
+    | BoolLit(_, _)
+    | NullLit(_)
+    | UndefinedLit(_) => ()
+    Grouping(inner, _) => self.compile_expr_for_effect(inner)
+    Comma(left, right, _) => {
+      self.compile_expr_for_effect(left)
+      self.compile_expr_for_effect(right)
+    }
+    _ => {
+      self.compile_expr(expr)
+      let _ = self.emit(Pop)
+    }
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_expr_for_completion(
+  self : BytecodeBuilder,
+  expr : @ast.Expr,
+) -> Unit raise Error {
+  match expr {
+    NumberLit(n, _, _) => self.emit_completion_value(Value::Number(n))
+    StringLit(s, _, _, _) => self.emit_completion_value(Value::String_(s))
+    BoolLit(b, _) => self.emit_completion_value(Value::Bool(b))
+    NullLit(_) => self.emit_completion_value(Value::Null)
+    UndefinedLit(_) => self.emit_completion_value(Value::Undefined)
+    Grouping(inner, _) => self.compile_expr_for_completion(inner)
+    Comma(left, right, _) => {
+      self.compile_expr_for_effect(left)
+      self.compile_expr_for_completion(right)
+    }
+    _ => {
+      self.compile_expr(expr)
+      let _ = self.emit(SetCompletion)
+    }
+  }
+}
+
+///|
 fn BytecodeBuilder::compile_expr(
   self : BytecodeBuilder,
   expr : @ast.Expr,
@@ -3609,8 +3663,7 @@ fn BytecodeBuilder::compile_expr(
       let _ = self.emit(BinaryOp(op, loc))
     }
     Comma(left, right, _) => {
-      self.compile_expr(left)
-      let _ = self.emit(Pop)
+      self.compile_expr_for_effect(left)
       self.compile_expr(right)
     }
     TemplateLit(strings, exprs, _) => {
@@ -4424,65 +4477,63 @@ fn run_bytecode_function(
   }
   frame.hoist_function_decls(interp)
   frame.bind_call_self_name()
-  while frame.ip < frame.func_def.code.length() {
-    let instr = frame.func_def.code[frame.ip]
-    frame.ip += 1
+  let code = frame.func_def.code
+  let code_len = code.length()
+  let stack = frame.stack
+  let locals = frame.locals
+  let mut ip = frame.ip
+  let mut completion = frame.completion
+  while ip < code_len {
+    let instr = code[ip]
+    ip += 1
     match instr {
-      LoadConst(value) => frame.stack.push(value)
-      LoadUndefined => frame.stack.push(Value::Undefined)
-      LoadThis => frame.stack.push(@runtime.eval_this_value(frame.env))
-      LoadNewTarget =>
-        frame.stack.push(@runtime.eval_new_target_value(frame.env))
+      LoadConst(value) => stack.push(value)
+      LoadUndefined => stack.push(Value::Undefined)
+      LoadThis => stack.push(@runtime.eval_this_value(env))
+      LoadNewTarget => stack.push(@runtime.eval_new_target_value(env))
       LoadSuperProperty(prop, loc) =>
-        frame.stack.push(interp.eval_super_property(frame.env, prop, loc))
+        stack.push(interp.eval_super_property(env, prop, loc))
       LoadSuperComputed(loc) => {
         let key = frame.pop()
-        frame.stack.push(
-          interp.eval_super_computed_property(frame.env, key, loc),
-        )
+        stack.push(interp.eval_super_computed_property(env, key, loc))
       }
-      LoadConsoleMember(prop) =>
-        frame.stack.push(interp.get_console_member(prop))
-      LoadDirectEvalCallee =>
-        frame.stack.push(@runtime.load_direct_eval_callee(frame.env))
-      LoadName(name) =>
-        frame.stack.push(interp.get_compiled_name(frame.env, name))
+      LoadConsoleMember(prop) => stack.push(interp.get_console_member(prop))
+      LoadDirectEvalCallee => stack.push(@runtime.load_direct_eval_callee(env))
+      LoadName(name) => stack.push(interp.get_compiled_name(env, name))
       LoadAssignmentName(name) =>
-        frame.stack.push(
-          @runtime.get_assignment_name_value(frame.ctx, frame.env, name),
-        )
+        stack.push(@runtime.get_assignment_name_value(ctx, env, name))
       StoreName(name) => {
         let value = frame.pop()
-        frame.stack.push(
-          interp.assign_compiled_name(frame.ctx, frame.env, name, value),
-        )
+        stack.push(interp.assign_compiled_name(ctx, env, name, value))
       }
-      LoadLocal(slot) => frame.stack.push(frame.locals[slot])
+      LoadLocal(slot) => stack.push(locals[slot])
       StoreLocal(slot) => {
-        let value = frame.pop()
-        frame.locals[slot] = value
-        frame.stack.push(value)
+        let value = match stack.pop() {
+          Some(value) => value
+          None =>
+            raise @errors.InternalError(message="bytecode stack underflow")
+        }
+        locals[slot] = value
+        stack.push(value)
       }
-      LoadEnvSlot(slot) => frame.stack.push(frame.read_env_slot(slot))
+      LoadEnvSlot(slot) => stack.push(frame.read_env_slot(slot))
       StoreEnvSlot(slot) => {
-        let value = frame.pop()
+        let value = match stack.pop() {
+          Some(value) => value
+          None =>
+            raise @errors.InternalError(message="bytecode stack underflow")
+        }
         frame.write_env_slot(slot, value)
-        frame.stack.push(value)
+        stack.push(value)
       }
       DefineBinding(kind, name, has_initializer) => {
         let value = frame.pop()
-        interp.define_compiled_binding(
-          frame.env,
-          kind,
-          name,
-          value,
-          has_initializer,
-        )
+        interp.define_compiled_binding(env, kind, name, value, has_initializer)
       }
       DefineLocal(slot, has_initializer) => {
         let value = frame.pop()
         if has_initializer {
-          frame.locals[slot] = value
+          locals[slot] = value
         }
       }
       DefineEnvSlot(slot, has_initializer) => {
@@ -4491,46 +4542,52 @@ fn run_bytecode_function(
           frame.write_env_slot(slot, value)
         }
       }
-      SetCompletion => frame.completion = frame.pop()
-      Pop => {
-        let _ = frame.pop()
-      }
-      Dup => frame.stack.push(frame.peek())
+      SetCompletion =>
+        match stack.pop() {
+          Some(value) => completion = value
+          None =>
+            raise @errors.InternalError(message="bytecode stack underflow")
+        }
+      SetCompletionValue(value) => completion = value
+      Pop =>
+        match stack.pop() {
+          Some(_) => ()
+          None =>
+            raise @errors.InternalError(message="bytecode stack underflow")
+        }
+      Dup => stack.push(frame.peek())
       BinaryOp(op, loc) => {
-        let right = frame.pop()
-        let left = frame.pop()
-        frame.stack.push(
+        let right = match stack.pop() {
+          Some(value) => value
+          None =>
+            raise @errors.InternalError(message="bytecode stack underflow")
+        }
+        let left = match stack.pop() {
+          Some(value) => value
+          None =>
+            raise @errors.InternalError(message="bytecode stack underflow")
+        }
+        stack.push(
           @runtime.eval_binary_op(op, left, right, loc, interp=Some(interp)),
         )
       }
       UnaryValueOp(op, loc) => {
         let value = frame.pop()
-        frame.stack.push(@runtime.eval_unary_value_op(op, value, loc))
+        stack.push(@runtime.eval_unary_value_op(op, value, loc))
       }
       TypeofName(name) =>
-        frame.stack.push(
-          interp.typeof_compiled_name(frame.ctx, frame.env, name),
-        )
+        stack.push(interp.typeof_compiled_name(ctx, env, name))
       DeleteName(name) =>
-        frame.stack.push(
-          @runtime.eval_delete_identifier(interp, frame.ctx, frame.env, name),
-        )
+        stack.push(@runtime.eval_delete_identifier(interp, ctx, env, name))
       DeleteProperty(prop) => {
         let obj = frame.pop()
-        frame.stack.push(
-          @runtime.eval_delete_property(interp, obj, prop, frame.ctx.strict),
-        )
+        stack.push(@runtime.eval_delete_property(interp, obj, prop, ctx.strict))
       }
       DeleteComputed => {
         let key = frame.pop()
         let obj = frame.pop()
-        frame.stack.push(
-          @runtime.eval_delete_computed_property(
-            interp,
-            obj,
-            key,
-            frame.ctx.strict,
-          ),
+        stack.push(
+          @runtime.eval_delete_computed_property(interp, obj, key, ctx.strict),
         )
       }
       AppendTemplate(tail) => {
@@ -4538,7 +4595,7 @@ fn run_bytecode_function(
         let acc = frame.pop()
         match acc {
           String_(prefix) =>
-            frame.stack.push(
+            stack.push(
               Value::String_(
                 prefix +
                 @runtime.to_js_string(value, interp=Some(interp)) +
@@ -4554,13 +4611,11 @@ fn run_bytecode_function(
       MakeTemplateObject(strings) => {
         let site_key = frame.func_def.template_cache_key_prefix +
           ":" +
-          (frame.ip - 1).to_string()
-        frame.stack.push(
-          interp.get_cached_tagged_template_object(site_key, strings),
-        )
+          (ip - 1).to_string()
+        stack.push(interp.get_cached_tagged_template_object(site_key, strings))
       }
       MakeRegExp(pattern, flags) =>
-        frame.stack.push(
+        stack.push(
           (interp.stdlib_hooks.make_regexp_object)(
             interp.realm_state,
             pattern,
@@ -4570,36 +4625,18 @@ fn run_bytecode_function(
       SetFunctionName(name) => {
         let value = frame.pop()
         @runtime.set_function_name(value, name)
-        frame.stack.push(value)
+        stack.push(value)
       }
       UpdateName(name, op, prefix, loc) =>
-        frame.stack.push(
-          interp.update_compiled_name(
-            frame.ctx,
-            frame.env,
-            name,
-            op,
-            prefix,
-            loc,
-          ),
-        )
+        stack.push(interp.update_compiled_name(ctx, env, name, op, prefix, loc))
       UpdateLocal(slot, op, prefix) => {
-        let old_number = @runtime.to_number(
-          frame.locals[slot],
-          interp=Some(interp),
-        )
+        let old_number = @runtime.to_number(locals[slot], interp=Some(interp))
         let next_value = match op {
           Increment => Value::Number(old_number + 1.0)
           Decrement => Value::Number(old_number - 1.0)
         }
-        frame.locals[slot] = next_value
-        frame.stack.push(
-          if prefix {
-            next_value
-          } else {
-            Value::Number(old_number)
-          },
-        )
+        locals[slot] = next_value
+        stack.push(if prefix { next_value } else { Value::Number(old_number) })
       }
       UpdateEnvSlot(slot, op, prefix) => {
         let old_number = @runtime.to_number(
@@ -4611,66 +4648,52 @@ fn run_bytecode_function(
           Decrement => Value::Number(old_number - 1.0)
         }
         frame.write_env_slot(slot, next_value)
-        frame.stack.push(
-          if prefix {
-            next_value
-          } else {
-            Value::Number(old_number)
-          },
-        )
+        stack.push(if prefix { next_value } else { Value::Number(old_number) })
       }
       UpdateProperty(prop, op, prefix, member_loc, loc) => {
         let obj = frame.pop()
-        frame.stack.push(
+        stack.push(
           interp.eval_update_property(
-            frame.ctx,
-            obj,
-            prop,
-            op,
-            prefix,
-            member_loc,
-            loc,
+            ctx, obj, prop, op, prefix, member_loc, loc,
           ),
         )
       }
       UpdateComputed(op, prefix, member_loc, loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        frame.stack.push(
+        stack.push(
           interp.eval_update_computed_property(
-            frame.ctx,
-            obj,
-            key,
-            op,
-            prefix,
-            member_loc,
-            loc,
+            ctx, obj, key, op, prefix, member_loc, loc,
           ),
         )
       }
-      Jump(target) => frame.ip = target
+      Jump(target) => ip = target
       JumpIfFalse(target) => {
-        let cond = frame.pop()
+        let cond = match stack.pop() {
+          Some(value) => value
+          None =>
+            raise @errors.InternalError(message="bytecode stack underflow")
+        }
         if !@runtime.is_truthy(cond) {
-          frame.ip = target
+          ip = target
         }
       }
       JumpIfFalseKeep(target) => {
         let cond = frame.peek()
         if !@runtime.is_truthy(cond) {
-          frame.ip = target
+          ip = target
         }
       }
       JumpIfTrueKeep(target) => {
         let cond = frame.peek()
         if @runtime.is_truthy(cond) {
-          frame.ip = target
+          ip = target
         }
       }
       JumpIfNotNullishKeep(target) =>
         match frame.peek() {
           Null | Undefined => ()
-          _ => frame.ip = target
+          _ => ip = target
         }
       StartForIn => {
         let obj = frame.pop()
@@ -4688,11 +4711,11 @@ fn run_bytecode_function(
         let state = frame.for_in_iters[frame.for_in_iters.length() - 1]
         if state.index >= state.keys.length() {
           let _ = frame.for_in_iters.pop()
-          frame.ip = target
+          ip = target
         } else {
           let key = state.keys[state.index]
           state.index += 1
-          frame.stack.push(Value::String_(key))
+          stack.push(Value::String_(key))
         }
       }
       EndForIn =>
@@ -4705,13 +4728,13 @@ fn run_bytecode_function(
         }
       MakeArray(count) => {
         let elements = pop_args(frame, count)
-        frame.stack.push(@runtime.make_array(elements))
+        stack.push(@runtime.make_array(elements))
       }
       MakeArrayWithHoles(count, hole_idxs) => {
         let elements = pop_args(frame, count)
-        frame.stack.push(@runtime.make_array_with_holes(elements, hole_idxs))
+        stack.push(@runtime.make_array_with_holes(elements, hole_idxs))
       }
-      StartArray => frame.stack.push(@runtime.make_array([]))
+      StartArray => stack.push(@runtime.make_array([]))
       ArrayPushValue => {
         let value = frame.pop()
         match frame.peek() {
@@ -4767,18 +4790,18 @@ fn run_bytecode_function(
         for i, key in keys {
           properties[key] = values[i]
         }
-        let prototype = frame.env.get("[[ObjectPrototype]]") catch {
+        let prototype = env.get("[[ObjectPrototype]]") catch {
           _ => Value::Null
         }
-        frame.stack.push(
+        stack.push(
           @runtime.make_object(properties, prototype, None, "Object", {}, true),
         )
       }
       StartObject => {
-        let prototype = frame.env.get("[[ObjectPrototype]]") catch {
+        let prototype = env.get("[[ObjectPrototype]]") catch {
           _ => Value::Null
         }
-        frame.stack.push(
+        stack.push(
           @runtime.make_object({}, prototype, None, "Object", {}, true),
         )
       }
@@ -4832,7 +4855,7 @@ fn run_bytecode_function(
       }
       ToObjectLiteralPropertyKey => {
         let key = frame.pop()
-        frame.stack.push(interp.to_object_literal_property_key(key))
+        stack.push(interp.to_object_literal_property_key(key))
       }
       ObjectSetComputed => {
         let value = frame.pop()
@@ -4849,50 +4872,44 @@ fn run_bytecode_function(
       }
       MakeFunction(index) => {
         let child = frame.func_def.children[index]
-        frame.stack.push(make_bytecode_func(child, frame.env, frame.ctx))
+        stack.push(make_bytecode_func(child, env, ctx))
       }
       MakeNamedFunction(index, name) => {
         let child = frame.func_def.children[index]
-        frame.stack.push(
-          make_named_bytecode_func(child, frame.env, frame.ctx, name),
-        )
+        stack.push(make_named_bytecode_func(child, env, ctx, name))
       }
       MakeMethodFunction(index) => {
         let child = frame.func_def.children[index]
         let home_object = frame.peek()
-        frame.stack.push(
-          make_bytecode_method_func(child, frame.env, frame.ctx, home_object),
-        )
+        stack.push(make_bytecode_method_func(child, env, ctx, home_object))
       }
       MakeComputedMethodFunction(index) => {
         let child = frame.func_def.children[index]
-        guard frame.stack.length() >= 2 else {
+        guard stack.length() >= 2 else {
           raise @errors.InternalError(
             message="bytecode computed method missing home object",
           )
         }
-        let home_object = frame.stack[frame.stack.length() - 2]
-        frame.stack.push(
-          make_bytecode_method_func(child, frame.env, frame.ctx, home_object),
-        )
+        let home_object = stack[stack.length() - 2]
+        stack.push(make_bytecode_method_func(child, env, ctx, home_object))
       }
       MakeArrowFunction(index) => {
         let child = frame.func_def.children[index]
-        frame.stack.push(make_bytecode_arrow_func(child, frame.env, frame.ctx))
+        stack.push(make_bytecode_arrow_func(child, env, ctx))
       }
       DeclareFunction(_, _) => ()
       GetProperty(prop, loc) => {
         let obj = frame.pop()
-        frame.stack.push(interp.get_property(obj, prop, loc))
+        stack.push(interp.get_property(obj, prop, loc))
       }
       GetComputed(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
-        frame.stack.push(interp.get_computed_property(obj, key, loc))
+        stack.push(interp.get_computed_property(obj, key, loc))
       }
       ReadPropertyForAssign(prop, loc) => {
         let obj = frame.peek()
-        frame.stack.push(interp.get_property(obj, prop, loc))
+        stack.push(interp.get_property(obj, prop, loc))
       }
       ReadComputedForAssign(loc) => {
         let key = frame.pop()
@@ -4905,145 +4922,127 @@ fn run_bytecode_function(
         }
         let prop_key = @runtime.to_property_key(key, interp=Some(interp))
         let current = interp.get_computed_property(obj, prop_key, loc)
-        frame.stack.push(obj)
-        frame.stack.push(prop_key)
-        frame.stack.push(current)
+        stack.push(obj)
+        stack.push(prop_key)
+        stack.push(current)
       }
       DropPropertyAssignReference => {
         let current = frame.pop()
         let _ = frame.pop()
-        frame.stack.push(current)
+        stack.push(current)
       }
       DropComputedAssignReference => {
         let current = frame.pop()
         let _ = frame.pop()
         let _ = frame.pop()
-        frame.stack.push(current)
+        stack.push(current)
       }
       SetProperty(prop, loc) => {
         let value = frame.pop()
         let obj = frame.pop()
-        frame.stack.push(
-          interp.set_property(obj, prop, value, loc, strict=frame.ctx.strict),
+        stack.push(
+          interp.set_property(obj, prop, value, loc, strict=ctx.strict),
         )
       }
       SetComputed(loc) => {
         let value = frame.pop()
         let key = frame.pop()
         let obj = frame.pop()
-        frame.stack.push(
-          interp.set_computed_property(
-            obj,
-            key,
-            value,
-            loc,
-            strict=frame.ctx.strict,
-          ),
+        stack.push(
+          interp.set_computed_property(obj, key, value, loc, strict=ctx.strict),
         )
       }
       SetForInProperty(prop, loc) => {
         let obj = frame.pop()
         let value = frame.pop()
-        frame.stack.push(
-          interp.set_property(obj, prop, value, loc, strict=frame.ctx.strict),
+        stack.push(
+          interp.set_property(obj, prop, value, loc, strict=ctx.strict),
         )
       }
       SetForInComputed(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
         let value = frame.pop()
-        frame.stack.push(
-          interp.set_computed_property(
-            obj,
-            key,
-            value,
-            loc,
-            strict=frame.ctx.strict,
-          ),
+        stack.push(
+          interp.set_computed_property(obj, key, value, loc, strict=ctx.strict),
         )
       }
       AssignPattern(pattern) => {
         let value = frame.pop()
-        frame.stack.push(
-          interp.eval_destructure_assign(frame.ctx, pattern, value, frame.env),
-        )
+        stack.push(interp.eval_destructure_assign(ctx, pattern, value, env))
       }
       PreparePropertyCall(prop, loc) => {
         let obj = frame.pop()
         let callee = interp.get_property(obj, prop, loc)
-        frame.stack.push(obj)
-        frame.stack.push(callee)
+        stack.push(obj)
+        stack.push(callee)
       }
       PrepareComputedCall(loc) => {
         let key = frame.pop()
         let obj = frame.pop()
         let callee = interp.get_computed_property(obj, key, loc)
-        frame.stack.push(obj)
-        frame.stack.push(callee)
+        stack.push(obj)
+        stack.push(callee)
       }
       PrepareSuperPropertyCall(prop, loc) => {
         let (receiver, callee) = interp.eval_super_property_call_reference(
-          frame.env,
-          prop,
-          loc,
+          env, prop, loc,
         )
-        frame.stack.push(receiver)
-        frame.stack.push(callee)
+        stack.push(receiver)
+        stack.push(callee)
       }
       PrepareSuperComputedCall(loc) => {
         let key = frame.pop()
         let (receiver, callee) = interp.eval_super_computed_call_reference(
-          frame.env,
-          key,
-          loc,
+          env, key, loc,
         )
-        frame.stack.push(receiver)
-        frame.stack.push(callee)
+        stack.push(receiver)
+        stack.push(callee)
       }
       CallDirectEval(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
-        frame.stack.push(
+        stack.push(
           interp.call_direct_eval_or_shadowed(
             callee,
             args,
-            frame.env,
+            env,
             loc,
-            caller_strict=frame.ctx.strict,
+            caller_strict=ctx.strict,
           ),
         )
       }
       Call(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
-        frame.stack.push(interp.call_value(callee, Value::Undefined, args, loc))
+        stack.push(interp.call_value(callee, Value::Undefined, args, loc))
       }
       CallWithReceiver(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.stack.push(interp.call_value(callee, receiver, args, loc))
+        stack.push(interp.call_value(callee, receiver, args, loc))
       }
       CallSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
-        frame.stack.push(interp.call_value(callee, Value::Undefined, args, loc))
+        stack.push(interp.call_value(callee, Value::Undefined, args, loc))
       }
       CallSpreadWithReceiver(loc) => {
         let args = frame.pop_dynamic_args()
         let callee = frame.pop()
         let receiver = frame.pop()
-        frame.stack.push(interp.call_value(callee, receiver, args, loc))
+        stack.push(interp.call_value(callee, receiver, args, loc))
       }
       Construct(arg_count, loc) => {
         let args = pop_args(frame, arg_count)
         let ctor = frame.pop()
-        frame.stack.push(interp.construct_value(ctor, args, loc))
+        stack.push(interp.construct_value(ctor, args, loc))
       }
       ConstructSpread(loc) => {
         let args = frame.pop_dynamic_args()
         let ctor = frame.pop()
-        frame.stack.push(interp.construct_value(ctor, args, loc))
+        stack.push(interp.construct_value(ctor, args, loc))
       }
       Return => return BytecodeReturn(frame.pop())
       Throw => {
@@ -5052,5 +5051,7 @@ fn run_bytecode_function(
       }
     }
   }
-  BytecodeNormal(frame.completion)
+  frame.ip = ip
+  frame.completion = completion
+  BytecodeNormal(completion)
 }
