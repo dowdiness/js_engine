@@ -248,6 +248,51 @@ pub fn bench_bytecode_runtime_helpers() -> BenchResult raise {
 }
 
 ///|
+fn bench_bytecode_property_get() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/property_get",
+    BYTECODE_PROPERTY_GET_SRC,
+    BYTECODE_MICRO_ACCESS_EXPECTED,
+  )
+}
+
+///|
+fn bench_bytecode_property_set() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/property_set",
+    BYTECODE_PROPERTY_SET_SRC,
+    "99999",
+  )
+}
+
+///|
+fn bench_bytecode_method_call() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/method_call",
+    BYTECODE_METHOD_CALL_SRC,
+    BYTECODE_MICRO_CALL_EXPECTED,
+  )
+}
+
+///|
+fn bench_bytecode_object_literal() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/object_literal",
+    BYTECODE_OBJECT_LITERAL_SRC,
+    "50005000",
+  )
+}
+
+///|
+fn bench_bytecode_array_literal() -> BenchResult raise {
+  bench_bytecode_micro(
+    "isolate/bytecode/array_literal",
+    BYTECODE_ARRAY_LITERAL_SRC,
+    "50015000",
+  )
+}
+
+///|
 pub fn bench_object_construction() -> BenchResult raise {
   verify(OBJECT_CONSTRUCTION_SRC, "1000")
   run_bench(
@@ -416,6 +461,11 @@ pub fn run_component() -> Array[BenchResult] raise {
     bench_bytecode_captured_access(),
     bench_bytecode_call_frame(),
     bench_bytecode_runtime_helpers(),
+    bench_bytecode_property_get(),
+    bench_bytecode_property_set(),
+    bench_bytecode_method_call(),
+    bench_bytecode_object_literal(),
+    bench_bytecode_array_literal(),
     bench_arithmetic_loop(),
     bench_object_construction(),
     bench_string_ops(),
@@ -470,6 +520,11 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("isolate/bytecode/captured_access", "component", "execution"),
     ("isolate/bytecode/call_frame", "component", "execution"),
     ("isolate/bytecode/runtime_helpers", "component", "execution"),
+    ("isolate/bytecode/property_get", "component", "execution"),
+    ("isolate/bytecode/property_set", "component", "execution"),
+    ("isolate/bytecode/method_call", "component", "execution"),
+    ("isolate/bytecode/object_literal", "component", "execution"),
+    ("isolate/bytecode/array_literal", "component", "execution"),
     ("exec/arithmetic_loop", "component", "execution"),
     ("exec/object_construction", "component", "execution"),
     ("exec/string_ops", "component", "execution"),
