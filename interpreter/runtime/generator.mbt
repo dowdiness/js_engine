@@ -592,10 +592,17 @@ fn create_generator_instance(
   // Save on entry / reset to false / restore on exit so nested invocations
   // in defaults don't inherit outer state.
   let saved_in_default = interp.in_nonarrow_param_default_eval
+  let saved_param_default_conflicts = interp.param_default_eval_var_conflicts
   interp.in_nonarrow_param_default_eval = false
+  interp.param_default_eval_var_conflicts = None
   let gen_result : Value = try {
     match params_ext {
       Some(pext) => {
+        let param_default_conflicts = collect_param_default_eval_var_conflicts(
+          pext,
+          rest_param,
+          implicit_arguments=true,
+        )
         let mut effective_count = 0
         for i = 0; i < pext.length(); i = i + 1 {
           let param = pext[i]
@@ -609,8 +616,12 @@ fn create_generator_instance(
             match param.default_val {
               Some(d) => {
                 interp.in_nonarrow_param_default_eval = true
+                interp.param_default_eval_var_conflicts = Some(
+                  param_default_conflicts,
+                )
                 let v = interp.eval_expr(setup_ctx, d, func_env)
                 interp.in_nonarrow_param_default_eval = false
+                interp.param_default_eval_var_conflicts = None
                 v
               }
               None =>
@@ -788,10 +799,12 @@ fn create_generator_instance(
   } catch {
     e => {
       interp.in_nonarrow_param_default_eval = saved_in_default
+      interp.param_default_eval_var_conflicts = saved_param_default_conflicts
       raise e
     }
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
+  interp.param_default_eval_var_conflicts = saved_param_default_conflicts
   gen_result
 }
 

@@ -2416,6 +2416,18 @@ test "bytecode arrow functions capture outer arguments object" {
 }
 
 ///|
+test "bytecode nested ordinary functions use their own arguments object" {
+  let src =
+    #|function outer(a) {
+    #|  var b = a;
+    #|  function inner() { return arguments[0]; }
+    #|  return b + ":" + inner(2);
+    #|}
+    #|outer(1);
+  inspect(bytecode_compare(src), content="value:1:2")
+}
+
+///|
 test "bytecode arguments parameter shadows arguments object" {
   let src =
     #|function f(arguments) {
@@ -2435,6 +2447,17 @@ test "bytecode var arguments declaration preserves arguments object without init
     #|}
     #|f(1, 2);
   inspect(bytecode_compare(src), content="value:2:2")
+}
+
+///|
+test "bytecode var redeclaration of mapped parameter updates arguments object" {
+  let src =
+    #|function f(a) {
+    #|  var a = 9;
+    #|  return a + ":" + arguments[0];
+    #|}
+    #|f(1);
+  inspect(bytecode_compare(src), content="value:9:9")
 }
 
 ///|
@@ -2639,7 +2662,7 @@ test "bytecode console member errors like interpreter for unsupported methods" {
 }
 
 ///|
-test "bytecode leaves captured vars in environment fallback" {
+test "bytecode captured vars use environment-backed slots" {
   let src =
     #|function outer(a) {
     #|  var b = a;
@@ -2647,6 +2670,18 @@ test "bytecode leaves captured vars in environment fallback" {
     #|}
     #|outer(1)();
   inspect(bytecode_compare(src), content="value:1")
+}
+
+///|
+test "bytecode captured params use environment-backed slots" {
+  let src =
+    #|function outer(a) {
+    #|  function read() { return a; }
+    #|  a = a + 1;
+    #|  return read();
+    #|}
+    #|outer(1);
+  inspect(bytecode_compare(src), content="value:2")
 }
 
 ///|

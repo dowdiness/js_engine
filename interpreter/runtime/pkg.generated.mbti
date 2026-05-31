@@ -482,6 +482,7 @@ pub(all) struct Interpreter {
   symbols : SymbolState
   mut stdlib_hooks : StdlibHooks
   mut in_nonarrow_param_default_eval : Bool
+  mut param_default_eval_var_conflicts : Map[String, Bool]?
 }
 pub fn Interpreter::array_define_own_property(Self, ArrayData, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::array_set_length(Self, ArrayData, PartialDescriptor) -> Bool raise

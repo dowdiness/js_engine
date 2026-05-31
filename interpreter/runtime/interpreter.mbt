@@ -101,13 +101,14 @@ pub(all) struct Interpreter {
   symbols : SymbolState
   // Stdlib dispatch hooks — populated by the wiring layer in the root package
   mut stdlib_hooks : StdlibHooks
-  // §19.2.1.3 (#A.6): true while the current non-arrow function frame is
-  // evaluating one of its own parameter defaults. Direct eval in that
-  // window raises SyntaxError if its var names include "arguments", per
-  // test262 language/eval-code/direct/*-arguments shapes. Reset to false
-  // on every function entry so nested IIFEs / arrows / recursive calls
-  // don't inherit the outer frame's default-eval state.
+  // §19.2.1.3 (#A.6): true while the current function frame is evaluating
+  // one of its own parameter defaults. Direct eval in that window raises
+  // SyntaxError if its var names conflict with this frame's parameter-scope
+  // names (and non-arrow `arguments`). Reset to false on every function entry
+  // so nested IIFEs / arrows / recursive calls don't inherit the outer frame's
+  // default-eval state.
   mut in_nonarrow_param_default_eval : Bool
+  mut param_default_eval_var_conflicts : Map[String, Bool]?
 }
 
 ///|
@@ -165,6 +166,7 @@ pub fn Interpreter::new(
     symbols,
     stdlib_hooks,
     in_nonarrow_param_default_eval: false,
+    param_default_eval_var_conflicts: None,
   }
   global.interpreter_context = Some(interp)
   with_cleared_active_callee_realm_unit(realm_state, fn() {

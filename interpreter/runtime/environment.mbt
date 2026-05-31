@@ -262,13 +262,13 @@ pub fn Environment::has(self : Environment, name : String) -> Bool raise Error {
 }
 
 ///|
-/// Walk up the scope chain to find a VarBinding with the given name.
-/// Unlike `has`, this only matches VarBinding kind, so it won't
-/// accidentally match a let/const in a parent scope.
+/// Walk up the scope chain to find a var-compatible binding with the given
+/// name. Formal parameters are included because sloppy function-body `var`
+/// declarations may redeclare and update mapped parameter bindings.
 pub fn Environment::has_var(self : Environment, name : String) -> Bool {
   match self.bindings.get(name) {
     Some(binding) =>
-      if binding.kind == VarBinding {
+      if binding.kind == VarBinding || binding.is_parameter {
         true
       } else {
         // Name exists but is let/const — continue searching parent scopes
@@ -286,9 +286,9 @@ pub fn Environment::has_var(self : Environment, name : String) -> Bool {
 }
 
 ///|
-/// Assign to the nearest VarBinding with the given name, skipping
-/// any let/const bindings in intervening scopes. This is needed for
-/// eval'd var declarations that must target the function scope's var,
+/// Assign to the nearest var-compatible binding with the given name, skipping
+/// real let/const bindings in intervening scopes. This is needed for eval'd var
+/// declarations that must target the function scope's var or parameter binding,
 /// even when a block-scoped let/const shadows the name in between.
 pub fn Environment::assign_var(
   self : Environment,
@@ -297,10 +297,10 @@ pub fn Environment::assign_var(
 ) -> Unit raise Error {
   match self.bindings.get(name) {
     Some(binding) =>
-      if binding.kind == VarBinding {
+      if binding.kind == VarBinding || binding.is_parameter {
         binding.value = value
       } else {
-        // Skip non-var binding, look in parent
+        // Skip real let/const binding, look in parent
         match self.parent {
           Some(parent) => parent.assign_var(name, value)
           None => raise @errors.ReferenceError(message="\{name} is not defined")

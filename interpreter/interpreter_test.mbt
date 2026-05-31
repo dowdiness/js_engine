@@ -12448,6 +12448,42 @@ test "§19.2.1.3 probe: eval(var arguments) in default + following arguments par
 }
 
 ///|
+/// §19.2.1.3 probe (#A.6) — following-parameter conflicts are rejected
+/// during EvalDeclarationInstantiation, before the eval body can run.
+test "§19.2.1.3 probe: eval(var arguments) with following param rejects before side effects" {
+  let src =
+    #|var log = [];
+    #|function f(p = eval("log.push('ran'); var arguments"), arguments) {}
+    #|try { f(); } catch (e) { console.log(e.name + ": " + e.message); }
+    #|console.log(log.length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "SyntaxError: Identifier 'arguments' has already been declared", "0",
+  ])
+}
+
+///|
+/// §19.2.1.3 probe (#A.6) — direct eval in a non-arrow default cannot
+/// var-declare a formal parameter name, not just the special `arguments` name.
+test "§19.2.1.3 probe: eval(var param) in default throws SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|function f(a, p = eval("var a = 2")) { return a; }
+        #|f(1);
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  expect_error_message(
+    err_msg, "SyntaxError: Identifier 'a' has already been declared",
+  )
+}
+
+///|
 /// §19.2.1.3 negative regression (#A.6) — arrow variant must NOT throw.
 /// Arrows have no `arguments` binding; eval's var lands in an empty scope.
 /// Protects the 86 currently-passing arrow test262 tests.
