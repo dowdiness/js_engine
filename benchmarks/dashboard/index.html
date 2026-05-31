@@ -630,9 +630,9 @@
           <p class="eyebrow">js_engine performance history</p>
           <h1>Benchmark instrument panel</h1>
           <p class="lede">
-            Scheduled and manual main runs publish this live history after the
-            benchmark-action data file is updated. Each card keeps the benchmark
-            identifier and its measurement intent visible beside the trend.
+            Scan main-branch benchmark history by workload. Each card names the
+            benchmark, explains what it measures, and charts mean runtime across
+            recent commits.
           </p>
         </div>
         <aside class="hero-panel" aria-label="Run metadata">
@@ -648,7 +648,7 @@
               </div>
               <div>
                 <dt>Reading rule</dt>
-                <dd>Smaller timing is better. Noisy rows have CV &gt; 15%.</dd>
+                <dd>Lower mean time is better. Noisy means CV &gt; 15%.</dd>
               </div>
             </dl>
           </div>
@@ -666,7 +666,7 @@
           <div class="filter-status">
             <span id="result-count" aria-live="polite">Showing benchmarks…</span>
             <button id="clear-filters" class="clear-button" type="button" hidden>Clear filters</button>
-            <span class="filter-help">CV is run-to-run variation; noisy means CV &gt; 15%. Smaller timing is better.</span>
+            <span class="filter-help">CV = timing variation across repeated runs. Noisy = CV &gt; 15%; treat that trend cautiously.</span>
           </div>
           <div class="filter-row" role="group" aria-label="Stage filter">
             <button class="chip" type="button" data-stage="all" aria-pressed="true">All stages</button>
@@ -686,7 +686,7 @@
       <main id="bench-grid" class="bench-grid" aria-live="polite"></main>
 
       <div id="empty-state" class="empty-state" hidden>
-        No benchmark cards match those filters. Try a broader stage, category, or search term.
+        No benchmarks match those filters. Clear filters or broaden the stage, category, or search term.
       </div>
 
       <footer class="dashboard-footer">
@@ -1066,15 +1066,15 @@
           const noisyCount = cards.filter(card => card.latest && card.latest.noisy).length;
           const latestCommit = latestEntry && latestEntry.commit ? latestEntry.commit.id : '';
 
-          summary.appendChild(metric('Tracked benchmarks', String(cards.length), 'Cards include historical rows as they appear.'));
-          summary.appendChild(metric('Snapshots', String(uniqueCommits.size), 'Unique commits in benchmarks/data.js.'));
+          summary.appendChild(metric('Tracked benchmarks', String(cards.length), 'Each card tracks one benchmark over commits.'));
+          summary.appendChild(metric('Snapshots', String(uniqueCommits.size), 'Unique commits in the loaded history.'));
           summary.appendChild(metric('Latest commit', latestCommit ? latestCommit.slice(0, 7) : '—', latestEntry && latestEntry.commit ? latestEntry.commit.message : 'No commits found.'));
-          summary.appendChild(metric('Noisy latest rows', String(noisyCount), 'CV above the runner threshold on the most recent sample.'));
+          summary.appendChild(metric('Noisy latest samples', String(noisyCount), 'Latest samples marked noisy with CV > 15%.'));
         }
 
         function trendFor(points) {
           if (!points || points.length < 2) {
-            return { label: 'Trend', value: 'new row', className: '' };
+            return { label: 'Change', value: 'first sample', className: '' };
           }
           const latest = points[points.length - 1].value;
           const previous = points[points.length - 2].value;
@@ -1083,12 +1083,12 @@
           }
           const pct = ((latest - previous) / previous) * 100;
           if (Math.abs(pct) < 0.05) {
-            return { label: 'Trend', value: 'flat', className: '' };
+            return { label: 'Change', value: 'about same', className: '' };
           }
           const faster = pct < 0;
           return {
-            label: 'Vs previous',
-            value: `${faster ? 'faster' : 'slower'} ${Math.abs(pct).toFixed(1)}%`,
+            label: 'Change',
+            value: `${Math.abs(pct).toFixed(1)}% ${faster ? 'faster' : 'slower'}`,
             className: faster ? 'good' : 'bad',
           };
         }
@@ -1110,7 +1110,7 @@
           const table = document.createElement('table');
           const thead = document.createElement('thead');
           const headerRow = document.createElement('tr');
-          ['Commit', 'Date', 'Mean', 'CV', 'Noise'].forEach(label => headerRow.appendChild(text('th', '', label)));
+          ['Commit', 'Date', 'Mean', 'CV', 'Stability'].forEach(label => headerRow.appendChild(text('th', '', label)));
           thead.appendChild(headerRow);
           table.appendChild(thead);
 
@@ -1170,8 +1170,8 @@
 
           const trend = trendFor(card.points);
           const readouts = text('div', 'bench-readout');
-          readouts.appendChild(readout('Latest mean', latest ? formatDuration(latest.value) : '—'));
-          readouts.appendChild(readout('Latest CV', latest && Number.isFinite(latest.cv) ? `${latest.cv.toFixed(1)}%` : '—'));
+          readouts.appendChild(readout('Mean time', latest ? formatDuration(latest.value) : '—'));
+          readouts.appendChild(readout('Variation (CV)', latest && Number.isFinite(latest.cv) ? `${latest.cv.toFixed(1)}%` : '—'));
           readouts.appendChild(readout(trend.label, trend.value, trend.className));
           cardEl.appendChild(readouts);
 
@@ -1189,7 +1189,7 @@
 
         function renderChart(canvas, card, chartColor) {
           if (typeof Chart === 'undefined') {
-            canvas.replaceWith(text('p', 'bench-desc', 'Chart.js did not load; use the latest samples table for values.'));
+            canvas.replaceWith(text('p', 'bench-desc', 'Chart did not load. The latest samples table still shows values.'));
             return;
           }
 
@@ -1258,7 +1258,7 @@
                       lines.push(`CV ${point.cv.toFixed(1)}%`);
                     }
                     if (point.noisy) {
-                      lines.push('Marked noisy by runner');
+                      lines.push('Noisy sample (CV > 15%)');
                     }
                     if (point.commit && point.commit.message) {
                       lines.push(point.commit.message);
