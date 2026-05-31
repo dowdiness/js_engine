@@ -52,6 +52,100 @@ pub fn bench_startup_tiny() -> BenchResult raise {
 }
 
 ///|
+pub fn bench_startup_parse_tiny() -> BenchResult raise {
+  let prog = @parser.parse(STARTUP_TINY_SRC)
+  let interp = @interpreter.new_interpreter()
+  let got = interp.run(prog.stmts).to_string()
+  if got != "2" {
+    abort(
+      "bench correctness check failed\n  source:   STARTUP_TINY_SRC parsed\n  expected: 2\n  got:      \{got}",
+    )
+  }
+  run_bench(
+    "startup/phase/parse_tiny",
+    Component,
+    { warmup: 5, iterations: 50, group_size: 10000 },
+    fn() raise { let _ = @parser.parse(STARTUP_TINY_SRC) },
+    stage=Frontend,
+  )
+}
+
+///|
+pub fn bench_startup_new_interpreter() -> BenchResult raise {
+  let _ = @interpreter.new_interpreter()
+  run_bench(
+    "startup/phase/new_interpreter",
+    Component,
+    { warmup: 5, iterations: 50, group_size: 10 },
+    fn() { let _ = @interpreter.new_interpreter() },
+    stage=Startup,
+  )
+}
+
+///|
+pub fn bench_startup_execute_preparsed_tiny() -> BenchResult raise {
+  let prog = @parser.parse(STARTUP_TINY_SRC)
+  let precheck_interp = @interpreter.new_interpreter()
+  let got = precheck_interp.run(prog.stmts).to_string()
+  if got != "2" {
+    abort(
+      "bench correctness check failed\n  source:   STARTUP_TINY_SRC preparsed\n  expected: 2\n  got:      \{got}",
+    )
+  }
+  let interp = @interpreter.new_interpreter()
+  run_bench(
+    "startup/phase/execute_preparsed_tiny",
+    Component,
+    { warmup: 5, iterations: 50, group_size: 20000 },
+    fn() raise { let _ = interp.run(prog.stmts) },
+  )
+}
+
+///|
+pub fn bench_startup_event_loop_drain_empty() -> BenchResult raise {
+  let prog = @parser.parse(STARTUP_TINY_SRC)
+  let interp = @interpreter.new_interpreter()
+  let got = interp.run(prog.stmts).to_string()
+  if got != "2" {
+    abort(
+      "bench correctness check failed\n  source:   STARTUP_TINY_SRC event loop drain\n  expected: 2\n  got:      \{got}",
+    )
+  }
+  interp.run_microtasks()
+  interp.run_timers()
+  run_bench(
+    "startup/phase/event_loop_drain_empty",
+    Component,
+    { warmup: 5, iterations: 50, group_size: 50000 },
+    fn() raise {
+      interp.run_microtasks()
+      interp.run_timers()
+    },
+    stage=Startup,
+  )
+}
+
+///|
+pub fn bench_startup_result_stringify_output() -> BenchResult raise {
+  let prog = @parser.parse(STARTUP_TINY_SRC)
+  let interp = @interpreter.new_interpreter()
+  let result = interp.run(prog.stmts)
+  let got = result.to_string()
+  if got != "2" {
+    abort(
+      "bench correctness check failed\n  source:   STARTUP_TINY_SRC stringify\n  expected: 2\n  got:      \{got}",
+    )
+  }
+  let output = interp.host.output
+  run_bench(
+    "startup/phase/result_stringify_output",
+    Component,
+    { warmup: 5, iterations: 50, group_size: 1000000 },
+    fn() { let _ = (output, result.to_string()) },
+  )
+}
+
+///|
 pub fn bench_lexer_small() -> BenchResult raise {
   run_bench(
     "lexer/small",
@@ -449,8 +543,33 @@ pub fn run_regression() -> Array[BenchResult] raise {
 }
 
 ///|
+fn run_startup_phase_components() -> Array[BenchResult] raise {
+  [
+    bench_startup_parse_tiny(),
+    bench_startup_new_interpreter(),
+    bench_startup_execute_preparsed_tiny(),
+    bench_startup_event_loop_drain_empty(),
+    bench_startup_result_stringify_output(),
+  ]
+}
+
+///|
+pub fn run_startup_phases() -> Array[BenchResult] raise {
+  let out : Array[BenchResult] = [bench_startup_tiny()]
+  for r in run_startup_phase_components() {
+    out.push(r)
+  }
+  out
+}
+
+///|
 pub fn run_component() -> Array[BenchResult] raise {
   [
+    bench_startup_parse_tiny(),
+    bench_startup_new_interpreter(),
+    bench_startup_execute_preparsed_tiny(),
+    bench_startup_event_loop_drain_empty(),
+    bench_startup_result_stringify_output(),
     bench_array_map_filter(),
     bench_closure_factory(),
     bench_closure_conversion_closure_factory(),
@@ -510,6 +629,11 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("lexer/large", "regression", "frontend"),
     ("exec/fibonacci_30", "regression", "execution"),
     ("exec/property_chain", "regression", "execution"),
+    ("startup/phase/parse_tiny", "component", "frontend"),
+    ("startup/phase/new_interpreter", "component", "startup"),
+    ("startup/phase/execute_preparsed_tiny", "component", "execution"),
+    ("startup/phase/event_loop_drain_empty", "component", "startup"),
+    ("startup/phase/result_stringify_output", "component", "execution"),
     ("exec/array_map_filter", "component", "execution"),
     ("exec/closure_factory", "component", "execution"),
     ("baseline/closure_conversion/closure_factory", "component", "execution"),
