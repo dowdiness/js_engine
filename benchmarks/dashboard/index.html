@@ -95,14 +95,14 @@
 
       .hero {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
-        gap: clamp(1rem, 3vw, 2rem);
+        grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem);
+        gap: clamp(0.75rem, 2vw, 1.5rem);
         align-items: center;
-        padding: clamp(1rem, 3vw, 2rem);
+        padding: clamp(0.85rem, 2vw, 1.5rem);
         border: 1px solid var(--line);
         border-radius: var(--radius-lg);
         background: var(--panel);
-        box-shadow: var(--shadow);
+        box-shadow: 0 12px 36px oklch(0.43 0.03 250 / 0.1);
       }
 
       .eyebrow,
@@ -117,27 +117,27 @@
       }
 
       .eyebrow {
-        margin: 0 0 var(--space-sm);
+        margin: 0 0 var(--space-xs);
         color: var(--amber);
-        font-size: 0.78rem;
+        font-size: 0.72rem;
         font-weight: 700;
       }
 
       h1 {
-        max-width: 14ch;
+        max-width: 18ch;
         margin: 0;
         font-family: var(--font-display);
-        font-size: clamp(2.35rem, 5vw, 5rem);
-        line-height: 0.92;
+        font-size: clamp(2rem, 4vw, 3.75rem);
+        line-height: 0.95;
         letter-spacing: -0.055em;
       }
 
       .lede {
-        max-width: 60ch;
-        margin: var(--space-md) 0 0;
+        max-width: 52ch;
+        margin: var(--space-xs) 0 0;
         color: var(--ink-soft);
-        font-size: clamp(1rem, 1.2vw, 1.18rem);
-        line-height: 1.6;
+        font-size: clamp(0.95rem, 1vw, 1.05rem);
+        line-height: 1.45;
       }
 
       .hero-panel {
@@ -146,7 +146,7 @@
       }
 
       .run-card {
-        padding: var(--space-md);
+        padding: var(--space-sm);
         border: 1px solid var(--line);
         border-radius: var(--radius-md);
         background: var(--paper-quiet);
@@ -154,7 +154,7 @@
 
       .run-card dl {
         display: grid;
-        gap: var(--space-sm);
+        gap: var(--space-xs);
         margin: 0;
       }
 
@@ -544,8 +544,8 @@
         }
 
         .hero {
-          gap: var(--space-sm);
-          padding: var(--space-md);
+          gap: var(--space-xs);
+          padding: var(--space-sm);
         }
 
         .eyebrow {
@@ -555,26 +555,26 @@
 
         h1 {
           max-width: 18ch;
-          font-size: clamp(2rem, 10.5vw, 2.65rem);
+          font-size: clamp(1.85rem, 9vw, 2.35rem);
           line-height: 0.96;
         }
 
         .lede {
-          margin-top: var(--space-sm);
-          font-size: 0.96rem;
-          line-height: 1.45;
+          margin-top: 0.4rem;
+          font-size: 0.9rem;
+          line-height: 1.35;
         }
 
         .run-card {
-          padding: var(--space-sm);
+          padding: var(--space-xs) var(--space-sm);
         }
 
         .run-card dl {
-          gap: var(--space-xs);
+          gap: 0.35rem;
         }
 
         .run-card dd {
-          font-size: 0.92rem;
+          font-size: 0.88rem;
         }
 
         .summary-grid {
@@ -630,9 +630,8 @@
           <p class="eyebrow">js_engine performance history</p>
           <h1>Benchmark instrument panel</h1>
           <p class="lede">
-            Scan main-branch benchmark history by workload. Each card names the
-            benchmark, explains what it measures, and charts mean runtime across
-            recent commits.
+            Scan benchmark history by workload: what it measures and mean runtime
+            by commit.
           </p>
         </div>
         <aside class="hero-panel" aria-label="Run metadata">
