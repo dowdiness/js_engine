@@ -12,7 +12,8 @@ js_engine execution for a tiny source program.
 Options:
   --warmup N          Hyperfine --warmup count (default: 10)
   --min-runs N        Hyperfine --min-runs count (default: 50)
-  --source SRC        JavaScript source for expression probes (default: 1 + 1)
+  --source SRC        JavaScript source for expression probes; expected stdout
+                      is derived from node -p (default: 1 + 1)
   --output-root DIR   Root for timestamped output dirs
                       (default: _build/startup-hyperfine-decompose)
   --timestamp NAME    Timestamp/output directory name override
@@ -50,27 +51,17 @@ print(shlex.join(sys.argv[1:]))
 PY
 }
 
-expect_stdout() {
-  local name=$1
-  local expected=$2
-  shift 2
+captured_stdout=""
 
-  local stdout_file stderr_file output
+capture_stdout() {
+  local name=$1
+  shift
+
+  local stdout_file stderr_file
   stdout_file=$(mktemp)
   stderr_file=$(mktemp)
   if "$@" >"$stdout_file" 2>"$stderr_file"; then
-    output=$(<"$stdout_file")
-    if [[ "$output" != "$expected" ]]; then
-      echo "error: $name produced unexpected stdout" >&2
-      echo "expected: [$expected]" >&2
-      echo "actual:   [$output]" >&2
-      if [[ -s "$stderr_file" ]]; then
-        echo "stderr:" >&2
-        cat "$stderr_file" >&2
-      fi
-      rm -f "$stdout_file" "$stderr_file"
-      exit 1
-    fi
+    captured_stdout=$(<"$stdout_file")
   else
     local status=$?
     echo "error: $name failed with exit status $status" >&2
@@ -86,6 +77,20 @@ expect_stdout() {
     exit 1
   fi
   rm -f "$stdout_file" "$stderr_file"
+}
+
+expect_stdout() {
+  local name=$1
+  local expected=$2
+  shift 2
+
+  capture_stdout "$name" "$@"
+  if [[ "$captured_stdout" != "$expected" ]]; then
+    echo "error: $name produced unexpected stdout" >&2
+    echo "expected: [$expected]" >&2
+    echo "actual:   [$captured_stdout]" >&2
+    exit 1
+  fi
 }
 
 expect_usage_output() {
@@ -258,15 +263,16 @@ if [[ -n "$(git status --porcelain --untracked-files=all 2>/dev/null)" ]]; then
 fi
 
 expect_stdout "Node.js empty process" "" node -e ""
-expect_stdout "Node.js native expression" "2" node -p "$startup_source"
+capture_stdout "Node.js native expression" node -p "$startup_source"
+expected_output=$captured_stdout
 if ((include_bun)); then
   expect_stdout "Bun empty process" "" bun -e ";"
-  expect_stdout "Bun native expression" "2" bun -p "$startup_source"
+  expect_stdout "Bun native expression" "$expected_output" bun -p "$startup_source"
 fi
 expect_usage_output "js_engine load/no-source" node "$js_engine_cli"
-expect_stdout "js_engine CLI expression" "2" node "$js_engine_cli" "$startup_source"
+expect_stdout "js_engine CLI expression" "$expected_output" node "$js_engine_cli" "$startup_source"
 if ((include_bun)); then
-  expect_stdout "Bun-hosted js_engine CLI expression" "2" bun "$js_engine_cli" "$startup_source"
+  expect_stdout "Bun-hosted js_engine CLI expression" "$expected_output" bun "$js_engine_cli" "$startup_source"
 fi
 
 declare -a command_names=()
@@ -341,6 +347,7 @@ export STARTUP_REPO_ROOT="$repo_root"
 export STARTUP_CREATED_AT="$created_at"
 export STARTUP_OUT_DIR="$out_dir"
 export STARTUP_SOURCE_VALUE="$startup_source"
+export STARTUP_EXPECTED_OUTPUT="$expected_output"
 export STARTUP_WARMUP="$warmup"
 export STARTUP_MIN_RUNS="$min_runs"
 export STARTUP_INCLUDE_BUN="$include_bun"
@@ -406,6 +413,7 @@ metadata = {
         "warmup": int(os.environ["STARTUP_WARMUP"]),
         "min_runs": int(os.environ["STARTUP_MIN_RUNS"]),
         "source": os.environ["STARTUP_SOURCE_VALUE"],
+        "expected_stdout": os.environ["STARTUP_EXPECTED_OUTPUT"],
         "include_bun_probes": include_bun,
     },
     "bundle": {
@@ -434,6 +442,7 @@ for item in commands:
 
 notes = [
     "- Reporting-only helper: no thresholds, PR comments, or publishing are performed.",
+    "- Expression probes are validated against the stdout captured from `node -p <source>` before Hyperfine runs.",
     "- `js_engine load/no-source` runs the CLI without a source argument. It exercises bundle load and the CLI usage path, but it does not parse or execute JavaScript source.",
     "- `startup/tiny_program` remains the in-process dashboard guardrail; this helper measures process-level startup decomposition.",
 ]
@@ -452,7 +461,8 @@ summary = "\n".join(
         f"- Commit: `{os.environ['STARTUP_GIT_COMMIT']}`",
         f"- Dirty tree: `{os.environ['STARTUP_GIT_DIRTY']}`",
         f"- Output directory: `{display_path(out_dir)}`",
-        f"- Probe source: `{os.environ['STARTUP_SOURCE_VALUE']}`",
+        f"- Probe source: {md_code(md_cell(os.environ['STARTUP_SOURCE_VALUE']))}",
+        f"- Expected stdout: {md_code(md_cell(os.environ['STARTUP_EXPECTED_OUTPUT']))}",
         f"- Warmup runs: `{os.environ['STARTUP_WARMUP']}`",
         f"- Minimum measured runs: `{os.environ['STARTUP_MIN_RUNS']}`",
         f"- Bundle: `{os.environ['STARTUP_BUNDLE_PATH']}` "

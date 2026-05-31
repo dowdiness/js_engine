@@ -150,14 +150,16 @@ scripts/startup-hyperfine-decompose.sh --warmup 10 --min-runs 50
 scripts/startup-hyperfine-decompose.sh --warmup 1 --min-runs 2
 ```
 
-The helper builds `moon build cmd/main --target js --release`, verifies that
-expression probes produce `2`, records the release bundle byte size and line
-count, and writes Markdown/JSON artifacts under
-`_build/startup-hyperfine-decompose/<UTC timestamp>/` by default. Its probes
-separate empty host startup, native host `1 + 1`, `js_engine` load/no-source,
-full `js_engine "1 + 1"`, and Bun-hosted `js_engine` when Bun is available (or
-required with `--include-bun`). Like the hosted workflow, it is reporting-only:
-no thresholds, publishing, or PR comments.
+The helper builds `moon build cmd/main --target js --release`, captures the
+expected expression stdout from `node -p <source>` (default source: `1 + 1`),
+verifies that `js_engine` and any included Bun expression probes match that
+stdout, records the release bundle byte size and line count, and writes
+Markdown/JSON artifacts under `_build/startup-hyperfine-decompose/<UTC
+timestamp>/` by default. Its probes separate empty host startup, native host
+expression evaluation, `js_engine` load/no-source, full `js_engine` expression
+evaluation, and Bun-hosted `js_engine` when Bun is available (or required with
+`--include-bun`). Like the hosted workflow, it is reporting-only: no thresholds,
+publishing, or PR comments.
 
 ## Release Workflow
 
