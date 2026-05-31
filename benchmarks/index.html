@@ -28,6 +28,9 @@
         --muted: oklch(0.55 0.028 250);
         --line: oklch(0.83 0.018 86);
         --line-strong: oklch(0.67 0.032 83);
+        --chart-grid: oklch(0.43 0.03 250 / 0.12);
+        --chart-text: oklch(0.50 0.02 86);
+        --chart-surface: oklch(0.996 0.004 87);
         --amber: oklch(0.56 0.122 58);
         --amber-soft: oklch(0.93 0.051 68);
         --startup: oklch(0.49 0.13 38);
@@ -191,9 +194,98 @@
       }
 
       .metric-note {
+        display: -webkit-box;
         margin: var(--space-xs) 0 0;
+        overflow: hidden;
         color: var(--muted);
         font-size: 0.9rem;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .attention-panel {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-sm) var(--space-lg);
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: var(--space-lg);
+        padding: var(--space-md);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: var(--panel);
+      }
+
+      .attention-copy {
+        display: grid;
+        flex: 0 1 24rem;
+        gap: var(--space-2xs);
+      }
+
+      .attention-title {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: 1.05rem;
+        line-height: 1.1;
+        letter-spacing: -0.025em;
+      }
+
+      .attention-summary {
+        margin: 0;
+        color: var(--ink-soft);
+        font-size: 0.9rem;
+        line-height: 1.4;
+      }
+
+      .attention-actions {
+        display: flex;
+        flex: 1 1 38rem;
+        flex-wrap: wrap;
+        gap: var(--space-xs);
+        justify-content: flex-end;
+      }
+
+      .signal-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        min-height: 2.75rem;
+        padding: 0.55rem 0.75rem;
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--ink-soft);
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      .signal-chip[aria-pressed="true"] {
+        border-color: oklch(0.49 0.12 58 / 0.65);
+        background: var(--amber-soft);
+        color: var(--ink);
+      }
+
+      .signal-count {
+        min-width: 1.55rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+        background: var(--paper-quiet);
+        text-align: center;
+      }
+
+      .sort-field {
+        display: grid;
+        flex: 0 1 15rem;
+        gap: var(--space-xs);
+      }
+
+      .sort-field select {
+        min-height: 2.75rem;
+        padding: 0.65rem 0.85rem;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-sm);
+        background: var(--panel);
+        color: var(--ink);
       }
 
       .controls {
@@ -221,16 +313,56 @@
 
       .search-field input:focus-visible,
       .chip:focus-visible,
+      .signal-chip:focus-visible,
       .clear-button:focus-visible,
       .download-button:focus-visible,
+      .sort-field select:focus-visible,
       summary:focus-visible {
         outline: 3px solid oklch(0.69 0.13 70 / 0.65);
         outline-offset: 3px;
       }
 
-      .filter-bank {
+      .filter-bank,
+      .filter-options-body {
         display: grid;
         gap: var(--space-sm);
+      }
+
+      .filter-options {
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+      }
+
+      .filter-options-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-xs) var(--space-sm);
+        align-items: center;
+        justify-content: flex-end;
+        min-height: auto;
+        padding: 0;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 0.86rem;
+        font-weight: 700;
+        list-style: none;
+      }
+
+      .filter-options-summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .filter-options-summary::before {
+        content: "▸";
+      }
+
+      .filter-options[open] .filter-options-summary::before {
+        content: "▾";
+      }
+
+      .filter-summary-label {
+        color: var(--muted);
       }
 
       .filter-status {
@@ -243,13 +375,47 @@
         font-size: 0.86rem;
       }
 
-      .filter-help {
+      .filter-help-details {
         flex-basis: 100%;
-        max-width: 60ch;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
         color: var(--muted);
         font-size: 0.82rem;
         line-height: 1.4;
         text-align: right;
+      }
+
+      .filter-help-details summary {
+        min-height: auto;
+        padding: 0;
+        cursor: pointer;
+        font-weight: 700;
+        list-style-position: inside;
+      }
+
+      .filter-help {
+        display: block;
+        max-width: 60ch;
+        margin-top: var(--space-2xs);
+        margin-left: auto;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.4;
+      }
+
+      @media (hover: none), (pointer: coarse) {
+        .filter-options-summary,
+        .filter-help-details summary {
+          min-height: 2.75rem;
+        }
+
+        .commit-link {
+          display: inline-flex;
+          align-items: center;
+          min-height: 2.75rem;
+          padding-inline: var(--space-2xs);
+        }
       }
 
       .clear-button {
@@ -284,6 +450,13 @@
         font-weight: 700;
       }
 
+      .chip:hover,
+      .signal-chip:hover,
+      .download-button:hover {
+        border-color: oklch(0.49 0.12 58 / 0.5);
+        color: var(--ink);
+      }
+
       .chip {
         padding: 0.55rem 0.85rem;
         font-size: 0.72rem;
@@ -315,6 +488,10 @@
 
       .bench-card[hidden] {
         display: none;
+      }
+
+      .bench-card > * {
+        min-width: 0;
       }
 
       .bench-topline {
@@ -408,9 +585,28 @@
         color: var(--danger);
       }
 
+      .chart-region {
+        display: grid;
+        min-width: 0;
+        gap: var(--space-xs);
+      }
+
       .chart-box {
         min-height: 17rem;
         position: relative;
+      }
+
+      .chart-box.chart-box-fallback {
+        min-height: 0;
+      }
+
+      .chart-note {
+        min-width: 0;
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.4;
+        overflow-wrap: anywhere;
       }
 
       .chart-box canvas {
@@ -503,13 +699,23 @@
           grid-template-columns: 1fr;
         }
 
+        .attention-actions,
         .filter-row,
-        .filter-status {
+        .filter-status,
+        .filter-options-summary {
           justify-content: flex-start;
         }
 
-        .filter-help {
+        .sort-field {
+          flex-basis: min(100%, 16rem);
+        }
+
+        .filter-help-details {
           text-align: left;
+        }
+
+        .filter-help {
+          margin-left: 0;
         }
       }
 
@@ -534,6 +740,60 @@
           font-size: clamp(1.35rem, 6.7vw, 1.6rem);
         }
 
+        .attention-panel {
+          gap: var(--space-xs);
+          margin-bottom: var(--space-md);
+          padding: var(--space-sm);
+        }
+
+        .attention-copy {
+          flex-basis: 100%;
+        }
+
+        .attention-title {
+          display: none;
+        }
+
+        .attention-summary {
+          font-size: 0.82rem;
+        }
+
+        .attention-actions,
+        .filter-row {
+          flex-wrap: nowrap;
+          justify-content: flex-start;
+          overflow-x: auto;
+          padding-bottom: 0.15rem;
+          scrollbar-width: thin;
+        }
+
+        .attention-actions::-webkit-scrollbar,
+        .filter-row::-webkit-scrollbar {
+          height: 0.25rem;
+        }
+
+        .attention-actions::-webkit-scrollbar-thumb,
+        .filter-row::-webkit-scrollbar-thumb {
+          border-radius: 999px;
+          background: var(--line-strong);
+        }
+
+        .attention-actions::-webkit-scrollbar-track,
+        .filter-row::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .signal-chip,
+        .chip {
+          flex: 0 0 auto;
+        }
+
+        .sort-field {
+          grid-template-columns: auto minmax(0, 1fr);
+          align-items: center;
+          flex-basis: 100%;
+        }
+
         .hero-panel {
           min-width: 100%;
         }
@@ -549,17 +809,17 @@
         .summary-grid {
           grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: var(--space-xs);
-          margin-block: var(--space-md);
+          margin-block: var(--space-sm);
         }
 
         .metric {
-          min-height: 4.8rem;
-          padding: var(--space-sm);
+          min-height: 4.35rem;
+          padding: 0.65rem var(--space-sm);
         }
 
         .metric-value {
-          margin-top: 0.4rem;
-          font-size: 1.6rem;
+          margin-top: 0.25rem;
+          font-size: 1.45rem;
         }
 
         .metric-note {
@@ -568,13 +828,19 @@
 
         .controls {
           gap: var(--space-sm);
-          margin-bottom: var(--space-lg);
+          margin-bottom: var(--space-md);
         }
 
-        .filter-bank {
+        .filter-bank,
+        .filter-options-body {
           gap: var(--space-xs);
         }
 
+        .filter-options-summary {
+          min-height: 2.75rem;
+        }
+
+        .filter-help-details,
         .filter-help {
           font-size: 0.78rem;
         }
@@ -588,6 +854,11 @@
         .chart-box canvas {
           height: 15rem !important;
           min-height: 15rem;
+        }
+
+        .chart-box.chart-box-fallback {
+          height: auto !important;
+          min-height: 0;
         }
       }
     </style>
@@ -616,29 +887,59 @@
 
       <section id="summary" class="summary-grid" aria-label="Benchmark summary"></section>
 
+      <section class="attention-panel" aria-label="Latest benchmark signals">
+        <div class="attention-copy">
+          <div class="section-kicker">Scan by signal</div>
+          <h2 class="attention-title">Latest movement</h2>
+          <p id="attention-summary" class="attention-summary">Loading benchmark signals…</p>
+        </div>
+        <div id="attention-filters" class="attention-actions" role="group" aria-label="Latest signal filter"></div>
+        <label class="sort-field">
+          <span class="meta-label">Sort cards</span>
+          <select id="sort-order">
+            <option value="canonical">Benchmark order</option>
+            <option value="attention">Needs attention first</option>
+            <option value="slowdown">Biggest slowdown</option>
+            <option value="speedup">Biggest speedup</option>
+            <option value="noise">Noisiest latest</option>
+            <option value="name">Benchmark name</option>
+          </select>
+        </label>
+      </section>
+
       <section class="controls" aria-label="Dashboard filters">
         <label class="search-field">
           <span class="meta-label">Find benchmark</span>
           <input id="search" type="search" placeholder="lexer, bytecode, startup…" autocomplete="off" />
         </label>
         <div class="filter-bank">
-          <div class="filter-status">
-            <span id="result-count" aria-live="polite">Showing benchmarks…</span>
-            <button id="clear-filters" class="clear-button" type="button" hidden>Clear filters</button>
-            <span class="filter-help">CV = timing variation across repeated runs. Noisy = CV &gt; 15%; treat that trend cautiously.</span>
-          </div>
-          <div class="filter-row" role="group" aria-label="Stage filter">
-            <button class="chip" type="button" data-stage="all" aria-pressed="true">All stages</button>
-            <button class="chip" type="button" data-stage="startup" aria-pressed="false">Startup</button>
-            <button class="chip" type="button" data-stage="frontend" aria-pressed="false">Frontend</button>
-            <button class="chip" type="button" data-stage="execution" aria-pressed="false">Execution</button>
-          </div>
-          <div class="filter-row" role="group" aria-label="Category filter">
-            <button class="chip" type="button" data-category="all" aria-pressed="true">All categories</button>
-            <button class="chip" type="button" data-category="regression" aria-pressed="false">Regression</button>
-            <button class="chip" type="button" data-category="component" aria-pressed="false">Component</button>
-            <button class="chip" type="button" data-category="workflow" aria-pressed="false">Workflow</button>
-          </div>
+          <details id="filter-options" class="filter-options" open>
+            <summary class="filter-options-summary">
+              <span class="filter-summary-label">Stage &amp; category filters</span>
+              <span id="result-count" aria-live="polite">Showing benchmarks…</span>
+            </summary>
+            <div class="filter-options-body">
+              <div class="filter-status">
+                <button id="clear-filters" class="clear-button" type="button" hidden>Clear filters</button>
+                <details class="filter-help-details">
+                  <summary>CV/noisy guide</summary>
+                  <span class="filter-help">CV = timing variation across repeated runs. Noisy = CV &gt; 15%; treat that trend cautiously.</span>
+                </details>
+              </div>
+              <div class="filter-row" role="group" aria-label="Stage filter">
+                <button class="chip" type="button" data-stage="all" aria-pressed="true">All stages</button>
+                <button class="chip" type="button" data-stage="startup" aria-pressed="false">Startup</button>
+                <button class="chip" type="button" data-stage="frontend" aria-pressed="false">Frontend</button>
+                <button class="chip" type="button" data-stage="execution" aria-pressed="false">Execution</button>
+              </div>
+              <div class="filter-row" role="group" aria-label="Category filter">
+                <button class="chip" type="button" data-category="all" aria-pressed="true">All categories</button>
+                <button class="chip" type="button" data-category="regression" aria-pressed="false">Regression</button>
+                <button class="chip" type="button" data-category="component" aria-pressed="false">Component</button>
+                <button class="chip" type="button" data-category="workflow" aria-pressed="false">Workflow</button>
+              </div>
+            </div>
+          </details>
         </div>
       </section>
 
@@ -695,9 +996,16 @@
         ];
 
         const STAGE_STYLES = {
-          startup: { color: 'oklch(0.49 0.13 38)', bg: 'oklch(0.94 0.04 52)', chart: '#9f4a2f' },
-          frontend: { color: 'oklch(0.45 0.105 218)', bg: 'oklch(0.94 0.026 220)', chart: '#356f9d' },
-          execution: { color: 'oklch(0.43 0.11 150)', bg: 'oklch(0.94 0.032 150)', chart: '#3b7b55' },
+          startup: { color: 'oklch(0.49 0.13 38)', bg: 'oklch(0.94 0.04 52)', chart: 'oklch(0.49 0.13 38)' },
+          frontend: { color: 'oklch(0.45 0.105 218)', bg: 'oklch(0.94 0.026 220)', chart: 'oklch(0.45 0.105 218)' },
+          execution: { color: 'oklch(0.43 0.11 150)', bg: 'oklch(0.94 0.032 150)', chart: 'oklch(0.43 0.11 150)' },
+        };
+
+        const CHART_COLORS = {
+          transparent: 'transparent',
+          grid: cssVar('--chart-grid'),
+          text: cssVar('--chart-text'),
+          surface: cssVar('--chart-surface'),
         };
 
         const BENCHMARK_DETAILS = {
@@ -831,8 +1139,16 @@
         const state = {
           stage: 'all',
           category: 'all',
+          focus: 'all',
+          sort: 'canonical',
           search: '',
         };
+
+        let dashboardCards = [];
+
+        function cssVar(name) {
+          return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        }
 
         function text(tag, className, value) {
           const node = document.createElement(tag);
@@ -918,6 +1234,64 @@
           return { stage, key: key || rawName, rawName };
         }
 
+        function compareCanonical(a, b) {
+          const categoryDelta = (CATEGORY_ORDER[a.category] ?? 99) - (CATEGORY_ORDER[b.category] ?? 99);
+          if (categoryDelta !== 0) {
+            return categoryDelta;
+          }
+          const stageDelta = (STAGE_ORDER[a.stage] ?? 99) - (STAGE_ORDER[b.stage] ?? 99);
+          if (stageDelta !== 0) {
+            return stageDelta;
+          }
+          const aIndex = CANONICAL_ORDER.indexOf(a.key);
+          const bIndex = CANONICAL_ORDER.indexOf(b.key);
+          if (aIndex !== -1 || bIndex !== -1) {
+            return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+          }
+          return a.key.localeCompare(b.key);
+        }
+
+        function attentionScore(card) {
+          let score = 0;
+          if (card.latest && card.latest.noisy) {
+            score += 10000 + (Number.isFinite(card.latest.cv) ? card.latest.cv : 0);
+          }
+          if (card.trend && card.trend.status === 'slower') {
+            score += 1000 + (Number.isFinite(card.trend.pct) ? card.trend.pct : 0);
+          }
+          return score;
+        }
+
+        function compareCards(a, b) {
+          switch (state.sort) {
+            case 'attention':
+              return attentionScore(b) - attentionScore(a) || compareCanonical(a, b);
+            case 'slowdown': {
+              const aPct = Number.isFinite(a.trend && a.trend.pct) ? a.trend.pct : Number.NEGATIVE_INFINITY;
+              const bPct = Number.isFinite(b.trend && b.trend.pct) ? b.trend.pct : Number.NEGATIVE_INFINITY;
+              return bPct - aPct || compareCanonical(a, b);
+            }
+            case 'speedup': {
+              const aPct = Number.isFinite(a.trend && a.trend.pct) ? a.trend.pct : Number.POSITIVE_INFINITY;
+              const bPct = Number.isFinite(b.trend && b.trend.pct) ? b.trend.pct : Number.POSITIVE_INFINITY;
+              return aPct - bPct || compareCanonical(a, b);
+            }
+            case 'noise': {
+              const noisyDelta = Number(Boolean(b.latest && b.latest.noisy)) - Number(Boolean(a.latest && a.latest.noisy));
+              if (noisyDelta !== 0) {
+                return noisyDelta;
+              }
+              const aCv = a.latest && Number.isFinite(a.latest.cv) ? a.latest.cv : Number.NEGATIVE_INFINITY;
+              const bCv = b.latest && Number.isFinite(b.latest.cv) ? b.latest.cv : Number.NEGATIVE_INFINITY;
+              return bCv - aCv || compareCanonical(a, b);
+            }
+            case 'name':
+              return a.displayName.localeCompare(b.displayName) || compareCanonical(a, b);
+            default:
+              return compareCanonical(a, b);
+          }
+        }
+
         function collectDashboardCards(data) {
           const cards = new Map();
           const entriesBySuite = data && data.entries ? data.entries : {};
@@ -969,24 +1343,10 @@
               card.latest = latest;
               card.category = latest ? latest.category : 'unknown';
               card.stage = latest ? latest.stage : card.stage;
+              card.trend = trendFor(card.points);
               return card;
             })
-            .sort((a, b) => {
-              const categoryDelta = (CATEGORY_ORDER[a.category] ?? 99) - (CATEGORY_ORDER[b.category] ?? 99);
-              if (categoryDelta !== 0) {
-                return categoryDelta;
-              }
-              const stageDelta = (STAGE_ORDER[a.stage] ?? 99) - (STAGE_ORDER[b.stage] ?? 99);
-              if (stageDelta !== 0) {
-                return stageDelta;
-              }
-              const aIndex = CANONICAL_ORDER.indexOf(a.key);
-              const bIndex = CANONICAL_ORDER.indexOf(b.key);
-              if (aIndex !== -1 || bIndex !== -1) {
-                return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-              }
-              return a.key.localeCompare(b.key);
-            });
+            .sort(compareCanonical);
         }
 
         function summarizeEntries(data) {
@@ -1021,31 +1381,66 @@
           const { uniqueCommits, latestEntry } = summarizeEntries(data);
           const noisyCount = cards.filter(card => card.latest && card.latest.noisy).length;
           const latestCommit = latestEntry && latestEntry.commit ? latestEntry.commit.id : '';
+          const latestMessage = latestEntry && latestEntry.commit && latestEntry.commit.message ? latestEntry.commit.message.split('\n')[0] : 'No commits found.';
 
           summary.appendChild(metric('Tracked benchmarks', String(cards.length), 'Each card tracks one benchmark over commits.'));
           summary.appendChild(metric('Snapshots', String(uniqueCommits.size), 'Unique commits in the loaded history.'));
-          summary.appendChild(metric('Latest commit', latestCommit ? latestCommit.slice(0, 7) : '—', latestEntry && latestEntry.commit ? latestEntry.commit.message : 'No commits found.'));
-          summary.appendChild(metric('Noisy latest samples', String(noisyCount), 'Latest samples marked noisy with CV > 15%.'));
+          summary.appendChild(metric('Latest commit', latestCommit ? latestCommit.slice(0, 7) : '—', latestMessage));
+          summary.appendChild(metric('Noisy latest', String(noisyCount), 'Latest samples marked noisy with CV > 15%.'));
+        }
+
+        function renderAttention(cards) {
+          const actions = document.getElementById('attention-filters');
+          actions.textContent = '';
+          const counts = {
+            all: cards.length,
+            attention: cards.filter(card => attentionScore(card) > 0).length,
+            slower: cards.filter(card => card.trend && card.trend.status === 'slower').length,
+            faster: cards.filter(card => card.trend && card.trend.status === 'faster').length,
+            noisy: cards.filter(card => card.latest && card.latest.noisy).length,
+          };
+          const signals = [
+            { key: 'all', label: 'All', count: counts.all },
+            { key: 'attention', label: 'Needs attention', count: counts.attention },
+            { key: 'slower', label: 'Slower latest', count: counts.slower },
+            { key: 'noisy', label: 'Noisy latest', count: counts.noisy },
+            { key: 'faster', label: 'Faster latest', count: counts.faster },
+          ];
+
+          const attentionText = counts.attention === 1 ? '1 needs attention' : `${counts.attention} need attention`;
+          document.getElementById('attention-summary').textContent = `${attentionText} · ${counts.slower} slower · ${counts.noisy} noisy latest`;
+          signals.forEach(signal => {
+            const button = document.createElement('button');
+            button.className = 'signal-chip';
+            button.type = 'button';
+            button.dataset.focus = signal.key;
+            button.setAttribute('aria-pressed', String(state.focus === signal.key));
+            button.appendChild(text('span', 'signal-label', signal.label));
+            button.appendChild(text('span', 'signal-count', String(signal.count)));
+            actions.appendChild(button);
+          });
         }
 
         function trendFor(points) {
           if (!points || points.length < 2) {
-            return { label: 'Change', value: 'first sample', className: '' };
+            return { label: 'Change', value: 'first sample', className: '', status: 'new' };
           }
           const latest = points[points.length - 1].value;
           const previous = points[points.length - 2].value;
           if (!Number.isFinite(latest) || !Number.isFinite(previous) || previous === 0) {
-            return { label: 'Trend', value: '—', className: '' };
+            return { label: 'Trend', value: '—', className: '', status: 'unknown' };
           }
           const pct = ((latest - previous) / previous) * 100;
           if (Math.abs(pct) < 0.05) {
-            return { label: 'Change', value: 'about same', className: '' };
+            return { label: 'Change', value: 'about same', className: '', pct, status: 'flat' };
           }
           const faster = pct < 0;
           return {
             label: 'Change',
             value: `${Math.abs(pct).toFixed(1)}% ${faster ? 'faster' : 'slower'}`,
             className: faster ? 'good' : 'bad',
+            pct,
+            status: faster ? 'faster' : 'slower',
           };
         }
 
@@ -1059,7 +1454,7 @@
         function renderSamples(card) {
           const details = document.createElement('details');
           const summary = document.createElement('summary');
-          summary.textContent = 'Latest samples';
+          summary.textContent = 'Latest samples and commit links';
           details.appendChild(summary);
 
           const wrap = text('div', 'sample-table-wrap');
@@ -1076,6 +1471,7 @@
             const commitCell = document.createElement('td');
             if (point.commit && point.commit.url) {
               const link = document.createElement('a');
+              link.className = 'commit-link';
               link.href = point.commit.url;
               link.rel = 'noopener';
               link.textContent = point.commit.id ? point.commit.id.slice(0, 7) : 'commit';
@@ -1099,11 +1495,15 @@
         function renderCard(card) {
           const stageStyle = STAGE_STYLES[card.stage] || STAGE_STYLES.execution;
           const latest = card.latest;
+          const trend = card.trend || trendFor(card.points);
           const stageLabel = card.stage || 'unknown';
           const category = card.category || 'unknown';
           const cardEl = text('article', 'bench-card');
           cardEl.dataset.stage = stageLabel;
           cardEl.dataset.category = category;
+          cardEl.dataset.trend = trend.status;
+          cardEl.dataset.noisy = String(Boolean(latest && latest.noisy));
+          cardEl.dataset.attention = String(attentionScore(card) > 0);
           cardEl.dataset.search = `${card.rawName} ${card.key} ${card.displayName} ${card.description} ${stageLabel} ${category}`.toLowerCase();
           cardEl.style.setProperty('--stage-color', stageStyle.color);
           cardEl.style.setProperty('--stage-bg', stageStyle.bg);
@@ -1124,19 +1524,24 @@
           heading.appendChild(text('p', 'bench-desc', card.description));
           cardEl.appendChild(heading);
 
-          const trend = trendFor(card.points);
           const readouts = text('div', 'bench-readout');
           readouts.appendChild(readout('Mean time', latest ? formatDuration(latest.value) : '—'));
           readouts.appendChild(readout('Variation (CV)', latest && Number.isFinite(latest.cv) ? `${latest.cv.toFixed(1)}%` : '—'));
           readouts.appendChild(readout(trend.label, trend.value, trend.className));
           cardEl.appendChild(readouts);
 
+          const chartRegion = text('div', 'chart-region');
           const chartBox = text('div', 'chart-box');
           const canvas = document.createElement('canvas');
+          const chartNote = text('p', 'chart-note', 'Chart points open commits. Commit links are in Latest samples.');
+          chartNote.id = `chart-note-${card.rawName.replace(/[^a-z0-9]+/gi, '-')}`;
           canvas.setAttribute('aria-label', `${card.rawName} benchmark timing history`);
+          canvas.setAttribute('aria-describedby', chartNote.id);
           canvas.setAttribute('role', 'img');
           chartBox.appendChild(canvas);
-          cardEl.appendChild(chartBox);
+          chartRegion.appendChild(chartBox);
+          chartRegion.appendChild(chartNote);
+          cardEl.appendChild(chartRegion);
           cardEl.appendChild(renderSamples(card));
 
           window.requestAnimationFrame(() => renderChart(canvas, card, stageStyle.chart));
@@ -1145,6 +1550,9 @@
 
         function renderChart(canvas, card, chartColor) {
           if (typeof Chart === 'undefined') {
+            if (canvas.parentElement) {
+              canvas.parentElement.classList.add('chart-box-fallback');
+            }
             canvas.replaceWith(text('p', 'bench-desc', 'Chart did not load. The latest samples table still shows values.'));
             return;
           }
@@ -1160,9 +1568,9 @@
                   label: card.rawName,
                   data: points.map(point => point.value),
                   borderColor: chartColor,
-                  backgroundColor: 'rgba(0, 0, 0, 0)',
+                  backgroundColor: CHART_COLORS.transparent,
                   pointBackgroundColor: chartColor,
-                  pointBorderColor: '#fff8ed',
+                  pointBorderColor: CHART_COLORS.surface,
                   pointBorderWidth: 1.5,
                   pointHoverRadius: 5,
                   pointRadius: points.length > 18 ? 2 : 3,
@@ -1180,21 +1588,21 @@
               scales: {
                 xAxes: [
                   {
-                    gridLines: { color: 'rgba(79, 75, 65, 0.12)', drawBorder: false },
-                    ticks: { maxTicksLimit: 6, fontColor: '#746f65' },
-                    scaleLabel: { display: true, labelString: 'commit', fontColor: '#746f65' },
+                    gridLines: { color: CHART_COLORS.grid, drawBorder: false },
+                    ticks: { maxTicksLimit: 6, fontColor: CHART_COLORS.text },
+                    scaleLabel: { display: true, labelString: 'commit', fontColor: CHART_COLORS.text },
                   },
                 ],
                 yAxes: [
                   {
-                    gridLines: { color: 'rgba(79, 75, 65, 0.12)', drawBorder: false },
+                    gridLines: { color: CHART_COLORS.grid, drawBorder: false },
                     ticks: {
                       beginAtZero: true,
                       maxTicksLimit: 5,
-                      fontColor: '#746f65',
+                      fontColor: CHART_COLORS.text,
                       callback: value => formatDuration(Number(value)),
                     },
-                    scaleLabel: { display: true, labelString: points[0] ? points[0].unit : 'ms', fontColor: '#746f65' },
+                    scaleLabel: { display: true, labelString: points[0] ? points[0].unit : 'ms', fontColor: CHART_COLORS.text },
                   },
                 ],
               },
@@ -1237,10 +1645,16 @@
           });
         }
 
+        function ensureCardElement(card) {
+          if (!card.element) {
+            card.element = renderCard(card);
+          }
+          return card.element;
+        }
+
         function renderCards(cards) {
           const grid = document.getElementById('bench-grid');
-          grid.textContent = '';
-          cards.forEach(card => grid.appendChild(renderCard(card)));
+          cards.slice().sort(compareCards).forEach(card => grid.appendChild(ensureCardElement(card)));
           applyFilters();
         }
 
@@ -1250,8 +1664,9 @@
           for (const card of cards) {
             const matchesStage = state.stage === 'all' || card.dataset.stage === state.stage;
             const matchesCategory = state.category === 'all' || card.dataset.category === state.category;
+            const matchesFocus = state.focus === 'all' || (state.focus === 'attention' ? card.dataset.attention === 'true' : state.focus === 'noisy' ? card.dataset.noisy === 'true' : card.dataset.trend === state.focus);
             const matchesSearch = !state.search || card.dataset.search.includes(state.search);
-            const show = matchesStage && matchesCategory && matchesSearch;
+            const show = matchesStage && matchesCategory && matchesFocus && matchesSearch;
             card.hidden = !show;
             if (show) {
               visible += 1;
@@ -1260,8 +1675,9 @@
           document.getElementById('empty-state').hidden = visible !== 0;
           const resultCount = document.getElementById('result-count');
           const clearFilters = document.getElementById('clear-filters');
-          const hasFilters = state.stage !== 'all' || state.category !== 'all' || state.search !== '';
-          resultCount.textContent = visible === cards.length ? `Showing all ${cards.length} benchmarks` : `Showing ${visible} of ${cards.length} benchmarks`;
+          const hasFilters = state.stage !== 'all' || state.category !== 'all' || state.focus !== 'all' || state.search !== '';
+          const totalNoun = cards.length === 1 ? 'benchmark' : 'benchmarks';
+          resultCount.textContent = visible === cards.length ? `Showing all ${cards.length} ${totalNoun}` : `Showing ${visible} of ${cards.length} ${totalNoun}`;
           clearFilters.hidden = !hasFilters;
         }
 
@@ -1269,7 +1685,16 @@
           document.querySelectorAll(selector).forEach(item => item.setAttribute('aria-pressed', String(item.dataset[dataName] === value)));
         }
 
+        function updatePressedFocus() {
+          document.querySelectorAll('.signal-chip[data-focus]').forEach(item => item.setAttribute('aria-pressed', String(item.dataset.focus === state.focus)));
+        }
+
         function setupControls() {
+          const filterOptions = document.getElementById('filter-options');
+          if (filterOptions && window.matchMedia('(max-width: 42rem)').matches) {
+            filterOptions.open = false;
+          }
+
           document.getElementById('search').addEventListener('input', event => {
             state.search = event.target.value.trim().toLowerCase();
             applyFilters();
@@ -1291,13 +1716,34 @@
             });
           });
 
+          document.querySelectorAll('.signal-chip[data-focus]').forEach(button => {
+            button.addEventListener('click', () => {
+              state.focus = button.dataset.focus;
+              updatePressedFocus();
+              if (state.focus === 'attention' && state.sort === 'canonical') {
+                state.sort = 'attention';
+                document.getElementById('sort-order').value = 'attention';
+                renderCards(dashboardCards);
+              } else {
+                applyFilters();
+              }
+            });
+          });
+
+          document.getElementById('sort-order').addEventListener('change', event => {
+            state.sort = event.target.value;
+            renderCards(dashboardCards);
+          });
+
           document.getElementById('clear-filters').addEventListener('click', () => {
             state.stage = 'all';
             state.category = 'all';
+            state.focus = 'all';
             state.search = '';
             document.getElementById('search').value = '';
             updatePressedChips('.chip[data-stage]', 'stage', 'all');
             updatePressedChips('.chip[data-category]', 'category', 'all');
+            updatePressedFocus();
             applyFilters();
           });
 
@@ -1319,10 +1765,11 @@
             return;
           }
           renderHeader(data);
-          const cards = collectDashboardCards(data);
-          renderSummary(data, cards);
+          dashboardCards = collectDashboardCards(data);
+          renderSummary(data, dashboardCards);
+          renderAttention(dashboardCards);
           setupControls();
-          renderCards(cards);
+          renderCards(dashboardCards);
         }
 
         init();
