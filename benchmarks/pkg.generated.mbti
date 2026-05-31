@@ -94,6 +94,16 @@ pub fn bench_pipeline_exec_parse() -> BenchResult raise
 
 pub fn bench_property_chain() -> BenchResult raise
 
+pub fn bench_startup_event_loop_drain_empty() -> BenchResult raise
+
+pub fn bench_startup_execute_preparsed_tiny() -> BenchResult raise
+
+pub fn bench_startup_new_interpreter() -> BenchResult raise
+
+pub fn bench_startup_parse_tiny() -> BenchResult raise
+
+pub fn bench_startup_result_stringify_output() -> BenchResult raise
+
 pub fn bench_startup_tiny() -> BenchResult raise
 
 pub fn bench_string_ops() -> BenchResult raise
@@ -116,6 +126,8 @@ pub fn run_component() -> Array[BenchResult] raise
 
 pub fn run_regression() -> Array[BenchResult] raise
 
+pub fn run_startup_phases() -> Array[BenchResult] raise
+
 pub fn run_workflow() -> Array[BenchResult] raise
 
 pub fn timer_supported() -> Bool
@@ -128,6 +140,7 @@ pub fn verify(String, String) -> Unit raise
 pub struct BenchArgs {
   run_all : Bool
   csv : Bool
+  startup_phases : Bool
   list_only : Bool
 }
 

@@ -133,7 +133,17 @@ benchmark execution job runs with read-only repository contents permission.
 
 The `startup/tiny_program` benchmark is the low-noise guardrail for interpreter
 startup and built-in installation. It intentionally measures `run("1 + 1")` in
-process so CI trend data is not dominated by Node process spawn time.
+process so CI trend data is not dominated by Node process spawn time. To split
+that in-process path into independently measured phases on the JS target, run:
+
+```bash
+moon run --target js --release benchmarks -- --startup-phases --csv
+```
+
+The phase breakdown reports the full `startup/tiny_program` workload plus tiny
+parse, `new_interpreter`, already-parsed execution, empty event-loop drain, and
+result stringification/output handling. Treat the phase timings as separate
+microbenchmarks, not as an additive profile.
 
 For hosted process-level startup snapshots, use the manual-only Startup
 Hyperfine workflow (`.github/workflows/startup-hyperfine.yml`). It builds the JS

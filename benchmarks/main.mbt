@@ -6,11 +6,12 @@
 /// @bench.T test blocks in benchmarks.mbt.
 ///
 /// Usage:
-///   moon run benchmarks --target js                   # regression only
-///   moon run benchmarks --target js -- --all          # all categories
-///   moon run benchmarks --target js -- --csv          # CSV output
-///   moon run benchmarks --target js -- --list         # list benchmarks with category/stage
-///   moon run benchmarks --target js -- --all --csv    # full CSV snapshot
+///   moon run benchmarks --target js                       # regression only
+///   moon run benchmarks --target js -- --all              # all categories
+///   moon run benchmarks --target js -- --csv              # CSV output
+///   moon run benchmarks --target js -- --startup-phases   # startup phase breakdown only
+///   moon run benchmarks --target js -- --list             # list benchmarks with category/stage
+///   moon run benchmarks --target js -- --all --csv        # full CSV snapshot
 ///
 /// CSV output can be redirected to a file and committed as a performance
 /// baseline:
@@ -41,7 +42,12 @@ fn main {
     println("=== js_engine Benchmark Suite (CLI runner) ===")
     println("Primary interface: moon test benchmarks/ --target js")
     println("")
-    if args.run_all {
+    if args.startup_phases {
+      println("Running startup phase breakdown only.")
+      println(
+        "Phase timings are independent microbenchmarks, not an additive profile.",
+      )
+    } else if args.run_all {
       println("Running all benchmarks (regression + component + workflow)...")
     } else {
       println("Running regression benchmarks only. Use --all for full suite.")
@@ -49,7 +55,13 @@ fn main {
     println("")
   }
   try {
-    let results = if args.run_all { run_all() } else { run_regression() }
+    let results = if args.startup_phases {
+      run_startup_phases()
+    } else if args.run_all {
+      run_all()
+    } else {
+      run_regression()
+    }
     for r in results {
       if args.csv {
         print_result_csv(r)
