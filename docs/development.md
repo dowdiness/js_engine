@@ -133,9 +133,14 @@ benchmark execution job runs with read-only repository contents permission.
 
 The `startup/tiny_program` benchmark is the low-noise guardrail for interpreter
 startup and built-in installation. It intentionally measures `run("1 + 1")` in
-process so CI trend data is not dominated by Node process spawn time. When
-investigating process-level startup, build the JS release binary and time
-repeated invocations of `node _build/js/release/build/cmd/main/main.js "1 + 1"`.
+process so CI trend data is not dominated by Node process spawn time.
+
+For process-level startup investigations, use the manual-only Startup Hyperfine
+workflow (`.github/workflows/startup-hyperfine.yml`). It builds the JS release
+CLI, times repeated invocations of
+`node _build/js/release/build/cmd/main/main.js "1 + 1"` against Node.js and Bun,
+uploads the raw Hyperfine artifacts, and writes a reporting-only job summary.
+It does not publish `gh-pages`, comment on PRs, or enforce thresholds.
 
 ## Release Workflow
 

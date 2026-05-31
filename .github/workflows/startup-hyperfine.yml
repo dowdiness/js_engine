@@ -1,0 +1,166 @@
+name: Startup Hyperfine
+
+# Manual-only process startup comparison. This is reporting-only: it uploads
+# Hyperfine artifacts and writes a job summary, but it does not publish history,
+# comment on PRs, or enforce thresholds.
+on:
+  workflow_dispatch:
+    inputs:
+      warmup:
+        description: "Hyperfine --warmup count"
+        required: false
+        default: "10"
+      min_runs:
+        description: "Hyperfine --min-runs count"
+        required: false
+        default: "50"
+
+jobs:
+  startup-hyperfine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    env:
+      WARMUP_RUNS: ${{ inputs.warmup }}
+      MIN_RUNS: ${{ inputs.min_runs }}
+      STARTUP_SOURCE: "1 + 1"
+      JS_ENGINE_CLI: _build/js/release/build/cmd/main/main.js
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod.json') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.2.15"
+
+      - name: Install Hyperfine
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y hyperfine
+
+      - name: Validate run settings
+        run: |
+          set -euo pipefail
+          case "$WARMUP_RUNS" in
+            ''|*[!0-9]*) echo "::error::warmup must be a non-negative integer"; exit 1 ;;
+          esac
+          case "$MIN_RUNS" in
+            ''|*[!0-9]*) echo "::error::min-runs must be a positive integer"; exit 1 ;;
+          esac
+          if [ "$MIN_RUNS" -lt 1 ]; then
+            echo "::error::min-runs must be at least 1"
+            exit 1
+          fi
+
+      - name: Update registry
+        run: moon update
+
+      - name: Build js_engine CLI
+        run: moon build cmd/main --target js --release
+
+      - name: Verify benchmark commands
+        run: |
+          set -euo pipefail
+          node "$JS_ENGINE_CLI" "$STARTUP_SOURCE" | grep -qx "2"
+          node -p "$STARTUP_SOURCE" | grep -qx "2"
+          bun -p "$STARTUP_SOURCE" | grep -qx "2"
+
+      - name: Record tool versions
+        run: |
+          {
+            echo "MoonBit: ${{ steps.moonbit-version.outputs.version }}"
+            echo "Node.js: $(node --version)"
+            echo "Bun: $(bun --version)"
+            echo "Hyperfine: $(hyperfine --version)"
+          } | tee startup-versions.txt
+
+      - name: Run Hyperfine startup comparison
+        run: |
+          set -euo pipefail
+          hyperfine \
+            --warmup "$WARMUP_RUNS" \
+            --min-runs "$MIN_RUNS" \
+            --export-json startup-hyperfine.json \
+            --export-markdown startup-hyperfine-table.md \
+            --command-name "js_engine CLI" "node $JS_ENGINE_CLI '$STARTUP_SOURCE'" \
+            --command-name "Node.js -p" "node -p '$STARTUP_SOURCE'" \
+            --command-name "Bun -p" "bun -p '$STARTUP_SOURCE'"
+
+      - name: Render job summary
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          versions = Path("startup-versions.txt").read_text().strip()
+          table = Path("startup-hyperfine-table.md").read_text().strip()
+          summary = "\n".join([
+              "# Startup process benchmark",
+              "",
+              "Manual-only, reporting-only Hyperfine comparison. Lower is better. No thresholds are enforced.",
+              "",
+              f"- Commit: `{os.environ['GITHUB_SHA']}`",
+              f"- Runner: `{os.environ['RUNNER_NAME']}` / `{os.environ['RUNNER_OS']}`",
+              f"- Probe source: `{os.environ['STARTUP_SOURCE']}`",
+              f"- Warmup runs: `{os.environ['WARMUP_RUNS']}`",
+              f"- Minimum measured runs: `{os.environ['MIN_RUNS']}`",
+              "",
+              "## Tool versions",
+              "",
+              "```text",
+              versions,
+              "```",
+              "",
+              "## Results",
+              "",
+              table,
+              "",
+              "## Notes",
+              "",
+              "- `startup/tiny_program` remains the in-process guardrail used by the historical dashboard.",
+              "- This workflow measures full process startup for the release JS CLI (`node _build/js/release/build/cmd/main/main.js \"1 + 1\"`) against host Node.js and Bun startup.",
+              "- Results are for investigation only; they do not update `gh-pages`, PR comments, or CI gates.",
+              "",
+          ])
+          Path("startup-hyperfine-summary.md").write_text(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(summary)
+          PY
+
+      - name: Upload Hyperfine artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: startup-hyperfine-${{ github.sha }}
+          path: |
+            startup-hyperfine.json
+            startup-hyperfine-table.md
+            startup-hyperfine-summary.md
+            startup-versions.txt
+          retention-days: 90
