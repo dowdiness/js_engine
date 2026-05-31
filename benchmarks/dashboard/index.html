@@ -96,9 +96,9 @@
       .hero {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
-        gap: clamp(1.25rem, 4vw, 3rem);
-        align-items: end;
-        padding: clamp(1.25rem, 4vw, 3rem);
+        gap: clamp(1rem, 3vw, 2rem);
+        align-items: center;
+        padding: clamp(1rem, 3vw, 2rem);
         border: 1px solid var(--line);
         border-radius: var(--radius-lg);
         background: var(--panel);
@@ -127,14 +127,14 @@
         max-width: 14ch;
         margin: 0;
         font-family: var(--font-display);
-        font-size: clamp(2.35rem, 6vw, 6rem);
+        font-size: clamp(2.35rem, 5vw, 5rem);
         line-height: 0.92;
         letter-spacing: -0.055em;
       }
 
       .lede {
-        max-width: 68ch;
-        margin: var(--space-lg) 0 0;
+        max-width: 60ch;
+        margin: var(--space-md) 0 0;
         color: var(--ink-soft);
         font-size: clamp(1rem, 1.2vw, 1.18rem);
         line-height: 1.6;
@@ -181,12 +181,12 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
         gap: var(--space-md);
-        margin-block: var(--space-xl);
+        margin-block: var(--space-lg);
       }
 
       .metric {
-        min-height: 7rem;
-        padding: var(--space-lg);
+        min-height: 6rem;
+        padding: var(--space-md);
         border: 1px solid var(--line);
         border-radius: var(--radius-md);
         background: var(--panel);
@@ -211,7 +211,7 @@
         grid-template-columns: minmax(14rem, 24rem) 1fr;
         gap: var(--space-md);
         align-items: start;
-        margin-bottom: var(--space-xl);
+        margin-bottom: var(--space-lg);
       }
 
       .search-field {
@@ -231,6 +231,7 @@
 
       .search-field input:focus-visible,
       .chip:focus-visible,
+      .clear-button:focus-visible,
       .download-button:focus-visible,
       summary:focus-visible {
         outline: 3px solid oklch(0.69 0.13 70 / 0.65);
@@ -240,6 +241,40 @@
       .filter-bank {
         display: grid;
         gap: var(--space-sm);
+      }
+
+      .filter-status {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-xs) var(--space-sm);
+        align-items: center;
+        justify-content: flex-end;
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .filter-help {
+        flex-basis: 100%;
+        max-width: 60ch;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.4;
+        text-align: right;
+      }
+
+      .clear-button {
+        padding: 0.35rem 0.25rem;
+        border: 0;
+        background: transparent;
+        color: var(--amber);
+        cursor: pointer;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 0.18em;
+      }
+
+      .clear-button[hidden] {
+        display: none;
       }
 
       .filter-row {
@@ -486,15 +521,20 @@
           grid-template-columns: 1fr;
         }
 
-        .filter-row {
+        .filter-row,
+        .filter-status {
           justify-content: flex-start;
+        }
+
+        .filter-help {
+          text-align: left;
         }
       }
 
       @media (max-width: 42rem) {
         .shell {
-          width: min(100% - 1rem, 118rem);
-          padding-block-start: var(--space-md);
+          width: min(100% - 0.75rem, 118rem);
+          padding-block: var(--space-xs) var(--space-xl);
         }
 
         .hero,
@@ -504,10 +544,74 @@
         }
 
         .hero {
-          padding: var(--space-lg);
+          gap: var(--space-sm);
+          padding: var(--space-md);
+        }
+
+        .eyebrow {
+          margin-bottom: 0.45rem;
+          font-size: 0.68rem;
+        }
+
+        h1 {
+          max-width: 18ch;
+          font-size: clamp(2rem, 10.5vw, 2.65rem);
+          line-height: 0.96;
+        }
+
+        .lede {
+          margin-top: var(--space-sm);
+          font-size: 0.96rem;
+          line-height: 1.45;
+        }
+
+        .run-card {
+          padding: var(--space-sm);
+        }
+
+        .run-card dl {
+          gap: var(--space-xs);
+        }
+
+        .run-card dd {
+          font-size: 0.92rem;
+        }
+
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: var(--space-xs);
+          margin-block: var(--space-md);
+        }
+
+        .metric {
+          min-height: 4.8rem;
+          padding: var(--space-sm);
+        }
+
+        .metric-value {
+          margin-top: 0.4rem;
+          font-size: 1.6rem;
+        }
+
+        .metric-note {
+          display: none;
+        }
+
+        .controls {
+          gap: var(--space-sm);
+          margin-bottom: var(--space-lg);
+        }
+
+        .filter-bank {
+          gap: var(--space-xs);
+        }
+
+        .filter-help {
+          font-size: 0.78rem;
         }
 
         .bench-card {
+          gap: var(--space-md);
           padding: var(--space-md);
         }
 
@@ -544,7 +648,7 @@
               </div>
               <div>
                 <dt>Reading rule</dt>
-                <dd>Smaller timing is better; noisy rows need caution.</dd>
+                <dd>Smaller timing is better. Noisy rows have CV &gt; 15%.</dd>
               </div>
             </dl>
           </div>
@@ -559,6 +663,11 @@
           <input id="search" type="search" placeholder="lexer, bytecode, startup…" autocomplete="off" />
         </label>
         <div class="filter-bank">
+          <div class="filter-status">
+            <span id="result-count" aria-live="polite">Showing benchmarks…</span>
+            <button id="clear-filters" class="clear-button" type="button" hidden>Clear filters</button>
+            <span class="filter-help">CV is run-to-run variation; noisy means CV &gt; 15%. Smaller timing is better.</span>
+          </div>
           <div class="filter-row" role="group" aria-label="Stage filter">
             <button class="chip" type="button" data-stage="all" aria-pressed="true">All stages</button>
             <button class="chip" type="button" data-stage="startup" aria-pressed="false">Startup</button>
@@ -1193,6 +1302,15 @@
             }
           }
           document.getElementById('empty-state').hidden = visible !== 0;
+          const resultCount = document.getElementById('result-count');
+          const clearFilters = document.getElementById('clear-filters');
+          const hasFilters = state.stage !== 'all' || state.category !== 'all' || state.search !== '';
+          resultCount.textContent = visible === cards.length ? `Showing all ${cards.length} benchmarks` : `Showing ${visible} of ${cards.length} benchmarks`;
+          clearFilters.hidden = !hasFilters;
+        }
+
+        function updatePressedChips(selector, dataName, value) {
+          document.querySelectorAll(selector).forEach(item => item.setAttribute('aria-pressed', String(item.dataset[dataName] === value)));
         }
 
         function setupControls() {
@@ -1215,6 +1333,16 @@
               document.querySelectorAll('.chip[data-category]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
               applyFilters();
             });
+          });
+
+          document.getElementById('clear-filters').addEventListener('click', () => {
+            state.stage = 'all';
+            state.category = 'all';
+            state.search = '';
+            document.getElementById('search').value = '';
+            updatePressedChips('.chip[data-stage]', 'stage', 'all');
+            updatePressedChips('.chip[data-category]', 'category', 'all');
+            applyFilters();
           });
 
           document.getElementById('download-json').addEventListener('click', () => {
