@@ -12448,6 +12448,21 @@ test "§19.2.1.3 probe: eval(var arguments) in default + following arguments par
 }
 
 ///|
+/// §19.2.1.3 probe (#A.6) — following-parameter conflicts are rejected
+/// during EvalDeclarationInstantiation, before the eval body can run.
+test "§19.2.1.3 probe: eval(var arguments) with following param rejects before side effects" {
+  let src =
+    #|var log = [];
+    #|function f(p = eval("log.push('ran'); var arguments"), arguments) {}
+    #|try { f(); } catch (e) { console.log(e.name + ": " + e.message); }
+    #|console.log(log.length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "SyntaxError: Identifier 'arguments' has already been declared", "0",
+  ])
+}
+
+///|
 /// §19.2.1.3 probe (#A.6) — direct eval in a non-arrow default cannot
 /// var-declare a formal parameter name, not just the special `arguments` name.
 test "§19.2.1.3 probe: eval(var param) in default throws SyntaxError" {

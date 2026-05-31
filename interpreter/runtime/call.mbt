@@ -198,6 +198,30 @@ fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
 }
 
 ///|
+fn collect_param_default_eval_var_conflicts(
+  params : Array[@ast.Param],
+  rest_param : String?,
+  implicit_arguments? : Bool = false,
+) -> Map[String, Bool] raise Error {
+  let conflicts : Map[String, Bool] = {}
+  if implicit_arguments {
+    conflicts["arguments"] = true
+  }
+  for param in params {
+    match param.pattern {
+      Some(pattern) =>
+        walk_pattern_idents(pattern, name => conflicts[name] = true)
+      None => if !param.is_rest_pattern { conflicts[param.name] = true }
+    }
+  }
+  match rest_param {
+    Some(name) => conflicts[name] = true
+    None => ()
+  }
+  conflicts
+}
+
+///|
 /// Shared core of UserFuncExt and ArrowFuncExt call paths: bind
 /// parameters (with defaults, destructuring, rest), optionally split
 /// the body env per §10.2.11, hoist body declarations, execute the
@@ -229,23 +253,14 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
   // paths below so any abnormal completion during default evaluation
   // or body execution leaves the flag clean for outer frames.
   let saved_in_default = self.in_nonarrow_param_default_eval
+  let saved_param_default_conflicts = self.param_default_eval_var_conflicts
   self.in_nonarrow_param_default_eval = false
-  // §19.2.1.3 gate applies when the function's parameter scope will have
-  // an `arguments` binding — non-arrow (always, via install) or arrow
-  // with an explicit `arguments` formal / rest parameter. Pre-compute once.
-  let mut has_arguments_in_scope = !is_arrow
-  if is_arrow {
-    if data.rest_param is Some("arguments") {
-      has_arguments_in_scope = true
-    } else {
-      for p in data.params {
-        if p.name == "arguments" {
-          has_arguments_in_scope = true
-          break
-        }
-      }
-    }
-  }
+  self.param_default_eval_var_conflicts = None
+  let param_default_conflicts = collect_param_default_eval_var_conflicts(
+    data.params,
+    data.rest_param,
+    implicit_arguments=!is_arrow,
+  )
   let result : Signal = try {
     // Bind params with defaults
     let mut effective_param_count = 0
@@ -261,13 +276,14 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
       } else {
         match param.default_val {
           Some(default_expr) => {
-            // §19.2.1.3 gate: active only around default evaluation,
-            // and only for frames whose param scope has `arguments`.
-            if has_arguments_in_scope {
-              self.in_nonarrow_param_default_eval = true
-            }
+            // §19.2.1.3 gate: active only around default evaluation.
+            self.in_nonarrow_param_default_eval = true
+            self.param_default_eval_var_conflicts = Some(
+              param_default_conflicts,
+            )
             let v = self.eval_expr(func_ctx, default_expr, param_env)
             self.in_nonarrow_param_default_eval = false
+            self.param_default_eval_var_conflicts = None
             // Set function name for anonymous function defaults
             if param.pattern is None &&
               is_anonymous_function_definition(default_expr) {
@@ -351,10 +367,12 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
   } catch {
     e => {
       self.in_nonarrow_param_default_eval = saved_in_default
+      self.param_default_eval_var_conflicts = saved_param_default_conflicts
       raise e
     }
   }
   self.in_nonarrow_param_default_eval = saved_in_default
+  self.param_default_eval_var_conflicts = saved_param_default_conflicts
   result
 }
 
@@ -485,19 +503,24 @@ pub fn Interpreter::perform_eval(
     // EvalDeclarationInstantiation steps 5.a and 5.d:
     // Check for var/lexical conflicts before hoisting.
     let var_names = collect_eval_var_names(stmts)
-    // §19.2.1.3 gate (#A.6): a direct eval in a non-arrow parameter
-    // default cannot var-declare names already provided by the call's
-    // parameter scope, including the non-arrow `arguments` binding.
+    // §19.2.1.3 gate (#A.6): a direct eval in a parameter default cannot
+    // var-declare names that belong to that call's parameter scope. The
+    // precomputed map includes later formals that are not bound yet, and the
+    // implicit non-arrow `arguments` binding.
     if direct && self.in_nonarrow_param_default_eval {
       for name in var_names {
-        match var_env.bindings.get(name) {
-          Some(binding) =>
-            if binding.is_parameter || name == "arguments" {
-              raise @errors.SyntaxError(
-                message="Identifier '\{name}' has already been declared",
-              )
+        let conflicts = match self.param_default_eval_var_conflicts {
+          Some(conflict_names) => conflict_names.contains(name)
+          None =>
+            match var_env.bindings.get(name) {
+              Some(binding) => binding.is_parameter || name == "arguments"
+              None => false
             }
-          None => ()
+        }
+        if conflicts {
+          raise @errors.SyntaxError(
+            message="Identifier '\{name}' has already been declared",
+          )
         }
       }
     }
@@ -753,7 +776,9 @@ fn Interpreter::call_value_impl(
           // the signal so a nested invocation (e.g. an IIFE in an outer
           // function's param default) does not inherit the outer state.
           let saved_in_default = self.in_nonarrow_param_default_eval
+          let saved_param_default_conflicts = self.param_default_eval_var_conflicts
           self.in_nonarrow_param_default_eval = false
+          self.param_default_eval_var_conflicts = None
           let result : Value = try {
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
@@ -834,16 +859,20 @@ fn Interpreter::call_value_impl(
           } catch {
             e => {
               self.in_nonarrow_param_default_eval = saved_in_default
+              self.param_default_eval_var_conflicts = saved_param_default_conflicts
               raise e
             }
           }
           self.in_nonarrow_param_default_eval = saved_in_default
+          self.param_default_eval_var_conflicts = saved_param_default_conflicts
           result
         }
         Some(ArrowFunc(data)) => {
           // §19.2.1.3 gate reset (#A.6), same rationale as UserFunc above.
           let saved_in_default = self.in_nonarrow_param_default_eval
+          let saved_param_default_conflicts = self.param_default_eval_var_conflicts
           self.in_nonarrow_param_default_eval = false
+          self.param_default_eval_var_conflicts = None
           let result : Value = try {
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
@@ -872,10 +901,12 @@ fn Interpreter::call_value_impl(
           } catch {
             e => {
               self.in_nonarrow_param_default_eval = saved_in_default
+              self.param_default_eval_var_conflicts = saved_param_default_conflicts
               raise e
             }
           }
           self.in_nonarrow_param_default_eval = saved_in_default
+          self.param_default_eval_var_conflicts = saved_param_default_conflicts
           result
         }
         Some(UserFuncExt(data)) => {
