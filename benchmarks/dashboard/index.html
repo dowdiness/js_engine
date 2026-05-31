@@ -94,18 +94,17 @@
       }
 
       .hero {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
-        gap: clamp(1.25rem, 4vw, 3rem);
-        align-items: end;
-        padding: clamp(1.25rem, 4vw, 3rem);
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-xs) var(--space-lg);
+        align-items: center;
+        justify-content: space-between;
+        padding: var(--space-sm) var(--space-md);
         border: 1px solid var(--line);
-        border-radius: var(--radius-lg);
+        border-radius: var(--radius-md);
         background: var(--panel);
-        box-shadow: var(--shadow);
       }
 
-      .eyebrow,
       .section-kicker,
       .meta-label,
       .chip,
@@ -116,51 +115,37 @@
         text-transform: uppercase;
       }
 
-      .eyebrow {
-        margin: 0 0 var(--space-sm);
-        color: var(--amber);
-        font-size: 0.78rem;
-        font-weight: 700;
-      }
-
       h1 {
-        max-width: 14ch;
+        max-width: none;
         margin: 0;
         font-family: var(--font-display);
-        font-size: clamp(2.35rem, 6vw, 6rem);
-        line-height: 0.92;
-        letter-spacing: -0.055em;
-      }
-
-      .lede {
-        max-width: 68ch;
-        margin: var(--space-lg) 0 0;
-        color: var(--ink-soft);
-        font-size: clamp(1rem, 1.2vw, 1.18rem);
-        line-height: 1.6;
+        font-size: clamp(1.35rem, 2.2vw, 1.75rem);
+        line-height: 1;
+        letter-spacing: -0.04em;
+        white-space: nowrap;
       }
 
       .hero-panel {
-        display: grid;
-        gap: var(--space-md);
+        min-width: min(100%, 32rem);
       }
 
       .run-card {
-        padding: var(--space-md);
-        border: 1px solid var(--line);
-        border-radius: var(--radius-md);
-        background: var(--paper-quiet);
+        padding: 0;
       }
 
       .run-card dl {
-        display: grid;
-        gap: var(--space-sm);
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2xs) var(--space-sm);
+        align-items: baseline;
+        justify-content: flex-end;
         margin: 0;
       }
 
       .run-card div {
-        display: grid;
+        display: flex;
         gap: 0.2rem;
+        align-items: baseline;
       }
 
       .run-card dt,
@@ -171,9 +156,14 @@
         font-weight: 700;
       }
 
+      .run-card dt::after {
+        content: ":";
+      }
+
       .run-card dd {
         margin: 0;
         overflow-wrap: anywhere;
+        font-size: 0.86rem;
         font-weight: 700;
       }
 
@@ -181,12 +171,12 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
         gap: var(--space-md);
-        margin-block: var(--space-xl);
+        margin-block: var(--space-lg);
       }
 
       .metric {
-        min-height: 7rem;
-        padding: var(--space-lg);
+        min-height: 6rem;
+        padding: var(--space-md);
         border: 1px solid var(--line);
         border-radius: var(--radius-md);
         background: var(--panel);
@@ -211,7 +201,7 @@
         grid-template-columns: minmax(14rem, 24rem) 1fr;
         gap: var(--space-md);
         align-items: start;
-        margin-bottom: var(--space-xl);
+        margin-bottom: var(--space-lg);
       }
 
       .search-field {
@@ -231,6 +221,7 @@
 
       .search-field input:focus-visible,
       .chip:focus-visible,
+      .clear-button:focus-visible,
       .download-button:focus-visible,
       summary:focus-visible {
         outline: 3px solid oklch(0.69 0.13 70 / 0.65);
@@ -240,6 +231,40 @@
       .filter-bank {
         display: grid;
         gap: var(--space-sm);
+      }
+
+      .filter-status {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-xs) var(--space-sm);
+        align-items: center;
+        justify-content: flex-end;
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .filter-help {
+        flex-basis: 100%;
+        max-width: 60ch;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.4;
+        text-align: right;
+      }
+
+      .clear-button {
+        padding: 0.35rem 0.25rem;
+        border: 0;
+        background: transparent;
+        color: var(--amber);
+        cursor: pointer;
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 0.18em;
+      }
+
+      .clear-button[hidden] {
+        display: none;
       }
 
       .filter-row {
@@ -474,27 +499,24 @@
       }
 
       @media (max-width: 62rem) {
-        .hero {
-          grid-template-columns: 1fr;
-        }
-
-        h1 {
-          max-width: 18ch;
-        }
-
         .controls {
           grid-template-columns: 1fr;
         }
 
-        .filter-row {
+        .filter-row,
+        .filter-status {
           justify-content: flex-start;
+        }
+
+        .filter-help {
+          text-align: left;
         }
       }
 
       @media (max-width: 42rem) {
         .shell {
-          width: min(100% - 1rem, 118rem);
-          padding-block-start: var(--space-md);
+          width: min(100% - 0.75rem, 118rem);
+          padding-block: var(--space-xs) var(--space-xl);
         }
 
         .hero,
@@ -504,10 +526,61 @@
         }
 
         .hero {
-          padding: var(--space-lg);
+          gap: var(--space-xs);
+          padding: var(--space-xs) var(--space-sm);
+        }
+
+        h1 {
+          font-size: clamp(1.35rem, 6.7vw, 1.6rem);
+        }
+
+        .hero-panel {
+          min-width: 100%;
+        }
+
+        .run-card dl {
+          justify-content: flex-start;
+        }
+
+        .run-card dd {
+          font-size: 0.82rem;
+        }
+
+        .summary-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: var(--space-xs);
+          margin-block: var(--space-md);
+        }
+
+        .metric {
+          min-height: 4.8rem;
+          padding: var(--space-sm);
+        }
+
+        .metric-value {
+          margin-top: 0.4rem;
+          font-size: 1.6rem;
+        }
+
+        .metric-note {
+          display: none;
+        }
+
+        .controls {
+          gap: var(--space-sm);
+          margin-bottom: var(--space-lg);
+        }
+
+        .filter-bank {
+          gap: var(--space-xs);
+        }
+
+        .filter-help {
+          font-size: 0.78rem;
         }
 
         .bench-card {
+          gap: var(--space-md);
           padding: var(--space-md);
         }
 
@@ -523,28 +596,18 @@
     <div class="shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">js_engine performance history</p>
           <h1>Benchmark instrument panel</h1>
-          <p class="lede">
-            Scheduled and manual main runs publish this live history after the
-            benchmark-action data file is updated. Each card keeps the benchmark
-            identifier and its measurement intent visible beside the trend.
-          </p>
         </div>
         <aside class="hero-panel" aria-label="Run metadata">
           <div class="run-card">
             <dl>
               <div>
-                <dt>Last update</dt>
+                <dt>Updated</dt>
                 <dd id="last-update">Loading…</dd>
               </div>
               <div>
-                <dt>Repository</dt>
-                <dd><a id="repository-link" rel="noopener">Loading…</a></dd>
-              </div>
-              <div>
-                <dt>Reading rule</dt>
-                <dd>Smaller timing is better; noisy rows need caution.</dd>
+                <dt>Rule</dt>
+                <dd>Lower mean is better · noisy = CV &gt; 15%</dd>
               </div>
             </dl>
           </div>
@@ -559,6 +622,11 @@
           <input id="search" type="search" placeholder="lexer, bytecode, startup…" autocomplete="off" />
         </label>
         <div class="filter-bank">
+          <div class="filter-status">
+            <span id="result-count" aria-live="polite">Showing benchmarks…</span>
+            <button id="clear-filters" class="clear-button" type="button" hidden>Clear filters</button>
+            <span class="filter-help">CV = timing variation across repeated runs. Noisy = CV &gt; 15%; treat that trend cautiously.</span>
+          </div>
           <div class="filter-row" role="group" aria-label="Stage filter">
             <button class="chip" type="button" data-stage="all" aria-pressed="true">All stages</button>
             <button class="chip" type="button" data-stage="startup" aria-pressed="false">Startup</button>
@@ -577,7 +645,7 @@
       <main id="bench-grid" class="bench-grid" aria-live="polite"></main>
 
       <div id="empty-state" class="empty-state" hidden>
-        No benchmark cards match those filters. Try a broader stage, category, or search term.
+        No benchmarks match those filters. Clear filters or broaden the stage, category, or search term.
       </div>
 
       <footer class="dashboard-footer">
@@ -800,6 +868,27 @@
           return `${(ms * 1000).toFixed(1)} µs`;
         }
 
+        function commitDateValue(point) {
+          return point && point.commit && point.commit.timestamp ? point.commit.timestamp : point.date;
+        }
+
+        function formatCommitDate(point) {
+          const value = commitDateValue(point);
+          if (!value) {
+            return 'unknown';
+          }
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) {
+            return 'unknown';
+          }
+          return date.toISOString().slice(0, 10);
+        }
+
+        function chartLabel(point) {
+          const id = point && point.commit && point.commit.id ? point.commit.id.slice(0, 7) : 'commit';
+          return [id, formatCommitDate(point)];
+        }
+
         function parseExtra(extra) {
           const result = {};
           if (!extra) {
@@ -914,9 +1003,6 @@
             dateStyle: 'medium',
             timeStyle: 'short',
           });
-          const repoLink = document.getElementById('repository-link');
-          repoLink.href = data.repoUrl;
-          repoLink.textContent = data.repoUrl;
         }
 
         function metric(label, value, note) {
@@ -936,15 +1022,15 @@
           const noisyCount = cards.filter(card => card.latest && card.latest.noisy).length;
           const latestCommit = latestEntry && latestEntry.commit ? latestEntry.commit.id : '';
 
-          summary.appendChild(metric('Tracked benchmarks', String(cards.length), 'Cards include historical rows as they appear.'));
-          summary.appendChild(metric('Snapshots', String(uniqueCommits.size), 'Unique commits in benchmarks/data.js.'));
+          summary.appendChild(metric('Tracked benchmarks', String(cards.length), 'Each card tracks one benchmark over commits.'));
+          summary.appendChild(metric('Snapshots', String(uniqueCommits.size), 'Unique commits in the loaded history.'));
           summary.appendChild(metric('Latest commit', latestCommit ? latestCommit.slice(0, 7) : '—', latestEntry && latestEntry.commit ? latestEntry.commit.message : 'No commits found.'));
-          summary.appendChild(metric('Noisy latest rows', String(noisyCount), 'CV above the runner threshold on the most recent sample.'));
+          summary.appendChild(metric('Noisy latest samples', String(noisyCount), 'Latest samples marked noisy with CV > 15%.'));
         }
 
         function trendFor(points) {
           if (!points || points.length < 2) {
-            return { label: 'Trend', value: 'new row', className: '' };
+            return { label: 'Change', value: 'first sample', className: '' };
           }
           const latest = points[points.length - 1].value;
           const previous = points[points.length - 2].value;
@@ -953,12 +1039,12 @@
           }
           const pct = ((latest - previous) / previous) * 100;
           if (Math.abs(pct) < 0.05) {
-            return { label: 'Trend', value: 'flat', className: '' };
+            return { label: 'Change', value: 'about same', className: '' };
           }
           const faster = pct < 0;
           return {
-            label: 'Vs previous',
-            value: `${faster ? 'faster' : 'slower'} ${Math.abs(pct).toFixed(1)}%`,
+            label: 'Change',
+            value: `${Math.abs(pct).toFixed(1)}% ${faster ? 'faster' : 'slower'}`,
             className: faster ? 'good' : 'bad',
           };
         }
@@ -980,7 +1066,7 @@
           const table = document.createElement('table');
           const thead = document.createElement('thead');
           const headerRow = document.createElement('tr');
-          ['Commit', 'Date', 'Mean', 'CV', 'Noise'].forEach(label => headerRow.appendChild(text('th', '', label)));
+          ['Commit', 'Date', 'Mean', 'CV', 'Stability'].forEach(label => headerRow.appendChild(text('th', '', label)));
           thead.appendChild(headerRow);
           table.appendChild(thead);
 
@@ -1040,8 +1126,8 @@
 
           const trend = trendFor(card.points);
           const readouts = text('div', 'bench-readout');
-          readouts.appendChild(readout('Latest mean', latest ? formatDuration(latest.value) : '—'));
-          readouts.appendChild(readout('Latest CV', latest && Number.isFinite(latest.cv) ? `${latest.cv.toFixed(1)}%` : '—'));
+          readouts.appendChild(readout('Mean time', latest ? formatDuration(latest.value) : '—'));
+          readouts.appendChild(readout('Variation (CV)', latest && Number.isFinite(latest.cv) ? `${latest.cv.toFixed(1)}%` : '—'));
           readouts.appendChild(readout(trend.label, trend.value, trend.className));
           cardEl.appendChild(readouts);
 
@@ -1059,7 +1145,7 @@
 
         function renderChart(canvas, card, chartColor) {
           if (typeof Chart === 'undefined') {
-            canvas.replaceWith(text('p', 'bench-desc', 'Chart.js did not load; use the latest samples table for values.'));
+            canvas.replaceWith(text('p', 'bench-desc', 'Chart did not load. The latest samples table still shows values.'));
             return;
           }
 
@@ -1068,7 +1154,7 @@
           new Chart(canvas.getContext('2d'), {
             type: 'line',
             data: {
-              labels: points.map(point => (point.commit && point.commit.id ? point.commit.id.slice(0, 7) : formatDate(point.date, { month: 'short', day: 'numeric' }))),
+              labels: points.map(chartLabel),
               datasets: [
                 {
                   label: card.rawName,
@@ -1118,7 +1204,7 @@
                   title: items => {
                     const point = points[items[0].index];
                     const commit = point.commit || {};
-                    return `${commit.id ? commit.id.slice(0, 7) : 'commit'} · ${formatDate(point.date, { dateStyle: 'medium' })}`;
+                    return `${commit.id ? commit.id.slice(0, 7) : 'commit'} · ${formatCommitDate(point)}`;
                   },
                   label: item => `${formatDuration(Number(item.value))} (${card.rawName})`,
                   afterLabel: item => {
@@ -1128,7 +1214,7 @@
                       lines.push(`CV ${point.cv.toFixed(1)}%`);
                     }
                     if (point.noisy) {
-                      lines.push('Marked noisy by runner');
+                      lines.push('Noisy sample (CV > 15%)');
                     }
                     if (point.commit && point.commit.message) {
                       lines.push(point.commit.message);
@@ -1172,6 +1258,15 @@
             }
           }
           document.getElementById('empty-state').hidden = visible !== 0;
+          const resultCount = document.getElementById('result-count');
+          const clearFilters = document.getElementById('clear-filters');
+          const hasFilters = state.stage !== 'all' || state.category !== 'all' || state.search !== '';
+          resultCount.textContent = visible === cards.length ? `Showing all ${cards.length} benchmarks` : `Showing ${visible} of ${cards.length} benchmarks`;
+          clearFilters.hidden = !hasFilters;
+        }
+
+        function updatePressedChips(selector, dataName, value) {
+          document.querySelectorAll(selector).forEach(item => item.setAttribute('aria-pressed', String(item.dataset[dataName] === value)));
         }
 
         function setupControls() {
@@ -1194,6 +1289,16 @@
               document.querySelectorAll('.chip[data-category]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
               applyFilters();
             });
+          });
+
+          document.getElementById('clear-filters').addEventListener('click', () => {
+            state.stage = 'all';
+            state.category = 'all';
+            state.search = '';
+            document.getElementById('search').value = '';
+            updatePressedChips('.chip[data-stage]', 'stage', 'all');
+            updatePressedChips('.chip[data-category]', 'category', 'all');
+            applyFilters();
           });
 
           document.getElementById('download-json').addEventListener('click', () => {
