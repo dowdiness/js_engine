@@ -24,6 +24,10 @@ GUARDRAIL_NOTE = (
     "> `startup/tiny_program` is the PR #153 / issue #141 guardrail for "
     "built-in realm-stamping startup cost."
 )
+COMPARISON_NOTE = (
+    "> Base-vs-head deltas are reporting-only. Negative delta and PR/base < 1.00x "
+    "mean the PR is faster; interpret high-CV or noisy rows cautiously."
+)
 STAGE_ORDER = ["startup", "frontend", "execution"]
 MIN_RATIO_DENOMINATOR = 1e-12
 CLOSURE_COMPARISON_PAIRS = [
@@ -37,6 +41,16 @@ CLOSURE_COMPARISON_PAIRS = [
         "pipeline/closure_conversion/evaluate",
         "pipeline evaluate",
     ),
+]
+BYTECODE_COMPARISON_ROWS = [
+    "baseline/bytecode/closure_factory",
+    "pipeline/bytecode/evaluate",
+    "isolate/bytecode/call_frame",
+    "isolate/bytecode/runtime_helpers",
+    "isolate/bytecode/local_access",
+    "isolate/bytecode/env_access",
+    "isolate/bytecode/captured_access",
+    "isolate/bytecode/dispatch_stack",
 ]
 
 
@@ -53,8 +67,50 @@ def mean_ms(row: dict[str, str]) -> float:
     return float(row["mean_ms"])
 
 
+def cv_pct(row: dict[str, str]) -> float:
+    return float(row["cv_pct"])
+
+
 def fmt_ms(value: str | float) -> str:
     return f"{float(value):.3f} ms"
+
+
+def fmt_optional_ms(row: dict[str, str] | None) -> str:
+    return fmt_ms(mean_ms(row)) if row is not None else "—"
+
+
+def fmt_optional_cv(row: dict[str, str] | None) -> str:
+    return f"{cv_pct(row):.1f}%" if row is not None else "—"
+
+
+def fmt_delta_pct(base: dict[str, str] | None, head: dict[str, str] | None) -> str:
+    if base is None or head is None:
+        return "—"
+    base_mean = mean_ms(base)
+    if abs(base_mean) <= MIN_RATIO_DENOMINATOR:
+        return "—"
+    delta = (mean_ms(head) - base_mean) / base_mean * 100.0
+    return f"{delta:+.1f}%"
+
+
+def fmt_ratio(base: dict[str, str] | None, head: dict[str, str] | None) -> str:
+    if base is None or head is None:
+        return "—"
+    base_mean = mean_ms(base)
+    if abs(base_mean) <= MIN_RATIO_DENOMINATOR:
+        return "—"
+    return f"{mean_ms(head) / base_mean:.2f}x"
+
+
+def fmt_noisy_flags(base: dict[str, str] | None, head: dict[str, str] | None) -> str:
+    if base is None and head is None:
+        return "—"
+    flags = []
+    if base is not None and is_noisy(base):
+        flags.append("base")
+    if head is not None and is_noisy(head):
+        flags.append("PR")
+    return ", ".join(flags) if flags else "no"
 
 
 def make_bar(width: int) -> str:
@@ -115,6 +171,41 @@ def render_mean_time_chart(rows: list[dict[str, str]]) -> list[str]:
     return lines
 
 
+def render_base_head_comparison(
+    base_rows: list[dict[str, str]],
+    head_rows: list[dict[str, str]],
+    *,
+    names: list[str] | None = None,
+) -> list[str]:
+    base_by_name = {row["name"]: row for row in base_rows}
+    head_by_name = {row["name"]: row for row in head_rows}
+    if names is None:
+        names = []
+        seen = set()
+        for row in head_rows:
+            names.append(row["name"])
+            seen.add(row["name"])
+        for row in base_rows:
+            if row["name"] not in seen:
+                names.append(row["name"])
+
+    lines = [
+        "| benchmark | stage | base mean | PR mean | delta | PR/base | base CV | PR CV | noisy |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    ]
+    for name in names:
+        base = base_by_name.get(name)
+        head = head_by_name.get(name)
+        stage = (head or base or {}).get("stage", "—")
+        lines.append(
+            f"| {name} | {stage} | {fmt_optional_ms(base)} | "
+            f"{fmt_optional_ms(head)} | {fmt_delta_pct(base, head)} | "
+            f"{fmt_ratio(base, head)} | {fmt_optional_cv(base)} | "
+            f"{fmt_optional_cv(head)} | {fmt_noisy_flags(base, head)} |"
+        )
+    return lines
+
+
 def render_closure_comparisons(
     rows: list[dict[str, str]], *, style: str
 ) -> list[str]:
@@ -167,6 +258,7 @@ def render_github_summary(
     trigger: str,
     moonbit_version: str,
     artifact_name: str,
+    base_rows: list[dict[str, str]] | None = None,
 ) -> str:
     lines = [
         "## Benchmark Results",
@@ -183,6 +275,21 @@ def render_github_summary(
         *render_full_table(rows),
     ]
     append_section(lines, "Stage summary", render_stage_summary(rows))
+    if base_rows is not None:
+        append_section(
+            lines,
+            "Base-vs-head comparison",
+            [COMPARISON_NOTE, "", *render_base_head_comparison(base_rows, rows)],
+        )
+        append_section(
+            lines,
+            "Focused bytecode base-vs-head comparison",
+            render_base_head_comparison(
+                base_rows,
+                rows,
+                names=BYTECODE_COMPARISON_ROWS,
+            ),
+        )
     append_section(lines, "Mean-time chart (log scale)", render_mean_time_chart(rows))
     append_section(
         lines,
@@ -199,7 +306,12 @@ def render_github_summary(
     return "\n".join(lines) + "\n"
 
 
-def render_pr_comment(rows: list[dict[str, str]], *, run_url: str) -> str:
+def render_pr_comment(
+    rows: list[dict[str, str]],
+    *,
+    run_url: str,
+    base_rows: list[dict[str, str]] | None = None,
+) -> str:
     lines = [
         COMMENT_MARKER,
         "## Benchmark Results",
@@ -209,6 +321,25 @@ def render_pr_comment(rows: list[dict[str, str]], *, run_url: str) -> str:
         GUARDRAIL_NOTE,
     ]
     append_section(lines, "Stage summary", render_stage_summary(rows))
+    if base_rows is not None:
+        append_section(
+            lines,
+            "Focused bytecode base-vs-head comparison",
+            [
+                COMPARISON_NOTE,
+                "",
+                *render_base_head_comparison(
+                    base_rows,
+                    rows,
+                    names=BYTECODE_COMPARISON_ROWS,
+                ),
+            ],
+        )
+        append_section(
+            lines,
+            "Base-vs-head comparison",
+            render_base_head_comparison(base_rows, rows),
+        )
     append_section(lines, "Mean-time chart (log scale)", render_mean_time_chart(rows))
     comparisons = render_closure_comparisons(rows, style="pr-comment")
     append_section(lines, "Closure-conversion comparison", comparisons or ["- unavailable"])
@@ -222,6 +353,11 @@ def env_default(name: str, fallback: str = "") -> str:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("csv_path", type=Path, help="Benchmark CSV file to render")
+    parser.add_argument(
+        "--base-csv",
+        type=Path,
+        help="Base benchmark CSV for optional base-vs-head comparisons",
+    )
     parser.add_argument(
         "--format",
         choices=["github-summary", "pr-comment"],
@@ -241,6 +377,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     rows = load_rows(args.csv_path)
+    base_rows = load_rows(args.base_csv) if args.base_csv is not None else None
     artifact_name = args.artifact_name or f"bench-results-{args.commit}"
     if args.format == "github-summary":
         print(
@@ -252,11 +389,12 @@ def main() -> None:
                 trigger=args.trigger,
                 moonbit_version=args.moonbit_version,
                 artifact_name=artifact_name,
+                base_rows=base_rows,
             ),
             end="",
         )
     else:
-        print(render_pr_comment(rows, run_url=args.run_url), end="")
+        print(render_pr_comment(rows, run_url=args.run_url, base_rows=base_rows), end="")
 
 
 if __name__ == "__main__":

@@ -16,8 +16,9 @@ name: Benchmarks
 #   when investigating a suspected regression.
 #
 # pull_request (same-repository branches only for comment/history steps)
-#   Run the benchmark suite and post reporting-only benchmark comments/summaries
-#   without updating the historical gh-pages baseline.
+#   Run the benchmark suite, measure base and head CSV snapshots on the same
+#   runner, and post reporting-only benchmark comments/summaries without
+#   updating the historical gh-pages baseline.
 # ─────────────────────────────────────────────────────────────────────────────
 on:
   push:
@@ -87,13 +88,37 @@ jobs:
       # ── CSV baseline snapshot / PR report source ──────────────────────────
       # The CLI runner (benchmarks/main.mbt) measures the same workloads with fixed
       # iteration counts and emits machine-readable CSV rows.  Scheduled/manual
-      # runs update long-term history; same-repository PRs use the CSV for a
-      # reporting-only benchmark comment without updating the baseline.
+      # runs update long-term history; same-repository PRs measure base and head
+      # in the same read-only CI job for reporting-only comments without updating
+      # the baseline.
       - name: Generate CSV baseline
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           set -o pipefail
           moon run benchmarks --target js -- --all --csv | tee bench-results.csv
+
+      - name: Generate PR base/head CSV baselines
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          result_dir="$RUNNER_TEMP/bench-pr-results"
+          mkdir -p "$result_dir"
+          git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
+          git checkout --force "$BASE_SHA"
+          moon update
+          moon run benchmarks --target js -- --all --csv | tee "$result_dir/bench-base-results.csv"
+          git checkout --force "$HEAD_SHA"
+          moon update
+          moon run benchmarks --target js -- --all --csv | tee "$result_dir/bench-head-results.csv"
+          # Restore the workflow checkout before rendering, so old PR branches
+          # still use the renderer from the tested merge ref.
+          git checkout --force "$GITHUB_SHA"
+          cp "$result_dir/bench-base-results.csv" bench-base-results.csv
+          cp "$result_dir/bench-head-results.csv" bench-head-results.csv
+          cp "$result_dir/bench-head-results.csv" bench-results.csv
 
       - name: Upload CSV artifact
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
@@ -103,6 +128,22 @@ jobs:
           path: bench-results.csv
           retention-days: 90
 
+      - name: Upload PR base CSV artifact
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: bench-base-results-${{ github.event.pull_request.base.sha }}
+          path: bench-base-results.csv
+          retention-days: 90
+
+      - name: Upload PR head CSV artifact
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: bench-head-results-${{ github.event.pull_request.head.sha }}
+          path: bench-head-results.csv
+          retention-days: 90
+
       # ── Job summary ────────────────────────────────────────────────────────
       # Scheduled/manual/same-repository PR reporting writes a human-readable
       # summary without needing repository-write credentials.
@@ -110,10 +151,16 @@ jobs:
         if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && !cancelled()
         env:
           MOONBIT_VERSION: ${{ steps.moonbit-version.outputs.version }}
+          REPORT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
+          base_args=()
+          if [ -f bench-base-results.csv ]; then
+            base_args=(--base-csv bench-base-results.csv)
+          fi
           python3 scripts/render-benchmark-summary.py bench-results.csv \
+            "${base_args[@]}" \
             --format github-summary \
-            --commit "$GITHUB_SHA" \
+            --commit "$REPORT_SHA" \
             --runner-name "$RUNNER_NAME" \
             --runner-os "$RUNNER_OS" \
             --trigger "$GITHUB_EVENT_NAME" \
@@ -127,6 +174,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           python3 scripts/render-benchmark-summary.py bench-results.csv \
+            --base-csv bench-base-results.csv \
             --format pr-comment \
             --run-url "$RUN_URL" \
             > benchmark-pr-comment.md

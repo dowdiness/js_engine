@@ -117,13 +117,15 @@ GitHub Actions summary with a full table, per-stage totals, a log-scale text
 chart, and closure-conversion comparisons, and publishes historical trend data
 with `benchmark-action/github-action-benchmark` on the `gh-pages` branch. The
 CSV-to-Markdown renderer lives in `scripts/render-benchmark-summary.py` so the
-summary and PR comment share one formatter. Same-repository PRs get
-reporting-only benchmark comments and summaries without updating the historical
-baseline; fork PRs skip write-token benchmark reporting for safety. PR comment
-Markdown is rendered in the read-only benchmark execution job before the
-publish job posts it. Repository-write permissions are scoped to the publish
-job; the benchmark execution job runs with read-only repository contents
-permission.
+summary and PR comment share one formatter. Same-repository PRs additionally
+run the CSV benchmark CLI at the PR base SHA and head SHA on the same runner,
+upload both raw CSVs, and render reporting-only base-vs-head tables with base
+mean, PR mean, delta percent, PR/base ratio, CV, and noisy flags. These PR
+comparisons do not gate the workflow and do not update the historical baseline;
+fork PRs skip write-token benchmark reporting for safety. PR comment Markdown
+is rendered in the read-only benchmark execution job before the publish job
+posts it. Repository-write permissions are scoped to the publish job; the
+benchmark execution job runs with read-only repository contents permission.
 
 The `startup/tiny_program` benchmark is the low-noise guardrail for interpreter
 startup and built-in installation. It intentionally measures `run("1 + 1")` in
