@@ -135,12 +135,31 @@ The `startup/tiny_program` benchmark is the low-noise guardrail for interpreter
 startup and built-in installation. It intentionally measures `run("1 + 1")` in
 process so CI trend data is not dominated by Node process spawn time.
 
-For process-level startup investigations, use the manual-only Startup Hyperfine
-workflow (`.github/workflows/startup-hyperfine.yml`). It builds the JS release
-CLI, times repeated invocations of
+For hosted process-level startup snapshots, use the manual-only Startup
+Hyperfine workflow (`.github/workflows/startup-hyperfine.yml`). It builds the JS
+release CLI, times repeated invocations of
 `node _build/js/release/build/cmd/main/main.js "1 + 1"` against Node.js and Bun,
 uploads the raw Hyperfine artifacts, and writes a reporting-only job summary.
 It does not publish `gh-pages`, comment on PRs, or enforce thresholds.
+
+For reproducible local startup decomposition, use the checked-in helper:
+
+```bash
+scripts/startup-hyperfine-decompose.sh --warmup 10 --min-runs 50
+# Fast smoke test before sending changes:
+scripts/startup-hyperfine-decompose.sh --warmup 1 --min-runs 2
+```
+
+The helper builds `moon build cmd/main --target js --release`, captures the
+expected expression stdout from `node -p <source>` (default source: `1 + 1`),
+verifies that `js_engine` and any included Bun expression probes match that
+stdout, records the release bundle byte size and line count, and writes
+Markdown/JSON artifacts under `_build/startup-hyperfine-decompose/<UTC
+timestamp>/` by default. Its probes separate empty host startup, native host
+expression evaluation, `js_engine` load/no-source, full `js_engine` expression
+evaluation, and Bun-hosted `js_engine` when Bun is available (or required with
+`--include-bun`). Like the hosted workflow, it is reporting-only: no thresholds,
+publishing, or PR comments.
 
 ## Release Workflow
 
