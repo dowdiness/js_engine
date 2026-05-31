@@ -146,6 +146,14 @@ test "bytecode comma expression runs left side effects before right" {
 }
 
 ///|
+test "bytecode comma effect context still evaluates throwing left operands" {
+  inspect(
+    bytecode_compare("missing, 1;"),
+    content="throw:ReferenceError: missing is not defined",
+  )
+}
+
+///|
 test "bytecode comma in assignment expression statement returns right value" {
   let src =
     #|var x = 0;
