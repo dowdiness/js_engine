@@ -495,6 +495,100 @@ pub const BYTECODE_RUNTIME_HELPERS_SRC : String =
   #|})();
 
 ///|
+/// Bytecode own-data property read workload.
+///
+/// Category: Component
+/// Exercises: repeated `get_property` calls for a plain object's own data
+///            property without method-call or property-write traffic. Local
+///            loop/counter traffic matches other 100k bytecode rows so the
+///            gap from `local_access` estimates own-property read helper cost.
+///
+/// Expected result: "100000"
+const BYTECODE_PROPERTY_GET_SRC : String =
+  #|(function() {
+  #|  var obj = { value: 1 };
+  #|  var total = 0;
+  #|  for (var i = 0; i < 100000; i = i + 1) {
+  #|    total = total + obj.value;
+  #|  }
+  #|  return total;
+  #|})();
+
+///|
+/// Bytecode own-data property write workload.
+///
+/// Category: Component
+/// Exercises: repeated `set_property` calls for a plain object's own data
+///            property without method calls. A final read checks the value but
+///            the hot loop is one property write per iteration.
+///
+/// Expected result: "99999"
+const BYTECODE_PROPERTY_SET_SRC : String =
+  #|(function() {
+  #|  var obj = { value: 0 };
+  #|  for (var i = 0; i < 100000; i = i + 1) {
+  #|    obj.value = i;
+  #|  }
+  #|  return obj.value;
+  #|})();
+
+///|
+/// Bytecode method-call workload.
+///
+/// Category: Component
+/// Exercises: receiver-preserving method property lookup plus `call_value` for
+///            a bytecode function. Compare with `call_frame` to estimate the
+///            incremental property/receiver cost around an otherwise similar
+///            simple call loop.
+///
+/// Expected result: "10000"
+const BYTECODE_METHOD_CALL_SRC : String =
+  #|(function() {
+  #|  var obj = { inc: function(x) { return x + 1; } };
+  #|  var total = 0;
+  #|  for (var i = 0; i < 10000; i = i + 1) {
+  #|    total = obj.inc(total);
+  #|  }
+  #|  return total;
+  #|})();
+
+///|
+/// Bytecode object-literal helper workload.
+///
+/// Category: Component
+/// Exercises: object allocation plus static data-property insertion in a loop,
+///            separated from property writes and method calls.
+///
+/// Expected result: "50005000"
+const BYTECODE_OBJECT_LITERAL_SRC : String =
+  #|(function() {
+  #|  var total = 0;
+  #|  for (var i = 0; i < 10000; i = i + 1) {
+  #|    var obj = { a: i, b: i + 1 };
+  #|    total = total + obj.b;
+  #|  }
+  #|  return total;
+  #|})();
+
+///|
+/// Bytecode array-literal helper workload.
+///
+/// Category: Component
+/// Exercises: array allocation plus element insertion and indexed read in a
+///            loop, separated from method calls and object property writes.
+///
+/// Expected result: "50015000"
+const BYTECODE_ARRAY_LITERAL_SRC : String =
+  #|(function() {
+  #|  var total = 0;
+  #|  for (var i = 0; i < 10000; i = i + 1) {
+  #|    var arr = [i, i + 1, i + 2];
+  #|    total = total + arr[2];
+  #|  }
+  #|  return total;
+  #|})();
+
+///|
 pub const BYTECODE_MICRO_ACCESS_EXPECTED : String = "100000"
 
 ///|

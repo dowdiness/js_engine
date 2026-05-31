@@ -1512,6 +1512,24 @@ test "bytecode member assignment writes through runtime property semantics" {
 }
 
 ///|
+test "bytecode own data property shadows inherited accessor" {
+  let src =
+    #|var reads = 0;
+    #|var stored = 0;
+    #|var proto = {};
+    #|Object.defineProperty(proto, "x", {
+    #|  get: function() { reads = reads + 1; return 7; },
+    #|  set: function(v) { stored = v; }
+    #|});
+    #|var obj = { x: 1 };
+    #|Object.setPrototypeOf(obj, proto);
+    #|var first = obj.x;
+    #|obj.x = 99;
+    #|first + "," + obj.x + "," + reads + "," + stored;
+  inspect(bytecode_compare(src), content="value:1,99,0,0")
+}
+
+///|
 test "bytecode computed assignment preserves object key value order" {
   let src =
     #|var log = "";

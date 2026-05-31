@@ -49,6 +49,15 @@ pub fn Interpreter::set_property(
           None => () // not a canonical numeric string — fall through
         }
       }
+      if strict_equal(obj, receiver) && !data.bag.descriptors.contains(prop) {
+        match data.bag.properties.get(prop) {
+          Some(_) => {
+            data.bag.properties[prop] = value
+            return value
+          }
+          None => ()
+        }
+      }
       // Check for accessor descriptor (setter)
       match data.bag.descriptors.get(prop) {
         Some(desc) =>

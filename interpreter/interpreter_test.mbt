@@ -5574,6 +5574,29 @@ test "computed assignment walks prototype chain for setters" {
 }
 
 ///|
+test "own data property shadows inherited accessor" {
+  let output = run_output(
+    (
+      #|let reads = 0;
+      #|let stored = 0;
+      #|const proto = {};
+      #|Object.defineProperty(proto, 'x', {
+      #|  get: function() { reads = reads + 1; return 7; },
+      #|  set: function(v) { stored = v; }
+      #|});
+      #|const obj = { x: 1 };
+      #|Object.setPrototypeOf(obj, proto);
+      #|console.log(obj.x);
+      #|obj.x = 99;
+      #|console.log(obj.x);
+      #|console.log(reads);
+      #|console.log(stored);
+    ),
+  )
+  json_inspect(output, content=["1", "99", "0", "0"])
+}
+
+///|
 test "update expression invokes setter" {
   let output = run_output(
     (

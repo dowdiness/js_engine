@@ -40,6 +40,16 @@ pub fn Interpreter::get_property(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
+  match obj {
+    Object(data) =>
+      if !data.bag.descriptors.contains(prop) {
+        match data.bag.properties.get(prop) {
+          Some(v) => return v
+          None => ()
+        }
+      }
+    _ => ()
+  }
   self.with_active_property_access_value(fn() raise {
     self.get_property_impl(obj, prop, loc)
   })
