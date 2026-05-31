@@ -105,7 +105,6 @@
         box-shadow: 0 12px 36px oklch(0.43 0.03 250 / 0.1);
       }
 
-      .eyebrow,
       .section-kicker,
       .meta-label,
       .chip,
@@ -116,13 +115,6 @@
         text-transform: uppercase;
       }
 
-      .eyebrow {
-        margin: 0 0 var(--space-xs);
-        color: var(--amber);
-        font-size: 0.72rem;
-        font-weight: 700;
-      }
-
       h1 {
         max-width: 18ch;
         margin: 0;
@@ -130,14 +122,6 @@
         font-size: clamp(2rem, 4vw, 3.75rem);
         line-height: 0.95;
         letter-spacing: -0.055em;
-      }
-
-      .lede {
-        max-width: 52ch;
-        margin: var(--space-xs) 0 0;
-        color: var(--ink-soft);
-        font-size: clamp(0.95rem, 1vw, 1.05rem);
-        line-height: 1.45;
       }
 
       .hero-panel {
@@ -548,21 +532,10 @@
           padding: var(--space-sm);
         }
 
-        .eyebrow {
-          margin-bottom: 0.45rem;
-          font-size: 0.68rem;
-        }
-
         h1 {
           max-width: 18ch;
           font-size: clamp(1.85rem, 9vw, 2.35rem);
           line-height: 0.96;
-        }
-
-        .lede {
-          margin-top: 0.4rem;
-          font-size: 0.9rem;
-          line-height: 1.35;
         }
 
         .run-card {
@@ -627,12 +600,7 @@
     <div class="shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">js_engine performance history</p>
           <h1>Benchmark instrument panel</h1>
-          <p class="lede">
-            Scan benchmark history by workload: what it measures and mean runtime
-            by commit.
-          </p>
         </div>
         <aside class="hero-panel" aria-label="Run metadata">
           <div class="run-card">
