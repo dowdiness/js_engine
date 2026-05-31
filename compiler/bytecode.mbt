@@ -1,4 +1,10 @@
 ///|
+using @runtime {type Binding}
+
+///|
+let empty_bytecode_env_slots : Array[Binding] = []
+
+///|
 priv enum BytecodeInstr {
   LoadConst(Value)
   LoadUndefined
@@ -13,8 +19,11 @@ priv enum BytecodeInstr {
   StoreName(String)
   LoadLocal(Int)
   StoreLocal(Int)
+  LoadEnvSlot(Int)
+  StoreEnvSlot(Int)
   DefineBinding(@ast.VarKind, String, Bool) // kind, name, initializer-present
   DefineLocal(Int, Bool) // slot, initializer-present
+  DefineEnvSlot(Int, Bool) // slot, initializer-present
   SetCompletion
   Pop
   Dup
@@ -30,6 +39,7 @@ priv enum BytecodeInstr {
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc
   UpdateLocal(Int, @ast.UpdateOp, Bool) // slot, op, prefix
+  UpdateEnvSlot(Int, @ast.UpdateOp, Bool) // slot, op, prefix
   UpdateProperty(String, @ast.UpdateOp, Bool, @token.Loc, @token.Loc) // prop, op, prefix, member loc, op loc
   UpdateComputed(@ast.UpdateOp, Bool, @token.Loc, @token.Loc) // op, prefix, member loc, op loc
   Jump(Int)
@@ -104,6 +114,7 @@ priv struct BytecodeFunction {
   // setup when both direct references and eval references are absent.
   needs_arguments_object : Bool
   local_names : Array[String]
+  env_slot_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
   children : Array[BytecodeFunction]
@@ -115,6 +126,8 @@ priv struct BytecodeBuilder {
   children : Array[BytecodeFunction]
   local_names : Array[String]
   local_indices : Map[String, Int]
+  env_slot_names : Array[String]
+  env_slot_indices : Map[String, Int]
   template_cache_key_prefix : String
   loop_contexts : Array[LoopPatchContext]
   break_contexts : Array[BreakPatchContext]
@@ -152,6 +165,8 @@ priv enum BreakPatchContext {
 priv struct BytecodeLocalPlan {
   names : Array[String]
   indices : Map[String, Int]
+  env_names : Array[String]
+  env_indices : Map[String, Int]
 }
 
 ///|
@@ -176,6 +191,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     children: [],
     local_names: plan.names,
     local_indices: plan.indices,
+    env_slot_names: plan.env_names,
+    env_slot_indices: plan.env_indices,
     template_cache_key_prefix,
     loop_contexts: [],
     break_contexts: [],
@@ -203,6 +220,11 @@ fn BytecodeBuilder::patch(
 ///|
 fn BytecodeBuilder::local_slot(self : BytecodeBuilder, name : String) -> Int? {
   self.local_indices.get(name)
+}
+
+///|
+fn BytecodeBuilder::env_slot(self : BytecodeBuilder, name : String) -> Int? {
+  self.env_slot_indices.get(name)
 }
 
 ///|
@@ -609,6 +631,19 @@ fn add_local_candidate(
 }
 
 ///|
+fn add_env_slot_candidate(
+  names : Array[String],
+  indices : Map[String, Int],
+  local_indices : Map[String, Int],
+  name : String,
+) -> Unit {
+  if !local_indices.contains(name) && !indices.contains(name) {
+    indices[name] = names.length()
+    names.push(name)
+  }
+}
+
+///|
 fn collect_current_var_names_from_stmts(
   stmts : Array[@ast.Stmt],
   out : Array[String],
@@ -928,96 +963,119 @@ fn collect_nested_function_refs_from_pattern(
 fn collect_name_refs_from_stmts(
   stmts : Array[@ast.Stmt],
   refs : Map[String, Bool],
+  nested_functions? : Bool = true,
 ) -> Unit {
   for stmt in stmts {
-    collect_name_refs_from_stmt(stmt, refs)
+    collect_name_refs_from_stmt(stmt, refs, nested_functions~)
   }
+}
+
+///|
+fn collect_current_function_name_refs_from_stmts(
+  stmts : Array[@ast.Stmt],
+  refs : Map[String, Bool],
+) -> Unit {
+  collect_name_refs_from_stmts(stmts, refs, nested_functions=false)
 }
 
 ///|
 fn collect_name_refs_from_stmt(
   stmt : @ast.Stmt,
   refs : Map[String, Bool],
+  nested_functions? : Bool = true,
 ) -> Unit {
   match stmt {
     VarDecl(_, _, Some(expr), _)
     | ExprStmt(expr, _)
     | ReturnStmt(Some(expr), _)
-    | ThrowStmt(expr, _) => collect_name_refs_from_expr(expr, refs)
+    | ThrowStmt(expr, _) =>
+      collect_name_refs_from_expr(expr, refs, nested_functions~)
     DestructureDecl(_, pattern, init, _) => {
-      collect_name_refs_from_binding_pattern_exprs(pattern, refs)
-      collect_name_refs_from_expr(init, refs)
+      collect_name_refs_from_binding_pattern_exprs(
+        pattern,
+        refs,
+        nested_functions~,
+      )
+      collect_name_refs_from_expr(init, refs, nested_functions~)
     }
-    FuncDecl(_, _, body, _)
-    | FuncDeclExt(_, _, _, body, _)
-    | StmtList(body, _)
-    | Block(body, _) => collect_name_refs_from_stmts(body, refs)
+    FuncDecl(_, _, body, _) | FuncDeclExt(_, _, _, body, _) =>
+      if nested_functions {
+        collect_name_refs_from_stmts(body, refs, nested_functions~)
+      }
+    StmtList(body, _) | Block(body, _) =>
+      collect_name_refs_from_stmts(body, refs, nested_functions~)
     IfStmt(cond, then_branch, else_branch, _) => {
-      collect_name_refs_from_expr(cond, refs)
-      collect_name_refs_from_stmt(then_branch, refs)
+      collect_name_refs_from_expr(cond, refs, nested_functions~)
+      collect_name_refs_from_stmt(then_branch, refs, nested_functions~)
       match else_branch {
-        Some(stmt) => collect_name_refs_from_stmt(stmt, refs)
+        Some(stmt) => collect_name_refs_from_stmt(stmt, refs, nested_functions~)
         None => ()
       }
     }
     WhileStmt(cond, body, _) => {
-      collect_name_refs_from_expr(cond, refs)
-      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_expr(cond, refs, nested_functions~)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     }
     DoWhileStmt(body, cond, _) => {
-      collect_name_refs_from_stmt(body, refs)
-      collect_name_refs_from_expr(cond, refs)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
+      collect_name_refs_from_expr(cond, refs, nested_functions~)
     }
     ForStmt(init, cond, update, body, _) => {
       match init {
-        Some(stmt) => collect_name_refs_from_stmt(stmt, refs)
+        Some(stmt) => collect_name_refs_from_stmt(stmt, refs, nested_functions~)
         None => ()
       }
       match cond {
-        Some(expr) => collect_name_refs_from_expr(expr, refs)
+        Some(expr) => collect_name_refs_from_expr(expr, refs, nested_functions~)
         None => ()
       }
       match update {
-        Some(expr) => collect_name_refs_from_expr(expr, refs)
+        Some(expr) => collect_name_refs_from_expr(expr, refs, nested_functions~)
         None => ()
       }
-      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     }
     ForInStmt(None, name, obj_expr, body, _) => {
       refs[name] = true
-      collect_name_refs_from_expr(obj_expr, refs)
-      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_expr(obj_expr, refs, nested_functions~)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     }
     ForInStmt(Some(_), _, obj_expr, body, _) => {
-      collect_name_refs_from_expr(obj_expr, refs)
-      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_expr(obj_expr, refs, nested_functions~)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     }
     ForInStmtPat(None, pattern, obj_expr, body, _) => {
-      collect_name_refs_from_pattern(pattern, refs)
-      collect_name_refs_from_expr(obj_expr, refs)
-      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_pattern(pattern, refs, nested_functions~)
+      collect_name_refs_from_expr(obj_expr, refs, nested_functions~)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     }
     ForInStmtPat(Some(_), pattern, obj_expr, body, _) => {
-      collect_name_refs_from_binding_pattern_exprs(pattern, refs)
-      collect_name_refs_from_expr(obj_expr, refs)
-      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_binding_pattern_exprs(
+        pattern,
+        refs,
+        nested_functions~,
+      )
+      collect_name_refs_from_expr(obj_expr, refs, nested_functions~)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     }
     ForInExpr(lhs_expr, obj_expr, body, _) => {
-      collect_name_refs_from_expr(lhs_expr, refs)
-      collect_name_refs_from_expr(obj_expr, refs)
-      collect_name_refs_from_stmt(body, refs)
+      collect_name_refs_from_expr(lhs_expr, refs, nested_functions~)
+      collect_name_refs_from_expr(obj_expr, refs, nested_functions~)
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     }
     SwitchStmt(discriminant, cases, _) => {
-      collect_name_refs_from_expr(discriminant, refs)
+      collect_name_refs_from_expr(discriminant, refs, nested_functions~)
       for case in cases {
         match case.condition {
-          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          Some(expr) =>
+            collect_name_refs_from_expr(expr, refs, nested_functions~)
           None => ()
         }
-        collect_name_refs_from_stmts(case.body, refs)
+        collect_name_refs_from_stmts(case.body, refs, nested_functions~)
       }
     }
-    LabeledStmt(_, body, _) => collect_name_refs_from_stmt(body, refs)
+    LabeledStmt(_, body, _) =>
+      collect_name_refs_from_stmt(body, refs, nested_functions~)
     _ => ()
   }
 }
@@ -1026,77 +1084,87 @@ fn collect_name_refs_from_stmt(
 fn collect_name_refs_from_expr(
   expr : @ast.Expr,
   refs : Map[String, Bool],
+  nested_functions? : Bool = true,
 ) -> Unit {
   match expr {
     Ident(name, _) => refs[name] = true
     Assign(name, value, _) => {
       refs[name] = true
-      collect_name_refs_from_expr(value, refs)
+      collect_name_refs_from_expr(value, refs, nested_functions~)
     }
-    Unary(_, operand, _) => collect_name_refs_from_expr(operand, refs)
+    Unary(_, operand, _) =>
+      collect_name_refs_from_expr(operand, refs, nested_functions~)
     Binary(_, left, right, _) | Comma(left, right, _) => {
-      collect_name_refs_from_expr(left, refs)
-      collect_name_refs_from_expr(right, refs)
+      collect_name_refs_from_expr(left, refs, nested_functions~)
+      collect_name_refs_from_expr(right, refs, nested_functions~)
     }
     Ternary(cond, then_expr, else_expr, _) => {
-      collect_name_refs_from_expr(cond, refs)
-      collect_name_refs_from_expr(then_expr, refs)
-      collect_name_refs_from_expr(else_expr, refs)
+      collect_name_refs_from_expr(cond, refs, nested_functions~)
+      collect_name_refs_from_expr(then_expr, refs, nested_functions~)
+      collect_name_refs_from_expr(else_expr, refs, nested_functions~)
     }
     Call(callee, args, _)
     | OptionalCall(callee, args, _)
     | NewExpr(callee, args, _) => {
-      collect_name_refs_from_expr(callee, refs)
+      collect_name_refs_from_expr(callee, refs, nested_functions~)
       for arg in args {
-        collect_name_refs_from_expr(arg, refs)
+        collect_name_refs_from_expr(arg, refs, nested_functions~)
       }
     }
     Member(obj, _, _) | OptionalMember(obj, _, _) =>
-      collect_name_refs_from_expr(obj, refs)
+      collect_name_refs_from_expr(obj, refs, nested_functions~)
     ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) => {
-      collect_name_refs_from_expr(obj, refs)
-      collect_name_refs_from_expr(key, refs)
+      collect_name_refs_from_expr(obj, refs, nested_functions~)
+      collect_name_refs_from_expr(key, refs, nested_functions~)
     }
-    SuperComputedMember(key, _) => collect_name_refs_from_expr(key, refs)
+    SuperComputedMember(key, _) =>
+      collect_name_refs_from_expr(key, refs, nested_functions~)
     MemberAssign(obj, _, value, _) => {
-      collect_name_refs_from_expr(obj, refs)
-      collect_name_refs_from_expr(value, refs)
+      collect_name_refs_from_expr(obj, refs, nested_functions~)
+      collect_name_refs_from_expr(value, refs, nested_functions~)
     }
     ComputedAssign(obj, key, value, _) => {
-      collect_name_refs_from_expr(obj, refs)
-      collect_name_refs_from_expr(key, refs)
-      collect_name_refs_from_expr(value, refs)
+      collect_name_refs_from_expr(obj, refs, nested_functions~)
+      collect_name_refs_from_expr(key, refs, nested_functions~)
+      collect_name_refs_from_expr(value, refs, nested_functions~)
     }
     CompoundAssign(_, target, value, _) => {
-      collect_name_refs_from_expr(target, refs)
-      collect_name_refs_from_expr(value, refs)
+      collect_name_refs_from_expr(target, refs, nested_functions~)
+      collect_name_refs_from_expr(value, refs, nested_functions~)
     }
     DestructureAssign(pattern, value, _) => {
-      collect_name_refs_from_pattern(pattern, refs)
-      collect_name_refs_from_expr(value, refs)
+      collect_name_refs_from_pattern(pattern, refs, nested_functions~)
+      collect_name_refs_from_expr(value, refs, nested_functions~)
     }
-    UpdateExpr(_, operand, _, _) => collect_name_refs_from_expr(operand, refs)
+    UpdateExpr(_, operand, _, _) =>
+      collect_name_refs_from_expr(operand, refs, nested_functions~)
     FuncExpr(_, _, body, _)
     | FuncExprExt(_, _, _, body, _)
     | ArrowFunc(_, body, _)
-    | ArrowFuncExt(_, _, body, _) => collect_name_refs_from_stmts(body, refs)
-    Grouping(inner, _) => collect_name_refs_from_expr(inner, refs)
+    | ArrowFuncExt(_, _, body, _) =>
+      if nested_functions {
+        collect_name_refs_from_stmts(body, refs, nested_functions~)
+      }
+    Grouping(inner, _) =>
+      collect_name_refs_from_expr(inner, refs, nested_functions~)
     ArrayLit(elements, _) =>
       for element in elements {
-        collect_name_refs_from_expr(element, refs)
+        collect_name_refs_from_expr(element, refs, nested_functions~)
       }
-    ObjectLit(props, _) => collect_name_refs_from_props(props, refs)
+    ObjectLit(props, _) =>
+      collect_name_refs_from_props(props, refs, nested_functions~)
     TemplateLit(_, exprs, _) =>
       for expr in exprs {
-        collect_name_refs_from_expr(expr, refs)
+        collect_name_refs_from_expr(expr, refs, nested_functions~)
       }
     TaggedTemplate(tag, _, exprs, _) => {
-      collect_name_refs_from_expr(tag, refs)
+      collect_name_refs_from_expr(tag, refs, nested_functions~)
       for expr in exprs {
-        collect_name_refs_from_expr(expr, refs)
+        collect_name_refs_from_expr(expr, refs, nested_functions~)
       }
     }
-    SpreadExpr(inner, _) => collect_name_refs_from_expr(inner, refs)
+    SpreadExpr(inner, _) =>
+      collect_name_refs_from_expr(inner, refs, nested_functions~)
     _ => ()
   }
 }
@@ -1105,15 +1173,16 @@ fn collect_name_refs_from_expr(
 fn collect_name_refs_from_props(
   props : Array[@ast.Property],
   refs : Map[String, Bool],
+  nested_functions? : Bool = true,
 ) -> Unit {
   for prop in props {
     match prop.kind {
-      Spread => collect_name_refs_from_expr(prop.key, refs)
+      Spread => collect_name_refs_from_expr(prop.key, refs, nested_functions~)
       _ => {
         if prop.computed {
-          collect_name_refs_from_expr(prop.key, refs)
+          collect_name_refs_from_expr(prop.key, refs, nested_functions~)
         }
-        collect_name_refs_from_expr(prop.value, refs)
+        collect_name_refs_from_expr(prop.value, refs, nested_functions~)
       }
     }
   }
@@ -1123,43 +1192,50 @@ fn collect_name_refs_from_props(
 fn collect_name_refs_from_pattern(
   pattern : @ast.Pattern,
   refs : Map[String, Bool],
+  nested_functions? : Bool = true,
 ) -> Unit {
   match pattern {
     IdentPat(name) => refs[name] = true
     ArrayPat(elements, rest) => {
       for element in elements {
         match element {
-          Some(pat) => collect_name_refs_from_pattern(pat, refs)
+          Some(pat) =>
+            collect_name_refs_from_pattern(pat, refs, nested_functions~)
           None => ()
         }
       }
       match rest {
-        Some(pat) => collect_name_refs_from_pattern(pat, refs)
+        Some(pat) =>
+          collect_name_refs_from_pattern(pat, refs, nested_functions~)
         None => ()
       }
     }
     ObjectPat(props, rest) => {
       for prop in props {
         match prop.computed_key {
-          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          Some(expr) =>
+            collect_name_refs_from_expr(expr, refs, nested_functions~)
           None => ()
         }
         match prop.default_val {
-          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          Some(expr) =>
+            collect_name_refs_from_expr(expr, refs, nested_functions~)
           None => ()
         }
-        collect_name_refs_from_pattern(prop.value, refs)
+        collect_name_refs_from_pattern(prop.value, refs, nested_functions~)
       }
       match rest {
-        Some(pat) => collect_name_refs_from_pattern(pat, refs)
+        Some(pat) =>
+          collect_name_refs_from_pattern(pat, refs, nested_functions~)
         None => ()
       }
     }
     DefaultPat(inner, expr) => {
-      collect_name_refs_from_pattern(inner, refs)
-      collect_name_refs_from_expr(expr, refs)
+      collect_name_refs_from_pattern(inner, refs, nested_functions~)
+      collect_name_refs_from_expr(expr, refs, nested_functions~)
     }
-    AssignTarget(expr) => collect_name_refs_from_expr(expr, refs)
+    AssignTarget(expr) =>
+      collect_name_refs_from_expr(expr, refs, nested_functions~)
   }
 }
 
@@ -1167,51 +1243,392 @@ fn collect_name_refs_from_pattern(
 fn collect_name_refs_from_binding_pattern_exprs(
   pattern : @ast.Pattern,
   refs : Map[String, Bool],
+  nested_functions? : Bool = true,
 ) -> Unit {
   match pattern {
     IdentPat(_) => ()
     ArrayPat(elements, rest) => {
       for element in elements {
         match element {
-          Some(pat) => collect_name_refs_from_binding_pattern_exprs(pat, refs)
+          Some(pat) =>
+            collect_name_refs_from_binding_pattern_exprs(
+              pat,
+              refs,
+              nested_functions~,
+            )
           None => ()
         }
       }
       match rest {
-        Some(pat) => collect_name_refs_from_binding_pattern_exprs(pat, refs)
+        Some(pat) =>
+          collect_name_refs_from_binding_pattern_exprs(
+            pat,
+            refs,
+            nested_functions~,
+          )
         None => ()
       }
     }
     ObjectPat(props, rest) => {
       for prop in props {
         match prop.computed_key {
-          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          Some(expr) =>
+            collect_name_refs_from_expr(expr, refs, nested_functions~)
           None => ()
         }
         match prop.default_val {
-          Some(expr) => collect_name_refs_from_expr(expr, refs)
+          Some(expr) =>
+            collect_name_refs_from_expr(expr, refs, nested_functions~)
           None => ()
         }
-        collect_name_refs_from_binding_pattern_exprs(prop.value, refs)
+        collect_name_refs_from_binding_pattern_exprs(
+          prop.value,
+          refs,
+          nested_functions~,
+        )
       }
       match rest {
-        Some(pat) => collect_name_refs_from_binding_pattern_exprs(pat, refs)
+        Some(pat) =>
+          collect_name_refs_from_binding_pattern_exprs(
+            pat,
+            refs,
+            nested_functions~,
+          )
         None => ()
       }
     }
     DefaultPat(inner, expr) => {
-      collect_name_refs_from_binding_pattern_exprs(inner, refs)
-      collect_name_refs_from_expr(expr, refs)
+      collect_name_refs_from_binding_pattern_exprs(
+        inner,
+        refs,
+        nested_functions~,
+      )
+      collect_name_refs_from_expr(expr, refs, nested_functions~)
     }
-    AssignTarget(expr) => collect_name_refs_from_expr(expr, refs)
+    AssignTarget(expr) =>
+      collect_name_refs_from_expr(expr, refs, nested_functions~)
   }
 }
 
 ///|
-fn bytecode_body_references_arguments(body : Array[@ast.Stmt]) -> Bool {
-  let refs : Map[String, Bool] = {}
-  collect_name_refs_from_stmts(body, refs)
-  refs.contains("arguments")
+fn bytecode_body_references_outer_arguments(body : Array[@ast.Stmt]) -> Bool {
+  for stmt in body {
+    if bytecode_stmt_references_outer_arguments(stmt) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn bytecode_stmt_references_outer_arguments(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    VarDecl(_, _, Some(expr), _)
+    | ExprStmt(expr, _)
+    | ReturnStmt(Some(expr), _)
+    | ThrowStmt(expr, _) => bytecode_expr_references_outer_arguments(expr)
+    DestructureDecl(_, pattern, init, _) =>
+      bytecode_binding_pattern_exprs_reference_outer_arguments(pattern) ||
+      bytecode_expr_references_outer_arguments(init)
+    // Ordinary functions bind their own `arguments`; arrows inherit it.
+    FuncDecl(_, _, _, _) | FuncDeclExt(_, _, _, _, _) => false
+    StmtList(stmts, _) | Block(stmts, _) =>
+      bytecode_body_references_outer_arguments(stmts)
+    IfStmt(cond, then_branch, else_branch, _) => {
+      if bytecode_expr_references_outer_arguments(cond) {
+        return true
+      }
+      if bytecode_stmt_references_outer_arguments(then_branch) {
+        return true
+      }
+      match else_branch {
+        Some(stmt) => bytecode_stmt_references_outer_arguments(stmt)
+        None => false
+      }
+    }
+    WhileStmt(cond, body, _) =>
+      bytecode_expr_references_outer_arguments(cond) ||
+      bytecode_stmt_references_outer_arguments(body)
+    DoWhileStmt(body, cond, _) =>
+      bytecode_stmt_references_outer_arguments(body) ||
+      bytecode_expr_references_outer_arguments(cond)
+    ForStmt(init, cond, update, body, _) => {
+      match init {
+        Some(stmt) =>
+          if bytecode_stmt_references_outer_arguments(stmt) {
+            return true
+          }
+        None => ()
+      }
+      match cond {
+        Some(expr) =>
+          if bytecode_expr_references_outer_arguments(expr) {
+            return true
+          }
+        None => ()
+      }
+      match update {
+        Some(expr) =>
+          if bytecode_expr_references_outer_arguments(expr) {
+            return true
+          }
+        None => ()
+      }
+      bytecode_stmt_references_outer_arguments(body)
+    }
+    ForInStmt(None, name, obj_expr, body, _) =>
+      name == "arguments" ||
+      bytecode_expr_references_outer_arguments(obj_expr) ||
+      bytecode_stmt_references_outer_arguments(body)
+    ForInStmt(Some(_), _, obj_expr, body, _) =>
+      bytecode_expr_references_outer_arguments(obj_expr) ||
+      bytecode_stmt_references_outer_arguments(body)
+    ForInStmtPat(None, pattern, obj_expr, body, _) =>
+      bytecode_pattern_references_outer_arguments(pattern) ||
+      bytecode_expr_references_outer_arguments(obj_expr) ||
+      bytecode_stmt_references_outer_arguments(body)
+    ForInStmtPat(Some(_), pattern, obj_expr, body, _) =>
+      bytecode_binding_pattern_exprs_reference_outer_arguments(pattern) ||
+      bytecode_expr_references_outer_arguments(obj_expr) ||
+      bytecode_stmt_references_outer_arguments(body)
+    ForInExpr(lhs_expr, obj_expr, body, _) =>
+      bytecode_expr_references_outer_arguments(lhs_expr) ||
+      bytecode_expr_references_outer_arguments(obj_expr) ||
+      bytecode_stmt_references_outer_arguments(body)
+    SwitchStmt(discriminant, cases, _) => {
+      if bytecode_expr_references_outer_arguments(discriminant) {
+        return true
+      }
+      for case in cases {
+        match case.condition {
+          Some(expr) =>
+            if bytecode_expr_references_outer_arguments(expr) {
+              return true
+            }
+          None => ()
+        }
+        if bytecode_body_references_outer_arguments(case.body) {
+          return true
+        }
+      }
+      false
+    }
+    LabeledStmt(_, body, _) => bytecode_stmt_references_outer_arguments(body)
+    _ => false
+  }
+}
+
+///|
+fn bytecode_expr_references_outer_arguments(expr : @ast.Expr) -> Bool {
+  match expr {
+    Ident("arguments", _) => true
+    Assign(name, value, _) =>
+      name == "arguments" || bytecode_expr_references_outer_arguments(value)
+    Unary(_, operand, _) | Grouping(operand, _) | SpreadExpr(operand, _) =>
+      bytecode_expr_references_outer_arguments(operand)
+    Binary(_, left, right, _) | Comma(left, right, _) =>
+      bytecode_expr_references_outer_arguments(left) ||
+      bytecode_expr_references_outer_arguments(right)
+    Ternary(cond, then_expr, else_expr, _) =>
+      bytecode_expr_references_outer_arguments(cond) ||
+      bytecode_expr_references_outer_arguments(then_expr) ||
+      bytecode_expr_references_outer_arguments(else_expr)
+    Call(callee, args, _)
+    | OptionalCall(callee, args, _)
+    | NewExpr(callee, args, _) => {
+      if bytecode_expr_references_outer_arguments(callee) {
+        return true
+      }
+      for arg in args {
+        if bytecode_expr_references_outer_arguments(arg) {
+          return true
+        }
+      }
+      false
+    }
+    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+      bytecode_expr_references_outer_arguments(obj)
+    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) =>
+      bytecode_expr_references_outer_arguments(obj) ||
+      bytecode_expr_references_outer_arguments(key)
+    SuperComputedMember(key, _) => bytecode_expr_references_outer_arguments(key)
+    MemberAssign(obj, _, value, _) =>
+      bytecode_expr_references_outer_arguments(obj) ||
+      bytecode_expr_references_outer_arguments(value)
+    ComputedAssign(obj, key, value, _) =>
+      bytecode_expr_references_outer_arguments(obj) ||
+      bytecode_expr_references_outer_arguments(key) ||
+      bytecode_expr_references_outer_arguments(value)
+    CompoundAssign(_, target, value, _) =>
+      bytecode_expr_references_outer_arguments(target) ||
+      bytecode_expr_references_outer_arguments(value)
+    DestructureAssign(pattern, value, _) =>
+      bytecode_pattern_references_outer_arguments(pattern) ||
+      bytecode_expr_references_outer_arguments(value)
+    UpdateExpr(_, operand, _, _) =>
+      bytecode_expr_references_outer_arguments(operand)
+    FuncExpr(_, _, _, _) | FuncExprExt(_, _, _, _, _) => false
+    ArrowFunc(_, body, _) | ArrowFuncExt(_, _, body, _) =>
+      bytecode_body_references_outer_arguments(body)
+    ArrayLit(elements, _) => {
+      for element in elements {
+        if bytecode_expr_references_outer_arguments(element) {
+          return true
+        }
+      }
+      false
+    }
+    ObjectLit(props, _) => bytecode_props_reference_outer_arguments(props)
+    TemplateLit(_, exprs, _) => {
+      for expr in exprs {
+        if bytecode_expr_references_outer_arguments(expr) {
+          return true
+        }
+      }
+      false
+    }
+    TaggedTemplate(tag, _, exprs, _) => {
+      if bytecode_expr_references_outer_arguments(tag) {
+        return true
+      }
+      for expr in exprs {
+        if bytecode_expr_references_outer_arguments(expr) {
+          return true
+        }
+      }
+      false
+    }
+    _ => false
+  }
+}
+
+///|
+fn bytecode_props_reference_outer_arguments(
+  props : Array[@ast.Property],
+) -> Bool {
+  for prop in props {
+    match prop.kind {
+      Spread =>
+        if bytecode_expr_references_outer_arguments(prop.key) {
+          return true
+        }
+      _ => {
+        if prop.computed && bytecode_expr_references_outer_arguments(prop.key) {
+          return true
+        }
+        if bytecode_expr_references_outer_arguments(prop.value) {
+          return true
+        }
+      }
+    }
+  }
+  false
+}
+
+///|
+fn bytecode_pattern_references_outer_arguments(pattern : @ast.Pattern) -> Bool {
+  match pattern {
+    IdentPat(name) => name == "arguments"
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) =>
+            if bytecode_pattern_references_outer_arguments(pat) {
+              return true
+            }
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => bytecode_pattern_references_outer_arguments(pat)
+        None => false
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(expr) =>
+            if bytecode_expr_references_outer_arguments(expr) {
+              return true
+            }
+          None => ()
+        }
+        match prop.default_val {
+          Some(expr) =>
+            if bytecode_expr_references_outer_arguments(expr) {
+              return true
+            }
+          None => ()
+        }
+        if bytecode_pattern_references_outer_arguments(prop.value) {
+          return true
+        }
+      }
+      match rest {
+        Some(pat) => bytecode_pattern_references_outer_arguments(pat)
+        None => false
+      }
+    }
+    DefaultPat(inner, expr) =>
+      bytecode_pattern_references_outer_arguments(inner) ||
+      bytecode_expr_references_outer_arguments(expr)
+    AssignTarget(expr) => bytecode_expr_references_outer_arguments(expr)
+  }
+}
+
+///|
+fn bytecode_binding_pattern_exprs_reference_outer_arguments(
+  pattern : @ast.Pattern,
+) -> Bool {
+  match pattern {
+    IdentPat(_) => false
+    ArrayPat(elements, rest) => {
+      for element in elements {
+        match element {
+          Some(pat) =>
+            if bytecode_binding_pattern_exprs_reference_outer_arguments(pat) {
+              return true
+            }
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) =>
+          bytecode_binding_pattern_exprs_reference_outer_arguments(pat)
+        None => false
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        match prop.computed_key {
+          Some(expr) =>
+            if bytecode_expr_references_outer_arguments(expr) {
+              return true
+            }
+          None => ()
+        }
+        match prop.default_val {
+          Some(expr) =>
+            if bytecode_expr_references_outer_arguments(expr) {
+              return true
+            }
+          None => ()
+        }
+        if bytecode_binding_pattern_exprs_reference_outer_arguments(prop.value) {
+          return true
+        }
+      }
+      match rest {
+        Some(pat) =>
+          bytecode_binding_pattern_exprs_reference_outer_arguments(pat)
+        None => false
+      }
+    }
+    DefaultPat(inner, expr) =>
+      bytecode_binding_pattern_exprs_reference_outer_arguments(inner) ||
+      bytecode_expr_references_outer_arguments(expr)
+    AssignTarget(expr) => bytecode_expr_references_outer_arguments(expr)
+  }
 }
 
 ///|
@@ -1431,22 +1848,43 @@ fn plan_bytecode_locals(
 ) -> BytecodeLocalPlan {
   let names : Array[String] = []
   let indices : Map[String, Int] = {}
+  let env_names : Array[String] = []
+  let env_indices : Map[String, Int] = {}
+  let refs_arguments = bytecode_body_references_outer_arguments(body)
   if use_local_slots &&
-    !bytecode_body_references_arguments(body) &&
     !bytecode_body_references_eval(body) &&
     !bytecode_body_contains_destructure_assign(body) {
     let captured : Map[String, Bool] = {}
     collect_nested_function_refs_from_stmts(body, captured)
+    let current_refs : Map[String, Bool] = {}
+    collect_current_function_name_refs_from_stmts(body, current_refs)
+    let param_names : Map[String, Bool] = {}
     for param in params {
-      add_local_candidate(names, indices, captured, param)
+      param_names[param] = true
+      if !captured.contains(param) && !refs_arguments {
+        add_local_candidate(names, indices, captured, param)
+      } else if captured.contains(param) &&
+        current_refs.contains(param) &&
+        !refs_arguments {
+        add_env_slot_candidate(env_names, env_indices, indices, param)
+      }
     }
     let vars : Array[String] = []
     collect_current_var_names_from_stmts(body, vars)
     for name in vars {
-      add_local_candidate(names, indices, captured, name)
+      if param_names.contains(name) {
+        if !refs_arguments && !captured.contains(name) {
+          add_local_candidate(names, indices, captured, name)
+        }
+      } else if (captured.contains(name) && current_refs.contains(name)) ||
+        (refs_arguments && name == "arguments") {
+        add_env_slot_candidate(env_names, env_indices, indices, name)
+      } else {
+        add_local_candidate(names, indices, captured, name)
+      }
     }
   }
-  { names, indices }
+  { names, indices, env_names, env_indices }
 }
 
 ///|
@@ -1477,9 +1915,10 @@ fn compile_bytecode_function(
     source_body: body,
     body_has_use_strict: @runtime.has_use_strict(body),
     call_self_name,
-    needs_arguments_object: bytecode_body_references_arguments(body) ||
+    needs_arguments_object: bytecode_body_references_outer_arguments(body) ||
     bytecode_body_references_eval(body),
     local_names: builder.local_names,
+    env_slot_names: builder.env_slot_names,
     template_cache_key_prefix,
     code: builder.code,
     children: builder.children,
@@ -1772,9 +2211,12 @@ fn BytecodeBuilder::compile_stmt(
           let _ = self.emit(LoadUndefined)
         }
       }
-      match (kind, self.local_slot(name)) {
-        (VarKind, Some(slot)) => {
+      match (kind, self.local_slot(name), self.env_slot(name)) {
+        (VarKind, Some(slot), _) => {
           let _ = self.emit(DefineLocal(slot, init is Some(_)))
+        }
+        (VarKind, _, Some(slot)) => {
+          let _ = self.emit(DefineEnvSlot(slot, init is Some(_)))
         }
         _ => {
           let _ = self.emit(DefineBinding(kind, name, init is Some(_)))
@@ -2317,11 +2759,14 @@ fn BytecodeBuilder::compile_identifier_load(
   self : BytecodeBuilder,
   name : String,
 ) -> Unit {
-  match self.local_slot(name) {
-    Some(slot) => {
+  match (self.local_slot(name), self.env_slot(name)) {
+    (Some(slot), _) => {
       let _ = self.emit(LoadLocal(slot))
     }
-    None => {
+    (_, Some(slot)) => {
+      let _ = self.emit(LoadEnvSlot(slot))
+    }
+    _ => {
       let _ = self.emit(LoadName(name))
     }
   }
@@ -2332,11 +2777,14 @@ fn BytecodeBuilder::compile_identifier_store(
   self : BytecodeBuilder,
   name : String,
 ) -> Unit {
-  match self.local_slot(name) {
-    Some(slot) => {
+  match (self.local_slot(name), self.env_slot(name)) {
+    (Some(slot), _) => {
       let _ = self.emit(StoreLocal(slot))
     }
-    None => {
+    (_, Some(slot)) => {
+      let _ = self.emit(StoreEnvSlot(slot))
+    }
+    _ => {
       let _ = self.emit(StoreName(name))
     }
   }
@@ -2347,11 +2795,14 @@ fn BytecodeBuilder::compile_identifier_compound_load(
   self : BytecodeBuilder,
   name : String,
 ) -> Unit {
-  match self.local_slot(name) {
-    Some(slot) => {
+  match (self.local_slot(name), self.env_slot(name)) {
+    (Some(slot), _) => {
       let _ = self.emit(LoadLocal(slot))
     }
-    None => {
+    (_, Some(slot)) => {
+      let _ = self.emit(LoadEnvSlot(slot))
+    }
+    _ => {
       let _ = self.emit(LoadAssignmentName(name))
     }
   }
@@ -3106,17 +3557,27 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(DeleteComputed)
     }
-    Unary(Delete, Ident(name, _), _) => {
-      let _ = self.emit(DeleteName(name))
-    }
+    Unary(Delete, Ident(name, _), _) =>
+      match (self.local_slot(name), self.env_slot(name)) {
+        (Some(_), _) | (_, Some(_)) => {
+          let _ = self.emit(LoadConst(Value::Bool(false)))
+        }
+        _ => {
+          let _ = self.emit(DeleteName(name))
+        }
+      }
     Unary(Delete, _, _) => bytecode_unsupported("delete non-property operator")
     Unary(Typeof, Ident(name, _), loc) =>
-      match self.local_slot(name) {
-        Some(slot) => {
+      match (self.local_slot(name), self.env_slot(name)) {
+        (Some(slot), _) => {
           let _ = self.emit(LoadLocal(slot))
           let _ = self.emit(UnaryValueOp(Typeof, loc))
         }
-        None => {
+        (_, Some(slot)) => {
+          let _ = self.emit(LoadEnvSlot(slot))
+          let _ = self.emit(UnaryValueOp(Typeof, loc))
+        }
+        _ => {
           let _ = self.emit(TypeofName(name))
         }
       }
@@ -3204,11 +3665,14 @@ fn BytecodeBuilder::compile_expr(
       self.compile_identifier_store(name)
     }
     UpdateExpr(op, Ident(name, _), prefix, loc) =>
-      match self.local_slot(name) {
-        Some(slot) => {
+      match (self.local_slot(name), self.env_slot(name)) {
+        (Some(slot), _) => {
           let _ = self.emit(UpdateLocal(slot, op, prefix))
         }
-        None => {
+        (_, Some(slot)) => {
+          let _ = self.emit(UpdateEnvSlot(slot, op, prefix))
+        }
+        _ => {
           let _ = self.emit(UpdateName(name, op, prefix, loc))
         }
       }
@@ -3505,6 +3969,7 @@ priv struct BytecodeFrame {
   arg_lists : Array[Array[Value]]
   for_in_iters : Array[BytecodeForInState]
   locals : Array[Value]
+  env_slots : Array[Binding]
   env : Environment
   ctx : ExecContext
   mut ip : Int
@@ -3523,16 +3988,82 @@ fn BytecodeFrame::BytecodeFrame(
       locals[i] = env.get(name)
     }
   }
+  let env_slots : Array[Binding] = if func_def.env_slot_names.length() == 0 {
+    empty_bytecode_env_slots
+  } else {
+    let dummy_env_slot : Binding = {
+      value: Value::Undefined,
+      kind: BindingKind::VarBinding,
+      initialized: true,
+      annex_b_hoisted: false,
+      is_parameter: false,
+    }
+    Array::make(func_def.env_slot_names.length(), dummy_env_slot)
+  }
   {
     func_def,
     stack: [],
     arg_lists: [],
     for_in_iters: [],
     locals,
+    env_slots,
     env,
     ctx,
     ip: 0,
     completion: Value::Undefined,
+  }
+}
+
+///|
+fn BytecodeFrame::bind_env_slots(self : BytecodeFrame) -> Unit raise Error {
+  for i, name in self.func_def.env_slot_names {
+    match self.env.bindings.get(name) {
+      Some(binding) => self.env_slots[i] = binding
+      None =>
+        raise @errors.InternalError(
+          message="bytecode env slot binding missing for '\{name}'",
+        )
+    }
+  }
+}
+
+///|
+fn BytecodeFrame::env_slot_name(self : BytecodeFrame, slot : Int) -> String {
+  self.func_def.env_slot_names[slot]
+}
+
+///|
+fn BytecodeFrame::read_env_slot(
+  self : BytecodeFrame,
+  slot : Int,
+) -> Value raise Error {
+  let binding = self.env_slots[slot]
+  if !binding.initialized {
+    let name = self.env_slot_name(slot)
+    raise @errors.ReferenceError(
+      message="Cannot access '\{name}' before initialization",
+    )
+  }
+  binding.value
+}
+
+///|
+fn BytecodeFrame::write_env_slot(
+  self : BytecodeFrame,
+  slot : Int,
+  value : Value,
+) -> Unit raise Error {
+  let binding = self.env_slots[slot]
+  if !binding.initialized {
+    let name = self.env_slot_name(slot)
+    raise @errors.ReferenceError(
+      message="Cannot access '\{name}' before initialization",
+    )
+  } else if binding.kind == BindingKind::ConstBinding {
+    let name = self.env_slot_name(slot)
+    raise @errors.TypeError(message="Assignment to constant variable '\{name}'")
+  } else {
+    binding.value = value
   }
 }
 
@@ -3888,6 +4419,9 @@ fn run_bytecode_function(
   let frame = BytecodeFrame(func_def, env, ctx)
   frame.hoist_env_var_bindings(interp)
   frame.hoist_lexical_bindings()
+  if frame.func_def.env_slot_names.length() > 0 {
+    frame.bind_env_slots()
+  }
   frame.hoist_function_decls(interp)
   frame.bind_call_self_name()
   while frame.ip < frame.func_def.code.length() {
@@ -3929,6 +4463,12 @@ fn run_bytecode_function(
         frame.locals[slot] = value
         frame.stack.push(value)
       }
+      LoadEnvSlot(slot) => frame.stack.push(frame.read_env_slot(slot))
+      StoreEnvSlot(slot) => {
+        let value = frame.pop()
+        frame.write_env_slot(slot, value)
+        frame.stack.push(value)
+      }
       DefineBinding(kind, name, has_initializer) => {
         let value = frame.pop()
         interp.define_compiled_binding(
@@ -3943,6 +4483,12 @@ fn run_bytecode_function(
         let value = frame.pop()
         if has_initializer {
           frame.locals[slot] = value
+        }
+      }
+      DefineEnvSlot(slot, has_initializer) => {
+        let value = frame.pop()
+        if has_initializer {
+          frame.write_env_slot(slot, value)
         }
       }
       SetCompletion => frame.completion = frame.pop()
@@ -4047,6 +4593,24 @@ fn run_bytecode_function(
           Decrement => Value::Number(old_number - 1.0)
         }
         frame.locals[slot] = next_value
+        frame.stack.push(
+          if prefix {
+            next_value
+          } else {
+            Value::Number(old_number)
+          },
+        )
+      }
+      UpdateEnvSlot(slot, op, prefix) => {
+        let old_number = @runtime.to_number(
+          frame.read_env_slot(slot),
+          interp=Some(interp),
+        )
+        let next_value = match op {
+          Increment => Value::Number(old_number + 1.0)
+          Decrement => Value::Number(old_number - 1.0)
+        }
+        frame.write_env_slot(slot, next_value)
         frame.stack.push(
           if prefix {
             next_value

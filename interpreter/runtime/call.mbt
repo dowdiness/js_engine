@@ -486,16 +486,18 @@ pub fn Interpreter::perform_eval(
     // Check for var/lexical conflicts before hoisting.
     let var_names = collect_eval_var_names(stmts)
     // §19.2.1.3 gate (#A.6): a direct eval in a non-arrow parameter
-    // default whose var names include `arguments` is a SyntaxError.
-    // Covers four test262 cohorts (cntns-arguments, no-pre-existing,
-    // preceding-param, following-param). See
-    // docs/superpowers/plans/2026-04-19-eval-declared-arguments-early-error.md.
+    // default cannot var-declare names already provided by the call's
+    // parameter scope, including the non-arrow `arguments` binding.
     if direct && self.in_nonarrow_param_default_eval {
       for name in var_names {
-        if name == "arguments" {
-          raise @errors.SyntaxError(
-            message="Identifier 'arguments' has already been declared",
-          )
+        match var_env.bindings.get(name) {
+          Some(binding) =>
+            if binding.is_parameter || name == "arguments" {
+              raise @errors.SyntaxError(
+                message="Identifier '\{name}' has already been declared",
+              )
+            }
+          None => ()
         }
       }
     }

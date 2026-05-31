@@ -70,7 +70,7 @@ test "bytecode uses local slots for function params and vars" {
 }
 
 ///|
-test "bytecode keeps arguments functions on environment bindings" {
+test "bytecode uses mixed slots when arguments is referenced" {
   let src =
     #|function f(a) {
     #|  var b = a;
@@ -82,7 +82,8 @@ test "bytecode keeps arguments functions on environment bindings" {
     abort("expected one child function")
   }
   let child = bytecode.main.children[0]
-  json_inspect(child.local_names, content=[])
+  json_inspect(child.local_names, content=["b"])
+  json_inspect(child.env_slot_names, content=[])
   inspect(child.needs_arguments_object, content="true")
   let mut saw_arguments_load = false
   for instr in child.code {
@@ -92,6 +93,48 @@ test "bytecode keeps arguments functions on environment bindings" {
     }
   }
   guard saw_arguments_load else { abort("expected arguments name load") }
+}
+
+///|
+test "bytecode ignores nested ordinary arguments references for outer slots" {
+  let src =
+    #|function outer(a) {
+    #|  var b = a;
+    #|  function inner() { return arguments[0]; }
+    #|  return b + inner(2);
+    #|}
+    #|outer(1);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected outer child function")
+  }
+  let outer = bytecode.main.children[0]
+  json_inspect(outer.local_names, content=["a", "b", "inner"])
+  inspect(outer.needs_arguments_object, content="false")
+  guard outer.children.length() == 1 else {
+    abort("expected nested child function")
+  }
+  let inner = outer.children[0]
+  json_inspect(inner.local_names, content=[])
+  inspect(inner.needs_arguments_object, content="true")
+}
+
+///|
+test "bytecode keeps arrow arguments references on the enclosing function" {
+  let src =
+    #|function outer(a) {
+    #|  var b = a;
+    #|  var read = () => arguments[0];
+    #|  return b + read();
+    #|}
+    #|outer(1);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected outer child function")
+  }
+  let outer = bytecode.main.children[0]
+  json_inspect(outer.local_names, content=["b", "read"])
+  inspect(outer.needs_arguments_object, content="true")
 }
 
 ///|
@@ -295,7 +338,46 @@ test "bytecode omits captured vars from local slots" {
   guard bytecode.main.children.length() == 1 else {
     abort("expected one child function")
   }
-  json_inspect(bytecode.main.children[0].local_names, content=["a"])
+  let child = bytecode.main.children[0]
+  json_inspect(child.local_names, content=["a"])
+  json_inspect(child.env_slot_names, content=[])
+}
+
+///|
+test "bytecode uses env slots for captured vars read by the owning function" {
+  let src =
+    #|function outer(a) {
+    #|  var b = a;
+    #|  function read() { return b; }
+    #|  b = b + 1;
+    #|  return read();
+    #|}
+    #|outer(1);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = bytecode.main.children[0]
+  json_inspect(child.local_names, content=["a", "read"])
+  json_inspect(child.env_slot_names, content=["b"])
+}
+
+///|
+test "bytecode uses env slots for captured params read by the owning function" {
+  let src =
+    #|function outer(a) {
+    #|  function read() { return a; }
+    #|  a = a + 1;
+    #|  return read();
+    #|}
+    #|outer(1);
+  let bytecode = parse_bytecode_for_wb(src)
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one child function")
+  }
+  let child = bytecode.main.children[0]
+  json_inspect(child.local_names, content=["read"])
+  json_inspect(child.env_slot_names, content=["a"])
 }
 
 ///|
