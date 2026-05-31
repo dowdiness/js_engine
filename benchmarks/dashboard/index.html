@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Historical benchmark dashboard for js_engine, grouped as a responsive instrument panel."
+    />
+    <title>js_engine benchmark instrument panel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Chivo:wght@600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --font-body: "Atkinson Hyperlegible", "Aptos", "Segoe UI", sans-serif;
+        --font-display: "Chivo", "Atkinson Hyperlegible", sans-serif;
+        --paper: oklch(0.982 0.008 87);
+        --paper-quiet: oklch(0.955 0.012 87);
+        --panel: oklch(0.996 0.004 87);
+        --panel-strong: oklch(0.932 0.019 87);
+        --ink: oklch(0.22 0.035 250);
+        --ink-soft: oklch(0.42 0.031 250);
+        --muted: oklch(0.55 0.028 250);
+        --line: oklch(0.83 0.018 86);
+        --line-strong: oklch(0.67 0.032 83);
+        --amber: oklch(0.56 0.122 58);
+        --amber-soft: oklch(0.93 0.051 68);
+        --startup: oklch(0.49 0.13 38);
+        --frontend: oklch(0.45 0.105 218);
+        --execution: oklch(0.43 0.11 150);
+        --danger: oklch(0.51 0.16 28);
+        --good: oklch(0.43 0.12 150);
+        --shadow: 0 18px 52px oklch(0.43 0.03 250 / 0.12);
+        --space-2xs: 0.25rem;
+        --space-xs: 0.5rem;
+        --space-sm: 0.75rem;
+        --space-md: 1rem;
+        --space-lg: 1.5rem;
+        --space-xl: 2rem;
+        --space-2xl: 3rem;
+        --space-3xl: 4rem;
+        --radius-sm: 0.5rem;
+        --radius-md: 0.85rem;
+        --radius-lg: 1.2rem;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--font-body);
+        font-size: 16px;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+
+      body {
+        margin: 0;
+        min-width: 20rem;
+      }
+
+      a {
+        color: inherit;
+        text-decoration-color: oklch(0.56 0.12 58 / 0.5);
+        text-decoration-thickness: 0.08em;
+        text-underline-offset: 0.18em;
+      }
+
+      a:hover {
+        color: var(--amber);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        min-height: 2.75rem;
+      }
+
+      .shell {
+        width: min(100% - clamp(1rem, 4vw, 4rem), 118rem);
+        margin-inline: auto;
+        padding-block: clamp(1.25rem, 3vw, 3rem) var(--space-2xl);
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);
+        gap: clamp(1.25rem, 4vw, 3rem);
+        align-items: end;
+        padding: clamp(1.25rem, 4vw, 3rem);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        background: var(--panel);
+        box-shadow: var(--shadow);
+      }
+
+      .eyebrow,
+      .section-kicker,
+      .meta-label,
+      .chip,
+      .bench-category,
+      .trend-label,
+      .footer-note {
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .eyebrow {
+        margin: 0 0 var(--space-sm);
+        color: var(--amber);
+        font-size: 0.78rem;
+        font-weight: 700;
+      }
+
+      h1 {
+        max-width: 14ch;
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: clamp(2.35rem, 6vw, 6rem);
+        line-height: 0.92;
+        letter-spacing: -0.055em;
+      }
+
+      .lede {
+        max-width: 68ch;
+        margin: var(--space-lg) 0 0;
+        color: var(--ink-soft);
+        font-size: clamp(1rem, 1.2vw, 1.18rem);
+        line-height: 1.6;
+      }
+
+      .hero-panel {
+        display: grid;
+        gap: var(--space-md);
+      }
+
+      .run-card {
+        padding: var(--space-md);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: var(--paper-quiet);
+      }
+
+      .run-card dl {
+        display: grid;
+        gap: var(--space-sm);
+        margin: 0;
+      }
+
+      .run-card div {
+        display: grid;
+        gap: 0.2rem;
+      }
+
+      .run-card dt,
+      .meta-label,
+      .trend-label {
+        color: var(--muted);
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .run-card dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+        font-weight: 700;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+        gap: var(--space-md);
+        margin-block: var(--space-xl);
+      }
+
+      .metric {
+        min-height: 7rem;
+        padding: var(--space-lg);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: var(--panel);
+      }
+
+      .metric-value {
+        margin-top: var(--space-sm);
+        font-family: var(--font-display);
+        font-size: 2.1rem;
+        line-height: 1;
+        letter-spacing: -0.045em;
+      }
+
+      .metric-note {
+        margin: var(--space-xs) 0 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: minmax(14rem, 24rem) 1fr;
+        gap: var(--space-md);
+        align-items: start;
+        margin-bottom: var(--space-xl);
+      }
+
+      .search-field {
+        display: grid;
+        gap: var(--space-xs);
+      }
+
+      .search-field input {
+        width: 100%;
+        min-height: 2.75rem;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius-sm);
+        background: var(--panel);
+        color: var(--ink);
+      }
+
+      .search-field input:focus-visible,
+      .chip:focus-visible,
+      .download-button:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid oklch(0.69 0.13 70 / 0.65);
+        outline-offset: 3px;
+      }
+
+      .filter-bank {
+        display: grid;
+        gap: var(--space-sm);
+      }
+
+      .filter-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-xs);
+        justify-content: flex-end;
+      }
+
+      .chip,
+      .download-button {
+        border: 1px solid var(--line-strong);
+        border-radius: 999px;
+        background: var(--panel);
+        color: var(--ink-soft);
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      .chip {
+        padding: 0.55rem 0.85rem;
+        font-size: 0.72rem;
+      }
+
+      .chip[aria-pressed="true"] {
+        border-color: oklch(0.49 0.12 58 / 0.65);
+        background: var(--amber-soft);
+        color: var(--ink);
+      }
+
+      .bench-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 30rem), 1fr));
+        gap: clamp(1rem, 2vw, 1.5rem);
+      }
+
+      .bench-card {
+        container-type: inline-size;
+        display: grid;
+        gap: var(--space-lg);
+        align-content: start;
+        padding: var(--space-lg);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        background: var(--panel);
+        box-shadow: 0 10px 30px oklch(0.43 0.03 250 / 0.08);
+      }
+
+      .bench-card[hidden] {
+        display: none;
+      }
+
+      .bench-topline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-xs);
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .bench-category,
+      .bench-stage,
+      .noise-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 1.85rem;
+        padding: 0.25rem 0.55rem;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      .bench-category {
+        color: var(--muted);
+      }
+
+      .bench-stage {
+        color: var(--stage-color, var(--ink-soft));
+        background: var(--stage-bg, var(--paper-quiet));
+      }
+
+      .noise-pill {
+        border-color: oklch(0.73 0.1 32);
+        background: oklch(0.94 0.04 45);
+        color: var(--danger);
+      }
+
+      .bench-heading {
+        display: grid;
+        gap: var(--space-xs);
+      }
+
+      .bench-name {
+        margin: 0;
+        font-family: var(--font-display);
+        font-size: clamp(1.25rem, 1.7vw, 1.75rem);
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        overflow-wrap: anywhere;
+      }
+
+      .bench-id {
+        color: var(--muted);
+        font-size: 0.9rem;
+        overflow-wrap: anywhere;
+      }
+
+      .bench-desc {
+        max-width: 74ch;
+        margin: 0;
+        color: var(--ink-soft);
+        line-height: 1.55;
+      }
+
+      .bench-readout {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-sm);
+      }
+
+      .readout-cell {
+        min-width: 0;
+        padding: var(--space-sm);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--paper-quiet);
+      }
+
+      .readout-value {
+        margin-top: 0.25rem;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+
+      .readout-value.good {
+        color: var(--good);
+      }
+
+      .readout-value.bad {
+        color: var(--danger);
+      }
+
+      .chart-box {
+        min-height: 17rem;
+        position: relative;
+      }
+
+      .chart-box canvas {
+        display: block;
+        width: 100% !important;
+        height: 17rem !important;
+      }
+
+      details {
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: var(--paper-quiet);
+      }
+
+      summary {
+        min-height: 2.75rem;
+        padding: 0.75rem var(--space-md);
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      .sample-table-wrap {
+        overflow-x: auto;
+        padding: 0 var(--space-md) var(--space-md);
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+
+      th,
+      td {
+        padding: 0.55rem 0.5rem;
+        border-top: 1px solid var(--line);
+        text-align: left;
+        white-space: nowrap;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .empty-state {
+        margin-top: var(--space-xl);
+        padding: var(--space-2xl);
+        border: 1px dashed var(--line-strong);
+        border-radius: var(--radius-lg);
+        background: var(--panel);
+        color: var(--ink-soft);
+        text-align: center;
+      }
+
+      .empty-state[hidden] {
+        display: none;
+      }
+
+      .dashboard-footer {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-md);
+        align-items: center;
+        justify-content: space-between;
+        margin-top: var(--space-2xl);
+        color: var(--muted);
+      }
+
+      .download-button {
+        padding: 0.65rem 1rem;
+      }
+
+      .footer-note {
+        margin: 0;
+        font-size: 0.72rem;
+        font-weight: 700;
+      }
+
+      @container (max-width: 35rem) {
+        .bench-readout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 62rem) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+
+        h1 {
+          max-width: 18ch;
+        }
+
+        .controls {
+          grid-template-columns: 1fr;
+        }
+
+        .filter-row {
+          justify-content: flex-start;
+        }
+      }
+
+      @media (max-width: 42rem) {
+        .shell {
+          width: min(100% - 1rem, 118rem);
+          padding-block-start: var(--space-md);
+        }
+
+        .hero,
+        .bench-card,
+        .metric {
+          border-radius: var(--radius-md);
+        }
+
+        .hero {
+          padding: var(--space-lg);
+        }
+
+        .bench-card {
+          padding: var(--space-md);
+        }
+
+        .chart-box,
+        .chart-box canvas {
+          height: 15rem !important;
+          min-height: 15rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">js_engine performance history</p>
+          <h1>Benchmark instrument panel</h1>
+          <p class="lede">
+            Scheduled and manual main runs publish this live history after the
+            benchmark-action data file is updated. Each card keeps the benchmark
+            identifier and its measurement intent visible beside the trend.
+          </p>
+        </div>
+        <aside class="hero-panel" aria-label="Run metadata">
+          <div class="run-card">
+            <dl>
+              <div>
+                <dt>Last update</dt>
+                <dd id="last-update">Loading…</dd>
+              </div>
+              <div>
+                <dt>Repository</dt>
+                <dd><a id="repository-link" rel="noopener">Loading…</a></dd>
+              </div>
+              <div>
+                <dt>Reading rule</dt>
+                <dd>Smaller timing is better; noisy rows need caution.</dd>
+              </div>
+            </dl>
+          </div>
+        </aside>
+      </header>
+
+      <section id="summary" class="summary-grid" aria-label="Benchmark summary"></section>
+
+      <section class="controls" aria-label="Dashboard filters">
+        <label class="search-field">
+          <span class="meta-label">Find benchmark</span>
+          <input id="search" type="search" placeholder="lexer, bytecode, startup…" autocomplete="off" />
+        </label>
+        <div class="filter-bank">
+          <div class="filter-row" role="group" aria-label="Stage filter">
+            <button class="chip" type="button" data-stage="all" aria-pressed="true">All stages</button>
+            <button class="chip" type="button" data-stage="startup" aria-pressed="false">Startup</button>
+            <button class="chip" type="button" data-stage="frontend" aria-pressed="false">Frontend</button>
+            <button class="chip" type="button" data-stage="execution" aria-pressed="false">Execution</button>
+          </div>
+          <div class="filter-row" role="group" aria-label="Category filter">
+            <button class="chip" type="button" data-category="all" aria-pressed="true">All categories</button>
+            <button class="chip" type="button" data-category="regression" aria-pressed="false">Regression</button>
+            <button class="chip" type="button" data-category="component" aria-pressed="false">Component</button>
+            <button class="chip" type="button" data-category="workflow" aria-pressed="false">Workflow</button>
+          </div>
+        </div>
+      </section>
+
+      <main id="bench-grid" class="bench-grid" aria-live="polite"></main>
+
+      <div id="empty-state" class="empty-state" hidden>
+        No benchmark cards match those filters. Try a broader stage, category, or search term.
+      </div>
+
+      <footer class="dashboard-footer">
+        <button id="download-json" class="download-button" type="button">Download data as JSON</button>
+        <p class="footer-note">
+          Powered by
+          <a rel="noopener" href="https://github.com/marketplace/actions/continuous-benchmark">github-action-benchmark</a>
+        </p>
+      </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.2/dist/Chart.min.js"></script>
+    <script src="data.js"></script>
+    <script>
+      'use strict';
+
+      (function () {
+        const STAGES = new Set(['startup', 'frontend', 'execution']);
+        const CATEGORY_ORDER = { regression: 0, component: 1, workflow: 2 };
+        const STAGE_ORDER = { startup: 0, frontend: 1, execution: 2 };
+        const CANONICAL_ORDER = [
+          'startup/tiny_program',
+          'lexer/small',
+          'lexer/large',
+          'exec/fibonacci_30',
+          'exec/property_chain',
+          'exec/array_map_filter',
+          'exec/closure_factory',
+          'baseline/closure_conversion/closure_factory',
+          'baseline/bytecode/closure_factory',
+          'isolate/bytecode/dispatch_stack',
+          'isolate/bytecode/local_access',
+          'isolate/bytecode/env_access',
+          'isolate/bytecode/captured_access',
+          'isolate/bytecode/call_frame',
+          'isolate/bytecode/runtime_helpers',
+          'exec/arithmetic_loop',
+          'exec/object_construction',
+          'exec/string_ops',
+          'pipeline/exec/lex',
+          'pipeline/exec/parse',
+          'pipeline/exec/evaluate',
+          'pipeline/closure_conversion/evaluate',
+          'pipeline/bytecode/compile',
+          'pipeline/bytecode/evaluate',
+          'pipeline/parse_heavy',
+        ];
+
+        const STAGE_STYLES = {
+          startup: { color: 'oklch(0.49 0.13 38)', bg: 'oklch(0.94 0.04 52)', chart: '#9f4a2f' },
+          frontend: { color: 'oklch(0.45 0.105 218)', bg: 'oklch(0.94 0.026 220)', chart: '#356f9d' },
+          execution: { color: 'oklch(0.43 0.11 150)', bg: 'oklch(0.94 0.032 150)', chart: '#3b7b55' },
+        };
+
+        const BENCHMARK_DETAILS = {
+          'startup/tiny_program': {
+            title: 'Tiny-program startup',
+            description:
+              'Runs @lib.run("1 + 1") in-process so the signal is dominated by interpreter construction and built-in installation, not Node process startup.',
+          },
+          'lexer/small': {
+            title: 'Small-source lexer throughput',
+            description:
+              'Tokenizes a short realistic JavaScript snippet with keywords, identifiers, literals, operators, delimiters, and a comment.',
+          },
+          'lexer/large': {
+            title: 'Large-source lexer throughput',
+            description:
+              'Tokenizes a utility-library-sized source to watch scaling across a broader token mix and larger input size.',
+          },
+          'exec/fibonacci_30': {
+            title: 'Recursive function-call pressure',
+            description:
+              'Evaluates fib(30), amplifying call frames, scope-chain work, conditionals, arithmetic, and returns across roughly 2.7 million calls.',
+          },
+          'exec/property_chain': {
+            title: 'Own-property chain lookup',
+            description:
+              'Reads obj.a.b.c.d.e inside a JavaScript loop, isolating repeated plain-object property lookup without prototype-chain traversal.',
+          },
+          'exec/array_map_filter': {
+            title: 'Array map/filter builtins',
+            description:
+              'Exercises Array.prototype.map and filter over 1,000 elements, covering native callable dispatch, callbacks, array iteration, and allocation.',
+          },
+          'exec/closure_factory': {
+            title: 'Closure factory in the tree walker',
+            description:
+              'Creates 1,000 closures and calls each once through the interpreter, measuring environment allocation and captured-variable reads.',
+          },
+          'baseline/closure_conversion/closure_factory': {
+            title: 'Closure factory after closure conversion',
+            description:
+              'Runs the same closure-heavy workload through the closure-converted baseline to compare compiled evaluation against the interpreter path.',
+          },
+          'baseline/bytecode/closure_factory': {
+            title: 'Closure factory on bytecode',
+            description:
+              'Runs the closure factory after bytecode compilation to track prototype VM cost against interpreter and closure-conversion baselines.',
+          },
+          'isolate/bytecode/dispatch_stack': {
+            title: 'Bytecode dispatch and stack traffic',
+            description:
+              'Loops over constant comma expressions to stress instruction dispatch and value-stack push/pop with minimal helper work.',
+          },
+          'isolate/bytecode/local_access': {
+            title: 'Bytecode local slot access',
+            description:
+              'Reads and writes a function-local counter so LoadLocal and StoreLocal throughput stays visible as an isolated VM signal.',
+          },
+          'isolate/bytecode/env_access': {
+            title: 'Bytecode environment-name access',
+            description:
+              'Keeps hot variables in Environment name lookup to measure LoadName and StoreName cost separate from slot-backed locals.',
+          },
+          'isolate/bytecode/captured_access': {
+            title: 'Bytecode captured binding access',
+            description:
+              'Measures a captured counter that must remain in the Environment while loop control stays slot-backed.',
+          },
+          'isolate/bytecode/call_frame': {
+            title: 'Bytecode call-frame setup',
+            description:
+              'Repeatedly calls a tiny bytecode function with one numeric argument, focusing on Call, parameter binding, frames, and Return.',
+          },
+          'isolate/bytecode/runtime_helpers': {
+            title: 'Bytecode runtime helper path',
+            description:
+              'Runs property get, property set, method receiver preparation, and call_value through the shared runtime helper path.',
+          },
+          'exec/arithmetic_loop': {
+            title: 'Arithmetic loop control workload',
+            description:
+              'Runs a simple loop with expressions and statements but no calls, closures, objects, arrays, or builtins; a control row for execution cost.',
+          },
+          'exec/object_construction': {
+            title: 'Object literal construction',
+            description:
+              'Allocates 1,000 objects with five properties each, covering object data allocation, property insertion, string keys, and array push.',
+          },
+          'exec/string_ops': {
+            title: 'String method dispatch',
+            description:
+              'Calls toUpperCase and concatenates strings in a loop, showing built-in string method dispatch and repeated string allocation.',
+          },
+          'pipeline/exec/lex': {
+            title: 'Pipeline lex stage',
+            description:
+              'Tokenizes the closure-heavy pipeline source only, showing how much frontend lexing contributes before parsing or execution.',
+          },
+          'pipeline/exec/parse': {
+            title: 'Pipeline parse stage',
+            description:
+              'Parses already-tokenized source into an AST, excluding lexing and runtime evaluation from the stage measurement.',
+          },
+          'pipeline/exec/evaluate': {
+            title: 'Pipeline AST evaluation stage',
+            description:
+              'Evaluates a pre-parsed closure-heavy AST with a reusable interpreter, excluding lexing, parsing, and interpreter construction.',
+          },
+          'pipeline/closure_conversion/evaluate': {
+            title: 'Pipeline closure-converted evaluation',
+            description:
+              'Evaluates the closure-heavy source after closure conversion, tracking compiled evaluation cost for the same workflow.',
+          },
+          'pipeline/bytecode/compile': {
+            title: 'Pipeline bytecode compile stage',
+            description:
+              'Compiles an already-parsed AST into bytecode to track frontend compiler overhead apart from bytecode execution.',
+          },
+          'pipeline/bytecode/evaluate': {
+            title: 'Pipeline bytecode evaluation stage',
+            description:
+              'Runs precompiled bytecode for the closure-heavy workflow, excluding lexing, parsing, and bytecode compilation.',
+          },
+          'pipeline/parse_heavy': {
+            title: 'Expression-heavy parser throughput',
+            description:
+              'Parses a source dense with precedence, ternaries, logical operators, assignments, and function declarations; the source is never executed.',
+          },
+        };
+
+        const state = {
+          stage: 'all',
+          category: 'all',
+          search: '',
+        };
+
+        function text(tag, className, value) {
+          const node = document.createElement(tag);
+          if (className) {
+            node.className = className;
+          }
+          if (value !== undefined) {
+            node.textContent = value;
+          }
+          return node;
+        }
+
+        function formatDate(value, options) {
+          if (!value) {
+            return 'unknown';
+          }
+          return new Intl.DateTimeFormat(undefined, options).format(new Date(value));
+        }
+
+        function formatDuration(ms) {
+          if (!Number.isFinite(ms)) {
+            return '—';
+          }
+          if (ms >= 1000) {
+            return `${(ms / 1000).toFixed(2)} s`;
+          }
+          if (ms >= 10) {
+            return `${ms.toFixed(1)} ms`;
+          }
+          if (ms >= 1) {
+            return `${ms.toFixed(2)} ms`;
+          }
+          return `${(ms * 1000).toFixed(1)} µs`;
+        }
+
+        function parseExtra(extra) {
+          const result = {};
+          if (!extra) {
+            return result;
+          }
+          for (const chunk of extra.split(',')) {
+            const trimmed = chunk.trim();
+            const eq = trimmed.indexOf('=');
+            if (eq === -1) {
+              continue;
+            }
+            result[trimmed.slice(0, eq)] = trimmed.slice(eq + 1);
+          }
+          if (result.cv) {
+            result.cvNumber = parseFloat(result.cv.replace('%', ''));
+          }
+          if (result.noisy) {
+            result.noisyBoolean = result.noisy === 'true';
+          }
+          return result;
+        }
+
+        function splitBenchmarkName(rawName) {
+          const parts = String(rawName || '').split('/').filter(Boolean);
+          const stage = STAGES.has(parts[0]) ? parts.shift() : 'execution';
+          const key = parts.join('/');
+          return { stage, key: key || rawName, rawName };
+        }
+
+        function collectDashboardCards(data) {
+          const cards = new Map();
+          const entriesBySuite = data && data.entries ? data.entries : {};
+
+          for (const suiteName of Object.keys(entriesBySuite)) {
+            for (const entry of entriesBySuite[suiteName] || []) {
+              for (const bench of entry.benches || []) {
+                const parsed = splitBenchmarkName(bench.name);
+                const extra = parseExtra(bench.extra);
+                const point = {
+                  suiteName,
+                  commit: entry.commit || {},
+                  date: entry.date,
+                  tool: entry.tool,
+                  rawName: bench.name,
+                  key: parsed.key,
+                  stage: parsed.stage,
+                  category: extra.category || 'unknown',
+                  cv: Number.isFinite(extra.cvNumber) ? extra.cvNumber : undefined,
+                  noisy: extra.noisyBoolean === true,
+                  value: Number(bench.value),
+                  unit: bench.unit || '',
+                  extra: bench.extra || '',
+                };
+
+                if (!cards.has(bench.name)) {
+                  const details = BENCHMARK_DETAILS[parsed.key] || {
+                    title: parsed.key,
+                    description: 'No source-controlled dashboard description exists for this benchmark yet.',
+                  };
+                  cards.set(bench.name, {
+                    rawName: bench.name,
+                    key: parsed.key,
+                    displayName: details.title,
+                    description: details.description,
+                    stage: parsed.stage,
+                    points: [],
+                  });
+                }
+                cards.get(bench.name).points.push(point);
+              }
+            }
+          }
+
+          return Array.from(cards.values())
+            .map(card => {
+              card.points.sort((a, b) => (a.date || 0) - (b.date || 0));
+              const latest = card.points[card.points.length - 1];
+              card.latest = latest;
+              card.category = latest ? latest.category : 'unknown';
+              card.stage = latest ? latest.stage : card.stage;
+              return card;
+            })
+            .sort((a, b) => {
+              const categoryDelta = (CATEGORY_ORDER[a.category] ?? 99) - (CATEGORY_ORDER[b.category] ?? 99);
+              if (categoryDelta !== 0) {
+                return categoryDelta;
+              }
+              const stageDelta = (STAGE_ORDER[a.stage] ?? 99) - (STAGE_ORDER[b.stage] ?? 99);
+              if (stageDelta !== 0) {
+                return stageDelta;
+              }
+              const aIndex = CANONICAL_ORDER.indexOf(a.key);
+              const bIndex = CANONICAL_ORDER.indexOf(b.key);
+              if (aIndex !== -1 || bIndex !== -1) {
+                return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+              }
+              return a.key.localeCompare(b.key);
+            });
+        }
+
+        function summarizeEntries(data) {
+          const entries = Object.values((data && data.entries) || {}).flat();
+          const uniqueCommits = new Set(entries.map(entry => entry.commit && entry.commit.id).filter(Boolean));
+          const latestEntry = entries
+            .slice()
+            .sort((a, b) => (b.date || 0) - (a.date || 0))[0];
+          return { entries, uniqueCommits, latestEntry };
+        }
+
+        function renderHeader(data) {
+          document.getElementById('last-update').textContent = formatDate(data.lastUpdate, {
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          });
+          const repoLink = document.getElementById('repository-link');
+          repoLink.href = data.repoUrl;
+          repoLink.textContent = data.repoUrl;
+        }
+
+        function metric(label, value, note) {
+          const item = text('article', 'metric');
+          item.appendChild(text('div', 'meta-label', label));
+          item.appendChild(text('div', 'metric-value', value));
+          if (note) {
+            item.appendChild(text('p', 'metric-note', note));
+          }
+          return item;
+        }
+
+        function renderSummary(data, cards) {
+          const summary = document.getElementById('summary');
+          summary.textContent = '';
+          const { uniqueCommits, latestEntry } = summarizeEntries(data);
+          const noisyCount = cards.filter(card => card.latest && card.latest.noisy).length;
+          const latestCommit = latestEntry && latestEntry.commit ? latestEntry.commit.id : '';
+
+          summary.appendChild(metric('Tracked benchmarks', String(cards.length), 'Cards include historical rows as they appear.'));
+          summary.appendChild(metric('Snapshots', String(uniqueCommits.size), 'Unique commits in benchmarks/data.js.'));
+          summary.appendChild(metric('Latest commit', latestCommit ? latestCommit.slice(0, 7) : '—', latestEntry && latestEntry.commit ? latestEntry.commit.message : 'No commits found.'));
+          summary.appendChild(metric('Noisy latest rows', String(noisyCount), 'CV above the runner threshold on the most recent sample.'));
+        }
+
+        function trendFor(points) {
+          if (!points || points.length < 2) {
+            return { label: 'Trend', value: 'new row', className: '' };
+          }
+          const latest = points[points.length - 1].value;
+          const previous = points[points.length - 2].value;
+          if (!Number.isFinite(latest) || !Number.isFinite(previous) || previous === 0) {
+            return { label: 'Trend', value: '—', className: '' };
+          }
+          const pct = ((latest - previous) / previous) * 100;
+          if (Math.abs(pct) < 0.05) {
+            return { label: 'Trend', value: 'flat', className: '' };
+          }
+          const faster = pct < 0;
+          return {
+            label: 'Vs previous',
+            value: `${faster ? 'faster' : 'slower'} ${Math.abs(pct).toFixed(1)}%`,
+            className: faster ? 'good' : 'bad',
+          };
+        }
+
+        function readout(label, value, className) {
+          const cell = text('div', 'readout-cell');
+          cell.appendChild(text('div', 'trend-label', label));
+          cell.appendChild(text('div', `readout-value${className ? ` ${className}` : ''}`, value));
+          return cell;
+        }
+
+        function renderSamples(card) {
+          const details = document.createElement('details');
+          const summary = document.createElement('summary');
+          summary.textContent = 'Latest samples';
+          details.appendChild(summary);
+
+          const wrap = text('div', 'sample-table-wrap');
+          const table = document.createElement('table');
+          const thead = document.createElement('thead');
+          const headerRow = document.createElement('tr');
+          ['Commit', 'Date', 'Mean', 'CV', 'Noise'].forEach(label => headerRow.appendChild(text('th', '', label)));
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          const tbody = document.createElement('tbody');
+          card.points.slice(-5).reverse().forEach(point => {
+            const row = document.createElement('tr');
+            const commitCell = document.createElement('td');
+            if (point.commit && point.commit.url) {
+              const link = document.createElement('a');
+              link.href = point.commit.url;
+              link.rel = 'noopener';
+              link.textContent = point.commit.id ? point.commit.id.slice(0, 7) : 'commit';
+              commitCell.appendChild(link);
+            } else {
+              commitCell.textContent = point.commit && point.commit.id ? point.commit.id.slice(0, 7) : '—';
+            }
+            row.appendChild(commitCell);
+            row.appendChild(text('td', '', formatDate(point.date, { month: 'short', day: 'numeric' })));
+            row.appendChild(text('td', '', formatDuration(point.value)));
+            row.appendChild(text('td', '', Number.isFinite(point.cv) ? `${point.cv.toFixed(1)}%` : '—'));
+            row.appendChild(text('td', '', point.noisy ? 'noisy' : 'stable'));
+            tbody.appendChild(row);
+          });
+          table.appendChild(tbody);
+          wrap.appendChild(table);
+          details.appendChild(wrap);
+          return details;
+        }
+
+        function renderCard(card) {
+          const stageStyle = STAGE_STYLES[card.stage] || STAGE_STYLES.execution;
+          const latest = card.latest;
+          const stageLabel = card.stage || 'unknown';
+          const category = card.category || 'unknown';
+          const cardEl = text('article', 'bench-card');
+          cardEl.dataset.stage = stageLabel;
+          cardEl.dataset.category = category;
+          cardEl.dataset.search = `${card.rawName} ${card.key} ${card.displayName} ${card.description} ${stageLabel} ${category}`.toLowerCase();
+          cardEl.style.setProperty('--stage-color', stageStyle.color);
+          cardEl.style.setProperty('--stage-bg', stageStyle.bg);
+
+          const top = text('div', 'bench-topline');
+          top.appendChild(text('span', 'bench-stage', stageLabel));
+          const right = text('div', 'bench-topline');
+          right.appendChild(text('span', 'bench-category', category));
+          if (latest && latest.noisy) {
+            right.appendChild(text('span', 'noise-pill', 'noisy'));
+          }
+          top.appendChild(right);
+          cardEl.appendChild(top);
+
+          const heading = text('div', 'bench-heading');
+          heading.appendChild(text('h2', 'bench-name', card.displayName));
+          heading.appendChild(text('div', 'bench-id', card.rawName));
+          heading.appendChild(text('p', 'bench-desc', card.description));
+          cardEl.appendChild(heading);
+
+          const trend = trendFor(card.points);
+          const readouts = text('div', 'bench-readout');
+          readouts.appendChild(readout('Latest mean', latest ? formatDuration(latest.value) : '—'));
+          readouts.appendChild(readout('Latest CV', latest && Number.isFinite(latest.cv) ? `${latest.cv.toFixed(1)}%` : '—'));
+          readouts.appendChild(readout(trend.label, trend.value, trend.className));
+          cardEl.appendChild(readouts);
+
+          const chartBox = text('div', 'chart-box');
+          const canvas = document.createElement('canvas');
+          canvas.setAttribute('aria-label', `${card.rawName} benchmark timing history`);
+          canvas.setAttribute('role', 'img');
+          chartBox.appendChild(canvas);
+          cardEl.appendChild(chartBox);
+          cardEl.appendChild(renderSamples(card));
+
+          window.requestAnimationFrame(() => renderChart(canvas, card, stageStyle.chart));
+          return cardEl;
+        }
+
+        function renderChart(canvas, card, chartColor) {
+          if (typeof Chart === 'undefined') {
+            canvas.replaceWith(text('p', 'bench-desc', 'Chart.js did not load; use the latest samples table for values.'));
+            return;
+          }
+
+          const points = card.points;
+          const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          new Chart(canvas.getContext('2d'), {
+            type: 'line',
+            data: {
+              labels: points.map(point => (point.commit && point.commit.id ? point.commit.id.slice(0, 7) : formatDate(point.date, { month: 'short', day: 'numeric' }))),
+              datasets: [
+                {
+                  label: card.rawName,
+                  data: points.map(point => point.value),
+                  borderColor: chartColor,
+                  backgroundColor: 'rgba(0, 0, 0, 0)',
+                  pointBackgroundColor: chartColor,
+                  pointBorderColor: '#fff8ed',
+                  pointBorderWidth: 1.5,
+                  pointHoverRadius: 5,
+                  pointRadius: points.length > 18 ? 2 : 3,
+                  borderWidth: 2,
+                  lineTension: 0.18,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: { duration: reducedMotion ? 0 : 280 },
+              legend: { display: false },
+              layout: { padding: { top: 4, right: 4, bottom: 0, left: 0 } },
+              scales: {
+                xAxes: [
+                  {
+                    gridLines: { color: 'rgba(79, 75, 65, 0.12)', drawBorder: false },
+                    ticks: { maxTicksLimit: 6, fontColor: '#746f65' },
+                    scaleLabel: { display: true, labelString: 'commit', fontColor: '#746f65' },
+                  },
+                ],
+                yAxes: [
+                  {
+                    gridLines: { color: 'rgba(79, 75, 65, 0.12)', drawBorder: false },
+                    ticks: {
+                      beginAtZero: true,
+                      maxTicksLimit: 5,
+                      fontColor: '#746f65',
+                      callback: value => formatDuration(Number(value)),
+                    },
+                    scaleLabel: { display: true, labelString: points[0] ? points[0].unit : 'ms', fontColor: '#746f65' },
+                  },
+                ],
+              },
+              tooltips: {
+                displayColors: false,
+                callbacks: {
+                  title: items => {
+                    const point = points[items[0].index];
+                    const commit = point.commit || {};
+                    return `${commit.id ? commit.id.slice(0, 7) : 'commit'} · ${formatDate(point.date, { dateStyle: 'medium' })}`;
+                  },
+                  label: item => `${formatDuration(Number(item.value))} (${card.rawName})`,
+                  afterLabel: item => {
+                    const point = points[item.index];
+                    const lines = [];
+                    if (Number.isFinite(point.cv)) {
+                      lines.push(`CV ${point.cv.toFixed(1)}%`);
+                    }
+                    if (point.noisy) {
+                      lines.push('Marked noisy by runner');
+                    }
+                    if (point.commit && point.commit.message) {
+                      lines.push(point.commit.message);
+                    }
+                    return lines;
+                  },
+                },
+              },
+              onClick: (_event, active) => {
+                if (!active || active.length === 0) {
+                  return;
+                }
+                const index = active[0]._index;
+                const url = points[index] && points[index].commit && points[index].commit.url;
+                if (url) {
+                  window.open(url, '_blank', 'noopener');
+                }
+              },
+            },
+          });
+        }
+
+        function renderCards(cards) {
+          const grid = document.getElementById('bench-grid');
+          grid.textContent = '';
+          cards.forEach(card => grid.appendChild(renderCard(card)));
+          applyFilters();
+        }
+
+        function applyFilters() {
+          const cards = Array.from(document.querySelectorAll('.bench-card'));
+          let visible = 0;
+          for (const card of cards) {
+            const matchesStage = state.stage === 'all' || card.dataset.stage === state.stage;
+            const matchesCategory = state.category === 'all' || card.dataset.category === state.category;
+            const matchesSearch = !state.search || card.dataset.search.includes(state.search);
+            const show = matchesStage && matchesCategory && matchesSearch;
+            card.hidden = !show;
+            if (show) {
+              visible += 1;
+            }
+          }
+          document.getElementById('empty-state').hidden = visible !== 0;
+        }
+
+        function setupControls() {
+          document.getElementById('search').addEventListener('input', event => {
+            state.search = event.target.value.trim().toLowerCase();
+            applyFilters();
+          });
+
+          document.querySelectorAll('.chip[data-stage]').forEach(button => {
+            button.addEventListener('click', () => {
+              state.stage = button.dataset.stage;
+              document.querySelectorAll('.chip[data-stage]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+              applyFilters();
+            });
+          });
+
+          document.querySelectorAll('.chip[data-category]').forEach(button => {
+            button.addEventListener('click', () => {
+              state.category = button.dataset.category;
+              document.querySelectorAll('.chip[data-category]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+              applyFilters();
+            });
+          });
+
+          document.getElementById('download-json').addEventListener('click', () => {
+            const blob = new Blob([JSON.stringify(window.BENCHMARK_DATA, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'benchmark_data.json';
+            link.click();
+            URL.revokeObjectURL(url);
+          });
+        }
+
+        function init() {
+          const data = window.BENCHMARK_DATA;
+          if (!data) {
+            document.getElementById('bench-grid').appendChild(text('p', 'empty-state', 'Benchmark data did not load.'));
+            return;
+          }
+          renderHeader(data);
+          const cards = collectDashboardCards(data);
+          renderSummary(data, cards);
+          setupControls();
+          renderCards(cards);
+        }
+
+        init();
+      })();
+    </script>
+  </body>
+</html>

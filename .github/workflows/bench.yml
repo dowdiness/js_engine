@@ -215,10 +215,13 @@ jobs:
           path: .
 
       # ── Historical benchmark dashboard / PR comments ───────────────────────
-      # Scheduled / manual runs publish a GitHub Pages benchmark history through
-      # benchmark-action/github-action-benchmark.  Same-repository PRs get a
-      # reporting-only benchmark comment and job summary, but do not save data or
-      # push to gh-pages.  Fork PRs are skipped for token/write-safety.
+      # Scheduled / manual runs publish GitHub Pages benchmark history through
+      # benchmark-action/github-action-benchmark, then replace the generated
+      # index.html with the source-controlled dashboard template while keeping
+      # benchmarks/data.js from benchmark-action as the data source.  Same-
+      # repository PRs get a reporting-only benchmark comment and job summary,
+      # but do not save data or push to gh-pages.  Fork PRs are skipped for
+      # token/write-safety.
       - name: Convert CSV for benchmark-action
         run: |
           python3 - <<'PY'
@@ -239,6 +242,10 @@ jobs:
               json.dump(rows, f, indent=2)
           PY
 
+      - name: Prepare custom benchmark dashboard template
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        run: cp benchmarks/dashboard/index.html "$RUNNER_TEMP/benchmark-dashboard-index.html"
+
       - name: Publish benchmark history
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
@@ -250,6 +257,25 @@ jobs:
           gh-pages-branch: gh-pages
           benchmark-data-dir-path: benchmarks
           summary-always: true
+
+      - name: Install custom benchmark dashboard
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        run: |
+          set -euo pipefail
+          dashboard_template="$RUNNER_TEMP/benchmark-dashboard-index.html"
+          git fetch --no-tags origin gh-pages:refs/remotes/origin/gh-pages
+          git switch --force-create gh-pages refs/remotes/origin/gh-pages
+          mkdir -p benchmarks
+          cp "$dashboard_template" benchmarks/index.html
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add benchmarks/index.html
+          if git diff --cached --quiet; then
+            echo "Custom benchmark dashboard already installed."
+          else
+            git commit -m "Install custom benchmark dashboard"
+            git push origin gh-pages
+          fi
 
       - name: Compare benchmark history for PR
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
