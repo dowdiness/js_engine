@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1779806788449,
+  "lastUpdate": 1780188639390,
   "repoUrl": "https://github.com/dowdiness/js_engine",
   "entries": {
     "Benchmark": [
@@ -236,6 +236,178 @@ window.BENCHMARK_DATA = {
             "value": 0.48684197799995316,
             "unit": "ms",
             "extra": "category=workflow, cv=8.1%, noisy=false"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Ishimoto Koji",
+            "username": "dowdiness",
+            "email": "koji.ishimoto@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "88bf3b801cb2572b59bc881102a7eb7e3d18bb2a",
+          "message": "Skip unneeded bytecode arguments object setup (#172)",
+          "timestamp": "2026-05-30T14:54:39Z",
+          "url": "https://github.com/dowdiness/js_engine/commit/88bf3b801cb2572b59bc881102a7eb7e3d18bb2a"
+        },
+        "date": 1780188638923,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "startup/startup/tiny_program",
+            "value": 2.9327739408000006,
+            "unit": "ms",
+            "extra": "category=regression, cv=3.1%, noisy=false"
+          },
+          {
+            "name": "frontend/lexer/small",
+            "value": 0.032071612900002024,
+            "unit": "ms",
+            "extra": "category=regression, cv=22.4%, noisy=true"
+          },
+          {
+            "name": "frontend/lexer/large",
+            "value": 0.2726860147999999,
+            "unit": "ms",
+            "extra": "category=regression, cv=7.9%, noisy=false"
+          },
+          {
+            "name": "execution/exec/fibonacci_30",
+            "value": 20698.8133462,
+            "unit": "ms",
+            "extra": "category=regression, cv=0.9%, noisy=false"
+          },
+          {
+            "name": "execution/exec/property_chain",
+            "value": 19.03794887500044,
+            "unit": "ms",
+            "extra": "category=regression, cv=5.4%, noisy=false"
+          },
+          {
+            "name": "execution/exec/array_map_filter",
+            "value": 28.000065299996642,
+            "unit": "ms",
+            "extra": "category=component, cv=15.2%, noisy=true"
+          },
+          {
+            "name": "execution/exec/closure_factory",
+            "value": 40.80674443333312,
+            "unit": "ms",
+            "extra": "category=component, cv=4.7%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/closure_conversion/closure_factory",
+            "value": 39.691017483333425,
+            "unit": "ms",
+            "extra": "category=component, cv=7.5%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/bytecode/closure_factory",
+            "value": 20.89668468333257,
+            "unit": "ms",
+            "extra": "category=component, cv=4.9%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/dispatch_stack",
+            "value": 60.05496815555573,
+            "unit": "ms",
+            "extra": "category=component, cv=0.9%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/local_access",
+            "value": 49.6488829777796,
+            "unit": "ms",
+            "extra": "category=component, cv=1.3%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/env_access",
+            "value": 67.3337282666652,
+            "unit": "ms",
+            "extra": "category=component, cv=1.2%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/captured_access",
+            "value": 57.31357606666472,
+            "unit": "ms",
+            "extra": "category=component, cv=0.8%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/call_frame",
+            "value": 17.620243999998397,
+            "unit": "ms",
+            "extra": "category=component, cv=2.5%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/runtime_helpers",
+            "value": 26.833941266667615,
+            "unit": "ms",
+            "extra": "category=component, cv=0.9%, noisy=false"
+          },
+          {
+            "name": "execution/exec/arithmetic_loop",
+            "value": 757.7080942499961,
+            "unit": "ms",
+            "extra": "category=component, cv=0.8%, noisy=false"
+          },
+          {
+            "name": "execution/exec/object_construction",
+            "value": 9.19145073333299,
+            "unit": "ms",
+            "extra": "category=component, cv=16.3%, noisy=true"
+          },
+          {
+            "name": "execution/exec/string_ops",
+            "value": 3.6558807199998404,
+            "unit": "ms",
+            "extra": "category=component, cv=9.7%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/exec/lex",
+            "value": 0.027159118533336246,
+            "unit": "ms",
+            "extra": "category=workflow, cv=1.0%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/exec/parse",
+            "value": 0.02608834146249901,
+            "unit": "ms",
+            "extra": "category=workflow, cv=5.6%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/exec/evaluate",
+            "value": 37.77844580000092,
+            "unit": "ms",
+            "extra": "category=workflow, cv=6.7%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/closure_conversion/evaluate",
+            "value": 35.958987379999016,
+            "unit": "ms",
+            "extra": "category=workflow, cv=4.1%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/bytecode/compile",
+            "value": 0.021020910500005516,
+            "unit": "ms",
+            "extra": "category=workflow, cv=18.5%, noisy=true"
+          },
+          {
+            "name": "execution/pipeline/bytecode/evaluate",
+            "value": 16.297108880000017,
+            "unit": "ms",
+            "extra": "category=workflow, cv=7.0%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/parse_heavy",
+            "value": 0.4915735113333211,
+            "unit": "ms",
+            "extra": "category=workflow, cv=6.9%, noisy=false"
           }
         ]
       }
