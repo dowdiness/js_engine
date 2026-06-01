@@ -442,6 +442,19 @@ fn prepare_startup_core_before_harness() -> StartupInterpreterCore {
 }
 
 ///|
+fn prepare_startup_core_after_setup_builtins() -> StartupInterpreterCore {
+  let core = make_startup_interpreter_core()
+  @runtime.with_active_realm_state_unit(core.realm_state, fn() {
+    @stdlib.setup_builtins_with_realm_state(
+      core.global,
+      core.output,
+      core.realm_state,
+    )
+  })
+  core
+}
+
+///|
 fn make_startup_harness_print_func(core : StartupInterpreterCore) -> Value {
   let print_func = @runtime.make_native_func(
     name="print",
@@ -786,9 +799,65 @@ fn time_realm_stamp_existing_builtins_env() -> Double {
 }
 
 ///|
+// Diagnostic restamp probes for issue #190. These rows prepare a realm where
+// setup_builtins has already run, then re-run the mirrored final realm-stamp
+// traversal against selected roots. They are useful for locating broad root
+// families, but they are independent, non-additive microbenchmarks and not an
+// exact production attribution of the original final_realm_stamp row.
+fn time_realm_stamp_setup_builtins_env() -> Double {
+  let core = prepare_startup_core_after_setup_builtins()
+  let elapsed = measure_active_unit(core.realm_state, fn() {
+    startup_stamp_realm_functions_from_env(core.global, core.realm_state)
+  })
+  keep_global_binding(core.global, "Array")
+  elapsed
+}
+
+///|
+fn time_realm_stamp_setup_bindings(names : Array[String]) -> Double {
+  let core = prepare_startup_core_after_setup_builtins()
+  let elapsed = measure_active_unit(core.realm_state, fn() {
+    stamp_startup_bindings(core, names)
+  })
+  for name in names {
+    keep_global_binding(core.global, name)
+  }
+  elapsed
+}
+
+///|
+fn run_realm_stamp_setup_root(
+  name : String,
+  binding_names : Array[String],
+) -> BenchResult {
+  run_measured_subphase(
+    "startup/phase/new_interpreter/realm_stamp/setup_root/\{name}",
+    { warmup: 5, iterations: 50, group_size: 10 },
+    () => time_realm_stamp_setup_bindings(binding_names),
+  )
+}
+
+///|
 fn stamp_startup_value(value : Value, realm_state : RealmState) -> Unit {
   let visited_objects : Array[@runtime.ObjectData] = []
   startup_stamp_realm_functions_in_value(value, realm_state, 4, visited_objects)
+  startup_clear_realm_stamp_markers(visited_objects)
+}
+
+///|
+fn stamp_startup_bindings(
+  core : StartupInterpreterCore,
+  names : Array[String],
+) -> Unit {
+  let visited_objects : Array[@runtime.ObjectData] = []
+  for name in names {
+    startup_stamp_realm_functions_in_value(
+      get_startup_binding_value(core, name),
+      core.realm_state,
+      4,
+      visited_objects,
+    )
+  }
   startup_clear_realm_stamp_markers(visited_objects)
 }
 
@@ -1105,6 +1174,39 @@ fn run_startup_new_interpreter_subphases() -> Array[BenchResult] raise {
       { warmup: 5, iterations: 50, group_size: 10 },
       time_realm_stamp_existing_builtins_env,
     ),
+    run_measured_subphase(
+      "startup/phase/new_interpreter/realm_stamp/setup_builtins_env",
+      { warmup: 5, iterations: 50, group_size: 10 },
+      time_realm_stamp_setup_builtins_env,
+    ),
+    run_realm_stamp_setup_root("object", ["Object"]),
+    run_realm_stamp_setup_root("function", ["Function"]),
+    run_realm_stamp_setup_root("array", ["Array"]),
+    run_realm_stamp_setup_root("primitive_constructors", [
+      "String", "Number", "Boolean", "Symbol",
+    ]),
+    run_realm_stamp_setup_root("error_constructors", [
+      "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError",
+      "EvalError",
+    ]),
+    run_realm_stamp_setup_root("regexp", ["RegExp"]),
+    run_realm_stamp_setup_root("map_set", ["Map", "Set"]),
+    run_realm_stamp_setup_root("arraybuffer_typedarray_dataview", [
+      "ArrayBuffer", "DataView", "Int8Array", "Uint8Array", "Uint8ClampedArray",
+      "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+    ]),
+    run_realm_stamp_setup_root("global_functions", [
+      "eval", "isNaN", "isFinite", "parseInt", "parseFloat", "encodeURIComponent",
+      "decodeURIComponent", "encodeURI", "decodeURI", "escape", "unescape",
+    ]),
+    run_realm_stamp_setup_root("math_json_reflect", ["Math", "JSON", "Reflect"]),
+    run_realm_stamp_setup_root("date_timers_proxy", [
+      "Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval", "Proxy",
+    ]),
+    run_realm_stamp_setup_root("weak_collections", ["WeakMap", "WeakSet"]),
+    run_realm_stamp_setup_root("promise_and_microtask", [
+      "Promise", "queueMicrotask",
+    ]),
     run_measured_subphase(
       "startup/phase/new_interpreter/realm_stamp/new_harness_bindings_only",
       { warmup: 5, iterations: 50, group_size: 100 },
