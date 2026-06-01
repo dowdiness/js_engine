@@ -1685,33 +1685,58 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
 }
 
 ///|
-/// Extract source pattern and flags from a RegExp value
-fn extract_regexp_source_flags(val : Value) -> (String, String) {
-  match val {
-    Object(data) => {
-      let pat = match data.bag.properties.get("source") {
-        Some(Value::String_(s)) => s
-        _ => ""
+const REGEXP_ORIGINAL_SOURCE_SYMBOL_ID = -120
+
+///|
+const REGEXP_ORIGINAL_FLAGS_SYMBOL_ID = -121
+
+///|
+fn regexp_original_source_from_data(data : ObjectData) -> String? {
+  match data.bag.symbol_properties.get(REGEXP_ORIGINAL_SOURCE_SYMBOL_ID) {
+    Some(Value::String_(s)) => Some(s)
+    _ =>
+      // Compatibility with older in-package construction paths while the
+      // RegExp representation is migrating from visible data properties to
+      // hidden internal-slot storage.
+      match data.bag.properties.get("source") {
+        Some(Value::String_(s)) => Some(s)
+        _ => None
       }
-      let fl = match data.bag.properties.get("flags") {
-        Some(Value::String_(s)) => s
-        _ => ""
-      }
-      (pat, fl)
-    }
-    _ => ("", "")
   }
 }
 
-// ---- RegExp Object Creation ----
+///|
+fn regexp_original_flags_from_data(data : ObjectData) -> String? {
+  match data.bag.symbol_properties.get(REGEXP_ORIGINAL_FLAGS_SYMBOL_ID) {
+    Some(Value::String_(s)) => Some(s)
+    _ =>
+      match data.bag.properties.get("flags") {
+        Some(Value::String_(s)) => Some(s)
+        _ => None
+      }
+  }
+}
 
 ///|
-fn make_regexp_object_with_proto(
-  pattern : String,
-  flags : String,
-  prototype : Value,
-) -> Value raise Error {
-  // Validate flags - check for invalid or duplicate flag characters
+fn regexp_original_source(val : Value) -> String? {
+  match val {
+    Object(data) if data.class_name == "RegExp" =>
+      regexp_original_source_from_data(data)
+    _ => None
+  }
+}
+
+///|
+fn regexp_original_flags(val : Value) -> String? {
+  match val {
+    Object(data) if data.class_name == "RegExp" =>
+      regexp_original_flags_from_data(data)
+    _ => None
+  }
+}
+
+///|
+fn normalize_regexp_flags(flags : String) -> String raise Error {
   let valid_flags = "gimsuy"
   let seen_flags : Map[Char, Bool] = {}
   for ch in flags {
@@ -1727,7 +1752,33 @@ fn make_regexp_object_with_proto(
     }
     seen_flags[ch] = true
   }
-  // Validate pattern by attempting to parse it
+  let buf = StringBuilder::new()
+  if flags.contains("g") {
+    buf.write_string("g")
+  }
+  if flags.contains("i") {
+    buf.write_string("i")
+  }
+  if flags.contains("m") {
+    buf.write_string("m")
+  }
+  if flags.contains("s") {
+    buf.write_string("s")
+  }
+  if flags.contains("u") {
+    buf.write_string("u")
+  }
+  if flags.contains("y") {
+    buf.write_string("y")
+  }
+  buf.to_string()
+}
+
+///|
+fn validate_regexp_pattern(
+  pattern : String,
+  flags : String,
+) -> Unit raise Error {
   let _valid : Unit = try {
     let _parsed = RegexParser::new(pattern, unicode=flags.contains("u")).parse()
   } catch {
@@ -1743,158 +1794,371 @@ fn make_regexp_object_with_proto(
           e.to_string(),
       )
   }
-  let has_global = flags.contains("g")
-  let has_ignore_case = flags.contains("i")
-  let has_multiline = flags.contains("m")
-  let has_sticky = flags.contains("y")
-  let has_unicode = flags.contains("u")
-  let has_dotall = flags.contains("s")
-  // Normalize flag ordering per spec: alphabetical (dgimsuy)
-  let sorted_flags = {
-    let buf = StringBuilder::new()
-    if flags.contains("d") {
-      buf.write_string("d")
-    }
-    if has_global {
-      buf.write_string("g")
-    }
-    if has_ignore_case {
-      buf.write_string("i")
-    }
-    if has_multiline {
-      buf.write_string("m")
-    }
-    if has_dotall {
-      buf.write_string("s")
-    }
-    if has_unicode {
-      buf.write_string("u")
-    }
-    if has_sticky {
-      buf.write_string("y")
-    }
-    buf.to_string()
-  }
-  let props : Map[String, Value] = {}
-  props["source"] = Value::String_(pattern)
-  props["flags"] = Value::String_(sorted_flags)
-  props["global"] = Bool(has_global)
-  props["ignoreCase"] = Bool(has_ignore_case)
-  props["multiline"] = Bool(has_multiline)
-  props["sticky"] = Bool(has_sticky)
-  props["unicode"] = Bool(has_unicode)
-  props["dotAll"] = Bool(has_dotall)
-  props["lastIndex"] = Value::Number(0.0)
-  // test method
-  props["test"] = @runtime.make_method_func(name="test", length=1, fn(
-    this_val,
-    args,
-  ) {
-    let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let start = if has_sticky || has_global {
-      match this_val {
-        Object(d) =>
-          match d.bag.properties.get("lastIndex") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-        _ => 0
-      }
-    } else {
-      0
-    }
-    let result = regex_search(pattern, flags, str, start_pos=start) catch {
-      _ => None
-    }
-    match result {
-      Some(m) => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) =>
-              d.bag.properties["lastIndex"] = Value::Number(m.end_.to_double())
-            _ => ()
-          }
-        }
-        Value::Bool(true)
-      }
-      None => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) => d.bag.properties["lastIndex"] = Value::Number(0.0)
-            _ => ()
-          }
-        }
-        Value::Bool(false)
-      }
-    }
-  })
-  // exec method
-  props["exec"] = @runtime.make_method_func(name="exec", length=1, fn(
-    this_val,
-    args,
-  ) {
-    let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let start = if has_sticky || has_global {
-      match this_val {
-        Object(d) =>
-          match d.bag.properties.get("lastIndex") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-        _ => 0
-      }
-    } else {
-      0
-    }
-    let result = regex_search(pattern, flags, str, start_pos=start) catch {
-      _ => None
-    }
-    match result {
-      Some(m) => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) =>
-              d.bag.properties["lastIndex"] = Value::Number(m.end_.to_double())
-            _ => ()
-          }
-        }
-        make_regex_match_array(m, str)
-      }
-      None => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) => d.bag.properties["lastIndex"] = Value::Number(0.0)
-            _ => ()
-          }
-        }
-        Null
-      }
-    }
-  })
-  // Symbol methods are now on RegExp.prototype (set up in builtins.mbt)
-  // Instances inherit them via the prototype chain
-  let sym_props : Map[Int, Value] = {}
+  _valid
+}
 
-  // Create descriptor maps for non-enumerable method properties
-  let re_descs : Map[String, PropDescriptor] = {}
-  let re_method_desc : PropDescriptor = {
-    writable: true,
+///|
+fn normalize_and_validate_regexp(
+  pattern : String,
+  flags : String,
+) -> String raise Error {
+  let sorted_flags = normalize_regexp_flags(flags)
+  validate_regexp_pattern(pattern, sorted_flags)
+  sorted_flags
+}
+
+///|
+fn regexp_internal_slot_descriptor() -> PropDescriptor {
+  {
+    writable: false,
     enumerable: false,
-    configurable: true,
+    configurable: false,
     getter: None,
     setter: None,
     is_accessor: false,
   }
-  re_descs["source"] = re_method_desc
-  re_descs["flags"] = re_method_desc
-  re_descs["global"] = re_method_desc
-  re_descs["ignoreCase"] = re_method_desc
-  re_descs["multiline"] = re_method_desc
-  re_descs["sticky"] = re_method_desc
-  re_descs["unicode"] = re_method_desc
-  re_descs["dotAll"] = re_method_desc
-  re_descs["test"] = re_method_desc
-  re_descs["exec"] = re_method_desc
+}
+
+///|
+fn set_regexp_internal_slot_descriptors(data : ObjectData) -> Unit {
+  data.bag.symbol_descriptors[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  data.bag.symbol_descriptors[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+}
+
+///|
+fn set_regexp_original_source_flags(
+  data : ObjectData,
+  source : String,
+  flags : String,
+) -> Unit raise Error {
+  let sorted_flags = normalize_and_validate_regexp(source, flags)
+  data.bag.symbol_properties[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(
+    source,
+  )
+  data.bag.symbol_properties[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(
+    sorted_flags,
+  )
+  set_regexp_internal_slot_descriptors(data)
+}
+
+///|
+fn escape_regexp_source(source : String) -> String {
+  if source == "" {
+    return "(?:)"
+  }
+  let buf = StringBuilder::new()
+  for ch in source {
+    match ch {
+      '/' => buf.write_string("\\/")
+      '\n' => buf.write_string("\\n")
+      '\r' => buf.write_string("\\r")
+      '\u{2028}' => buf.write_string("\\u2028")
+      '\u{2029}' => buf.write_string("\\u2029")
+      _ => buf.write_char(ch)
+    }
+  }
+  buf.to_string()
+}
+
+///|
+/// Extract source pattern and flags from a RegExp value
+fn extract_regexp_source_flags(val : Value) -> (String, String) {
+  match val {
+    Object(data) if data.class_name == "RegExp" => {
+      let pat = match regexp_original_source_from_data(data) {
+        Some(s) => s
+        None => ""
+      }
+      let fl = match regexp_original_flags_from_data(data) {
+        Some(s) => s
+        None => ""
+      }
+      (pat, fl)
+    }
+    _ => ("", "")
+  }
+}
+
+///|
+fn regexp_this_is_object(value : Value) -> Bool {
+  match value {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
+    _ => false
+  }
+}
+
+///|
+fn is_regexp_prototype_value(
+  realm_state : @runtime.RealmState,
+  value : Value,
+) -> Bool {
+  match realm_state.regexp_prototype.val {
+    Some(proto) => @runtime.strict_equal(value, proto)
+    None => false
+  }
+}
+
+///|
+fn regexp_proto_incompatible(method_name : String) -> Value raise Error {
+  raise @errors.TypeError(
+    message="Method " + method_name + " called on incompatible receiver",
+  )
+}
+
+///|
+fn make_regexp_compile_method(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(
+    name="compile",
+    length=2,
+    realm_state=Some(realm_state),
+    fn(interp, this_val, args) raise {
+      match this_val {
+        Object(data) => {
+          if data.class_name != "RegExp" {
+            return regexp_proto_incompatible("RegExp.prototype.compile")
+          }
+          let pattern_arg = if args.length() > 0 { args[0] } else { Undefined }
+          let flags_arg = if args.length() > 1 { args[1] } else { Undefined }
+          let (source, flags) : (String, String) = match pattern_arg {
+            Object(re_data) =>
+              if re_data.class_name == "RegExp" {
+                // If pattern is a RegExp and flags is not undefined, throw TypeError
+                if !(flags_arg is Undefined) {
+                  raise @errors.TypeError(
+                    message="Cannot supply flags when constructing one RegExp from another",
+                  )
+                }
+                let source = match regexp_original_source(pattern_arg) {
+                  Some(s) => s
+                  None => ""
+                }
+                let flags = match regexp_original_flags(pattern_arg) {
+                  Some(f) => f
+                  None => ""
+                }
+                (source, flags)
+              } else {
+                let source = interp.to_js_string(pattern_arg)
+                let flags = if flags_arg is Undefined {
+                  ""
+                } else {
+                  interp.to_js_string(flags_arg)
+                }
+                (source, flags)
+              }
+            Undefined => {
+              let flags = if flags_arg is Undefined {
+                ""
+              } else {
+                interp.to_js_string(flags_arg)
+              }
+              ("", flags)
+            }
+            _ => {
+              let source = interp.to_js_string(pattern_arg)
+              let flags = if flags_arg is Undefined {
+                ""
+              } else {
+                interp.to_js_string(flags_arg)
+              }
+              (source, flags)
+            }
+          }
+          set_regexp_original_source_flags(data, source, flags)
+          data.bag.properties["lastIndex"] = Value::Number(0.0)
+          this_val
+        }
+        _ => regexp_proto_incompatible("RegExp.prototype.compile")
+      }
+    },
+  )
+}
+
+///|
+fn make_regexp_to_string_method(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(
+    name="toString",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(interp, this_val, _args) raise {
+      if !regexp_this_is_object(this_val) {
+        return regexp_proto_incompatible("RegExp.prototype.toString")
+      }
+      let source = interp.to_js_string(
+        interp.get_property(this_val, "source", @token.Loc::default()),
+      )
+      let flags = interp.to_js_string(
+        interp.get_property(this_val, "flags", @token.Loc::default()),
+      )
+      Value::String_("/" + source + "/" + flags)
+    },
+  )
+}
+
+///|
+fn regexp_flag_code(flag_name : String) -> String {
+  match flag_name {
+    "global" => "g"
+    "ignoreCase" => "i"
+    "multiline" => "m"
+    "dotAll" => "s"
+    "unicode" => "u"
+    "sticky" => "y"
+    "unicodeSets" => "v"
+    "hasIndices" => "d"
+    _ => ""
+  }
+}
+
+///|
+fn make_regexp_flag_getter(
+  flag_name : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  let flag_code = regexp_flag_code(flag_name)
+  @runtime.make_method_func(
+    name="get " + flag_name,
+    length=0,
+    realm_state=Some(realm_state),
+    fn(this_val, _args) raise {
+      if !regexp_this_is_object(this_val) {
+        return regexp_proto_incompatible("get RegExp.prototype." + flag_name)
+      }
+      match regexp_original_flags(this_val) {
+        Some(flags_str) => Bool(flags_str.contains(flag_code))
+        None =>
+          if is_regexp_prototype_value(realm_state, this_val) {
+            Undefined
+          } else {
+            regexp_proto_incompatible("get RegExp.prototype." + flag_name)
+          }
+      }
+    },
+  )
+}
+
+///|
+fn append_regexp_flag_if_truthy(
+  interp : Interpreter,
+  this_val : Value,
+  property : String,
+  flag : String,
+  buf : StringBuilder,
+) -> Unit raise Error {
+  if @runtime.is_truthy(
+      interp.get_property(this_val, property, @token.Loc::default()),
+    ) {
+    buf.write_string(flag)
+  }
+}
+
+///|
+fn make_regexp_flags_getter(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(
+    name="get flags",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(interp, this_val, _args) raise {
+      if !regexp_this_is_object(this_val) {
+        return regexp_proto_incompatible("get RegExp.prototype.flags")
+      }
+      let result = StringBuilder::new()
+      let flag_props = [
+        ("hasIndices", "d"),
+        ("global", "g"),
+        ("ignoreCase", "i"),
+        ("multiline", "m"),
+        ("dotAll", "s"),
+        ("unicode", "u"),
+        ("unicodeSets", "v"),
+        ("sticky", "y"),
+      ]
+      for pair in flag_props {
+        let (property, flag) = pair
+        append_regexp_flag_if_truthy(interp, this_val, property, flag, result)
+      }
+      Value::String_(result.to_string())
+    },
+  )
+}
+
+///|
+fn make_regexp_source_getter(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_method_func(
+    name="get source",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(this_val, _args) raise {
+      if !regexp_this_is_object(this_val) {
+        return regexp_proto_incompatible("get RegExp.prototype.source")
+      }
+      match regexp_original_source(this_val) {
+        Some(s) => Value::String_(escape_regexp_source(s))
+        None =>
+          if is_regexp_prototype_value(realm_state, this_val) {
+            Value::String_("(?:)")
+          } else {
+            regexp_proto_incompatible("get RegExp.prototype.source")
+          }
+      }
+    },
+  )
+}
+
+///|
+fn regexp_accessor_descriptor(getter : Value) -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(getter),
+    setter: None,
+    is_accessor: true,
+  }
+}
+
+///|
+fn install_regexp_prototype_accessors(
+  regexp_proto_props : Map[String, Value],
+  regexp_proto_descs : Map[String, PropDescriptor],
+  realm_state : @runtime.RealmState,
+) -> Unit {
+  let flag_names = [
+    "global", "ignoreCase", "multiline", "dotAll", "unicode", "sticky", "unicodeSets",
+    "hasIndices",
+  ]
+  for flag_name in flag_names {
+    let getter = make_regexp_flag_getter(flag_name, realm_state)
+    regexp_proto_props[flag_name] = Undefined
+    regexp_proto_descs[flag_name] = regexp_accessor_descriptor(getter)
+  }
+  let flags_getter = make_regexp_flags_getter(realm_state)
+  regexp_proto_props["flags"] = Undefined
+  regexp_proto_descs["flags"] = regexp_accessor_descriptor(flags_getter)
+  let source_getter = make_regexp_source_getter(realm_state)
+  regexp_proto_props["source"] = Undefined
+  regexp_proto_descs["source"] = regexp_accessor_descriptor(source_getter)
+}
+
+// ---- RegExp Object Creation ----
+
+///|
+fn make_regexp_object_with_proto(
+  pattern : String,
+  flags : String,
+  prototype : Value,
+) -> Value raise Error {
+  let sorted_flags = normalize_and_validate_regexp(pattern, flags)
+  let props : Map[String, Value] = {}
+  props["lastIndex"] = Value::Number(0.0)
+  // RegExp instance state is stored as hidden internal slots. Public accessors
+  // live on RegExp.prototype and compute from these slots.
+  let sym_props : Map[Int, Value] = {}
+  sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
+  sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
+
+  // Create descriptor map for the only RegExp instance own property.
+  let re_descs : Map[String, PropDescriptor] = {}
   // lastIndex per spec: writable but NOT enumerable and NOT configurable
   re_descs["lastIndex"] = {
     writable: true,
@@ -1906,6 +2170,8 @@ fn make_regexp_object_with_proto(
   }
 
   let re_sym_descs : Map[Int, PropDescriptor] = {}
+  re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
 
   Value::Object({
     bag: {

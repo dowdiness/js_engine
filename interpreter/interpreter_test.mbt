@@ -4074,6 +4074,59 @@ test "regex source and flags properties" {
 }
 
 ///|
+test "RegExp.prototype accessors use internal slots and generic flags Get" {
+  let src =
+    #|var flagsGet = Object.getOwnPropertyDescriptor(RegExp.prototype, "flags").get;
+    #|var flagLog = "";
+    #|var generic = {
+    #|  get hasIndices() { flagLog += "d"; return 0; },
+    #|  get global() { flagLog += "g"; return "yes"; },
+    #|  get ignoreCase() { flagLog += "i"; return false; },
+    #|  get multiline() { flagLog += "m"; return 1; },
+    #|  get dotAll() { flagLog += "s"; return null; },
+    #|  get unicode() { flagLog += "u"; return {}; },
+    #|  get unicodeSets() { flagLog += "v"; return 0; },
+    #|  get sticky() { flagLog += "y"; return true; }
+    #|};
+    #|console.log(flagsGet.call(generic));
+    #|console.log(flagLog);
+    #|var globalGet = Object.getOwnPropertyDescriptor(RegExp.prototype, "global").get;
+    #|try { globalGet.call({}); } catch (e) { console.log(e.name); }
+    #|var re = /abc/g;
+    #|re.global = false;
+    #|console.log(re.hasOwnProperty("global"));
+    #|console.log(re.global);
+    #|var first = /first/g;
+    #|var second = /second/i;
+    #|Object.assign(first, second);
+    #|console.log(first.source);
+    #|console.log(first.flags);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "gmuy", "dgimsuvy", "TypeError", "false", "true", "first", "g",
+  ])
+}
+
+///|
+test "RegExp.prototype source and toString follow accessor algorithms" {
+  let src =
+    #|console.log(new RegExp("").source);
+    #|console.log(new RegExp("/").source);
+    #|var toString = RegExp.prototype.toString;
+    #|try { toString(); } catch (e) { console.log(e.name); }
+    #|console.log(toString.call({ source: { toString: function() { return "x"; } }, flags: "g" }));
+    #|var re = /a/;
+    #|re.compile("b", "i");
+    #|console.log(re.source);
+    #|console.log(re.flags);
+    #|console.log(re.test("B"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "(?:)", "\\/", "TypeError", "/x/g", "b", "i", "true",
+  ])
+}
+
+///|
 test "regex character class" {
   let src =
     #|var re = /[a-z]+/;
