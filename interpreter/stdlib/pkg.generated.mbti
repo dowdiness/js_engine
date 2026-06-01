@@ -54,6 +54,8 @@ pub fn make_regexp_object_with_realm_state(String, String, @runtime.RealmState) 
 
 pub fn make_typedarray_object(String, Int, @runtime.Value, @runtime.Environment) -> @runtime.Value
 
+pub fn profile_setup_builtins_with_realm_state(@runtime.Environment, Array[String], @runtime.RealmState, annex_b? : Bool) -> Array[(String, Double)]
+
 pub fn regex_match_at(String, String, String, Int) -> RegexMatch? raise
 
 pub fn regex_search(String, String, String, start_pos? : Int) -> RegexMatch? raise

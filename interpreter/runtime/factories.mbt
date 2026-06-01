@@ -603,9 +603,10 @@ fn put_function_realm_symbol_desc(
   descs : Map[Int, PropDescriptor],
   id : Int,
   proto : Value?,
+  desc : PropDescriptor,
 ) -> Unit {
   match proto {
-    Some(_) => descs[id] = function_realm_symbol_desc()
+    Some(_) => descs[id] = desc
     None => ()
   }
 }
@@ -615,55 +616,66 @@ fn function_realm_symbol_descs(
   protos : FunctionRealmProtos,
 ) -> Map[Int, PropDescriptor] {
   let descs : Map[Int, PropDescriptor] = {}
+  let desc = function_realm_symbol_desc()
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
     protos.function_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
     protos.object_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
     protos.string_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
     protos.number_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
     protos.boolean_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
     protos.symbol_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
     protos.array_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
     protos.map_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
     protos.set_proto,
+    desc,
   )
   put_function_realm_symbol_desc(
     descs,
     FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
     protos.promise_proto,
+    desc,
   )
   descs
 }
@@ -728,6 +740,7 @@ fn stamp_realm_proto(
   data : ObjectData,
   id : Int,
   proto : Value?,
+  desc : PropDescriptor,
   set_function_prototype? : Bool = false,
 ) -> Unit {
   match proto {
@@ -739,7 +752,7 @@ fn stamp_realm_proto(
         }
       }
       data.bag.symbol_properties[id] = proto
-      data.bag.symbol_descriptors[id] = function_realm_symbol_desc()
+      data.bag.symbol_descriptors[id] = desc
     }
     None => ()
   }
@@ -754,7 +767,13 @@ fn stamp_realm_proto_if_unstamped(
 ) -> Unit {
   match (function_realm_symbol_prop(data, id), proto) {
     (None, Some(proto)) =>
-      stamp_realm_proto(data, id, Some(proto), set_function_prototype~)
+      stamp_realm_proto(
+        data,
+        id,
+        Some(proto),
+        function_realm_symbol_desc(),
+        set_function_prototype~,
+      )
     _ => ()
   }
 }
@@ -768,56 +787,67 @@ fn stamp_function_realm_with_protos(
     Object(data) =>
       match data.callable {
         Some(_) => {
+          let desc = function_realm_symbol_desc()
           stamp_realm_proto(
             data,
             FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
             protos.function_proto,
+            desc,
             set_function_prototype=true,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
             protos.object_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
             protos.string_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
             protos.number_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
             protos.boolean_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
             protos.symbol_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
             protos.array_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
             protos.map_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
             protos.set_proto,
+            desc,
           )
           stamp_realm_proto(
             data,
             FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
             protos.promise_proto,
+            desc,
           )
         }
         None => ()
