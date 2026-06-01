@@ -2218,6 +2218,454 @@ pub fn substring(chars : Array[Char], start : Int, end_ : Int) -> String {
   buf.to_string()
 }
 
+///|
+priv struct RegExpReplaceMatch {
+  matched : String
+  captures : Array[Value]
+  position : Int
+  match_length : Int
+  named_captures : Value
+}
+
+///|
+const REGEXP_MAX_SAFE_LENGTH = 9007199254740991.0
+
+///|
+fn regexp_to_length(value : Value, interp : Interpreter) -> Double raise Error {
+  let n = @runtime.to_number(value, interp=Some(interp))
+  if n.is_nan() || n <= 0.0 {
+    0.0
+  } else if n >= REGEXP_MAX_SAFE_LENGTH {
+    REGEXP_MAX_SAFE_LENGTH
+  } else {
+    n.floor()
+  }
+}
+
+///|
+fn regexp_to_length_int(value : Value, interp : Interpreter) -> Int raise Error {
+  let len = regexp_to_length(value, interp)
+  if len > 100000.0 {
+    100000
+  } else {
+    len.to_int()
+  }
+}
+
+///|
+fn regexp_clamp_position(
+  value : Value,
+  max_len : Int,
+  interp : Interpreter,
+) -> Int raise Error {
+  let n = @runtime.to_number(value, interp=Some(interp))
+  if n.is_nan() || n <= 0.0 {
+    0
+  } else if n >= max_len.to_double() {
+    max_len
+  } else {
+    n.floor().to_int()
+  }
+}
+
+///|
+fn regexp_advance_string_index(
+  input : String,
+  index : Double,
+  unicode : Bool,
+) -> Double {
+  if !unicode {
+    return index + 1.0
+  }
+  let i = index.to_int()
+  if i < 0 || i + 1 >= input.length() {
+    return index + 1.0
+  }
+  let first = input[i].to_int()
+  if first < 0xD800 || first > 0xDBFF {
+    return index + 1.0
+  }
+  let second = input[i + 1].to_int()
+  if second < 0xDC00 || second > 0xDFFF {
+    return index + 1.0
+  }
+  index + 2.0
+}
+
+///|
+fn regexp_exec_for_replace(
+  interp : Interpreter,
+  rx : Value,
+  input : String,
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  let exec = interp.get_property(rx, "exec", loc)
+  if @runtime.is_callable(exec) {
+    let result = @runtime.call_callable_direct(
+      exec,
+      rx,
+      [Value::String_(input)],
+      interp=Some(interp),
+    )
+    match result {
+      Null | Object(_) | Array(_) => result
+      _ =>
+        raise @errors.TypeError(
+          message="RegExp exec method returned neither object nor null",
+        )
+    }
+  } else {
+    let (pat, fl) = extract_regexp_source_flags(rx)
+    guard pat != "" || fl != "" else {
+      raise @errors.TypeError(
+        message="RegExp.prototype[Symbol.replace] called on incompatible receiver",
+      )
+    }
+    let has_global = fl.contains("g")
+    let has_sticky = fl.contains("y")
+    let start = if has_global || has_sticky {
+      @runtime.to_int32(
+        @runtime.to_number(
+          interp.get_property(rx, "lastIndex", loc),
+          interp=Some(interp),
+        ),
+      )
+    } else {
+      0
+    }
+    match regex_search(pat, fl, input, start_pos=start) {
+      Some(m) => {
+        if has_global || has_sticky {
+          let _ = interp.set_property(
+            rx,
+            "lastIndex",
+            Value::Number(m.end_.to_double()),
+            loc,
+            strict=true,
+          )
+        }
+        make_regex_match_array(m, input)
+      }
+      None => {
+        if has_global || has_sticky {
+          let _ = interp.set_property(
+            rx,
+            "lastIndex",
+            Value::Number(0.0),
+            loc,
+            strict=true,
+          )
+        }
+        Null
+      }
+    }
+  }
+}
+
+///|
+fn regexp_replace_match_from_result(
+  interp : Interpreter,
+  result : Value,
+  input : String,
+) -> RegExpReplaceMatch raise Error {
+  let loc = @token.Loc::default()
+  let length = regexp_to_length_int(
+    interp.get_property(result, "length", loc),
+    interp,
+  )
+  let captures_len = if length > 0 { length - 1 } else { 0 }
+  let matched = interp.to_js_string(interp.get_property(result, "0", loc))
+  let position = regexp_clamp_position(
+    interp.get_property(result, "index", loc),
+    input.length(),
+    interp,
+  )
+  let captures : Array[Value] = []
+  for i in 1..<=captures_len {
+    let capture = interp.get_property(result, i.to_string(), loc)
+    match capture {
+      Undefined => captures.push(Undefined)
+      _ => captures.push(Value::String_(interp.to_js_string(capture)))
+    }
+  }
+  let named_captures = interp.get_property(result, "groups", loc)
+  {
+    matched,
+    captures,
+    position,
+    match_length: matched.length(),
+    named_captures,
+  }
+}
+
+///|
+fn regexp_named_captures_for_substitution(value : Value) -> Value raise Error {
+  match value {
+    Undefined => Undefined
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ => value
+  }
+}
+
+///|
+fn regexp_get_substitution(
+  matched : String,
+  input : String,
+  position : Int,
+  captures : Array[Value],
+  named_captures : Value,
+  replacement : String,
+  interp : Interpreter,
+) -> String raise Error {
+  let input_chars = input.to_array()
+  let repl_chars = replacement.to_array()
+  let buf = StringBuilder::new()
+  let mut i = 0
+  while i < repl_chars.length() {
+    if repl_chars[i] == '$' && i + 1 < repl_chars.length() {
+      let next = repl_chars[i + 1]
+      if next == '&' {
+        buf.write_string(matched)
+        i += 2
+        continue
+      } else if next == '`' {
+        for j = 0; j < position && j < input_chars.length(); j = j + 1 {
+          buf.write_char(input_chars[j])
+        }
+        i += 2
+        continue
+      } else if next == '\'' {
+        let start = position + matched.to_array().length()
+        for j = start; j < input_chars.length(); j = j + 1 {
+          buf.write_char(input_chars[j])
+        }
+        i += 2
+        continue
+      } else if next >= '0' && next <= '9' {
+        let group_idx = next.to_int() - '0'.to_int()
+        if i + 2 < repl_chars.length() &&
+          repl_chars[i + 2] >= '0' &&
+          repl_chars[i + 2] <= '9' {
+          let two_digit = group_idx * 10 +
+            (repl_chars[i + 2].to_int() - '0'.to_int())
+          if two_digit > 0 && two_digit - 1 < captures.length() {
+            match captures[two_digit - 1] {
+              Value::String_(s) => buf.write_string(s)
+              Undefined => ()
+              _ => ()
+            }
+            i += 3
+            continue
+          } else {
+            buf.write_char('$')
+            buf.write_char(next)
+            buf.write_char(repl_chars[i + 2])
+            i += 3
+            continue
+          }
+        }
+        if group_idx > 0 && group_idx - 1 < captures.length() {
+          match captures[group_idx - 1] {
+            Value::String_(s) => buf.write_string(s)
+            Undefined => ()
+            _ => ()
+          }
+        } else {
+          buf.write_char('$')
+          buf.write_char(next)
+        }
+        i += 2
+        continue
+      } else if next == '<' {
+        if named_captures is Undefined {
+          buf.write_char('$')
+          buf.write_char('<')
+          i += 2
+          continue
+        }
+        let name_buf = StringBuilder::new()
+        let mut j = i + 2
+        while j < repl_chars.length() && repl_chars[j] != '>' {
+          name_buf.write_char(repl_chars[j])
+          j += 1
+        }
+        if j >= repl_chars.length() {
+          buf.write_char('$')
+          buf.write_char('<')
+          i += 2
+          continue
+        }
+        let capture = interp.get_property(
+          named_captures,
+          name_buf.to_string(),
+          @token.Loc::default(),
+        )
+        match capture {
+          Undefined => ()
+          _ => buf.write_string(interp.to_js_string(capture))
+        }
+        i = j + 1
+        continue
+      } else if next == '$' {
+        buf.write_char('$')
+        i += 2
+        continue
+      }
+    }
+    buf.write_char(repl_chars[i])
+    i += 1
+  }
+  buf.to_string()
+}
+
+///|
+fn regexp_replace_append(
+  input_chars : Array[Char],
+  state : (StringBuilder, Int),
+  item : RegExpReplaceMatch,
+  replacement : String,
+) -> (StringBuilder, Int) {
+  let (buf, next_source_position) = state
+  if item.position >= next_source_position {
+    for i = next_source_position
+        i < item.position && i < input_chars.length()
+        i = i + 1 {
+      buf.write_char(input_chars[i])
+    }
+    buf.write_string(replacement)
+    (buf, item.position + item.match_length)
+  } else {
+    (buf, next_source_position)
+  }
+}
+
+///|
+fn regexp_symbol_replace(
+  interp : Interpreter,
+  this_val : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  if !regexp_this_is_object(this_val) {
+    return regexp_proto_incompatible("RegExp.prototype[Symbol.replace]")
+  }
+  let loc = @token.Loc::default()
+  let input = if args.length() > 0 { interp.to_js_string(args[0]) } else { "" }
+  let replace_value = if args.length() > 1 { args[1] } else { Undefined }
+  let functional_replace = @runtime.is_callable(replace_value)
+  let replacement = if functional_replace {
+    ""
+  } else {
+    interp.to_js_string(replace_value)
+  }
+  let flags = interp.to_js_string(interp.get_property(this_val, "flags", loc))
+  let global = flags.contains("g")
+  let full_unicode = flags.contains("u") || flags.contains("v")
+  if global {
+    let _ = interp.set_property(
+      this_val,
+      "lastIndex",
+      Value::Number(0.0),
+      loc,
+      strict=true,
+    )
+  }
+  let results : Array[Value] = []
+  let mut done = false
+  while !done {
+    let result = regexp_exec_for_replace(interp, this_val, input)
+    match result {
+      Null => done = true
+      _ => {
+        results.push(result)
+        if !global {
+          done = true
+        } else {
+          let match_str = interp.to_js_string(
+            interp.get_property(result, "0", loc),
+          )
+          if match_str == "" {
+            let this_index = regexp_to_length(
+              interp.get_property(this_val, "lastIndex", loc),
+              interp,
+            )
+            let next_index = regexp_advance_string_index(
+              input, this_index, full_unicode,
+            )
+            let _ = interp.set_property(
+              this_val,
+              "lastIndex",
+              Value::Number(next_index),
+              loc,
+              strict=true,
+            )
+          }
+        }
+      }
+    }
+  }
+  let input_chars = input.to_array()
+  let buf = StringBuilder::new()
+  let mut next_source_position = 0
+  for result in results {
+    let item = regexp_replace_match_from_result(interp, result, input)
+    let actual_replacement = if functional_replace {
+      let replacer_args : Array[Value] = [Value::String_(item.matched)]
+      for capture in item.captures {
+        replacer_args.push(capture)
+      }
+      replacer_args.push(Value::Number(item.position.to_double()))
+      replacer_args.push(Value::String_(input))
+      if !(item.named_captures is Undefined) {
+        replacer_args.push(item.named_captures)
+      }
+      let repl_value = @runtime.call_callable_direct(
+        replace_value,
+        Undefined,
+        replacer_args,
+        interp=Some(interp),
+      )
+      interp.to_js_string(repl_value)
+    } else {
+      regexp_get_substitution(
+        item.matched,
+        input,
+        item.position,
+        item.captures,
+        regexp_named_captures_for_substitution(item.named_captures),
+        replacement,
+        interp,
+      )
+    }
+    let (same_buf, next_pos) = regexp_replace_append(
+      input_chars,
+      (buf, next_source_position),
+      item,
+      actual_replacement,
+    )
+    ignore(same_buf)
+    next_source_position = next_pos
+  }
+  for i = next_source_position; i < input_chars.length(); i = i + 1 {
+    buf.write_char(input_chars[i])
+  }
+  Value::String_(buf.to_string())
+}
+
+///|
+fn make_regexp_replace_method(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(
+    name="[Symbol.replace]",
+    length=2,
+    realm_state=Some(realm_state),
+    fn(interp, this_val, args) raise {
+      regexp_symbol_replace(interp, this_val, args)
+    },
+  )
+}
+
 // ---- String Regex Methods ----
 
 ///|
@@ -2322,6 +2770,17 @@ pub fn string_replace_regex_func(
   flags : String,
   replace_fn : Value,
 ) -> Value raise {
+  string_replace_regex_func_impl(s, pattern, flags, replace_fn, interp=None)
+}
+
+///|
+fn string_replace_regex_func_impl(
+  s : String,
+  pattern : String,
+  flags : String,
+  replace_fn : Value,
+  interp? : Interpreter? = None,
+) -> Value raise {
   let input_chars = s.to_array()
   if flags.contains("g") {
     // Replace all matches
@@ -2335,7 +2794,7 @@ pub fn string_replace_regex_func(
       for i = last_end; i < m.start; i = i + 1 {
         buf.write_char(input_chars[i])
       }
-      let repl = call_replace_fn(replace_fn, m, input_chars, s)
+      let repl = call_replace_fn(replace_fn, m, input_chars, s, interp~)
       buf.write_string(repl)
       last_end = m.end_
     }
@@ -2352,7 +2811,7 @@ pub fn string_replace_regex_func(
         for i = 0; i < m.start; i = i + 1 {
           buf.write_char(input_chars[i])
         }
-        let repl = call_replace_fn(replace_fn, m, input_chars, s)
+        let repl = call_replace_fn(replace_fn, m, input_chars, s, interp~)
         buf.write_string(repl)
         for i = m.end_; i < input_chars.length(); i = i + 1 {
           buf.write_char(input_chars[i])
@@ -2371,6 +2830,7 @@ fn call_replace_fn(
   m : RegexMatch,
   input_chars : Array[Char],
   input : String,
+  interp? : Interpreter? = None,
 ) -> String raise {
   let args : Array[Value] = []
   // First arg: full match string
@@ -2417,8 +2877,13 @@ fn call_replace_fn(
       }),
     )
   }
-  let result = @runtime.call_callable_direct(replace_fn, Undefined, args)
-  @runtime.to_js_string(result)
+  let result = @runtime.call_callable_direct(
+    replace_fn,
+    Undefined,
+    args,
+    interp~,
+  )
+  @runtime.to_js_string(result, interp~)
 }
 
 ///|
@@ -2454,28 +2919,37 @@ fn process_replacement(
         }
         i += 2
         continue
-      } else if next >= '1' && next <= '9' {
-        // Check for two-digit group reference ($10-$99)
+      } else if next >= '0' && next <= '9' {
+        // Check for one- and two-digit group references ($1-$99).
         let group_idx = next.to_int() - '0'.to_int()
         if i + 2 < repl_chars.length() &&
           repl_chars[i + 2] >= '0' &&
           repl_chars[i + 2] <= '9' {
           let two_digit = group_idx * 10 +
             (repl_chars[i + 2].to_int() - '0'.to_int())
-          if two_digit - 1 < m.captures.length() {
+          if two_digit > 0 && two_digit - 1 < m.captures.length() {
             match m.captures[two_digit - 1] {
               Some(s) => buf.write_string(s)
               None => ()
             }
             i += 3
             continue
+          } else {
+            buf.write_char('$')
+            buf.write_char(next)
+            buf.write_char(repl_chars[i + 2])
+            i += 3
+            continue
           }
         }
-        if group_idx - 1 < m.captures.length() {
+        if group_idx > 0 && group_idx - 1 < m.captures.length() {
           match m.captures[group_idx - 1] {
             Some(s) => buf.write_string(s)
             None => ()
           }
+        } else {
+          buf.write_char('$')
+          buf.write_char(next)
         }
         i += 2
         continue
