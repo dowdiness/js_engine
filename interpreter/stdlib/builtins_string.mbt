@@ -755,117 +755,115 @@ pub fn get_string_method(
     }
     "replace" => {
       let str = s
-      @runtime.make_native_func(
-        realm_state=Some(realm_state),
-        name="replace",
-        length=2,
-        fn(args) raise {
-          if args.length() == 0 {
-            return Value::String_(str)
-          }
-          // Per spec: check for [Symbol.replace] method on the argument
-          match args[0] {
-            Object(data) => {
-              let replace_sym = well_known_symbols.replace
-              let replace_fn = @runtime.lookup_symbol_property_chain(
-                args[0],
-                data,
-                replace_sym.id,
-              )
-              match replace_fn {
-                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-                Some(fn_val) => {
-                  let rep = if args.length() > 1 { args[1] } else { Undefined }
-                  let result = @runtime.call_callable_direct(fn_val, args[0], [
-                    Value::String_(str),
-                    rep,
-                  ])
-                  return result
-                }
-                _ => ()
+      @runtime.make_interp_static_func(name="replace", length=2, fn(
+        interp,
+        args,
+      ) raise {
+        if args.length() == 0 {
+          return Value::String_(str)
+        }
+        // Per spec: check for [Symbol.replace] method on the argument
+        match args[0] {
+          Object(data) => {
+            let replace_sym = well_known_symbols.replace
+            let replace_fn = @runtime.lookup_symbol_property_chain(
+              args[0],
+              data,
+              replace_sym.id,
+              interp=Some(interp),
+            )
+            match replace_fn {
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+              Some(fn_val) => {
+                let rep = if args.length() > 1 { args[1] } else { Undefined }
+                let result = @runtime.call_callable_direct(
+                  fn_val,
+                  args[0],
+                  [Value::String_(str), rep],
+                  interp=Some(interp),
+                )
+                return result
               }
-              if data.class_name == "RegExp" {
-                let pattern = match data.bag.properties.get("source") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                let flags = match data.bag.properties.get("flags") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                let replacement = if args.length() > 1 {
-                  @runtime.to_js_string(args[1])
-                } else {
-                  "undefined"
-                }
-                return string_replace_regex(str, pattern, flags, replacement)
-              }
+              _ => ()
             }
-            _ => ()
+            if data.class_name == "RegExp" {
+              let pattern = match data.bag.properties.get("source") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.bag.properties.get("flags") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let replacement = if args.length() > 1 {
+                interp.to_js_string(args[1])
+              } else {
+                "undefined"
+              }
+              return string_replace_regex(str, pattern, flags, replacement)
+            }
           }
-          let search = @runtime.to_js_string(args[0])
-          let replace_val = if args.length() > 1 { args[1] } else { Undefined }
-          let is_func = @runtime.is_callable(replace_val)
-          let slen = str.length()
-          let search_len = search.length()
-          if search_len == 0 {
+          _ => ()
+        }
+        let search = interp.to_js_string(args[0])
+        let replace_val = if args.length() > 1 { args[1] } else { Undefined }
+        let is_func = @runtime.is_callable(replace_val)
+        let slen = str.length()
+        let search_len = search.length()
+        if search_len == 0 {
+          let rep = if is_func {
+            let result = @runtime.call_callable_direct(
+              replace_val,
+              Undefined,
+              [Value::String_(""), Value::Number(0.0), Value::String_(str)],
+              interp=Some(interp),
+            )
+            interp.to_js_string(result)
+          } else {
+            get_substitution(interp.to_js_string(replace_val), "", str, 0)
+          }
+          return Value::String_(rep + str)
+        }
+        let s_chars = str.to_array()
+        let search_chars = search.to_array()
+        // Find first occurrence
+        for i = 0; i <= slen - search_len; i = i + 1 {
+          let mut matched = true
+          for j = 0; j < search_len; j = j + 1 {
+            if s_chars[i + j] != search_chars[j] {
+              matched = false
+              break
+            }
+          }
+          if matched {
+            let buf = StringBuilder::new()
+            for k = 0; k < i; k = k + 1 {
+              buf.write_char(s_chars[k])
+            }
             let rep = if is_func {
               let result = @runtime.call_callable_direct(
                 replace_val,
                 Undefined,
-                [Value::String_(""), Value::Number(0.0), Value::String_(str)],
+                [
+                  Value::String_(search),
+                  Value::Number(i.to_double()),
+                  Value::String_(str),
+                ],
+                interp=Some(interp),
               )
-              @runtime.to_js_string(result)
+              interp.to_js_string(result)
             } else {
-              get_substitution(@runtime.to_js_string(replace_val), "", str, 0)
+              get_substitution(interp.to_js_string(replace_val), search, str, i)
             }
-            return Value::String_(rep + str)
+            buf.write_string(rep)
+            for k = i + search_len; k < slen; k = k + 1 {
+              buf.write_char(s_chars[k])
+            }
+            return Value::String_(buf.to_string())
           }
-          let s_chars = str.to_array()
-          let search_chars = search.to_array()
-          // Find first occurrence
-          for i = 0; i <= slen - search_len; i = i + 1 {
-            let mut matched = true
-            for j = 0; j < search_len; j = j + 1 {
-              if s_chars[i + j] != search_chars[j] {
-                matched = false
-                break
-              }
-            }
-            if matched {
-              let buf = StringBuilder::new()
-              for k = 0; k < i; k = k + 1 {
-                buf.write_char(s_chars[k])
-              }
-              let rep = if is_func {
-                let result = @runtime.call_callable_direct(
-                  replace_val,
-                  Undefined,
-                  [
-                    Value::String_(search),
-                    Value::Number(i.to_double()),
-                    Value::String_(str),
-                  ],
-                )
-                @runtime.to_js_string(result)
-              } else {
-                get_substitution(
-                  @runtime.to_js_string(replace_val),
-                  search,
-                  str,
-                  i,
-                )
-              }
-              buf.write_string(rep)
-              for k = i + search_len; k < slen; k = k + 1 {
-                buf.write_char(s_chars[k])
-              }
-              return Value::String_(buf.to_string())
-            }
-          }
-          Value::String_(str)
-        },
-      )
+        }
+        Value::String_(str)
+      })
     }
     "match" => {
       let str = s

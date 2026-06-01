@@ -1429,21 +1429,7 @@ fn setup_builtins_with_realm_state_active(
       regexp_sym_descs[search_sym.id] = sym_method_desc
       // [Symbol.replace]
       let replace_sym = well_known_symbols.replace
-      regexp_sym_props[replace_sym.id] = @runtime.make_method_func(
-        name="[Symbol.replace]",
-        length=2,
-        (this_val, args) => {
-          let str = if args.length() > 0 { args[0].to_string() } else { "" }
-          let replace_val = if args.length() > 1 { args[1] } else { Undefined }
-          let (pat, fl) = extract_regexp_source_flags(this_val)
-          if @runtime.is_callable(replace_val) {
-            string_replace_regex_func(str, pat, fl, replace_val)
-          } else {
-            let replacement = @runtime.to_js_string(replace_val)
-            string_replace_regex(str, pat, fl, replacement)
-          }
-        },
-      )
+      regexp_sym_props[replace_sym.id] = make_regexp_replace_method(realm_state)
       regexp_sym_descs[replace_sym.id] = sym_method_desc
       // [Symbol.split]
       let split_sym = well_known_symbols.split
