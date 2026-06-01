@@ -205,6 +205,87 @@ test "review P1-A: sort over hole-bearing array (stale-holes guard)" {
 }
 
 ///|
+test "issue 123: sort preserves explicit undefined moved into hole slot" {
+  // ES2024 §23.1.3.30 writes sorted present items back first, then deletes
+  // the remaining indices. For [undefined, , 3], index 1 must become an own
+  // explicit undefined property, not remain a stale hole marker.
+  let src =
+    #|var a = [undefined, , 3];
+    #|a.sort();
+    #|var has1 = (1 in a);
+    #|var has2 = (2 in a);
+    #|Array.prototype[1] = "proto";
+    #|var observed = a[1];
+    #|delete Array.prototype[1];
+    #|console.log(a[0] + "," + a[1] + "," + has1 + "," + has2 + "," + observed);
+    #|var b = [undefined, , 3];
+    #|Array.prototype.sort.call(b);
+    #|console.log(b[0] + "," + b[1] + "," + (1 in b) + "," + (2 in b));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "3,undefined,true,false,undefined", "3,undefined,true,false",
+  ])
+}
+
+///|
+test "issue 123: Array mutators maintain holes around explicit undefined" {
+  let src =
+    #|function probe(a, i) {
+    #|  var has = (i in a);
+    #|  Array.prototype[i] = "proto";
+    #|  var observed = a[i];
+    #|  delete Array.prototype[i];
+    #|  return has + ":" + observed;
+    #|}
+    #|var r = [undefined, 0];
+    #|delete r[1];
+    #|r.reverse();
+    #|console.log("reverse:" + probe(r, 1) + "," + (0 in r));
+    #|var c = [undefined, 0, 3];
+    #|delete c[1];
+    #|c.copyWithin(1, 0, 1);
+    #|console.log("copyWithin:" + probe(c, 1) + "," + (2 in c));
+    #|var sh = [0, undefined, 3];
+    #|delete sh[0];
+    #|sh.shift();
+    #|console.log("shift:" + probe(sh, 0) + "," + (1 in sh));
+    #|var un = [undefined, , 3];
+    #|un.unshift(9);
+    #|console.log("unshift:" + probe(un, 1) + "," + (2 in un));
+    #|var sp = [undefined, , 3];
+    #|sp.splice(0, 0, 9);
+    #|console.log("splice:" + probe(sp, 1) + "," + (2 in sp));
+    #|var f = [0, 0, 3];
+    #|delete f[0];
+    #|delete f[1];
+    #|f.fill(undefined, 0, 2);
+    #|console.log("fill:" + probe(f, 0) + "," + probe(f, 1));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "reverse:true:undefined,false", "copyWithin:true:undefined,true", "shift:true:undefined,true",
+    "unshift:true:undefined,false", "splice:true:undefined,false", "fill:true:undefined,true:undefined",
+  ])
+}
+
+///|
+test "issue 123: indexed mutators use Proxy-aware HasProperty" {
+  let src =
+    #|var log = [];
+    #|var target = { 0: "a", 1: "b", length: 2 };
+    #|var proxy = new Proxy(target, {
+    #|  has: function(t, k) { log.push("has:" + k); return k in t; },
+    #|  get: function(t, k) { log.push("get:" + k); return t[k]; },
+    #|  set: function(t, k, v) { log.push("set:" + k + "=" + v); t[k] = v; return true; },
+    #|  deleteProperty: function(t, k) { log.push("delete:" + k); delete t[k]; return true; }
+    #|});
+    #|var first = Array.prototype.shift.call(proxy);
+    #|console.log(first + "," + target[0] + "," + target.length + "," + ("1" in target));
+    #|console.log((log.indexOf("has:1") >= 0) + "," + (log.indexOf("delete:0") >= 0));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["a,b,1,false", "true,false"])
+}
+
+///|
 test "review P2: Object-branch HasProperty walks past Array prototype holes" {
   // A non-array object whose prototype is an Array — the Array node's
   // hole at the queried index must NOT terminate the walk; the parent

@@ -76,43 +76,7 @@ fn setup_array_builtins(
     length=0,
     fn(interp, this_val, _args) raise {
       let o = to_object(this_val, interp)
-      match o {
-        Value::Array(arr) => {
-          if arr.elements.length() == 0 {
-            return Undefined
-          }
-          let first = arr.elements[0]
-          let new_elems : Array[Value] = []
-          for i = 1; i < arr.elements.length(); i = i + 1 {
-            new_elems.push(arr.elements[i])
-          }
-          while arr.elements.length() > 0 {
-            let _ = arr.elements.pop()
-          }
-          for el in new_elems {
-            arr.elements.push(el)
-          }
-          first
-        }
-        _ => {
-          let len = @runtime.to_array_like_length_interp(o, interp)
-          if len == 0 {
-            @runtime.set_array_like_length(o, 0)
-            return Undefined
-          }
-          let first = @runtime.get_array_like_element_interp(interp, o, 0)
-          for i = 1; i < len; i = i + 1 {
-            @runtime.set_array_like_element(
-              o,
-              i - 1,
-              @runtime.get_array_like_element_interp(interp, o, i),
-            )
-          }
-          @runtime.delete_array_like_element(o, len - 1)
-          @runtime.set_array_like_length(o, len - 1)
-          first
-        }
-      }
+      array_shift_indexed_properties(interp, o)
     },
   )
   array_proto_props["unshift"] = @runtime.make_interp_method_func(
@@ -120,43 +84,7 @@ fn setup_array_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      match o {
-        Value::Array(arr) => {
-          let old : Array[Value] = []
-          for el in arr.elements {
-            old.push(el)
-          }
-          while arr.elements.length() > 0 {
-            let _ = arr.elements.pop()
-          }
-          for arg in args {
-            arr.elements.push(arg)
-          }
-          for el in old {
-            arr.elements.push(el)
-          }
-          Value::Number(arr.elements.length().to_double())
-        }
-        _ => {
-          let len = @runtime.to_array_like_length_interp(o, interp)
-          let argc = args.length()
-          // Shift existing elements up by argc
-          for i = len - 1; i >= 0; i = i - 1 {
-            @runtime.set_array_like_element(
-              o,
-              i + argc,
-              @runtime.get_array_like_element_interp(interp, o, i),
-            )
-          }
-          // Insert new elements at the beginning
-          for i = 0; i < argc; i = i + 1 {
-            @runtime.set_array_like_element(o, i, args[i])
-          }
-          let new_len = len + argc
-          @runtime.set_array_like_length(o, new_len)
-          Value::Number(new_len.to_double())
-        }
-      }
+      array_unshift_indexed_properties(interp, o, args)
     },
   )
   array_proto_props["join"] = @runtime.make_interp_method_func(
@@ -418,30 +346,7 @@ fn setup_array_builtins(
     length=0,
     fn(interp, this_val, _args) raise {
       let o = to_object(this_val, interp)
-      match o {
-        Value::Array(arr) => {
-          arr.elements.rev_in_place()
-          Value::Array(arr)
-        }
-        _ => {
-          let len = @runtime.to_array_like_length_interp(o, interp)
-          let mut lower = 0
-          let mut upper = len - 1
-          while lower < upper {
-            let lower_val = @runtime.get_array_like_element_interp(
-              interp, o, lower,
-            )
-            let upper_val = @runtime.get_array_like_element_interp(
-              interp, o, upper,
-            )
-            @runtime.set_array_like_element(o, lower, upper_val)
-            @runtime.set_array_like_element(o, upper, lower_val)
-            lower = lower + 1
-            upper = upper - 1
-          }
-          o
-        }
-      }
+      array_reverse_indexed_properties(interp, o)
     },
   )
   array_proto_props["fill"] = @runtime.make_interp_method_func(
@@ -449,43 +354,7 @@ fn setup_array_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      let fill_val = if args.length() > 0 { args[0] } else { Undefined }
-      let alen = @runtime.to_array_like_length_interp(o, interp)
-      let mut start = if args.length() > 1 {
-        @runtime.to_number(args[1]).to_int()
-      } else {
-        0
-      }
-      let mut end = if args.length() > 2 {
-        match args[2] {
-          Undefined => alen
-          _ => @runtime.to_number(args[2]).to_int()
-        }
-      } else {
-        alen
-      }
-      if start < 0 {
-        start = alen + start
-        if start < 0 {
-          start = 0
-        }
-      }
-      if start > alen {
-        start = alen
-      }
-      if end < 0 {
-        end = alen + end
-        if end < 0 {
-          end = 0
-        }
-      }
-      if end > alen {
-        end = alen
-      }
-      for i = start; i < end; i = i + 1 {
-        @runtime.set_array_like_element(o, i, fill_val)
-      }
-      o
+      array_fill_indexed_properties(interp, o, args)
     },
   )
   array_proto_props["toString"] = @runtime.make_interp_method_func(
@@ -952,127 +821,9 @@ fn setup_array_builtins(
     name="sort",
     length=1,
     fn(interp, this_val, args) raise {
-      // Step 1: Validate comparefn
-      if args.length() > 0 {
-        let comparefn = args[0]
-        match comparefn {
-          Undefined => ()
-          _ =>
-            if !@runtime.is_callable(comparefn) {
-              raise @errors.TypeError(
-                message=@runtime.to_js_string(comparefn) + " is not a function",
-              )
-            }
-        }
-      }
-      // Extract elements into a mutable array for sorting
-      let elements : Array[Value] = match this_val {
-        Value::Array(arr) => arr.elements
-        _ => @runtime.to_array_like_elements(this_val)
-      }
-      if args.length() > 0 {
-        match args[0] {
-          Undefined =>
-            elements.sort_by(fn(a, b) {
-              // Per spec: undefined sorts to end
-              if a is Undefined && b is Undefined {
-                return 0
-              }
-              if a is Undefined {
-                return 1
-              }
-              if b is Undefined {
-                return -1
-              }
-              let sa = a.to_string()
-              let sb = b.to_string()
-              if sa < sb {
-                -1
-              } else if sa > sb {
-                1
-              } else {
-                0
-              }
-            })
-          _ => {
-            let comparefn = args[0]
-            let loc = @token.Loc::default()
-            let mut caught_error : Error? = None
-            elements.sort_by(fn(a, b) {
-              // Per spec: undefined sorts to end even with comparefn
-              if a is Undefined && b is Undefined {
-                return 0
-              }
-              if a is Undefined {
-                return 1
-              }
-              if b is Undefined {
-                return -1
-              }
-              if caught_error is Some(_) {
-                return 0
-              }
-              let result = interp.call_value(comparefn, Undefined, [a, b], loc) catch {
-                e => {
-                  caught_error = Some(e)
-                  return 0
-                }
-              }
-              let cmp = @runtime.to_number(result) catch {
-                e => {
-                  caught_error = Some(e)
-                  return 0
-                }
-              }
-              if cmp.is_nan() {
-                0
-              } else if cmp < 0.0 {
-                -1
-              } else if cmp > 0.0 {
-                1
-              } else {
-                0
-              }
-            })
-            match caught_error {
-              Some(e) => raise e
-              None => ()
-            }
-          }
-        }
-      } else {
-        elements.sort_by(fn(a, b) {
-          // Per spec: undefined sorts to end
-          if a is Undefined && b is Undefined {
-            return 0
-          }
-          if a is Undefined {
-            return 1
-          }
-          if b is Undefined {
-            return -1
-          }
-          let sa = a.to_string()
-          let sb = b.to_string()
-          if sa < sb {
-            -1
-          } else if sa > sb {
-            1
-          } else {
-            0
-          }
-        })
-      }
-      // For non-array objects, write sorted elements back
-      match this_val {
-        Value::Array(arr) => Value::Array(arr)
-        _ => {
-          for i = 0; i < elements.length(); i = i + 1 {
-            @runtime.set_array_like_element(this_val, i, elements[i])
-          }
-          this_val
-        }
-      }
+      let comparefn = array_sort_validate_comparefn(args)
+      let o = to_object(this_val, interp)
+      array_sort_indexed_properties(interp, o, comparefn)
     },
   )
   array_proto_props["flat"] = @runtime.make_interp_method_func(
@@ -1144,110 +895,7 @@ fn setup_array_builtins(
     length=2,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      let alen = @runtime.to_array_like_length_interp(o, interp)
-      let mut start = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
-      } else {
-        0
-      }
-      if start < 0 {
-        start = alen + start
-        if start < 0 {
-          start = 0
-        }
-      }
-      if start > alen {
-        start = alen
-      }
-      let del_count = if args.length() > 1 {
-        let d_num = @runtime.to_number(args[1])
-        if d_num.is_inf() || d_num >= (alen - start).to_double() {
-          alen - start
-        } else {
-          let d = d_num.to_int()
-          if d < 0 {
-            0
-          } else {
-            d
-          }
-        }
-      } else {
-        alen - start
-      }
-      let removed = @runtime.array_species_create(interp, o, del_count)
-      for i = 0; i < del_count; i = i + 1 {
-        if @runtime.has_array_like_element(interp, o, start + i) {
-          @runtime.create_data_property_or_throw(
-            interp,
-            removed,
-            i,
-            @runtime.get_array_like_element_interp(interp, o, start + i),
-          )
-        }
-      }
-      @runtime.set_array_like_length(removed, del_count)
-      let new_items : Array[Value] = []
-      for i = 2; i < args.length(); i = i + 1 {
-        new_items.push(args[i])
-      }
-      let items_count = new_items.length()
-      // For Array type, use direct element manipulation
-      match o {
-        Value::Array(arr) => {
-          let tail : Array[Value] = []
-          for i = start + del_count; i < alen; i = i + 1 {
-            tail.push(arr.elements[i])
-          }
-          while arr.elements.length() > start {
-            let _ = arr.elements.pop()
-          }
-          for item in new_items {
-            arr.elements.push(item)
-          }
-          for item in tail {
-            arr.elements.push(item)
-          }
-        }
-        _ => {
-          // For objects: shift elements appropriately
-          if items_count < del_count {
-            // Shift left
-            for i = start; i < alen - del_count; i = i + 1 {
-              @runtime.set_array_like_element(
-                o,
-                i + items_count,
-                @runtime.get_array_like_element_interp(interp, o, i + del_count),
-              )
-            }
-            // Delete trailing elements
-            let new_len = alen - del_count + items_count
-            for i = new_len; i < alen; i = i + 1 {
-              @runtime.delete_array_like_element(o, i)
-            }
-            @runtime.set_array_like_length(o, new_len)
-          } else if items_count > del_count {
-            // Shift right
-            let new_len = alen - del_count + items_count
-            for i = alen - 1; i >= start + del_count; i = i - 1 {
-              @runtime.set_array_like_element(
-                o,
-                i + items_count - del_count,
-                @runtime.get_array_like_element_interp(interp, o, i),
-              )
-            }
-            @runtime.set_array_like_length(o, new_len)
-          }
-          // Insert new items
-          for i = 0; i < items_count; i = i + 1 {
-            @runtime.set_array_like_element(o, start + i, new_items[i])
-          }
-          if items_count == del_count {
-            // Length stays the same, no need to change
-            ()
-          }
-        }
-      }
-      removed
+      array_splice_indexed_properties(interp, o, args)
     },
   )
   array_proto_props["copyWithin"] = @runtime.make_interp_method_func(
@@ -1255,63 +903,7 @@ fn setup_array_builtins(
     length=2,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      let len = @runtime.to_array_like_length_interp(o, interp)
-      let mut target = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
-      } else {
-        0
-      }
-      let mut start = if args.length() > 1 {
-        @runtime.to_number(args[1]).to_int()
-      } else {
-        0
-      }
-      let mut end = if args.length() > 2 {
-        match args[2] {
-          Undefined => len
-          _ => @runtime.to_number(args[2]).to_int()
-        }
-      } else {
-        len
-      }
-      if target < 0 {
-        target = len + target
-        if target < 0 {
-          target = 0
-        }
-      }
-      if start < 0 {
-        start = len + start
-        if start < 0 {
-          start = 0
-        }
-      }
-      if end < 0 {
-        end = len + end
-        if end < 0 {
-          end = 0
-        }
-      }
-      if end > len {
-        end = len
-      }
-      let count = if end - start < len - target {
-        end - start
-      } else {
-        len - target
-      }
-      if count > 0 {
-        let temp : Array[Value] = []
-        for i = start; i < start + count; i = i + 1 {
-          temp.push(@runtime.get_array_like_element_interp(interp, o, i))
-        }
-        for i = 0; i < count; i = i + 1 {
-          if target + i < len {
-            @runtime.set_array_like_element(o, target + i, temp[i])
-          }
-        }
-      }
-      o
+      array_copy_within_indexed_properties(interp, o, args)
     },
   )
   array_proto_props["entries"] = @runtime.make_interp_method_func(

@@ -34,16 +34,13 @@ fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
         // Defensive read: `data.holes` is authoritative only when the
         // dense slot itself is `Undefined` (Phase 3 padding semantics
         // — Array(n), a.length=N, sparse assignment). A non-Undefined
-        // value here means a reordering builtin (sort, copyWithin,
-        // reverse, …) wrote to the slot without updating holes; trust
-        // the value rather than the stale marker.
+        // value here means some future direct `data.elements` mutation
+        // wrote to the slot without updating holes; trust the value
+        // rather than the stale marker.
         //
-        // Known residual gap (Codex PR-#122 review): when a reordering
-        // builtin moves an *explicit* `undefined` into a hole-marked
-        // slot, we still report Hole. Fixing this requires either a
-        // distinct empty-slot sentinel in `data.elements` or
-        // spec-conformant mutators that maintain `data.holes` per
-        // §23.1.3.30. Tracked as issue #123.
+        // An explicit `undefined` cannot be distinguished here, so
+        // reordering/writing mutators must maintain `data.holes` when
+        // moving values or materializing holes (issue #123).
         let v = data.elements[i]
         if data.holes.contains(i) && v is Undefined {
           Hole
