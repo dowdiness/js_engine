@@ -1808,6 +1808,24 @@ fn normalize_and_validate_regexp(
 }
 
 ///|
+fn regexp_internal_slot_descriptor() -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn set_regexp_internal_slot_descriptors(data : ObjectData) -> Unit {
+  data.bag.symbol_descriptors[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  data.bag.symbol_descriptors[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+}
+
+///|
 fn set_regexp_original_source_flags(
   data : ObjectData,
   source : String,
@@ -1820,6 +1838,7 @@ fn set_regexp_original_source_flags(
   data.bag.symbol_properties[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(
     sorted_flags,
   )
+  set_regexp_internal_slot_descriptors(data)
 }
 
 ///|
@@ -2151,6 +2170,8 @@ fn make_regexp_object_with_proto(
   }
 
   let re_sym_descs : Map[Int, PropDescriptor] = {}
+  re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
 
   Value::Object({
     bag: {

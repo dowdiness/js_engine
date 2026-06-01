@@ -4096,9 +4096,14 @@ test "RegExp.prototype accessors use internal slots and generic flags Get" {
     #|re.global = false;
     #|console.log(re.hasOwnProperty("global"));
     #|console.log(re.global);
+    #|var first = /first/g;
+    #|var second = /second/i;
+    #|Object.assign(first, second);
+    #|console.log(first.source);
+    #|console.log(first.flags);
   let output = run_output(src)
   json_inspect(output, content=[
-    "gmuy", "dgimsuvy", "TypeError", "false", "true",
+    "gmuy", "dgimsuvy", "TypeError", "false", "true", "first", "g",
   ])
 }
 
