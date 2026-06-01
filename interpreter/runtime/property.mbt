@@ -41,13 +41,18 @@ pub fn Interpreter::get_property(
   loc : @token.Loc,
 ) -> Value raise Error {
   match obj {
-    Object(data) =>
-      if !data.bag.descriptors.contains(prop) {
+    Object(data) => {
+      // Descriptor maps are empty for ordinary object-literal data slots.
+      // Check emptiness first so that hot own-data reads avoid hashing the
+      // property name into the descriptor map before the value-map lookup.
+      let descriptors = data.bag.descriptors
+      if descriptors.is_empty() || !descriptors.contains(prop) {
         match data.bag.properties.get(prop) {
           Some(v) => return v
           None => ()
         }
       }
+    }
     _ => ()
   }
   self.with_active_property_access_value(fn() raise {
