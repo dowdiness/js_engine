@@ -1157,9 +1157,9 @@ fn setup_builtins_with_realm_state_active(
             match args[0] {
               Object(data) =>
                 if data.class_name == "RegExp" {
-                  match data.bag.properties.get("source") {
-                    Some(Value::String_(s)) => s
-                    _ => args[0].to_string()
+                  match regexp_original_source(args[0]) {
+                    Some(s) => s
+                    None => args[0].to_string()
                   }
                 } else {
                   args[0].to_string()
@@ -1308,10 +1308,11 @@ fn setup_builtins_with_realm_state_active(
         },
       )
       // RegExp.prototype.compile (Annex B)
-      regexp_proto_props["compile"] = @runtime.make_method_func(
+      regexp_proto_props["compile"] = @runtime.make_interp_method_func(
         name="compile",
         length=2,
-        fn(this_val, args) raise {
+        realm_state=Some(realm_state),
+        fn(interp, this_val, args) raise {
           match this_val {
             Object(data) => {
               if data.class_name != "RegExp" {
@@ -1338,21 +1339,21 @@ fn setup_builtins_with_realm_state_active(
                         message="Cannot supply flags when constructing one RegExp from another",
                       )
                     }
-                    let s = match re_data.bag.properties.get("source") {
-                      Some(Value::String_(s)) => s
-                      _ => ""
+                    let s = match regexp_original_source(pattern_arg) {
+                      Some(s) => s
+                      None => ""
                     }
-                    let f = match re_data.bag.properties.get("flags") {
-                      Some(Value::String_(f)) => f
-                      _ => ""
+                    let f = match regexp_original_flags(pattern_arg) {
+                      Some(f) => f
+                      None => ""
                     }
                     (s, f)
                   } else {
-                    let s = @runtime.to_js_string(pattern_arg)
+                    let s = interp.to_js_string(pattern_arg)
                     let f = if flags_arg is Undefined {
                       ""
                     } else {
-                      @runtime.to_js_string(flags_arg)
+                      interp.to_js_string(flags_arg)
                     }
                     (s, f)
                   }
@@ -1360,31 +1361,22 @@ fn setup_builtins_with_realm_state_active(
                   let f = if flags_arg is Undefined {
                     ""
                   } else {
-                    @runtime.to_js_string(flags_arg)
+                    interp.to_js_string(flags_arg)
                   }
-                  ("(?:)", f)
+                  ("", f)
                 }
                 _ => {
-                  let s = @runtime.to_js_string(pattern_arg)
+                  let s = interp.to_js_string(pattern_arg)
                   let f = if flags_arg is Undefined {
                     ""
                   } else {
-                    @runtime.to_js_string(flags_arg)
+                    interp.to_js_string(flags_arg)
                   }
                   (s, f)
                 }
               }
-              // Update the RegExp object in place
-              data.bag.properties["source"] = Value::String_(source)
-              data.bag.properties["flags"] = Value::String_(flags)
+              set_regexp_original_source_flags(data, source, flags)
               data.bag.properties["lastIndex"] = Value::Number(0.0)
-              // Update flag booleans
-              data.bag.properties["global"] = Bool(flags.contains("g"))
-              data.bag.properties["ignoreCase"] = Bool(flags.contains("i"))
-              data.bag.properties["multiline"] = Bool(flags.contains("m"))
-              data.bag.properties["dotAll"] = Bool(flags.contains("s"))
-              data.bag.properties["unicode"] = Bool(flags.contains("u"))
-              data.bag.properties["sticky"] = Bool(flags.contains("y"))
               this_val
             }
             _ =>
@@ -1394,71 +1386,78 @@ fn setup_builtins_with_realm_state_active(
           }
         },
       )
-      regexp_proto_props["toString"] = @runtime.make_method_func(
+      regexp_proto_props["toString"] = @runtime.make_interp_method_func(
         name="toString",
         length=0,
-        fn(this_val, _args) {
+        realm_state=Some(realm_state),
+        fn(interp, this_val, _args) raise {
           match this_val {
-            Object(data) => {
-              let source = match data.bag.properties.get("source") {
-                Some(Value::String_(s)) => s
-                _ => ""
-              }
-              let flags = match data.bag.properties.get("flags") {
-                Some(Value::String_(f)) => f
-                _ => ""
-              }
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+              let source = interp.to_js_string(
+                interp.get_property(this_val, "source", @token.Loc::default()),
+              )
+              let flags = interp.to_js_string(
+                interp.get_property(this_val, "flags", @token.Loc::default()),
+              )
               Value::String_("/" + source + "/" + flags)
             }
-            _ => Value::String_("/(?:)/")
+            _ =>
+              raise @errors.TypeError(
+                message="Method RegExp.prototype.toString called on incompatible receiver",
+              )
           }
         },
       )
       // Add flag getter accessors to RegExp.prototype per spec
       let regexp_proto_descs : Map[String, PropDescriptor] = {}
-      // Helper: create a getter that reads a flag from the regexp's flags string
-      fn make_flag_getter(flag_char : String) -> Value {
-        @runtime.make_method_func(name="get " + flag_char, length=0, fn(
-          this_val,
-          _args,
-        ) raise {
-          match this_val {
-            Object(data) => {
-              if data.class_name != "RegExp" {
-                // Per spec, RegExp.prototype itself returns undefined for flag getters
-                if data.class_name == "Object" {
-                  return Undefined
+      fn is_regexp_prototype_value(value : Value) -> Bool {
+        match realm_state.regexp_prototype.val {
+          Some(proto) => @runtime.strict_equal(value, proto)
+          None => false
+        }
+      }
+      // Helper: create a getter that reads a flag from the regexp's internal [[OriginalFlags]] slot.
+      fn make_flag_getter(flag_name : String) -> Value {
+        let flag_code = match flag_name {
+          "global" => "g"
+          "ignoreCase" => "i"
+          "multiline" => "m"
+          "dotAll" => "s"
+          "unicode" => "u"
+          "sticky" => "y"
+          "unicodeSets" => "v"
+          "hasIndices" => "d"
+          _ => ""
+        }
+        @runtime.make_method_func(
+          name="get " + flag_name,
+          length=0,
+          realm_state=Some(realm_state),
+          fn(this_val, _args) raise {
+            match this_val {
+              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+                match regexp_original_flags(this_val) {
+                  Some(flags_str) => Bool(flags_str.contains(flag_code))
+                  None =>
+                    if is_regexp_prototype_value(this_val) {
+                      Undefined
+                    } else {
+                      raise @errors.TypeError(
+                        message="Method get RegExp.prototype." +
+                          flag_name +
+                          " called on incompatible receiver",
+                      )
+                    }
                 }
+              _ =>
                 raise @errors.TypeError(
                   message="Method get RegExp.prototype." +
-                    flag_char +
+                    flag_name +
                     " called on incompatible receiver",
                 )
-              }
-              let flags_str = match data.bag.properties.get("flags") {
-                Some(Value::String_(f)) => f
-                _ => ""
-              }
-              match flag_char {
-                "global" => Bool(flags_str.contains("g"))
-                "ignoreCase" => Bool(flags_str.contains("i"))
-                "multiline" => Bool(flags_str.contains("m"))
-                "dotAll" => Bool(flags_str.contains("s"))
-                "unicode" => Bool(flags_str.contains("u"))
-                "sticky" => Bool(flags_str.contains("y"))
-                "unicodeSets" => Bool(flags_str.contains("v"))
-                "hasIndices" => Bool(flags_str.contains("d"))
-                _ => Undefined
-              }
             }
-            _ =>
-              raise @errors.TypeError(
-                message="Method get RegExp.prototype." +
-                  flag_char +
-                  " called on incompatible receiver",
-              )
-          }
-        })
+          },
+        )
       }
       let flag_names = [
         "global", "ignoreCase", "multiline", "dotAll", "unicode", "sticky", "unicodeSets",
@@ -1477,61 +1476,83 @@ fn setup_builtins_with_realm_state_active(
         }
       }
       // flags getter - computes flags string from individual flag getters
-      let flags_getter = @runtime.make_method_func(name="get flags", length=0, fn(
-        this_val,
-        _args,
-      ) raise {
-        match this_val {
-          Object(data) =>
-            // For actual RegExp instances, read the stored flags
-            match data.bag.properties.get("flags") {
-              Some(Value::String_(f)) => Value::String_(f)
-              _ => {
-                // Per spec, compute from individual flag getters
-                fn is_flag_set(
-                  props : Map[String, Value],
-                  name : String,
-                ) -> Bool {
-                  match props.get(name) {
-                    Some(Value::Bool(true)) => true
-                    _ => false
-                  }
-                }
-                let p = data.bag.properties
-                let mut result = ""
-                if is_flag_set(p, "hasIndices") {
-                  result = result + "d"
-                }
-                if is_flag_set(p, "global") {
-                  result = result + "g"
-                }
-                if is_flag_set(p, "ignoreCase") {
-                  result = result + "i"
-                }
-                if is_flag_set(p, "multiline") {
-                  result = result + "m"
-                }
-                if is_flag_set(p, "dotAll") {
-                  result = result + "s"
-                }
-                if is_flag_set(p, "unicode") {
-                  result = result + "u"
-                }
-                if is_flag_set(p, "unicodeSets") {
-                  result = result + "v"
-                }
-                if is_flag_set(p, "sticky") {
-                  result = result + "y"
-                }
-                Value::String_(result)
+      let flags_getter = @runtime.make_interp_method_func(
+        name="get flags",
+        length=0,
+        realm_state=Some(realm_state),
+        fn(interp, this_val, _args) raise {
+          match this_val {
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+              let mut result = ""
+              if @runtime.is_truthy(
+                  interp.get_property(
+                    this_val,
+                    "hasIndices",
+                    @token.Loc::default(),
+                  ),
+                ) {
+                result = result + "d"
               }
+              if @runtime.is_truthy(
+                  interp.get_property(this_val, "global", @token.Loc::default()),
+                ) {
+                result = result + "g"
+              }
+              if @runtime.is_truthy(
+                  interp.get_property(
+                    this_val,
+                    "ignoreCase",
+                    @token.Loc::default(),
+                  ),
+                ) {
+                result = result + "i"
+              }
+              if @runtime.is_truthy(
+                  interp.get_property(
+                    this_val,
+                    "multiline",
+                    @token.Loc::default(),
+                  ),
+                ) {
+                result = result + "m"
+              }
+              if @runtime.is_truthy(
+                  interp.get_property(this_val, "dotAll", @token.Loc::default()),
+                ) {
+                result = result + "s"
+              }
+              if @runtime.is_truthy(
+                  interp.get_property(
+                    this_val,
+                    "unicode",
+                    @token.Loc::default(),
+                  ),
+                ) {
+                result = result + "u"
+              }
+              if @runtime.is_truthy(
+                  interp.get_property(
+                    this_val,
+                    "unicodeSets",
+                    @token.Loc::default(),
+                  ),
+                ) {
+                result = result + "v"
+              }
+              if @runtime.is_truthy(
+                  interp.get_property(this_val, "sticky", @token.Loc::default()),
+                ) {
+                result = result + "y"
+              }
+              Value::String_(result)
             }
-          _ =>
-            raise @errors.TypeError(
-              message="Method get RegExp.prototype.flags called on incompatible receiver",
-            )
-        }
-      })
+            _ =>
+              raise @errors.TypeError(
+                message="Method get RegExp.prototype.flags called on incompatible receiver",
+              )
+          }
+        },
+      )
       regexp_proto_props["flags"] = Undefined
       regexp_proto_descs["flags"] = {
         writable: false,
@@ -1545,22 +1566,21 @@ fn setup_builtins_with_realm_state_active(
       let source_getter = @runtime.make_method_func(
         name="get source",
         length=0,
+        realm_state=Some(realm_state),
         fn(this_val, _args) raise {
           match this_val {
-            Object(data) => {
-              if data.class_name != "RegExp" {
-                if data.class_name == "Object" {
-                  return Value::String_("(?:)")
-                }
-                raise @errors.TypeError(
-                  message="Method get RegExp.prototype.source called on incompatible receiver",
-                )
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+              match regexp_original_source(this_val) {
+                Some(s) => Value::String_(escape_regexp_source(s))
+                None =>
+                  if is_regexp_prototype_value(this_val) {
+                    Value::String_("(?:)")
+                  } else {
+                    raise @errors.TypeError(
+                      message="Method get RegExp.prototype.source called on incompatible receiver",
+                    )
+                  }
               }
-              match data.bag.properties.get("source") {
-                Some(Value::String_(s)) => Value::String_(s)
-                _ => Value::String_("(?:)")
-              }
-            }
             _ =>
               raise @errors.TypeError(
                 message="Method get RegExp.prototype.source called on incompatible receiver",

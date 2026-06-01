@@ -1685,33 +1685,58 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
 }
 
 ///|
-/// Extract source pattern and flags from a RegExp value
-fn extract_regexp_source_flags(val : Value) -> (String, String) {
-  match val {
-    Object(data) => {
-      let pat = match data.bag.properties.get("source") {
-        Some(Value::String_(s)) => s
-        _ => ""
+const REGEXP_ORIGINAL_SOURCE_SYMBOL_ID = -120
+
+///|
+const REGEXP_ORIGINAL_FLAGS_SYMBOL_ID = -121
+
+///|
+fn regexp_original_source_from_data(data : ObjectData) -> String? {
+  match data.bag.symbol_properties.get(REGEXP_ORIGINAL_SOURCE_SYMBOL_ID) {
+    Some(Value::String_(s)) => Some(s)
+    _ =>
+      // Compatibility with older in-package construction paths while the
+      // RegExp representation is migrating from visible data properties to
+      // hidden internal-slot storage.
+      match data.bag.properties.get("source") {
+        Some(Value::String_(s)) => Some(s)
+        _ => None
       }
-      let fl = match data.bag.properties.get("flags") {
-        Some(Value::String_(s)) => s
-        _ => ""
-      }
-      (pat, fl)
-    }
-    _ => ("", "")
   }
 }
 
-// ---- RegExp Object Creation ----
+///|
+fn regexp_original_flags_from_data(data : ObjectData) -> String? {
+  match data.bag.symbol_properties.get(REGEXP_ORIGINAL_FLAGS_SYMBOL_ID) {
+    Some(Value::String_(s)) => Some(s)
+    _ =>
+      match data.bag.properties.get("flags") {
+        Some(Value::String_(s)) => Some(s)
+        _ => None
+      }
+  }
+}
 
 ///|
-fn make_regexp_object_with_proto(
-  pattern : String,
-  flags : String,
-  prototype : Value,
-) -> Value raise Error {
-  // Validate flags - check for invalid or duplicate flag characters
+fn regexp_original_source(val : Value) -> String? {
+  match val {
+    Object(data) if data.class_name == "RegExp" =>
+      regexp_original_source_from_data(data)
+    _ => None
+  }
+}
+
+///|
+fn regexp_original_flags(val : Value) -> String? {
+  match val {
+    Object(data) if data.class_name == "RegExp" =>
+      regexp_original_flags_from_data(data)
+    _ => None
+  }
+}
+
+///|
+fn normalize_regexp_flags(flags : String) -> String raise Error {
   let valid_flags = "gimsuy"
   let seen_flags : Map[Char, Bool] = {}
   for ch in flags {
@@ -1727,7 +1752,33 @@ fn make_regexp_object_with_proto(
     }
     seen_flags[ch] = true
   }
-  // Validate pattern by attempting to parse it
+  let buf = StringBuilder::new()
+  if flags.contains("g") {
+    buf.write_string("g")
+  }
+  if flags.contains("i") {
+    buf.write_string("i")
+  }
+  if flags.contains("m") {
+    buf.write_string("m")
+  }
+  if flags.contains("s") {
+    buf.write_string("s")
+  }
+  if flags.contains("u") {
+    buf.write_string("u")
+  }
+  if flags.contains("y") {
+    buf.write_string("y")
+  }
+  buf.to_string()
+}
+
+///|
+fn validate_regexp_pattern(
+  pattern : String,
+  flags : String,
+) -> Unit raise Error {
   let _valid : Unit = try {
     let _parsed = RegexParser::new(pattern, unicode=flags.contains("u")).parse()
   } catch {
@@ -1743,158 +1794,91 @@ fn make_regexp_object_with_proto(
           e.to_string(),
       )
   }
-  let has_global = flags.contains("g")
-  let has_ignore_case = flags.contains("i")
-  let has_multiline = flags.contains("m")
-  let has_sticky = flags.contains("y")
-  let has_unicode = flags.contains("u")
-  let has_dotall = flags.contains("s")
-  // Normalize flag ordering per spec: alphabetical (dgimsuy)
-  let sorted_flags = {
-    let buf = StringBuilder::new()
-    if flags.contains("d") {
-      buf.write_string("d")
-    }
-    if has_global {
-      buf.write_string("g")
-    }
-    if has_ignore_case {
-      buf.write_string("i")
-    }
-    if has_multiline {
-      buf.write_string("m")
-    }
-    if has_dotall {
-      buf.write_string("s")
-    }
-    if has_unicode {
-      buf.write_string("u")
-    }
-    if has_sticky {
-      buf.write_string("y")
-    }
-    buf.to_string()
-  }
-  let props : Map[String, Value] = {}
-  props["source"] = Value::String_(pattern)
-  props["flags"] = Value::String_(sorted_flags)
-  props["global"] = Bool(has_global)
-  props["ignoreCase"] = Bool(has_ignore_case)
-  props["multiline"] = Bool(has_multiline)
-  props["sticky"] = Bool(has_sticky)
-  props["unicode"] = Bool(has_unicode)
-  props["dotAll"] = Bool(has_dotall)
-  props["lastIndex"] = Value::Number(0.0)
-  // test method
-  props["test"] = @runtime.make_method_func(name="test", length=1, fn(
-    this_val,
-    args,
-  ) {
-    let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let start = if has_sticky || has_global {
-      match this_val {
-        Object(d) =>
-          match d.bag.properties.get("lastIndex") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-        _ => 0
-      }
-    } else {
-      0
-    }
-    let result = regex_search(pattern, flags, str, start_pos=start) catch {
-      _ => None
-    }
-    match result {
-      Some(m) => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) =>
-              d.bag.properties["lastIndex"] = Value::Number(m.end_.to_double())
-            _ => ()
-          }
-        }
-        Value::Bool(true)
-      }
-      None => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) => d.bag.properties["lastIndex"] = Value::Number(0.0)
-            _ => ()
-          }
-        }
-        Value::Bool(false)
-      }
-    }
-  })
-  // exec method
-  props["exec"] = @runtime.make_method_func(name="exec", length=1, fn(
-    this_val,
-    args,
-  ) {
-    let str = if args.length() > 0 { args[0].to_string() } else { "" }
-    let start = if has_sticky || has_global {
-      match this_val {
-        Object(d) =>
-          match d.bag.properties.get("lastIndex") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
-          }
-        _ => 0
-      }
-    } else {
-      0
-    }
-    let result = regex_search(pattern, flags, str, start_pos=start) catch {
-      _ => None
-    }
-    match result {
-      Some(m) => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) =>
-              d.bag.properties["lastIndex"] = Value::Number(m.end_.to_double())
-            _ => ()
-          }
-        }
-        make_regex_match_array(m, str)
-      }
-      None => {
-        if has_sticky || has_global {
-          match this_val {
-            Object(d) => d.bag.properties["lastIndex"] = Value::Number(0.0)
-            _ => ()
-          }
-        }
-        Null
-      }
-    }
-  })
-  // Symbol methods are now on RegExp.prototype (set up in builtins.mbt)
-  // Instances inherit them via the prototype chain
-  let sym_props : Map[Int, Value] = {}
+  _valid
+}
 
-  // Create descriptor maps for non-enumerable method properties
-  let re_descs : Map[String, PropDescriptor] = {}
-  let re_method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
+///|
+fn normalize_and_validate_regexp(
+  pattern : String,
+  flags : String,
+) -> String raise Error {
+  let sorted_flags = normalize_regexp_flags(flags)
+  validate_regexp_pattern(pattern, sorted_flags)
+  sorted_flags
+}
+
+///|
+fn set_regexp_original_source_flags(
+  data : ObjectData,
+  source : String,
+  flags : String,
+) -> Unit raise Error {
+  let sorted_flags = normalize_and_validate_regexp(source, flags)
+  data.bag.symbol_properties[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(
+    source,
+  )
+  data.bag.symbol_properties[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(
+    sorted_flags,
+  )
+}
+
+///|
+fn escape_regexp_source(source : String) -> String {
+  if source == "" {
+    return "(?:)"
   }
-  re_descs["source"] = re_method_desc
-  re_descs["flags"] = re_method_desc
-  re_descs["global"] = re_method_desc
-  re_descs["ignoreCase"] = re_method_desc
-  re_descs["multiline"] = re_method_desc
-  re_descs["sticky"] = re_method_desc
-  re_descs["unicode"] = re_method_desc
-  re_descs["dotAll"] = re_method_desc
-  re_descs["test"] = re_method_desc
-  re_descs["exec"] = re_method_desc
+  let buf = StringBuilder::new()
+  for ch in source {
+    match ch {
+      '/' => buf.write_string("\\/")
+      '\n' => buf.write_string("\\n")
+      '\r' => buf.write_string("\\r")
+      '\u{2028}' => buf.write_string("\\u2028")
+      '\u{2029}' => buf.write_string("\\u2029")
+      _ => buf.write_char(ch)
+    }
+  }
+  buf.to_string()
+}
+
+///|
+/// Extract source pattern and flags from a RegExp value
+fn extract_regexp_source_flags(val : Value) -> (String, String) {
+  match val {
+    Object(data) if data.class_name == "RegExp" => {
+      let pat = match regexp_original_source_from_data(data) {
+        Some(s) => s
+        None => ""
+      }
+      let fl = match regexp_original_flags_from_data(data) {
+        Some(s) => s
+        None => ""
+      }
+      (pat, fl)
+    }
+    _ => ("", "")
+  }
+}
+
+// ---- RegExp Object Creation ----
+
+///|
+fn make_regexp_object_with_proto(
+  pattern : String,
+  flags : String,
+  prototype : Value,
+) -> Value raise Error {
+  let sorted_flags = normalize_and_validate_regexp(pattern, flags)
+  let props : Map[String, Value] = {}
+  props["lastIndex"] = Value::Number(0.0)
+  // RegExp instance state is stored as hidden internal slots. Public accessors
+  // live on RegExp.prototype and compute from these slots.
+  let sym_props : Map[Int, Value] = {}
+  sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
+  sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
+
+  // Create descriptor map for the only RegExp instance own property.
+  let re_descs : Map[String, PropDescriptor] = {}
   // lastIndex per spec: writable but NOT enumerable and NOT configurable
   re_descs["lastIndex"] = {
     writable: true,
