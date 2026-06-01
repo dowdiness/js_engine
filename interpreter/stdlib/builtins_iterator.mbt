@@ -85,7 +85,10 @@ fn setup_iterator_protocol(
                 arraybuffer_state: None,
               })
               let iter_props : Map[String, Value] = {}
-              iter_props["next"] = next_method
+              iter_props["next"] = @runtime.stamp_function_realm(
+                next_method,
+                realm_state=Some(realm_state),
+              )
               let iter_obj = Value::Object({
                 bag: {
                   properties: iter_props,
@@ -100,16 +103,6 @@ fn setup_iterator_protocol(
                 arraybuffer_state: None,
               })
 
-              // Add [Symbol.iterator] to keys iterator
-              match iter_obj {
-                Object(data) =>
-                  data.bag.symbol_properties[iterator_sym.id] = @runtime.make_method_func(
-                    name="[Symbol.iterator]",
-                    length=0,
-                    fn(this_val, _args) { this_val },
-                  )
-                _ => ()
-              }
               iter_obj
             },
           )
@@ -176,7 +169,10 @@ fn setup_iterator_protocol(
                 arraybuffer_state: None,
               })
               let iter_props : Map[String, Value] = {}
-              iter_props["next"] = next_method
+              iter_props["next"] = @runtime.stamp_function_realm(
+                next_method,
+                realm_state=Some(realm_state),
+              )
               let iter_obj = Value::Object({
                 bag: {
                   properties: iter_props,
@@ -191,16 +187,6 @@ fn setup_iterator_protocol(
                 arraybuffer_state: None,
               })
 
-              // Add [Symbol.iterator] to entries iterator
-              match iter_obj {
-                Object(data) =>
-                  data.bag.symbol_properties[iterator_sym.id] = @runtime.make_method_func(
-                    name="[Symbol.iterator]",
-                    length=0,
-                    fn(this_val, _args) { this_val },
-                  )
-                _ => ()
-              }
               iter_obj
             },
           )

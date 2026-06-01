@@ -11,6 +11,10 @@ pub fn setup_builtins(
 }
 
 ///|
+// Engine-private negative symbol IDs are reserved in docs/development.md.
+// This traversal marker is mirrored by the startup subphase benchmark; keep
+// STARTUP_REALM_STAMP_VISITED_SYMBOL_ID synchronized with this value and
+// update the benchmark mirror if the production traversal changes.
 const REALM_STAMP_VISITED_SYMBOL_ID = -111
 
 ///|
@@ -1621,36 +1625,38 @@ fn setup_builtins_with_realm_state_active(
           let matches = regex_search_all(pat, fl, str) catch { _ => [] }
           let index_ref : Ref[Int] = { val: 0 }
           let done_ref : Ref[Bool] = { val: false }
-          let next_method = @runtime.make_method_func(name="next", length=0, fn(
-            this_val,
-            _args,
-          ) raise {
-            // Brand check: verify this is a RegExp String Iterator
-            let has_brand = match this_val {
-              Object(data) =>
-                data.bag.properties.contains("[[RegExpStringIterator]]")
-              _ => false
-            }
-            if !has_brand {
-              raise @errors.TypeError(
-                message="%RegExpStringIteratorPrototype%.next requires that |this| be a RegExp String Iterator",
-              )
-            }
-            if done_ref.val {
-              return @runtime.create_iter_result(Undefined, true)
-            }
-            if index_ref.val >= matches.length() {
-              done_ref.val = true
-              return @runtime.create_iter_result(Undefined, true)
-            }
-            let m = matches[index_ref.val]
-            index_ref.val = index_ref.val + 1
-            let match_array = make_regex_match_array(m, str)
-            if !global {
-              done_ref.val = true
-            }
-            @runtime.create_iter_result(match_array, false)
-          })
+          let next_method = @runtime.make_method_func(
+            name="next",
+            length=0,
+            realm_state=Some(realm_state),
+            fn(this_val, _args) raise {
+              // Brand check: verify this is a RegExp String Iterator
+              let has_brand = match this_val {
+                Object(data) =>
+                  data.bag.properties.contains("[[RegExpStringIterator]]")
+                _ => false
+              }
+              if !has_brand {
+                raise @errors.TypeError(
+                  message="%RegExpStringIteratorPrototype%.next requires that |this| be a RegExp String Iterator",
+                )
+              }
+              if done_ref.val {
+                return @runtime.create_iter_result(Undefined, true)
+              }
+              if index_ref.val >= matches.length() {
+                done_ref.val = true
+                return @runtime.create_iter_result(Undefined, true)
+              }
+              let m = matches[index_ref.val]
+              index_ref.val = index_ref.val + 1
+              let match_array = make_regex_match_array(m, str)
+              if !global {
+                done_ref.val = true
+              }
+              @runtime.create_iter_result(match_array, false)
+            },
+          )
           let iter_props : Map[String, Value] = {}
           iter_props["next"] = next_method
           // Brand marker for internal slot check

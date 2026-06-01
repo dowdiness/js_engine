@@ -1595,24 +1595,18 @@ pub fn setup_typedarray_builtins(
         }
       })
       let iter_props : Map[String, Value] = {}
-      iter_props["next"] = next_method
-      let iter_sym_props : Map[Int, Value] = {}
-      iter_sym_props[iterator_sym.id] = Value::Object({
-        bag: @runtime.PropertyBag(),
-        prototype: Null,
-        callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
-        class_name: "Function",
-        extensible: true,
-        arraybuffer_state: None,
-      })
+      iter_props["next"] = @runtime.stamp_function_realm(
+        next_method,
+        realm_state=Some(realm_state),
+      )
       Value::Object({
         bag: {
           properties: iter_props,
-          symbol_properties: iter_sym_props,
+          symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
         },
-        prototype: Null,
+        prototype: realm_state.get_array_iterator_proto(),
         callable: None,
         class_name: "Array Iterator",
         extensible: true,
@@ -1686,24 +1680,18 @@ pub fn setup_typedarray_builtins(
       }
     })
     let iter_props : Map[String, Value] = {}
-    iter_props["next"] = next_method
-    let iter_sym_props : Map[Int, Value] = {}
-    iter_sym_props[iterator_sym.id] = Value::Object({
-      bag: @runtime.PropertyBag(),
-      prototype: Null,
-      callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    })
+    iter_props["next"] = @runtime.stamp_function_realm(
+      next_method,
+      realm_state=Some(realm_state),
+    )
     Value::Object({
       bag: {
         properties: iter_props,
-        symbol_properties: iter_sym_props,
+        symbol_properties: {},
         descriptors: {},
         symbol_descriptors: {},
       },
-      prototype: Null,
+      prototype: realm_state.get_array_iterator_proto(),
       callable: None,
       class_name: "Array Iterator",
       extensible: true,
@@ -1777,24 +1765,18 @@ pub fn setup_typedarray_builtins(
       }
     })
     let iter_props : Map[String, Value] = {}
-    iter_props["next"] = next_method
-    let iter_sym_props : Map[Int, Value] = {}
-    iter_sym_props[iterator_sym.id] = Value::Object({
-      bag: @runtime.PropertyBag(),
-      prototype: Null,
-      callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    })
+    iter_props["next"] = @runtime.stamp_function_realm(
+      next_method,
+      realm_state=Some(realm_state),
+    )
     Value::Object({
       bag: {
         properties: iter_props,
-        symbol_properties: iter_sym_props,
+        symbol_properties: {},
         descriptors: {},
         symbol_descriptors: {},
       },
-      prototype: Null,
+      prototype: realm_state.get_array_iterator_proto(),
       callable: None,
       class_name: "Array Iterator",
       extensible: true,

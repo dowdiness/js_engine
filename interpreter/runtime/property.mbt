@@ -845,6 +845,7 @@ fn Interpreter::get_computed_property_impl(
                       return make_method_func(
                         name="[Symbol.iterator]",
                         length=0,
+                        realm_state=Some(realm_state),
                         fn(this_val, _args) raise {
                           let str = match this_val {
                             String_(sv) => sv
@@ -882,12 +883,12 @@ fn Interpreter::get_computed_property_impl(
           let iterator_sym = well_known_symbols.iterator
           if sym.id == iterator_sym.id {
             // Return a function that creates a string iterator
-            return make_method_func(name="[Symbol.iterator]", length=0, fn(
-              _this_val,
-              _args,
-            ) {
-              realm_state.make_string_iterator_value(s)
-            })
+            return make_method_func(
+              name="[Symbol.iterator]",
+              length=0,
+              realm_state=Some(realm_state),
+              fn(_this_val, _args) { realm_state.make_string_iterator_value(s) },
+            )
           }
           return Undefined
         }
@@ -934,12 +935,14 @@ fn Interpreter::get_computed_property_impl(
               None => ()
             }
             // Return default array iterator
-            return make_method_func(name="[Symbol.iterator]", length=0, fn(
-              _this_val,
-              _args,
-            ) {
-              realm_state.make_array_iterator_value(arr)
-            })
+            return make_method_func(
+              name="[Symbol.iterator]",
+              length=0,
+              realm_state=Some(realm_state),
+              fn(_this_val, _args) {
+                realm_state.make_array_iterator_value(arr)
+              },
+            )
           }
           return Undefined
         }

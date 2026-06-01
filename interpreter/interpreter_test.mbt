@@ -7034,6 +7034,7 @@ test "borrowed iterator methods use method realm after createRealm" {
       #|var arrayProto = r.evalScript("Object.getPrototypeOf([].values())");
       #|var mapProto = r.evalScript("Object.getPrototypeOf(new Map().entries())");
       #|var setProto = r.evalScript("Object.getPrototypeOf(new Set().values())");
+      #|var typedArrayProto = r.evalScript("Object.getPrototypeOf(new Uint8Array([1]).values())");
       #|var regexpProto = r.evalScript("Object.getPrototypeOf(/a/g[Symbol.matchAll]('a'))");
       #|var foreignArrayKeys = r.evalScript("Array.prototype.keys");
       #|var foreignArrayValues = r.evalScript("Array.prototype.values");
@@ -7042,6 +7043,7 @@ test "borrowed iterator methods use method realm after createRealm" {
       #|var foreignMapEntries = r.evalScript("Map.prototype.entries");
       #|var foreignSetValues = r.evalScript("Set.prototype.values");
       #|var foreignSetEntries = r.evalScript("Set.prototype.entries");
+      #|var foreignTypedValues = r.evalScript("Uint8Array.prototype.values");
       #|var foreignMatchAll = r.evalScript("RegExp.prototype[Symbol.matchAll]");
       #|console.log(Object.getPrototypeOf(foreignArrayKeys.call([])) === arrayProto);
       #|console.log(Object.getPrototypeOf(foreignArrayValues.call([])) === arrayProto);
@@ -7050,12 +7052,126 @@ test "borrowed iterator methods use method realm after createRealm" {
       #|console.log(Object.getPrototypeOf(foreignMapEntries.call(new Map())) === mapProto);
       #|console.log(Object.getPrototypeOf(foreignSetValues.call(new Set())) === setProto);
       #|console.log(Object.getPrototypeOf(foreignSetEntries.call(new Set())) === setProto);
+      #|console.log(Object.getPrototypeOf(foreignTypedValues.call(new Uint8Array([1]))) === typedArrayProto);
       #|console.log(Object.getPrototypeOf(foreignMatchAll.call(/a/g, "a")) === regexpProto);
     ),
   )
   json_inspect(output, content=[
-    "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true", "true", "true", "true", "true", "true",
   ])
+}
+
+///|
+test "iterator next functions use current realm function prototype" {
+  let output = run_output(
+    (
+      #|var functionProto = Function.prototype;
+      #|var mapIter = new Map([[1, 2]]).keys();
+      #|var setIter = new Set([1]).values();
+      #|var typedValuesIter = new Uint8Array([1]).values();
+      #|var typedKeysIter = new Uint8Array([1]).keys();
+      #|var typedEntriesIter = new Uint8Array([1]).entries();
+      #|var regexpIter = /a/g[Symbol.matchAll]("a");
+      #|console.log(Object.getPrototypeOf([].values().next) === functionProto);
+      #|console.log(Object.getPrototypeOf([].keys().next) === functionProto);
+      #|console.log(Object.getPrototypeOf([].entries().next) === functionProto);
+      #|console.log(Object.getPrototypeOf("x"[Symbol.iterator]().next) === functionProto);
+      #|console.log(Object.getPrototypeOf(mapIter.next) === functionProto);
+      #|console.log(Object.getPrototypeOf(setIter.next) === functionProto);
+      #|console.log(Object.getPrototypeOf(typedValuesIter.next) === functionProto);
+      #|console.log(Object.getPrototypeOf(typedKeysIter.next) === functionProto);
+      #|console.log(Object.getPrototypeOf(typedEntriesIter.next) === functionProto);
+      #|console.log(Object.getPrototypeOf(typedValuesIter[Symbol.iterator]) === functionProto);
+      #|console.log(Object.getPrototypeOf(regexpIter.next) === functionProto);
+      #|console.log(Object.getPrototypeOf(Object.getPrototypeOf(mapIter).next) === functionProto);
+      #|console.log(Object.getPrototypeOf(Object.getPrototypeOf(setIter).next) === functionProto);
+      #|console.log(Object.getPrototypeOf(Object.getPrototypeOf(regexpIter).next) === functionProto);
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true",
+  ])
+}
+
+///|
+test "borrowed iterator next functions use method realm function prototype" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var localFunctionProto = Function.prototype;
+      #|var foreignArrayValues = r.evalScript("Array.prototype.values");
+      #|var foreignArrayKeys = r.evalScript("Array.prototype.keys");
+      #|var foreignArrayEntries = r.evalScript("Array.prototype.entries");
+      #|var foreignMapKeys = r.evalScript("Map.prototype.keys");
+      #|var foreignSetValues = r.evalScript("Set.prototype.values");
+      #|var foreignTypedValues = r.evalScript("Uint8Array.prototype.values");
+      #|var foreignTypedKeys = r.evalScript("Uint8Array.prototype.keys");
+      #|var foreignTypedEntries = r.evalScript("Uint8Array.prototype.entries");
+      #|var foreignMatchAll = r.evalScript("RegExp.prototype[Symbol.matchAll]");
+      #|console.log(Object.getPrototypeOf(foreignArrayValues.call([]).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignArrayKeys.call([]).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignArrayEntries.call([]).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignMapKeys.call(new Map()).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignSetValues.call(new Set()).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignTypedValues.call(new Uint8Array([1])).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignTypedKeys.call(new Uint8Array([1])).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignTypedEntries.call(new Uint8Array([1])).next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignTypedValues.call(new Uint8Array([1]))[Symbol.iterator]) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignMatchAll.call(/a/g, "a").next) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(foreignMapKeys.call(new Map()).next) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "false",
+  ])
+}
+
+///|
+test "borrowed Promise.all resolve elements use builtin realm function prototype" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignAll = r.evalScript("Promise.all");
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var localFunctionProto = Function.prototype;
+      #|var originalThen = Promise.prototype.then;
+      #|var captured = null;
+      #|Promise.prototype.then = function(onFulfilled, onRejected) {
+      #|  captured = onFulfilled;
+      #|  return originalThen.call(this, onFulfilled, onRejected);
+      #|};
+      #|foreignAll.call(Promise, [1]);
+      #|Promise.prototype.then = originalThen;
+      #|console.log(Object.getPrototypeOf(captured) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(captured) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
+test "borrowed Promise.resolve capability executor uses builtin realm function prototype" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignResolve = r.evalScript("Promise.resolve");
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var localFunctionProto = Function.prototype;
+      #|var captured = null;
+      #|function CustomPromise(executor) {
+      #|  captured = executor;
+      #|  executor(function() {}, function() {});
+      #|}
+      #|foreignResolve.call(CustomPromise, 1);
+      #|console.log(captured !== null);
+      #|console.log(Object.getPrototypeOf(captured) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(captured) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "false"])
 }
 
 ///|

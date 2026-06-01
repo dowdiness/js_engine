@@ -171,6 +171,29 @@ subphases, global mirroring, generator/async constructors, test262 harness setup
 and the harness's own print/agent/$262/stamping slices. They are also separate
 microbenchmarks, not an additive profile.
 
+Benchmark-only public profiling hooks are allowed only when a separate package
+(such as `benchmarks`) cannot call a private helper. Name them with a
+`profile_*` prefix, keep them in `*_profile.mbt`, and document that they return
+measurement data rather than JavaScript semantics. The startup subphase mirror
+intentionally duplicates the production final realm-stamp traversal; when that
+production traversal changes, update the mirror and its comments in the same
+patch.
+
+Engine-private hidden metadata uses negative symbol IDs in `PropertyBag` symbol
+maps. Reserve IDs in code comments before adding new hidden slots:
+
+- `-1..-2`: Array exotic length/prototype override slots in
+  `interpreter/runtime/value.mbt`.
+- `-101..-110`: function home-realm intrinsic prototype slots in
+  `interpreter/runtime/factories.mbt`.
+- `-111`: final realm-stamp traversal marker in
+  `interpreter/stdlib/builtins.mbt`, mirrored by
+  `benchmarks/startup_new_interpreter_subphases.mbt`.
+
+Runtime-created user and well-known symbols must stay non-negative. Traversal
+code treats negative symbol IDs as engine-private metadata and must not expose
+them as ordinary JavaScript symbol properties.
+
 For hosted process-level startup snapshots, use the manual-only Startup
 Hyperfine workflow (`.github/workflows/startup-hyperfine.yml`). It builds the JS
 release CLI, times repeated invocations of

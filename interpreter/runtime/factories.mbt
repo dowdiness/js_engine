@@ -1,4 +1,8 @@
 ///|
+// Engine-private negative symbol IDs are reserved in docs/development.md.
+// -101..-110 store a function object's home-realm intrinsic prototypes.
+// Keep this block contiguous and do not reuse these IDs for user-visible
+// symbols or other hidden metadata.
 const FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID = -101
 
 ///|

@@ -254,6 +254,9 @@ fn keep_global_property(global_this : Value, name : String) -> Unit {
 }
 
 ///|
+// Mirrors interpreter/stdlib/builtins.mbt's final realm-stamp traversal marker.
+// Keep this value and the startup_stamp_realm_* traversal below synchronized
+// with production when changing hidden metadata traversal semantics.
 const STARTUP_REALM_STAMP_VISITED_SYMBOL_ID = -111
 
 ///|

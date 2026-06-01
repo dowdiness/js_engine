@@ -34,6 +34,11 @@ fn mark_builtin_setup_phase(
 /// Benchmark-only helper for startup profiling. This is public so the
 /// `benchmarks` package can time internal `setup_builtins` phases; it is not a
 /// JavaScript semantic operation.
+///
+/// Public profiling hooks in this package use the `profile_*` prefix, live in
+/// `*_profile.mbt`, and must return measurement data without affecting
+/// JavaScript-visible semantics. Do not call them from interpreter runtime
+/// paths; use them only from benchmark or diagnostic harnesses.
 pub fn profile_setup_builtins_with_realm_state(
   env : Environment,
   output : Array[String],

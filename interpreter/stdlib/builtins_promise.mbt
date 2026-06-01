@@ -251,6 +251,7 @@ fn create_promise_capability_from_constructor(
   let executor = @runtime.make_interp_method_func(
     name="promiseCapabilityExecutor",
     length=2,
+    realm_state=Some(interp.realm_state),
     fn(_i, _this, args) raise {
       let resolve_fn = if args.length() > 0 { args[0] } else { Undefined }
       let reject_fn = if args.length() > 1 { args[1] } else { Undefined }
@@ -820,6 +821,7 @@ pub fn setup_promise(
           let resolve_element = @runtime.make_interp_method_func(
             name="allResolveElement",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1010,6 +1012,7 @@ pub fn setup_promise(
           let on_fulfilled = @runtime.make_interp_method_func(
             name="allSettledOnFulfilled",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1048,6 +1051,7 @@ pub fn setup_promise(
           let on_rejected = @runtime.make_interp_method_func(
             name="allSettledOnRejected",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1180,6 +1184,7 @@ pub fn setup_promise(
           let on_fulfilled = @runtime.make_interp_method_func(
             name="anyOnFulfilled",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1193,6 +1198,7 @@ pub fn setup_promise(
           let on_rejected = @runtime.make_interp_method_func(
             name="anyOnRejected",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
