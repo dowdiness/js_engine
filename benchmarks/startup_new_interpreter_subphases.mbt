@@ -801,7 +801,8 @@ fn time_realm_stamp_existing_builtins_env() -> Double {
 ///|
 // Diagnostic restamp probes for issue #190. These rows prepare a realm where
 // setup_builtins has already run, then re-run the mirrored final realm-stamp
-// traversal against selected roots. They are useful for locating broad root
+// traversal against selected env roots, including setup_builtins internal roots
+// such as [[TypedArrayPrototype]]. They are useful for locating broad root
 // families, but they are independent, non-additive microbenchmarks and not an
 // exact production attribution of the original final_realm_stamp row.
 fn time_realm_stamp_setup_builtins_env() -> Double {
@@ -1179,21 +1180,31 @@ fn run_startup_new_interpreter_subphases() -> Array[BenchResult] raise {
       { warmup: 5, iterations: 50, group_size: 10 },
       time_realm_stamp_setup_builtins_env,
     ),
-    run_realm_stamp_setup_root("object", ["Object"]),
-    run_realm_stamp_setup_root("function", ["Function"]),
+    run_realm_stamp_setup_root("object", ["Object", "[[ObjectPrototype]]"]),
+    run_realm_stamp_setup_root("function", [
+      "Function", "[[FunctionPrototype]]", "[[ThrowTypeError]]",
+    ]),
     run_realm_stamp_setup_root("array", ["Array"]),
     run_realm_stamp_setup_root("primitive_constructors", [
-      "String", "Number", "Boolean", "Symbol",
+      "String", "[[StringPrototype]]", "Number", "[[NumberPrototype]]", "Boolean",
+      "[[BooleanPrototype]]", "Symbol", "[[SymbolPrototype]]",
     ]),
     run_realm_stamp_setup_root("error_constructors", [
       "Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError",
-      "EvalError",
+      "EvalError", "InternalError", "AggregateError",
     ]),
     run_realm_stamp_setup_root("regexp", ["RegExp"]),
     run_realm_stamp_setup_root("map_set", ["Map", "Set"]),
     run_realm_stamp_setup_root("arraybuffer_typedarray_dataview", [
-      "ArrayBuffer", "DataView", "Int8Array", "Uint8Array", "Uint8ClampedArray",
-      "Int16Array", "Uint16Array", "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+      "ArrayBuffer", "[[ArrayBufferPrototype]]", "DataView", "[[DataViewPrototype]]",
+      "[[TypedArrayConstructor]]", "[[TypedArrayPrototype]]", "Int8Array", "[[Int8ArrayConstructor]]",
+      "[[Int8ArrayPrototype]]", "Uint8Array", "[[Uint8ArrayConstructor]]", "[[Uint8ArrayPrototype]]",
+      "Uint8ClampedArray", "[[Uint8ClampedArrayConstructor]]", "[[Uint8ClampedArrayPrototype]]",
+      "Int16Array", "[[Int16ArrayConstructor]]", "[[Int16ArrayPrototype]]", "Uint16Array",
+      "[[Uint16ArrayConstructor]]", "[[Uint16ArrayPrototype]]", "Int32Array", "[[Int32ArrayConstructor]]",
+      "[[Int32ArrayPrototype]]", "Uint32Array", "[[Uint32ArrayConstructor]]", "[[Uint32ArrayPrototype]]",
+      "Float32Array", "[[Float32ArrayConstructor]]", "[[Float32ArrayPrototype]]",
+      "Float64Array", "[[Float64ArrayConstructor]]", "[[Float64ArrayPrototype]]",
     ]),
     run_realm_stamp_setup_root("global_functions", [
       "eval", "isNaN", "isFinite", "parseInt", "parseFloat", "encodeURIComponent",
