@@ -6918,6 +6918,21 @@ test "harness: $262.gc is a no-op" {
 }
 
 ///|
+test "harness: host functions use current realm function prototype" {
+  let output = run_output(
+    (
+      #|var localFunctionProto = Function.prototype;
+      #|console.log(Object.getPrototypeOf(print) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf($262.gc) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf($262.evalScript) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf($262.createRealm) === localFunctionProto);
+      #|console.log(Object.getPrototypeOf($262.agent.start) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true", "true"])
+}
+
+///|
 test "harness: $262.evalScript evaluates code in global scope" {
   let output = run_output(
     (

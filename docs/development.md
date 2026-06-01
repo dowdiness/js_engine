@@ -158,6 +158,19 @@ parse, `new_interpreter`, already-parsed execution, empty event-loop drain, and
 result stringification/output handling. Treat the phase timings as separate
 microbenchmarks, not as an additive profile.
 
+To split `new_interpreter` itself into focused JS-target subphases before
+designing lazy or cached runtime initialization, run:
+
+```bash
+moon run --target js --release benchmarks -- --startup-new-interpreter-subphases --csv
+```
+
+Those rows isolate realm/symbol setup, global environment/object setup,
+stdlib hook and host setup, `setup_builtins_with_realm_state`, its builtin-family
+subphases, global mirroring, generator/async constructors, test262 harness setup,
+and the harness's own print/agent/$262/stamping slices. They are also separate
+microbenchmarks, not an additive profile.
+
 For hosted process-level startup snapshots, use the manual-only Startup
 Hyperfine workflow (`.github/workflows/startup-hyperfine.yml`). It builds the JS
 release CLI, times repeated invocations of

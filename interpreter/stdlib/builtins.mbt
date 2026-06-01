@@ -11,17 +11,41 @@ pub fn setup_builtins(
 }
 
 ///|
+const REALM_STAMP_VISITED_SYMBOL_ID = -111
+
+///|
+fn stamp_realm_reachable_value(
+  value : Value,
+  realm_state : @runtime.RealmState,
+  depth : Int,
+  visited_objects : Array[@runtime.ObjectData],
+) -> Unit {
+  match value {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+      stamp_realm_functions_in_value(value, realm_state, depth, visited_objects)
+    _ => ()
+  }
+}
+
+///|
 fn stamp_realm_functions_in_bag(
   bag : @runtime.PropertyBag,
   realm_state : @runtime.RealmState,
   depth : Int,
-  visited_objects : Array[(@runtime.ObjectData, Int)],
+  visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   bag.properties.each(fn(_key, value) {
-    stamp_realm_functions_in_value(value, realm_state, depth, visited_objects)
+    stamp_realm_reachable_value(value, realm_state, depth, visited_objects)
   })
-  bag.symbol_properties.each(fn(_key, value) {
-    stamp_realm_functions_in_value(value, realm_state, depth, visited_objects)
+  bag.symbol_properties.each(fn(key, value) {
+    // Negative symbol IDs are internal metadata (including the hidden function
+    // realm prototype slots that this stamp operation writes).  They point back
+    // into the intrinsic graph and are not a source of user-visible built-in
+    // functions, so following them makes the final stamp revisit the same realm
+    // prototypes for every callable.
+    if key >= 0 {
+      stamp_realm_reachable_value(value, realm_state, depth, visited_objects)
+    }
   })
 }
 
@@ -29,20 +53,40 @@ fn stamp_realm_functions_in_bag(
 fn stamp_realm_object_seen_at_depth(
   data : @runtime.ObjectData,
   depth : Int,
-  visited_objects : Array[(@runtime.ObjectData, Int)],
+  visited_objects : Array[@runtime.ObjectData],
 ) -> Bool {
-  for index, entry in visited_objects {
-    let (seen, seen_depth) = entry
-    if physical_equal(seen, data) {
-      if seen_depth >= depth {
+  let current_depth = depth.to_double()
+  match data.bag.symbol_properties.get(REALM_STAMP_VISITED_SYMBOL_ID) {
+    Some(Number(seen_depth)) => {
+      if seen_depth >= current_depth {
         return true
       }
-      visited_objects[index] = (data, depth)
-      return false
+      // Preserve the previous depth-aware traversal semantics: if an object is
+      // first reached through a shallower path, revisit it once when a later
+      // root reaches it with more remaining depth.
+      data.bag.symbol_properties[REALM_STAMP_VISITED_SYMBOL_ID] = Number(
+        current_depth,
+      )
+      false
+    }
+    Some(_) => true
+    None => {
+      data.bag.symbol_properties[REALM_STAMP_VISITED_SYMBOL_ID] = Number(
+        current_depth,
+      )
+      visited_objects.push(data)
+      false
     }
   }
-  visited_objects.push((data, depth))
-  false
+}
+
+///|
+fn clear_realm_stamp_markers(
+  visited_objects : Array[@runtime.ObjectData],
+) -> Unit {
+  for data in visited_objects {
+    let _ = data.bag.symbol_properties.remove(REALM_STAMP_VISITED_SYMBOL_ID)
+  }
 }
 
 ///|
@@ -50,7 +94,7 @@ fn stamp_realm_functions_in_value(
   value : Value,
   realm_state : @runtime.RealmState,
   depth : Int,
-  visited_objects : Array[(@runtime.ObjectData, Int)],
+  visited_objects : Array[@runtime.ObjectData],
 ) -> Unit {
   if depth == 0 {
     return
@@ -61,8 +105,12 @@ fn stamp_realm_functions_in_value(
       if stamp_realm_object_seen_at_depth(data, depth, visited_objects) {
         return
       }
-      @runtime.stamp_function_realm(value, realm_state=Some(realm_state))
-      |> ignore
+      match data.callable {
+        Some(_) =>
+          @runtime.stamp_function_realm(value, realm_state=Some(realm_state))
+          |> ignore
+        None => ()
+      }
       stamp_realm_functions_in_bag(
         data.bag,
         realm_state,
@@ -115,7 +163,7 @@ fn stamp_realm_functions_in_env(
   env : Environment,
   realm_state : @runtime.RealmState,
 ) -> Unit {
-  let visited_objects : Array[(@runtime.ObjectData, Int)] = []
+  let visited_objects : Array[@runtime.ObjectData] = []
   env.bindings.each(fn(_name, binding) {
     stamp_realm_functions_in_value(
       binding.value,
@@ -124,6 +172,7 @@ fn stamp_realm_functions_in_env(
       visited_objects,
     )
   })
+  clear_realm_stamp_markers(visited_objects)
 }
 
 ///|
@@ -153,6 +202,7 @@ fn setup_builtins_with_realm_state_active(
   output : Array[String],
   realm_state : @runtime.RealmState,
   annex_b : Bool,
+  profile? : BuiltinSetupProfiler,
 ) -> Unit {
   let _ = output
   let symbols = realm_state.symbols
@@ -442,6 +492,8 @@ fn setup_builtins_with_realm_state_active(
       Value::String_(js_unescape(str))
     }),
   )
+
+  mark_builtin_setup_phase(profile, "global_functions")
 
   // String constructor with static methods
   let string_proto : Value = Value::Object({
@@ -734,8 +786,11 @@ fn setup_builtins_with_realm_state_active(
     _ => ()
   }
 
+  mark_builtin_setup_phase(profile, "string")
+
   // Number constructor with static methods and prototype
   setup_number_builtins(env, realm_state)
+  mark_builtin_setup_phase(profile, "number")
 
   // Boolean constructor with prototype
   let boolean_proto_props : Map[String, Value] = {}
@@ -894,8 +949,11 @@ fn setup_builtins_with_realm_state_active(
     _ => ()
   }
 
+  mark_builtin_setup_phase(profile, "boolean")
+
   // Function constructor with prototype
   setup_function_builtins(env, realm_state)
+  mark_builtin_setup_phase(profile, "function")
 
   // Error constructors
   let error_proto = register_error_ctor(
@@ -943,6 +1001,8 @@ fn setup_builtins_with_realm_state_active(
     }
     _ => ()
   }
+
+  mark_builtin_setup_phase(profile, "errors")
 
   // Object, Array constructors and built-in methods
   setup_object_builtins(env, symbols, realm_state)
@@ -1043,6 +1103,8 @@ fn setup_builtins_with_realm_state_active(
     None => ()
   }
 
+  mark_builtin_setup_phase(profile, "object_array_initial_patching")
+
   // Symbol constructor and well-known symbols (must be before Math for Symbol.toStringTag)
   setup_symbol_builtins(env, realm_state)
   // Patch Symbol.prototype.[[Prototype]] = Object.prototype
@@ -1061,11 +1123,15 @@ fn setup_builtins_with_realm_state_active(
     None => ()
   }
 
+  mark_builtin_setup_phase(profile, "symbol")
+
   // Math object
   setup_math_builtins(env, well_known_symbols)
+  mark_builtin_setup_phase(profile, "math")
 
   // JSON object
   setup_json_builtins(env, well_known_symbols)
+  mark_builtin_setup_phase(profile, "json")
 
   // RegExp constructor
   env.def_builtin(
@@ -1756,37 +1822,49 @@ fn setup_builtins_with_realm_state_active(
     None => ()
   }
 
+  mark_builtin_setup_phase(profile, "regexp")
+
   // Set up iterator protocol on Array and String prototypes
   // Use try/catch since setup_iterator_protocol can raise errors
   setup_iterator_protocol(env, realm_state) catch {
     _ => () // Ignore errors during initialization
   }
 
+  mark_builtin_setup_phase(profile, "iterator_protocol")
+
   // Set up Map and Set collections
   setup_map_set_builtins(env, realm_state)
+  mark_builtin_setup_phase(profile, "map_set")
 
   // Set up Promise constructor and prototype
   setup_promise(env, realm_state)
+  mark_builtin_setup_phase(profile, "promise")
 
   // Set up Date constructor and prototype
   setup_date_builtins(env, well_known_symbols, realm_state)
+  mark_builtin_setup_phase(profile, "date")
 
   // Set up timer APIs (setTimeout, clearTimeout, setInterval, clearInterval)
   setup_timers(env)
+  mark_builtin_setup_phase(profile, "timers")
 
   // Set up Proxy constructor and Proxy.revocable
   setup_proxy_builtins(env)
+  mark_builtin_setup_phase(profile, "proxy")
 
   // Set up Reflect global object
   setup_reflect_builtins(env, well_known_symbols)
+  mark_builtin_setup_phase(profile, "reflect")
 
   // Set up ArrayBuffer, TypedArray, and DataView
   setup_arraybuffer_builtins(env, well_known_symbols, realm_state)
   setup_typedarray_builtins(env, well_known_symbols, realm_state)
   setup_dataview_builtins(env, well_known_symbols, realm_state)
+  mark_builtin_setup_phase(profile, "arraybuffer_typedarray_dataview")
 
   // Set up WeakMap and WeakSet
   setup_weakmap_set_builtins(env, well_known_symbols, realm_state)
+  mark_builtin_setup_phase(profile, "weak_collections")
 
   // Final prototype chain patching for constructors registered after initial patch
   match env.bindings.get("[[FunctionPrototype]]") {
@@ -1841,6 +1919,8 @@ fn setup_builtins_with_realm_state_active(
     None => ()
   }
 
+  mark_builtin_setup_phase(profile, "final_prototype_patching")
+
   // Add Symbol.species getter to built-in constructors (Array, RegExp, Map, Set)
   // Per spec: static get [Symbol.species]() { return this; }
   let species_getter = @runtime.make_method_func(
@@ -1868,6 +1948,8 @@ fn setup_builtins_with_realm_state_active(
       _ => ()
     }
   }
+
+  mark_builtin_setup_phase(profile, "species")
 
   // Add Function.prototype[Symbol.hasInstance]
   let has_instance_sym = well_known_symbols.has_instance
@@ -1932,7 +2014,9 @@ fn setup_builtins_with_realm_state_active(
       }
     None => ()
   }
+  mark_builtin_setup_phase(profile, "has_instance")
   stamp_realm_functions_from_env(env, realm_state)
+  mark_builtin_setup_phase(profile, "final_realm_stamp")
 }
 
 ///|
@@ -2368,41 +2452,57 @@ pub fn setup_harness_builtins(
   }
   // print() - host-provided print function for test262 harness compatibility.
   // Joins arguments with spaces and appends to output (like console.log).
-  let print_func = @runtime.make_native_func(name="print", fn(args) {
-    let parts : Array[String] = args.map(fn(a) { a.to_string() })
-    output.push(parts.join(" "))
-    Undefined
-  })
+  let print_func = @runtime.make_native_func(
+    name="print",
+    realm_state=Some(realm_state),
+    fn(args) {
+      let parts : Array[String] = args.map(fn(a) { a.to_string() })
+      output.push(parts.join(" "))
+      Undefined
+    },
+  )
   env.def_builtin("print", print_func)
 
   // $262.agent - stub object for agent/worker testing (Atomics/SharedArrayBuffer).
   // All methods throw because the engine has no multi-agent support.
   let agent_props : Map[String, Value] = {}
-  agent_props["start"] = @runtime.make_native_func(name="start", fn(
-    _args,
-  ) raise {
-    raise @errors.TypeError(message="$262.agent.start is not supported")
-  })
-  agent_props["broadcast"] = @runtime.make_native_func(name="broadcast", fn(
-    _args,
-  ) raise {
-    raise @errors.TypeError(message="$262.agent.broadcast is not supported")
-  })
-  agent_props["getReport"] = @runtime.make_native_func(name="getReport", fn(
-    _args,
-  ) raise {
-    raise @errors.TypeError(message="$262.agent.getReport is not supported")
-  })
-  agent_props["sleep"] = @runtime.make_native_func(name="sleep", fn(
-    _args,
-  ) raise {
-    raise @errors.TypeError(message="$262.agent.sleep is not supported")
-  })
-  agent_props["monotonicNow"] = @runtime.make_native_func(name="monotonicNow", fn(
-    _args,
-  ) raise {
-    raise @errors.TypeError(message="$262.agent.monotonicNow is not supported")
-  })
+  agent_props["start"] = @runtime.make_native_func(
+    name="start",
+    realm_state=Some(realm_state),
+    fn(_args) raise {
+      raise @errors.TypeError(message="$262.agent.start is not supported")
+    },
+  )
+  agent_props["broadcast"] = @runtime.make_native_func(
+    name="broadcast",
+    realm_state=Some(realm_state),
+    fn(_args) raise {
+      raise @errors.TypeError(message="$262.agent.broadcast is not supported")
+    },
+  )
+  agent_props["getReport"] = @runtime.make_native_func(
+    name="getReport",
+    realm_state=Some(realm_state),
+    fn(_args) raise {
+      raise @errors.TypeError(message="$262.agent.getReport is not supported")
+    },
+  )
+  agent_props["sleep"] = @runtime.make_native_func(
+    name="sleep",
+    realm_state=Some(realm_state),
+    fn(_args) raise {
+      raise @errors.TypeError(message="$262.agent.sleep is not supported")
+    },
+  )
+  agent_props["monotonicNow"] = @runtime.make_native_func(
+    name="monotonicNow",
+    realm_state=Some(realm_state),
+    fn(_args) raise {
+      raise @errors.TypeError(
+        message="$262.agent.monotonicNow is not supported",
+      )
+    },
+  )
   let agent : Value = Value::Object({
     bag: {
       properties: agent_props,
@@ -2421,17 +2521,20 @@ pub fn setup_harness_builtins(
   let dollar262_props : Map[String, Value] = {}
   dollar262_props["global"] = global_this
   dollar262_props["agent"] = agent
-  dollar262_props["gc"] = @runtime.make_native_func(name="gc", fn(_args) {
-    Undefined
-  })
+  dollar262_props["gc"] = @runtime.make_native_func(
+    name="gc",
+    realm_state=Some(realm_state),
+    fn(_args) { Undefined },
+  )
 
   // $262.createRealm() - creates a fresh realm with its own global environment
-  // and returns a $262 handle bound to the new realm. Uses NativeCallable
-  // closures (not InterpreterCallable) so that evalScript always runs in the
-  // new realm regardless of which interpreter invokes the method.
+  // and returns a $262 handle bound to the new realm. The returned handle uses
+  // NativeCallable closures so that evalScript always runs in the new realm
+  // regardless of which interpreter invokes the method.
   dollar262_props["createRealm"] = @runtime.make_interp_method_func(
     name="createRealm",
     length=0,
+    realm_state=Some(realm_state),
     (interp, _this_val, _args) => {
       let new_interp = (interp.stdlib_hooks.create_realm)()
       make_realm_dollar262(new_interp)
@@ -2443,6 +2546,7 @@ pub fn setup_harness_builtins(
   dollar262_props["evalScript"] = @runtime.make_interp_method_func(
     name="evalScript",
     length=1,
+    realm_state=Some(realm_state),
     fn(interp, _this_val, args) raise {
       let code = if args.length() > 0 {
         match args[0] {
@@ -2459,6 +2563,7 @@ pub fn setup_harness_builtins(
   dollar262_props["detachArrayBuffer"] = @runtime.make_native_func(
     name="detachArrayBuffer",
     length=1,
+    realm_state=Some(realm_state),
     fn(args) raise {
       if args.length() == 0 {
         raise @errors.TypeError(
@@ -2498,5 +2603,4 @@ pub fn setup_harness_builtins(
     }
     _ => ()
   }
-  stamp_realm_functions_from_env(env, realm_state)
 }
