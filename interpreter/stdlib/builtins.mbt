@@ -1341,15 +1341,7 @@ fn setup_builtins_with_realm_state_active(
       }
       // [Symbol.match]
       let match_sym = well_known_symbols.match_sym
-      regexp_sym_props[match_sym.id] = @runtime.make_method_func(
-        name="[Symbol.match]",
-        length=1,
-        fn(this_val, args) {
-          let str = if args.length() > 0 { args[0].to_string() } else { "" }
-          let (pat, fl) = extract_regexp_source_flags(this_val)
-          string_match_regex(str, pat, fl)
-        },
-      )
+      regexp_sym_props[match_sym.id] = make_regexp_match_method(realm_state)
       regexp_sym_descs[match_sym.id] = sym_method_desc
       // [Symbol.matchAll]
       let match_all_sym = well_known_symbols.match_all

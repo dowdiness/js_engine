@@ -2293,7 +2293,7 @@ fn regexp_advance_string_index(
 }
 
 ///|
-fn regexp_exec_for_replace(
+fn regexp_exec_for_symbol_method(
   interp : Interpreter,
   rx : Value,
   input : String,
@@ -2575,7 +2575,7 @@ fn regexp_symbol_replace(
   let results : Array[Value] = []
   let mut done = false
   while !done {
-    let result = regexp_exec_for_replace(interp, this_val, input)
+    let result = regexp_exec_for_symbol_method(interp, this_val, input)
     match result {
       Null => done = true
       _ => {
@@ -2662,6 +2662,79 @@ fn make_regexp_replace_method(realm_state : @runtime.RealmState) -> Value {
     realm_state=Some(realm_state),
     fn(interp, this_val, args) raise {
       regexp_symbol_replace(interp, this_val, args)
+    },
+  )
+}
+
+///|
+fn regexp_symbol_match(
+  interp : Interpreter,
+  this_val : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  if !regexp_this_is_object(this_val) {
+    return regexp_proto_incompatible("RegExp.prototype[Symbol.match]")
+  }
+  let loc = @token.Loc::default()
+  let input = if args.length() > 0 { interp.to_js_string(args[0]) } else { "" }
+  let flags = interp.to_js_string(interp.get_property(this_val, "flags", loc))
+  let global = flags.contains("g")
+  if !global {
+    return regexp_exec_for_symbol_method(interp, this_val, input)
+  }
+  let full_unicode = flags.contains("u") || flags.contains("v")
+  let _ = interp.set_property(
+    this_val,
+    "lastIndex",
+    Value::Number(0.0),
+    loc,
+    strict=true,
+  )
+  let matches : Array[Value] = []
+  while true {
+    let result = regexp_exec_for_symbol_method(interp, this_val, input)
+    match result {
+      Null =>
+        if matches.length() == 0 {
+          return Null
+        } else {
+          return @runtime.make_array(matches)
+        }
+      _ => {
+        let match_str = interp.to_js_string(
+          interp.get_property(result, "0", loc),
+        )
+        matches.push(Value::String_(match_str))
+        if match_str == "" {
+          let this_index = regexp_to_length(
+            interp.get_property(this_val, "lastIndex", loc),
+            interp,
+          )
+          let next_index = regexp_advance_string_index(
+            input, this_index, full_unicode,
+          )
+          let _ = interp.set_property(
+            this_val,
+            "lastIndex",
+            Value::Number(next_index),
+            loc,
+            strict=true,
+          )
+        }
+      }
+    }
+  }
+  Null
+}
+
+///|
+fn make_regexp_match_method(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(
+    name="[Symbol.match]",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(interp, this_val, args) raise {
+      regexp_symbol_match(interp, this_val, args)
     },
   )
 }
