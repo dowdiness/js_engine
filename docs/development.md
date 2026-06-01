@@ -131,6 +131,19 @@ is rendered in the read-only benchmark execution job before the publish job
 posts it. Repository-write permissions are scoped to the publish job; the
 benchmark execution job runs with read-only repository contents permission.
 
+For less-noisy local timing on a focused set of rows, repeat full CSV snapshots
+and compare medians instead of a single process run:
+
+```bash
+scripts/bench-focus.py --runs 5
+scripts/bench-focus.py --runs 3 --rows isolate/bytecode/property_get,pipeline/bytecode/evaluate
+```
+
+The helper saves each raw CSV under `_build/bench-focus/<timestamp>/` and
+reports median/mean/range across runs plus the median in-run CV. Use this for
+post-merge baselines or exploratory follow-up work; use same-runner base/head
+PR reports for optimization claims.
+
 The `startup/tiny_program` benchmark is the low-noise guardrail for interpreter
 startup and built-in installation. It intentionally measures `run("1 + 1")` in
 process so CI trend data is not dominated by Node process spawn time. To split
