@@ -251,6 +251,7 @@ fn create_promise_capability_from_constructor(
   let executor = @runtime.make_interp_method_func(
     name="promiseCapabilityExecutor",
     length=2,
+    realm_state=Some(interp.realm_state),
     fn(_i, _this, args) raise {
       let resolve_fn = if args.length() > 0 { args[0] } else { Undefined }
       let reject_fn = if args.length() > 1 { args[1] } else { Undefined }

@@ -7153,6 +7153,28 @@ test "borrowed Promise.all resolve elements use builtin realm function prototype
 }
 
 ///|
+test "borrowed Promise.resolve capability executor uses builtin realm function prototype" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var foreignResolve = r.evalScript("Promise.resolve");
+      #|var foreignFunctionProto = r.evalScript("Function.prototype");
+      #|var localFunctionProto = Function.prototype;
+      #|var captured = null;
+      #|function CustomPromise(executor) {
+      #|  captured = executor;
+      #|  executor(function() {}, function() {});
+      #|}
+      #|foreignResolve.call(CustomPromise, 1);
+      #|console.log(captured !== null);
+      #|console.log(Object.getPrototypeOf(captured) === foreignFunctionProto);
+      #|console.log(Object.getPrototypeOf(captured) === localFunctionProto);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "false"])
+}
+
+///|
 test "array iterator methods keep method realm when installed in another realm" {
   let output = run_output(
     (
