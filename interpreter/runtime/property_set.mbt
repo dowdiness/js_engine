@@ -24,6 +24,23 @@ pub fn Interpreter::set_property(
     Proxy(proxy_data) =>
       proxy_set(self, proxy_data, prop, value, receiver, strict)
     Object(data) => {
+      let receiver_is_self = strict_equal(obj, receiver)
+      // Ordinary object-literal own-data writes can skip the TypedArray string
+      // classifier and descriptor hash when the receiver is the object itself.
+      if data.class_name == "Object" &&
+        receiver_is_self &&
+        (
+          data.bag.descriptors.is_empty() ||
+          !data.bag.descriptors.contains(prop)
+        ) {
+        match data.bag.properties.get(prop) {
+          Some(_) => {
+            data.bag.properties[prop] = value
+            return value
+          }
+          None => ()
+        }
+      }
       // TypedArray indexed write via dot notation (numeric string prop).
       // Receiver-sensitive per §10.4.5.5 step 1.b:
       // - canonical-invalid → no-op regardless of receiver
@@ -49,7 +66,11 @@ pub fn Interpreter::set_property(
           None => () // not a canonical numeric string — fall through
         }
       }
-      if strict_equal(obj, receiver) && !data.bag.descriptors.contains(prop) {
+      if receiver_is_self &&
+        (
+          data.bag.descriptors.is_empty() ||
+          !data.bag.descriptors.contains(prop)
+        ) {
         match data.bag.properties.get(prop) {
           Some(_) => {
             data.bag.properties[prop] = value
