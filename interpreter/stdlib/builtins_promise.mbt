@@ -820,6 +820,7 @@ pub fn setup_promise(
           let resolve_element = @runtime.make_interp_method_func(
             name="allResolveElement",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1010,6 +1011,7 @@ pub fn setup_promise(
           let on_fulfilled = @runtime.make_interp_method_func(
             name="allSettledOnFulfilled",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1048,6 +1050,7 @@ pub fn setup_promise(
           let on_rejected = @runtime.make_interp_method_func(
             name="allSettledOnRejected",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1180,6 +1183,7 @@ pub fn setup_promise(
           let on_fulfilled = @runtime.make_interp_method_func(
             name="anyOnFulfilled",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1193,6 +1197,7 @@ pub fn setup_promise(
           let on_rejected = @runtime.make_interp_method_func(
             name="anyOnRejected",
             length=1,
+            realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
               if already_called.val {
                 return Undefined
@@ -1371,6 +1376,7 @@ pub fn setup_promise(
   let species_getter = @runtime.make_method_func(
     name="get [Symbol.species]",
     length=0,
+    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
   let species_symbol_val = env.get("Symbol") catch { _ => Undefined }

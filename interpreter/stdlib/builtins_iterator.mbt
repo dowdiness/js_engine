@@ -15,15 +15,17 @@ fn setup_iterator_protocol(
         Some(Object(proto_data)) => {
           // values() and [Symbol.iterator] are the same function object per spec
           // (Array.prototype.values === Array.prototype[Symbol.iterator]).
-          let values_fn = @runtime.make_method_func(name="values", length=0, fn(
-            this_val,
-            _args,
-          ) raise {
-            match this_val {
-              Value::Array(arr) => realm_state.make_array_iterator_value(arr)
-              _ => realm_state.make_array_like_iterator_value(this_val)
-            }
-          })
+          let values_fn = @runtime.make_method_func(
+            name="values",
+            length=0,
+            realm_state=Some(realm_state),
+            fn(this_val, _args) raise {
+              match this_val {
+                Value::Array(arr) => realm_state.make_array_iterator_value(arr)
+                _ => realm_state.make_array_like_iterator_value(this_val)
+              }
+            },
+          )
           proto_data.bag.symbol_properties[iterator_sym.id] = values_fn
           proto_data.bag.properties["values"] = values_fn
 
@@ -31,6 +33,7 @@ fn setup_iterator_protocol(
           proto_data.bag.properties["keys"] = @runtime.make_method_func(
             name="keys",
             length=0,
+            realm_state=Some(realm_state),
             (this_val, _args) => {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
@@ -85,7 +88,10 @@ fn setup_iterator_protocol(
                 arraybuffer_state: None,
               })
               let iter_props : Map[String, Value] = {}
-              iter_props["next"] = next_method
+              iter_props["next"] = @runtime.stamp_function_realm(
+                next_method,
+                realm_state=Some(realm_state),
+              )
               let iter_obj = Value::Object({
                 bag: {
                   properties: iter_props,
@@ -106,6 +112,7 @@ fn setup_iterator_protocol(
                   data.bag.symbol_properties[iterator_sym.id] = @runtime.make_method_func(
                     name="[Symbol.iterator]",
                     length=0,
+                    realm_state=Some(realm_state),
                     fn(this_val, _args) { this_val },
                   )
                 _ => ()
@@ -118,6 +125,7 @@ fn setup_iterator_protocol(
           proto_data.bag.properties["entries"] = @runtime.make_method_func(
             name="entries",
             length=0,
+            realm_state=Some(realm_state),
             (this_val, _args) => {
               let the_val = this_val
               let index_ref : Ref[Int] = { val: 0 }
@@ -176,7 +184,10 @@ fn setup_iterator_protocol(
                 arraybuffer_state: None,
               })
               let iter_props : Map[String, Value] = {}
-              iter_props["next"] = next_method
+              iter_props["next"] = @runtime.stamp_function_realm(
+                next_method,
+                realm_state=Some(realm_state),
+              )
               let iter_obj = Value::Object({
                 bag: {
                   properties: iter_props,
@@ -197,6 +208,7 @@ fn setup_iterator_protocol(
                   data.bag.symbol_properties[iterator_sym.id] = @runtime.make_method_func(
                     name="[Symbol.iterator]",
                     length=0,
+                    realm_state=Some(realm_state),
                     fn(this_val, _args) { this_val },
                   )
                 _ => ()
@@ -270,6 +282,7 @@ fn setup_iterator_protocol(
       let iter_method = @runtime.make_method_func(
         name="[Symbol.iterator]",
         length=0,
+        realm_state=Some(realm_state),
         fn(this_val, _args) {
           let s = this_val.to_string()
           realm_state.make_string_iterator_value(s)

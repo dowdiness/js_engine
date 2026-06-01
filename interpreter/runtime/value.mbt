@@ -394,6 +394,9 @@ pub(all) enum Value {
 }
 
 ///|
+// Engine-private negative symbol IDs are reserved in docs/development.md.
+// -1 and -2 are Array exotic override slots stored in PropertyBag symbol maps;
+// they must not collide with function realm metadata or traversal markers.
 const ARRAY_LENGTH_OVERRIDE_SYMBOL_ID = -1
 
 ///|

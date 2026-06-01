@@ -706,6 +706,23 @@ pub fn get_typedarray_prop(
 }
 
 ///|
+fn make_typedarray_iterator_self_method(
+  realm_state : @runtime.RealmState,
+) -> Value {
+  @runtime.stamp_function_realm(
+    Value::Object({
+      bag: @runtime.PropertyBag(),
+      prototype: Null,
+      callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
+      class_name: "Function",
+      extensible: true,
+      arraybuffer_state: None,
+    }),
+    realm_state=Some(realm_state),
+  )
+}
+
+///|
 /// Setup all TypedArray builtins.
 pub fn setup_typedarray_builtins(
   env : Environment,
@@ -1595,16 +1612,14 @@ pub fn setup_typedarray_builtins(
         }
       })
       let iter_props : Map[String, Value] = {}
-      iter_props["next"] = next_method
+      iter_props["next"] = @runtime.stamp_function_realm(
+        next_method,
+        realm_state=Some(realm_state),
+      )
       let iter_sym_props : Map[Int, Value] = {}
-      iter_sym_props[iterator_sym.id] = Value::Object({
-        bag: @runtime.PropertyBag(),
-        prototype: Null,
-        callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
-        class_name: "Function",
-        extensible: true,
-        arraybuffer_state: None,
-      })
+      iter_sym_props[iterator_sym.id] = make_typedarray_iterator_self_method(
+        realm_state,
+      )
       Value::Object({
         bag: {
           properties: iter_props,
@@ -1686,16 +1701,14 @@ pub fn setup_typedarray_builtins(
       }
     })
     let iter_props : Map[String, Value] = {}
-    iter_props["next"] = next_method
+    iter_props["next"] = @runtime.stamp_function_realm(
+      next_method,
+      realm_state=Some(realm_state),
+    )
     let iter_sym_props : Map[Int, Value] = {}
-    iter_sym_props[iterator_sym.id] = Value::Object({
-      bag: @runtime.PropertyBag(),
-      prototype: Null,
-      callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    })
+    iter_sym_props[iterator_sym.id] = make_typedarray_iterator_self_method(
+      realm_state,
+    )
     Value::Object({
       bag: {
         properties: iter_props,
@@ -1777,16 +1790,14 @@ pub fn setup_typedarray_builtins(
       }
     })
     let iter_props : Map[String, Value] = {}
-    iter_props["next"] = next_method
+    iter_props["next"] = @runtime.stamp_function_realm(
+      next_method,
+      realm_state=Some(realm_state),
+    )
     let iter_sym_props : Map[Int, Value] = {}
-    iter_sym_props[iterator_sym.id] = Value::Object({
-      bag: @runtime.PropertyBag(),
-      prototype: Null,
-      callable: Some(MethodCallable("[Symbol.iterator]", fn(tv, _a) { tv })),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    })
+    iter_sym_props[iterator_sym.id] = make_typedarray_iterator_self_method(
+      realm_state,
+    )
     Value::Object({
       bag: {
         properties: iter_props,

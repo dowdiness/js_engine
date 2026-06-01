@@ -1018,17 +1018,20 @@ fn get_map_iterator_proto(realm_state : @runtime.RealmState) -> Value {
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
         name="[Symbol.iterator]",
         length=0,
+        realm_state=Some(realm_state),
         fn(this_val, _args) { this_val },
       )
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = @runtime.make_method_func(name="next", length=0, fn(
-        _this_val,
-        _args,
-      ) raise {
-        raise @errors.TypeError(
-          message="Map Iterator.prototype.next requires that |this| be a Map Iterator",
-        )
-      })
+      proto_props["next"] = @runtime.make_method_func(
+        name="next",
+        length=0,
+        realm_state=Some(realm_state),
+        fn(_this_val, _args) raise {
+          raise @errors.TypeError(
+            message="Map Iterator.prototype.next requires that |this| be a Map Iterator",
+          )
+        },
+      )
       let proto = Value::Object({
         bag: {
           properties: proto_props,
@@ -1142,7 +1145,10 @@ fn make_map_keys_iterator(
     arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = @runtime.stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
   Value::Object({
     bag: {
       properties: iter_props,
@@ -1241,7 +1247,10 @@ fn make_map_values_iterator(
     arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = @runtime.stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
   Value::Object({
     bag: {
       properties: iter_props,
@@ -1342,7 +1351,10 @@ fn make_map_entries_iterator(
     arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = @runtime.stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
   Value::Object({
     bag: {
       properties: iter_props,
@@ -1382,16 +1394,19 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
         name="[Symbol.iterator]",
         length=0,
+        realm_state=Some(realm_state),
         fn(this_val, _args) { this_val },
       )
-      proto_props["next"] = @runtime.make_method_func(name="next", length=0, fn(
-        _this_val,
-        _args,
-      ) raise {
-        raise @errors.TypeError(
-          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-        )
-      })
+      proto_props["next"] = @runtime.make_method_func(
+        name="next",
+        length=0,
+        realm_state=Some(realm_state),
+        fn(_this_val, _args) raise {
+          raise @errors.TypeError(
+            message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+          )
+        },
+      )
       let proto = Value::Object({
         bag: {
           properties: proto_props,
@@ -1505,7 +1520,10 @@ fn make_set_values_iterator(
     arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = @runtime.stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
   Value::Object({
     bag: {
       properties: iter_props,
@@ -1606,7 +1624,10 @@ fn make_set_entries_iterator(
     arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = @runtime.stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
   Value::Object({
     bag: {
       properties: iter_props,

@@ -2294,17 +2294,20 @@ pub fn get_regexp_string_iterator_proto(
       proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
         name="[Symbol.iterator]",
         length=0,
+        realm_state=Some(realm_state),
         fn(this_val, _args) { this_val },
       )
       // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = @runtime.make_method_func(name="next", length=0, fn(
-        _this_val,
-        _args,
-      ) raise {
-        raise @errors.TypeError(
-          message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
-        )
-      })
+      proto_props["next"] = @runtime.make_method_func(
+        name="next",
+        length=0,
+        realm_state=Some(realm_state),
+        fn(_this_val, _args) raise {
+          raise @errors.TypeError(
+            message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
+          )
+        },
+      )
       let proto_descs : Map[String, PropDescriptor] = {}
       proto_descs["next"] = {
         writable: true,

@@ -124,6 +124,7 @@ pub fn RealmState::get_array_iterator_proto(self : RealmState) -> Value {
 fn make_array_iterator_value_with_proto(
   arr_iter_proto : Value,
   arr : ArrayData,
+  realm_state : RealmState,
 ) -> Value {
   let index_ref : Ref[Int] = { val: 0 }
 
@@ -202,7 +203,10 @@ fn make_array_iterator_value_with_proto(
 
   // Create the iterator object with next method
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
 
   Object({
     bag: {
@@ -224,7 +228,11 @@ pub fn RealmState::make_array_iterator_value(
   self : RealmState,
   arr : ArrayData,
 ) -> Value {
-  make_array_iterator_value_with_proto(self.get_array_iterator_proto(), arr)
+  make_array_iterator_value_with_proto(
+    self.get_array_iterator_proto(),
+    arr,
+    self,
+  )
 }
 
 ///|
@@ -233,6 +241,7 @@ pub fn RealmState::make_array_iterator_value(
 fn make_array_like_iterator_value_with_proto(
   arr_iter_proto : Value,
   val : Value,
+  realm_state : RealmState,
 ) -> Value raise Error {
   let index_ref : Ref[Int] = { val: 0 }
   let len = to_array_like_length(val)
@@ -310,7 +319,10 @@ fn make_array_like_iterator_value_with_proto(
   })
 
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
 
   Object({
     bag: {
@@ -335,6 +347,7 @@ pub fn RealmState::make_array_like_iterator_value(
   make_array_like_iterator_value_with_proto(
     self.get_array_iterator_proto(),
     val,
+    self,
   )
 }
 
@@ -421,6 +434,7 @@ pub fn RealmState::get_string_iterator_proto(self : RealmState) -> Value {
 fn make_string_iterator_value_with_proto(
   str_iter_proto : Value,
   s : String,
+  realm_state : RealmState,
 ) -> Value {
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
@@ -518,7 +532,10 @@ fn make_string_iterator_value_with_proto(
     arraybuffer_state: None,
   })
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  iter_props["next"] = stamp_function_realm(
+    next_method,
+    realm_state=Some(realm_state),
+  )
   Object({
     bag: {
       properties: iter_props,
@@ -539,5 +556,9 @@ pub fn RealmState::make_string_iterator_value(
   self : RealmState,
   s : String,
 ) -> Value {
-  make_string_iterator_value_with_proto(self.get_string_iterator_proto(), s)
+  make_string_iterator_value_with_proto(
+    self.get_string_iterator_proto(),
+    s,
+    self,
+  )
 }
