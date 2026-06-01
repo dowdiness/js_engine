@@ -7034,6 +7034,7 @@ test "borrowed iterator methods use method realm after createRealm" {
       #|var arrayProto = r.evalScript("Object.getPrototypeOf([].values())");
       #|var mapProto = r.evalScript("Object.getPrototypeOf(new Map().entries())");
       #|var setProto = r.evalScript("Object.getPrototypeOf(new Set().values())");
+      #|var typedArrayProto = r.evalScript("Object.getPrototypeOf(new Uint8Array([1]).values())");
       #|var regexpProto = r.evalScript("Object.getPrototypeOf(/a/g[Symbol.matchAll]('a'))");
       #|var foreignArrayKeys = r.evalScript("Array.prototype.keys");
       #|var foreignArrayValues = r.evalScript("Array.prototype.values");
@@ -7042,6 +7043,7 @@ test "borrowed iterator methods use method realm after createRealm" {
       #|var foreignMapEntries = r.evalScript("Map.prototype.entries");
       #|var foreignSetValues = r.evalScript("Set.prototype.values");
       #|var foreignSetEntries = r.evalScript("Set.prototype.entries");
+      #|var foreignTypedValues = r.evalScript("Uint8Array.prototype.values");
       #|var foreignMatchAll = r.evalScript("RegExp.prototype[Symbol.matchAll]");
       #|console.log(Object.getPrototypeOf(foreignArrayKeys.call([])) === arrayProto);
       #|console.log(Object.getPrototypeOf(foreignArrayValues.call([])) === arrayProto);
@@ -7050,11 +7052,12 @@ test "borrowed iterator methods use method realm after createRealm" {
       #|console.log(Object.getPrototypeOf(foreignMapEntries.call(new Map())) === mapProto);
       #|console.log(Object.getPrototypeOf(foreignSetValues.call(new Set())) === setProto);
       #|console.log(Object.getPrototypeOf(foreignSetEntries.call(new Set())) === setProto);
+      #|console.log(Object.getPrototypeOf(foreignTypedValues.call(new Uint8Array([1]))) === typedArrayProto);
       #|console.log(Object.getPrototypeOf(foreignMatchAll.call(/a/g, "a")) === regexpProto);
     ),
   )
   json_inspect(output, content=[
-    "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true", "true", "true", "true", "true", "true",
   ])
 }
 

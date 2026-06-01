@@ -1376,7 +1376,6 @@ pub fn setup_promise(
   let species_getter = @runtime.make_method_func(
     name="get [Symbol.species]",
     length=0,
-    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
   let species_symbol_val = env.get("Symbol") catch { _ => Undefined }

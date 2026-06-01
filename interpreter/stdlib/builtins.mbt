@@ -1618,7 +1618,6 @@ fn setup_builtins_with_realm_state_active(
       regexp_sym_props[match_all_sym.id] = @runtime.make_method_func(
         name="[Symbol.matchAll]",
         length=1,
-        realm_state=Some(realm_state),
         fn(this_val, args) {
           let str = if args.length() > 0 { args[0].to_string() } else { "" }
           let (pat, fl) = extract_regexp_source_flags(this_val)
@@ -1933,7 +1932,6 @@ fn setup_builtins_with_realm_state_active(
   let species_getter = @runtime.make_method_func(
     name="get [Symbol.species]",
     length=0,
-    realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
   let species_desc : PropDescriptor = {
@@ -1964,7 +1962,6 @@ fn setup_builtins_with_realm_state_active(
   let has_instance_fn = @runtime.make_interp_method_func(
     name="[Symbol.hasInstance]",
     length=1,
-    realm_state=Some(realm_state),
     fn(interp, this_val, args) raise {
       // OrdinaryHasInstance(C, O)
       let o = if args.length() > 0 { args[0] } else { Undefined }
