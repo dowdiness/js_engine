@@ -440,39 +440,48 @@ fn prepare_startup_core_before_harness() -> StartupInterpreterCore {
 
 ///|
 fn make_startup_harness_print_func(core : StartupInterpreterCore) -> Value {
-  let print_func = @runtime.make_native_func(name="print", fn(args) {
-    let parts : Array[String] = args.map(fn(a) { a.to_string() })
-    core.output.push(parts.join(" "))
-    Value::Undefined
-  })
+  let print_func = @runtime.make_native_func(
+    name="print",
+    realm_state=Some(core.realm_state),
+    fn(args) {
+      let parts : Array[String] = args.map(fn(a) { a.to_string() })
+      core.output.push(parts.join(" "))
+      Value::Undefined
+    },
+  )
   core.global.def_builtin("print", print_func)
   print_func
 }
 
 ///|
-fn make_startup_harness_agent_object() -> Value {
+fn make_startup_harness_agent_object(core : StartupInterpreterCore) -> Value {
+  let realm_state = core.realm_state
   let agent_props : Map[String, Value] = {}
-  agent_props["start"] = @runtime.make_native_func(name="start", fn(_args) {
-    Value::Undefined
-  })
-  agent_props["broadcast"] = @runtime.make_native_func(name="broadcast", fn(
-    _args,
-  ) {
-    Value::Undefined
-  })
-  agent_props["getReport"] = @runtime.make_native_func(name="getReport", fn(
-    _args,
-  ) {
-    Value::Undefined
-  })
-  agent_props["sleep"] = @runtime.make_native_func(name="sleep", fn(_args) {
-    Value::Undefined
-  })
-  agent_props["monotonicNow"] = @runtime.make_native_func(name="monotonicNow", fn(
-    _args,
-  ) {
-    Value::Undefined
-  })
+  agent_props["start"] = @runtime.make_native_func(
+    name="start",
+    realm_state=Some(realm_state),
+    fn(_args) { Value::Undefined },
+  )
+  agent_props["broadcast"] = @runtime.make_native_func(
+    name="broadcast",
+    realm_state=Some(realm_state),
+    fn(_args) { Value::Undefined },
+  )
+  agent_props["getReport"] = @runtime.make_native_func(
+    name="getReport",
+    realm_state=Some(realm_state),
+    fn(_args) { Value::Undefined },
+  )
+  agent_props["sleep"] = @runtime.make_native_func(
+    name="sleep",
+    realm_state=Some(realm_state),
+    fn(_args) { Value::Undefined },
+  )
+  agent_props["monotonicNow"] = @runtime.make_native_func(
+    name="monotonicNow",
+    realm_state=Some(realm_state),
+    fn(_args) { Value::Undefined },
+  )
   Value::Object({
     bag: {
       properties: agent_props,
@@ -496,22 +505,27 @@ fn fill_startup_harness_dollar262_props(
 ) -> Unit {
   dollar262_props["global"] = core.global_this
   dollar262_props["agent"] = agent
-  dollar262_props["gc"] = @runtime.make_native_func(name="gc", fn(_args) {
-    Value::Undefined
-  })
+  dollar262_props["gc"] = @runtime.make_native_func(
+    name="gc",
+    realm_state=Some(core.realm_state),
+    fn(_args) { Value::Undefined },
+  )
   dollar262_props["createRealm"] = @runtime.make_interp_method_func(
     name="createRealm",
     length=0,
+    realm_state=Some(core.realm_state),
     fn(_interp, _this_val, _args) { Value::Undefined },
   )
   dollar262_props["evalScript"] = @runtime.make_interp_method_func(
     name="evalScript",
     length=1,
+    realm_state=Some(core.realm_state),
     fn(_interp, _this_val, _args) { Value::Undefined },
   )
   dollar262_props["detachArrayBuffer"] = @runtime.make_native_func(
     name="detachArrayBuffer",
     length=1,
+    realm_state=Some(core.realm_state),
     fn(_args) { Value::Undefined },
   )
 }
@@ -549,7 +563,7 @@ fn bind_startup_harness_dollar262(
 ///|
 fn setup_startup_harness_without_stamp(core : StartupInterpreterCore) -> Unit {
   let print_func = make_startup_harness_print_func(core)
-  let agent = make_startup_harness_agent_object()
+  let agent = make_startup_harness_agent_object(core)
   let dollar262_props : Map[String, Value] = {}
   fill_startup_harness_dollar262_props(core, dollar262_props, agent)
   bind_startup_harness_dollar262(core, print_func, dollar262_props) |> ignore
@@ -709,7 +723,7 @@ fn time_test262_harness_agent_object() -> Double {
   let core = prepare_startup_core_before_harness()
   let mut agent = Value::Undefined
   let elapsed = measure_active_unit(core.realm_state, fn() {
-    agent = make_startup_harness_agent_object()
+    agent = make_startup_harness_agent_object(core)
   })
   match agent {
     Value::Object(_) => keep_global_property(agent, "start")
@@ -721,7 +735,7 @@ fn time_test262_harness_agent_object() -> Double {
 ///|
 fn time_test262_harness_dollar262_methods() -> Double {
   let core = prepare_startup_core_before_harness()
-  let agent = make_startup_harness_agent_object()
+  let agent = make_startup_harness_agent_object(core)
   let dollar262_props : Map[String, Value] = {}
   let elapsed = measure_active_unit(core.realm_state, fn() {
     fill_startup_harness_dollar262_props(core, dollar262_props, agent)
@@ -736,7 +750,7 @@ fn time_test262_harness_dollar262_methods() -> Double {
 fn time_test262_harness_dollar262_bind_mirror() -> Double {
   let core = prepare_startup_core_before_harness()
   let print_func = make_startup_harness_print_func(core)
-  let agent = make_startup_harness_agent_object()
+  let agent = make_startup_harness_agent_object(core)
   let dollar262_props : Map[String, Value] = {}
   fill_startup_harness_dollar262_props(core, dollar262_props, agent)
   let elapsed = measure_active_unit(core.realm_state, fn() {
