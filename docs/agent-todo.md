@@ -276,31 +276,30 @@ for those workloads.
 reject unsupported semantics explicitly. The current fail-fast rejection list is
 tracked in [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-explicit-bytecode-rejections).
 
-### Bytecode performance follow-ups — #168 CALL/FRAME SETUP MEASURED LOCALLY (2026-05-30)
+### ~~Bytecode performance follow-ups~~ — DONE/STABILIZED (2026-06-01, PRs #172/#182/#185/#186)
 
-**Source:** #166/#168 local JS-target runs and
-[closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-bytecode-performance-snapshot-local-js-target-2026-05-30).
+**Source:** #166 measurement work and follow-up issues #168, #167, #169, and
+#170 under parent [#165](https://github.com/dowdiness/js_engine/issues/165).
 
-**Finding:** #166 showed bytecode call/frame setup as the clearest cost (~5.8 µs
-per trivial call). The #168 local prototype skips arguments-object setup for
-bytecode functions whose bodies cannot reference `arguments` and do not contain
-direct `eval`. That drops the focused no-`arguments` call row from about 61 ms to
-about 12.9 ms on the 10k-call row, and moves the broad rows to clear local wins:
-`pipeline/*/evaluate` about 2.36x faster than tree-walking and `closure_factory`
-about 1.90x faster.
+**Result:** The measured optimization wave has shipped:
+- #168 call/frame setup: PR #172 (`88bf3b8`) skips unobserved `arguments` setup.
+- #167 environment/upvalue slotting: PR #182 (`059c934`).
+- #169 dispatch/stack overhead: PR #185 (`230ee0c`).
+- #170 shared runtime helper hotspots: PR #177 (`7046ac5`) shipped the first
+  plain-object helper fast paths, and PR #186 (`574640d`) shipped the remaining
+  measured shared-helper slice and closed #170.
+- PR #187 (`d1fc40b`) added `scripts/bench-focus.py` for repeated local focused
+  baselines; see `docs/development.md` for usage.
 
-**Next issue order:** After the #168 call/frame setup optimization lands,
-prioritize [#170](https://github.com/dowdiness/js_engine/issues/170) (runtime
-helper hotspots), then [#167](https://github.com/dowdiness/js_engine/issues/167)
-(local/upvalue/env slotting), then [#169](https://github.com/dowdiness/js_engine/issues/169)
-(VM dispatch/stack overhead), unless a newer JS-target benchmark contradicts
-this order. Keep [#165](https://github.com/dowdiness/js_engine/issues/165) as
-the parent roadmap.
+**Current guidance:** Do not continue from the stale 2026-05-30 local issue
+ordering or pre-#185/#186 timing numbers. If continuing #165, treat the next
+slice as a fresh investigation: run `scripts/bench-focus.py --runs 5` for local
+post-merge baselines, use same-runner base/head PR benchmark reports for
+optimization claims, and only optimize rows with current evidence.
 
-**Guardrails:** Do not broaden bytecode syntax in these follow-ups. Keep `run`
-on the tree-walker, keep bytecode opt-in, reuse runtime helpers, and keep
-compare-against-tree-walker tests for every supported construct touched. Do not
-start optimization design from stale snapshots; rerun the focused row first.
+**Guardrails:** Keep bytecode opt-in, keep `run` on the tree-walker, reuse shared
+runtime helpers, preserve compare-against-tree-walker tests for constructs
+touched, and do not broaden syntax in performance PRs.
 
 ### ~~Migrate remaining deprecated `inspect` snapshots~~ — DONE (2026-05-14)
 
