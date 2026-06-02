@@ -2226,6 +2226,30 @@ test "string split" {
 }
 
 ///|
+test "RegExp exec observes lastIndex coercion and strict writes" {
+  let src =
+    #|var reads = 0;
+    #|var counter = { valueOf: function() { reads++; return 0; } };
+    #|var plain = /a/;
+    #|plain.lastIndex = counter;
+    #|console.log(plain.exec("nbc"));
+    #|console.log(plain.lastIndex === counter);
+    #|console.log(reads);
+    #|var global = /./g;
+    #|global.lastIndex = Infinity;
+    #|console.log(global.exec("test"));
+    #|console.log(global.lastIndex);
+    #|var sticky = /c/y;
+    #|Object.defineProperty(sticky, "lastIndex", { writable: false });
+    #|try { sticky.exec("abc"); } catch (e) { console.log(e instanceof TypeError); }
+    #|try { /[a-z]/.exec({ toString: function() { throw "intostr"; } }); } catch (e) { console.log(e); }
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "null", "true", "1", "null", "0", "true", "intostr",
+  ])
+}
+
+///|
 test "RegExp Symbol.split uses captures, limit, and unicode advance" {
   let src =
     #|var parts = /(\d)/[Symbol.split]("a1b2", 4);
