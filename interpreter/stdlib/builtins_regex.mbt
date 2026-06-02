@@ -2790,11 +2790,7 @@ fn regexp_default_constructor(realm_state : @runtime.RealmState) -> Value {
       match
         data.bag.symbol_properties.get(REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID) {
         Some(ctor) => ctor
-        None =>
-          match data.bag.properties.get("constructor") {
-            Some(ctor) => ctor
-            None => Undefined
-          }
+        None => Undefined
       }
     _ => Undefined
   }
