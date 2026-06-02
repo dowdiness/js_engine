@@ -911,33 +911,38 @@ pub fn get_string_method(
     }
     "matchAll" => {
       let str = s
-      @runtime.make_native_func(
-        realm_state=Some(realm_state),
-        name="matchAll",
-        length=1,
-        fn(args) raise {
-          let arg = if args.length() > 0 { args[0] } else { Undefined }
-          // Step 2: If regexp is not null/undefined, check for @@matchAll
+      @runtime.make_interp_static_func(name="matchAll", length=1, fn(
+        interp,
+        args,
+      ) raise {
+        let loc = @token.Loc::default()
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        let matchall_sym = well_known_symbols.match_all
+        // Step 2: If regexp is not null/undefined, check for @@matchAll
+        if !(arg is Undefined || arg is Null) {
           match arg {
             Object(data) => {
-              if data.class_name == "RegExp" {
-                // matchAll requires global flag per spec
-                let f = match data.bag.properties.get("flags") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                if !f.contains("g") {
-                  raise @errors.TypeError(
-                    message="String.prototype.matchAll called with a non-global RegExp argument",
-                  )
+              if regexp_is_regexp(interp, arg) {
+                let flags = interp.get_property(arg, "flags", loc)
+                match flags {
+                  Undefined | Null =>
+                    raise @errors.TypeError(
+                      message="String.prototype.matchAll called with nullish RegExp flags",
+                    )
+                  _ =>
+                    if !interp.to_js_string(flags).contains("g") {
+                      raise @errors.TypeError(
+                        message="String.prototype.matchAll called with a non-global RegExp argument",
+                      )
+                    }
                 }
               }
               // Check for Symbol.matchAll on the object
-              let matchall_sym = well_known_symbols.match_all
               let matchall_fn = @runtime.lookup_symbol_property_chain(
                 arg,
                 data,
                 matchall_sym.id,
+                interp=Some(interp),
               )
               match matchall_fn {
                 Some(Null) | Some(Undefined) | None => ()
@@ -946,6 +951,7 @@ pub fn get_string_method(
                     matchall_method,
                     arg,
                     [Value::String_(str)],
+                    interp=Some(interp),
                   )
                   return result
                 }
@@ -953,41 +959,43 @@ pub fn get_string_method(
             }
             _ => ()
           }
-          // Step 3-5: Create a RegExp from arg with "g" flag, then call [Symbol.matchAll]
-          let pattern = match arg {
-            Undefined => ""
-            _ => arg.to_string()
-          }
-          let regexp = make_regexp_object_with_realm_state(
-            pattern, "g", realm_state,
-          )
-          // Call [Symbol.matchAll] on the new RegExp
-          let matchall_sym = well_known_symbols.match_all
-          match regexp {
-            Object(data) => {
-              let matchall_fn = @runtime.lookup_symbol_property_chain(
-                regexp,
-                data,
-                matchall_sym.id,
-              )
-              match matchall_fn {
-                Some(matchall_method) =>
-                  @runtime.call_callable_direct(matchall_method, regexp, [
-                    Value::String_(str),
-                  ])
-                _ =>
-                  raise @errors.TypeError(
-                    message="RegExp.prototype[Symbol.matchAll] is not a function",
-                  )
-              }
+        }
+        // Step 3-5: Create a RegExp from arg with "g" flag, then call [Symbol.matchAll]
+        let regexp_ctor = regexp_default_constructor(realm_state)
+        let regexp = interp.construct_value(
+          regexp_ctor,
+          [arg, Value::String_("g")],
+          loc,
+        )
+        // Call [Symbol.matchAll] on the new RegExp
+        match regexp {
+          Object(data) => {
+            let matchall_fn = @runtime.lookup_symbol_property_chain(
+              regexp,
+              data,
+              matchall_sym.id,
+              interp=Some(interp),
+            )
+            match matchall_fn {
+              Some(matchall_method) =>
+                @runtime.call_callable_direct(
+                  matchall_method,
+                  regexp,
+                  [Value::String_(str)],
+                  interp=Some(interp),
+                )
+              _ =>
+                raise @errors.TypeError(
+                  message="RegExp.prototype[Symbol.matchAll] is not a function",
+                )
             }
-            _ =>
-              raise @errors.TypeError(
-                message="RegExp.prototype[Symbol.matchAll] is not a function",
-              )
           }
-        },
-      )
+          _ =>
+            raise @errors.TypeError(
+              message="RegExp.prototype[Symbol.matchAll] is not a function",
+            )
+        }
+      })
     }
     "search" => {
       let str = s
@@ -1848,7 +1856,10 @@ fn string_trim(s : String) -> String {
 
 ///|
 /// Extract string from a this value (for String.prototype methods called via .call())
-pub fn this_to_string(this_val : Value) -> String raise Error {
+fn this_to_string_impl(
+  this_val : Value,
+  interp? : Interpreter? = None,
+) -> String raise Error {
   match this_val {
     Value::String_(s) => s
     Value::Number(n) => n.to_string()
@@ -1868,13 +1879,19 @@ pub fn this_to_string(this_val : Value) -> String raise Error {
       if data.class_name == "String" {
         match data.bag.properties.get("[[StringData]]") {
           Some(Value::String_(s)) => s
-          _ => @runtime.to_js_string(this_val)
+          _ => @runtime.to_js_string(this_val, interp~)
         }
       } else {
-        @runtime.to_js_string(this_val)
+        @runtime.to_js_string(this_val, interp~)
       }
-    _ => @runtime.to_js_string(this_val)
+    _ => @runtime.to_js_string(this_val, interp~)
   }
+}
+
+///|
+/// Extract string from a this value (for String.prototype methods called via .call())
+pub fn this_to_string(this_val : Value) -> String raise Error {
+  this_to_string_impl(this_val)
 }
 
 ///|
@@ -1929,7 +1946,7 @@ pub fn setup_string_prototype(
           name=display_name,
           length=meth_length,
           fn(interp, this_val, args) raise {
-            let s = this_to_string(this_val)
+            let s = this_to_string_impl(this_val, interp=Some(interp))
             let meth_val = get_string_method(s, mname, realm_state, annex_b~)
             match meth_val {
               Object(fdata) =>

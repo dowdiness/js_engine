@@ -1138,54 +1138,7 @@ fn setup_builtins_with_realm_state_active(
   mark_builtin_setup_phase(profile, "json")
 
   // RegExp constructor
-  env.def_builtin(
-    "RegExp",
-    Value::Object({
-      bag: {
-        properties: {
-          "name": Value::String_("RegExp"),
-          "length": Value::Number(2.0),
-        },
-        symbol_properties: {},
-        descriptors: { "name": nf_desc, "length": nf_desc },
-        symbol_descriptors: {},
-      },
-      prototype: Null,
-      callable: Some(
-        NativeCallable("RegExp", fn(args) raise {
-          let pattern = if args.length() > 0 {
-            match args[0] {
-              Object(data) =>
-                if data.class_name == "RegExp" {
-                  match regexp_original_source(args[0]) {
-                    Some(s) => s
-                    None => args[0].to_string()
-                  }
-                } else {
-                  args[0].to_string()
-                }
-              Undefined => ""
-              _ => args[0].to_string()
-            }
-          } else {
-            ""
-          }
-          let flags = if args.length() > 1 {
-            match args[1] {
-              Undefined => ""
-              _ => args[1].to_string()
-            }
-          } else {
-            ""
-          }
-          make_regexp_object_with_realm_state(pattern, flags, realm_state)
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    }),
-  )
+  env.def_builtin("RegExp", make_regexp_constructor(realm_state, nf_desc))
 
   // Set up RegExp.prototype and store it on the realm.
   match env.bindings.get("[[ObjectPrototype]]") {
@@ -1285,66 +1238,8 @@ fn setup_builtins_with_realm_state_active(
       regexp_sym_descs[match_sym.id] = sym_method_desc
       // [Symbol.matchAll]
       let match_all_sym = well_known_symbols.match_all
-      regexp_sym_props[match_all_sym.id] = @runtime.make_method_func(
-        name="[Symbol.matchAll]",
-        length=1,
-        fn(this_val, args) {
-          let str = if args.length() > 0 { args[0].to_string() } else { "" }
-          let (pat, fl) = extract_regexp_source_flags(this_val)
-          let global = fl.contains("g")
-          let matches = regex_search_all(pat, fl, str) catch { _ => [] }
-          let index_ref : Ref[Int] = { val: 0 }
-          let done_ref : Ref[Bool] = { val: false }
-          let next_method = @runtime.make_method_func(
-            name="next",
-            length=0,
-            realm_state=Some(realm_state),
-            fn(this_val, _args) raise {
-              // Brand check: verify this is a RegExp String Iterator
-              let has_brand = match this_val {
-                Object(data) =>
-                  data.bag.properties.contains("[[RegExpStringIterator]]")
-                _ => false
-              }
-              if !has_brand {
-                raise @errors.TypeError(
-                  message="%RegExpStringIteratorPrototype%.next requires that |this| be a RegExp String Iterator",
-                )
-              }
-              if done_ref.val {
-                return @runtime.create_iter_result(Undefined, true)
-              }
-              if index_ref.val >= matches.length() {
-                done_ref.val = true
-                return @runtime.create_iter_result(Undefined, true)
-              }
-              let m = matches[index_ref.val]
-              index_ref.val = index_ref.val + 1
-              let match_array = make_regex_match_array(m, str)
-              if !global {
-                done_ref.val = true
-              }
-              @runtime.create_iter_result(match_array, false)
-            },
-          )
-          let iter_props : Map[String, Value] = {}
-          iter_props["next"] = next_method
-          // Brand marker for internal slot check
-          iter_props["[[RegExpStringIterator]]"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: iter_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: get_regexp_string_iterator_proto(realm_state),
-            callable: None,
-            class_name: "RegExp String Iterator",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        },
+      regexp_sym_props[match_all_sym.id] = make_regexp_match_all_method(
+        realm_state,
       )
       regexp_sym_descs[match_all_sym.id] = sym_method_desc
       // [Symbol.search]
