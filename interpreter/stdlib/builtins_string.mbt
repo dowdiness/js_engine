@@ -1922,11 +1922,11 @@ pub fn setup_string_prototype(
             }
           _ => 0
         }
-        data.bag.properties[mname] = @runtime.make_method_func(
+        data.bag.properties[mname] = @runtime.make_interp_method_func(
           realm_state=Some(realm_state),
           name=display_name,
           length=meth_length,
-          fn(this_val, args) raise {
+          fn(interp, this_val, args) raise {
             let s = this_to_string(this_val)
             let meth_val = get_string_method(s, mname, realm_state, annex_b~)
             match meth_val {
@@ -1935,6 +1935,8 @@ pub fn setup_string_prototype(
                   Some(NativeCallable(_, f)) => f(args)
                   Some(NativeCallableWithContext(_, f)) => f(Call, args)
                   Some(NonConstructableCallable(_, f)) => f(args)
+                  Some(NonConstructableInterpreterCallable(_, f)) =>
+                    f(interp, args)
                   _ => Undefined
                 }
               _ => Undefined

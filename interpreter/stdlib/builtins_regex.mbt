@@ -2338,12 +2338,7 @@ fn regexp_exec_for_symbol_method(
     let has_global = fl.contains("g")
     let has_sticky = fl.contains("y")
     let start = if has_global || has_sticky {
-      @runtime.to_int32(
-        @runtime.to_number(
-          interp.get_property(rx, "lastIndex", loc),
-          interp=Some(interp),
-        ),
-      )
+      regexp_to_length_int(interp.get_property(rx, "lastIndex", loc), interp)
     } else {
       0
     }
