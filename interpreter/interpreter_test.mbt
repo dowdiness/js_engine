@@ -2226,6 +2226,22 @@ test "string split" {
 }
 
 ///|
+test "RegExp Symbol.split uses captures, limit, and unicode advance" {
+  let src =
+    #|var parts = /(\d)/[Symbol.split]("a1b2", 4);
+    #|console.log(parts.length);
+    #|console.log(parts.join("|"));
+    #|var borrowed = String.prototype.split.call("a1b", /(\d)/);
+    #|console.log(borrowed.join("|"));
+    #|var astral = /./u[Symbol.split]("\uD834\uDF06");
+    #|console.log(astral.length);
+    #|console.log(astral[0]);
+    #|console.log(astral[1]);
+  let output = run_output(src)
+  json_inspect(output, content=["4", "a|1|b|2", "a|1|b", "2", "", ""])
+}
+
+///|
 test "string replace" {
   let (_, result) = run_js("\"hello world\".replace(\"world\", \"there\")")
   expect_result(result, "hello there")

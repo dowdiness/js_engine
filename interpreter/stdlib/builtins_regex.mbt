@@ -2756,6 +2756,207 @@ fn make_regexp_match_method(realm_state : @runtime.RealmState) -> Value {
   )
 }
 
+///|
+fn regexp_to_uint32(value : Value, interp : Interpreter) -> Int64 raise Error {
+  let n = @runtime.to_number(value, interp=Some(interp))
+  if n.is_nan() || n.is_inf() || n == 0.0 {
+    return 0L
+  }
+  let two32 = 4294967296.0
+  let sign = if n < 0.0 { -1.0 } else { 1.0 }
+  let truncated = n.abs().floor() * sign
+  let remainder = truncated % two32
+  let pos_mod = if remainder < 0.0 { remainder + two32 } else { remainder }
+  pos_mod.to_int64()
+}
+
+///|
+fn regexp_default_constructor(realm_state : @runtime.RealmState) -> Value {
+  match realm_state.regexp_prototype.val {
+    Some(Object(data)) =>
+      match data.bag.properties.get("constructor") {
+        Some(ctor) => ctor
+        None => Undefined
+      }
+    _ => Undefined
+  }
+}
+
+///|
+fn regexp_species_constructor(
+  interp : Interpreter,
+  rx : Value,
+  realm_state : @runtime.RealmState,
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  let default_ctor = regexp_default_constructor(realm_state)
+  let c = interp.get_property(rx, "constructor", loc)
+  if c is Undefined {
+    return default_ctor
+  }
+  if !@runtime.is_object_value(c) {
+    raise @errors.TypeError(message="RegExp constructor is not an object")
+  }
+  let species_sym = interp.realm_state.well_known_symbols.species
+  let s = interp.get_computed_property(c, Symbol(species_sym), loc)
+  match s {
+    Undefined | Null => default_ctor
+    _ =>
+      if @runtime.is_constructor_value(s) {
+        s
+      } else {
+        raise @errors.TypeError(message="RegExp species is not a constructor")
+      }
+  }
+}
+
+///|
+fn regexp_string_slice(input : String, start : Int, end_ : Int) -> String {
+  input[start:end_].to_owned()
+}
+
+///|
+fn regexp_unicode_boundary_after(input : String, index : Int) -> Int {
+  if index <= 0 || index >= input.length() {
+    return index
+  }
+  let prev = input[index - 1].to_int()
+  let current = input[index].to_int()
+  if prev >= 0xD800 && prev <= 0xDBFF && current >= 0xDC00 && current <= 0xDFFF {
+    index + 1
+  } else {
+    index
+  }
+}
+
+///|
+fn regexp_split_last_index(
+  interp : Interpreter,
+  splitter : Value,
+  input : String,
+  unicode_matching : Bool,
+  loc : @token.Loc,
+) -> Int raise Error {
+  let input_size = input.length()
+  let e = regexp_to_length(
+    interp.get_property(splitter, "lastIndex", loc),
+    interp,
+  )
+  let index = if e > input_size.to_double() { input_size } else { e.to_int() }
+  if unicode_matching {
+    regexp_unicode_boundary_after(input, index)
+  } else {
+    index
+  }
+}
+
+///|
+fn regexp_symbol_split(
+  interp : Interpreter,
+  this_val : Value,
+  args : Array[Value],
+  realm_state : @runtime.RealmState,
+) -> Value raise Error {
+  if !regexp_this_is_object(this_val) {
+    return regexp_proto_incompatible("RegExp.prototype[Symbol.split]")
+  }
+  let loc = @token.Loc::default()
+  let input = if args.length() > 0 { interp.to_js_string(args[0]) } else { "" }
+  let c = regexp_species_constructor(interp, this_val, realm_state)
+  let flags = interp.to_js_string(interp.get_property(this_val, "flags", loc))
+  let unicode_matching = flags.contains("u") || flags.contains("v")
+  let new_flags = if flags.contains("y") { flags } else { flags + "y" }
+  let splitter = interp.construct_value(
+    c,
+    [this_val, Value::String_(new_flags)],
+    loc,
+  )
+  let limit = if args.length() > 1 {
+    match args[1] {
+      Undefined => 4294967295L
+      _ => regexp_to_uint32(args[1], interp)
+    }
+  } else {
+    4294967295L
+  }
+  let results : Array[Value] = []
+  if limit == 0L {
+    return @runtime.make_array(results)
+  }
+  let size = input.length()
+  if size == 0 {
+    let z = regexp_exec_for_symbol_method(interp, splitter, input)
+    return match z {
+      Null => @runtime.make_array([Value::String_(input)])
+      _ => @runtime.make_array(results)
+    }
+  }
+  let mut p = 0
+  let mut q = 0
+  while q < size {
+    let _ = interp.set_property(
+      splitter,
+      "lastIndex",
+      Value::Number(q.to_double()),
+      loc,
+      strict=true,
+    )
+    let z = regexp_exec_for_symbol_method(interp, splitter, input)
+    match z {
+      Null =>
+        q = regexp_advance_string_index(input, q.to_double(), unicode_matching).to_int()
+      _ => {
+        let e = regexp_split_last_index(
+          interp, splitter, input, unicode_matching, loc,
+        )
+        if e == p {
+          q = regexp_advance_string_index(
+            input,
+            q.to_double(),
+            unicode_matching,
+          ).to_int()
+        } else {
+          results.push(Value::String_(regexp_string_slice(input, p, q)))
+          if results.length().to_int64() == limit {
+            return @runtime.make_array(results)
+          }
+          p = e
+          let captures_len = regexp_to_length_int(
+            interp.get_property(z, "length", loc),
+            interp,
+          )
+          let number_of_captures = if captures_len > 0 {
+            captures_len - 1
+          } else {
+            0
+          }
+          for i in 1..<=number_of_captures {
+            results.push(interp.get_property(z, i.to_string(), loc))
+            if results.length().to_int64() == limit {
+              return @runtime.make_array(results)
+            }
+          }
+          q = p
+        }
+      }
+    }
+  }
+  results.push(Value::String_(regexp_string_slice(input, p, size)))
+  @runtime.make_array(results)
+}
+
+///|
+fn make_regexp_split_method(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(
+    name="[Symbol.split]",
+    length=2,
+    realm_state=Some(realm_state),
+    fn(interp, this_val, args) raise {
+      regexp_symbol_split(interp, this_val, args, realm_state)
+    },
+  )
+}
+
 // ---- String Regex Methods ----
 
 ///|
