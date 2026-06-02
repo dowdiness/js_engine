@@ -2328,6 +2328,83 @@ fn regexp_char_index_to_code_unit_index(
 }
 
 ///|
+fn regexp_builtin_exec(
+  interp : Interpreter,
+  rx : Value,
+  input : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let (pat, fl) = match rx {
+    Object(data) if data.class_name == "RegExp" => {
+      let pat = match regexp_original_source_from_data(data) {
+        Some(s) => s
+        None =>
+          raise @errors.TypeError(
+            message="RegExp method called on incompatible receiver",
+          )
+      }
+      let fl = match regexp_original_flags_from_data(data) {
+        Some(s) => s
+        None => ""
+      }
+      (pat, fl)
+    }
+    _ =>
+      raise @errors.TypeError(
+        message="RegExp method called on incompatible receiver",
+      )
+  }
+  let has_global = fl.contains("g")
+  let has_sticky = fl.contains("y")
+  let last_index = regexp_to_length(
+    interp.get_property(rx, "lastIndex", loc),
+    interp,
+  )
+  if (has_global || has_sticky) && last_index > input.length().to_double() {
+    let _ = interp.set_property(
+      rx,
+      "lastIndex",
+      Value::Number(0.0),
+      loc,
+      strict=true,
+    )
+    return Null
+  }
+  let start = if has_global || has_sticky { last_index.to_int() } else { 0 }
+  match regex_search(pat, fl, input, start_pos=start) {
+    Some(m) => {
+      if has_global || has_sticky {
+        let last_index = if fl.contains("u") || fl.contains("v") {
+          regexp_char_index_to_code_unit_index(input, m.end_)
+        } else {
+          m.end_
+        }
+        let _ = interp.set_property(
+          rx,
+          "lastIndex",
+          Value::Number(last_index.to_double()),
+          loc,
+          strict=true,
+        )
+      }
+      make_regex_match_array(m, input)
+    }
+    None => {
+      if has_global || has_sticky {
+        let _ = interp.set_property(
+          rx,
+          "lastIndex",
+          Value::Number(0.0),
+          loc,
+          strict=true,
+        )
+      }
+      Null
+    }
+  }
+}
+
+///|
 fn regexp_exec_for_symbol_method(
   interp : Interpreter,
   rx : Value,
@@ -2350,72 +2427,7 @@ fn regexp_exec_for_symbol_method(
         )
     }
   } else {
-    let (pat, fl) = match rx {
-      Object(data) if data.class_name == "RegExp" => {
-        let pat = match regexp_original_source_from_data(data) {
-          Some(s) => s
-          None =>
-            raise @errors.TypeError(
-              message="RegExp method called on incompatible receiver",
-            )
-        }
-        let fl = match regexp_original_flags_from_data(data) {
-          Some(s) => s
-          None => ""
-        }
-        (pat, fl)
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="RegExp method called on incompatible receiver",
-        )
-    }
-    let has_global = fl.contains("g")
-    let has_sticky = fl.contains("y")
-    let start = if has_global || has_sticky {
-      let last_index = regexp_to_length(
-        interp.get_property(rx, "lastIndex", loc),
-        interp,
-      )
-      if last_index > input.length().to_double() {
-        input.length() + 1
-      } else {
-        last_index.to_int()
-      }
-    } else {
-      0
-    }
-    match regex_search(pat, fl, input, start_pos=start) {
-      Some(m) => {
-        if has_global || has_sticky {
-          let last_index = if fl.contains("u") || fl.contains("v") {
-            regexp_char_index_to_code_unit_index(input, m.end_)
-          } else {
-            m.end_
-          }
-          let _ = interp.set_property(
-            rx,
-            "lastIndex",
-            Value::Number(last_index.to_double()),
-            loc,
-            strict=true,
-          )
-        }
-        make_regex_match_array(m, input)
-      }
-      None => {
-        if has_global || has_sticky {
-          let _ = interp.set_property(
-            rx,
-            "lastIndex",
-            Value::Number(0.0),
-            loc,
-            strict=true,
-          )
-        }
-        Null
-      }
-    }
+    regexp_builtin_exec(interp, rx, input, loc)
   }
 }
 

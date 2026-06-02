@@ -991,51 +991,53 @@ pub fn get_string_method(
     }
     "search" => {
       let str = s
-      @runtime.make_native_func(
-        realm_state=Some(realm_state),
-        name="search",
-        length=1,
-        fn(args) raise {
-          if args.length() == 0 {
-            return Value::Number(0.0)
-          }
-          // Per spec: check for [Symbol.search] method on the argument
-          match args[0] {
-            Object(data) => {
-              let search_sym = well_known_symbols.search
-              let search_fn = @runtime.lookup_symbol_property_chain(
-                args[0],
-                data,
-                search_sym.id,
-              )
-              match search_fn {
-                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-                Some(fn_val) => {
-                  let result = @runtime.call_callable_direct(fn_val, args[0], [
-                    Value::String_(str),
-                  ])
-                  return result
-                }
-                _ => ()
+      @runtime.make_interp_static_func(name="search", length=1, fn(
+        interp,
+        args,
+      ) raise {
+        if args.length() == 0 {
+          return Value::Number(0.0)
+        }
+        // Per spec: check for [Symbol.search] method on the argument
+        match args[0] {
+          Object(data) => {
+            let search_sym = well_known_symbols.search
+            let search_fn = @runtime.lookup_symbol_property_chain(
+              args[0],
+              data,
+              search_sym.id,
+              interp=Some(interp),
+            )
+            match search_fn {
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+              Some(fn_val) => {
+                let result = @runtime.call_callable_direct(
+                  fn_val,
+                  args[0],
+                  [Value::String_(str)],
+                  interp=Some(interp),
+                )
+                return result
               }
-              if data.class_name == "RegExp" {
-                let pattern = match data.bag.properties.get("source") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                let flags = match data.bag.properties.get("flags") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                return string_search_regex(str, pattern, flags)
-              }
+              _ => ()
             }
-            _ => ()
+            if data.class_name == "RegExp" {
+              let pattern = match data.bag.properties.get("source") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              let flags = match data.bag.properties.get("flags") {
+                Some(Value::String_(s)) => s
+                _ => ""
+              }
+              return string_search_regex(str, pattern, flags)
+            }
           }
-          let pattern = @runtime.to_js_string(args[0])
-          string_search_regex(str, pattern, "")
-        },
-      )
+          _ => ()
+        }
+        let pattern = interp.to_js_string(args[0])
+        string_search_regex(str, pattern, "")
+      })
     }
     "startsWith" => {
       let str = s
