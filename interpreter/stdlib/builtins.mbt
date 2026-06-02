@@ -1413,13 +1413,51 @@ fn setup_builtins_with_realm_state_active(
       regexp_sym_descs[match_all_sym.id] = sym_method_desc
       // [Symbol.search]
       let search_sym = well_known_symbols.search
-      regexp_sym_props[search_sym.id] = @runtime.make_method_func(
+      regexp_sym_props[search_sym.id] = @runtime.make_interp_method_func(
         name="[Symbol.search]",
         length=1,
-        fn(this_val, args) {
-          let str = if args.length() > 0 { args[0].to_string() } else { "" }
-          let (pat, fl) = extract_regexp_source_flags(this_val)
-          string_search_regex(str, pat, fl)
+        realm_state=Some(realm_state),
+        fn(interp, this_val, args) raise {
+          if !regexp_this_is_object(this_val) {
+            return regexp_proto_incompatible("RegExp.prototype[Symbol.search]")
+          }
+          let loc = @token.Loc::default()
+          let str = interp.to_js_string(
+            if args.length() > 0 {
+              args[0]
+            } else {
+              Undefined
+            },
+          )
+          let previous_last_index = interp.get_property(
+            this_val, "lastIndex", loc,
+          )
+          if !same_value(previous_last_index, Value::Number(0.0)) {
+            let _ = interp.set_property(
+              this_val,
+              "lastIndex",
+              Value::Number(0.0),
+              loc,
+              strict=true,
+            )
+          }
+          let result = regexp_exec_for_symbol_method(interp, this_val, str)
+          let current_last_index = interp.get_property(
+            this_val, "lastIndex", loc,
+          )
+          if !same_value(current_last_index, previous_last_index) {
+            let _ = interp.set_property(
+              this_val,
+              "lastIndex",
+              previous_last_index,
+              loc,
+              strict=true,
+            )
+          }
+          match result {
+            Null => Value::Number(-1.0)
+            _ => interp.get_property(result, "index", loc)
+          }
         },
       )
       regexp_sym_descs[search_sym.id] = sym_method_desc

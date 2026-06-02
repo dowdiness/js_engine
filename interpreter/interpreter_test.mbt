@@ -2250,6 +2250,23 @@ test "RegExp exec observes lastIndex coercion and strict writes" {
 }
 
 ///|
+test "RegExp Symbol.search saves lastIndex and honors custom exec" {
+  let src =
+    #|var duringExec;
+    #|var fakeRe = {
+    #|  lastIndex: 34,
+    #|  exec: function() { duringExec = this.lastIndex; return { index: 86 }; }
+    #|};
+    #|console.log(RegExp.prototype[Symbol.search].call(fakeRe, "abc"));
+    #|console.log(duringExec);
+    #|console.log(fakeRe.lastIndex);
+    #|var badRe = { lastIndex: 0, exec: function() { return 1; } };
+    #|try { RegExp.prototype[Symbol.search].call(badRe, "abc"); } catch (e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  json_inspect(output, content=["86", "0", "34", "true"])
+}
+
+///|
 test "RegExp Symbol.split uses captures, limit, and unicode advance" {
   let src =
     #|var parts = /(\d)/[Symbol.split]("a1b2", 4);
