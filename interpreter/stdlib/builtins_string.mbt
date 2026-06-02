@@ -628,130 +628,130 @@ pub fn get_string_method(
     }
     "split" => {
       let str = s
-      @runtime.make_native_func(
-        realm_state=Some(realm_state),
-        name="split",
-        length=2,
-        fn(args) raise {
-          // Per spec: check for [Symbol.split] method on the argument first
-          if args.length() > 0 {
-            match args[0] {
-              Object(data) => {
-                let split_sym = well_known_symbols.split
-                let split_fn = @runtime.lookup_symbol_property_chain(
-                  args[0],
-                  data,
-                  split_sym.id,
-                )
-                match split_fn {
-                  Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-                  Some(fn_val) => {
-                    let limit = if args.length() > 1 {
-                      args[1]
-                    } else {
-                      Undefined
-                    }
-                    let result = @runtime.call_callable_direct(
-                      fn_val,
-                      args[0],
-                      [Value::String_(str), limit],
-                    )
-                    return result
-                  }
-                  _ => ()
-                }
-              }
-              _ => ()
-            }
-          }
-          // Get limit parameter (default: 2^32 - 1 per ES spec)
-          let limit : Int64 = if args.length() > 1 {
-            match args[1] {
-              Undefined => 4294967295L // 2^32 - 1
-              _ => {
-                let lim = @runtime.to_number(args[1]).to_int64()
-                if lim < 0L {
-                  0L
-                } else {
-                  lim
-                }
-              }
-            }
-          } else {
-            4294967295L
-          }
-          // If limit is 0, return empty array
-          if limit == 0L {
-            return @runtime.make_array([])
-          }
-          // Handle undefined separator - return array with whole string
-          if args.length() == 0 {
-            return @runtime.make_array([Value::String_(str)])
-          }
+      @runtime.make_interp_static_func(name="split", length=2, fn(
+        interp,
+        args,
+      ) raise {
+        // Per spec: check for [Symbol.split] method on the argument first
+        if args.length() > 0 {
           match args[0] {
-            Undefined => return @runtime.make_array([Value::String_(str)])
+            Object(data) => {
+              let split_sym = well_known_symbols.split
+              let split_fn = @runtime.lookup_symbol_property_chain(
+                args[0],
+                data,
+                split_sym.id,
+                interp=Some(interp),
+              )
+              match split_fn {
+                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+                Some(fn_val) => {
+                  let limit = if args.length() > 1 {
+                    args[1]
+                  } else {
+                    Undefined
+                  }
+                  let result = @runtime.call_callable_direct(
+                    fn_val,
+                    args[0],
+                    [Value::String_(str), limit],
+                    interp=Some(interp),
+                  )
+                  return result
+                }
+                _ => ()
+              }
+            }
             _ => ()
           }
-          let sep = @runtime.to_js_string(args[0])
-          // Empty separator splits into individual characters
-          if sep.length() == 0 {
-            let result : Array[Value] = []
-            let chars = str.to_array()
-            let chars_len = chars.length().to_int64()
-            let count = if chars_len < limit {
-              chars.length()
-            } else {
-              limit.to_int()
+        }
+        // Get limit parameter (default: 2^32 - 1 per ES spec)
+        let limit : Int64 = if args.length() > 1 {
+          match args[1] {
+            Undefined => 4294967295L // 2^32 - 1
+            _ => {
+              let lim = @runtime.to_number(args[1]).to_int64()
+              if lim < 0L {
+                0L
+              } else {
+                lim
+              }
             }
-            for i = 0; i < count; i = i + 1 {
-              let buf = StringBuilder::new()
-              buf.write_char(chars[i])
-              result.push(Value::String_(buf.to_string()))
-            }
-            return @runtime.make_array(result)
           }
+        } else {
+          4294967295L
+        }
+        // If limit is 0, return empty array
+        if limit == 0L {
+          return @runtime.make_array([])
+        }
+        // Handle undefined separator - return array with whole string
+        if args.length() == 0 {
+          return @runtime.make_array([Value::String_(str)])
+        }
+        match args[0] {
+          Undefined => return @runtime.make_array([Value::String_(str)])
+          _ => ()
+        }
+        let sep = @runtime.to_js_string(args[0])
+        // Empty separator splits into individual characters
+        if sep.length() == 0 {
           let result : Array[Value] = []
-          let s_chars = str.to_array()
-          let sep_chars = sep.to_array()
-          let slen = str.length()
-          let sep_len = sep.length()
-          let mut last = 0
-          let mut i = 0
-          while i <= slen - sep_len {
-            let mut matched = true
-            for j = 0; j < sep_len; j = j + 1 {
-              if s_chars[i + j] != sep_chars[j] {
-                matched = false
-                break
-              }
-            }
-            if matched {
-              let buf = StringBuilder::new()
-              for k = last; k < i; k = k + 1 {
-                buf.write_char(s_chars[k])
-              }
-              result.push(Value::String_(buf.to_string()))
-              // Per spec: if we've reached the limit, return immediately
-              if result.length().to_int64() >= limit {
-                return @runtime.make_array(result)
-              }
-              last = i + sep_len
-              i = i + sep_len
-            } else {
-              i = i + 1
+          let chars = str.to_array()
+          let chars_len = chars.length().to_int64()
+          let count = if chars_len < limit {
+            chars.length()
+          } else {
+            limit.to_int()
+          }
+          for i = 0; i < count; i = i + 1 {
+            let buf = StringBuilder::new()
+            buf.write_char(chars[i])
+            result.push(Value::String_(buf.to_string()))
+          }
+          return @runtime.make_array(result)
+        }
+        let result : Array[Value] = []
+        let s_chars = str.to_array()
+        let sep_chars = sep.to_array()
+        let slen = str.length()
+        let sep_len = sep.length()
+        let mut last = 0
+        let mut i = 0
+        while i <= slen - sep_len {
+          let mut matched = true
+          for j = 0; j < sep_len; j = j + 1 {
+            if s_chars[i + j] != sep_chars[j] {
+              matched = false
+              break
             }
           }
-          // Add remaining part if we haven't hit the limit
-          if result.length().to_int64() < limit {
+          if matched {
             let buf = StringBuilder::new()
-            for k = last; k < slen; k = k + 1 {
+            for k = last; k < i; k = k + 1 {
               buf.write_char(s_chars[k])
             }
             result.push(Value::String_(buf.to_string()))
+            // Per spec: if we've reached the limit, return immediately
+            if result.length().to_int64() >= limit {
+              return @runtime.make_array(result)
+            }
+            last = i + sep_len
+            i = i + sep_len
+          } else {
+            i = i + 1
           }
-          @runtime.make_array(result)
-        },
-      )
+        }
+        // Add remaining part if we haven't hit the limit
+        if result.length().to_int64() < limit {
+          let buf = StringBuilder::new()
+          for k = last; k < slen; k = k + 1 {
+            buf.write_char(s_chars[k])
+          }
+          result.push(Value::String_(buf.to_string()))
+        }
+        @runtime.make_array(result)
+      })
     }
     "replace" => {
       let str = s

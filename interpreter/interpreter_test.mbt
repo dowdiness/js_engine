@@ -2226,6 +2226,49 @@ test "string split" {
 }
 
 ///|
+test "RegExp Symbol.split uses captures, limit, and unicode advance" {
+  let src =
+    #|var parts = /(\d)/[Symbol.split]("a1b2", 4);
+    #|console.log(parts.length);
+    #|console.log(parts.join("|"));
+    #|var borrowed = String.prototype.split.call("a1b", /(\d)/);
+    #|console.log(borrowed.join("|"));
+    #|var astral = /./u[Symbol.split]("\uD834\uDF06");
+    #|console.log(astral.length);
+    #|console.log(astral[0]);
+    #|console.log(astral[1]);
+    #|RegExp.prototype.constructor = {};
+    #|console.log(/,/[Symbol.split]("a,b").join("|"));
+    #|delete RegExp.prototype.constructor;
+    #|console.log(/,/[Symbol.split]("c,d").join("|"));
+    #|var firstCustomExec = true;
+    #|var fakeSplitter = {
+    #|  set lastIndex(value) { this._lastIndex = value; },
+    #|  get lastIndex() { return this._lastIndex; },
+    #|  exec: function() {
+    #|    if (firstCustomExec) {
+    #|      firstCustomExec = false;
+    #|      this._lastIndex = 1;
+    #|      return [];
+    #|    }
+    #|    return null;
+    #|  }
+    #|};
+    #|var customRx = { flags: "u", constructor: function() {} };
+    #|customRx.constructor[Symbol.species] = function() { return fakeSplitter; };
+    #|var customParts = RegExp.prototype[Symbol.split].call(customRx, "\uD834\uDF06x");
+    #|console.log(customParts.length);
+    #|console.log(customParts[0].length);
+    #|console.log(customParts[1].length);
+    #|console.log(customParts[1].charCodeAt(0));
+    #|console.log(customParts[1].charCodeAt(1));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "4", "a|1|b|2", "a|1|b", "2", "", "", "a|b", "c|d", "2", "0", "2", "57094", "120",
+  ])
+}
+
+///|
 test "string replace" {
   let (_, result) = run_js("\"hello world\".replace(\"world\", \"there\")")
   expect_result(result, "hello there")
