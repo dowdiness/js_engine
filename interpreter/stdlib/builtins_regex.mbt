@@ -2315,11 +2315,25 @@ fn regexp_exec_for_symbol_method(
         )
     }
   } else {
-    let (pat, fl) = extract_regexp_source_flags(rx)
-    guard pat != "" || fl != "" else {
-      raise @errors.TypeError(
-        message="RegExp.prototype[Symbol.replace] called on incompatible receiver",
-      )
+    let (pat, fl) = match rx {
+      Object(data) if data.class_name == "RegExp" => {
+        let pat = match regexp_original_source_from_data(data) {
+          Some(s) => s
+          None =>
+            raise @errors.TypeError(
+              message="RegExp method called on incompatible receiver",
+            )
+        }
+        let fl = match regexp_original_flags_from_data(data) {
+          Some(s) => s
+          None => ""
+        }
+        (pat, fl)
+      }
+      _ =>
+        raise @errors.TypeError(
+          message="RegExp method called on incompatible receiver",
+        )
     }
     let has_global = fl.contains("g")
     let has_sticky = fl.contains("y")

@@ -4205,6 +4205,20 @@ test "string match non-global" {
 }
 
 ///|
+test "RegExp Symbol.match fallback accepts empty pattern with non-callable exec" {
+  let src =
+    #|var r = new RegExp("");
+    #|r.exec = undefined;
+    #|var direct = r[Symbol.match]("abc");
+    #|console.log(direct[0]);
+    #|console.log(direct.index);
+    #|var viaString = "abc".match(r);
+    #|console.log(viaString[0]);
+  let output = run_output(src)
+  json_inspect(output, content=["", "0", ""])
+}
+
+///|
 test "string match returns null" {
   let src =
     #|var result = "hello".match(/\d+/);
