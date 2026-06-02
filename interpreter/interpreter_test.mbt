@@ -2241,9 +2241,30 @@ test "RegExp Symbol.split uses captures, limit, and unicode advance" {
     #|console.log(/,/[Symbol.split]("a,b").join("|"));
     #|delete RegExp.prototype.constructor;
     #|console.log(/,/[Symbol.split]("c,d").join("|"));
+    #|var firstCustomExec = true;
+    #|var fakeSplitter = {
+    #|  set lastIndex(value) { this._lastIndex = value; },
+    #|  get lastIndex() { return this._lastIndex; },
+    #|  exec: function() {
+    #|    if (firstCustomExec) {
+    #|      firstCustomExec = false;
+    #|      this._lastIndex = 1;
+    #|      return [];
+    #|    }
+    #|    return null;
+    #|  }
+    #|};
+    #|var customRx = { flags: "u", constructor: function() {} };
+    #|customRx.constructor[Symbol.species] = function() { return fakeSplitter; };
+    #|var customParts = RegExp.prototype[Symbol.split].call(customRx, "\uD834\uDF06x");
+    #|console.log(customParts.length);
+    #|console.log(customParts[0].length);
+    #|console.log(customParts[1].length);
+    #|console.log(customParts[1].charCodeAt(0));
+    #|console.log(customParts[1].charCodeAt(1));
   let output = run_output(src)
   json_inspect(output, content=[
-    "4", "a|1|b|2", "a|1|b", "2", "", "", "a|b", "c|d",
+    "4", "a|1|b|2", "a|1|b", "2", "", "", "a|b", "c|d", "2", "0", "2", "57094", "120",
   ])
 }
 

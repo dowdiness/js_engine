@@ -1232,8 +1232,13 @@ fn setup_builtins_with_realm_state_active(
               match result {
                 Some(m) => {
                   if has_sticky || has_global {
+                    let last_index = if fl.contains("u") || fl.contains("v") {
+                      regexp_char_index_to_code_unit_index(str, m.end_)
+                    } else {
+                      m.end_
+                    }
                     data.bag.properties["lastIndex"] = Value::Number(
-                      m.end_.to_double(),
+                      last_index.to_double(),
                     )
                   }
                   Value::Bool(true)
@@ -1286,8 +1291,13 @@ fn setup_builtins_with_realm_state_active(
               match result {
                 Some(m) => {
                   if has_sticky || has_global {
+                    let last_index = if fl.contains("u") || fl.contains("v") {
+                      regexp_char_index_to_code_unit_index(str, m.end_)
+                    } else {
+                      m.end_
+                    }
                     data.bag.properties["lastIndex"] = Value::Number(
-                      m.end_.to_double(),
+                      last_index.to_double(),
                     )
                   }
                   make_regex_match_array(m, str)

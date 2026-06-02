@@ -2306,6 +2306,28 @@ fn regexp_advance_string_index(
 }
 
 ///|
+fn regexp_char_index_to_code_unit_index(
+  input : String,
+  char_index : Int,
+) -> Int {
+  let chars = input.to_array()
+  let end_ = if char_index > chars.length() {
+    chars.length()
+  } else {
+    char_index
+  }
+  let mut code_unit_index = 0
+  for i in 0..<end_ {
+    if chars[i].to_int() > 0xFFFF {
+      code_unit_index += 2
+    } else {
+      code_unit_index += 1
+    }
+  }
+  code_unit_index
+}
+
+///|
 fn regexp_exec_for_symbol_method(
   interp : Interpreter,
   rx : Value,
@@ -2366,10 +2388,15 @@ fn regexp_exec_for_symbol_method(
     match regex_search(pat, fl, input, start_pos=start) {
       Some(m) => {
         if has_global || has_sticky {
+          let last_index = if fl.contains("u") || fl.contains("v") {
+            regexp_char_index_to_code_unit_index(input, m.end_)
+          } else {
+            m.end_
+          }
           let _ = interp.set_property(
             rx,
             "lastIndex",
-            Value::Number(m.end_.to_double()),
+            Value::Number(last_index.to_double()),
             loc,
             strict=true,
           )
@@ -2826,21 +2853,12 @@ fn regexp_species_constructor(
 
 ///|
 fn regexp_string_slice(input : String, start : Int, end_ : Int) -> String {
-  input[start:end_].to_owned()
-}
-
-///|
-fn regexp_unicode_boundary_after(input : String, index : Int) -> Int {
-  if index <= 0 || index >= input.length() {
-    return index
+  let buf = StringBuilder::new()
+  for i in start..<end_ {
+    let unit = input[i].to_int()
+    buf.write_char(unit.unsafe_to_char())
   }
-  let prev = input[index - 1].to_int()
-  let current = input[index].to_int()
-  if prev >= 0xD800 && prev <= 0xDBFF && current >= 0xDC00 && current <= 0xDFFF {
-    index + 1
-  } else {
-    index
-  }
+  buf.to_string()
 }
 
 ///|
@@ -2848,7 +2866,6 @@ fn regexp_split_last_index(
   interp : Interpreter,
   splitter : Value,
   input : String,
-  unicode_matching : Bool,
   loc : @token.Loc,
 ) -> Int raise Error {
   let input_size = input.length()
@@ -2856,11 +2873,10 @@ fn regexp_split_last_index(
     interp.get_property(splitter, "lastIndex", loc),
     interp,
   )
-  let index = if e > input_size.to_double() { input_size } else { e.to_int() }
-  if unicode_matching {
-    regexp_unicode_boundary_after(input, index)
+  if e > input_size.to_double() {
+    input_size
   } else {
-    index
+    e.to_int()
   }
 }
 
@@ -2920,9 +2936,7 @@ fn regexp_symbol_split(
       Null =>
         q = regexp_advance_string_index(input, q.to_double(), unicode_matching).to_int()
       _ => {
-        let e = regexp_split_last_index(
-          interp, splitter, input, unicode_matching, loc,
-        )
+        let e = regexp_split_last_index(interp, splitter, input, loc)
         if e == p {
           q = regexp_advance_string_index(
             input,
