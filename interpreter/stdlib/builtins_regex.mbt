@@ -1691,6 +1691,9 @@ const REGEXP_ORIGINAL_SOURCE_SYMBOL_ID = -120
 const REGEXP_ORIGINAL_FLAGS_SYMBOL_ID = -121
 
 ///|
+const REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID = -122
+
+///|
 fn regexp_original_source_from_data(data : ObjectData) -> String? {
   match data.bag.symbol_properties.get(REGEXP_ORIGINAL_SOURCE_SYMBOL_ID) {
     Some(Value::String_(s)) => Some(s)
@@ -1823,6 +1826,16 @@ fn regexp_internal_slot_descriptor() -> PropDescriptor {
 fn set_regexp_internal_slot_descriptors(data : ObjectData) -> Unit {
   data.bag.symbol_descriptors[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   data.bag.symbol_descriptors[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+}
+
+///|
+fn set_regexp_intrinsic_constructor_slot(
+  symbol_properties : Map[Int, Value],
+  symbol_descriptors : Map[Int, PropDescriptor],
+  ctor : Value,
+) -> Unit {
+  symbol_properties[REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID] = ctor
+  symbol_descriptors[REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID] = regexp_internal_slot_descriptor()
 }
 
 ///|
@@ -2774,9 +2787,14 @@ fn regexp_to_uint32(value : Value, interp : Interpreter) -> Int64 raise Error {
 fn regexp_default_constructor(realm_state : @runtime.RealmState) -> Value {
   match realm_state.regexp_prototype.val {
     Some(Object(data)) =>
-      match data.bag.properties.get("constructor") {
+      match
+        data.bag.symbol_properties.get(REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID) {
         Some(ctor) => ctor
-        None => Undefined
+        None =>
+          match data.bag.properties.get("constructor") {
+            Some(ctor) => ctor
+            None => Undefined
+          }
       }
     _ => Undefined
   }

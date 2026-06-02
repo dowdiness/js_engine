@@ -1339,6 +1339,13 @@ fn setup_builtins_with_realm_state_active(
         setter: None,
         is_accessor: false,
       }
+      match regexp_proto_props.get("constructor") {
+        Some(ctor) =>
+          set_regexp_intrinsic_constructor_slot(
+            regexp_sym_props, regexp_sym_descs, ctor,
+          )
+        None => ()
+      }
       // [Symbol.match]
       let match_sym = well_known_symbols.match_sym
       regexp_sym_props[match_sym.id] = make_regexp_match_method(realm_state)

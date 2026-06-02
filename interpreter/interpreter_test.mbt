@@ -2237,8 +2237,10 @@ test "RegExp Symbol.split uses captures, limit, and unicode advance" {
     #|console.log(astral.length);
     #|console.log(astral[0]);
     #|console.log(astral[1]);
+    #|RegExp.prototype.constructor = {};
+    #|console.log(/,/[Symbol.split]("a,b").join("|"));
   let output = run_output(src)
-  json_inspect(output, content=["4", "a|1|b|2", "a|1|b", "2", "", ""])
+  json_inspect(output, content=["4", "a|1|b|2", "a|1|b", "2", "", "", "a|b"])
 }
 
 ///|
