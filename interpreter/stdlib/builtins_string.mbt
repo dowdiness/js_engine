@@ -867,52 +867,47 @@ pub fn get_string_method(
     }
     "match" => {
       let str = s
-      @runtime.make_native_func(
-        realm_state=Some(realm_state),
-        name="match",
-        length=1,
-        fn(args) raise {
-          if args.length() == 0 {
-            return Null
-          }
-          // Per spec: check for [Symbol.match] method on the argument
-          match args[0] {
-            Object(data) => {
-              let match_sym = well_known_symbols.match_sym
-              let match_fn = @runtime.lookup_symbol_property_chain(
-                args[0],
-                data,
-                match_sym.id,
-              )
-              match match_fn {
-                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-                Some(fn_val) => {
-                  let result = @runtime.call_callable_direct(fn_val, args[0], [
-                    Value::String_(str),
-                  ])
-                  return result
-                }
-                _ => ()
+      @runtime.make_interp_static_func(name="match", length=1, fn(
+        interp,
+        args,
+      ) raise {
+        if args.length() == 0 {
+          return Null
+        }
+        // Per spec: check for [Symbol.match] method on the argument
+        match args[0] {
+          Object(data) => {
+            let match_sym = well_known_symbols.match_sym
+            let match_fn = @runtime.lookup_symbol_property_chain(
+              args[0],
+              data,
+              match_sym.id,
+              interp=Some(interp),
+            )
+            match match_fn {
+              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+              Some(fn_val) => {
+                let result = @runtime.call_callable_direct(
+                  fn_val,
+                  args[0],
+                  [Value::String_(str)],
+                  interp=Some(interp),
+                )
+                return result
               }
-              if data.class_name == "RegExp" {
-                let pattern = match data.bag.properties.get("source") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                let flags = match data.bag.properties.get("flags") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                return string_match_regex(str, pattern, flags)
-              }
+              _ => ()
             }
-            _ => ()
+            if data.class_name == "RegExp" {
+              let (pattern, flags) = extract_regexp_source_flags(args[0])
+              return string_match_regex(str, pattern, flags)
+            }
           }
-          // If not a RegExp, treat as string pattern
-          let pattern = @runtime.to_js_string(args[0])
-          string_match_regex(str, pattern, "")
-        },
-      )
+          _ => ()
+        }
+        // If not a RegExp, treat as string pattern
+        let pattern = interp.to_js_string(args[0])
+        string_match_regex(str, pattern, "")
+      })
     }
     "matchAll" => {
       let str = s
@@ -1927,11 +1922,11 @@ pub fn setup_string_prototype(
             }
           _ => 0
         }
-        data.bag.properties[mname] = @runtime.make_method_func(
+        data.bag.properties[mname] = @runtime.make_interp_method_func(
           realm_state=Some(realm_state),
           name=display_name,
           length=meth_length,
-          fn(this_val, args) raise {
+          fn(interp, this_val, args) raise {
             let s = this_to_string(this_val)
             let meth_val = get_string_method(s, mname, realm_state, annex_b~)
             match meth_val {
@@ -1940,6 +1935,8 @@ pub fn setup_string_prototype(
                   Some(NativeCallable(_, f)) => f(args)
                   Some(NativeCallableWithContext(_, f)) => f(Call, args)
                   Some(NonConstructableCallable(_, f)) => f(args)
+                  Some(NonConstructableInterpreterCallable(_, f)) =>
+                    f(interp, args)
                   _ => Undefined
                 }
               _ => Undefined
