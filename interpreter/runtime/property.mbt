@@ -1550,6 +1550,10 @@ fn Interpreter::get_computed_property_impl(
           )
         _ => Undefined
       }
+    Map(_) | Set(_) => {
+      let prop = to_js_string(key, interp=Some(self))
+      self.get_property(obj, prop, loc)
+    }
     Promise(data) =>
       match key {
         Symbol(sym) =>

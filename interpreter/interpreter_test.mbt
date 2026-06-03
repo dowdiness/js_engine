@@ -15111,10 +15111,9 @@ test "destructuring closes iterator when element binding throws" {
     #|}
     #|console.log(log.join("|"));
   let output = run_output(src)
-  json_inspect(
-    output,
-    content=["binding:return|binding:binding|assignment:return|assignment:assignment"],
-  )
+  json_inspect(output, content=[
+    "binding:return|binding:binding|assignment:return|assignment:assignment",
+  ])
 }
 
 ///|
@@ -15166,10 +15165,9 @@ test "Array.from closes only mapper abrupts during iterator consumption" {
     #|}
     #|console.log(log.join("|"));
   let output = run_output(src)
-  json_inspect(
-    output,
-    content=["step:step|done:done|value:value|map:return|map:mapped"],
-  )
+  json_inspect(output, content=[
+    "step:step|done:done|value:value|map:return|map:mapped",
+  ])
 }
 
 ///|
@@ -15203,6 +15201,24 @@ test "Map and Set propagate IteratorValue abrupts without closing" {
     #|console.log(log.join("|"));
   let output = run_output(src)
   json_inspect(output, content=["map:map|set:set"])
+}
+
+///|
+test "Map and Set bracket access uses prototype accessors" {
+  let src =
+    #|var m = new Map([[1, 2]]);
+    #|var s = new Set([1, 2]);
+    #|console.log(m["size"]);
+    #|console.log(s["size"]);
+    #|var seen;
+    #|Object.defineProperty(Map.prototype, "answer", {
+    #|  configurable: true,
+    #|  get: function() { seen = this; return 42; }
+    #|});
+    #|console.log(m["answer"]);
+    #|console.log(seen === m);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "2", "42", "true"])
 }
 
 ///|
