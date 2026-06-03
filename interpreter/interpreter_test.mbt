@@ -4243,6 +4243,49 @@ test "RegExp duplicate named replacements use the matched capture" {
 }
 
 ///|
+test "RegExp duplicate named groups backtrack into later alternatives" {
+  let src =
+    #|var matcher = /(?:(?<x>a)|(?<y>a)(?<x>b))(?:(?<z>c)|(?<z>d))/;
+    #|var three = matcher.exec("abc");
+    #|console.log(three[0]);
+    #|console.log(three.groups.x);
+    #|console.log(three.groups.y);
+    #|console.log(three.groups.z);
+    #|console.log(Object.keys(three.groups).join(","));
+    #|var two = matcher.exec("ad");
+    #|console.log(two[0]);
+    #|console.log(two.groups.x);
+    #|console.log(two.groups.y === undefined);
+    #|console.log(two.groups.z);
+    #|console.log(Object.keys(two.groups).join(","));
+    #|var iterated = /(?:(?:(?<x>a)|(?<x>b)|c)\k<x>){2}/.exec("aac");
+    #|console.log(iterated[0]);
+    #|console.log(iterated.groups.x === undefined);
+    #|console.log(Object.keys(iterated.groups).join(","));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "abc", "b", "a", "c", "x,y,z", "ad", "a", "true", "d", "x,y,z", "aac", "true",
+    "x",
+  ])
+}
+
+///|
+test "RegExp positive lookahead does not backtrack into assertion" {
+  let src =
+    #|console.log(/^(?=(a|aa))\1b/.exec("aab"));
+    #|var m = /(?=(a|aa))\1b/.exec("aab");
+    #|console.log(m.index);
+    #|console.log(m[0]);
+    #|console.log(m[1]);
+    #|var spec = /(?=(a+))a*b\1/.exec("baaabac");
+    #|console.log(spec.index);
+    #|console.log(spec[0]);
+    #|console.log(spec[1]);
+  let output = run_output(src)
+  json_inspect(output, content=["null", "1", "ab", "a", "3", "aba", "a"])
+}
+
+///|
 test "RegExp compile uses internal slots across prototype mutation and subclasses" {
   let src =
     #|var r = /a/;
