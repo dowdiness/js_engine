@@ -33,7 +33,10 @@ fn Interpreter::create_class(
   env : Environment,
 ) -> Value raise Error {
   // Class bodies are always strict per spec
-  let class_ctx : ExecContext = { strict: true, current_generator: None }
+  let class_ctx : ExecContext = {
+    strict: true,
+    current_generator: ctx.current_generator,
+  }
   // Evaluate superclass if present
   let (super_ctor, super_proto) : (Value?, Value) = match superclass_expr {
     Some(expr) => {
