@@ -1439,6 +1439,9 @@ fn Interpreter::eval_expr(
     }
     SuperMember(prop, loc) => self.eval_super_property(env, prop, loc)
     SuperComputedMember(key_expr, loc) => {
+      // Evaluate super binding first to ensure `this` TDZ/derived checks
+      // happen before computed-key side effects.
+      let _ = eval_this_value(env)
       let key = self.eval_expr(ctx, key_expr, env)
       self.eval_super_computed_property(env, key, loc)
     }
