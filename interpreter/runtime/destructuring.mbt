@@ -92,7 +92,16 @@ fn Interpreter::bind_pattern(
                 Some(result) => self.iterator_result_value(result, loc_dstr)
               }
             }
-            self.bind_pattern(pat, val, env, bk, ctx~)
+            self.bind_pattern(pat, val, env, bk, ctx~) catch {
+              e => {
+                if !iter_done {
+                  self.iterator_close(iterator, loc_dstr) catch {
+                    _ => ()
+                  }
+                }
+                raise e
+              }
+            }
           }
           None =>
             if !iter_done {
@@ -327,7 +336,16 @@ fn Interpreter::assign_pattern(
                 Some(result) => self.iterator_result_value(result, loc_dstr)
               }
             }
-            self.assign_pattern(ctx, pat, val, env)
+            self.assign_pattern(ctx, pat, val, env) catch {
+              e => {
+                if !iter_done_a {
+                  self.iterator_close(iterator_a, loc_dstr) catch {
+                    _ => ()
+                  }
+                }
+                raise e
+              }
+            }
           }
           None =>
             if !iter_done_a {

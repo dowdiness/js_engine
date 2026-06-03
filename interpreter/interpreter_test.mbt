@@ -15084,15 +15084,55 @@ test "destructuring elisions skip IteratorValue" {
 }
 
 ///|
-test "Array.from closes iterator when IteratorValue or mapFn throws" {
+test "destructuring closes iterator when element binding throws" {
   let src =
     #|var log = [];
-    #|function makeIter(label, poisonValue) {
+    #|function makeIter(label, value) {
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() { return { done: false, value: value }; },
+    #|      return: function() { log.push(label + ":return"); return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|function fail(label) { throw new Error(label); }
+    #|try {
+    #|  var [x = fail("binding")] = makeIter("binding", undefined);
+    #|} catch (e) {
+    #|  log.push("binding:" + e.message);
+    #|}
+    #|try {
+    #|  var target;
+    #|  [target = fail("assignment")] = makeIter("assignment", undefined);
+    #|} catch (e) {
+    #|  log.push("assignment:" + e.message);
+    #|}
+    #|console.log(log.join("|"));
+  let output = run_output(src)
+  json_inspect(
+    output,
+    content=["binding:return|binding:binding|assignment:return|assignment:assignment"],
+  )
+}
+
+///|
+test "Array.from closes only mapper abrupts during iterator consumption" {
+  let src =
+    #|var log = [];
+    #|function makeIter(label, mode) {
     #|  var iter = {};
     #|  iter[Symbol.iterator] = function() {
     #|    return {
     #|      next: function() {
-    #|        if (poisonValue) {
+    #|        if (mode === "step") { throw new Error(label); }
+    #|        if (mode === "done") {
+    #|          return Object.defineProperty({}, "done", {
+    #|            get: function() { throw new Error(label); }
+    #|          });
+    #|        }
+    #|        if (mode === "value") {
     #|          return Object.defineProperty({ done: false }, "value", {
     #|            get: function() { throw new Error(label); }
     #|          });
@@ -15105,24 +15145,35 @@ test "Array.from closes iterator when IteratorValue or mapFn throws" {
     #|  return iter;
     #|}
     #|try {
-    #|  Array.from(makeIter("value", true));
+    #|  Array.from(makeIter("step", "step"));
+    #|} catch (e) {
+    #|  log.push("step:" + e.message);
+    #|}
+    #|try {
+    #|  Array.from(makeIter("done", "done"));
+    #|} catch (e) {
+    #|  log.push("done:" + e.message);
+    #|}
+    #|try {
+    #|  Array.from(makeIter("value", "value"));
     #|} catch (e) {
     #|  log.push("value:" + e.message);
     #|}
     #|try {
-    #|  Array.from(makeIter("map", false), function() { throw new Error("mapped"); });
+    #|  Array.from(makeIter("map", "ok"), function() { throw new Error("mapped"); });
     #|} catch (e) {
     #|  log.push("map:" + e.message);
     #|}
     #|console.log(log.join("|"));
   let output = run_output(src)
-  json_inspect(output, content=[
-    "value:return|value:value|map:return|map:mapped",
-  ])
+  json_inspect(
+    output,
+    content=["step:step|done:done|value:value|map:return|map:mapped"],
+  )
 }
 
 ///|
-test "Map and Set close iterators when IteratorValue throws" {
+test "Map and Set propagate IteratorValue abrupts without closing" {
   let src =
     #|var log = [];
     #|function makeIter(label) {
@@ -15151,7 +15202,7 @@ test "Map and Set close iterators when IteratorValue throws" {
     #|}
     #|console.log(log.join("|"));
   let output = run_output(src)
-  json_inspect(output, content=["map:return|map:map|set:return|set:set"])
+  json_inspect(output, content=["map:map|set:set"])
 }
 
 ///|

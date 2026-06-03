@@ -1322,14 +1322,7 @@ fn setup_array_builtins(
             None => break
             Some(result) => result
           }
-          let value = interp.iterator_result_value(iter_result, loc) catch {
-            e => {
-              interp.iterator_close(iterator, loc) catch {
-                _ => ()
-              }
-              raise e
-            }
-          }
+          let value = interp.iterator_result_value(iter_result, loc)
           let mapped = match map_fn {
             Some(fn_val) =>
               interp.call_value(

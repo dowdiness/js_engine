@@ -497,14 +497,7 @@ fn setup_map_builtins(
               None => break
               Some(result) => result
             }
-            let value = interp.iterator_result_value(iter_result, loc) catch {
-              e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
-                raise e
-              }
-            }
+            let value = interp.iterator_result_value(iter_result, loc)
             if !@runtime.is_object_value(value) {
               interp.iterator_close(iterator, loc) catch {
                 _ => ()
@@ -962,14 +955,7 @@ fn setup_set_builtins(
               None => break
               Some(result) => result
             }
-            let value = interp.iterator_result_value(iter_result, loc) catch {
-              e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
-                raise e
-              }
-            }
+            let value = interp.iterator_result_value(iter_result, loc)
             let _ = interp.call_value(adder, new_set, [value], loc) catch {
               e => {
                 interp.iterator_close(iterator, loc) catch {
