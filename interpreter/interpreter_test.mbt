@@ -15018,6 +15018,313 @@ test "Array.from constructs custom iterable result before reading iterator resul
 }
 
 ///|
+test "iterator value accessors throw before advancing" {
+  let src =
+    #|function MyError(name) { this.name = name; }
+    #|function check(name, action) {
+    #|  var count = 0;
+    #|  var iter = {};
+    #|  var poisoned = Object.defineProperty({}, "value", {
+    #|    get: function() { throw new MyError(name); }
+    #|  });
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        count += 1;
+    #|        if (count > 1) { throw new MyError(name + " advanced"); }
+    #|        return poisoned;
+    #|      }
+    #|    };
+    #|  };
+    #|  try {
+    #|    action(iter);
+    #|  } catch (e) {
+    #|    console.log(e.name + ":" + count);
+    #|  }
+    #|}
+    #|check("spread", function(iter) { (function() {})(...iter); });
+    #|check("arrayFrom", function(iter) { Array.from(iter); });
+    #|check("destructure", function(iter) { var [...x] = iter; });
+    #|check("forOf", function(iter) { for (var x of iter) {} });
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "spread:1", "arrayFrom:1", "destructure:1", "forOf:1",
+  ])
+}
+
+///|
+test "destructuring elisions skip IteratorValue" {
+  let src =
+    #|function makeIter(label) {
+    #|  var count = 0;
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        count = count + 1;
+    #|        if (count === 1) {
+    #|          return Object.defineProperty({ done: false }, "value", {
+    #|            get: function() { throw new Error(label + " elision"); }
+    #|          });
+    #|        }
+    #|        return { done: false, value: count };
+    #|      },
+    #|      return: function() { return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|var [, x] = makeIter("binding");
+    #|console.log("binding:" + x);
+    #|var y;
+    #|[, y] = makeIter("assignment");
+    #|console.log("assignment:" + y);
+  let output = run_output(src)
+  json_inspect(output, content=["binding:2", "assignment:2"])
+}
+
+///|
+test "destructuring closes iterator when element binding throws" {
+  let src =
+    #|var log = [];
+    #|function makeIter(label, value) {
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() { return { done: false, value: value }; },
+    #|      return: function() { log.push(label + ":return"); return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|function fail(label) { throw new Error(label); }
+    #|try {
+    #|  var [x = fail("binding")] = makeIter("binding", undefined);
+    #|} catch (e) {
+    #|  log.push("binding:" + e.message);
+    #|}
+    #|try {
+    #|  var target;
+    #|  [target = fail("assignment")] = makeIter("assignment", undefined);
+    #|} catch (e) {
+    #|  log.push("assignment:" + e.message);
+    #|}
+    #|console.log(log.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "binding:return|binding:binding|assignment:return|assignment:assignment",
+  ])
+}
+
+///|
+test "Array.from closes only mapper abrupts during iterator consumption" {
+  let src =
+    #|var log = [];
+    #|function makeIter(label, mode) {
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        if (mode === "step") { throw new Error(label); }
+    #|        if (mode === "done") {
+    #|          return Object.defineProperty({}, "done", {
+    #|            get: function() { throw new Error(label); }
+    #|          });
+    #|        }
+    #|        if (mode === "value") {
+    #|          return Object.defineProperty({ done: false }, "value", {
+    #|            get: function() { throw new Error(label); }
+    #|          });
+    #|        }
+    #|        return { done: false, value: 1 };
+    #|      },
+    #|      return: function() { log.push(label + ":return"); return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|try {
+    #|  Array.from(makeIter("step", "step"));
+    #|} catch (e) {
+    #|  log.push("step:" + e.message);
+    #|}
+    #|try {
+    #|  Array.from(makeIter("done", "done"));
+    #|} catch (e) {
+    #|  log.push("done:" + e.message);
+    #|}
+    #|try {
+    #|  Array.from(makeIter("value", "value"));
+    #|} catch (e) {
+    #|  log.push("value:" + e.message);
+    #|}
+    #|try {
+    #|  Array.from(makeIter("map", "ok"), function() { throw new Error("mapped"); });
+    #|} catch (e) {
+    #|  log.push("map:" + e.message);
+    #|}
+    #|console.log(log.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "step:step|done:done|value:value|map:return|map:mapped",
+  ])
+}
+
+///|
+test "Map and Set propagate IteratorValue abrupts without closing" {
+  let src =
+    #|var log = [];
+    #|function makeIter(label) {
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        return Object.defineProperty({ done: false }, "value", {
+    #|          get: function() { throw new Error(label); }
+    #|        });
+    #|      },
+    #|      return: function() { log.push(label + ":return"); return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|try {
+    #|  new Map(makeIter("map"));
+    #|} catch (e) {
+    #|  log.push("map:" + e.message);
+    #|}
+    #|try {
+    #|  new Set(makeIter("set"));
+    #|} catch (e) {
+    #|  log.push("set:" + e.message);
+    #|}
+    #|console.log(log.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=["map:map|set:set"])
+}
+
+///|
+test "Map and Set bracket access uses prototype accessors" {
+  let src =
+    #|var m = new Map([[1, 2]]);
+    #|var s = new Set([1, 2]);
+    #|console.log(m["size"]);
+    #|console.log(s["size"]);
+    #|var seen;
+    #|Object.defineProperty(Map.prototype, "answer", {
+    #|  configurable: true,
+    #|  get: function() { seen = this; return 42; }
+    #|});
+    #|console.log(m["answer"]);
+    #|console.log(seen === m);
+  let output = run_output(src)
+  json_inspect(output, content=["1", "2", "42", "true"])
+}
+
+///|
+test "Map and Set constructors honor accessor adders" {
+  let src =
+    #|var mapGetterCalls = 0;
+    #|var mapAdderCalls = 0;
+    #|var mapReceiver;
+    #|Object.defineProperty(Map.prototype, "set", {
+    #|  configurable: true,
+    #|  get: function() {
+    #|    mapGetterCalls = mapGetterCalls + 1;
+    #|    return function(k, v) {
+    #|      mapAdderCalls = mapAdderCalls + 1;
+    #|      mapReceiver = this;
+    #|    };
+    #|  }
+    #|});
+    #|var m = new Map([[1, 2], [3, 4]]);
+    #|console.log(mapGetterCalls);
+    #|console.log(mapAdderCalls);
+    #|console.log(mapReceiver === m);
+    #|console.log(m.size);
+    #|
+    #|var setGetterCalls = 0;
+    #|var setAdderCalls = 0;
+    #|var setReceiver;
+    #|Object.defineProperty(Set.prototype, "add", {
+    #|  configurable: true,
+    #|  get: function() {
+    #|    setGetterCalls = setGetterCalls + 1;
+    #|    return function(v) {
+    #|      setAdderCalls = setAdderCalls + 1;
+    #|      setReceiver = this;
+    #|    };
+    #|  }
+    #|});
+    #|var s = new Set([1, 2]);
+    #|console.log(setGetterCalls);
+    #|console.log(setAdderCalls);
+    #|console.log(setReceiver === s);
+    #|console.log(s.size);
+    #|
+    #|var err = new Error("set getter");
+    #|var iterated = false;
+    #|Object.defineProperty(Map.prototype, "set", {
+    #|  configurable: true,
+    #|  get: function() { throw err; }
+    #|});
+    #|var iterable = {};
+    #|iterable[Symbol.iterator] = function() {
+    #|  iterated = true;
+    #|  return [][Symbol.iterator]();
+    #|};
+    #|try {
+    #|  new Map(iterable);
+    #|} catch (e) {
+    #|  console.log(e === err);
+    #|  console.log(iterated);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1", "2", "true", "0", "1", "2", "true", "0", "true", "false",
+  ])
+}
+
+///|
+test "Map and Set close iterators when constructor adders throw" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var mapCloseCount = 0;
+    #|var mapIterable = {};
+    #|mapIterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { return { value: [], done: false }; },
+    #|    return: function() { mapCloseCount += 1; return {}; }
+    #|  };
+    #|};
+    #|Map.prototype.set = function() { throw new MyError(); };
+    #|try {
+    #|  new Map(mapIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(mapCloseCount);
+    #|}
+    #|var setCloseCount = 0;
+    #|var setIterable = {};
+    #|setIterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { return { value: null, done: false }; },
+    #|    return: function() { setCloseCount += 1; return {}; }
+    #|  };
+    #|};
+    #|Set.prototype.add = function() { throw new MyError(); };
+    #|try {
+    #|  new Set(setIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(setCloseCount);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError", "1", "MyError", "1"])
+}
+
+///|
 test "Weak collections close iterators when constructor adders throw" {
   let src =
     #|function MyError() { this.name = "MyError"; }

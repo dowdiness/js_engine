@@ -49,60 +49,14 @@ pub fn Interpreter::spread_iterable(
     _ => raise @errors.TypeError(message=type_of(val) + " is not iterable")
   }
 
-  // Get the next method from the iterator (walk prototype chain)
-  let next_method = match iterator {
-    Object(iter_data) =>
-      // First check direct properties
-      match iter_data.bag.properties.get("next") {
-        Some(next_fn) => next_fn
-        None => {
-          // Walk prototype chain
-          let mut found : Value = Undefined
-          let mut current = iter_data.prototype
-          while true {
-            match current {
-              Object(proto_data) =>
-                match proto_data.bag.properties.get("next") {
-                  Some(next_fn) => {
-                    found = next_fn
-                    break
-                  }
-                  None => current = proto_data.prototype
-                }
-              _ => break
-            }
-          }
-          match found {
-            Undefined =>
-              raise @errors.TypeError(message="iterator.next is not a function")
-            _ => found
-          }
-        }
-      }
-    _ => raise @errors.TypeError(message="Iterator result is not an object")
-  }
+  let next_method = self.get_iterator_next_method(iterator, loc)
 
   // Iterate using the iterator protocol
   while true {
-    let iter_result = self.call_value(next_method, iterator, [], loc)
-    let (done, value) = match iter_result {
-      Object(result_data) => {
-        let done_val = match result_data.bag.properties.get("done") {
-          Some(v) => is_truthy(v)
-          None => false
-        }
-        let value_val = match result_data.bag.properties.get("value") {
-          Some(v) => v
-          None => Undefined
-        }
-        (done_val, value_val)
-      }
-      _ => raise @errors.TypeError(message="Iterator result is not an object")
+    match self.iterator_step_value(iterator, next_method, loc) {
+      None => break
+      Some(value) => result.push(value)
     }
-    if done {
-      break
-    }
-    result.push(value)
   }
   result
 }

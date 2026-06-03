@@ -57,46 +57,11 @@ fn Interpreter::bind_pattern(
         Symbol(iterator_sym_dstr),
         loc_dstr,
       )
-      // Get iterator and next method
-      let (iterator, next_method) : (Value, Value) = match
-        iterator_method_dstr {
+      let iterator : Value = match iterator_method_dstr {
         Object(data) =>
           match data.callable {
-            Some(_) => {
-              let iter = self.call_value(
-                iterator_method_dstr,
-                value,
-                [],
-                loc_dstr,
-              )
-              // Get next method from iterator (walk prototype chain)
-              let next_fn : Value = match iter {
-                Object(iter_data) =>
-                  match iter_data.bag.properties.get("next") {
-                    Some(f) => f
-                    None => {
-                      let mut found : Value = Undefined
-                      let mut current = iter_data.prototype
-                      while true {
-                        match current {
-                          Object(proto_data) =>
-                            match proto_data.bag.properties.get("next") {
-                              Some(f) => {
-                                found = f
-                                break
-                              }
-                              None => current = proto_data.prototype
-                            }
-                          _ => break
-                        }
-                      }
-                      found
-                    }
-                  }
-                _ => Undefined
-              }
-              (iter, next_fn)
-            }
+            Some(_) =>
+              self.call_value(iterator_method_dstr, value, [], loc_dstr)
             None =>
               raise @errors.TypeError(
                 message=value.to_string() +
@@ -108,42 +73,43 @@ fn Interpreter::bind_pattern(
             message=value.to_string() + " is not iterable (cannot destructure)",
           )
       }
+      let next_method = self.get_iterator_next_method(iterator, loc_dstr)
       // Lazily consume iterator values per spec — one next() call per element
-      let mut iter_done = match next_method {
-        Undefined => true
-        _ => false
-      }
+      let mut iter_done = false
       for i = 0; i < elements.length(); i = i + 1 {
-        // Advance iterator one step for this element position
-        let val : Value = if iter_done {
-          Undefined
-        } else {
-          let iter_result = self.call_value(next_method, iterator, [], loc_dstr)
-          match iter_result {
-            Object(result_data) => {
-              let done_val = match result_data.bag.properties.get("done") {
-                Some(v) => is_truthy(v)
-                None => false
-              }
-              if done_val {
-                iter_done = true
-                Undefined
-              } else {
-                match result_data.bag.properties.get("value") {
-                  Some(v) => v
-                  None => Undefined
+        // Advance iterator one step for this element position. Elisions only
+        // perform IteratorStep; they must not perform IteratorValue.
+        match elements[i] {
+          Some(pat) => {
+            let val : Value = if iter_done {
+              Undefined
+            } else {
+              match self.iterator_step_result(iterator, next_method, loc_dstr) {
+                None => {
+                  iter_done = true
+                  Undefined
                 }
+                Some(result) => self.iterator_result_value(result, loc_dstr)
               }
             }
-            _ => {
-              iter_done = true
-              Undefined
+            self.bind_pattern(pat, val, env, bk, ctx~) catch {
+              e => {
+                if !iter_done {
+                  self.iterator_close(iterator, loc_dstr) catch {
+                    _ => ()
+                  }
+                }
+                raise e
+              }
             }
           }
-        }
-        match elements[i] {
-          Some(pat) => self.bind_pattern(pat, val, env, bk, ctx~)
-          None => () // elision — value consumed above, just discard
+          None =>
+            if !iter_done {
+              match self.iterator_step_result(iterator, next_method, loc_dstr) {
+                None => iter_done = true
+                Some(_) => ()
+              }
+            }
         }
       }
       // Handle rest pattern: collect remaining iterator values
@@ -154,31 +120,10 @@ fn Interpreter::bind_pattern(
             // iterator already exhausted, rest is empty
           } else {
             while true {
-              let iter_result = self.call_value(
-                next_method,
-                iterator,
-                [],
-                loc_dstr,
-              )
-              let (done, val) = match iter_result {
-                Object(result_data) => {
-                  let done_val = match result_data.bag.properties.get("done") {
-                    Some(v) => is_truthy(v)
-                    None => false
-                  }
-                  let value_val = match
-                    result_data.bag.properties.get("value") {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                  (done_val, value_val)
-                }
-                _ => (true, Undefined)
+              match self.iterator_step_value(iterator, next_method, loc_dstr) {
+                None => break
+                Some(value) => rest_elements.push(value)
               }
-              if done {
-                break
-              }
-              rest_elements.push(val)
             }
           }
           self.bind_pattern(rest_pat, make_array(rest_elements), env, bk, ctx~)
@@ -186,17 +131,7 @@ fn Interpreter::bind_pattern(
         None =>
           // Per spec: IteratorClose — call iterator.return() if not exhausted
           if iter_done == false {
-            match iterator {
-              Object(iter_data) =>
-                match iter_data.bag.properties.get("return") {
-                  Some(return_fn) =>
-                    if is_callable(return_fn) {
-                      let _ = self.call_value(return_fn, iterator, [], loc_dstr)
-                    }
-                  None => ()
-                }
-              _ => ()
-            }
+            self.iterator_close(iterator, loc_dstr)
           }
       }
     }
@@ -365,46 +300,11 @@ fn Interpreter::assign_pattern(
         Symbol(iterator_sym_dstr),
         loc_dstr,
       )
-      // Get iterator and next method
-      let (iterator_a, next_method_a) : (Value, Value) = match
-        iterator_method_dstr {
+      let iterator_a : Value = match iterator_method_dstr {
         Object(data) =>
           match data.callable {
-            Some(_) => {
-              let iter = self.call_value(
-                iterator_method_dstr,
-                value,
-                [],
-                loc_dstr,
-              )
-              // Get next method from iterator (walk prototype chain)
-              let next_fn : Value = match iter {
-                Object(iter_data) =>
-                  match iter_data.bag.properties.get("next") {
-                    Some(f) => f
-                    None => {
-                      let mut found : Value = Undefined
-                      let mut current = iter_data.prototype
-                      while true {
-                        match current {
-                          Object(proto_data) =>
-                            match proto_data.bag.properties.get("next") {
-                              Some(f) => {
-                                found = f
-                                break
-                              }
-                              None => current = proto_data.prototype
-                            }
-                          _ => break
-                        }
-                      }
-                      found
-                    }
-                  }
-                _ => Undefined
-              }
-              (iter, next_fn)
-            }
+            Some(_) =>
+              self.call_value(iterator_method_dstr, value, [], loc_dstr)
             None =>
               raise @errors.TypeError(
                 message=value.to_string() +
@@ -416,47 +316,45 @@ fn Interpreter::assign_pattern(
             message=value.to_string() + " is not iterable (cannot destructure)",
           )
       }
+      let next_method_a = self.get_iterator_next_method(iterator_a, loc_dstr)
       // Lazily consume iterator values per spec — one next() call per element
-      let mut iter_done_a = match next_method_a {
-        Undefined => true
-        _ => false
-      }
+      let mut iter_done_a = false
       for i = 0; i < elements.length(); i = i + 1 {
-        // Advance iterator one step for this element position
-        let val : Value = if iter_done_a {
-          Undefined
-        } else {
-          let iter_result = self.call_value(
-            next_method_a,
-            iterator_a,
-            [],
-            loc_dstr,
-          )
-          match iter_result {
-            Object(result_data) => {
-              let done_val = match result_data.bag.properties.get("done") {
-                Some(v) => is_truthy(v)
-                None => false
-              }
-              if done_val {
-                iter_done_a = true
-                Undefined
-              } else {
-                match result_data.bag.properties.get("value") {
-                  Some(v) => v
-                  None => Undefined
+        // Advance iterator one step for this element position. Elisions only
+        // perform IteratorStep; they must not perform IteratorValue.
+        match elements[i] {
+          Some(pat) => {
+            let val : Value = if iter_done_a {
+              Undefined
+            } else {
+              match
+                self.iterator_step_result(iterator_a, next_method_a, loc_dstr) {
+                None => {
+                  iter_done_a = true
+                  Undefined
                 }
+                Some(result) => self.iterator_result_value(result, loc_dstr)
               }
             }
-            _ => {
-              iter_done_a = true
-              Undefined
+            self.assign_pattern(ctx, pat, val, env) catch {
+              e => {
+                if !iter_done_a {
+                  self.iterator_close(iterator_a, loc_dstr) catch {
+                    _ => ()
+                  }
+                }
+                raise e
+              }
             }
           }
-        }
-        match elements[i] {
-          Some(pat) => self.assign_pattern(ctx, pat, val, env)
-          None => () // elision — value consumed above, just discard
+          None =>
+            if !iter_done_a {
+              match
+                self.iterator_step_result(iterator_a, next_method_a, loc_dstr) {
+                None => iter_done_a = true
+                Some(_) => ()
+              }
+            }
         }
       }
       // Handle rest pattern: collect remaining iterator values
@@ -467,31 +365,11 @@ fn Interpreter::assign_pattern(
             // iterator already exhausted, rest is empty
           } else {
             while true {
-              let iter_result = self.call_value(
-                next_method_a,
-                iterator_a,
-                [],
-                loc_dstr,
-              )
-              let (done, val) = match iter_result {
-                Object(result_data) => {
-                  let done_val = match result_data.bag.properties.get("done") {
-                    Some(v) => is_truthy(v)
-                    None => false
-                  }
-                  let value_val = match
-                    result_data.bag.properties.get("value") {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                  (done_val, value_val)
-                }
-                _ => (true, Undefined)
+              match
+                self.iterator_step_value(iterator_a, next_method_a, loc_dstr) {
+                None => break
+                Some(value) => rest_elements.push(value)
               }
-              if done {
-                break
-              }
-              rest_elements.push(val)
             }
           }
           self.assign_pattern(ctx, rest_pat, make_array(rest_elements), env)
@@ -499,22 +377,7 @@ fn Interpreter::assign_pattern(
         None =>
           // Per spec: IteratorClose — call iterator.return() if not exhausted
           if iter_done_a == false {
-            match iterator_a {
-              Object(iter_data) =>
-                match iter_data.bag.properties.get("return") {
-                  Some(return_fn) =>
-                    if is_callable(return_fn) {
-                      let _ = self.call_value(
-                        return_fn,
-                        iterator_a,
-                        [],
-                        loc_dstr,
-                      )
-                    }
-                  None => ()
-                }
-              _ => ()
-            }
+            self.iterator_close(iterator_a, loc_dstr)
           }
       }
     }

@@ -507,11 +507,16 @@ pub fn Interpreter::get_cached_tagged_template_object(Self, String, Array[String
 pub fn Interpreter::get_compiled_name(Self, Environment, String) -> Value raise
 pub fn Interpreter::get_computed_property(Self, Value, Value, @token.Loc) -> Value raise
 pub fn Interpreter::get_console_member(Self, String) -> Value raise
+pub fn Interpreter::get_iterator_next_method(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::get_own_property(Self, Value, Value) -> (PropDescriptor, Value)? raise
 pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
 pub fn Interpreter::get_prototype_from_constructor(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::has_property(Self, Value, String) -> Bool raise
 pub fn Interpreter::has_property_key(Self, Value, Value) -> Bool raise
+pub fn Interpreter::iterator_close(Self, Value, @token.Loc) -> Unit raise
+pub fn Interpreter::iterator_result_value(Self, Value, @token.Loc) -> Value raise
+pub fn Interpreter::iterator_step_result(Self, Value, Value, @token.Loc) -> Value? raise
+pub fn Interpreter::iterator_step_value(Self, Value, Value, @token.Loc) -> Value? raise
 pub fn Interpreter::new(annex_b? : Bool, module_loader? : ModuleLoader?, setup_builtins? : (Environment, Array[String], RealmState, Bool) -> Unit, setup_harness? : (Environment, Array[String], Value) -> Unit, stdlib_hooks? : StdlibHooks) -> Self
 pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise

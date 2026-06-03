@@ -1314,29 +1314,15 @@ fn setup_array_builtins(
           constructed_result = Some(interp.construct_value(this_val, [], loc))
         }
         let iterator = interp.call_value(iterator_method, source, [], loc)
+        let next_method = interp.get_iterator_next_method(iterator, loc)
         let mut k = 0
         while true {
-          let next_fn = interp.get_property(iterator, "next", loc)
-          let next = interp.call_value(next_fn, iterator, [], loc)
-          let done = match next {
-            Object(d) =>
-              match d.bag.properties.get("done") {
-                Some(v) => @runtime.is_truthy(v)
-                _ => false
-              }
-            _ => true
+          let iter_result = match
+            interp.iterator_step_result(iterator, next_method, loc) {
+            None => break
+            Some(result) => result
           }
-          if done {
-            break
-          }
-          let value = match next {
-            Object(d) =>
-              match d.bag.properties.get("value") {
-                Some(v) => v
-                None => Undefined
-              }
-            _ => Undefined
-          }
+          let value = interp.iterator_result_value(iter_result, loc)
           let mapped = match map_fn {
             Some(fn_val) =>
               interp.call_value(
@@ -1344,7 +1330,14 @@ fn setup_array_builtins(
                 this_arg,
                 [value, Value::Number(k.to_double())],
                 loc,
-              )
+              ) catch {
+                e => {
+                  interp.iterator_close(iterator, loc) catch {
+                    _ => ()
+                  }
+                  raise e
+                }
+              }
             None => value
           }
           elements.push(mapped)
