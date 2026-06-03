@@ -837,9 +837,22 @@ fn is_id_continue_char(c : Char) -> Bool {
 }
 
 ///|
-fn regex_name_path_contains(path : Array[String], name : String) -> Bool {
-  for item in path {
-    if item == name {
+priv struct RegexNameSummary {
+  names : Map[String, Bool]
+}
+
+///|
+fn RegexNameSummary::RegexNameSummary() -> RegexNameSummary {
+  { names: {} }
+}
+
+///|
+fn regex_name_summary_intersects(
+  left : RegexNameSummary,
+  right : RegexNameSummary,
+) -> Bool {
+  for name, _ in left.names {
+    if right.names.contains(name) {
       return true
     }
   }
@@ -847,74 +860,64 @@ fn regex_name_path_contains(path : Array[String], name : String) -> Bool {
 }
 
 ///|
-fn regex_name_path_with(
-  path : Array[String],
-  name : String,
-) -> Array[String] raise Error {
-  if regex_name_path_contains(path, name) {
-    raise @errors.SyntaxError(message="Invalid regex: duplicate group name")
+fn regex_name_summary_union_into(
+  target : RegexNameSummary,
+  source : RegexNameSummary,
+) -> Unit {
+  for name, _ in source.names {
+    target.names[name] = true
   }
-  let next = path.copy()
-  next.push(name)
-  next
 }
 
 ///|
-fn regex_combine_name_paths(
-  left : Array[Array[String]],
-  right : Array[Array[String]],
-) -> Array[Array[String]] raise Error {
-  let combined : Array[Array[String]] = []
-  for base in left {
-    for suffix in right {
-      let mut merged = base.copy()
-      for name in suffix {
-        merged = regex_name_path_with(merged, name)
-      }
-      combined.push(merged)
-    }
-  }
-  combined
+fn regex_raise_duplicate_group_name() -> Unit raise Error {
+  raise @errors.SyntaxError(message="Invalid regex: duplicate group name")
 }
 
 ///|
-fn regex_name_paths_for_sequence(
+fn regex_name_summary_for_sequence(
   nodes : Array[RegexNode],
-) -> Array[Array[String]] raise Error {
-  let mut paths : Array[Array[String]] = [[]]
+) -> RegexNameSummary raise Error {
+  let summary = RegexNameSummary()
   for node in nodes {
-    paths = regex_combine_name_paths(paths, regex_name_paths_for_node(node))
+    let child = regex_name_summary_for_node(node)
+    if regex_name_summary_intersects(summary, child) {
+      regex_raise_duplicate_group_name()
+    }
+    regex_name_summary_union_into(summary, child)
   }
-  paths
+  summary
 }
 
 ///|
-fn regex_name_paths_for_node(
+fn regex_name_summary_for_node(
   node : RegexNode,
-) -> Array[Array[String]] raise Error {
+) -> RegexNameSummary raise Error {
   match node {
     Group(children, _, Some(name)) => {
-      let inner_paths = regex_name_paths_for_sequence(children)
-      let paths : Array[Array[String]] = []
-      for path in inner_paths {
-        paths.push(regex_name_path_with(path, name))
+      let summary = regex_name_summary_for_sequence(children)
+      if summary.names.contains(name) {
+        regex_raise_duplicate_group_name()
       }
-      paths
+      summary.names[name] = true
+      summary
     }
     Group(children, _, None) | Lookahead(children, _) =>
-      regex_name_paths_for_sequence(children)
-    Sequence(nodes) => regex_name_paths_for_sequence(nodes)
+      regex_name_summary_for_sequence(children)
+    Sequence(nodes) => regex_name_summary_for_sequence(nodes)
     Alternation(left, right) => {
-      let paths : Array[Array[String]] = []
-      for path in regex_name_paths_for_sequence(left) {
-        paths.push(path)
-      }
-      for path in regex_name_paths_for_sequence(right) {
-        paths.push(path)
-      }
-      paths
+      let summary = RegexNameSummary()
+      regex_name_summary_union_into(
+        summary,
+        regex_name_summary_for_sequence(left),
+      )
+      regex_name_summary_union_into(
+        summary,
+        regex_name_summary_for_sequence(right),
+      )
+      summary
     }
-    Quantified(inner, _, _, _) => regex_name_paths_for_node(inner)
+    Quantified(inner, _, _, _) => regex_name_summary_for_node(inner)
     Literal(_)
     | Dot
     | CharClass(_, _)
@@ -922,13 +925,13 @@ fn regex_name_paths_for_node(
     | WordBoundary(_)
     | Backreference(_)
     | NamedBackreference(_)
-    | DuplicateNamedBackreference(_) => [[]]
+    | DuplicateNamedBackreference(_) => RegexNameSummary()
   }
 }
 
 ///|
 fn validate_duplicate_named_group_names(node : RegexNode) -> Unit raise Error {
-  let _ = regex_name_paths_for_node(node)
+  ignore(regex_name_summary_for_node(node))
 }
 
 ///|
@@ -1206,7 +1209,84 @@ struct RegexMatch {
   start : Int
   end_ : Int
   captures : Array[String?]
+  capture_versions : Array[Int]
   group_names : Array[(String, Int)]
+}
+
+///|
+priv struct RegexStateSnapshot {
+  captures : Array[String?]
+  capture_versions : Array[Int]
+  capture_epoch : Int
+}
+
+///|
+priv struct RegexExecState {
+  captures : Array[String?]
+  capture_versions : Array[Int]
+  mut capture_epoch : Int
+}
+
+///|
+priv struct QuantifiedMatchState {
+  pos : Int
+  snapshot : RegexStateSnapshot
+}
+
+///|
+fn RegexExecState::RegexExecState(num_groups : Int) -> RegexExecState {
+  {
+    captures: Array::make(num_groups, None),
+    capture_versions: Array::make(num_groups, 0),
+    capture_epoch: 0,
+  }
+}
+
+///|
+fn RegexExecState::snapshot(self : RegexExecState) -> RegexStateSnapshot {
+  {
+    captures: self.captures.copy(),
+    capture_versions: self.capture_versions.copy(),
+    capture_epoch: self.capture_epoch,
+  }
+}
+
+///|
+fn RegexExecState::restore(
+  self : RegexExecState,
+  saved : RegexStateSnapshot,
+) -> Unit {
+  for i in 0..<self.captures.length() {
+    self.captures[i] = saved.captures[i]
+  }
+  for i in 0..<self.capture_versions.length() {
+    self.capture_versions[i] = saved.capture_versions[i]
+  }
+  self.capture_epoch = saved.capture_epoch
+}
+
+///|
+fn RegexExecState::set_capture(
+  self : RegexExecState,
+  group_idx : Int,
+  captured : String,
+) -> Unit {
+  if group_idx > 0 && group_idx <= self.captures.length() {
+    self.capture_epoch += 1
+    self.captures[group_idx - 1] = Some(captured)
+    self.capture_versions[group_idx - 1] = self.capture_epoch
+  }
+}
+
+///|
+fn RegexExecState::clear_capture(
+  self : RegexExecState,
+  group_idx : Int,
+) -> Unit {
+  if group_idx > 0 && group_idx <= self.captures.length() {
+    self.captures[group_idx - 1] = None
+    self.capture_versions[group_idx - 1] = 0
+  }
 }
 
 ///|
@@ -1325,25 +1405,33 @@ fn match_duplicate_named_backreference(
   indices : Array[Int],
   input : Array[Char],
   pos : Int,
-  captures : Array[String?],
+  state : RegexExecState,
   flags : RegexFlags,
 ) -> Int? {
+  let mut selected_idx = -1
+  let mut selected_version = -1
   for group_num in indices {
-    if group_num - 1 < captures.length() {
-      match captures[group_num - 1] {
-        Some(captured) =>
-          return match_backreference_capture(captured, input, pos, flags)
+    let cap_idx = group_num - 1
+    if cap_idx >= 0 && cap_idx < state.captures.length() {
+      match state.captures[cap_idx] {
+        Some(_) => {
+          let version = state.capture_versions[cap_idx]
+          if version > selected_version {
+            selected_version = version
+            selected_idx = cap_idx
+          }
+        }
         None => ()
       }
     }
   }
-  Some(pos)
-}
-
-///|
-fn restore_captures(captures : Array[String?], saved : Array[String?]) -> Unit {
-  for i in 0..<captures.length() {
-    captures[i] = saved[i]
+  if selected_idx >= 0 {
+    match state.captures[selected_idx] {
+      Some(captured) => match_backreference_capture(captured, input, pos, flags)
+      None => Some(pos)
+    }
+  } else {
+    Some(pos)
   }
 }
 
@@ -1352,7 +1440,7 @@ fn regex_exec_single(
   node : RegexNode,
   input : Array[Char],
   pos : Int,
-  captures : Array[String?],
+  state : RegexExecState,
   flags : RegexFlags,
 ) -> Int? {
   // Match a single non-sequence node
@@ -1420,15 +1508,15 @@ fn regex_exec_single(
       }
     }
     Group(children, group_idx, _) => {
-      let result = match_sequence(children, 0, input, pos, captures, flags)
+      let result = match_sequence(children, 0, input, pos, state, flags)
       match result {
         Some(end_pos) => {
-          if group_idx > 0 && group_idx <= captures.length() {
+          if group_idx > 0 && group_idx <= state.captures.length() {
             let buf = StringBuilder::new()
             for i = pos; i < end_pos; i = i + 1 {
               buf.write_char(input[i])
             }
-            captures[group_idx - 1] = Some(buf.to_string())
+            state.set_capture(group_idx, buf.to_string())
           }
           Some(end_pos)
         }
@@ -1436,40 +1524,44 @@ fn regex_exec_single(
       }
     }
     Alternation(left, right) => {
-      let saved = captures.copy()
-      let left_result = match_sequence(left, 0, input, pos, captures, flags)
+      let saved = state.snapshot()
+      let left_result = match_sequence(left, 0, input, pos, state, flags)
       match left_result {
         Some(_) => left_result
         None => {
-          restore_captures(captures, saved)
-          let right_result = match_sequence(right, 0, input, pos, captures, flags)
+          state.restore(saved)
+          let right_result = match_sequence(right, 0, input, pos, state, flags)
           match right_result {
             Some(_) => right_result
             None => {
-              restore_captures(captures, saved)
+              state.restore(saved)
               None
             }
           }
         }
       }
     }
-    Sequence(nodes) => match_sequence(nodes, 0, input, pos, captures, flags)
+    Sequence(nodes) => match_sequence(nodes, 0, input, pos, state, flags)
     Quantified(inner, min, max, greedy) => {
       // Standalone quantified without continuation — just match max
-      let positions = collect_quantified_positions(
-        inner, input, pos, captures, max, flags,
+      let saved = state.snapshot()
+      let states = collect_quantified_states(
+        inner, input, pos, state, max, flags,
       )
-      if positions.length() - 1 < min {
+      if states.length() - 1 < min {
+        state.restore(saved)
         return None
       }
-      if greedy {
-        Some(positions[positions.length() - 1])
+      let selected = if greedy {
+        states[states.length() - 1]
       } else {
-        Some(positions[min])
+        states[min]
       }
+      state.restore(selected.snapshot)
+      Some(selected.pos)
     }
     Lookahead(children, positive) => {
-      let result = match_sequence(children, 0, input, pos, captures, flags)
+      let result = match_sequence(children, 0, input, pos, state, flags)
       match (result, positive) {
         (Some(_), true) => Some(pos) // Positive lookahead: matched, don't consume
         (None, false) => Some(pos) // Negative lookahead: didn't match, success
@@ -1477,8 +1569,8 @@ fn regex_exec_single(
       }
     }
     Backreference(group_num) =>
-      if group_num - 1 < captures.length() {
-        match captures[group_num - 1] {
+      if group_num - 1 < state.captures.length() {
+        match state.captures[group_num - 1] {
           Some(captured) =>
             match_backreference_capture(captured, input, pos, flags)
           None => Some(pos) // Unmatched group: matches empty string
@@ -1487,7 +1579,7 @@ fn regex_exec_single(
         Some(pos) // Invalid group: matches empty string
       }
     DuplicateNamedBackreference(indices) =>
-      match_duplicate_named_backreference(indices, input, pos, captures, flags)
+      match_duplicate_named_backreference(indices, input, pos, state, flags)
     NamedBackreference(_) => None // Should be resolved before execution
   }
 }
@@ -1497,25 +1589,60 @@ fn regex_exec(
   node : RegexNode,
   input : Array[Char],
   pos : Int,
-  captures : Array[String?],
+  state : RegexExecState,
   flags : RegexFlags,
 ) -> Int? {
   match node {
-    Sequence(nodes) => match_sequence(nodes, 0, input, pos, captures, flags)
-    _ => regex_exec_single(node, input, pos, captures, flags)
+    Sequence(nodes) => match_sequence(nodes, 0, input, pos, state, flags)
+    _ => regex_exec_single(node, input, pos, state, flags)
   }
 }
 
 ///|
-fn collect_quantified_positions(
+fn clear_captures_for_node(node : RegexNode, state : RegexExecState) -> Unit {
+  match node {
+    Group(children, group_idx, _) => {
+      state.clear_capture(group_idx)
+      for child in children {
+        clear_captures_for_node(child, state)
+      }
+    }
+    Sequence(nodes) | Lookahead(nodes, _) =>
+      for child in nodes {
+        clear_captures_for_node(child, state)
+      }
+    Alternation(left, right) => {
+      for child in left {
+        clear_captures_for_node(child, state)
+      }
+      for child in right {
+        clear_captures_for_node(child, state)
+      }
+    }
+    Quantified(inner, _, _, _) => clear_captures_for_node(inner, state)
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_)
+    | NamedBackreference(_)
+    | DuplicateNamedBackreference(_) => ()
+  }
+}
+
+///|
+fn collect_quantified_states(
   node : RegexNode,
   input : Array[Char],
   pos : Int,
-  captures : Array[String?],
+  state : RegexExecState,
   max : Int?,
   flags : RegexFlags,
-) -> Array[Int] {
-  let positions : Array[Int] = [pos]
+) -> Array[QuantifiedMatchState] {
+  let states : Array[QuantifiedMatchState] = [
+    { pos, snapshot: state.snapshot() },
+  ]
   let mut current = pos
   let mut count = 0
   while true {
@@ -1523,19 +1650,28 @@ fn collect_quantified_positions(
       Some(m) => if count >= m { break }
       None => ()
     }
-    match regex_exec_single(node, input, current, captures, flags) {
+    let before = state.snapshot()
+    clear_captures_for_node(node, state)
+    match regex_exec_single(node, input, current, state, flags) {
       Some(next) => {
         if next == current {
+          states[states.length() - 1] = {
+            pos: current,
+            snapshot: state.snapshot(),
+          }
           break
         }
         count += 1
         current = next
-        positions.push(current)
+        states.push({ pos: current, snapshot: state.snapshot() })
       }
-      None => break
+      None => {
+        state.restore(before)
+        break
+      }
     }
   }
-  positions
+  states
 }
 
 ///|
@@ -1544,7 +1680,7 @@ fn match_sequence(
   idx : Int,
   input : Array[Char],
   pos : Int,
-  captures : Array[String?],
+  state : RegexExecState,
   flags : RegexFlags,
 ) -> Int? {
   if idx >= nodes.length() {
@@ -1553,62 +1689,70 @@ fn match_sequence(
   let node = nodes[idx]
   match node {
     Quantified(inner, min, max, greedy) => {
-      // Collect all possible match positions for the quantified node
-      let positions = collect_quantified_positions(
-        inner, input, pos, captures, max, flags,
+      // Collect all possible match positions and their capture states.
+      let saved = state.snapshot()
+      let states = collect_quantified_states(
+        inner, input, pos, state, max, flags,
       )
-      if positions.length() - 1 < min {
+      if states.length() - 1 < min {
+        state.restore(saved)
         return None
       }
       if greedy {
         // Try from most matches down to minimum
-        for i = positions.length() - 1; i >= min; i = i - 1 {
+        for i = states.length() - 1; i >= min; i = i - 1 {
+          let candidate = states[i]
+          state.restore(candidate.snapshot)
           let result = match_sequence(
             nodes,
             idx + 1,
             input,
-            positions[i],
-            captures,
+            candidate.pos,
+            state,
             flags,
           )
           match result {
             Some(_) => return result
-            None => continue
+            None => state.restore(candidate.snapshot)
           }
         }
+        state.restore(saved)
         None
       } else {
         // Non-greedy: try from minimum up
-        for i = min; i < positions.length(); i = i + 1 {
+        for i = min; i < states.length(); i = i + 1 {
+          let candidate = states[i]
+          state.restore(candidate.snapshot)
           let result = match_sequence(
             nodes,
             idx + 1,
             input,
-            positions[i],
-            captures,
+            candidate.pos,
+            state,
             flags,
           )
           match result {
             Some(_) => return result
-            None => continue
+            None => state.restore(candidate.snapshot)
           }
         }
+        state.restore(saved)
         None
       }
     }
     _ => {
-      let saved = captures.copy()
-      match regex_exec_single(node, input, pos, captures, flags) {
+      let saved = state.snapshot()
+      match regex_exec_single(node, input, pos, state, flags) {
         Some(next) =>
-          match match_sequence(nodes, idx + 1, input, next, captures, flags) {
+          match match_sequence(nodes, idx + 1, input, next, state, flags) {
             Some(end_pos) => Some(end_pos)
             None => {
-              restore_captures(captures, saved)
+              state.restore(saved)
               None
             }
           }
         None => {
-          restore_captures(captures, saved)
+          state.restore(saved)
           None
         }
       }
@@ -1729,13 +1873,14 @@ pub fn regex_match_at(
   let parsed = parse_regex(pattern, unicode=flags.contains("u"))
   let input_chars = input.to_array()
   let rflags = make_regex_flags(flags)
-  let captures : Array[String?] = Array::make(parsed.num_groups, None)
-  match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
+  let state = RegexExecState(parsed.num_groups)
+  match regex_exec(parsed.node, input_chars, start_pos, state, rflags) {
     Some(end_pos) =>
       Some({
         start: start_pos,
         end_: end_pos,
-        captures,
+        captures: state.captures.copy(),
+        capture_versions: state.capture_versions.copy(),
         group_names: parsed.group_names,
       })
     None => None
@@ -1758,26 +1903,28 @@ pub fn regex_search(
     if start_pos > input_chars.length() {
       return None
     }
-    let captures : Array[String?] = Array::make(parsed.num_groups, None)
-    match regex_exec(parsed.node, input_chars, start_pos, captures, rflags) {
+    let state = RegexExecState(parsed.num_groups)
+    match regex_exec(parsed.node, input_chars, start_pos, state, rflags) {
       Some(end_pos) =>
         return Some({
           start: start_pos,
           end_: end_pos,
-          captures,
+          captures: state.captures.copy(),
+          capture_versions: state.capture_versions.copy(),
           group_names: parsed.group_names,
         })
       None => return None
     }
   }
   for i = start_pos; i <= input_chars.length(); i = i + 1 {
-    let captures : Array[String?] = Array::make(parsed.num_groups, None)
-    match regex_exec(parsed.node, input_chars, i, captures, rflags) {
+    let state = RegexExecState(parsed.num_groups)
+    match regex_exec(parsed.node, input_chars, i, state, rflags) {
       Some(end_pos) =>
         return Some({
           start: i,
           end_: end_pos,
-          captures,
+          captures: state.captures.copy(),
+          capture_versions: state.capture_versions.copy(),
           group_names: parsed.group_names,
         })
       None => continue
@@ -1798,13 +1945,14 @@ pub fn regex_search_all(
   let results : Array[RegexMatch] = []
   let mut i = 0
   while i <= input_chars.length() {
-    let captures : Array[String?] = Array::make(parsed.num_groups, None)
-    match regex_exec(parsed.node, input_chars, i, captures, rflags) {
+    let state = RegexExecState(parsed.num_groups)
+    match regex_exec(parsed.node, input_chars, i, state, rflags) {
       Some(end_pos) => {
         results.push({
           start: i,
           end_: end_pos,
-          captures,
+          captures: state.captures.copy(),
+          capture_versions: state.capture_versions.copy(),
           group_names: parsed.group_names,
         })
         if end_pos == i {
@@ -1823,6 +1971,35 @@ pub fn regex_search_all(
     }
   }
   results
+}
+
+///|
+fn regex_match_named_capture(m : RegexMatch, name : String) -> Value {
+  let mut selected : Value = Undefined
+  let mut selected_version = -1
+  for pair in m.group_names {
+    let (gname, gidx) = pair
+    if gname == name {
+      let cap_idx = gidx - 1
+      if cap_idx >= 0 && cap_idx < m.captures.length() {
+        match m.captures[cap_idx] {
+          Some(s) => {
+            let version = if cap_idx < m.capture_versions.length() {
+              m.capture_versions[cap_idx]
+            } else {
+              0
+            }
+            if version > selected_version {
+              selected = Value::String_(s)
+              selected_version = version
+            }
+          }
+          None => ()
+        }
+      }
+    }
+  }
+  selected
 }
 
 ///|
@@ -1862,19 +2039,9 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
     let groups_props : Map[String, Value] = {}
     let groups_descs : Map[String, PropDescriptor] = {}
     for pair in m.group_names {
-      let (name, idx) = pair
-      let val : Value = if idx - 1 < m.captures.length() {
-        match m.captures[idx - 1] {
-          Some(s) => Value::String_(s)
-          None => Undefined
-        }
-      } else {
-        Undefined
-      }
-      if !(val is Undefined) || !groups_props.contains(name) {
-        groups_props[name] = val
-      }
+      let (name, _) = pair
       if !groups_descs.contains(name) {
+        groups_props[name] = regex_match_named_capture(m, name)
         groups_descs[name] = {
           writable: true,
           enumerable: true,
@@ -2257,10 +2424,7 @@ fn regexp_constructor_call(
     context, realm_state,
   )
   make_regexp_object_with_realm_state_and_compile_constructor(
-    pattern,
-    flags,
-    realm_state,
-    compile_constructor,
+    pattern, flags, realm_state, compile_constructor,
   )
 }
 
@@ -2627,12 +2791,7 @@ fn make_regexp_object_with_realm_state_and_compile_constructor(
     Some(p) => p
     None => Null
   }
-  make_regexp_object_with_proto(
-    pattern,
-    flags,
-    prototype,
-    compile_constructor~,
-  )
+  make_regexp_object_with_proto(pattern, flags, prototype, compile_constructor~)
 }
 
 ///|
@@ -3793,17 +3952,9 @@ fn call_replace_fn(
   if m.group_names.length() > 0 {
     let groups_props : Map[String, Value] = {}
     for pair in m.group_names {
-      let (name, idx) = pair
-      let val : Value = if idx - 1 < m.captures.length() {
-        match m.captures[idx - 1] {
-          Some(s) => Value::String_(s)
-          None => Undefined
-        }
-      } else {
-        Undefined
-      }
-      if !(val is Undefined) || !groups_props.contains(name) {
-        groups_props[name] = val
+      let (name, _) = pair
+      if !groups_props.contains(name) {
+        groups_props[name] = regex_match_named_capture(m, name)
       }
     }
     args.push(
@@ -3923,17 +4074,9 @@ fn process_replacement(
         }
         // Found '>' — look up name and substitute
         let name = name_buf.to_string()
-        for pair in m.group_names {
-          let (gname, gidx) = pair
-          if gname == name {
-            if gidx - 1 < m.captures.length() {
-              match m.captures[gidx - 1] {
-                Some(s) => buf.write_string(s)
-                None => () // unmatched: empty string
-              }
-            }
-            break
-          }
+        match regex_match_named_capture(m, name) {
+          Value::String_(s) => buf.write_string(s)
+          _ => ()
         }
         i = j + 1 // skip past '>'
         continue

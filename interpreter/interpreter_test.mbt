@@ -4220,8 +4220,26 @@ test "RegExp duplicate named backrefs use the matched alternative" {
     #|console.log(re.exec("yx"));
     #|var backtrack = /(?:(?<a>x+)y|(?<a>x))\k<a>/;
     #|console.log(backtrack.exec("xx")[0]);
+    #|var quantified = /^(?:(?<a>x)|(?<a>y))*\k<a>$/;
+    #|console.log(quantified.exec("xyy")[0]);
+    #|console.log(quantified.exec("xyx"));
+    #|var reverse = /^(?:(?<a>y)|(?<a>x))*\k<a>$/;
+    #|console.log(reverse.exec("yxx")[0]);
+    #|console.log(reverse.exec("yxy"));
   let output = run_output(src)
-  json_inspect(output, content=["xx", "yy", "null", "null", "xx"])
+  json_inspect(output, content=[
+    "xx", "yy", "null", "null", "xx", "xyy", "null", "yxx", "null",
+  ])
+}
+
+///|
+test "RegExp duplicate named replacements use the matched capture" {
+  let src =
+    #|console.log("y".replace(/(?<a>x)|(?<a>y)/, "$<a>"));
+    #|console.log("xy".replace(/(?<a>x)|(?<a>y)/g, "$<a>"));
+    #|console.log("xyy".replace(/^(?:(?<a>x)|(?<a>y))*\k<a>$/, "$<a>"));
+  let output = run_output(src)
+  json_inspect(output, content=["y", "xy", "y"])
 }
 
 ///|
