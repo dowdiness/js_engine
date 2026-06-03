@@ -725,6 +725,20 @@ pub fn setup_typedarray_builtins(
   let obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
   let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
+  let array_ctor = env.get("Array") catch { _ => Undefined }
+  let array_to_string = match array_ctor {
+    Object(array_ctor_data) => {
+      match array_ctor_data.bag.properties.get("prototype") {
+        Some(Object(array_proto_data)) =>
+          match array_proto_data.bag.properties.get("toString") {
+            Some(value) => value
+            None => Undefined
+          }
+        _ => Undefined
+      }
+    }
+    _ => Undefined
+  }
 
   // Create %TypedArray%.prototype (shared prototype for all typed array instances)
   let ta_proto_props : Map[String, Value] = {}
@@ -1352,24 +1366,58 @@ pub fn setup_typedarray_builtins(
   })
 
   // toString - delegates to join
-  ta_proto_props["toString"] = @runtime.make_method_func(
-    name="toString",
+  ta_proto_props["toString"] = match array_to_string {
+    Undefined =>
+      @runtime.make_method_func(
+        name="toString",
+        length=0,
+        fn(this_val, _args) raise {
+          let (data, _) = validate_typed_array(this_val, "toString", realm_state)
+          let len = match data.bag.properties.get("[[ArrayLength]]") {
+            Some(Value::Number(n)) => n.to_int()
+            _ => 0
+          }
+          let buf = StringBuilder::new()
+          for i = 0; i < len; i = i + 1 {
+            if i > 0 {
+              buf.write_string(",")
+            }
+            let elem = typedarray_get_index(data, i, realm_state)
+            buf.write_string(elem.to_string())
+          }
+          Value::String_(buf.to_string())
+        },
+      )
+    to_string => to_string
+  }
+
+  ta_proto_props["toLocaleString"] = @runtime.make_interp_method_func(
+    name="toLocaleString",
     length=0,
-    fn(this_val, _args) raise {
-      let (data, _) = validate_typed_array(this_val, "toString", realm_state)
+    fn(interp, this_val, _args) raise {
+      let (data, _) = validate_typed_array(this_val, "toLocaleString", realm_state)
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
-      let buf = StringBuilder::new()
+      let parts : Array[String] = []
+      let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
-        if i > 0 {
-          buf.write_string(",")
-        }
         let elem = typedarray_get_index(data, i, realm_state)
-        buf.write_string(elem.to_string())
+        match elem {
+          Null | Undefined => parts.push("")
+          _ => {
+            let tls = interp.get_property(elem, "toLocaleString", loc)
+            if @runtime.is_callable(tls) {
+              let result = interp.call_value(tls, elem, [], loc)
+              parts.push(interp.to_js_string(result))
+            } else {
+              parts.push(interp.to_js_string(elem))
+            }
+          }
+        }
       }
-      Value::String_(buf.to_string())
+      Value::String_(parts.join(","))
     },
   )
 
@@ -2349,6 +2397,7 @@ pub fn setup_typedarray_builtins(
   ta_proto_descs["lastIndexOf"] = method_desc
   ta_proto_descs["includes"] = method_desc
   ta_proto_descs["join"] = method_desc
+  ta_proto_descs["toLocaleString"] = method_desc
   ta_proto_descs["toString"] = method_desc
   ta_proto_descs["reverse"] = method_desc
   ta_proto_descs["sort"] = method_desc
