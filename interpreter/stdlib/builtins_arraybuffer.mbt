@@ -275,7 +275,7 @@ pub fn setup_arraybuffer_builtins(
             }
             let len = bytes.length()
             let relative_start = if args.length() > 0 {
-              @runtime.to_number(args[0], interp=Some(interp)).to_int()
+              interp.to_number(args[0]).to_int()
             } else {
               0
             }
@@ -294,7 +294,7 @@ pub fn setup_arraybuffer_builtins(
             let relative_end = if args.length() > 1 {
               match args[1] {
                 Undefined => len
-                _ => @runtime.to_number(args[1], interp=Some(interp)).to_int()
+                _ => interp.to_number(args[1]).to_int()
               }
             } else {
               len
@@ -458,7 +458,7 @@ pub fn setup_arraybuffer_builtins(
           )
         }
         let byte_length = if args.length() > 0 {
-          @runtime.to_index(args[0], interp=Some(interp))
+          interp.to_index(args[0])
         } else {
           0
         }

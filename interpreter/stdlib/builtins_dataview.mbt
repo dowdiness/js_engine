@@ -358,7 +358,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -380,7 +380,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -402,7 +402,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -425,7 +425,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -448,7 +448,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -471,7 +471,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -494,7 +494,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -518,7 +518,7 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -542,12 +542,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -570,12 +570,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -598,12 +598,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -627,12 +627,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -656,12 +656,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -685,12 +685,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -714,12 +714,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -744,12 +744,12 @@ pub fn setup_dataview_builtins(
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0], interp=Some(interp))
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1], interp=Some(interp))
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -901,7 +901,7 @@ pub fn setup_dataview_builtins(
           match args[1] {
             Undefined => 0
             _ => {
-              let n = @runtime.to_index(args[1], interp=Some(interp))
+              let n = interp.to_index(args[1])
               if n < 0 || n > buf_byte_length {
                 raise @errors.RangeError(
                   message="Start offset \{n} is outside the bounds of the buffer",
@@ -917,7 +917,7 @@ pub fn setup_dataview_builtins(
           match args[2] {
             Undefined => buf_byte_length - byte_offset
             _ => {
-              let n = @runtime.to_index(args[2], interp=Some(interp))
+              let n = interp.to_index(args[2])
               if n < 0 || byte_offset + n > buf_byte_length {
                 raise @errors.RangeError(message="Invalid DataView length \{n}")
               }

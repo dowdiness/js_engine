@@ -262,7 +262,7 @@ fn setup_builtins_with_realm_state_active(
       args,
     ) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
-      let n = @runtime.to_number(val, interp=Some(interp))
+      let n = interp.to_number(val)
       Bool(n.is_nan())
     }),
   )
@@ -275,7 +275,7 @@ fn setup_builtins_with_realm_state_active(
       args,
     ) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
-      let n = @runtime.to_number(val, interp=Some(interp))
+      let n = interp.to_number(val)
       Bool(!n.is_nan() && !n.is_inf())
     }),
   )

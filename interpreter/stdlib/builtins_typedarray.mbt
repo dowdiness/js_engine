@@ -822,7 +822,7 @@ pub fn setup_typedarray_builtins(
         )
       }
       let target_offset = if args.length() > 1 {
-        @runtime.to_index(args[1], interp=Some(interp))
+        interp.to_index(args[1])
       } else {
         0
       }
@@ -862,7 +862,7 @@ pub fn setup_typedarray_builtins(
           }
           for i = 0; i < src_len; i = i + 1 {
             let val = arr_data.elements[i]
-            let num = @runtime.to_number(val, interp=Some(interp))
+            let num = interp.to_number(val)
             typedarray_set_index(data, target_offset + i, num, realm_state)
           }
           Undefined
@@ -872,7 +872,7 @@ pub fn setup_typedarray_builtins(
           let src_len = match src {
             Object(src_obj) =>
               match src_obj.bag.properties.get("length") {
-                Some(v) => @runtime.to_number(v, interp=Some(interp)).to_int()
+                Some(v) => interp.to_number(v).to_int()
                 _ => 0
               }
             _ => 0
@@ -889,7 +889,7 @@ pub fn setup_typedarray_builtins(
                 }
               _ => Undefined
             }
-            let num = @runtime.to_number(val, interp=Some(interp))
+            let num = interp.to_number(val)
             typedarray_set_index(data, target_offset + i, num, realm_state)
           }
           Undefined
@@ -909,7 +909,7 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       let relative_begin = if args.length() > 0 {
-        @runtime.to_number(args[0], interp=Some(interp)).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
@@ -928,7 +928,7 @@ pub fn setup_typedarray_builtins(
       let relative_end = if args.length() > 1 {
         match args[1] {
           Undefined => ta_length
-          _ => @runtime.to_number(args[1], interp=Some(interp)).to_int()
+          _ => interp.to_number(args[1]).to_int()
         }
       } else {
         ta_length
@@ -983,7 +983,7 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       let relative_begin = if args.length() > 0 {
-        @runtime.to_number(args[0], interp=Some(interp)).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
@@ -1002,7 +1002,7 @@ pub fn setup_typedarray_builtins(
       let relative_end = if args.length() > 1 {
         match args[1] {
           Undefined => ta_length
-          _ => @runtime.to_number(args[1], interp=Some(interp)).to_int()
+          _ => interp.to_number(args[1]).to_int()
         }
       } else {
         ta_length
@@ -1065,7 +1065,7 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       let target_idx = if args.length() > 0 {
-        let t = @runtime.to_number(args[0], interp=Some(interp)).to_int()
+        let t = interp.to_number(args[0]).to_int()
         if t < 0 {
           let r = len + t
           if r < 0 {
@@ -1082,7 +1082,7 @@ pub fn setup_typedarray_builtins(
         0
       }
       let start_idx = if args.length() > 1 {
-        let s = @runtime.to_number(args[1], interp=Some(interp)).to_int()
+        let s = interp.to_number(args[1]).to_int()
         if s < 0 {
           let r = len + s
           if r < 0 {
@@ -1102,7 +1102,7 @@ pub fn setup_typedarray_builtins(
         match args[2] {
           Undefined => len
           _ => {
-            let e = @runtime.to_number(args[2], interp=Some(interp)).to_int()
+            let e = interp.to_number(args[2]).to_int()
             if e < 0 {
               let r = len + e
               if r < 0 {
@@ -1158,12 +1158,12 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       let fill_val = if args.length() > 0 {
-        @runtime.to_number(args[0], interp=Some(interp))
+        interp.to_number(args[0])
       } else {
         0.0
       }
       let start_idx = if args.length() > 1 {
-        let s = @runtime.to_number(args[1], interp=Some(interp)).to_int()
+        let s = interp.to_number(args[1]).to_int()
         if s < 0 {
           let r = len + s
           if r < 0 {
@@ -1183,7 +1183,7 @@ pub fn setup_typedarray_builtins(
         match args[2] {
           Undefined => len
           _ => {
-            let e = @runtime.to_number(args[2], interp=Some(interp)).to_int()
+            let e = interp.to_number(args[2]).to_int()
             if e < 0 {
               let r = len + e
               if r < 0 {
@@ -1223,7 +1223,7 @@ pub fn setup_typedarray_builtins(
       }
       let search_val = args[0]
       let from_idx = if args.length() > 1 {
-        let f = @runtime.to_number(args[1], interp=Some(interp)).to_int()
+        let f = interp.to_number(args[1]).to_int()
         if f < 0 {
           let r = len + f
           if r < 0 {
@@ -1262,7 +1262,7 @@ pub fn setup_typedarray_builtins(
       }
       let search_val = args[0]
       let from_idx = if args.length() > 1 {
-        let f = @runtime.to_number(args[1], interp=Some(interp)).to_int()
+        let f = interp.to_number(args[1]).to_int()
         if f < 0 {
           len + f
         } else if f >= len {
@@ -1298,7 +1298,7 @@ pub fn setup_typedarray_builtins(
       }
       let search_val = args[0]
       let from_idx = if args.length() > 1 {
-        let f = @runtime.to_number(args[1], interp=Some(interp)).to_int()
+        let f = interp.to_number(args[1]).to_int()
         if f < 0 {
           let r = len + f
           if r < 0 {
@@ -1444,7 +1444,7 @@ pub fn setup_typedarray_builtins(
               return 0
             }
           }
-          let cmp = @runtime.to_number(result, interp=Some(interp)) catch {
+          let cmp = interp.to_number(result) catch {
             e => {
               caught_error = Some(e)
               return 0
@@ -1517,7 +1517,7 @@ pub fn setup_typedarray_builtins(
       _ => 0
     }
     let idx = if args.length() > 0 {
-      @runtime.to_number(args[0], interp=Some(interp)).to_int()
+      interp.to_number(args[0]).to_int()
     } else {
       0
     }
@@ -1854,7 +1854,7 @@ pub fn setup_typedarray_builtins(
               [elem, Value::Number(i.to_double()), this_val],
               loc,
             )
-            let num = @runtime.to_number(mapped, interp=Some(interp))
+            let num = interp.to_number(mapped)
             typedarray_set_index(result_data, i, num, realm_state)
           }
         _ => ()
@@ -2301,8 +2301,8 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
-      let mut idx = @runtime.to_number(index_val, interp=Some(interp)).to_int()
-      let replacement_num = @runtime.to_number(value_val, interp=Some(interp))
+      let mut idx = interp.to_number(index_val).to_int()
+      let replacement_num = interp.to_number(value_val)
       if idx < 0 {
         idx = len + idx
       }
@@ -2714,7 +2714,7 @@ pub fn setup_typedarray_builtins(
           } else {
             val
           }
-          elements.push(@runtime.to_number(mapped, interp=Some(interp)))
+          elements.push(interp.to_number(mapped))
         }
         let result = make_typedarray_object(
           type_name,
@@ -2753,7 +2753,7 @@ pub fn setup_typedarray_builtins(
           match result {
             Object(result_data) =>
               for i = 0; i < args.length(); i = i + 1 {
-                let num = @runtime.to_number(args[i], interp=Some(interp))
+                let num = interp.to_number(args[i])
                 typedarray_set_index(result_data, i, num, realm_state)
               }
             _ => ()
@@ -2831,7 +2831,7 @@ pub fn setup_typedarray_builtins(
             | Value::Null
             | Value::Undefined
             | Value::Symbol(_) => {
-              let length = @runtime.to_index(first, interp=Some(interp))
+              let length = interp.to_index(first)
               make_typedarray_object(type_name, length, per_proto, env)
             }
             // From another TypedArray
@@ -2887,7 +2887,7 @@ pub fn setup_typedarray_builtins(
                 match args[1] {
                   Undefined => 0
                   _ => {
-                    let n = @runtime.to_index(args[1], interp=Some(interp))
+                    let n = interp.to_index(args[1])
                     if n < 0 {
                       raise @errors.RangeError(
                         message="Start offset \{n} is outside the bounds of the buffer",
@@ -2914,7 +2914,7 @@ pub fn setup_typedarray_builtins(
                     } else {
                       (buf_byte_length - byte_offset) / bpe
                     }
-                  _ => @runtime.to_index(args[2], interp=Some(interp))
+                  _ => interp.to_index(args[2])
                 }
               } else if (buf_byte_length - byte_offset) % bpe != 0 {
                 raise @errors.RangeError(
@@ -2970,7 +2970,7 @@ pub fn setup_typedarray_builtins(
                     Object(result_data) =>
                       for i = 0; i < len; i = i + 1 {
                         let v = interp.get_property(first, i.to_string(), loc)
-                        let num = @runtime.to_number(v, interp=Some(interp))
+                        let num = interp.to_number(v)
                         typedarray_set_index(result_data, i, num, realm_state)
                       }
                     _ => ()
