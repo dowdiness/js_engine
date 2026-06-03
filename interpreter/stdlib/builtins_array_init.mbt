@@ -1314,28 +1314,13 @@ fn setup_array_builtins(
           constructed_result = Some(interp.construct_value(this_val, [], loc))
         }
         let iterator = interp.call_value(iterator_method, source, [], loc)
+        let next_method = interp.get_iterator_next_method(iterator, loc)
         let mut k = 0
         while true {
-          let next_fn = interp.get_property(iterator, "next", loc)
-          let next = interp.call_value(next_fn, iterator, [], loc)
-          let done = match next {
-            Object(d) =>
-              match d.bag.properties.get("done") {
-                Some(v) => @runtime.is_truthy(v)
-                _ => false
-              }
-            _ => true
-          }
-          if done {
-            break
-          }
-          let value = match next {
-            Object(d) =>
-              match d.bag.properties.get("value") {
-                Some(v) => v
-                None => Undefined
-              }
-            _ => Undefined
+          let value = match
+            interp.iterator_step_value(iterator, next_method, loc) {
+            None => break
+            Some(value) => value
           }
           let mapped = match map_fn {
             Some(fn_val) =>

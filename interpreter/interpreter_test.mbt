@@ -15018,6 +15018,80 @@ test "Array.from constructs custom iterable result before reading iterator resul
 }
 
 ///|
+test "iterator value accessors throw before advancing" {
+  let src =
+    #|function MyError(name) { this.name = name; }
+    #|function check(name, action) {
+    #|  var count = 0;
+    #|  var iter = {};
+    #|  var poisoned = Object.defineProperty({}, "value", {
+    #|    get: function() { throw new MyError(name); }
+    #|  });
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        count += 1;
+    #|        if (count > 1) { throw new MyError(name + " advanced"); }
+    #|        return poisoned;
+    #|      }
+    #|    };
+    #|  };
+    #|  try {
+    #|    action(iter);
+    #|  } catch (e) {
+    #|    console.log(e.name + ":" + count);
+    #|  }
+    #|}
+    #|check("spread", function(iter) { (function() {})(...iter); });
+    #|check("arrayFrom", function(iter) { Array.from(iter); });
+    #|check("destructure", function(iter) { var [...x] = iter; });
+    #|check("forOf", function(iter) { for (var x of iter) {} });
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "spread:1", "arrayFrom:1", "destructure:1", "forOf:1",
+  ])
+}
+
+///|
+test "Map and Set close iterators when constructor adders throw" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|var mapCloseCount = 0;
+    #|var mapIterable = {};
+    #|mapIterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { return { value: [], done: false }; },
+    #|    return: function() { mapCloseCount += 1; return {}; }
+    #|  };
+    #|};
+    #|Map.prototype.set = function() { throw new MyError(); };
+    #|try {
+    #|  new Map(mapIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(mapCloseCount);
+    #|}
+    #|var setCloseCount = 0;
+    #|var setIterable = {};
+    #|setIterable[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { return { value: null, done: false }; },
+    #|    return: function() { setCloseCount += 1; return {}; }
+    #|  };
+    #|};
+    #|Set.prototype.add = function() { throw new MyError(); };
+    #|try {
+    #|  new Set(setIterable);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|  console.log(setCloseCount);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["MyError", "1", "MyError", "1"])
+}
+
+///|
 test "Weak collections close iterators when constructor adders throw" {
   let src =
     #|function MyError() { this.name = "MyError"; }

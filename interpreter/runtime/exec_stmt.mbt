@@ -598,38 +598,7 @@ fn Interpreter::exec_stmt(
             )
         }
 
-        // Get the next method from the iterator (walk prototype chain)
-        let nm = match it {
-          Object(iter_data) =>
-            match iter_data.bag.properties.get("next") {
-              Some(next_fn) => next_fn
-              None => {
-                let mut found : Value = Undefined
-                let mut current = iter_data.prototype
-                while true {
-                  match current {
-                    Object(proto_data) =>
-                      match proto_data.bag.properties.get("next") {
-                        Some(next_fn) => {
-                          found = next_fn
-                          break
-                        }
-                        None => current = proto_data.prototype
-                      }
-                    _ => break
-                  }
-                }
-                match found {
-                  Undefined =>
-                    raise @errors.TypeError(
-                      message="iterator.next is not a function",
-                    )
-                  _ => found
-                }
-              }
-            }
-          _ => raise @errors.TypeError(message="Iterator is not an object")
-        }
+        let nm = self.get_iterator_next_method(it, loc)
         (it, nm)
       }
       // If resuming, first resume the body without calling next()
@@ -702,29 +671,9 @@ fn Interpreter::exec_stmt(
           // After resume body completes, continue the loop normally below
           continue
         }
-        // Call iterator.next()
-        let result = self.call_value(next_method, iterator, [], loc)
-
-        // Get 'done' and 'value' from the result
-        let (done, value) = match result {
-          Object(result_data) => {
-            let done_val = match result_data.bag.properties.get("done") {
-              Some(v) => is_truthy(v)
-              None => false
-            }
-            let value_val = match result_data.bag.properties.get("value") {
-              Some(v) => v
-              None => Undefined
-            }
-            (done_val, value_val)
-          }
-          _ =>
-            raise @errors.TypeError(message="Iterator result is not an object")
-        }
-
-        // If done, exit the loop
-        if done {
-          break
+        let value = match self.iterator_step_value(iterator, next_method, loc) {
+          None => break
+          Some(value) => value
         }
 
         // Bind the value to the loop variable
@@ -900,60 +849,14 @@ fn Interpreter::exec_stmt(
           )
       }
 
-      // Get the next method
-      let next_method = match iterator {
-        Object(iter_data) =>
-          match iter_data.bag.properties.get("next") {
-            Some(next_fn) => next_fn
-            None => {
-              let mut found : Value = Undefined
-              let mut current = iter_data.prototype
-              while true {
-                match current {
-                  Object(proto_data) =>
-                    match proto_data.bag.properties.get("next") {
-                      Some(next_fn) => {
-                        found = next_fn
-                        break
-                      }
-                      None => current = proto_data.prototype
-                    }
-                  _ => break
-                }
-              }
-              match found {
-                Undefined =>
-                  raise @errors.TypeError(
-                    message="iterator.next is not a function",
-                  )
-                _ => found
-              }
-            }
-          }
-        _ => raise @errors.TypeError(message="Iterator is not an object")
-      }
+      let next_method = self.get_iterator_next_method(iterator, loc)
 
       // Iterate using the iterator protocol
       let mut completion : Value = Undefined
       while true {
-        let result = self.call_value(next_method, iterator, [], loc)
-        let (done, value) = match result {
-          Object(result_data) => {
-            let done_val = match result_data.bag.properties.get("done") {
-              Some(v) => is_truthy(v)
-              None => false
-            }
-            let value_val = match result_data.bag.properties.get("value") {
-              Some(v) => v
-              None => Undefined
-            }
-            (done_val, value_val)
-          }
-          _ =>
-            raise @errors.TypeError(message="Iterator result is not an object")
-        }
-        if done {
-          break
+        let value = match self.iterator_step_value(iterator, next_method, loc) {
+          None => break
+          Some(value) => value
         }
         let body_env = Environment::new(parent=Some(env))
         match var_kind {
@@ -1103,57 +1006,12 @@ fn Interpreter::exec_stmt(
             message="Result of the Symbol.iterator method is not an object",
           )
       }
-      let next_method = match iterator {
-        Object(iter_data) =>
-          match iter_data.bag.properties.get("next") {
-            Some(next_fn) => next_fn
-            None => {
-              let mut found : Value = Undefined
-              let mut current = iter_data.prototype
-              while true {
-                match current {
-                  Object(proto_data) =>
-                    match proto_data.bag.properties.get("next") {
-                      Some(next_fn) => {
-                        found = next_fn
-                        break
-                      }
-                      None => current = proto_data.prototype
-                    }
-                  _ => break
-                }
-              }
-              match found {
-                Undefined =>
-                  raise @errors.TypeError(
-                    message="iterator.next is not a function",
-                  )
-                _ => found
-              }
-            }
-          }
-        _ => raise @errors.TypeError(message="Iterator is not an object")
-      }
+      let next_method = self.get_iterator_next_method(iterator, loc)
       let mut completion : Value = Undefined
       while true {
-        let result = self.call_value(next_method, iterator, [], loc)
-        let (done, value) = match result {
-          Object(result_data) => {
-            let done_val = match result_data.bag.properties.get("done") {
-              Some(v) => is_truthy(v)
-              None => false
-            }
-            let value_val = match result_data.bag.properties.get("value") {
-              Some(v) => v
-              None => Undefined
-            }
-            (done_val, value_val)
-          }
-          _ =>
-            raise @errors.TypeError(message="Iterator result is not an object")
-        }
-        if done {
-          break
+        let value = match self.iterator_step_value(iterator, next_method, loc) {
+          None => break
+          Some(value) => value
         }
         let body_env = Environment::new(parent=Some(env))
         self.assign_to_expr(ctx, lhs_expr, value, env) catch {
@@ -1728,31 +1586,7 @@ fn close_iterator(
   iterator : Value,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  // §7.4.10 step 1: assert Type(iterator) is Object. Skip non-object values
-  // defensively; non-object iterators shouldn't reach here, but the old
-  // implementation silently no-op'd them and we preserve that behavior.
-  if !is_object_value(iterator) {
-    return
-  }
-  // §7.4.10 step 2 + §7.3.10 GetMethod via §7.3.2 GetV: ToObject(iterator)
-  // is the iterator itself (already object), then [[Get]](P, iterator).
-  let return_fn = interp.get_property(iterator, "return", loc)
-  match return_fn {
-    Undefined | Null => () // §7.3.10 step 2: absent → skip
-    _ =>
-      if !is_callable(return_fn) {
-        // §7.3.10 step 3: present but non-callable → TypeError
-        raise @errors.TypeError(message="iterator.return is not a function")
-      } else {
-        // §7.4.10 steps 3.c + 6: call return(); non-Object result → TypeError
-        let result = interp.call_value(return_fn, iterator, [], loc)
-        if !is_object_value(result) {
-          raise @errors.TypeError(
-            message="Iterator return() must return an object",
-          )
-        }
-      }
-  }
+  interp.iterator_close(iterator, loc)
 }
 
 ///|

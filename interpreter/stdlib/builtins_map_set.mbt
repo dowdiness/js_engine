@@ -459,6 +459,13 @@ fn setup_map_builtins(
             Undefined | Null => true
             _ => false
           }) {
+          let adder = interp.get_property(new_map, "set", loc)
+          if !@runtime.is_callable(adder) {
+            raise @errors.TypeError(
+              message="Map.prototype.set is not a function",
+            )
+          }
+
           // Get iterator from iterable using Symbol.iterator
           let iterator_sym = well_known_symbols.iterator
           let iterator_method = interp.get_computed_property(
@@ -481,51 +488,56 @@ fn setup_map_builtins(
               )
           }
 
+          let next_method = interp.get_iterator_next_method(iterator, loc)
+
           // Iterate over the iterator
           while true {
-            let next_method = interp.get_property(iterator, "next", loc)
-            let result = interp.call_value(next_method, iterator, [], loc)
-            let done = match interp.get_property(result, "done", loc) {
-              Value::Bool(b) => b
-              _ => false
+            let value = match
+              interp.iterator_step_value(iterator, next_method, loc) {
+              None => break
+              Some(value) => value
             }
-            if done {
-              break
+            if !@runtime.is_object_value(value) {
+              interp.iterator_close(iterator, loc) catch {
+                _ => ()
+              }
+              raise @errors.TypeError(
+                message="Iterator value " +
+                  @runtime.to_js_string(value) +
+                  " is not an entry object",
+              )
             }
-            let value = interp.get_property(result, "value", loc)
-            // Value should be [key, value] pair or array-like with '0' and '1' properties
-            // Try to get key and value from the entry
             let key = interp.get_computed_property(
               value,
               Value::Number(0.0),
               loc,
-            )
+            ) catch {
+              e => {
+                interp.iterator_close(iterator, loc) catch {
+                  _ => ()
+                }
+                raise e
+              }
+            }
             let val = interp.get_computed_property(
               value,
               Value::Number(1.0),
               loc,
-            )
-
-            // Add to map using same SameValueZero upsert logic as Map.prototype.set
-            match new_map {
-              Value::Map(data) => {
-                // Find existing key using SameValueZero
-                let mut found = false
-                for i = 0; i < data.entries.length(); i = i + 1 {
-                  let (k, _) = data.entries[i]
-                  if same_value_zero(k, key) {
-                    // Update existing entry
-                    data.entries[i] = (key, val)
-                    found = true
-                    break
-                  }
+            ) catch {
+              e => {
+                interp.iterator_close(iterator, loc) catch {
+                  _ => ()
                 }
-                if !found {
-                  // Add new entry
-                  data.entries.push((key, val))
-                }
+                raise e
               }
-              _ => ()
+            }
+            let _ = interp.call_value(adder, new_map, [key, val], loc) catch {
+              e => {
+                interp.iterator_close(iterator, loc) catch {
+                  _ => ()
+                }
+                raise e
+              }
             }
           }
         }
@@ -904,6 +916,13 @@ fn setup_set_builtins(
             Undefined | Null => true
             _ => false
           }) {
+          let adder = interp.get_property(new_set, "add", loc)
+          if !@runtime.is_callable(adder) {
+            raise @errors.TypeError(
+              message="Set.prototype.add is not a function",
+            )
+          }
+
           // Get iterator from iterable using Symbol.iterator
           let iterator_sym = well_known_symbols.iterator
           let iterator_method = interp.get_computed_property(
@@ -926,33 +945,22 @@ fn setup_set_builtins(
               )
           }
 
+          let next_method = interp.get_iterator_next_method(iterator, loc)
+
           // Iterate over the iterator
           while true {
-            let next_method = interp.get_property(iterator, "next", loc)
-            let result = interp.call_value(next_method, iterator, [], loc)
-            let done = match interp.get_property(result, "done", loc) {
-              Value::Bool(b) => b
-              _ => false
+            let value = match
+              interp.iterator_step_value(iterator, next_method, loc) {
+              None => break
+              Some(value) => value
             }
-            if done {
-              break
-            }
-            let value = interp.get_property(result, "value", loc)
-            // Add to set (using SameValueZero)
-            match new_set {
-              Value::Set(data) => {
-                let mut found = false
-                for i = 0; i < data.values.length(); i = i + 1 {
-                  if same_value_zero(data.values[i], value) {
-                    found = true
-                    break
-                  }
+            let _ = interp.call_value(adder, new_set, [value], loc) catch {
+              e => {
+                interp.iterator_close(iterator, loc) catch {
+                  _ => ()
                 }
-                if !found {
-                  data.values.push(value)
-                }
+                raise e
               }
-              _ => ()
             }
           }
         }
