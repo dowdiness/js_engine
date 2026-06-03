@@ -72,10 +72,68 @@ fn make_array_iterator_proto_value(
     name="next",
     length=0,
     realm_state=Some(realm_state),
-    fn(_this_val, _args) raise {
-      raise @errors.TypeError(
-        message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
-      )
+    fn(this_val, _args) raise {
+      match this_val {
+        Object(data) => {
+          if data.class_name != "Array Iterator" {
+            raise @errors.TypeError(
+              message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+            )
+          }
+          let current = match data.bag.properties.get("[[ArrayIteratorNextIndex]]") {
+            Some(Number(n)) => n.to_int()
+            _ => 0
+          }
+          let total = match data.bag.properties.get("[[ArrayIteratorLength]]") {
+            Some(Number(n)) => n.to_int()
+            _ => 0
+          }
+          if current >= total {
+            return Object({
+              bag: {
+                properties: {
+                  "value": Undefined,
+                  "done": Bool(true),
+                },
+                symbol_properties: {},
+                descriptors: {},
+                symbol_descriptors: {},
+              },
+              prototype: Null,
+              callable: None,
+              class_name: "Object",
+              extensible: true,
+              arraybuffer_state: None,
+            })
+          }
+          let target = match data.bag.properties.get("[[ArrayIteratorTarget]]") {
+            Some(value) => value
+            None => Undefined
+          }
+          let value = get_array_like_element(target, current)
+          data.bag.properties["[[ArrayIteratorNextIndex]]"] =
+            Number((current + 1).to_double())
+          Object({
+            bag: {
+              properties: {
+                "value": value,
+                "done": Bool(false),
+              },
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+            },
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            extensible: true,
+            arraybuffer_state: None,
+          })
+        }
+        _ => raise @errors.TypeError(
+          message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+        )
+      }
     },
   )
   let proto_descs : Map[String, PropDescriptor] = {}
@@ -124,89 +182,13 @@ pub fn RealmState::get_array_iterator_proto(self : RealmState) -> Value {
 fn make_array_iterator_value_with_proto(
   arr_iter_proto : Value,
   arr : ArrayData,
-  realm_state : RealmState,
+  _realm_state : RealmState,
 ) -> Value {
-  let index_ref : Ref[Int] = { val: 0 }
-
-  // Create the next method
-  let next_method = Object({
-    bag: {
-      properties: { "length": Number(0.0), "name": String_("next") },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
-        if idx < arr.elements.length() {
-          let value = arr.elements[idx]
-          index_ref.val = idx + 1
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = value
-          result_props["done"] = Bool(false)
-          Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Bool(true)
-          Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-
   // Create the iterator object with next method
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
-  )
+  iter_props["[[ArrayIteratorNextIndex]]"] = Number(0.0)
+  iter_props["[[ArrayIteratorLength]]"] = Number(arr.elements.length().to_double())
+  iter_props["[[ArrayIteratorTarget]]"] = Array(arr)
 
   Object({
     bag: {
@@ -241,88 +223,14 @@ pub fn RealmState::make_array_iterator_value(
 fn make_array_like_iterator_value_with_proto(
   arr_iter_proto : Value,
   val : Value,
-  realm_state : RealmState,
+  _realm_state : RealmState,
 ) -> Value raise Error {
-  let index_ref : Ref[Int] = { val: 0 }
   let len = to_array_like_length(val)
 
-  let next_method = Object({
-    bag: {
-      properties: { "length": Number(0.0), "name": String_("next") },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
-        if idx < len {
-          let value = get_array_like_element(val, idx)
-          index_ref.val = idx + 1
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = value
-          result_props["done"] = Bool(false)
-          Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Bool(true)
-          Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-
   let iter_props : Map[String, Value] = {}
-  iter_props["next"] = stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
-  )
+  iter_props["[[ArrayIteratorNextIndex]]"] = Number(0.0)
+  iter_props["[[ArrayIteratorLength]]"] = Number(len.to_double())
+  iter_props["[[ArrayIteratorTarget]]"] = val
 
   Object({
     bag: {
