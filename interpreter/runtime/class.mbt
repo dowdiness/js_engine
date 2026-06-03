@@ -121,10 +121,7 @@ fn Interpreter::create_class(
           StringLit(s, _, _, _) => String_(s)
           _ => {
             let v = self.eval_expr(class_ctx, f.key, env)
-            match v {
-              Symbol(_) => v
-              _ => String_(to_js_string(v))
-            }
+            to_property_key(v, interp=Some(self))
           }
         }
         let field_init : ClassFieldInit = {
@@ -146,11 +143,11 @@ fn Interpreter::create_class(
         // Get the method key - could be string or symbol
         let key_val : Value = match m.key {
           StringLit(s, _, _, _) => String_(s)
-          _ => self.eval_expr(class_ctx, m.key, env)
+          _ => to_property_key(self.eval_expr(class_ctx, m.key, env), interp=Some(self))
         }
         let method_key_str : String = match key_val {
           Symbol(_) => key_val.to_string()
-          _ => to_js_string(key_val)
+          _ => self.to_js_string(key_val)
         }
         // ES2022 §15.7.10 ClassElementEvaluation: a static MethodDefinition
         // whose property key is the String "prototype" throws TypeError.
@@ -522,7 +519,7 @@ fn Interpreter::create_class(
     let key_str : String = match sf.key {
       String_(s) => s
       Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
-      _ => to_js_string(sf.key)
+      _ => self.to_js_string(sf.key)
     }
     let value : Value = match sf.initializer {
       Some(expr) => {
