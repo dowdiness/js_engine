@@ -588,6 +588,36 @@ fn create_generator_instance(
   func_env.is_var_scope = true
   func_env.def("this", this_val, LetBinding)
   func_env.def("<new.target>", Undefined, LetBinding)
+  let has_arguments_param = match params_ext {
+    Some(pext) => ext_params_include_arguments(pext, rest_param)
+    None => params_include_arguments(params, rest_param)
+  }
+  if !has_arguments_param {
+    // Create arguments object before binding params so default value
+    // evaluation can reference it (ES2026 §10.2.11 step 20).
+    let args_props : Map[String, Value] = {}
+    for i = 0; i < args.length(); i = i + 1 {
+      args_props[i.to_string()] = args[i]
+    }
+    args_props["length"] = Number(args.length().to_double())
+    func_env.def(
+      "arguments",
+      Object({
+        bag: {
+          properties: args_props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
+        prototype: Null,
+        callable: None,
+        class_name: "Arguments",
+        extensible: true,
+        arraybuffer_state: None,
+      }),
+      VarBinding,
+    )
+  }
   // Bind parameters eagerly
   // §19.2.1.3 gate (#A.6): generator / async / async-gen functions are
   // all non-arrow, so default-expression evaluation activates the same
@@ -690,37 +720,6 @@ fn create_generator_instance(
           None => ()
         }
       }
-    }
-    let has_arguments_param = match params_ext {
-      Some(pext) => ext_params_include_arguments(pext, rest_param)
-      None => params_include_arguments(params, rest_param)
-    }
-    if !has_arguments_param {
-      // Create arguments object on func_env (param env when split, single env
-      // otherwise). Ext / simple both install arguments here unless a formal
-      // parameter is named `arguments`.
-      let args_props : Map[String, Value] = {}
-      for i = 0; i < args.length(); i = i + 1 {
-        args_props[i.to_string()] = args[i]
-      }
-      args_props["length"] = Number(args.length().to_double())
-      func_env.def(
-        "arguments",
-        Object({
-          bag: {
-            properties: args_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-          },
-          prototype: Null,
-          callable: None,
-          class_name: "Arguments",
-          extensible: true,
-          arraybuffer_state: None,
-        }),
-        VarBinding,
-      )
     }
     // Split body env iff Ext shape AND HasParameterExpressions; simple
     // params + plain-rest Ext both stay single-env per §10.2.11 step 26.
