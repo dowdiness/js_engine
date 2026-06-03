@@ -1694,6 +1694,26 @@ const REGEXP_ORIGINAL_FLAGS_SYMBOL_ID = -121
 const REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID = -122
 
 ///|
+// Engine-private negative symbol IDs for RegExp String Iterator internal slots.
+// See docs/development.md hidden metadata reservation guidance.
+const REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID = -123
+
+///|
+const REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID = -124
+
+///|
+const REGEXP_STRING_ITERATOR_STRING_SYMBOL_ID = -125
+
+///|
+const REGEXP_STRING_ITERATOR_GLOBAL_SYMBOL_ID = -126
+
+///|
+const REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID = -127
+
+///|
+const REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID = -128
+
+///|
 fn regexp_original_source_from_data(data : ObjectData) -> String? {
   match data.bag.symbol_properties.get(REGEXP_ORIGINAL_SOURCE_SYMBOL_ID) {
     Some(Value::String_(s)) => Some(s)
@@ -1898,6 +1918,127 @@ fn regexp_this_is_object(value : Value) -> Bool {
     Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => true
     _ => false
   }
+}
+
+///|
+fn regexp_has_internal_matcher(value : Value) -> Bool {
+  match value {
+    Object(data) if data.class_name == "RegExp" =>
+      regexp_original_source_from_data(data) is Some(_)
+    _ => false
+  }
+}
+
+///|
+fn regexp_is_regexp(interp : Interpreter, value : Value) -> Bool raise Error {
+  if !regexp_this_is_object(value) {
+    return false
+  }
+  let loc = @token.Loc::default()
+  let match_sym = interp.realm_state.well_known_symbols.match_sym
+  let matcher = interp.get_computed_property(value, Symbol(match_sym), loc)
+  match matcher {
+    Undefined => regexp_has_internal_matcher(value)
+    _ => @runtime.is_truthy(matcher)
+  }
+}
+
+///|
+fn regexp_constructor_args(args : Array[Value]) -> (Value, Value) {
+  match args {
+    [pattern, flags, ..] => (pattern, flags)
+    [pattern] => (pattern, Undefined)
+    [] => (Undefined, Undefined)
+  }
+}
+
+///|
+fn regexp_constructor_string(
+  interp : Interpreter,
+  value : Value,
+) -> String raise Error {
+  match value {
+    Undefined => ""
+    _ => interp.to_js_string(value)
+  }
+}
+
+///|
+fn regexp_constructor_call(
+  interp : Interpreter,
+  context : @runtime.CallContext,
+  args : Array[Value],
+  realm_state : @runtime.RealmState,
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  let (pattern_arg, flags_arg) = regexp_constructor_args(args)
+  let pattern_is_regexp = regexp_is_regexp(interp, pattern_arg)
+  if !context.is_constructing() && pattern_is_regexp && flags_arg is Undefined {
+    let pattern_ctor = interp.get_property(pattern_arg, "constructor", loc)
+    if same_value(pattern_ctor, regexp_default_constructor(realm_state)) {
+      return pattern_arg
+    }
+  }
+  let has_internal_matcher = regexp_has_internal_matcher(pattern_arg)
+  let pattern_source = if has_internal_matcher {
+    match regexp_original_source(pattern_arg) {
+      Some(source) => Value::String_(source)
+      None => pattern_arg
+    }
+  } else if pattern_is_regexp {
+    interp.get_property(pattern_arg, "source", loc)
+  } else {
+    pattern_arg
+  }
+  let flags_value = if flags_arg is Undefined {
+    if has_internal_matcher {
+      match regexp_original_flags(pattern_arg) {
+        Some(flags) => Value::String_(flags)
+        None => Undefined
+      }
+    } else if pattern_is_regexp {
+      interp.get_property(pattern_arg, "flags", loc)
+    } else {
+      Undefined
+    }
+  } else {
+    flags_arg
+  }
+  let pattern = regexp_constructor_string(interp, pattern_source)
+  let flags = regexp_constructor_string(interp, flags_value)
+  make_regexp_object_with_realm_state(pattern, flags, realm_state)
+}
+
+///|
+fn make_regexp_constructor(
+  realm_state : @runtime.RealmState,
+  name_length_desc : PropDescriptor,
+) -> Value {
+  Value::Object({
+    bag: {
+      properties: {
+        "name": Value::String_("RegExp"),
+        "length": Value::Number(2.0),
+      },
+      symbol_properties: {},
+      descriptors: { "name": name_length_desc, "length": name_length_desc },
+      symbol_descriptors: {},
+    },
+    prototype: Null,
+    callable: Some(
+      InterpreterCallableWithContext("RegExp", fn(
+        interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        regexp_constructor_call(interp, context, args, realm_state)
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
 }
 
 ///|
@@ -2432,6 +2573,136 @@ fn regexp_exec_for_symbol_method(
 }
 
 ///|
+fn regexp_string_iterator_has_slots(data : ObjectData) -> Bool {
+  let slots = data.bag.symbol_properties
+  slots.contains(REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID) &&
+  slots.contains(REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID) &&
+  slots.contains(REGEXP_STRING_ITERATOR_STRING_SYMBOL_ID) &&
+  slots.contains(REGEXP_STRING_ITERATOR_GLOBAL_SYMBOL_ID) &&
+  slots.contains(REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID) &&
+  slots.contains(REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID)
+}
+
+///|
+fn regexp_string_iterator_slot_type_error() -> Value raise Error {
+  raise @errors.TypeError(
+    message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
+  )
+}
+
+///|
+fn regexp_string_iterator_set_done(data : ObjectData, done : Bool) -> Unit {
+  data.bag.symbol_properties[REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID] = Bool(done)
+}
+
+///|
+fn regexp_string_iterator_next(
+  interp : Interpreter,
+  this_val : Value,
+) -> Value raise Error {
+  let data = match this_val {
+    Object(data) => data
+    _ => return regexp_string_iterator_slot_type_error()
+  }
+  if !regexp_string_iterator_has_slots(data) {
+    return regexp_string_iterator_slot_type_error()
+  }
+  let slots = data.bag.symbol_properties
+  match slots.get(REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID) {
+    Some(Bool(true)) => return @runtime.create_iter_result(Undefined, true)
+    _ => ()
+  }
+  let regexp = match slots.get(REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID) {
+    Some(value) => value
+    None => return regexp_string_iterator_slot_type_error()
+  }
+  let input = match slots.get(REGEXP_STRING_ITERATOR_STRING_SYMBOL_ID) {
+    Some(String_(s)) => s
+    _ => return regexp_string_iterator_slot_type_error()
+  }
+  let global = match slots.get(REGEXP_STRING_ITERATOR_GLOBAL_SYMBOL_ID) {
+    Some(Bool(value)) => value
+    _ => return regexp_string_iterator_slot_type_error()
+  }
+  let full_unicode = match slots.get(REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID) {
+    Some(Bool(value)) => value
+    _ => return regexp_string_iterator_slot_type_error()
+  }
+  let loc = @token.Loc::default()
+  let match_value = regexp_exec_for_symbol_method(interp, regexp, input)
+  match match_value {
+    Null => {
+      regexp_string_iterator_set_done(data, true)
+      @runtime.create_iter_result(Undefined, true)
+    }
+    _ => {
+      if !global {
+        regexp_string_iterator_set_done(data, true)
+        return @runtime.create_iter_result(match_value, false)
+      }
+      let match_str = interp.to_js_string(
+        interp.get_property(match_value, "0", loc),
+      )
+      if match_str == "" {
+        let this_index = regexp_to_length(
+          interp.get_property(regexp, "lastIndex", loc),
+          interp,
+        )
+        let next_index = regexp_advance_string_index(
+          input, this_index, full_unicode,
+        )
+        let _ = interp.set_property(
+          regexp,
+          "lastIndex",
+          Value::Number(next_index),
+          loc,
+          strict=true,
+        )
+      }
+      @runtime.create_iter_result(match_value, false)
+    }
+  }
+}
+
+///|
+fn regexp_create_string_iterator(
+  realm_state : @runtime.RealmState,
+  regexp : Value,
+  input : String,
+  global : Bool,
+  full_unicode : Bool,
+) -> Value {
+  let sym_props : Map[Int, Value] = {}
+  sym_props[REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID] = Bool(true)
+  sym_props[REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID] = regexp
+  sym_props[REGEXP_STRING_ITERATOR_STRING_SYMBOL_ID] = String_(input)
+  sym_props[REGEXP_STRING_ITERATOR_GLOBAL_SYMBOL_ID] = Bool(global)
+  sym_props[REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID] = Bool(full_unicode)
+  sym_props[REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID] = Bool(false)
+  let sym_descs : Map[Int, PropDescriptor] = {}
+  let slot_desc = regexp_internal_slot_descriptor()
+  sym_descs[REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID] = slot_desc
+  sym_descs[REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID] = slot_desc
+  sym_descs[REGEXP_STRING_ITERATOR_STRING_SYMBOL_ID] = slot_desc
+  sym_descs[REGEXP_STRING_ITERATOR_GLOBAL_SYMBOL_ID] = slot_desc
+  sym_descs[REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID] = slot_desc
+  sym_descs[REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID] = slot_desc
+  Value::Object({
+    bag: {
+      properties: {},
+      symbol_properties: sym_props,
+      descriptors: {},
+      symbol_descriptors: sym_descs,
+    },
+    prototype: get_regexp_string_iterator_proto(realm_state),
+    callable: None,
+    class_name: "RegExp String Iterator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
 fn regexp_replace_match_from_result(
   interp : Interpreter,
   result : Value,
@@ -2804,6 +3075,61 @@ fn make_regexp_match_method(realm_state : @runtime.RealmState) -> Value {
     realm_state=Some(realm_state),
     fn(interp, this_val, args) raise {
       regexp_symbol_match(interp, this_val, args)
+    },
+  )
+}
+
+///|
+fn regexp_symbol_match_all(
+  interp : Interpreter,
+  this_val : Value,
+  args : Array[Value],
+  realm_state : @runtime.RealmState,
+) -> Value raise Error {
+  if !regexp_this_is_object(this_val) {
+    return regexp_proto_incompatible("RegExp.prototype[Symbol.matchAll]")
+  }
+  let loc = @token.Loc::default()
+  let input = interp.to_js_string(
+    if args.length() > 0 {
+      args[0]
+    } else {
+      Undefined
+    },
+  )
+  let species_ctor = regexp_species_constructor(interp, this_val, realm_state)
+  let flags = interp.to_js_string(interp.get_property(this_val, "flags", loc))
+  let matcher = interp.construct_value(
+    species_ctor,
+    [this_val, Value::String_(flags)],
+    loc,
+  )
+  let last_index = regexp_to_length(
+    interp.get_property(this_val, "lastIndex", loc),
+    interp,
+  )
+  let _ = interp.set_property(
+    matcher,
+    "lastIndex",
+    Value::Number(last_index),
+    loc,
+    strict=true,
+  )
+  let global = flags.contains("g")
+  let full_unicode = flags.contains("u") || flags.contains("v")
+  regexp_create_string_iterator(
+    realm_state, matcher, input, global, full_unicode,
+  )
+}
+
+///|
+fn make_regexp_match_all_method(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(
+    name="[Symbol.matchAll]",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(interp, this_val, args) raise {
+      regexp_symbol_match_all(interp, this_val, args, realm_state)
     },
   )
 }
@@ -3368,15 +3694,12 @@ pub fn get_regexp_string_iterator_proto(
         realm_state=Some(realm_state),
         fn(this_val, _args) { this_val },
       )
-      // Add a placeholder next method with correct name/length on prototype
-      proto_props["next"] = @runtime.make_method_func(
+      proto_props["next"] = @runtime.make_interp_method_func(
         name="next",
         length=0,
         realm_state=Some(realm_state),
-        fn(_this_val, _args) raise {
-          raise @errors.TypeError(
-            message="RegExp String Iterator.prototype.next requires that |this| be a RegExp String Iterator",
-          )
+        fn(interp, this_val, _args) raise {
+          regexp_string_iterator_next(interp, this_val)
         },
       )
       let proto_descs : Map[String, PropDescriptor] = {}
