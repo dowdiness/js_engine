@@ -621,6 +621,16 @@ pub fn typedarray_get_index(
 }
 
 ///|
+fn typedarray_index_search_matches(search : Value, elem : Value) -> Bool {
+  @runtime.strict_equal(search, elem)
+}
+
+///|
+fn typedarray_includes_search_matches(search : Value, elem : Value) -> Bool {
+  same_value_zero(search, elem)
+}
+
+///|
 /// Set a typed element on a TypedArray object at the given index.
 pub fn typedarray_set_index(
   data : ObjectData,
@@ -799,93 +809,94 @@ pub fn setup_typedarray_builtins(
   // --- Prototype methods ---
 
   // set(source [, offset])
-  ta_proto_props["set"] = @runtime.make_method_func(name="set", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    let (data, _) = validate_typed_array(
-      this_val, "TypedArray.prototype.set", realm_state,
-    )
-    if args.length() == 0 {
-      raise @errors.TypeError(
-        message="TypedArray.prototype.set requires at least 1 argument",
+  ta_proto_props["set"] = @runtime.make_interp_method_func(
+    name="set",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let (data, _) = validate_typed_array(
+        this_val, "TypedArray.prototype.set", realm_state,
       )
-    }
-    let target_offset = if args.length() > 1 {
-      @runtime.to_number(args[1]).to_int()
-    } else {
-      0
-    }
-    let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
-      Some(Value::Number(n)) => n.to_int()
-      _ => 0
-    }
-    match args[0] {
-      // Source is a TypedArray
-      Object(src_data) if is_typedarray_class(src_data.class_name) => {
-        let src_len = match src_data.bag.properties.get("[[ArrayLength]]") {
-          Some(Value::Number(n)) => n.to_int()
-          _ => 0
-        }
-        if target_offset + src_len > ta_length {
-          raise @errors.RangeError(message="Source is too large")
-        }
-        // Buffer all source elements first to handle overlapping ArrayBuffers
-        let temp : Array[Double] = []
-        for i = 0; i < src_len; i = i + 1 {
-          let val = typedarray_get_index(src_data, i, realm_state)
-          match val {
-            Value::Number(n) => temp.push(n)
-            _ => temp.push(0.0)
+      if args.length() == 0 {
+        raise @errors.TypeError(
+          message="TypedArray.prototype.set requires at least 1 argument",
+        )
+      }
+      let target_offset = if args.length() > 1 {
+        interp.to_index(args[1])
+      } else {
+        0
+      }
+      let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      match args[0] {
+        // Source is a TypedArray
+        Object(src_data) if is_typedarray_class(src_data.class_name) => {
+          let src_len = match src_data.bag.properties.get("[[ArrayLength]]") {
+            Some(Value::Number(n)) => n.to_int()
+            _ => 0
           }
-        }
-        for i = 0; i < src_len; i = i + 1 {
-          typedarray_set_index(data, target_offset + i, temp[i], realm_state)
-        }
-        Undefined
-      }
-      // Source is an array-like
-      Array(arr_data) => {
-        let src_len = arr_data.elements.length()
-        if target_offset + src_len > ta_length {
-          raise @errors.RangeError(message="Source is too large")
-        }
-        for i = 0; i < src_len; i = i + 1 {
-          let val = arr_data.elements[i]
-          let num = @runtime.to_number(val)
-          typedarray_set_index(data, target_offset + i, num, realm_state)
-        }
-        Undefined
-      }
-      src => {
-        // Generic array-like with length property
-        let src_len = match src {
-          Object(src_obj) =>
-            match src_obj.bag.properties.get("length") {
-              Some(v) => @runtime.to_number(v).to_int()
-              _ => 0
+          if target_offset + src_len > ta_length {
+            raise @errors.RangeError(message="Source is too large")
+          }
+          // Buffer all source elements first to handle overlapping ArrayBuffers
+          let temp : Array[Double] = []
+          for i = 0; i < src_len; i = i + 1 {
+            let val = typedarray_get_index(src_data, i, realm_state)
+            match val {
+              Value::Number(n) => temp.push(n)
+              _ => temp.push(0.0)
             }
-          _ => 0
-        }
-        if target_offset + src_len > ta_length {
-          raise @errors.RangeError(message="Source is too large")
-        }
-        for i = 0; i < src_len; i = i + 1 {
-          let val = match src {
-            Object(src_obj) =>
-              match src_obj.bag.properties.get(i.to_string()) {
-                Some(v) => v
-                _ => Undefined
-              }
-            _ => Undefined
           }
-          let num = @runtime.to_number(val)
-          typedarray_set_index(data, target_offset + i, num, realm_state)
+          for i = 0; i < src_len; i = i + 1 {
+            typedarray_set_index(data, target_offset + i, temp[i], realm_state)
+          }
+          Undefined
         }
-        Undefined
+        // Source is an array-like
+        Array(arr_data) => {
+          let src_len = arr_data.elements.length()
+          if target_offset + src_len > ta_length {
+            raise @errors.RangeError(message="Source is too large")
+          }
+          for i = 0; i < src_len; i = i + 1 {
+            let val = arr_data.elements[i]
+            let num = interp.to_number(val)
+            typedarray_set_index(data, target_offset + i, num, realm_state)
+          }
+          Undefined
+        }
+        src => {
+          // Generic array-like with length property
+          let src_len = match src {
+            Object(src_obj) =>
+              match src_obj.bag.properties.get("length") {
+                Some(v) => interp.to_number(v).to_int()
+                _ => 0
+              }
+            _ => 0
+          }
+          if target_offset + src_len > ta_length {
+            raise @errors.RangeError(message="Source is too large")
+          }
+          for i = 0; i < src_len; i = i + 1 {
+            let val = match src {
+              Object(src_obj) =>
+                match src_obj.bag.properties.get(i.to_string()) {
+                  Some(v) => v
+                  _ => Undefined
+                }
+              _ => Undefined
+            }
+            let num = interp.to_number(val)
+            typedarray_set_index(data, target_offset + i, num, realm_state)
+          }
+          Undefined
+        }
       }
-    }
-  })
+    },
+  )
 
   // subarray(begin, end)
   ta_proto_props["subarray"] = @runtime.make_interp_method_func(
@@ -898,7 +909,7 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       let relative_begin = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
@@ -917,7 +928,7 @@ pub fn setup_typedarray_builtins(
       let relative_end = if args.length() > 1 {
         match args[1] {
           Undefined => ta_length
-          _ => @runtime.to_number(args[1]).to_int()
+          _ => interp.to_number(args[1]).to_int()
         }
       } else {
         ta_length
@@ -972,7 +983,7 @@ pub fn setup_typedarray_builtins(
         _ => 0
       }
       let relative_begin = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
@@ -991,7 +1002,7 @@ pub fn setup_typedarray_builtins(
       let relative_end = if args.length() > 1 {
         match args[1] {
           Undefined => ta_length
-          _ => @runtime.to_number(args[1]).to_int()
+          _ => interp.to_number(args[1]).to_int()
         }
       } else {
         ta_length
@@ -1044,17 +1055,17 @@ pub fn setup_typedarray_builtins(
   )
 
   // copyWithin(target, start [, end])
-  ta_proto_props["copyWithin"] = @runtime.make_method_func(
+  ta_proto_props["copyWithin"] = @runtime.make_interp_method_func(
     name="copyWithin",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "copyWithin", realm_state)
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
       let target_idx = if args.length() > 0 {
-        let t = @runtime.to_number(args[0]).to_int()
+        let t = interp.to_number(args[0]).to_int()
         if t < 0 {
           let r = len + t
           if r < 0 {
@@ -1071,7 +1082,7 @@ pub fn setup_typedarray_builtins(
         0
       }
       let start_idx = if args.length() > 1 {
-        let s = @runtime.to_number(args[1]).to_int()
+        let s = interp.to_number(args[1]).to_int()
         if s < 0 {
           let r = len + s
           if r < 0 {
@@ -1091,7 +1102,7 @@ pub fn setup_typedarray_builtins(
         match args[2] {
           Undefined => len
           _ => {
-            let e = @runtime.to_number(args[2]).to_int()
+            let e = interp.to_number(args[2]).to_int()
             if e < 0 {
               let r = len + e
               if r < 0 {
@@ -1137,70 +1148,71 @@ pub fn setup_typedarray_builtins(
   )
 
   // fill(value [, start [, end]])
-  ta_proto_props["fill"] = @runtime.make_method_func(name="fill", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    let (data, _) = validate_typed_array(this_val, "fill", realm_state)
-    let len = match data.bag.properties.get("[[ArrayLength]]") {
-      Some(Value::Number(n)) => n.to_int()
-      _ => 0
-    }
-    let fill_val = if args.length() > 0 {
-      @runtime.to_number(args[0])
-    } else {
-      0.0
-    }
-    let start_idx = if args.length() > 1 {
-      let s = @runtime.to_number(args[1]).to_int()
-      if s < 0 {
-        let r = len + s
-        if r < 0 {
-          0
-        } else {
-          r
-        }
-      } else if s > len {
-        len
-      } else {
-        s
+  ta_proto_props["fill"] = @runtime.make_interp_method_func(
+    name="fill",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let (data, _) = validate_typed_array(this_val, "fill", realm_state)
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
-    } else {
-      0
-    }
-    let end_idx = if args.length() > 2 {
-      match args[2] {
-        Undefined => len
-        _ => {
-          let e = @runtime.to_number(args[2]).to_int()
-          if e < 0 {
-            let r = len + e
-            if r < 0 {
-              0
-            } else {
-              r
-            }
-          } else if e > len {
-            len
+      let fill_val = if args.length() > 0 {
+        interp.to_number(args[0])
+      } else {
+        0.0
+      }
+      let start_idx = if args.length() > 1 {
+        let s = interp.to_number(args[1]).to_int()
+        if s < 0 {
+          let r = len + s
+          if r < 0 {
+            0
           } else {
-            e
+            r
+          }
+        } else if s > len {
+          len
+        } else {
+          s
+        }
+      } else {
+        0
+      }
+      let end_idx = if args.length() > 2 {
+        match args[2] {
+          Undefined => len
+          _ => {
+            let e = interp.to_number(args[2]).to_int()
+            if e < 0 {
+              let r = len + e
+              if r < 0 {
+                0
+              } else {
+                r
+              }
+            } else if e > len {
+              len
+            } else {
+              e
+            }
           }
         }
+      } else {
+        len
       }
-    } else {
-      len
-    }
-    for i = start_idx; i < end_idx; i = i + 1 {
-      typedarray_set_index(data, i, fill_val, realm_state)
-    }
-    this_val
-  })
+      for i = start_idx; i < end_idx; i = i + 1 {
+        typedarray_set_index(data, i, fill_val, realm_state)
+      }
+      this_val
+    },
+  )
 
   // indexOf(searchElement [, fromIndex])
-  ta_proto_props["indexOf"] = @runtime.make_method_func(
+  ta_proto_props["indexOf"] = @runtime.make_interp_method_func(
     name="indexOf",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "indexOf", realm_state)
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -1209,9 +1221,9 @@ pub fn setup_typedarray_builtins(
       if len == 0 || args.length() == 0 {
         return Value::Number(-1.0)
       }
-      let search_val = @runtime.to_number(args[0])
+      let search_val = args[0]
       let from_idx = if args.length() > 1 {
-        let f = @runtime.to_number(args[1]).to_int()
+        let f = interp.to_number(args[1]).to_int()
         if f < 0 {
           let r = len + f
           if r < 0 {
@@ -1227,12 +1239,8 @@ pub fn setup_typedarray_builtins(
       }
       for i = from_idx; i < len; i = i + 1 {
         let elem = typedarray_get_index(data, i, realm_state)
-        match elem {
-          Value::Number(n) =>
-            if n == search_val {
-              return Value::Number(i.to_double())
-            }
-          _ => ()
+        if typedarray_index_search_matches(search_val, elem) {
+          return Value::Number(i.to_double())
         }
       }
       Value::Number(-1.0)
@@ -1240,10 +1248,10 @@ pub fn setup_typedarray_builtins(
   )
 
   // lastIndexOf(searchElement [, fromIndex])
-  ta_proto_props["lastIndexOf"] = @runtime.make_method_func(
+  ta_proto_props["lastIndexOf"] = @runtime.make_interp_method_func(
     name="lastIndexOf",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "lastIndexOf", realm_state)
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -1252,9 +1260,9 @@ pub fn setup_typedarray_builtins(
       if len == 0 || args.length() == 0 {
         return Value::Number(-1.0)
       }
-      let search_val = @runtime.to_number(args[0])
+      let search_val = args[0]
       let from_idx = if args.length() > 1 {
-        let f = @runtime.to_number(args[1]).to_int()
+        let f = interp.to_number(args[1]).to_int()
         if f < 0 {
           len + f
         } else if f >= len {
@@ -1267,12 +1275,8 @@ pub fn setup_typedarray_builtins(
       }
       for i = from_idx; i >= 0; i = i - 1 {
         let elem = typedarray_get_index(data, i, realm_state)
-        match elem {
-          Value::Number(n) =>
-            if n == search_val {
-              return Value::Number(i.to_double())
-            }
-          _ => ()
+        if typedarray_index_search_matches(search_val, elem) {
+          return Value::Number(i.to_double())
         }
       }
       Value::Number(-1.0)
@@ -1280,10 +1284,10 @@ pub fn setup_typedarray_builtins(
   )
 
   // includes(searchElement [, fromIndex])
-  ta_proto_props["includes"] = @runtime.make_method_func(
+  ta_proto_props["includes"] = @runtime.make_interp_method_func(
     name="includes",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "includes", realm_state)
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -1292,9 +1296,9 @@ pub fn setup_typedarray_builtins(
       if len == 0 || args.length() == 0 {
         return Value::Bool(false)
       }
-      let search_val = @runtime.to_number(args[0])
+      let search_val = args[0]
       let from_idx = if args.length() > 1 {
-        let f = @runtime.to_number(args[1]).to_int()
+        let f = interp.to_number(args[1]).to_int()
         if f < 0 {
           let r = len + f
           if r < 0 {
@@ -1310,12 +1314,8 @@ pub fn setup_typedarray_builtins(
       }
       for i = from_idx; i < len; i = i + 1 {
         let elem = typedarray_get_index(data, i, realm_state)
-        match elem {
-          Value::Number(n) =>
-            if n == search_val || (n.is_nan() && search_val.is_nan()) {
-              return Value::Bool(true)
-            }
-          _ => ()
+        if typedarray_includes_search_matches(search_val, elem) {
+          return Value::Bool(true)
         }
       }
       Value::Bool(false)
@@ -1444,7 +1444,7 @@ pub fn setup_typedarray_builtins(
               return 0
             }
           }
-          let cmp = @runtime.to_number(result) catch {
+          let cmp = interp.to_number(result) catch {
             e => {
               caught_error = Some(e)
               return 0
@@ -1506,7 +1506,8 @@ pub fn setup_typedarray_builtins(
   )
 
   // at(index)
-  ta_proto_props["at"] = @runtime.make_method_func(name="at", length=1, fn(
+  ta_proto_props["at"] = @runtime.make_interp_method_func(name="at", length=1, fn(
+    interp,
     this_val,
     args,
   ) raise {
@@ -1516,7 +1517,7 @@ pub fn setup_typedarray_builtins(
       _ => 0
     }
     let idx = if args.length() > 0 {
-      @runtime.to_number(args[0]).to_int()
+      interp.to_number(args[0]).to_int()
     } else {
       0
     }
@@ -1853,7 +1854,7 @@ pub fn setup_typedarray_builtins(
               [elem, Value::Number(i.to_double()), this_val],
               loc,
             )
-            let num = @runtime.to_number(mapped)
+            let num = interp.to_number(mapped)
             typedarray_set_index(result_data, i, num, realm_state)
           }
         _ => ()
@@ -2289,49 +2290,46 @@ pub fn setup_typedarray_builtins(
     },
   )
 
-  ta_proto_props["with"] = @runtime.make_method_func(name="with", length=2, fn(
-    this_val,
-    args,
-  ) raise {
-    let index_val = if args.length() > 0 { args[0] } else { Undefined }
-    let value_val = if args.length() > 1 { args[1] } else { Undefined }
-    let (data, _) = validate_typed_array(this_val, "with", realm_state)
-    let len = match data.bag.properties.get("[[ArrayLength]]") {
-      Some(Value::Number(n)) => n.to_int()
-      _ => 0
-    }
-    let mut idx = @runtime.to_number(index_val).to_int()
-    if idx < 0 {
-      idx = len + idx
-    }
-    if idx < 0 || idx >= len {
-      raise @errors.RangeError(
-        message="Invalid index for TypedArray.prototype.with",
-      )
-    }
-    let proto = data.prototype
-    let new_ta = make_typedarray_object(data.class_name, len, proto, env)
-    match new_ta {
-      Object(new_data) => {
-        for i = 0; i < len; i = i + 1 {
-          let val = typedarray_get_index(data, i, realm_state)
-          let num = match val {
-            Value::Number(n) => n
-            _ => 0.0
-          }
-          typedarray_set_index(new_data, i, num, realm_state)
-        }
-        typedarray_set_index(
-          new_data,
-          idx,
-          @runtime.to_number(value_val),
-          realm_state,
+  ta_proto_props["with"] = @runtime.make_interp_method_func(
+    name="with",
+    length=2,
+    fn(interp, this_val, args) raise {
+      let index_val = if args.length() > 0 { args[0] } else { Undefined }
+      let value_val = if args.length() > 1 { args[1] } else { Undefined }
+      let (data, _) = validate_typed_array(this_val, "with", realm_state)
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      let mut idx = interp.to_number(index_val).to_int()
+      let replacement_num = interp.to_number(value_val)
+      if idx < 0 {
+        idx = len + idx
+      }
+      if idx < 0 || idx >= len {
+        raise @errors.RangeError(
+          message="Invalid index for TypedArray.prototype.with",
         )
       }
-      _ => ()
-    }
-    new_ta
-  })
+      let proto = data.prototype
+      let new_ta = make_typedarray_object(data.class_name, len, proto, env)
+      match new_ta {
+        Object(new_data) => {
+          for i = 0; i < len; i = i + 1 {
+            let val = typedarray_get_index(data, i, realm_state)
+            let num = match val {
+              Value::Number(n) => n
+              _ => 0.0
+            }
+            typedarray_set_index(new_data, i, num, realm_state)
+          }
+          typedarray_set_index(new_data, idx, replacement_num, realm_state)
+        }
+        _ => ()
+      }
+      new_ta
+    },
+  )
 
   // Mark all prototype methods as non-enumerable (per spec)
   let method_desc : PropDescriptor = {
@@ -2716,7 +2714,7 @@ pub fn setup_typedarray_builtins(
           } else {
             val
           }
-          elements.push(@runtime.to_number(mapped))
+          elements.push(interp.to_number(mapped))
         }
         let result = make_typedarray_object(
           type_name,
@@ -2745,7 +2743,7 @@ pub fn setup_typedarray_builtins(
       },
       prototype: Null,
       callable: Some(
-        NativeCallable("of", fn(args) raise {
+        NonConstructableInterpreterCallable("of", fn(interp, args) raise {
           let result = make_typedarray_object(
             type_name,
             args.length(),
@@ -2755,7 +2753,7 @@ pub fn setup_typedarray_builtins(
           match result {
             Object(result_data) =>
               for i = 0; i < args.length(); i = i + 1 {
-                let num = @runtime.to_number(args[i])
+                let num = interp.to_number(args[i])
                 typedarray_set_index(result_data, i, num, realm_state)
               }
             _ => ()
@@ -2827,13 +2825,13 @@ pub fn setup_typedarray_builtins(
           }
           let first = args[0]
           match first {
-            Value::Number(n) => {
-              let length = n.to_int()
-              if length < 0 || n != length.to_double() || n.is_nan() {
-                raise @errors.RangeError(
-                  message="Invalid typed array length: \{n}",
-                )
-              }
+            Value::Number(_)
+            | Value::String_(_)
+            | Value::Bool(_)
+            | Value::Null
+            | Value::Undefined
+            | Value::Symbol(_) => {
+              let length = interp.to_index(first)
               make_typedarray_object(type_name, length, per_proto, env)
             }
             // From another TypedArray
@@ -2889,7 +2887,7 @@ pub fn setup_typedarray_builtins(
                 match args[1] {
                   Undefined => 0
                   _ => {
-                    let n = @runtime.to_number(args[1]).to_int()
+                    let n = interp.to_index(args[1])
                     if n < 0 {
                       raise @errors.RangeError(
                         message="Start offset \{n} is outside the bounds of the buffer",
@@ -2916,7 +2914,7 @@ pub fn setup_typedarray_builtins(
                     } else {
                       (buf_byte_length - byte_offset) / bpe
                     }
-                  _ => @runtime.to_number(args[2]).to_int()
+                  _ => interp.to_index(args[2])
                 }
               } else if (buf_byte_length - byte_offset) % bpe != 0 {
                 raise @errors.RangeError(
@@ -2943,7 +2941,10 @@ pub fn setup_typedarray_builtins(
               match result {
                 Object(result_data) =>
                   for i = 0; i < len; i = i + 1 {
-                    let num = @runtime.to_number(arr_data.elements[i])
+                    let num = @runtime.to_number(
+                      arr_data.elements[i],
+                      interp=Some(interp),
+                    )
                     typedarray_set_index(result_data, i, num, realm_state)
                   }
                 _ => ()
@@ -2969,7 +2970,7 @@ pub fn setup_typedarray_builtins(
                     Object(result_data) =>
                       for i = 0; i < len; i = i + 1 {
                         let v = interp.get_property(first, i.to_string(), loc)
-                        let num = @runtime.to_number(v, interp=Some(interp))
+                        let num = interp.to_number(v)
                         typedarray_set_index(result_data, i, num, realm_state)
                       }
                     _ => ()

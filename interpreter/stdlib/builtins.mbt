@@ -257,9 +257,12 @@ fn setup_builtins_with_realm_state_active(
   // isNaN(value)
   env.def_builtin(
     "isNaN",
-    @runtime.make_native_func(name="isNaN", length=1, fn(args) raise {
+    @runtime.make_interp_static_func(name="isNaN", length=1, fn(
+      interp,
+      args,
+    ) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
-      let n = @runtime.to_number(val)
+      let n = interp.to_number(val)
       Bool(n.is_nan())
     }),
   )
@@ -267,9 +270,12 @@ fn setup_builtins_with_realm_state_active(
   // isFinite(value)
   env.def_builtin(
     "isFinite",
-    @runtime.make_native_func(name="isFinite", length=1, fn(args) raise {
+    @runtime.make_interp_static_func(name="isFinite", length=1, fn(
+      interp,
+      args,
+    ) raise {
       let val = if args.length() > 0 { args[0] } else { Undefined }
-      let n = @runtime.to_number(val)
+      let n = interp.to_number(val)
       Bool(!n.is_nan() && !n.is_inf())
     }),
   )

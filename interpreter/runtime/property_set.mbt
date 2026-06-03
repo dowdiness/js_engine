@@ -575,7 +575,7 @@ fn Interpreter::typedarray_set_dispatch(
   strict : Bool,
 ) -> Value raise Error {
   if strict_equal(obj, receiver) {
-    let num = to_number(value)
+    let num = self.to_number(value)
     (self.stdlib_hooks.typedarray_set_index)(data, idx, num, self.realm_state)
     value
   } else if !(self.stdlib_hooks.typedarray_is_valid_index)(

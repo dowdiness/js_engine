@@ -351,14 +351,14 @@ pub fn setup_dataview_builtins(
   }
 
   // getInt8(byteOffset)
-  dv_proto_props["getInt8"] = @runtime.make_method_func(
+  dv_proto_props["getInt8"] = @runtime.make_interp_method_func(
     name="getInt8",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -373,14 +373,14 @@ pub fn setup_dataview_builtins(
   )
 
   // getUint8(byteOffset)
-  dv_proto_props["getUint8"] = @runtime.make_method_func(
+  dv_proto_props["getUint8"] = @runtime.make_interp_method_func(
     name="getUint8",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -395,14 +395,14 @@ pub fn setup_dataview_builtins(
   )
 
   // getInt16(byteOffset [, littleEndian])
-  dv_proto_props["getInt16"] = @runtime.make_method_func(
+  dv_proto_props["getInt16"] = @runtime.make_interp_method_func(
     name="getInt16",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -418,14 +418,14 @@ pub fn setup_dataview_builtins(
   )
 
   // getUint16(byteOffset [, littleEndian])
-  dv_proto_props["getUint16"] = @runtime.make_method_func(
+  dv_proto_props["getUint16"] = @runtime.make_interp_method_func(
     name="getUint16",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -441,14 +441,14 @@ pub fn setup_dataview_builtins(
   )
 
   // getInt32(byteOffset [, littleEndian])
-  dv_proto_props["getInt32"] = @runtime.make_method_func(
+  dv_proto_props["getInt32"] = @runtime.make_interp_method_func(
     name="getInt32",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -464,14 +464,14 @@ pub fn setup_dataview_builtins(
   )
 
   // getUint32(byteOffset [, littleEndian])
-  dv_proto_props["getUint32"] = @runtime.make_method_func(
+  dv_proto_props["getUint32"] = @runtime.make_interp_method_func(
     name="getUint32",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -487,14 +487,14 @@ pub fn setup_dataview_builtins(
   )
 
   // getFloat32(byteOffset [, littleEndian])
-  dv_proto_props["getFloat32"] = @runtime.make_method_func(
+  dv_proto_props["getFloat32"] = @runtime.make_interp_method_func(
     name="getFloat32",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -511,14 +511,14 @@ pub fn setup_dataview_builtins(
   )
 
   // getFloat64(byteOffset [, littleEndian])
-  dv_proto_props["getFloat64"] = @runtime.make_method_func(
+  dv_proto_props["getFloat64"] = @runtime.make_interp_method_func(
     name="getFloat64",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
@@ -535,19 +535,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setInt8(byteOffset, value)
-  dv_proto_props["setInt8"] = @runtime.make_method_func(
+  dv_proto_props["setInt8"] = @runtime.make_interp_method_func(
     name="setInt8",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -563,19 +563,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setUint8(byteOffset, value)
-  dv_proto_props["setUint8"] = @runtime.make_method_func(
+  dv_proto_props["setUint8"] = @runtime.make_interp_method_func(
     name="setUint8",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -591,19 +591,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setInt16(byteOffset, value [, littleEndian])
-  dv_proto_props["setInt16"] = @runtime.make_method_func(
+  dv_proto_props["setInt16"] = @runtime.make_interp_method_func(
     name="setInt16",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -620,19 +620,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setUint16(byteOffset, value [, littleEndian])
-  dv_proto_props["setUint16"] = @runtime.make_method_func(
+  dv_proto_props["setUint16"] = @runtime.make_interp_method_func(
     name="setUint16",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -649,19 +649,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setInt32(byteOffset, value [, littleEndian])
-  dv_proto_props["setInt32"] = @runtime.make_method_func(
+  dv_proto_props["setInt32"] = @runtime.make_interp_method_func(
     name="setInt32",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -678,19 +678,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setUint32(byteOffset, value [, littleEndian])
-  dv_proto_props["setUint32"] = @runtime.make_method_func(
+  dv_proto_props["setUint32"] = @runtime.make_interp_method_func(
     name="setUint32",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -707,19 +707,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setFloat32(byteOffset, value [, littleEndian])
-  dv_proto_props["setFloat32"] = @runtime.make_method_func(
+  dv_proto_props["setFloat32"] = @runtime.make_interp_method_func(
     name="setFloat32",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -737,19 +737,19 @@ pub fn setup_dataview_builtins(
   )
 
   // setFloat64(byteOffset, value [, littleEndian])
-  dv_proto_props["setFloat64"] = @runtime.make_method_func(
+  dv_proto_props["setFloat64"] = @runtime.make_interp_method_func(
     name="setFloat64",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
           let offset = if args.length() > 0 {
-            @runtime.to_index(args[0])
+            interp.to_index(args[0])
           } else {
             0
           }
           let value = if args.length() > 1 {
-            @runtime.to_number(args[1])
+            interp.to_number(args[1])
           } else {
             0.0
           }
@@ -858,7 +858,12 @@ pub fn setup_dataview_builtins(
     },
     prototype: Null,
     callable: Some(
-      NativeCallableWithContext("DataView", fn(context, args) raise {
+      InterpreterCallableWithContext("DataView", fn(
+        interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
         if !context.is_constructing() {
           raise @errors.TypeError(message="Constructor DataView requires 'new'")
         }
@@ -896,7 +901,7 @@ pub fn setup_dataview_builtins(
           match args[1] {
             Undefined => 0
             _ => {
-              let n = @runtime.to_number(args[1]).to_int()
+              let n = interp.to_index(args[1])
               if n < 0 || n > buf_byte_length {
                 raise @errors.RangeError(
                   message="Start offset \{n} is outside the bounds of the buffer",
@@ -912,7 +917,7 @@ pub fn setup_dataview_builtins(
           match args[2] {
             Undefined => buf_byte_length - byte_offset
             _ => {
-              let n = @runtime.to_number(args[2]).to_int()
+              let n = interp.to_index(args[2])
               if n < 0 || byte_offset + n > buf_byte_length {
                 raise @errors.RangeError(message="Invalid DataView length \{n}")
               }

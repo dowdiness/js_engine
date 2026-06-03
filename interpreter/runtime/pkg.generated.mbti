@@ -251,7 +251,7 @@ pub fn to_array_like_length(Value) -> Int raise
 
 pub fn to_array_like_length_interp(Value, Interpreter) -> Int raise
 
-pub fn to_index(Value) -> Int raise
+pub fn to_index(Value, interp? : Interpreter?) -> Int raise
 
 pub fn to_int32(Double) -> Int
 
@@ -530,6 +530,7 @@ pub fn Interpreter::run_timers(Self) -> Unit raise
 pub fn Interpreter::set_computed_property(Self, Value, Value, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::spread_iterable(Self, Value, @token.Loc) -> Array[Value] raise
+pub fn Interpreter::to_index(Self, Value) -> Int raise
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_object_literal_property_key(Self, Value) -> Value raise
