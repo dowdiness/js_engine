@@ -173,11 +173,11 @@ fn Interpreter::get_property_impl(
         Some(v) => return v
         None => ()
       }
-      if prop == "size" {
-        Number(data.entries.length().to_double())
-      } else {
-        (self.stdlib_hooks.get_map_method)(data, prop, self.realm_state)
+      let proto = match data.prototype {
+        Null => self.realm_state.get_map_proto()
+        proto => proto
       }
+      self.get_property_from_prototype(obj, proto, prop, loc)
     }
     Set(data) => {
       // Check expando properties first (instance fields from subclasses)
@@ -193,11 +193,11 @@ fn Interpreter::get_property_impl(
         Some(v) => return v
         None => ()
       }
-      if prop == "size" {
-        Number(data.values.length().to_double())
-      } else {
-        (self.stdlib_hooks.get_set_method)(data, prop, self.realm_state)
+      let proto = match data.prototype {
+        Null => self.realm_state.get_set_proto()
+        proto => proto
       }
+      self.get_property_from_prototype(obj, proto, prop, loc)
     }
     Promise(data) =>
       // Check user-defined properties first, then prototype methods

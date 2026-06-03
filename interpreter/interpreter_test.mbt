@@ -15206,6 +15206,70 @@ test "Map and Set propagate IteratorValue abrupts without closing" {
 }
 
 ///|
+test "Map and Set constructors honor accessor adders" {
+  let src =
+    #|var mapGetterCalls = 0;
+    #|var mapAdderCalls = 0;
+    #|var mapReceiver;
+    #|Object.defineProperty(Map.prototype, "set", {
+    #|  configurable: true,
+    #|  get: function() {
+    #|    mapGetterCalls = mapGetterCalls + 1;
+    #|    return function(k, v) {
+    #|      mapAdderCalls = mapAdderCalls + 1;
+    #|      mapReceiver = this;
+    #|    };
+    #|  }
+    #|});
+    #|var m = new Map([[1, 2], [3, 4]]);
+    #|console.log(mapGetterCalls);
+    #|console.log(mapAdderCalls);
+    #|console.log(mapReceiver === m);
+    #|console.log(m.size);
+    #|
+    #|var setGetterCalls = 0;
+    #|var setAdderCalls = 0;
+    #|var setReceiver;
+    #|Object.defineProperty(Set.prototype, "add", {
+    #|  configurable: true,
+    #|  get: function() {
+    #|    setGetterCalls = setGetterCalls + 1;
+    #|    return function(v) {
+    #|      setAdderCalls = setAdderCalls + 1;
+    #|      setReceiver = this;
+    #|    };
+    #|  }
+    #|});
+    #|var s = new Set([1, 2]);
+    #|console.log(setGetterCalls);
+    #|console.log(setAdderCalls);
+    #|console.log(setReceiver === s);
+    #|console.log(s.size);
+    #|
+    #|var err = new Error("set getter");
+    #|var iterated = false;
+    #|Object.defineProperty(Map.prototype, "set", {
+    #|  configurable: true,
+    #|  get: function() { throw err; }
+    #|});
+    #|var iterable = {};
+    #|iterable[Symbol.iterator] = function() {
+    #|  iterated = true;
+    #|  return [][Symbol.iterator]();
+    #|};
+    #|try {
+    #|  new Map(iterable);
+    #|} catch (e) {
+    #|  console.log(e === err);
+    #|  console.log(iterated);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1", "2", "true", "0", "1", "2", "true", "0", "true", "false",
+  ])
+}
+
+///|
 test "Map and Set close iterators when constructor adders throw" {
   let src =
     #|function MyError() { this.name = "MyError"; }
