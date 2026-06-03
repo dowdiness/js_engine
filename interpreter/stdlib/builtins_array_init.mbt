@@ -1317,10 +1317,18 @@ fn setup_array_builtins(
         let next_method = interp.get_iterator_next_method(iterator, loc)
         let mut k = 0
         while true {
-          let value = match
-            interp.iterator_step_value(iterator, next_method, loc) {
+          let iter_result = match
+            interp.iterator_step_result(iterator, next_method, loc) {
             None => break
-            Some(value) => value
+            Some(result) => result
+          }
+          let value = interp.iterator_result_value(iter_result, loc) catch {
+            e => {
+              interp.iterator_close(iterator, loc) catch {
+                _ => ()
+              }
+              raise e
+            }
           }
           let mapped = match map_fn {
             Some(fn_val) =>
@@ -1329,7 +1337,14 @@ fn setup_array_builtins(
                 this_arg,
                 [value, Value::Number(k.to_double())],
                 loc,
-              )
+              ) catch {
+                e => {
+                  interp.iterator_close(iterator, loc) catch {
+                    _ => ()
+                  }
+                  raise e
+                }
+              }
             None => value
           }
           elements.push(mapped)

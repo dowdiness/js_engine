@@ -15053,6 +15053,108 @@ test "iterator value accessors throw before advancing" {
 }
 
 ///|
+test "destructuring elisions skip IteratorValue" {
+  let src =
+    #|function makeIter(label) {
+    #|  var count = 0;
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        count = count + 1;
+    #|        if (count === 1) {
+    #|          return Object.defineProperty({ done: false }, "value", {
+    #|            get: function() { throw new Error(label + " elision"); }
+    #|          });
+    #|        }
+    #|        return { done: false, value: count };
+    #|      },
+    #|      return: function() { return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|var [, x] = makeIter("binding");
+    #|console.log("binding:" + x);
+    #|var y;
+    #|[, y] = makeIter("assignment");
+    #|console.log("assignment:" + y);
+  let output = run_output(src)
+  json_inspect(output, content=["binding:2", "assignment:2"])
+}
+
+///|
+test "Array.from closes iterator when IteratorValue or mapFn throws" {
+  let src =
+    #|var log = [];
+    #|function makeIter(label, poisonValue) {
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        if (poisonValue) {
+    #|          return Object.defineProperty({ done: false }, "value", {
+    #|            get: function() { throw new Error(label); }
+    #|          });
+    #|        }
+    #|        return { done: false, value: 1 };
+    #|      },
+    #|      return: function() { log.push(label + ":return"); return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|try {
+    #|  Array.from(makeIter("value", true));
+    #|} catch (e) {
+    #|  log.push("value:" + e.message);
+    #|}
+    #|try {
+    #|  Array.from(makeIter("map", false), function() { throw new Error("mapped"); });
+    #|} catch (e) {
+    #|  log.push("map:" + e.message);
+    #|}
+    #|console.log(log.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "value:return|value:value|map:return|map:mapped",
+  ])
+}
+
+///|
+test "Map and Set close iterators when IteratorValue throws" {
+  let src =
+    #|var log = [];
+    #|function makeIter(label) {
+    #|  var iter = {};
+    #|  iter[Symbol.iterator] = function() {
+    #|    return {
+    #|      next: function() {
+    #|        return Object.defineProperty({ done: false }, "value", {
+    #|          get: function() { throw new Error(label); }
+    #|        });
+    #|      },
+    #|      return: function() { log.push(label + ":return"); return {}; }
+    #|    };
+    #|  };
+    #|  return iter;
+    #|}
+    #|try {
+    #|  new Map(makeIter("map"));
+    #|} catch (e) {
+    #|  log.push("map:" + e.message);
+    #|}
+    #|try {
+    #|  new Set(makeIter("set"));
+    #|} catch (e) {
+    #|  log.push("set:" + e.message);
+    #|}
+    #|console.log(log.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=["map:return|map:map|set:return|set:set"])
+}
+
+///|
 test "Map and Set close iterators when constructor adders throw" {
   let src =
     #|function MyError() { this.name = "MyError"; }

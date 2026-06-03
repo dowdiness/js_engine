@@ -32,7 +32,7 @@ fn Interpreter::iterator_next_result(
 
 ///|
 /// Perform `IteratorStep(iteratorRecord)`.
-fn Interpreter::iterator_step_result(
+pub fn Interpreter::iterator_step_result(
   self : Interpreter,
   iterator : Value,
   next_method : Value,
@@ -48,7 +48,7 @@ fn Interpreter::iterator_step_result(
 
 ///|
 /// Perform `IteratorValue(iterResult)`.
-fn Interpreter::iterator_result_value(
+pub fn Interpreter::iterator_result_value(
   self : Interpreter,
   iter_result : Value,
   loc : @token.Loc,

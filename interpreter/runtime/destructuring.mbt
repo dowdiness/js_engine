@@ -77,21 +77,30 @@ fn Interpreter::bind_pattern(
       // Lazily consume iterator values per spec — one next() call per element
       let mut iter_done = false
       for i = 0; i < elements.length(); i = i + 1 {
-        // Advance iterator one step for this element position
-        let val : Value = if iter_done {
-          Undefined
-        } else {
-          match self.iterator_step_value(iterator, next_method, loc_dstr) {
-            None => {
-              iter_done = true
-              Undefined
-            }
-            Some(value) => value
-          }
-        }
+        // Advance iterator one step for this element position. Elisions only
+        // perform IteratorStep; they must not perform IteratorValue.
         match elements[i] {
-          Some(pat) => self.bind_pattern(pat, val, env, bk, ctx~)
-          None => () // elision — value consumed above, just discard
+          Some(pat) => {
+            let val : Value = if iter_done {
+              Undefined
+            } else {
+              match self.iterator_step_result(iterator, next_method, loc_dstr) {
+                None => {
+                  iter_done = true
+                  Undefined
+                }
+                Some(result) => self.iterator_result_value(result, loc_dstr)
+              }
+            }
+            self.bind_pattern(pat, val, env, bk, ctx~)
+          }
+          None =>
+            if !iter_done {
+              match self.iterator_step_result(iterator, next_method, loc_dstr) {
+                None => iter_done = true
+                Some(_) => ()
+              }
+            }
         }
       }
       // Handle rest pattern: collect remaining iterator values
@@ -302,21 +311,32 @@ fn Interpreter::assign_pattern(
       // Lazily consume iterator values per spec — one next() call per element
       let mut iter_done_a = false
       for i = 0; i < elements.length(); i = i + 1 {
-        // Advance iterator one step for this element position
-        let val : Value = if iter_done_a {
-          Undefined
-        } else {
-          match self.iterator_step_value(iterator_a, next_method_a, loc_dstr) {
-            None => {
-              iter_done_a = true
-              Undefined
-            }
-            Some(value) => value
-          }
-        }
+        // Advance iterator one step for this element position. Elisions only
+        // perform IteratorStep; they must not perform IteratorValue.
         match elements[i] {
-          Some(pat) => self.assign_pattern(ctx, pat, val, env)
-          None => () // elision — value consumed above, just discard
+          Some(pat) => {
+            let val : Value = if iter_done_a {
+              Undefined
+            } else {
+              match
+                self.iterator_step_result(iterator_a, next_method_a, loc_dstr) {
+                None => {
+                  iter_done_a = true
+                  Undefined
+                }
+                Some(result) => self.iterator_result_value(result, loc_dstr)
+              }
+            }
+            self.assign_pattern(ctx, pat, val, env)
+          }
+          None =>
+            if !iter_done_a {
+              match
+                self.iterator_step_result(iterator_a, next_method_a, loc_dstr) {
+                None => iter_done_a = true
+                Some(_) => ()
+              }
+            }
         }
       }
       // Handle rest pattern: collect remaining iterator values
