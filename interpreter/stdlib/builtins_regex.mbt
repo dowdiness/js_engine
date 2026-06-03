@@ -1675,6 +1675,138 @@ fn collect_quantified_states(
 }
 
 ///|
+fn match_sequence_candidates(
+  nodes : Array[RegexNode],
+  idx : Int,
+  input : Array[Char],
+  pos : Int,
+  state : RegexExecState,
+  flags : RegexFlags,
+) -> Array[QuantifiedMatchState] {
+  if idx >= nodes.length() {
+    return [{ pos, snapshot: state.snapshot() }]
+  }
+  let saved = state.snapshot()
+  let candidates = match_node_candidates(nodes[idx], input, pos, state, flags)
+  let results : Array[QuantifiedMatchState] = []
+  for candidate in candidates {
+    state.restore(candidate.snapshot)
+    let rest = match_sequence_candidates(
+      nodes,
+      idx + 1,
+      input,
+      candidate.pos,
+      state,
+      flags,
+    )
+    for result in rest {
+      results.push(result)
+    }
+    state.restore(saved)
+  }
+  state.restore(saved)
+  results
+}
+
+///|
+fn match_node_candidates(
+  node : RegexNode,
+  input : Array[Char],
+  pos : Int,
+  state : RegexExecState,
+  flags : RegexFlags,
+) -> Array[QuantifiedMatchState] {
+  let saved = state.snapshot()
+  let results : Array[QuantifiedMatchState] = []
+  match node {
+    Group(children, group_idx, _) => {
+      let inner_candidates = match_sequence_candidates(
+        children, 0, input, pos, state, flags,
+      )
+      for candidate in inner_candidates {
+        state.restore(candidate.snapshot)
+        if group_idx > 0 && group_idx <= state.captures.length() {
+          let buf = StringBuilder::new()
+          for i = pos; i < candidate.pos; i = i + 1 {
+            buf.write_char(input[i])
+          }
+          state.set_capture(group_idx, buf.to_string())
+        }
+        results.push({ pos: candidate.pos, snapshot: state.snapshot() })
+        state.restore(saved)
+      }
+    }
+    Alternation(left, right) => {
+      let left_candidates = match_sequence_candidates(
+        left, 0, input, pos, state, flags,
+      )
+      for candidate in left_candidates {
+        results.push(candidate)
+      }
+      state.restore(saved)
+      let right_candidates = match_sequence_candidates(
+        right, 0, input, pos, state, flags,
+      )
+      for candidate in right_candidates {
+        results.push(candidate)
+      }
+    }
+    Sequence(children) => {
+      let child_candidates = match_sequence_candidates(
+        children, 0, input, pos, state, flags,
+      )
+      for candidate in child_candidates {
+        results.push(candidate)
+      }
+    }
+    Quantified(inner, min, max, greedy) => {
+      let states = collect_quantified_states(
+        inner, input, pos, state, max, flags,
+      )
+      if states.length() - 1 >= min {
+        if greedy {
+          for i = states.length() - 1; i >= min; i = i - 1 {
+            results.push(states[i])
+          }
+        } else {
+          for i = min; i < states.length(); i = i + 1 {
+            results.push(states[i])
+          }
+        }
+      }
+    }
+    Lookahead(children, positive) => {
+      // Lookahead assertions are atomic with respect to the outer sequence:
+      // once a positive assertion succeeds, later atoms must not backtrack
+      // into the assertion to try another internal alternative. Captures from
+      // the first assertion success are still visible to following atoms.
+      let assertion_result = match_sequence(
+        children, 0, input, pos, state, flags,
+      )
+      match (assertion_result, positive) {
+        (Some(_), true) => results.push({ pos, snapshot: state.snapshot() })
+        (None, false) => results.push({ pos, snapshot: saved })
+        _ => ()
+      }
+    }
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_)
+    | NamedBackreference(_)
+    | DuplicateNamedBackreference(_) =>
+      match regex_exec_single(node, input, pos, state, flags) {
+        Some(next) => results.push({ pos: next, snapshot: state.snapshot() })
+        None => ()
+      }
+  }
+  state.restore(saved)
+  results
+}
+
+///|
 fn match_sequence(
   nodes : Array[RegexNode],
   idx : Int,
@@ -1683,80 +1815,17 @@ fn match_sequence(
   state : RegexExecState,
   flags : RegexFlags,
 ) -> Int? {
-  if idx >= nodes.length() {
-    return Some(pos)
-  }
-  let node = nodes[idx]
-  match node {
-    Quantified(inner, min, max, greedy) => {
-      // Collect all possible match positions and their capture states.
-      let saved = state.snapshot()
-      let states = collect_quantified_states(
-        inner, input, pos, state, max, flags,
-      )
-      if states.length() - 1 < min {
-        state.restore(saved)
-        return None
-      }
-      if greedy {
-        // Try from most matches down to minimum
-        for i = states.length() - 1; i >= min; i = i - 1 {
-          let candidate = states[i]
-          state.restore(candidate.snapshot)
-          let result = match_sequence(
-            nodes,
-            idx + 1,
-            input,
-            candidate.pos,
-            state,
-            flags,
-          )
-          match result {
-            Some(_) => return result
-            None => state.restore(candidate.snapshot)
-          }
-        }
-        state.restore(saved)
-        None
-      } else {
-        // Non-greedy: try from minimum up
-        for i = min; i < states.length(); i = i + 1 {
-          let candidate = states[i]
-          state.restore(candidate.snapshot)
-          let result = match_sequence(
-            nodes,
-            idx + 1,
-            input,
-            candidate.pos,
-            state,
-            flags,
-          )
-          match result {
-            Some(_) => return result
-            None => state.restore(candidate.snapshot)
-          }
-        }
-        state.restore(saved)
-        None
-      }
-    }
-    _ => {
-      let saved = state.snapshot()
-      match regex_exec_single(node, input, pos, state, flags) {
-        Some(next) =>
-          match match_sequence(nodes, idx + 1, input, next, state, flags) {
-            Some(end_pos) => Some(end_pos)
-            None => {
-              state.restore(saved)
-              None
-            }
-          }
-        None => {
-          state.restore(saved)
-          None
-        }
-      }
-    }
+  let saved = state.snapshot()
+  let candidates = match_sequence_candidates(
+    nodes, idx, input, pos, state, flags,
+  )
+  if candidates.length() > 0 {
+    let candidate = candidates[0]
+    state.restore(candidate.snapshot)
+    Some(candidate.pos)
+  } else {
+    state.restore(saved)
+    None
   }
 }
 
