@@ -59,7 +59,7 @@ fn Interpreter::create_class(
           )
       }
     }
-    None => (None, Null)
+    None => (None, self.global.get("[[ObjectPrototype]]") catch { _ => Null })
   }
   // Create the prototype object
   // Pre-insert constructor so it appears first in property enumeration order

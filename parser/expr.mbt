@@ -1997,11 +1997,17 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           | Class
           | Extends
           | Super
-          | Static =>
-            if !self.at_kind_at(1, LParen) {
+          | Static => {
+            let kw_line = self.tokens[self.pos].loc.line
+            let next_tok = self.tokens[self.pos + 1]
+            let next_is_method_name_token = next_tok.kind != LParen &&
+              next_tok.kind != Star &&
+              next_tok.loc.line == kw_line
+            if next_is_method_name_token {
               self.pos += 1
               method_kind = @ast.Get
             }
+          }
           _ => ()
         }
       Set =>
@@ -2050,11 +2056,17 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           | Class
           | Extends
           | Super
-          | Static =>
-            if !self.at_kind_at(1, LParen) {
+          | Static => {
+            let kw_line = self.tokens[self.pos].loc.line
+            let next_tok = self.tokens[self.pos + 1]
+            let next_is_method_name_token = next_tok.kind != LParen &&
+              next_tok.kind != Star &&
+              next_tok.loc.line == kw_line
+            if next_is_method_name_token {
               self.pos += 1
               method_kind = @ast.Set
             }
+          }
           _ => ()
         }
       _ => ()
