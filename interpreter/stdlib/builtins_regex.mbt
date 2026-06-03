@@ -2102,9 +2102,6 @@ const REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID = -127
 const REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID = -128
 
 ///|
-const REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID = -129
-
-///|
 fn regexp_original_source_from_data(data : ObjectData) -> String? {
   match data.bag.symbol_properties.get(REGEXP_ORIGINAL_SOURCE_SYMBOL_ID) {
     Some(Value::String_(s)) => Some(s)
@@ -2321,29 +2318,6 @@ fn regexp_has_internal_matcher(value : Value) -> Bool {
 }
 
 ///|
-fn regexp_compile_is_allowed_in_realm(
-  data : ObjectData,
-  realm_state : @runtime.RealmState,
-) -> Bool {
-  match data.bag.symbol_properties.get(REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID) {
-    Some(ctor) => same_value(ctor, regexp_default_constructor(realm_state))
-    None => false
-  }
-}
-
-///|
-fn regexp_compile_constructor_for_context(
-  context : @runtime.CallContext,
-  realm_state : @runtime.RealmState,
-) -> Value {
-  let default_ctor = regexp_default_constructor(realm_state)
-  match context.new_target() {
-    Some(new_target) if !same_value(new_target, default_ctor) => Undefined
-    _ => default_ctor
-  }
-}
-
-///|
 fn regexp_is_regexp(interp : Interpreter, value : Value) -> Bool raise Error {
   if !regexp_this_is_object(value) {
     return false
@@ -2420,12 +2394,7 @@ fn regexp_constructor_call(
   }
   let pattern = regexp_constructor_string(interp, pattern_source)
   let flags = regexp_constructor_string(interp, flags_value)
-  let compile_constructor = regexp_compile_constructor_for_context(
-    context, realm_state,
-  )
-  make_regexp_object_with_realm_state_and_compile_constructor(
-    pattern, flags, realm_state, compile_constructor,
-  )
+  make_regexp_object_with_realm_state(pattern, flags, realm_state)
 }
 
 ///|
@@ -2488,8 +2457,7 @@ fn make_regexp_compile_method(realm_state : @runtime.RealmState) -> Value {
       match this_val {
         Object(data) => {
           if data.class_name != "RegExp" ||
-            regexp_original_source_from_data(data) is None ||
-            !regexp_compile_is_allowed_in_realm(data, realm_state) {
+            regexp_original_source_from_data(data) is None {
             return regexp_proto_incompatible("RegExp.prototype.compile")
           }
           let pattern_arg = if args.length() > 0 { args[0] } else { Undefined }
@@ -2728,7 +2696,6 @@ fn make_regexp_object_with_proto(
   pattern : String,
   flags : String,
   prototype : Value,
-  compile_constructor? : Value = Undefined,
 ) -> Value raise Error {
   let sorted_flags = normalize_and_validate_regexp(pattern, flags)
   let props : Map[String, Value] = {}
@@ -2738,7 +2705,6 @@ fn make_regexp_object_with_proto(
   let sym_props : Map[Int, Value] = {}
   sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
   sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
-  sym_props[REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID] = compile_constructor
 
   // Create descriptor map for the only RegExp instance own property.
   let re_descs : Map[String, PropDescriptor] = {}
@@ -2755,7 +2721,6 @@ fn make_regexp_object_with_proto(
   let re_sym_descs : Map[Int, PropDescriptor] = {}
   re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
-  re_sym_descs[REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID] = regexp_internal_slot_descriptor()
 
   Value::Object({
     bag: {
@@ -2781,31 +2746,16 @@ pub fn make_regexp_object(
 }
 
 ///|
-fn make_regexp_object_with_realm_state_and_compile_constructor(
-  pattern : String,
-  flags : String,
-  realm_state : @runtime.RealmState,
-  compile_constructor : Value,
-) -> Value raise Error {
-  let prototype = match realm_state.regexp_prototype.val {
-    Some(p) => p
-    None => Null
-  }
-  make_regexp_object_with_proto(pattern, flags, prototype, compile_constructor~)
-}
-
-///|
 pub fn make_regexp_object_with_realm_state(
   pattern : String,
   flags : String,
   realm_state : @runtime.RealmState,
 ) -> Value raise Error {
-  make_regexp_object_with_realm_state_and_compile_constructor(
-    pattern,
-    flags,
-    realm_state,
-    regexp_default_constructor(realm_state),
-  )
+  let prototype = match realm_state.regexp_prototype.val {
+    Some(p) => p
+    None => Null
+  }
+  make_regexp_object_with_proto(pattern, flags, prototype)
 }
 
 ///|

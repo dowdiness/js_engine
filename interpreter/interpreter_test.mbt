@@ -4243,7 +4243,7 @@ test "RegExp duplicate named replacements use the matched capture" {
 }
 
 ///|
-test "RegExp compile survives prototype mutation but rejects subclass instances" {
+test "RegExp compile uses internal slots across prototype mutation and subclasses" {
   let src =
     #|var r = /a/;
     #|Object.setPrototypeOf(r, null);
@@ -4252,12 +4252,21 @@ test "RegExp compile survives prototype mutation but rejects subclass instances"
     #|console.log(RegExp.prototype.test.call(r, "a"));
     #|Object.setPrototypeOf(r, RegExp.prototype);
     #|console.log(r.source);
+    #|var fake = {};
+    #|Object.setPrototypeOf(fake, RegExp.prototype);
+    #|try { RegExp.prototype.compile.call(fake, "x"); } catch (e) { console.log(e instanceof TypeError); }
     #|var C = class extends RegExp {};
-    #|var s = new C("");
-    #|try { s.compile(); } catch (e) { console.log(e instanceof TypeError); }
-    #|try { RegExp.prototype.compile.call(s); } catch (e) { console.log(e instanceof TypeError); }
+    #|var s = new C("a");
+    #|console.log(s.compile("c") === s);
+    #|console.log(s.test("c"));
+    #|console.log(s.test("a"));
+    #|console.log(RegExp.prototype.compile.call(s, "d") === s);
+    #|console.log(s.source);
+    #|console.log(s.test("d"));
   let output = run_output(src)
-  json_inspect(output, content=["true", "false", "b", "true", "true"])
+  json_inspect(output, content=[
+    "true", "false", "b", "true", "true", "true", "false", "true", "d", "true",
+  ])
 }
 
 ///|
