@@ -72,9 +72,11 @@ pub(all) struct GeneratorObject {
 /// We create a new prototype each time to avoid stale symbol IDs
 /// across interpreter instances (each test creates a new interpreter).
 fn get_generator_prototype(interp : Interpreter) -> Value {
+  let object_proto = interp.global.get("[[ObjectPrototype]]") catch { _ => Null }
   init_generator_prototype(
     interp.realm_state.well_known_symbols,
     interp.realm_state,
+    object_proto,
   )
 }
 
@@ -105,6 +107,7 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 fn init_generator_prototype(
   well_known_symbols : WellKnownSymbols,
   realm_state : RealmState,
+  object_prototype : Value,
 ) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let props : Map[String, Value] = {}
@@ -194,7 +197,7 @@ fn init_generator_prototype(
       descriptors: descs,
       symbol_descriptors: sym_descs,
     },
-    prototype: Null,
+    prototype: object_prototype,
     callable: None,
     class_name: "Generator",
     extensible: true,
