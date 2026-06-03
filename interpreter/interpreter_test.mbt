@@ -4211,6 +4211,38 @@ test "RegExp.prototype source and toString follow accessor algorithms" {
 }
 
 ///|
+test "RegExp duplicate named backrefs use the matched alternative" {
+  let src =
+    #|var re = /(?:(?<a>x)|(?<a>y))\k<a>/;
+    #|console.log(re.exec("xx")[0]);
+    #|console.log(re.exec("yy")[0]);
+    #|console.log(re.exec("xy"));
+    #|console.log(re.exec("yx"));
+    #|var backtrack = /(?:(?<a>x+)y|(?<a>x))\k<a>/;
+    #|console.log(backtrack.exec("xx")[0]);
+  let output = run_output(src)
+  json_inspect(output, content=["xx", "yy", "null", "null", "xx"])
+}
+
+///|
+test "RegExp compile survives prototype mutation but rejects subclass instances" {
+  let src =
+    #|var r = /a/;
+    #|Object.setPrototypeOf(r, null);
+    #|RegExp.prototype.compile.call(r, "b");
+    #|console.log(RegExp.prototype.test.call(r, "b"));
+    #|console.log(RegExp.prototype.test.call(r, "a"));
+    #|Object.setPrototypeOf(r, RegExp.prototype);
+    #|console.log(r.source);
+    #|var C = class extends RegExp {};
+    #|var s = new C("");
+    #|try { s.compile(); } catch (e) { console.log(e instanceof TypeError); }
+    #|try { RegExp.prototype.compile.call(s); } catch (e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  json_inspect(output, content=["true", "false", "b", "true", "true"])
+}
+
+///|
 test "regex character class" {
   let src =
     #|var re = /[a-z]+/;

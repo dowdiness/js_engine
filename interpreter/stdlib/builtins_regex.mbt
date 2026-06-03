@@ -19,7 +19,8 @@ priv enum RegexNode {
   WordBoundary(Bool) // true = \b, false = \B
   Lookahead(Array[RegexNode], Bool) // children, positive (true=(?=...), false=(?!...))
   Backreference(Int) // group number (1-based)
-  NamedBackreference(String) // group name (resolved to Backreference after parsing)
+  NamedBackreference(String) // group name before post-parse resolution
+  DuplicateNamedBackreference(Array[Int]) // duplicate-name group indices
 }
 
 ///|
@@ -37,6 +38,7 @@ priv struct RegexParser {
   mut group_count : Int
   unicode : Bool
   group_names : Map[String, Int]
+  group_name_entries : Array[(String, Int)]
   mut has_unterminated_k_backref : Bool
   mut has_bare_k : Bool
 }
@@ -49,6 +51,7 @@ fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
     group_count: 0,
     unicode,
     group_names: {},
+    group_name_entries: [],
     has_unterminated_k_backref: false,
     has_bare_k: false,
   }
@@ -106,19 +109,40 @@ fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
     | CharClass(_, _)
     | Anchor(_)
     | WordBoundary(_)
-    | Backreference(_) => node
+    | Backreference(_)
+    | DuplicateNamedBackreference(_) => node
   }
+}
+
+///|
+fn regex_named_group_indices(
+  group_name_entries : Array[(String, Int)],
+) -> Map[String, Array[Int]] {
+  let indices : Map[String, Array[Int]] = {}
+  for entry in group_name_entries {
+    let (name, idx) = entry
+    match indices.get(name) {
+      Some(existing) => existing.push(idx)
+      None => indices[name] = [idx]
+    }
+  }
+  indices
 }
 
 ///|
 fn resolve_named_backreferences(
   node : RegexNode,
-  group_names : Map[String, Int],
+  group_names : Map[String, Array[Int]],
 ) -> RegexNode raise Error {
   match node {
     NamedBackreference(name) =>
       match group_names.get(name) {
-        Some(idx) => Backreference(idx)
+        Some(indices) =>
+          if indices.length() == 1 {
+            Backreference(indices[0])
+          } else {
+            DuplicateNamedBackreference(indices.copy())
+          }
         None =>
           raise @errors.SyntaxError(
             message="Invalid regex: undefined named backreference \\k<" +
@@ -173,14 +197,52 @@ fn resolve_named_backreferences(
     | CharClass(_, _)
     | Anchor(_)
     | WordBoundary(_)
-    | Backreference(_) => node
+    | Backreference(_)
+    | DuplicateNamedBackreference(_) => node
+  }
+}
+
+///|
+fn validate_numeric_backreferences(
+  node : RegexNode,
+  group_count : Int,
+) -> Unit raise Error {
+  match node {
+    Backreference(idx) =>
+      if idx > group_count {
+        raise @errors.SyntaxError(
+          message="Invalid regex: invalid numeric backreference",
+        )
+      }
+    Group(children, _, _) | Sequence(children) | Lookahead(children, _) =>
+      for child in children {
+        validate_numeric_backreferences(child, group_count)
+      }
+    Alternation(left, right) => {
+      for child in left {
+        validate_numeric_backreferences(child, group_count)
+      }
+      for child in right {
+        validate_numeric_backreferences(child, group_count)
+      }
+    }
+    Quantified(inner, _, _, _) =>
+      validate_numeric_backreferences(inner, group_count)
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | NamedBackreference(_)
+    | DuplicateNamedBackreference(_) => ()
   }
 }
 
 ///|
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   let result = self.parse_alternation()
-  if !self.group_names.is_empty() {
+  let named_group_indices = regex_named_group_indices(self.group_name_entries)
+  let resolved = if !self.group_names.is_empty() {
     // Pattern has named groups — reject malformed \k forms
     if self.has_unterminated_k_backref {
       raise @errors.SyntaxError(
@@ -192,15 +254,20 @@ fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
         message="Invalid regex: invalid escape \\k in pattern with named groups",
       )
     }
-    // Resolve \k<name> to Backreference(idx) using known group names
-    resolve_named_backreferences(result, self.group_names)
+    // Resolve \k<name> to a static index or duplicate-name dynamic lookup.
+    resolve_named_backreferences(result, named_group_indices)
   } else if !self.unicode {
     // Annex B: convert \k<name> to literal chars in non-unicode mode
     desugar_named_backrefs_to_literals(result)
   } else {
     // Unicode mode with no named groups: any \k<name> is invalid
-    resolve_named_backreferences(result, self.group_names)
+    resolve_named_backreferences(result, named_group_indices)
   }
+  validate_duplicate_named_group_names(resolved)
+  if self.unicode {
+    validate_numeric_backreferences(resolved, self.group_count)
+  }
+  resolved
 }
 
 ///|
@@ -274,6 +341,8 @@ fn RegexParser::parse_atom(self : RegexParser) -> RegexNode raise Error {
     '\\' => self.parse_escape()
     '*' | '+' | '?' =>
       raise @errors.SyntaxError(message="Invalid regex: nothing to repeat")
+    '{' if self.unicode =>
+      raise @errors.SyntaxError(message="Invalid regex: incomplete quantifier")
     _ => {
       self.pos += 1
       Literal(ch)
@@ -768,6 +837,101 @@ fn is_id_continue_char(c : Char) -> Bool {
 }
 
 ///|
+fn regex_name_path_contains(path : Array[String], name : String) -> Bool {
+  for item in path {
+    if item == name {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn regex_name_path_with(
+  path : Array[String],
+  name : String,
+) -> Array[String] raise Error {
+  if regex_name_path_contains(path, name) {
+    raise @errors.SyntaxError(message="Invalid regex: duplicate group name")
+  }
+  let next = path.copy()
+  next.push(name)
+  next
+}
+
+///|
+fn regex_combine_name_paths(
+  left : Array[Array[String]],
+  right : Array[Array[String]],
+) -> Array[Array[String]] raise Error {
+  let combined : Array[Array[String]] = []
+  for base in left {
+    for suffix in right {
+      let mut merged = base.copy()
+      for name in suffix {
+        merged = regex_name_path_with(merged, name)
+      }
+      combined.push(merged)
+    }
+  }
+  combined
+}
+
+///|
+fn regex_name_paths_for_sequence(
+  nodes : Array[RegexNode],
+) -> Array[Array[String]] raise Error {
+  let mut paths : Array[Array[String]] = [[]]
+  for node in nodes {
+    paths = regex_combine_name_paths(paths, regex_name_paths_for_node(node))
+  }
+  paths
+}
+
+///|
+fn regex_name_paths_for_node(
+  node : RegexNode,
+) -> Array[Array[String]] raise Error {
+  match node {
+    Group(children, _, Some(name)) => {
+      let inner_paths = regex_name_paths_for_sequence(children)
+      let paths : Array[Array[String]] = []
+      for path in inner_paths {
+        paths.push(regex_name_path_with(path, name))
+      }
+      paths
+    }
+    Group(children, _, None) | Lookahead(children, _) =>
+      regex_name_paths_for_sequence(children)
+    Sequence(nodes) => regex_name_paths_for_sequence(nodes)
+    Alternation(left, right) => {
+      let paths : Array[Array[String]] = []
+      for path in regex_name_paths_for_sequence(left) {
+        paths.push(path)
+      }
+      for path in regex_name_paths_for_sequence(right) {
+        paths.push(path)
+      }
+      paths
+    }
+    Quantified(inner, _, _, _) => regex_name_paths_for_node(inner)
+    Literal(_)
+    | Dot
+    | CharClass(_, _)
+    | Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_)
+    | NamedBackreference(_)
+    | DuplicateNamedBackreference(_) => [[]]
+  }
+}
+
+///|
+fn validate_duplicate_named_group_names(node : RegexNode) -> Unit raise Error {
+  let _ = regex_name_paths_for_node(node)
+}
+
+///|
 fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
   self.pos += 1 // skip '('
   // Check for special group syntax
@@ -850,15 +1014,12 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         }
         let name = name_buf.to_string()
         self.pos += 1 // skip '>'
-        // Duplicate check
-        if self.group_names.contains(name) {
-          raise @errors.SyntaxError(
-            message="Invalid regex: duplicate group name",
-          )
-        }
         self.group_count += 1
         let group_idx = self.group_count
-        self.group_names[name] = group_idx
+        if !self.group_names.contains(name) {
+          self.group_names[name] = group_idx
+        }
+        self.group_name_entries.push((name, group_idx))
         let inner = self.parse_alternation()
         if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
           self.pos += 1
@@ -929,7 +1090,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
 fn RegexParser::parse_quantifier(
   self : RegexParser,
   node : RegexNode,
-) -> RegexNode {
+) -> RegexNode raise Error {
   if self.pos >= self.pattern.length() {
     return node
   }
@@ -978,6 +1139,11 @@ fn RegexParser::parse_quantifier(
                 Some(m) =>
                   if self.pos < self.pattern.length() &&
                     self.pattern[self.pos] == '}' {
+                    if m < n {
+                      raise @errors.SyntaxError(
+                        message="Invalid regex: numbers out of order in quantifier",
+                      )
+                    }
                     self.pos += 1
                     let greedy = self.check_greedy()
                     Quantified(node, n, Some(m), greedy)
@@ -1136,6 +1302,52 @@ priv struct RegexFlags {
 }
 
 ///|
+fn match_backreference_capture(
+  captured : String,
+  input : Array[Char],
+  pos : Int,
+  flags : RegexFlags,
+) -> Int? {
+  let cap_chars = captured.to_array()
+  if pos + cap_chars.length() > input.length() {
+    return None
+  }
+  for i = 0; i < cap_chars.length(); i = i + 1 {
+    if !char_eq_icase(input[pos + i], cap_chars[i], flags.icase) {
+      return None
+    }
+  }
+  Some(pos + cap_chars.length())
+}
+
+///|
+fn match_duplicate_named_backreference(
+  indices : Array[Int],
+  input : Array[Char],
+  pos : Int,
+  captures : Array[String?],
+  flags : RegexFlags,
+) -> Int? {
+  for group_num in indices {
+    if group_num - 1 < captures.length() {
+      match captures[group_num - 1] {
+        Some(captured) =>
+          return match_backreference_capture(captured, input, pos, flags)
+        None => ()
+      }
+    }
+  }
+  Some(pos)
+}
+
+///|
+fn restore_captures(captures : Array[String?], saved : Array[String?]) -> Unit {
+  for i in 0..<captures.length() {
+    captures[i] = saved[i]
+  }
+}
+
+///|
 fn regex_exec_single(
   node : RegexNode,
   input : Array[Char],
@@ -1224,10 +1436,21 @@ fn regex_exec_single(
       }
     }
     Alternation(left, right) => {
+      let saved = captures.copy()
       let left_result = match_sequence(left, 0, input, pos, captures, flags)
       match left_result {
         Some(_) => left_result
-        None => match_sequence(right, 0, input, pos, captures, flags)
+        None => {
+          restore_captures(captures, saved)
+          let right_result = match_sequence(right, 0, input, pos, captures, flags)
+          match right_result {
+            Some(_) => right_result
+            None => {
+              restore_captures(captures, saved)
+              None
+            }
+          }
+        }
       }
     }
     Sequence(nodes) => match_sequence(nodes, 0, input, pos, captures, flags)
@@ -1256,30 +1479,15 @@ fn regex_exec_single(
     Backreference(group_num) =>
       if group_num - 1 < captures.length() {
         match captures[group_num - 1] {
-          Some(captured) => {
-            let cap_chars = captured.to_array()
-            if pos + cap_chars.length() <= input.length() {
-              let mut matches = true
-              for i = 0; i < cap_chars.length(); i = i + 1 {
-                if !char_eq_icase(input[pos + i], cap_chars[i], flags.icase) {
-                  matches = false
-                  break
-                }
-              }
-              if matches {
-                Some(pos + cap_chars.length())
-              } else {
-                None
-              }
-            } else {
-              None
-            }
-          }
+          Some(captured) =>
+            match_backreference_capture(captured, input, pos, flags)
           None => Some(pos) // Unmatched group: matches empty string
         }
       } else {
         Some(pos) // Invalid group: matches empty string
       }
+    DuplicateNamedBackreference(indices) =>
+      match_duplicate_named_backreference(indices, input, pos, captures, flags)
     NamedBackreference(_) => None // Should be resolved before execution
   }
 }
@@ -1388,12 +1596,23 @@ fn match_sequence(
         None
       }
     }
-    _ =>
+    _ => {
+      let saved = captures.copy()
       match regex_exec_single(node, input, pos, captures, flags) {
         Some(next) =>
-          match_sequence(nodes, idx + 1, input, next, captures, flags)
-        None => None
+          match match_sequence(nodes, idx + 1, input, next, captures, flags) {
+            Some(end_pos) => Some(end_pos)
+            None => {
+              restore_captures(captures, saved)
+              None
+            }
+          }
+        None => {
+          restore_captures(captures, saved)
+          None
+        }
       }
+    }
   }
 }
 
@@ -1406,7 +1625,8 @@ fn count_groups(node : RegexNode) -> Int {
     | Anchor(_)
     | WordBoundary(_)
     | Backreference(_)
-    | NamedBackreference(_) => 0
+    | NamedBackreference(_)
+    | DuplicateNamedBackreference(_) => 0
     Lookahead(children, _) =>
       children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
@@ -1484,10 +1704,7 @@ fn parse_regex(
   let parser = RegexParser::new(pattern, unicode~)
   let node = parser.parse()
   let num_groups = count_groups(node)
-  let names : Array[(String, Int)] = []
-  for name, idx in parser.group_names {
-    names.push((name, idx))
-  }
+  let names = parser.group_name_entries.copy()
   names.sort_by(fn(a, b) { a.1.compare(b.1) })
   { node, num_groups, group_names: names }
 }
@@ -1654,14 +1871,18 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
       } else {
         Undefined
       }
-      groups_props[name] = val
-      groups_descs[name] = {
-        writable: true,
-        enumerable: true,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
+      if !(val is Undefined) || !groups_props.contains(name) {
+        groups_props[name] = val
+      }
+      if !groups_descs.contains(name) {
+        groups_descs[name] = {
+          writable: true,
+          enumerable: true,
+          configurable: true,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        }
       }
     }
     Object({
@@ -1712,6 +1933,9 @@ const REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID = -127
 
 ///|
 const REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID = -128
+
+///|
+const REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID = -129
 
 ///|
 fn regexp_original_source_from_data(data : ObjectData) -> String? {
@@ -1930,6 +2154,29 @@ fn regexp_has_internal_matcher(value : Value) -> Bool {
 }
 
 ///|
+fn regexp_compile_is_allowed_in_realm(
+  data : ObjectData,
+  realm_state : @runtime.RealmState,
+) -> Bool {
+  match data.bag.symbol_properties.get(REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID) {
+    Some(ctor) => same_value(ctor, regexp_default_constructor(realm_state))
+    None => false
+  }
+}
+
+///|
+fn regexp_compile_constructor_for_context(
+  context : @runtime.CallContext,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  let default_ctor = regexp_default_constructor(realm_state)
+  match context.new_target() {
+    Some(new_target) if !same_value(new_target, default_ctor) => Undefined
+    _ => default_ctor
+  }
+}
+
+///|
 fn regexp_is_regexp(interp : Interpreter, value : Value) -> Bool raise Error {
   if !regexp_this_is_object(value) {
     return false
@@ -2006,7 +2253,15 @@ fn regexp_constructor_call(
   }
   let pattern = regexp_constructor_string(interp, pattern_source)
   let flags = regexp_constructor_string(interp, flags_value)
-  make_regexp_object_with_realm_state(pattern, flags, realm_state)
+  let compile_constructor = regexp_compile_constructor_for_context(
+    context, realm_state,
+  )
+  make_regexp_object_with_realm_state_and_compile_constructor(
+    pattern,
+    flags,
+    realm_state,
+    compile_constructor,
+  )
 }
 
 ///|
@@ -2068,14 +2323,16 @@ fn make_regexp_compile_method(realm_state : @runtime.RealmState) -> Value {
     fn(interp, this_val, args) raise {
       match this_val {
         Object(data) => {
-          if data.class_name != "RegExp" {
+          if data.class_name != "RegExp" ||
+            regexp_original_source_from_data(data) is None ||
+            !regexp_compile_is_allowed_in_realm(data, realm_state) {
             return regexp_proto_incompatible("RegExp.prototype.compile")
           }
           let pattern_arg = if args.length() > 0 { args[0] } else { Undefined }
           let flags_arg = if args.length() > 1 { args[1] } else { Undefined }
           let (source, flags) : (String, String) = match pattern_arg {
-            Object(re_data) =>
-              if re_data.class_name == "RegExp" {
+            Object(_) =>
+              if regexp_has_internal_matcher(pattern_arg) {
                 // If pattern is a RegExp and flags is not undefined, throw TypeError
                 if !(flags_arg is Undefined) {
                   raise @errors.TypeError(
@@ -2119,7 +2376,13 @@ fn make_regexp_compile_method(realm_state : @runtime.RealmState) -> Value {
             }
           }
           set_regexp_original_source_flags(data, source, flags)
-          data.bag.properties["lastIndex"] = Value::Number(0.0)
+          let _ = interp.set_property(
+            this_val,
+            "lastIndex",
+            Value::Number(0.0),
+            @token.Loc::default(),
+            strict=true,
+          )
           this_val
         }
         _ => regexp_proto_incompatible("RegExp.prototype.compile")
@@ -2301,6 +2564,7 @@ fn make_regexp_object_with_proto(
   pattern : String,
   flags : String,
   prototype : Value,
+  compile_constructor? : Value = Undefined,
 ) -> Value raise Error {
   let sorted_flags = normalize_and_validate_regexp(pattern, flags)
   let props : Map[String, Value] = {}
@@ -2310,6 +2574,7 @@ fn make_regexp_object_with_proto(
   let sym_props : Map[Int, Value] = {}
   sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
   sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
+  sym_props[REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID] = compile_constructor
 
   // Create descriptor map for the only RegExp instance own property.
   let re_descs : Map[String, PropDescriptor] = {}
@@ -2326,6 +2591,7 @@ fn make_regexp_object_with_proto(
   let re_sym_descs : Map[Int, PropDescriptor] = {}
   re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  re_sym_descs[REGEXP_COMPILE_CONSTRUCTOR_SYMBOL_ID] = regexp_internal_slot_descriptor()
 
   Value::Object({
     bag: {
@@ -2351,16 +2617,36 @@ pub fn make_regexp_object(
 }
 
 ///|
-pub fn make_regexp_object_with_realm_state(
+fn make_regexp_object_with_realm_state_and_compile_constructor(
   pattern : String,
   flags : String,
   realm_state : @runtime.RealmState,
+  compile_constructor : Value,
 ) -> Value raise Error {
   let prototype = match realm_state.regexp_prototype.val {
     Some(p) => p
     None => Null
   }
-  make_regexp_object_with_proto(pattern, flags, prototype)
+  make_regexp_object_with_proto(
+    pattern,
+    flags,
+    prototype,
+    compile_constructor~,
+  )
+}
+
+///|
+pub fn make_regexp_object_with_realm_state(
+  pattern : String,
+  flags : String,
+  realm_state : @runtime.RealmState,
+) -> Value raise Error {
+  make_regexp_object_with_realm_state_and_compile_constructor(
+    pattern,
+    flags,
+    realm_state,
+    regexp_default_constructor(realm_state),
+  )
 }
 
 ///|
@@ -3516,7 +3802,9 @@ fn call_replace_fn(
       } else {
         Undefined
       }
-      groups_props[name] = val
+      if !(val is Undefined) || !groups_props.contains(name) {
+        groups_props[name] = val
+      }
     }
     args.push(
       Value::Object({
