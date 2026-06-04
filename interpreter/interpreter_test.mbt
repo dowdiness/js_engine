@@ -11138,6 +11138,21 @@ test "test262: DataView getFloat64/setFloat64" {
 }
 
 ///|
+test "test262: DataView setFloat missing value stores NaN" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(16);
+      #|var dv = new DataView(buf);
+      #|console.log(dv.setFloat32(0) === undefined);
+      #|console.log(isNaN(dv.getFloat32(0)));
+      #|console.log(dv.setFloat64(8) === undefined);
+      #|console.log(isNaN(dv.getFloat64(8)));
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true"])
+}
+
+///|
 test "test262: DataView out-of-bounds access" {
   let output = run_output(
     (
