@@ -507,10 +507,7 @@ pub fn setup_object_builtins(
       let proto = if args.length() > 0 { args[0] } else { Null }
       match proto {
         Object(_) | Proxy(_) | Null => ()
-        _ =>
-          raise @errors.TypeError(
-            message="Object prototype may only be an Object or null",
-          )
+        _ => return Undefined
       }
       match this_obj {
         Object(data) => {

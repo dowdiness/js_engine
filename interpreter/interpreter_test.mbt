@@ -1123,6 +1123,29 @@ test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
 }
 
 ///|
+test "Annex B __proto__ setter ignores primitive prototype values" {
+  let src =
+    #|var obj = {};
+    #|var original = Object.getPrototypeOf(obj);
+    #|obj.__proto__ = 1;
+    #|console.log(Object.getPrototypeOf(obj) === original);
+    #|var setter = Object.getOwnPropertyDescriptor(Object.prototype, "__proto__").set;
+    #|console.log(setter.call(obj, "x") === undefined);
+    #|console.log(Object.getPrototypeOf(obj) === original);
+    #|var trapCalled = false;
+    #|var proxy = new Proxy({}, {
+    #|  setPrototypeOf: function() {
+    #|    trapCalled = true;
+    #|    return false;
+    #|  }
+    #|});
+    #|console.log(setter.call(proxy, 1) === undefined);
+    #|console.log(trapCalled);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true", "true", "false"])
+}
+
+///|
 test "comma expression" {
   let (_, result) = run_js("1, 2, 3")
   expect_value_string(result, "3", "comma expression result")
@@ -3180,6 +3203,27 @@ test "for-of array" {
     #|console.log(sum);
   let output = run_output(src)
   json_inspect(output, content=["60"])
+}
+
+///|
+test "for-of array iterator observes live length" {
+  let src =
+    #|var growing = [1];
+    #|var growOut = [];
+    #|for (var x of growing) {
+    #|  growOut.push(x);
+    #|  if (x === 1) growing.push(2);
+    #|}
+    #|console.log(growOut.join(","));
+    #|var shrinking = [1, 2];
+    #|var shrinkOut = [];
+    #|for (var y of shrinking) {
+    #|  shrinkOut.push(y);
+    #|  shrinking.length = 1;
+    #|}
+    #|console.log(shrinkOut.join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["1,2", "1"])
 }
 
 ///|

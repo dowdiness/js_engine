@@ -1,4 +1,21 @@
 ///|
+fn make_iterator_result_object(value : Value, done : Bool) -> Value {
+  Object({
+    bag: {
+      properties: { "value": value, "done": Bool(done) },
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
 /// Per ES spec, %IteratorPrototype% has [Symbol.iterator] that returns `this`
 /// and its [[Prototype]] is %Object.prototype% (Null for now since we don't
 /// thread Object.prototype here — iterators still function correctly).
@@ -85,47 +102,24 @@ fn make_array_iterator_proto_value(
             Some(Number(n)) => n.to_int()
             _ => 0
           }
-          let total = match data.bag.properties.get("[[ArrayIteratorLength]]") {
-            Some(Number(n)) => n.to_int()
-            _ => 0
-          }
-          if current >= total {
-            return Object({
-              bag: {
-                properties: { "value": Undefined, "done": Bool(true) },
-                symbol_properties: {},
-                descriptors: {},
-                symbol_descriptors: {},
-              },
-              prototype: Null,
-              callable: None,
-              class_name: "Object",
-              extensible: true,
-              arraybuffer_state: None,
-            })
-          }
           let target = match
             data.bag.properties.get("[[ArrayIteratorTarget]]") {
             Some(value) => value
             None => Undefined
           }
+          if target is Undefined {
+            return make_iterator_result_object(Undefined, true)
+          }
+          let total = to_array_like_length(target)
+          if current >= total {
+            data.bag.properties["[[ArrayIteratorTarget]]"] = Undefined
+            return make_iterator_result_object(Undefined, true)
+          }
           let value = get_array_like_element(target, current)
           data.bag.properties["[[ArrayIteratorNextIndex]]"] = Number(
             (current + 1).to_double(),
           )
-          Object({
-            bag: {
-              properties: { "value": value, "done": Bool(false) },
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
+          make_iterator_result_object(value, false)
         }
         _ =>
           raise @errors.TypeError(
@@ -185,9 +179,6 @@ fn make_array_iterator_value_with_proto(
   // Create the iterator object with next method
   let iter_props : Map[String, Value] = {}
   iter_props["[[ArrayIteratorNextIndex]]"] = Number(0.0)
-  iter_props["[[ArrayIteratorLength]]"] = Number(
-    arr.elements.length().to_double(),
-  )
   iter_props["[[ArrayIteratorTarget]]"] = Array(arr)
 
   Object({
@@ -225,11 +216,15 @@ fn make_array_like_iterator_value_with_proto(
   val : Value,
   _realm_state : RealmState,
 ) -> Value raise Error {
-  let len = to_array_like_length(val)
-
+  match val {
+    Null | Undefined =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ => ()
+  }
   let iter_props : Map[String, Value] = {}
   iter_props["[[ArrayIteratorNextIndex]]"] = Number(0.0)
-  iter_props["[[ArrayIteratorLength]]"] = Number(len.to_double())
   iter_props["[[ArrayIteratorTarget]]"] = val
 
   Object({
