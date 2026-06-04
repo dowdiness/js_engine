@@ -1956,6 +1956,9 @@ pub fn setup_string_prototype(
                   Some(NonConstructableCallable(_, f)) => f(args)
                   Some(NonConstructableInterpreterCallable(_, f)) =>
                     f(interp, args)
+                  Some(InterpreterCallable(_, f)) => f(interp, this_val, args)
+                  Some(InterpreterCallableWithContext(_, f)) =>
+                    f(interp, Call, this_val, args)
                   _ => Undefined
                 }
               _ => Undefined

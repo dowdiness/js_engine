@@ -736,6 +736,31 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
 }
 
 ///|
+fn date_from_single_constructor_arg(
+  interp : Interpreter,
+  val : Value,
+) -> Double raise Error {
+  match val {
+    Object(data) =>
+      if data.class_name == "Date" {
+        get_date_value(val)
+      } else {
+        let primitive = @runtime.to_primitive_default(
+          val,
+          data,
+          interp=Some(interp),
+        )
+        match primitive {
+          String_(s) => parse_date_string(s)
+          _ => time_clip(interp.to_number(primitive))
+        }
+      }
+    String_(s) => parse_date_string(s)
+    _ => time_clip(interp.to_number(val))
+  }
+}
+
+///|
 /// Get current time in milliseconds since epoch
 fn current_time_ms() -> Double {
   @env.now().to_double()
@@ -1930,19 +1955,7 @@ pub fn setup_date_builtins(
             current_time_ms().floor()
           } else if args.length() == 1 {
             // new Date(value)
-            let val = args[0]
-            let primitive = match val {
-              Object(data) =>
-                @runtime.to_primitive_default(val, data, interp=Some(interp))
-              _ => val
-            }
-            match primitive {
-              Value::String_(s) => parse_date_string(s)
-              _ => {
-                let n = interp.to_number(primitive)
-                time_clip(n)
-              }
-            }
+            date_from_single_constructor_arg(interp, args[0])
           } else {
             // new Date(year, month [, date [, hours [, minutes [, seconds [, ms]]]]])
             let year_arg = interp.to_number(args[0])
