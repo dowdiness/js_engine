@@ -571,29 +571,14 @@ pub fn typedarray_is_valid_index(
 }
 
 ///|
-/// §22.2.3.5.1 ValidateTypedArray(O): the entry guard required at the top of
-/// every %TypedArray%.prototype method's algorithm. Two failure modes:
-///
-/// 1. `this` is not a TypedArray (RequireInternalSlot fails) → TypeError
-///    "<method> called on non-TypedArray".
-/// 2. The underlying ArrayBuffer is detached (IsDetachedBuffer is true) →
-///    TypeError "Cannot perform <method> on a detached ArrayBuffer".
-///
-/// Returns `(data, buf_id)` so the caller doesn't re-read them. `buf_id` is
-/// guaranteed `>= 0` and non-detached when this returns normally.
-///
-/// All ~30 prototype methods (reverse, copyWithin, fill, slice, subarray,
-/// set, map, filter, find*, indexOf, includes, join, sort, toSorted, ...)
-/// must call this at entry. Mid-method re-validation (for tests like
-/// `coerced-values-end-detached.js` where argument coercion detaches the
-/// buffer) is a separate follow-up — this helper covers entry-validation
-/// only.
-pub fn validate_typed_array(
+/// Require `this` to be a TypedArray object without checking the viewed
+/// buffer's detached state. A few algorithms, such as subarray, must still
+/// coerce later arguments before reaching their detached-buffer throw point.
+fn require_typed_array_object(
   this_val : Value,
   method_name : String,
-  realm_state : @runtime.RealmState,
-) -> (ObjectData, Int) raise Error {
-  let data = match this_val {
+) -> ObjectData raise Error {
+  match this_val {
     Object(d) =>
       if is_typedarray_class(d.class_name) {
         d
@@ -605,6 +590,21 @@ pub fn validate_typed_array(
     _ =>
       raise @errors.TypeError(message="\{method_name} called on non-TypedArray")
   }
+}
+
+///|
+/// Validate that `this` is a TypedArray with a non-detached buffer.
+///
+/// Returns `(data, buf_id)` so the caller doesn't re-read them. `buf_id` is
+/// guaranteed `>= 0` and non-detached when this returns normally. Methods
+/// whose arguments can detach the buffer should call this again at the
+/// spec-mandated post-coercion checkpoint.
+pub fn validate_typed_array(
+  this_val : Value,
+  method_name : String,
+  realm_state : @runtime.RealmState,
+) -> (ObjectData, Int) raise Error {
+  let data = require_typed_array_object(this_val, method_name)
   let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ =>
@@ -1109,7 +1109,7 @@ pub fn setup_typedarray_builtins(
     name="subarray",
     length=2,
     fn(interp, this_val, args) raise {
-      let (data, _) = validate_typed_array(this_val, "subarray", realm_state)
+      let data = require_typed_array_object(this_val, "subarray")
       let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -1336,6 +1336,7 @@ pub fn setup_typedarray_builtins(
         }
       }
       if count > 0 {
+        let _ = validate_typed_array(this_val, "copyWithin", realm_state)
         // Read all source values first to handle overlapping
         let temp : Array[Double] = []
         for i = 0; i < count; i = i + 1 {
@@ -1407,6 +1408,7 @@ pub fn setup_typedarray_builtins(
       } else {
         len
       }
+      let _ = validate_typed_array(this_val, "fill", realm_state)
       for i = start_idx; i < end_idx; i = i + 1 {
         typedarray_set_index(data, i, fill_val, realm_state)
       }
