@@ -11342,6 +11342,51 @@ test "test262: DataView constructor rejects detached ArrayBuffer" {
 }
 
 ///|
+test "test262: DataView constructor orders offset/prototype/detach checks" {
+  let output = run_output(
+    (
+      #|var detached = new ArrayBuffer(8);
+      #|var offsetCalls = 0;
+      #|var offset = { valueOf: function() { offsetCalls += 1; return 0; } };
+      #|$262.detachArrayBuffer(detached);
+      #|try {
+      #|  new DataView(detached, offset);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|console.log(offsetCalls);
+      #|
+      #|function newTarget() {}
+      #|var proto = {};
+      #|newTarget.prototype = proto;
+      #|var sample = Reflect.construct(DataView, [new ArrayBuffer(8), 0], newTarget);
+      #|console.log(Object.getPrototypeOf(sample) === proto);
+      #|console.log(sample.constructor === Object);
+      #|
+      #|var buffer = new ArrayBuffer(8);
+      #|var called = false;
+      #|var detachingOffset = { valueOf: function() { called = true; return 0; } };
+      #|var detachingNewTarget = function() {}.bind(null);
+      #|Object.defineProperty(detachingNewTarget, "prototype", {
+      #|  get: function() {
+      #|    $262.detachArrayBuffer(buffer);
+      #|    return DataView.prototype;
+      #|  }
+      #|});
+      #|try {
+      #|  Reflect.construct(DataView, [buffer, detachingOffset], detachingNewTarget);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|console.log(called);
+    ),
+  )
+  json_inspect(output, content=["true", "1", "true", "true", "true", "true"])
+}
+
+///|
 /// §22.2.3.9 %TypedArray%.prototype.filter step 10 invokes
 /// TypedArraySpeciesCreate(O, « captured »). Per §7.3.20 SpeciesConstructor
 /// step 4, if `Get(O, "constructor")` is a non-Object non-undefined value,

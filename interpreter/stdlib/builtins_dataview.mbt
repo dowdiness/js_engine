@@ -884,6 +884,14 @@ pub fn setup_dataview_builtins(
           buffer,
           realm_state.arraybuffer_state,
         )
+        let byte_offset = if args.length() > 1 {
+          match args[1] {
+            Undefined => 0
+            _ => interp.to_index(args[1])
+          }
+        } else {
+          0
+        }
         if is_arraybuffer_state_detached(storage_state, buf_id) {
           raise @errors.TypeError(
             message="Cannot construct DataView with a detached ArrayBuffer",
@@ -897,28 +905,17 @@ pub fn setup_dataview_builtins(
             }
           _ => 0
         }
-        let byte_offset = if args.length() > 1 {
-          match args[1] {
-            Undefined => 0
-            _ => {
-              let n = interp.to_index(args[1])
-              if n < 0 || n > buf_byte_length {
-                raise @errors.RangeError(
-                  message="Start offset \{n} is outside the bounds of the buffer",
-                )
-              }
-              n
-            }
-          }
-        } else {
-          0
+        if byte_offset > buf_byte_length {
+          raise @errors.RangeError(
+            message="Start offset \{byte_offset} is outside the bounds of the buffer",
+          )
         }
         let byte_length = if args.length() > 2 {
           match args[2] {
             Undefined => buf_byte_length - byte_offset
             _ => {
               let n = interp.to_index(args[2])
-              if n < 0 || byte_offset + n > buf_byte_length {
+              if byte_offset + n > buf_byte_length {
                 raise @errors.RangeError(message="Invalid DataView length \{n}")
               }
               n
@@ -926,6 +923,23 @@ pub fn setup_dataview_builtins(
           }
         } else {
           buf_byte_length - byte_offset
+        }
+        let loc = @token.Loc::default()
+        let proto = match context.new_target() {
+          Some(new_target) => {
+            let prototype = interp.get_property(new_target, "prototype", loc)
+            if @runtime.is_object_value(prototype) {
+              prototype
+            } else {
+              dv_proto
+            }
+          }
+          None => dv_proto
+        }
+        if is_arraybuffer_state_detached(storage_state, buf_id) {
+          raise @errors.TypeError(
+            message="Cannot construct DataView with a detached ArrayBuffer",
+          )
         }
         let props : Map[String, Value] = {}
         props["[[ViewedArrayBuffer]]"] = buffer
@@ -953,7 +967,7 @@ pub fn setup_dataview_builtins(
             descriptors: descs,
             symbol_descriptors: {},
           },
-          prototype: dv_proto,
+          prototype: proto,
           callable: None,
           class_name: "DataView",
           extensible: true,
