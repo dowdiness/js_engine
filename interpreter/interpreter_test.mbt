@@ -15005,6 +15005,28 @@ test "TypedArray getOwnPropertyDescriptor integer indices" {
 }
 
 ///|
+/// §10.4.5.6 [[OwnPropertyKeys]] reports integer indices first, followed by
+/// ordinary string keys in insertion order and then symbol keys.
+test "TypedArray Reflect.ownKeys integer indices" {
+  let src =
+    #|const sym = Symbol("s");
+    #|const ta = new Uint8Array([1, 2, 3]);
+    #|ta.test262 = 1;
+    #|ta.ecma262 = 2;
+    #|ta[sym] = 3;
+    #|const keys = Reflect.ownKeys(ta);
+    #|const parts = [];
+    #|for (var i = 0; i < keys.length; i++) {
+    #|  parts.push(typeof keys[i] === "symbol" ? keys[i] === sym : keys[i]);
+    #|}
+    #|console.log(parts.join("|"));
+    #|console.log(Reflect.ownKeys(ta.subarray(1)).join(","));
+    #|console.log(Reflect.ownKeys(new Uint8Array()).length);
+  let output = run_output(src)
+  json_inspect(output, content=["0|1|2|test262|ecma262|true", "0,1", "0"])
+}
+
+///|
 /// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;
