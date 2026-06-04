@@ -25,6 +25,14 @@ fn setup_iterator_protocol(
             }
           })
           proto_data.bag.symbol_properties[iterator_sym.id] = values_fn
+          proto_data.bag.symbol_descriptors[iterator_sym.id] = {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+            is_accessor: false,
+          }
           proto_data.bag.properties["values"] = values_fn
 
           // Add keys() method that returns an iterator over indices

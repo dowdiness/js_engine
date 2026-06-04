@@ -727,6 +727,10 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       self.pos += 1
       Ident("get", tok.loc)
     }
+    Let => {
+      self.pos += 1
+      Ident("let", tok.loc)
+    }
     Set => {
       self.pos += 1
       Ident("set", tok.loc)

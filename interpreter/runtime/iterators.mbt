@@ -52,12 +52,21 @@ fn make_iterator_proto_value(
     realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
+  let proto_sym_descs : Map[Int, PropDescriptor] = {}
+  proto_sym_descs[iterator_sym.id] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   Object({
     bag: {
       properties: {},
       symbol_properties: proto_sym_props,
       descriptors: {},
-      symbol_descriptors: {},
+      symbol_descriptors: proto_sym_descs,
     },
     prototype: Null,
     callable: None,
@@ -94,6 +103,14 @@ fn make_array_iterator_proto_value(
   let proto_sym_descs : Map[Int, PropDescriptor] = {}
   proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  proto_sym_descs[iterator_sym.id] = {
+    writable: true,
     enumerable: false,
     configurable: true,
     getter: None,

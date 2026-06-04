@@ -461,6 +461,20 @@ fn reject_function_decl_in_stmt_position(stmt : @ast.Stmt) -> Unit raise Error {
 }
 
 ///|
+fn unwrap_parenthesized_lhs(expr : @ast.Expr) -> @ast.Expr {
+  match expr {
+    Grouping(inner, _) => {
+      let unwrapped = unwrap_parenthesized_lhs(inner)
+      match unwrapped {
+        Ident(_, _) | Member(_, _, _) | ComputedMember(_, _, _) => unwrapped
+        _ => expr
+      }
+    }
+    _ => expr
+  }
+}
+
+///|
 fn Parser::parse_while_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(While)
   let _ = self.expect(LParen)
@@ -509,7 +523,12 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       )
       return self.parse_for_rest(init, tok.loc)
     }
-    let name = self.expect_ident()
+    let name = if self.at(Let) && var_kind == VarKind {
+      self.pos += 1
+      "let"
+    } else {
+      self.expect_ident()
+    }
     if self.eat(In) {
       // for-in with var declaration
       let obj = self.parse_expr()
@@ -568,6 +587,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
     match try_expr {
       Some(expr) => {
         if self.at(Of) {
+          let expr = unwrap_parenthesized_lhs(expr)
           self.pos += 1 // consume 'of'
           let iterable = self.parse_assignment()
           let _ = self.expect(RParen)
@@ -589,6 +609,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
           }
         }
         if self.at(In) {
+          let expr = unwrap_parenthesized_lhs(expr)
           self.pos += 1 // consume 'in'
           let obj = self.parse_expr()
           let _ = self.expect(RParen)

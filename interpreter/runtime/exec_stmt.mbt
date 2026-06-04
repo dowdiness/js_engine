@@ -542,6 +542,7 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForOfStmt(var_kind, name, iterable_expr, body, loc) => {
+      let mut loop_binding_env : Environment? = None
       // Check if we're resuming inside a generator for-of
       let gen_opt = ctx.current_generator
       let resuming_for_of = match gen_opt {
@@ -562,7 +563,20 @@ fn Interpreter::exec_stmt(
           _ => abort("unreachable: for-of resume without generator")
         }
       } else {
-        let iterable = self.eval_expr(ctx, iterable_expr, env)
+        if var_kind is Some(LetKind) || var_kind is Some(ConstKind) {
+          let loop_env = Environment::new(parent=Some(env))
+          let loop_binding_kind : BindingKind = match var_kind {
+            Some(LetKind) => LetBinding
+            _ => ConstBinding
+          }
+          loop_env.def_tdz(name, loop_binding_kind)
+          loop_binding_env = Some(loop_env)
+        }
+        let iterable_env = match loop_binding_env {
+          Some(e) => e
+          None => env
+        }
+        let iterable = self.eval_expr(ctx, iterable_expr, iterable_env)
 
         // Try to get the iterator via Symbol.iterator protocol
         let iterator_sym = self.realm_state.well_known_symbols.iterator
@@ -610,7 +624,11 @@ fn Interpreter::exec_stmt(
           // On resume, the body was interrupted by yield — replay it
           // The loop variable is already bound from before the yield
           first_resume = false
-          let body_env = Environment::new(parent=Some(env))
+          let body_env_parent = match loop_binding_env {
+            Some(e) => e
+            None => env
+          }
+          let body_env = Environment::new(parent=Some(body_env_parent))
           // We need the loop variable bound. Since we're replaying the body,
           // gen.resuming will handle the yield. But we need the loop variable.
           // It's in the saved loop env stack.
@@ -677,7 +695,11 @@ fn Interpreter::exec_stmt(
         }
 
         // Bind the value to the loop variable
-        let body_env = Environment::new(parent=Some(env))
+        let body_env_parent = match loop_binding_env {
+          Some(e) => e
+          None => env
+        }
+        let body_env = Environment::new(parent=Some(body_env_parent))
         match var_kind {
           Some(VarKind) =>
             if env.bindings.contains(name) {
