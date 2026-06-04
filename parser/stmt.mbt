@@ -463,7 +463,13 @@ fn reject_function_decl_in_stmt_position(stmt : @ast.Stmt) -> Unit raise Error {
 ///|
 fn unwrap_parenthesized_lhs(expr : @ast.Expr) -> @ast.Expr {
   match expr {
-    Grouping(inner, _) => unwrap_parenthesized_lhs(inner)
+    Grouping(inner, _) => {
+      let unwrapped = unwrap_parenthesized_lhs(inner)
+      match unwrapped {
+        Ident(_, _) | Member(_, _, _) | ComputedMember(_, _, _) => unwrapped
+        _ => expr
+      }
+    }
     _ => expr
   }
 }

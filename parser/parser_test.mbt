@@ -309,6 +309,41 @@ test "parse for-in bare" {
 }
 
 ///|
+test "parse parenthesized for-in/of assignment heads" {
+  match @parser.parse("for ((k) of obj) { }").stmts[0] {
+    ForOfStmt(None, name, _, _, _) => expect_string(name, "k", "for-of binding")
+    _ => fail("Expected parenthesized identifier for-of head")
+  }
+  match @parser.parse("for ((target.x) in obj) { }").stmts[0] {
+    ForInExpr(Member(Ident(base, _), prop, _), _, _, _) => {
+      expect_string(base, "target", "for-in member base")
+      expect_string(prop, "x", "for-in member prop")
+    }
+    _ => fail("Expected parenthesized member for-in head")
+  }
+}
+
+///|
+test "parenthesized destructuring for-in/of heads are SyntaxError" {
+  let object_of = Ok(@parser.parse("for (({x}) of [{x: 1}]) { }")) catch {
+    _ => Err(())
+  }
+  expect_err(object_of)
+  let array_of = Ok(@parser.parse("for (([x]) of [[1]]) { }")) catch {
+    _ => Err(())
+  }
+  expect_err(array_of)
+  let object_in = Ok(@parser.parse("for (({x}) in obj) { }")) catch {
+    _ => Err(())
+  }
+  expect_err(object_in)
+  let array_in = Ok(@parser.parse("for (([x]) in obj) { }")) catch {
+    _ => Err(())
+  }
+  expect_err(array_in)
+}
+
+///|
 test "parse labeled statement" {
   let prog = @parser.parse("outer: for (let i = 0; i < 3; i = i + 1) { }")
   match prog.stmts[0] {
