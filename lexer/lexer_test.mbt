@@ -392,6 +392,20 @@ test "lex unicode escape supplementary plane in string" {
 }
 
 ///|
+test "lex raw supplementary plane string literal" {
+  let tokens = @lexer.tokenize("let s = '🥰💩🙏😈'; 0x2A; .5")
+  guard tokens[3].kind == String_("🥰💩🙏😈") else {
+    fail("expected supplementary-plane string token")
+  }
+  guard tokens[3].raw == "'🥰💩🙏😈'" else {
+    fail("expected raw supplementary-plane string literal")
+  }
+  guard tokens[5].raw == "0x2A" && tokens[7].raw == ".5" else {
+    fail("expected later numeric raw slices to remain aligned")
+  }
+}
+
+///|
 test "lex unicode escape invalid identifier start" {
   // \u0031 is '1' — not valid at identifier start
   let result = Ok(@lexer.tokenize("\\u0031")) catch { _ => Err(()) }
