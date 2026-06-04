@@ -80,7 +80,8 @@ fn make_array_iterator_proto_value(
               message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
             )
           }
-          let current = match data.bag.properties.get("[[ArrayIteratorNextIndex]]") {
+          let current = match
+            data.bag.properties.get("[[ArrayIteratorNextIndex]]") {
             Some(Number(n)) => n.to_int()
             _ => 0
           }
@@ -91,10 +92,7 @@ fn make_array_iterator_proto_value(
           if current >= total {
             return Object({
               bag: {
-                properties: {
-                  "value": Undefined,
-                  "done": Bool(true),
-                },
+                properties: { "value": Undefined, "done": Bool(true) },
                 symbol_properties: {},
                 descriptors: {},
                 symbol_descriptors: {},
@@ -106,19 +104,18 @@ fn make_array_iterator_proto_value(
               arraybuffer_state: None,
             })
           }
-          let target = match data.bag.properties.get("[[ArrayIteratorTarget]]") {
+          let target = match
+            data.bag.properties.get("[[ArrayIteratorTarget]]") {
             Some(value) => value
             None => Undefined
           }
           let value = get_array_like_element(target, current)
-          data.bag.properties["[[ArrayIteratorNextIndex]]"] =
-            Number((current + 1).to_double())
+          data.bag.properties["[[ArrayIteratorNextIndex]]"] = Number(
+            (current + 1).to_double(),
+          )
           Object({
             bag: {
-              properties: {
-                "value": value,
-                "done": Bool(false),
-              },
+              properties: { "value": value, "done": Bool(false) },
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
@@ -130,9 +127,10 @@ fn make_array_iterator_proto_value(
             arraybuffer_state: None,
           })
         }
-        _ => raise @errors.TypeError(
-          message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
-        )
+        _ =>
+          raise @errors.TypeError(
+            message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+          )
       }
     },
   )
@@ -187,7 +185,9 @@ fn make_array_iterator_value_with_proto(
   // Create the iterator object with next method
   let iter_props : Map[String, Value] = {}
   iter_props["[[ArrayIteratorNextIndex]]"] = Number(0.0)
-  iter_props["[[ArrayIteratorLength]]"] = Number(arr.elements.length().to_double())
+  iter_props["[[ArrayIteratorLength]]"] = Number(
+    arr.elements.length().to_double(),
+  )
   iter_props["[[ArrayIteratorTarget]]"] = Array(arr)
 
   Object({

@@ -750,7 +750,7 @@ pub fn setup_typedarray_builtins(
   let tostringtag_sym = well_known_symbols.to_string_tag
   let array_ctor = env.get("Array") catch { _ => Undefined }
   let array_to_string = match array_ctor {
-    Object(array_ctor_data) => {
+    Object(array_ctor_data) =>
       match array_ctor_data.bag.properties.get("prototype") {
         Some(Object(array_proto_data)) =>
           match array_proto_data.bag.properties.get("toString") {
@@ -759,7 +759,6 @@ pub fn setup_typedarray_builtins(
           }
         _ => Undefined
       }
-    }
     _ => Undefined
   }
 
@@ -1391,26 +1390,25 @@ pub fn setup_typedarray_builtins(
   // toString - delegates to join
   ta_proto_props["toString"] = match array_to_string {
     Undefined =>
-      @runtime.make_method_func(
-        name="toString",
-        length=0,
-        fn(this_val, _args) raise {
-          let (data, _) = validate_typed_array(this_val, "toString", realm_state)
-          let len = match data.bag.properties.get("[[ArrayLength]]") {
-            Some(Value::Number(n)) => n.to_int()
-            _ => 0
+      @runtime.make_method_func(name="toString", length=0, fn(
+        this_val,
+        _args,
+      ) raise {
+        let (data, _) = validate_typed_array(this_val, "toString", realm_state)
+        let len = match data.bag.properties.get("[[ArrayLength]]") {
+          Some(Value::Number(n)) => n.to_int()
+          _ => 0
+        }
+        let buf = StringBuilder::new()
+        for i = 0; i < len; i = i + 1 {
+          if i > 0 {
+            buf.write_string(",")
           }
-          let buf = StringBuilder::new()
-          for i = 0; i < len; i = i + 1 {
-            if i > 0 {
-              buf.write_string(",")
-            }
-            let elem = typedarray_get_index(data, i, realm_state)
-            buf.write_string(elem.to_string())
-          }
-          Value::String_(buf.to_string())
-        },
-      )
+          let elem = typedarray_get_index(data, i, realm_state)
+          buf.write_string(elem.to_string())
+        }
+        Value::String_(buf.to_string())
+      })
     to_string => to_string
   }
 
@@ -1418,7 +1416,9 @@ pub fn setup_typedarray_builtins(
     name="toLocaleString",
     length=0,
     fn(interp, this_val, _args) raise {
-      let (data, _) = validate_typed_array(this_val, "toLocaleString", realm_state)
+      let (data, _) = validate_typed_array(
+        this_val, "toLocaleString", realm_state,
+      )
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2880,7 +2880,7 @@ pub fn setup_typedarray_builtins(
         symbol_descriptors: {},
       },
       prototype: ta_ctor,
-    callable: Some(
+      callable: Some(
         InterpreterCallableWithContext(type_name, fn(
           interp,
           context,
@@ -2891,12 +2891,17 @@ pub fn setup_typedarray_builtins(
           let resolve_ctor_proto = fn() -> Value raise Error {
             match context.new_target() {
               Some(new_target) => {
-                let prototype = interp.get_property(new_target, "prototype", loc)
+                let prototype = interp.get_property(
+                  new_target, "prototype", loc,
+                )
                 match prototype {
-                  Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-                    prototype
-                  _ =>
-                    per_proto
+                  Object(_)
+                  | Array(_)
+                  | Map(_)
+                  | Set(_)
+                  | Promise(_)
+                  | Proxy(_) => prototype
+                  _ => per_proto
                 }
               }
               None => per_proto
@@ -2908,7 +2913,12 @@ pub fn setup_typedarray_builtins(
             )
           }
           if args.length() == 0 {
-            return make_typedarray_object(type_name, 0, resolve_ctor_proto(), env)
+            return make_typedarray_object(
+              type_name,
+              0,
+              resolve_ctor_proto(),
+              env,
+            )
           }
           let first = args[0]
           match first {
@@ -2918,7 +2928,7 @@ pub fn setup_typedarray_builtins(
             | Value::Null
             | Value::Undefined
             | Value::Symbol(_) => {
-                let length = interp.to_index(first)
+              let length = interp.to_index(first)
               make_typedarray_object(
                 type_name,
                 length,
@@ -3047,8 +3057,8 @@ pub fn setup_typedarray_builtins(
                 Symbol(iterator_sym),
                 loc,
               )
-                match iterator_method {
-                  Undefined | Null => {
+              match iterator_method {
+                Undefined | Null => {
                   let len = typedarray_to_array_like_length(first, interp)
                   if len > 0x7FFFFFFF {
                     raise @errors.RangeError(
@@ -3056,7 +3066,10 @@ pub fn setup_typedarray_builtins(
                     )
                   }
                   let result = make_typedarray_object(
-                    type_name, len, resolve_ctor_proto(), env,
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3094,7 +3107,10 @@ pub fn setup_typedarray_builtins(
                   }
                   let len = values.length()
                   let result = make_typedarray_object(
-                    type_name, len, resolve_ctor_proto(), env,
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3120,8 +3136,8 @@ pub fn setup_typedarray_builtins(
                 Symbol(iterator_sym),
                 loc,
               )
-                match iterator_method {
-                  Undefined | Null => {
+              match iterator_method {
+                Undefined | Null => {
                   let len = typedarray_to_array_like_length(first, interp)
                   if len > 0x7FFFFFFF {
                     raise @errors.RangeError(
@@ -3129,7 +3145,10 @@ pub fn setup_typedarray_builtins(
                     )
                   }
                   let result = make_typedarray_object(
-                    type_name, len, resolve_ctor_proto(), env,
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3167,7 +3186,10 @@ pub fn setup_typedarray_builtins(
                   }
                   let len = values.length()
                   let result = make_typedarray_object(
-                    type_name, len, resolve_ctor_proto(), env,
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3184,12 +3206,7 @@ pub fn setup_typedarray_builtins(
                 }
               }
             }
-            _ => make_typedarray_object(
-              type_name,
-              0,
-              resolve_ctor_proto(),
-              env,
-            )
+            _ => make_typedarray_object(type_name, 0, resolve_ctor_proto(), env)
           }
         }),
       ),

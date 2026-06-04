@@ -5,5 +5,5 @@ import {
 }
 
 import {
-  "dowdiness/js_engine/interpreter/runtime" @runtime,
+  "dowdiness/js_engine/interpreter/runtime",
 } for "test"

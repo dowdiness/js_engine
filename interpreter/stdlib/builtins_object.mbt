@@ -470,37 +470,30 @@ pub fn setup_object_builtins(
       let this_obj = to_object(this_val, interp)
       match this_obj {
         Object(data) => data.prototype
-        Array(data) => {
+        Array(data) =>
           match @runtime.get_array_prototype_override(data) {
             Some(proto) => proto
             None => interp.realm_state.get_array_proto()
           }
-        }
         Proxy(proxy_data) => @runtime.proxy_get_prototype_of(interp, proxy_data)
-        Value::String_(_) => @runtime.get_string_proto(
-          realm_state=Some(interp.realm_state),
-        )
-        Value::Number(_) => @runtime.get_number_proto(
-          realm_state=Some(interp.realm_state),
-        )
-        Bool(_) => @runtime.get_boolean_proto(
-          realm_state=Some(interp.realm_state),
-        )
-        Symbol(_) => @runtime.get_symbol_proto(
-          realm_state=Some(interp.realm_state),
-        )
-        Map(data) => {
+        Value::String_(_) =>
+          @runtime.get_string_proto(realm_state=Some(interp.realm_state))
+        Value::Number(_) =>
+          @runtime.get_number_proto(realm_state=Some(interp.realm_state))
+        Bool(_) =>
+          @runtime.get_boolean_proto(realm_state=Some(interp.realm_state))
+        Symbol(_) =>
+          @runtime.get_symbol_proto(realm_state=Some(interp.realm_state))
+        Map(data) =>
           match data.prototype {
             Null => interp.realm_state.get_map_proto()
             proto => proto
           }
-        }
-        Set(data) => {
+        Set(data) =>
           match data.prototype {
             Null => interp.realm_state.get_set_proto()
             proto => proto
           }
-        }
         Promise(_) => interp.realm_state.get_promise_proto()
         _ => interp.realm_state.get_obj_proto()
       }
@@ -528,14 +521,10 @@ pub fn setup_object_builtins(
           }
           data.prototype = proto
         }
-        Array(data) => {
-          @runtime.set_array_prototype_override(data, proto)
-        }
+        Array(data) => @runtime.set_array_prototype_override(data, proto)
         Value::Proxy(proxy_data) => {
           let success = @runtime.proxy_set_prototype_of(
-            interp,
-            proxy_data,
-            proto,
+            interp, proxy_data, proto,
           )
           if !success {
             raise @errors.TypeError(

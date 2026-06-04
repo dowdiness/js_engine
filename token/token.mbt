@@ -6,7 +6,7 @@ pub(all) struct Loc {
 } derive(Eq, Debug)
 
 ///|
-pub impl Show for Loc with output(self, logger) {
+pub impl Show for Loc with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
@@ -24,7 +24,7 @@ pub(all) enum LexForm {
 } derive(Eq, Debug)
 
 ///|
-pub impl Show for LexForm with output(self, logger) {
+pub impl Show for LexForm with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
@@ -158,7 +158,7 @@ pub(all) enum TokenKind {
 } derive(Eq, Debug)
 
 ///|
-pub impl Show for TokenKind with output(self, logger) {
+pub impl Show for TokenKind with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
@@ -171,7 +171,7 @@ pub(all) struct Token {
 } derive(Eq, Debug)
 
 ///|
-pub impl Show for Token with output(self, logger) {
+pub impl Show for Token with fn output(self, logger) {
   Debug::to_repr(self).output(logger)
 }
 
