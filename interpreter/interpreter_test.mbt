@@ -16561,6 +16561,41 @@ test "TypedArray constructor consumes iterable sources before reduce callbacks" 
 }
 
 ///|
+test "TypedArray.prototype.join coerces separator and treats detached elements as empty" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|console.log([1, 2, 3].join({ toString: function() { return "array"; } }));
+    #|var sample = new Uint8Array([1, 2, 3]);
+    #|console.log(sample.join({ toString: function() { return "foo"; } }));
+    #|console.log(sample.join({
+    #|  toString: undefined,
+    #|  valueOf: function() { return "bar"; }
+    #|}));
+    #|try {
+    #|  new Uint8Array(0).join(Symbol("s"));
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  new Uint8Array(0).join({ toString: function() { throw new MyError(); } });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var detached = new Uint8Array([1, 2, 3]);
+    #|console.log(detached.join({
+    #|  toString: function() {
+    #|    $262.detachArrayBuffer(detached.buffer);
+    #|    return ",";
+    #|  }
+    #|}));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1array2array3", "1foo2foo3", "1bar2bar3", "TypeError", "MyError", ",,",
+  ])
+}
+
+///|
 test "tagged template strings object inherits Array methods" {
   let src =
     #|function tag(strings) {
