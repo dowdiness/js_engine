@@ -7519,9 +7519,14 @@ test "array iterator internal slots are not user properties" {
       #|var it2 = [3].values();
       #|var protoNext = Object.getPrototypeOf(it2).next;
       #|console.log(protoNext.call(it2).value);
+      #|var source = [1, 2].values();
+      #|source.next();
+      #|var target = [9].values();
+      #|Object.assign(target, source);
+      #|console.log(target.next().value);
     ),
   )
-  json_inspect(output, content=["true", "true", "1", "3"])
+  json_inspect(output, content=["true", "true", "1", "3", "9"])
 }
 
 ///|

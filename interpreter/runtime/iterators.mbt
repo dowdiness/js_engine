@@ -8,6 +8,18 @@ const ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID = -3
 const ARRAY_ITERATOR_TARGET_SYMBOL_ID = -4
 
 ///|
+fn array_iterator_internal_slot_descriptor() -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
 fn make_iterator_result_object(value : Value, done : Bool) -> Value {
   Object({
     bag: {
@@ -192,13 +204,17 @@ fn make_array_iterator_value_with_proto(
   let iter_sym_props : Map[Int, Value] = {}
   iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
   iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Array(arr)
+  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let slot_desc = array_iterator_internal_slot_descriptor()
+  iter_sym_descs[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
+  iter_sym_descs[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
 
   Object({
     bag: {
       properties: {},
       symbol_properties: iter_sym_props,
       descriptors: {},
-      symbol_descriptors: {},
+      symbol_descriptors: iter_sym_descs,
     },
     prototype: arr_iter_proto,
     callable: None,
@@ -238,13 +254,17 @@ fn make_array_like_iterator_value_with_proto(
   let iter_sym_props : Map[Int, Value] = {}
   iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
   iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = val
+  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let slot_desc = array_iterator_internal_slot_descriptor()
+  iter_sym_descs[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
+  iter_sym_descs[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
 
   Object({
     bag: {
       properties: {},
       symbol_properties: iter_sym_props,
       descriptors: {},
-      symbol_descriptors: {},
+      symbol_descriptors: iter_sym_descs,
     },
     prototype: arr_iter_proto,
     callable: None,
