@@ -142,7 +142,8 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
 
 ///|
 // In subclass construction, align a super constructor return value with the
-// calling class instance's prototype for built-in super constructors (Array/Map/Set).
+// calling class instance's prototype for built-in super constructors
+// (Array/Map/Set/Promise).
 fn apply_super_return_prototype(super_result : Value, this_val : Value) -> Unit {
   let target_proto : Value? = match this_val {
     Object(data) => Some(data.prototype)
@@ -155,6 +156,7 @@ fn apply_super_return_prototype(super_result : Value, this_val : Value) -> Unit 
         Array(data) => set_array_prototype_override(data, proto)
         Map(data) => data.prototype = proto
         Set(data) => data.prototype = proto
+        Promise(data) => data.prototype = proto
         _ => ()
       }
     }
@@ -1987,7 +1989,11 @@ pub fn instanceof_prototype_chain(
         Null => interp.realm_state.get_set_proto()
         proto => proto
       }
-    Promise(_) => interp.realm_state.get_promise_proto()
+    Promise(data) =>
+      match data.prototype {
+        Null => interp.realm_state.get_promise_proto()
+        proto => proto
+      }
     // Invoke the [[GetPrototypeOf]] trap so Proxy handler can intercept
     Proxy(proxy_data) => proxy_get_prototype_of(interp, proxy_data)
     // Primitive values are never instances

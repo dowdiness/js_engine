@@ -354,6 +354,7 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction] // Called when rejected
   mut is_handled : Bool // Whether .catch or second arg to .then was provided
   bag : PropertyBag
+  mut prototype : Value // [[Prototype]] for promise instance
 }
 
 ///|
@@ -366,6 +367,7 @@ pub fn new_promise_data() -> PromiseData {
     reject_reactions: [],
     is_handled: false,
     bag: PropertyBag(),
+    prototype: Null,
   }
 }
 

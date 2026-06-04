@@ -49,7 +49,7 @@ fn apply_class_constructor_return(
 ///|
 /// For subclass construction, align a built-in/special constructor return value
 /// with the derived class instance prototype when `new.target` points to a
-/// subclass constructor.
+/// subclass constructor (Array/Map/Set/Promise).
 fn set_derived_instance_prototype(
   super_result : Value,
   pending_this : Value,
@@ -65,6 +65,7 @@ fn set_derived_instance_prototype(
         Array(data) => set_array_prototype_override(data, proto)
         Map(data) => data.prototype = proto
         Set(data) => data.prototype = proto
+        Promise(data) => data.prototype = proto
         _ => ()
       }
     }
