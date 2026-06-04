@@ -11325,6 +11325,31 @@ test "test262: DataView on detached buffer throws" {
 }
 
 ///|
+test "test262: DataView detached buffer accessors" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var dv = new DataView(buf, 2, 4);
+      #|$262.detachArrayBuffer(buf);
+      #|console.log(dv.buffer === buf);
+      #|try {
+      #|  dv.byteOffset;
+      #|  console.log("no offset error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|try {
+      #|  dv.byteLength;
+      #|  console.log("no length error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
 test "test262: DataView constructor rejects detached ArrayBuffer" {
   let output = run_output(
     (

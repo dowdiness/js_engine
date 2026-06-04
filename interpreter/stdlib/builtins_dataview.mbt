@@ -329,6 +329,25 @@ pub fn setup_dataview_builtins(
           match this_val {
             Object(data) =>
               if data.class_name == "DataView" {
+                if getter_name != "buffer" {
+                  let buf_id = match
+                    data.bag.properties.get("[[ArrayBufferID]]") {
+                    Some(Value::Number(n)) => n.to_int()
+                    _ =>
+                      raise @errors.TypeError(
+                        message="DataView accessor on invalid object",
+                      )
+                  }
+                  let storage_state = arraybuffer_state_from_data(
+                    data,
+                    realm_state.arraybuffer_state,
+                  )
+                  if is_arraybuffer_state_detached(storage_state, buf_id) {
+                    raise @errors.TypeError(
+                      message="Cannot access DataView property on a detached ArrayBuffer",
+                    )
+                  }
+                }
                 match data.bag.properties.get(internal_slot) {
                   Some(n) => n
                   None => Value::Number(0.0)
