@@ -11153,6 +11153,31 @@ test "test262: DataView setFloat missing value stores NaN" {
 }
 
 ///|
+test "test262: DataView BigUint64 methods are exposed but not constructors" {
+  let output = run_output(
+    (
+      #|var dv = new DataView(new ArrayBuffer(16));
+      #|console.log(typeof DataView.prototype.getBigUint64);
+      #|console.log(DataView.prototype.getBigUint64.length);
+      #|console.log(DataView.prototype.setBigUint64.length);
+      #|try {
+      #|  new dv.getBigUint64(0, 0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|try {
+      #|  new dv.setBigUint64(0, 0);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["function", "1", "2", "true", "true"])
+}
+
+///|
 test "test262: DataView out-of-bounds access" {
   let output = run_output(
     (
