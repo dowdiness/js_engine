@@ -7507,6 +7507,24 @@ test "array iterator methods keep method realm when installed in another realm" 
 }
 
 ///|
+test "array iterator internal slots are not user properties" {
+  let output = run_output(
+    (
+      #|var it = [1, 2].values();
+      #|console.log(Object.getOwnPropertyNames(it).indexOf("[[ArrayIteratorNextIndex]]") === -1);
+      #|console.log(Object.getOwnPropertyNames(it).indexOf("[[ArrayIteratorTarget]]") === -1);
+      #|it["[[ArrayIteratorNextIndex]]"] = 1;
+      #|it["[[ArrayIteratorTarget]]"] = undefined;
+      #|console.log(it.next().value);
+      #|var it2 = [3].values();
+      #|var protoNext = Object.getPrototypeOf(it2).next;
+      #|console.log(protoNext.call(it2).value);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "1", "3"])
+}
+
+///|
 test "borrowed Object.assign wraps primitive targets with method realm prototypes" {
   let output = run_output(
     (
@@ -9720,6 +9738,26 @@ test "test262: TypedArray constructor from array" {
     ),
   )
   json_inspect(output, content=["3", "10", "20", "30"])
+}
+
+///|
+test "TypedArray constructor rejects primitive iterator results" {
+  let output = run_output(
+    (
+      #|function badIterator() {
+      #|  return { next: function() { return 1; } };
+      #|}
+      #|var arr = [1];
+      #|arr[Symbol.iterator] = badIterator;
+      #|try { new Int8Array(arr); console.log("array no throw"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|var obj = {};
+      #|obj[Symbol.iterator] = badIterator;
+      #|try { new Int8Array(obj); console.log("object no throw"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|

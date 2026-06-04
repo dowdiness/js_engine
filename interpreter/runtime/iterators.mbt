@@ -1,4 +1,13 @@
 ///|
+// Engine-private negative symbol IDs for Array Iterator internal slots.
+// These IDs are not registered in SymbolState, so JavaScript cannot obtain
+// or enumerate keys for them via string or symbol property access.
+const ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID = -3
+
+///|
+const ARRAY_ITERATOR_TARGET_SYMBOL_ID = -4
+
+///|
 fn make_iterator_result_object(value : Value, done : Bool) -> Value {
   Object({
     bag: {
@@ -97,26 +106,29 @@ fn make_array_iterator_proto_value(
               message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
             )
           }
-          let current = match
-            data.bag.properties.get("[[ArrayIteratorNextIndex]]") {
-            Some(Number(n)) => n.to_int()
-            _ => 0
-          }
-          let target = match
-            data.bag.properties.get("[[ArrayIteratorTarget]]") {
-            Some(value) => value
-            None => Undefined
+          let (current, target) = match
+            (
+              data.bag.symbol_properties.get(
+                ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID,
+              ),
+              data.bag.symbol_properties.get(ARRAY_ITERATOR_TARGET_SYMBOL_ID),
+            ) {
+            (Some(Number(n)), Some(target)) => (n.to_int(), target)
+            _ =>
+              raise @errors.TypeError(
+                message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+              )
           }
           if target is Undefined {
             return make_iterator_result_object(Undefined, true)
           }
           let total = to_array_like_length(target)
           if current >= total {
-            data.bag.properties["[[ArrayIteratorTarget]]"] = Undefined
+            data.bag.symbol_properties[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Undefined
             return make_iterator_result_object(Undefined, true)
           }
           let value = get_array_like_element(target, current)
-          data.bag.properties["[[ArrayIteratorNextIndex]]"] = Number(
+          data.bag.symbol_properties[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
             (current + 1).to_double(),
           )
           make_iterator_result_object(value, false)
@@ -177,14 +189,14 @@ fn make_array_iterator_value_with_proto(
   _realm_state : RealmState,
 ) -> Value {
   // Create the iterator object with next method
-  let iter_props : Map[String, Value] = {}
-  iter_props["[[ArrayIteratorNextIndex]]"] = Number(0.0)
-  iter_props["[[ArrayIteratorTarget]]"] = Array(arr)
+  let iter_sym_props : Map[Int, Value] = {}
+  iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
+  iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Array(arr)
 
   Object({
     bag: {
-      properties: iter_props,
-      symbol_properties: {},
+      properties: {},
+      symbol_properties: iter_sym_props,
       descriptors: {},
       symbol_descriptors: {},
     },
@@ -223,14 +235,14 @@ fn make_array_like_iterator_value_with_proto(
       )
     _ => ()
   }
-  let iter_props : Map[String, Value] = {}
-  iter_props["[[ArrayIteratorNextIndex]]"] = Number(0.0)
-  iter_props["[[ArrayIteratorTarget]]"] = val
+  let iter_sym_props : Map[Int, Value] = {}
+  iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
+  iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = val
 
   Object({
     bag: {
-      properties: iter_props,
-      symbol_properties: {},
+      properties: {},
+      symbol_properties: iter_sym_props,
       descriptors: {},
       symbol_descriptors: {},
     },

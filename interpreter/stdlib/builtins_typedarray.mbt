@@ -1,4 +1,23 @@
 ///|
+fn typedarray_collect_iterator_values(
+  interp : Interpreter,
+  source : Value,
+  iterator_method : Value,
+  loc : @token.Loc,
+) -> Array[Value] raise Error {
+  let values : Array[Value] = []
+  let iterator = interp.call_value(iterator_method, source, [], loc)
+  let next_method = interp.get_iterator_next_method(iterator, loc)
+  while true {
+    match interp.iterator_step_value(iterator, next_method, loc) {
+      None => break
+      Some(value) => values.push(value)
+    }
+  }
+  values
+}
+
+///|
 /// Read a typed element from an ArrayBuffer's byte array at the given byte offset.
 /// Returns the JS Number value.
 fn typed_array_get_element(
@@ -2551,14 +2570,11 @@ pub fn setup_typedarray_builtins(
               message="TypedArray.from source is not iterable",
             )
           }
-          let iterator = interp.call_value(iterator_method, source, [], loc)
-          while true {
-            let next_method = interp.get_property(iterator, "next", loc)
-            let next = interp.call_value(next_method, iterator, [], loc)
-            if @runtime.is_truthy(interp.get_property(next, "done", loc)) {
-              break
-            }
-            source_values.push(interp.get_property(next, "value", loc))
+          for
+            value in typedarray_collect_iterator_values(
+              interp, source, iterator_method, loc,
+            ) {
+            source_values.push(value)
           }
         }
       }
@@ -3088,23 +3104,9 @@ pub fn setup_typedarray_builtins(
                       message="\{@runtime.type_of(first)} is not iterable",
                     )
                   }
-                  let values : Array[Value] = []
-                  let iterator = interp.call_value(
-                    iterator_method,
-                    first,
-                    [],
-                    loc,
+                  let values = typedarray_collect_iterator_values(
+                    interp, first, iterator_method, loc,
                   )
-                  while true {
-                    let next_method = interp.get_property(iterator, "next", loc)
-                    let next = interp.call_value(next_method, iterator, [], loc)
-                    if @runtime.is_truthy(
-                        interp.get_property(next, "done", loc),
-                      ) {
-                      break
-                    }
-                    values.push(interp.get_property(next, "value", loc))
-                  }
                   let len = values.length()
                   let result = make_typedarray_object(
                     type_name,
@@ -3167,23 +3169,9 @@ pub fn setup_typedarray_builtins(
                       message="\{@runtime.type_of(first)} is not iterable",
                     )
                   }
-                  let values : Array[Value] = []
-                  let iterator = interp.call_value(
-                    iterator_method,
-                    first,
-                    [],
-                    loc,
+                  let values = typedarray_collect_iterator_values(
+                    interp, first, iterator_method, loc,
                   )
-                  while true {
-                    let next_method = interp.get_property(iterator, "next", loc)
-                    let next = interp.call_value(next_method, iterator, [], loc)
-                    if @runtime.is_truthy(
-                        interp.get_property(next, "done", loc),
-                      ) {
-                      break
-                    }
-                    values.push(interp.get_property(next, "value", loc))
-                  }
                   let len = values.length()
                   let result = make_typedarray_object(
                     type_name,
