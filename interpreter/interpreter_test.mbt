@@ -11801,6 +11801,50 @@ test "test262: TypedArray.prototype.filter non-callable throws before species" {
 }
 
 ///|
+/// %TypedArray%.prototype reduce/find family methods must reject
+/// non-callable callbacks even when the loop body is unreachable, and
+/// toSorted must reject/cancel invalid or throwing comparators before it
+/// silently returns a copied array.
+test "test262: TypedArray callback and comparator callable checks" {
+  let output = run_output(
+    (
+      #|function check(label, thunk) {
+      #|  try {
+      #|    thunk();
+      #|    console.log(label + ":no");
+      #|  } catch (e) {
+      #|    console.log(label + ":" + (e instanceof TypeError));
+      #|  }
+      #|}
+      #|var empty = new Int8Array(0);
+      #|var single = new Int8Array([1]);
+      #|check("reduce", function() { single.reduce(undefined); });
+      #|check("reduceRight", function() { single.reduceRight(null); });
+      #|check("find", function() { empty.find({}); });
+      #|check("findIndex", function() { empty.findIndex([]); });
+      #|check("findLast", function() { empty.findLast(1); });
+      #|check("findLastIndex", function() { empty.findLastIndex(""); });
+      #|check("toSorted", function() { new Int8Array([1]).toSorted(null); });
+      #|console.log("stringRegExp:" + String(/a/g));
+      #|var calls = 0;
+      #|try {
+      #|  new Int8Array([3, 1, 2]).toSorted(function() {
+      #|    calls++;
+      #|    throw new TypeError("stop");
+      #|  });
+      #|  console.log("toSortedError:no");
+      #|} catch (e) {
+      #|  console.log("toSortedError:" + (e instanceof TypeError) + ":" + calls);
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "reduce:true", "reduceRight:true", "find:true", "findIndex:true", "findLast:true",
+    "findLastIndex:true", "toSorted:true", "stringRegExp:/a/g", "toSortedError:true:1",
+  ])
+}
+
+///|
 /// Codex finding 2 (post-PR-#121, second pass): §22.2.3.27 slice step 14
 /// guards source re-validation on `count > 0`. A zero-count slice with a
 /// species ctor that detaches the source must NOT throw — it returns an
