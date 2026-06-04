@@ -65,6 +65,7 @@ pub(all) struct GeneratorObject {
   // Yield index tracking for nested yields (e.g. yield yield 1)
   mut yield_index : Int // counter incremented each time eval_yield is called
   mut resume_at_yield : Int // index of the yield that was suspended
+  mut yield_resume_values : Map[Int, Value] // yield_index -> resume value for replay
 }
 
 ///|
@@ -93,6 +94,7 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.for_of_iterator = Undefined
   gen.for_of_next = Undefined
   gen.loop_env_stack.clear()
+  gen.yield_resume_values.clear()
   // Clear mutable fields to allow GC
   // Note: body/args/closure/this_val are immutable and may be shared
   // across generator instances from the same function, so leave them.
@@ -765,6 +767,7 @@ fn create_generator_instance(
       env: Some(body_exec_env),
       pc: 0,
       yield_value: Undefined,
+      yield_resume_values: {},
       resuming: false,
       resume_action: NextAction,
       try_resume_phase: -1,
@@ -876,6 +879,10 @@ fn generator_resume(
           Next(v) => {
             gen.state = Executing
             gen.yield_value = v
+            gen.yield_resume_values[gen.resume_at_yield] = v
+            if gen.loop_env_stack.length() > 0 {
+              gen.yield_index = gen.resume_at_yield
+            }
             gen.resume_action = NextAction
             generator_continue(interp, gen)
           }
@@ -932,7 +939,14 @@ fn run_generator_body(
     while gen.pc < gen.body.length() {
       let i = gen.pc
       let stmt = gen.body[i]
-      gen.yield_index = 0 // Reset yield counter for each statement
+      if !gen.resuming {
+        gen.yield_resume_values.clear()
+        gen.yield_index = 0 // Reset yield counter for each non-resuming statement
+      }
+      if gen.resuming && gen.loop_env_stack.length() == 0 {
+        // Non-loop resumes start from the beginning of the statement.
+        gen.yield_index = 0
+      }
       let signal = interp.exec_stmt(gen_ctx, stmt, env) catch {
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
@@ -1009,13 +1023,16 @@ fn Interpreter::eval_yield(
 ) -> Value raise Error {
   match ctx.current_generator {
     Some(gen) => {
-      let current_yield_index = gen.yield_index
+  let current_yield_index = gen.yield_index
       gen.yield_index = gen.yield_index + 1
       if gen.resuming && current_yield_index == gen.resume_at_yield {
         // This is the exact yield that was suspended — apply resume action
         gen.resuming = false
         match gen.resume_action {
-          NextAction => gen.yield_value
+          NextAction => {
+            gen.yield_resume_values[current_yield_index] = gen.yield_value
+            return gen.yield_value
+          }
           ThrowAction(e) => {
             gen.resume_action = NextAction
             raise JsException(e)
@@ -1025,7 +1042,18 @@ fn Interpreter::eval_yield(
             raise GeneratorReturnSignal(v)
           }
         }
-      } else if delegate {
+      }
+      if gen.resuming &&
+        gen.loop_env_stack.length() == 0 {
+        // If this yield already completed on a prior pass, replay its value.
+        // Missing entries mean this is the active resume point or a yield nested
+        // above it, so we must continue evaluating it normally.
+        match gen.yield_resume_values.get(current_yield_index) {
+          Some(v) => return v
+          None => ()
+        }
+      }
+      if delegate {
         // yield* expr — delegate to another iterable
         let iterable = match argument {
           Some(expr) => self.eval_expr(ctx, expr, env)
@@ -1082,6 +1110,8 @@ fn Interpreter::eval_yield(
           Some(expr) => self.eval_expr(ctx, expr, env)
           None => Undefined
         }
+        // Track the value to use when re-running this yield during replay.
+        gen.yield_resume_values[current_yield_index] = Undefined
         gen.resume_at_yield = current_yield_index
         raise YieldSignal(yielded_value)
       }

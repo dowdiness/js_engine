@@ -512,7 +512,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             | RShiftAssign
             | URShiftAssign
             | Case
-            | Arrow => true
+            | Arrow
+            | Yield => true
             // RParen after control-flow keyword (if/while/for/switch) starts regex
             RParen => last_rparen_is_control_flow
             _ => false

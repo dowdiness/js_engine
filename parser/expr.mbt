@@ -1628,13 +1628,12 @@ fn Parser::parse_yield_expr(self : Parser) -> @ast.Expr raise Error {
   }
   // Parse argument: yield is prefix unary with very low precedence
   // yield without argument (e.g., at statement end, before }, ), ], ;, comma)
-  let has_argument = !(self.at(Semicolon) ||
-    self.at(RParen) ||
-    self.at(RBracket) ||
-    self.at(RBrace) ||
-    self.at(Comma) ||
-    self.at(Colon) ||
-    self.at(EOF))
+  let has_argument = match self.peek_kind() {
+    TemplateMiddle(_) => false
+    TemplateTail(_) => false
+    Semicolon | RParen | RBracket | RBrace | Comma | Colon | EOF => false
+    _ => true
+  }
   // Also check if the next token is on a different line (ASI)
   let next_on_new_line = if has_argument {
     let next_tok = self.peek()
