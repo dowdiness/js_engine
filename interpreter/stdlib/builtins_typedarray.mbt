@@ -1450,12 +1450,13 @@ pub fn setup_typedarray_builtins(
           Null | Undefined => parts.push("")
           _ => {
             let tls = interp.get_property(elem, "toLocaleString", loc)
-            if @runtime.is_callable(tls) {
-              let result = interp.call_value(tls, elem, [], loc)
-              parts.push(interp.to_js_string(result))
-            } else {
-              parts.push(interp.to_js_string(elem))
+            if !@runtime.is_callable(tls) {
+              raise @errors.TypeError(
+                message="TypedArray.prototype.toLocaleString element method is not callable",
+              )
             }
+            let result = interp.call_value(tls, elem, [], loc)
+            parts.push(interp.to_js_string(result))
           }
         }
       }

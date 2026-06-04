@@ -10122,6 +10122,22 @@ test "test262: TypedArray.prototype.toString" {
 }
 
 ///|
+test "TypedArray.prototype.toLocaleString rejects non-callable element hook" {
+  let output = run_output(
+    (
+      #|Number.prototype.toLocaleString = 1;
+      #|try {
+      #|  new Int8Array([1]).toLocaleString();
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "test262: TypedArray.prototype.at" {
   let output = run_output(
     (
