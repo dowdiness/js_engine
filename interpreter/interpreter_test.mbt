@@ -11011,6 +11011,100 @@ test "test262: TypedArray.prototype.set array-like object" {
 }
 
 ///|
+test "test262: TypedArray.prototype.set array-like coercion order" {
+  let output = run_output(
+    (
+      #|var fromString = new Uint8Array([1, 2, 3, 4, 5]);
+      #|fromString.set("678", 1);
+      #|console.log(fromString.join());
+      #|
+      #|var sample = new Uint8Array(5);
+      #|var calls = [];
+      #|var src = { length: 3 };
+      #|Object.defineProperty(src, "0", { get: function() {
+      #|  calls.push("0:" + sample.join());
+      #|  return 42;
+      #|} });
+      #|Object.defineProperty(src, "1", { get: function() {
+      #|  calls.push("1:" + sample.join());
+      #|  return 43;
+      #|} });
+      #|Object.defineProperty(src, "2", { get: function() {
+      #|  calls.push("2:" + sample.join());
+      #|  return 44;
+      #|} });
+      #|sample.set(src, 1);
+      #|console.log(sample.join());
+      #|console.log(calls.join("|"));
+      #|
+      #|var uncached = new Uint8Array(5);
+      #|var dynamic = { length: 5, 1: 7, 2: 7, 3: 7, 4: 7 };
+      #|Object.defineProperty(dynamic, "0", { get: function() {
+      #|  dynamic[1] = 43; dynamic[2] = 44; dynamic[3] = 45; dynamic[4] = 46;
+      #|  return 42;
+      #|} });
+      #|uncached.set(dynamic);
+      #|console.log(uncached.join());
+      #|
+      #|var abruptLength = {};
+      #|Object.defineProperty(abruptLength, "length", { get: function() {
+      #|  throw new Error("length");
+      #|} });
+      #|try {
+      #|  new Uint8Array(1).set(abruptLength);
+      #|  console.log("no length error");
+      #|} catch (e) {
+      #|  console.log(e instanceof Error && e.message === "length");
+      #|}
+      #|
+      #|try {
+      #|  new Uint8Array(1).set(undefined);
+      #|  console.log("no toobject error");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|
+      #|var detached = new Uint8Array(2);
+      #|var calledOffset = 0;
+      #|try {
+      #|  detached.set([1], { valueOf: function() {
+      #|    $262.detachArrayBuffer(detached.buffer);
+      #|    calledOffset += 1;
+      #|    return 0;
+      #|  } });
+      #|  console.log("no detach error");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|console.log(calledOffset);
+      #|
+      #|var mid = new Uint8Array([1, 2, 3]);
+      #|var get2Called = false;
+      #|var midSrc = { length: 3, 0: 42 };
+      #|Object.defineProperty(midSrc, "1", { get: function() {
+      #|  $262.detachArrayBuffer(mid.buffer);
+      #|} });
+      #|Object.defineProperty(midSrc, "2", { get: function() {
+      #|  get2Called = true;
+      #|  return 2;
+      #|} });
+      #|try {
+      #|  mid.set(midSrc);
+      #|  console.log("mid ok");
+      #|} catch (e) {
+      #|  console.log("mid threw");
+      #|}
+      #|console.log(get2Called);
+      #|console.log(mid.length);
+    ),
+  )
+  json_inspect(output, content=[
+    "1,6,7,8,5", "0,42,43,44,0", "0:0,0,0,0,0|1:0,42,0,0,0|2:0,42,43,0,0", "42,43,44,45,46",
+    "true", "true", "true", "1", "mid ok", "true", "0",
+  ])
+}
+
+///|
 test "test262: TypedArray.prototype.subarray negative indices" {
   let output = run_output(
     (
