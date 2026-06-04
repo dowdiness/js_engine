@@ -73,7 +73,9 @@ pub(all) struct GeneratorObject {
 /// We create a new prototype each time to avoid stale symbol IDs
 /// across interpreter instances (each test creates a new interpreter).
 fn get_generator_prototype(interp : Interpreter) -> Value {
-  let object_proto = interp.global.get("[[ObjectPrototype]]") catch { _ => Null }
+  let object_proto = interp.global.get("[[ObjectPrototype]]") catch {
+    _ => Null
+  }
   init_generator_prototype(
     interp.realm_state.well_known_symbols,
     interp.realm_state,
@@ -1023,7 +1025,7 @@ fn Interpreter::eval_yield(
 ) -> Value raise Error {
   match ctx.current_generator {
     Some(gen) => {
-  let current_yield_index = gen.yield_index
+      let current_yield_index = gen.yield_index
       gen.yield_index = gen.yield_index + 1
       if gen.resuming && current_yield_index == gen.resume_at_yield {
         // This is the exact yield that was suspended — apply resume action
@@ -1043,8 +1045,7 @@ fn Interpreter::eval_yield(
           }
         }
       }
-      if gen.resuming &&
-        gen.loop_env_stack.length() == 0 {
+      if gen.resuming && gen.loop_env_stack.length() == 0 {
         // If this yield already completed on a prior pass, replay its value.
         // Missing entries mean this is the active resume point or a yield nested
         // above it, so we must continue evaluating it normally.

@@ -456,7 +456,9 @@ fn make_async_gen_function_inner(
   strict : Bool,
   closure : Environment,
 ) -> Value {
-  let object_prototype = interp.global.get("[[ObjectPrototype]]") catch { _ => Null }
+  let object_prototype = interp.global.get("[[ObjectPrototype]]") catch {
+    _ => Null
+  }
   let async_gen_proto = init_async_generator_prototype(
     interp.realm_state.well_known_symbols,
     interp.realm_state,

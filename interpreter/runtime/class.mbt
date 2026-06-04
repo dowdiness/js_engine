@@ -146,7 +146,11 @@ fn Interpreter::create_class(
         // Get the method key - could be string or symbol
         let key_val : Value = match m.key {
           StringLit(s, _, _, _) => String_(s)
-          _ => to_property_key(self.eval_expr(class_ctx, m.key, env), interp=Some(self))
+          _ =>
+            to_property_key(
+              self.eval_expr(class_ctx, m.key, env),
+              interp=Some(self),
+            )
         }
         let method_key_str : String = match key_val {
           Symbol(_) => key_val.to_string()

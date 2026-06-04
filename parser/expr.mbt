@@ -2294,15 +2294,6 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
 }
 
 ///|
-fn Parser::at_kind_at(
-  self : Parser,
-  offset : Int,
-  kind : @token.TokenKind,
-) -> Bool {
-  self.peek_kind_at(offset) == kind
-}
-
-///|
 /// Parse super expression (super call or super member access)
 fn Parser::parse_super_expr(self : Parser) -> @ast.Expr raise Error {
   let tok = self.expect(Super)
