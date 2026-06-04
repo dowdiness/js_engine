@@ -141,6 +141,29 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
 }
 
 ///|
+// In subclass construction, align a super constructor return value with the
+// calling class instance's prototype for built-in super constructors
+// (Array/Map/Set/Promise).
+fn apply_super_return_prototype(super_result : Value, this_val : Value) -> Unit {
+  let target_proto : Value? = match this_val {
+    Object(data) => Some(data.prototype)
+    _ => None
+  }
+  match target_proto {
+    Some(proto) =>
+      match super_result {
+        Object(data) => data.prototype = proto
+        Array(data) => set_array_prototype_override(data, proto)
+        Map(data) => data.prototype = proto
+        Set(data) => data.prototype = proto
+        Promise(data) => data.prototype = proto
+        _ => ()
+      }
+    None => ()
+  }
+}
+
+///|
 fn Interpreter::get_symbol_property_from_prototype(
   self : Interpreter,
   receiver : Value,
@@ -1378,6 +1401,7 @@ fn Interpreter::eval_expr(
       } else {
         env.get("this")
       }
+      let super_new_target = env.get("<new.target>") catch { _ => Undefined }
       let args = self.eval_args_with_spread(ctx, arg_exprs, env)
       // Call the super constructor
       match super_ctor {
@@ -1502,27 +1526,33 @@ fn Interpreter::eval_expr(
               }
               env.get("this")
             }
-            Some(_) => {
+            Some(callable) => {
               // Support non-class constructible supers (e.g. built-in constructors like Error).
               // Use constructor semantics (`new`) instead of plain call.
-              let super_result = self.construct_value(super_ctor, args, loc)
+              let align_builtin_super_result = match callable {
+                NativeCallable(_, _)
+                | NativeCallableWithContext(_, _)
+                | InterpreterCallable(_, _)
+                | InterpreterCallableWithContext(_, _)
+                | ConstructorOnlyCallable(_, _) => true
+                _ => false
+              }
+              let super_result = self.construct_value(
+                super_ctor,
+                args,
+                loc,
+                new_target=Some(super_new_target),
+              )
               match super_result {
-                Object(result_data) => {
-                  // Per spec, OrdinaryCreateFromConstructor uses newTarget's prototype.
-                  // Set the prototype from the subclass's pending this object.
-                  match this_val {
-                    Object(this_data) =>
-                      result_data.prototype = this_data.prototype
-                    _ => ()
+                Object(_)
+                | Array(_)
+                | Map(_)
+                | Set(_)
+                | Promise(_)
+                | Proxy(_) => {
+                  if align_builtin_super_result {
+                    apply_super_return_prototype(super_result, this_val)
                   }
-                  env.initialize_in_chain("this", super_result)
-                  if env.has("[[InitInstanceFields]]") {
-                    let init_fn = env.get("[[InitInstanceFields]]")
-                    let _ = self.call_value(init_fn, super_result, [], loc)
-                  }
-                  super_result
-                }
-                Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
                   env.initialize_in_chain("this", super_result)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")
@@ -1965,7 +1995,11 @@ pub fn instanceof_prototype_chain(
         Null => interp.realm_state.get_set_proto()
         proto => proto
       }
-    Promise(_) => interp.realm_state.get_promise_proto()
+    Promise(data) =>
+      match data.prototype {
+        Null => interp.realm_state.get_promise_proto()
+        proto => proto
+      }
     // Invoke the [[GetPrototypeOf]] trap so Proxy handler can intercept
     Proxy(proxy_data) => proxy_get_prototype_of(interp, proxy_data)
     // Primitive values are never instances

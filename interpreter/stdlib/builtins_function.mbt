@@ -349,7 +349,15 @@ fn setup_function_builtins(
         if args.length() == 0 {
           return @runtime.stamp_function_realm(
             Value::Object({
-              bag: @runtime.PropertyBag(),
+              bag: {
+                properties: {
+                  "length": Value::Number(0.0),
+                  "name": Value::String_("anonymous"),
+                },
+                symbol_properties: {},
+                descriptors: { "length": nf_desc, "name": nf_desc },
+                symbol_descriptors: {},
+              },
               prototype: func_proto,
               callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
               class_name: "Function",
@@ -384,6 +392,7 @@ fn setup_function_builtins(
             FuncDecl(_, params, body, _) => {
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
+              fn_props["name"] = Value::String_("anonymous")
               // Validate static early errors against the function's strict context.
               let body_strict = @runtime.has_use_strict(body)
               @runtime.validate_function_constructor_params(
@@ -398,7 +407,7 @@ fn setup_function_builtins(
                   bag: {
                     properties: fn_props,
                     symbol_properties: {},
-                    descriptors: { "length": nf_desc },
+                    descriptors: { "length": nf_desc, "name": nf_desc },
                     symbol_descriptors: {},
                   },
                   prototype: func_proto,
@@ -436,6 +445,7 @@ fn setup_function_builtins(
                 fn_length += 1
               }
               fn_props["length"] = Value::Number(fn_length.to_double())
+              fn_props["name"] = Value::String_("anonymous")
               // Validate static early errors against the function's strict context.
               let body_strict = @runtime.has_use_strict(body)
               @runtime.validate_function_constructor_params_ext(
@@ -447,7 +457,7 @@ fn setup_function_builtins(
                   bag: {
                     properties: fn_props,
                     symbol_properties: {},
-                    descriptors: { "length": nf_desc },
+                    descriptors: { "length": nf_desc, "name": nf_desc },
                     symbol_descriptors: {},
                   },
                   prototype: func_proto,
@@ -476,7 +486,15 @@ fn setup_function_builtins(
         // Fallback: empty function
         @runtime.stamp_function_realm(
           Value::Object({
-            bag: @runtime.PropertyBag(),
+            bag: {
+              properties: {
+                "length": Value::Number(0.0),
+                "name": Value::String_("anonymous"),
+              },
+              symbol_properties: {},
+              descriptors: { "length": nf_desc, "name": nf_desc },
+              symbol_descriptors: {},
+            },
             prototype: func_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
             class_name: "Function",

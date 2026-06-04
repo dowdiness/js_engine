@@ -72,11 +72,35 @@ fn save_for_of_resume_state(
     Some(g) => {
       g.for_of_iterator = iterator
       g.for_of_next = next_method
+      g.for_of_iterator_stack.push(iterator)
+      g.for_of_next_stack.push(next_method)
       g.for_of_resume = true
       g.loop_env_stack.push(loop_env)
       g.loop_yield_base_stack.push(yield_base)
     }
     None => ()
+  }
+}
+
+///|
+fn restore_for_of_resume_state(gen_opt : GeneratorObject?) -> (Value, Value) {
+  match gen_opt {
+    Some(g) => {
+      let iterator = g.for_of_iterator_stack.pop().unwrap()
+      let next_method = g.for_of_next_stack.pop().unwrap()
+      if g.for_of_iterator_stack.length() > 0 {
+        let idx = g.for_of_iterator_stack.length() - 1
+        g.for_of_iterator = g.for_of_iterator_stack[idx]
+        g.for_of_next = g.for_of_next_stack[idx]
+        g.for_of_resume = true
+      } else {
+        g.for_of_iterator = Undefined
+        g.for_of_next = Undefined
+        g.for_of_resume = false
+      }
+      (iterator, next_method)
+    }
+    None => abort("unreachable: for-of resume without generator")
   }
 }
 
@@ -654,17 +678,7 @@ fn Interpreter::exec_stmt(
       }
       let (iterator, next_method) = if resuming_for_of {
         // Restore saved iterator state
-        match gen_opt {
-          Some(g) => {
-            g.for_of_resume = false
-            let it = g.for_of_iterator
-            let nm = g.for_of_next
-            g.for_of_iterator = Undefined
-            g.for_of_next = Undefined
-            (it, nm)
-          }
-          _ => abort("unreachable: for-of resume without generator")
-        }
+        restore_for_of_resume_state(gen_opt)
       } else {
         if var_kind is Some(LetKind) || var_kind is Some(ConstKind) {
           let loop_env = Environment::new(parent=Some(env))
@@ -761,16 +775,9 @@ fn Interpreter::exec_stmt(
           let body_signal = self.exec_stmt(ctx, body, actual_body_env) catch {
             e => {
               if e is YieldSignal(_) {
-                match gen_opt {
-                  Some(g) => {
-                    g.for_of_iterator = iterator
-                    g.for_of_next = next_method
-                    g.for_of_resume = true
-                    g.loop_env_stack.push(actual_body_env)
-                    g.loop_yield_base_stack.push(body_yield_base)
-                  }
-                  _ => ()
-                }
+                save_for_of_resume_state(
+                  gen_opt, iterator, next_method, actual_body_env, body_yield_base,
+                )
               }
               raise e
             }
@@ -850,16 +857,9 @@ fn Interpreter::exec_stmt(
           e => {
             if e is YieldSignal(_) {
               // Save for-of state for resume
-              match gen_opt {
-                Some(g) => {
-                  g.for_of_iterator = iterator
-                  g.for_of_next = next_method
-                  g.for_of_resume = true
-                  g.loop_env_stack.push(body_env)
-                  g.loop_yield_base_stack.push(body_yield_base)
-                }
-                _ => ()
-              }
+              save_for_of_resume_state(
+                gen_opt, iterator, next_method, body_env, body_yield_base,
+              )
             } else {
               // Close iterator on exception (IteratorClose)
               close_iterator(self, iterator, loc) catch {
@@ -962,13 +962,7 @@ fn Interpreter::exec_stmt(
         None => false
       }
       let (iterator, next_method) : (Value, Value) = if resuming_for_of {
-        match gen_opt {
-          Some(g) => {
-            g.for_of_resume = false
-            (g.for_of_iterator, g.for_of_next)
-          }
-          None => (Undefined, Undefined)
-        }
+        restore_for_of_resume_state(gen_opt)
       } else {
         let iterable = self.eval_expr(ctx, iterable_expr, env)
 
@@ -1177,13 +1171,7 @@ fn Interpreter::exec_stmt(
         None => false
       }
       let (iterator, next_method) : (Value, Value) = if resuming_for_of {
-        match gen_opt {
-          Some(g) => {
-            g.for_of_resume = false
-            (g.for_of_iterator, g.for_of_next)
-          }
-          None => (Undefined, Undefined)
-        }
+        restore_for_of_resume_state(gen_opt)
       } else {
         let iterable = self.eval_expr(ctx, iterable_expr, env)
         let iterator_sym = self.realm_state.well_known_symbols.iterator

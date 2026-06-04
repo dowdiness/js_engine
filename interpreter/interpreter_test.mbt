@@ -2020,6 +2020,25 @@ test "Promise species invalid constructor throws TypeError" {
 }
 
 ///|
+test "PR 214 review: Promise subclass prototypes are visible to bracket and in" {
+  let output = run_output(
+    (
+      #|class P extends Promise { m() { return 7; } }
+      #|var p = new P(function(resolve) { resolve(1); });
+      #|console.log(typeof p.m);
+      #|console.log(typeof p["m"]);
+      #|console.log("m" in p);
+      #|console.log(Object.getPrototypeOf(p) === P.prototype);
+      #|console.log(p.__proto__ === P.prototype);
+      #|console.log(P.prototype.isPrototypeOf(p));
+    ),
+  )
+  json_inspect(output, content=[
+    "function", "function", "true", "true", "true", "true",
+  ])
+}
+
+///|
 test "Promise then throws when constructor is not object" {
   let output = run_output(
     (
@@ -7015,6 +7034,28 @@ test "PR 213 review: generator for-of assignment yield resumes assignment" {
   json_inspect(output, content=["key", "11", "true"])
 }
 
+///|
+test "PR 214 review: nested generator for-of resumes inner iterator" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  for (const x of [1, 2]) {
+      #|    for (const y of [10, 20]) {
+      #|      yield x + ":" + y;
+      #|    }
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["1:10", "1:20", "2:10", "2:20", "true"])
+}
+
 // ================================================================
 // Generator Phase 6: yield* delegation
 // ================================================================
@@ -9891,6 +9932,33 @@ test "test262: ArrayBuffer.prototype.slice" {
 }
 
 ///|
+test "PR 214 review: ArrayBuffer slice validates species buffer" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(2);
+      #|var view = new Uint8Array(buf);
+      #|view[0] = 11;
+      #|view[1] = 22;
+      #|var ctor = {};
+      #|ctor[Symbol.species] = function() { return new ArrayBuffer(0); };
+      #|buf.constructor = ctor;
+      #|try { buf.slice(0, 2); console.log("too-small ok"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|ctor[Symbol.species] = function() { return buf; };
+      #|try { buf.slice(0, 1); console.log("same-buffer ok"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|ctor[Symbol.species] = function() {
+      #|  $262.detachArrayBuffer(buf);
+      #|  return new ArrayBuffer(2);
+      #|};
+      #|try { buf.slice(0, 1); console.log("detached-source ok"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
 test "test262: ArrayBuffer.isView" {
   let output = run_output(
     (
@@ -12001,6 +12069,74 @@ test "class fields on Set subclass" {
     ),
   )
   json_inspect(output, content=["my-set", "true"])
+}
+
+///|
+test "PR 214 review: explicit super object return keeps original prototype" {
+  let output = run_output(
+    (
+      #|class B { constructor() { return {}; } }
+      #|class D extends B { constructor() { super(); } }
+      #|var d = new D();
+      #|console.log(d instanceof D);
+      #|console.log(Object.getPrototypeOf(d) === D.prototype);
+      #|console.log(Object.getPrototypeOf(d) === Object.prototype);
+      #|function F() { return {}; }
+      #|class G extends F { constructor() { super(); } }
+      #|var g = new G();
+      #|console.log(g instanceof G);
+      #|console.log(Object.getPrototypeOf(g) === G.prototype);
+      #|console.log(Object.getPrototypeOf(g) === Object.prototype);
+    ),
+  )
+  json_inspect(output, content=[
+    "false", "false", "true", "false", "false", "true",
+  ])
+}
+
+///|
+test "PR 214 review: class heritage accepts array and proxy prototypes" {
+  let output = run_output(
+    (
+      #|function ArrayParent() {}
+      #|var arrayProto = [];
+      #|ArrayParent.prototype = arrayProto;
+      #|class ArrayChild extends ArrayParent {}
+      #|console.log(Object.getPrototypeOf(ArrayChild.prototype) === arrayProto);
+      #|var proxyProto = new Proxy({}, {});
+      #|function ProxyParent() {}
+      #|ProxyParent.prototype = proxyProto;
+      #|class ProxyChild extends ProxyParent {}
+      #|console.log(Object.getPrototypeOf(ProxyChild.prototype) === proxyProto);
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "PR 214 review: Symbol heritage remains valid while Proxy has no prototype" {
+  let output = run_output(
+    (
+      #|function F() {}
+      #|class C extends Symbol {}
+      #|console.log(typeof C);
+      #|try { new C(); console.log("new symbol subclass ok"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|var reflected = Reflect.construct(F, [], Symbol);
+      #|console.log(Object.getPrototypeOf(reflected) === Symbol.prototype);
+      #|console.log(Object.prototype.hasOwnProperty.call(Proxy, "prototype"));
+      #|console.log(Object.getOwnPropertyDescriptor(Proxy, "prototype") === undefined);
+      #|var names = Object.getOwnPropertyNames(Proxy);
+      #|var found = false;
+      #|for (var i = 0; i < names.length; i++) { if (names[i] === "prototype") found = true; }
+      #|console.log(found);
+      #|try { class P extends Proxy {} console.log("proxy heritage ok"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=[
+    "function", "true", "true", "false", "true", "false", "true",
+  ])
 }
 
 ///|

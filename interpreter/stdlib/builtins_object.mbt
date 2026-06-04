@@ -10,6 +10,17 @@
 // getOwnProperty* inspection, and the Object constructor callable.
 
 ///|
+fn promise_instance_prototype(
+  interp : Interpreter,
+  data : PromiseData,
+) -> Value {
+  match data.prototype {
+    Null => interp.realm_state.get_promise_proto()
+    proto => proto
+  }
+}
+
+///|
 pub fn setup_object_builtins(
   env : Environment,
   sym_state : SymbolState,
@@ -263,7 +274,7 @@ pub fn setup_object_builtins(
             Some(proto) => proto
             None => interp.realm_state.get_array_proto()
           }
-        Promise(_) => Null
+        Promise(data) => promise_instance_prototype(interp, data)
         _ => return Value::Bool(false)
       }
       while true {
@@ -494,7 +505,7 @@ pub fn setup_object_builtins(
             Null => interp.realm_state.get_set_proto()
             proto => proto
           }
-        Promise(_) => interp.realm_state.get_promise_proto()
+        Promise(data) => promise_instance_prototype(interp, data)
         _ => interp.realm_state.get_obj_proto()
       }
     },
@@ -1266,7 +1277,7 @@ pub fn setup_object_builtins(
                     Null => interp.realm_state.get_set_proto()
                     proto => proto
                   }
-                Promise(_) => interp.realm_state.get_promise_proto()
+                Promise(data) => promise_instance_prototype(interp, data)
                 Value::Proxy(proxy_data) =>
                   @runtime.proxy_get_prototype_of(interp, proxy_data)
               }

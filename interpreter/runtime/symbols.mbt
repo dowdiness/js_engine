@@ -1,6 +1,7 @@
 ///|
 fn interpreter_callable_is_constructor(data : ObjectData) -> Bool {
   data.bag.properties.contains("prototype") &&
+  data.class_name != "AsyncFunction" &&
   data.class_name != "GeneratorFunction" &&
   data.class_name != "AsyncGeneratorFunction"
 }

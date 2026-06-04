@@ -199,34 +199,26 @@ fn Interpreter::get_property_impl(
       }
       self.get_property_from_prototype(obj, proto, prop, loc)
     }
-    Promise(data) =>
-      // Check user-defined properties first, then prototype methods
+    Promise(data) => {
+      // Check user-defined properties first, then prototype methods.
       match data.bag.descriptors.get(prop) {
         Some(desc) =>
           match desc.getter {
-            Some(getter) => self.call_value(getter, obj, [], loc)
-            None =>
-              match data.bag.properties.get(prop) {
-                Some(v) => v
-                None =>
-                  (self.stdlib_hooks.get_promise_method)(
-                    data,
-                    prop,
-                    self.realm_state,
-                  )
-              }
+            Some(getter) => return self.call_value(getter, obj, [], loc)
+            None => ()
           }
-        None =>
-          match data.bag.properties.get(prop) {
-            Some(v) => v
-            None =>
-              (self.stdlib_hooks.get_promise_method)(
-                data,
-                prop,
-                self.realm_state,
-              )
-          }
+        None => ()
       }
+      match data.bag.properties.get(prop) {
+        Some(v) => return v
+        None => ()
+      }
+      let proto = match data.prototype {
+        Null => self.realm_state.get_promise_proto()
+        proto => proto
+      }
+      self.get_property_from_prototype(obj, proto, prop, loc)
+    }
     Null =>
       raise @errors.TypeError(
         message="Cannot read properties of null (reading '\{prop}')",
@@ -612,7 +604,7 @@ fn Interpreter::get_property_of_object(
               | InterpreterCallable(_, _)
               | InterpreterCallableWithContext(_, _) => false
             }
-            if !is_constructable {
+            if !is_constructable || callable is ConstructorOnlyCallable(_, _) {
               return Undefined
             }
             // For constructable functions, check if prototype exists
@@ -1004,11 +996,17 @@ fn Interpreter::get_computed_property_impl(
           }
           return Undefined
         }
-        Promise(data) =>
+        Promise(data) => {
           match data.bag.symbol_properties.get(sym.id) {
             Some(v) => return v
-            None => return Undefined
+            None => ()
           }
+          let proto = match data.prototype {
+            Null => self.realm_state.get_promise_proto()
+            proto => proto
+          }
+          return self.get_symbol_property_from_prototype(obj, proto, sym, loc)
+        }
         Symbol(_) => {
           // Delegate to Symbol.prototype for symbol-keyed property access
           let proto = self.global.get("[[SymbolPrototype]]") catch { _ => Null }
@@ -1328,7 +1326,8 @@ fn Interpreter::get_computed_property_impl(
                   | InterpreterCallable(_, _)
                   | InterpreterCallableWithContext(_, _) => false
                 }
-                if !is_constructable {
+                if !is_constructable ||
+                  callable is ConstructorOnlyCallable(_, _) {
                   return Undefined
                 }
                 // For constructable functions, check if prototype exists
@@ -1554,26 +1553,10 @@ fn Interpreter::get_computed_property_impl(
       let prop = to_js_string(key, interp=Some(self))
       self.get_property(obj, prop, loc)
     }
-    Promise(data) =>
-      match key {
-        Symbol(sym) =>
-          match data.bag.symbol_properties.get(sym.id) {
-            Some(v) => v
-            None => Undefined
-          }
-        _ => {
-          let prop = to_js_string(key, interp=Some(self))
-          match data.bag.properties.get(prop) {
-            Some(v) => v
-            None =>
-              (self.stdlib_hooks.get_promise_method)(
-                data,
-                prop,
-                self.realm_state,
-              )
-          }
-        }
-      }
+    Promise(_) => {
+      let prop = to_js_string(key, interp=Some(self))
+      self.get_property(obj, prop, loc)
+    }
     Null => {
       let key_str = match key {
         Symbol(sym) =>

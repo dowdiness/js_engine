@@ -182,6 +182,37 @@ pub fn make_arraybuffer_object(
 }
 
 ///|
+/// §24.1.4.1 SpeciesConstructor(O, defaultConstructor) for ArrayBuffer.
+fn arraybuffer_species_constructor(
+  interp : @runtime.Interpreter,
+  this_val : Value,
+  default_constructor : Value,
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  let c = interp.get_property(this_val, "constructor", loc)
+  if c is Undefined {
+    return default_constructor
+  }
+  // Per ES262 §7.2.3, constructor must be an Object when present.
+  if !@runtime.is_object_value(c) {
+    raise @errors.TypeError(message="ArrayBuffer constructor is not an object")
+  }
+  let species_sym = interp.realm_state.well_known_symbols.species
+  let s = interp.get_computed_property(c, Symbol(species_sym), loc)
+  match s {
+    Undefined | Null => default_constructor
+    _ =>
+      if @runtime.is_constructor_value(s) {
+        s
+      } else {
+        raise @errors.TypeError(
+          message="ArrayBuffer species is not a constructor",
+        )
+      }
+  }
+}
+
+///|
 pub fn setup_arraybuffer_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
@@ -265,7 +296,7 @@ pub fn setup_arraybuffer_builtins(
                 message="Cannot perform slice on a detached ArrayBuffer",
               )
             }
-            let bytes = match
+            let source_bytes = match
               get_arraybuffer_state_bytes(storage_state, buf_id) {
               Some(b) => b
               None =>
@@ -273,7 +304,7 @@ pub fn setup_arraybuffer_builtins(
                   message="Cannot perform slice on a detached ArrayBuffer",
                 )
             }
-            let len = bytes.length()
+            let len = source_bytes.length()
             let relative_start = if args.length() > 0 {
               interp.to_number(args[0]).to_int()
             } else {
@@ -312,20 +343,73 @@ pub fn setup_arraybuffer_builtins(
               relative_end
             }
             let new_len = if end > start { end - start } else { 0 }
-            let ab_proto2 = env.get("[[ArrayBufferPrototype]]")
-            let new_buf = make_arraybuffer_object(
-              realm_state, new_len, ab_proto2,
+            let default_ctor = env.get("ArrayBuffer")
+            let ctor = arraybuffer_species_constructor(
+              interp, this_val, default_ctor,
             )
+            let new_buf = interp.construct_value(
+              ctor,
+              [Number(new_len.to_double())],
+              @token.Loc::default(),
+            )
+            let new_data = match new_buf {
+              Object(data) =>
+                if data.class_name == "ArrayBuffer" {
+                  data
+                } else {
+                  raise @errors.TypeError(
+                    message="ArrayBuffer species constructor produced non-ArrayBuffer",
+                  )
+                }
+              _ =>
+                raise @errors.TypeError(
+                  message="ArrayBuffer species constructor produced non-ArrayBuffer",
+                )
+            }
+            if same_value(new_buf, this_val) {
+              raise @errors.TypeError(
+                message="ArrayBuffer species constructor returned source buffer",
+              )
+            }
             let new_id = match get_buffer_id(new_buf) {
               Some(id) => id
-              None => -1
+              None =>
+                raise @errors.TypeError(
+                  message="ArrayBuffer species constructor produced non-ArrayBuffer",
+                )
             }
-            match get_arraybuffer_bytes(realm_state, new_id) {
-              Some(new_bytes) =>
-                for i = 0; i < new_len; i = i + 1 {
-                  new_bytes[i] = bytes[start + i]
-                }
-              None => ()
+            let new_storage_state = arraybuffer_state_from_data(
+              new_data,
+              realm_state.arraybuffer_state,
+            )
+            let new_bytes = match
+              get_arraybuffer_state_bytes(new_storage_state, new_id) {
+              Some(b) => b
+              None =>
+                raise @errors.TypeError(
+                  message="ArrayBuffer species constructor produced detached ArrayBuffer",
+                )
+            }
+            if new_bytes.length() < new_len {
+              raise @errors.TypeError(
+                message="ArrayBuffer species constructor produced too-small ArrayBuffer",
+              )
+            }
+            if is_arraybuffer_state_detached(storage_state, buf_id) {
+              raise @errors.TypeError(
+                message="Cannot perform slice on a detached ArrayBuffer",
+              )
+            }
+            let source_bytes = match
+              get_arraybuffer_state_bytes(storage_state, buf_id) {
+              Some(b) => b
+              None =>
+                raise @errors.TypeError(
+                  message="Cannot perform slice on a detached ArrayBuffer",
+                )
+            }
+            for i = 0; i < new_len; i = i + 1 {
+              new_bytes[i] = source_bytes[start + i]
             }
             new_buf
           } else {
@@ -481,6 +565,29 @@ pub fn setup_arraybuffer_builtins(
         getter: None,
         setter: None,
         is_accessor: false,
+      }
+    }
+    _ => ()
+  }
+
+  // ArrayBuffer[@@species] getter returns `this` so subclassed constructors
+  // can participate in species-based operations (e.g. slice).
+  let species_getter = @runtime.make_method_func(
+    name="get [Symbol.species]",
+    length=0,
+    fn(this_val, _args) { this_val },
+  )
+  let species_symbol_val = well_known_symbols.species
+  match ab_ctor {
+    Object(ab_ctor_data) => {
+      ab_ctor_data.bag.symbol_properties[species_symbol_val.id] = Undefined
+      ab_ctor_data.bag.symbol_descriptors[species_symbol_val.id] = {
+        writable: false,
+        enumerable: false,
+        configurable: true,
+        getter: Some(species_getter),
+        setter: None,
+        is_accessor: true,
       }
     }
     _ => ()

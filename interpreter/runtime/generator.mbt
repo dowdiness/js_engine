@@ -57,8 +57,10 @@ pub(all) struct GeneratorObject {
   loop_env_stack : Array[Environment]
   loop_yield_base_stack : Array[Int]
   // For-of resume state
-  mut for_of_iterator : Value // saved iterator object
-  mut for_of_next : Value // saved next method
+  mut for_of_iterator : Value // last saved iterator object (compat/debug)
+  mut for_of_next : Value // last saved next method (compat/debug)
+  for_of_iterator_stack : Array[Value]
+  for_of_next_stack : Array[Value]
   mut for_of_resume : Bool // true if resuming inside for-of
   // yield* delegation state
   mut delegate_iterator : Value // the delegate iterator (or Undefined if not delegating)
@@ -97,6 +99,9 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.delegate_next = Undefined
   gen.for_of_iterator = Undefined
   gen.for_of_next = Undefined
+  gen.for_of_iterator_stack.clear()
+  gen.for_of_next_stack.clear()
+  gen.for_of_resume = false
   gen.loop_env_stack.clear()
   gen.loop_yield_base_stack.clear()
   gen.yield_resume_values.clear()
@@ -785,6 +790,8 @@ fn create_generator_instance(
       loop_yield_base_stack: [],
       for_of_iterator: Undefined,
       for_of_next: Undefined,
+      for_of_iterator_stack: [],
+      for_of_next_stack: [],
       for_of_resume: false,
       delegate_iterator: Undefined,
       delegate_next: Undefined,

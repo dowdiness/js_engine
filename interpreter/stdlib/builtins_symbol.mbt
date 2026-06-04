@@ -292,7 +292,15 @@ fn setup_symbol_builtins(
       },
       prototype: Null,
       callable: Some(
-        NonConstructableCallable("Symbol", fn(args) raise {
+        InterpreterCallableWithContext("Symbol", fn(
+          _interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
+          if context.is_constructing() {
+            raise @errors.TypeError(message="Symbol is not a constructor")
+          }
           let description : String? = if args.length() > 0 {
             match args[0] {
               Undefined => None

@@ -381,7 +381,9 @@ test "parse class field initializer does not inherit generator yield" {
 test "parse generator methods with yield regexp literal" {
   let _ = @parser.parse("class C { *g(){ yield /x/g; } }")
   let _ = @parser.parse("class C { m(){} *g(){ yield /x/g; } }")
+  let _ = @parser.parse("class C { async *g(){ yield /x/g; } }")
   let _ = @parser.parse("({ *g(){ yield /x/g; } })")
+  let _ = @parser.parse("({ async *g(){ yield /x/g; } })")
 }
 
 ///|
