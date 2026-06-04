@@ -357,10 +357,16 @@ fn setup_map_builtins(
       match this_val {
         Value::Map(data) => {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
+          if !@runtime.is_callable(callback) {
+            raise @errors.TypeError(message="callbackfn is not callable")
+          }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
-          // Iterate over entries
-          for i = 0; i < data.entries.length(); i = i + 1 {
+          // Iterate over the live MapData list. If the callback removes the
+          // current compacted entry, keep the same index so entries shifted into
+          // that slot and newly appended entries are still observed.
+          let mut i = 0
+          while i < data.entries.length() {
             let (key, value) = data.entries[i]
             // Call callback(value, key, map)
             let _ = interp.call_value(
@@ -369,6 +375,12 @@ fn setup_map_builtins(
               [value, key, this_val],
               loc,
             )
+            if i < data.entries.length() {
+              let (current_key, _) = data.entries[i]
+              if same_value_zero(current_key, key) {
+                i += 1
+              }
+            }
           }
           Undefined
         }

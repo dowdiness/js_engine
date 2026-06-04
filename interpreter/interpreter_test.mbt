@@ -16489,6 +16489,34 @@ test "Map and Set bracket access uses prototype accessors" {
 }
 
 ///|
+test "Map.prototype.forEach validates callback and visits readded keys" {
+  let src =
+    #|try {
+    #|  new Map().forEach({});
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var map = new Map();
+    #|map.set("foo", 0);
+    #|map.set("bar", 1);
+    #|var count = 0;
+    #|var results = [];
+    #|map.forEach(function(value, key) {
+    #|  if (count === 0) {
+    #|    map.delete("foo");
+    #|    map.set("foo", "baz");
+    #|  }
+    #|  results.push(key + ":" + value);
+    #|  count++;
+    #|});
+    #|console.log(count);
+    #|console.log(results.join("|"));
+    #|console.log(map.size);
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "3", "foo:0|bar:1|foo:baz", "2"])
+}
+
+///|
 test "Map and Set constructors honor accessor adders" {
   let src =
     #|var mapGetterCalls = 0;
