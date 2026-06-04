@@ -2608,6 +2608,45 @@ pub fn setup_typedarray_builtins(
       result
     },
   )
+  ta_ctor_props["of"] = @runtime.make_interp_method_func(name="of", length=0, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    if !@runtime.is_constructor_value(this_val) {
+      raise @errors.TypeError(message="TypedArray.of called on non-constructor")
+    }
+    let loc = @token.Loc::default()
+    let len = args.length()
+    let result = interp.construct_value(
+      this_val,
+      [Value::Number(len.to_double())],
+      loc,
+    )
+    let (result_data, _) = validate_typed_array(
+      result,
+      "TypedArray.of result",
+      interp.realm_state,
+    )
+    let actual_len = match result_data.bag.properties.get("[[ArrayLength]]") {
+      Some(Value::Number(n)) => n.to_int()
+      _ => 0
+    }
+    if actual_len < len {
+      raise @errors.TypeError(message="TypedArray.of result is too short")
+    }
+    for i = 0; i < len; i = i + 1 {
+      let _ = interp.set_property(
+        result,
+        i.to_string(),
+        args[i],
+        loc,
+        strict=true,
+      )
+    }
+    result
+  })
+
   let ta_ctor_descs : Map[String, PropDescriptor] = {}
   ta_ctor_descs["prototype"] = {
     writable: false,
@@ -2634,6 +2673,7 @@ pub fn setup_typedarray_builtins(
     is_accessor: false,
   }
   ta_ctor_descs["from"] = method_desc
+  ta_ctor_descs["of"] = method_desc
   let ta_ctor : Value = Value::Object({
     bag: {
       properties: ta_ctor_props,
@@ -2822,39 +2862,6 @@ pub fn setup_typedarray_builtins(
         result
       },
     )
-
-    // Static of(...items)
-    ctor_props["of"] = Value::Object({
-      bag: {
-        properties: { "length": Value::Number(0.0) },
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-      },
-      prototype: Null,
-      callable: Some(
-        NonConstructableInterpreterCallable("of", fn(interp, args) raise {
-          let result = make_typedarray_object(
-            type_name,
-            args.length(),
-            per_proto,
-            env,
-          )
-          match result {
-            Object(result_data) =>
-              for i = 0; i < args.length(); i = i + 1 {
-                let num = interp.to_number(args[i])
-                typedarray_set_index(result_data, i, num, realm_state)
-              }
-            _ => ()
-          }
-          result
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    })
 
     let ctor_descs : Map[String, PropDescriptor] = {}
     ctor_descs["prototype"] = {
