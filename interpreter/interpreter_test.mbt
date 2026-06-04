@@ -2239,6 +2239,47 @@ test "issue 203: string indexOf coercions call user code" {
 }
 
 ///|
+test "issue 203: remaining ES2015 coercions call user code" {
+  let output = run_output(
+    (
+      #|var cpCalls = 0;
+      #|console.log(String.fromCodePoint({ valueOf: function() { cpCalls += 1; return 65; } }), cpCalls);
+      #|var sepCalls = 0;
+      #|var sep = {};
+      #|sep[Symbol.split] = null;
+      #|sep.toString = function() { sepCalls += 1; return "2"; };
+      #|console.log("a2b2c".split(sep).join("|"), sepCalls);
+      #|var arr = [1, null, 3];
+      #|var fromCalls = 0;
+      #|var fromIndex = { valueOf: function() { fromCalls += 1; arr.length = 0; return 0; } };
+      #|console.log(Array.prototype.indexOf.call(arr, 100, fromIndex), fromCalls);
+      #|var log = [];
+      #|var sourceKey = { toString: function() { log.push("sourceKey"); return "p"; } };
+      #|var source = { get p() { log.push("get source"); return undefined; } };
+      #|var env = new Proxy({}, { has: function(_target, key) { log.push("binding::" + key); return false; } });
+      #|var defaultValue = 0;
+      #|var varTarget;
+      #|with (env) { var { [sourceKey]: varTarget = defaultValue } = source; }
+      #|console.log(log.join("|"));
+      #|var sym = Symbol("k");
+      #|var symCalls = 0;
+      #|var keyObj = { [Symbol.toPrimitive]: function(hint) { symCalls += 1; return sym; } };
+      #|var symSource = {};
+      #|symSource[sym] = 42;
+      #|var { [keyObj]: symTarget, ...symRest } = symSource;
+      #|console.log(symTarget, symRest[sym]);
+      #|var assignedSymTarget = 0;
+      #|({ [keyObj]: assignedSymTarget } = symSource);
+      #|console.log(assignedSymTarget, symCalls);
+    ),
+  )
+  json_inspect(output, content=[
+    "A 1", "a|b|c 1", "-1 1", "binding::source|binding::sourceKey|sourceKey|binding::varTarget|get source|binding::defaultValue",
+    "42 undefined", "42 2",
+  ])
+}
+
+///|
 test "issue 203: object and date coercions call user code" {
   let output = run_output(
     (

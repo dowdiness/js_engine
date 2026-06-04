@@ -1,4 +1,33 @@
 ///|
+fn Interpreter::destructuring_property_key(
+  self : Interpreter,
+  ctx : ExecContext,
+  prop : @ast.PropPat,
+  env : Environment,
+) -> Value raise Error {
+  match prop.computed_key {
+    Some(key_expr) => {
+      let key_val = self.eval_expr(ctx, key_expr, env)
+      to_property_key(key_val, interp=Some(self))
+    }
+    None => String_(prop.key)
+  }
+}
+
+///|
+fn destructuring_mark_used_key(
+  key : Value,
+  string_keys : Map[String, Bool],
+  symbol_keys : Map[Int, Bool],
+) -> Unit {
+  match key {
+    String_(s) => string_keys[s] = true
+    Symbol(sym) => symbol_keys[sym.id] = true
+    _ => ()
+  }
+}
+
+///|
 fn Interpreter::bind_pattern(
   self : Interpreter,
   pattern : @ast.Pattern,
@@ -142,20 +171,26 @@ fn Interpreter::bind_pattern(
           message="Cannot destructure " + value.to_string() + " value",
         )
       }
-      let used_keys : Map[String, Bool] = {}
+      let used_string_keys : Map[String, Bool] = {}
+      let used_symbol_keys : Map[Int, Bool] = {}
       for prop in props {
-        // Evaluate computed key if present, otherwise use static key
-        let key_str : String = match prop.computed_key {
-          Some(key_expr) => {
-            let key_val = self.eval_expr(ctx, key_expr, env)
-            to_js_string(key_val)
-          }
-          None => prop.key
+        let property_key = self.destructuring_property_key(ctx, prop, env)
+        destructuring_mark_used_key(
+          property_key, used_string_keys, used_symbol_keys,
+        )
+        match prop.value {
+          IdentPat(name) =>
+            if bk == VarBinding {
+              // SingleNameBinding resolves the binding before GetV(value, P),
+              // so object-environment HasBinding traps are observable before
+              // the source getter or default initializer runs.
+              let _ = env.has(name)
+            }
+          _ => ()
         }
-        used_keys[key_str] = true
-        let val : Value = self.get_property(
+        let val : Value = self.get_computed_property(
           value,
-          key_str,
+          property_key,
           @token.Loc::default(),
         )
         let final_val : Value = if val is Undefined {
@@ -191,7 +226,7 @@ fn Interpreter::bind_pattern(
               data.bag.properties.each(fn(k, _v) { all_keys[k] = true })
               data.bag.descriptors.each(fn(k, _v) { all_keys[k] = true })
               all_keys.each(fn(k, _) raise {
-                if !used_keys.contains(k) {
+                if !used_string_keys.contains(k) {
                   let is_enumerable = match data.bag.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
@@ -208,7 +243,7 @@ fn Interpreter::bind_pattern(
                   Some(desc) => desc.enumerable
                   None => true
                 }
-                if is_enumerable {
+                if is_enumerable && !used_symbol_keys.contains(k) {
                   rest_symbol_props[k] = v
                 }
               })
@@ -388,20 +423,16 @@ fn Interpreter::assign_pattern(
           message="Cannot destructure " + value.to_string() + " value",
         )
       }
-      let used_keys : Map[String, Bool] = {}
+      let used_string_keys : Map[String, Bool] = {}
+      let used_symbol_keys : Map[Int, Bool] = {}
       for prop in props {
-        // Evaluate computed key if present, otherwise use static key
-        let key_str : String = match prop.computed_key {
-          Some(key_expr) => {
-            let key_val = self.eval_expr(ctx, key_expr, env)
-            to_js_string(key_val)
-          }
-          None => prop.key
-        }
-        used_keys[key_str] = true
-        let val : Value = self.get_property(
+        let property_key = self.destructuring_property_key(ctx, prop, env)
+        destructuring_mark_used_key(
+          property_key, used_string_keys, used_symbol_keys,
+        )
+        let val : Value = self.get_computed_property(
           value,
-          key_str,
+          property_key,
           @token.Loc::default(),
         )
         let final_val : Value = if val is Undefined {
@@ -436,7 +467,7 @@ fn Interpreter::assign_pattern(
               data.bag.properties.each(fn(k, _v) { all_keys_a[k] = true })
               data.bag.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
               all_keys_a.each(fn(k, _) raise {
-                if !used_keys.contains(k) {
+                if !used_string_keys.contains(k) {
                   let is_enumerable = match data.bag.descriptors.get(k) {
                     Some(desc) => desc.enumerable
                     None => true
@@ -452,7 +483,7 @@ fn Interpreter::assign_pattern(
                   Some(desc) => desc.enumerable
                   None => true
                 }
-                if is_enumerable {
+                if is_enumerable && !used_symbol_keys.contains(k) {
                   rest_symbol_props[k] = v
                 }
               })

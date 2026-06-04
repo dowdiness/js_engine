@@ -553,14 +553,14 @@ fn setup_builtins_with_realm_state_active(
               Value::String_(buf.to_string())
             },
           ),
-          "fromCodePoint": @runtime.make_native_func(
+          "fromCodePoint": @runtime.make_interp_static_func(
             name="fromCodePoint",
             length=1,
-            fn(args) raise {
+            fn(interp, args) raise {
               // String.fromCodePoint() - accepts Unicode code points (not code units)
               let buf = StringBuilder::new()
               for arg in args {
-                let num = @runtime.to_number(arg)
+                let num = interp.to_number(arg)
                 // Check if it's a valid number
                 if num.is_nan() || num.is_inf() {
                   raise @errors.RangeError(message="Invalid code point")

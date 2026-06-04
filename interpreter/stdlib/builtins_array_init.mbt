@@ -120,7 +120,7 @@ fn setup_array_builtins(
       let len = @runtime.to_array_like_length_interp(o, interp)
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let from_idx = if args.length() > 1 {
-        @runtime.to_number(args[1]).to_int()
+        interp.to_number(args[1]).to_int()
       } else {
         0
       }
@@ -155,7 +155,7 @@ fn setup_array_builtins(
       let len = @runtime.to_array_like_length_interp(o, interp)
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let start = if args.length() > 1 {
-        @runtime.to_number(args[1]).to_int()
+        interp.to_number(args[1]).to_int()
       } else {
         len - 1
       }
