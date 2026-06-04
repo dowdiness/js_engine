@@ -10013,6 +10013,33 @@ test "test262: ArrayBuffer constructor requires new" {
 }
 
 ///|
+test "test262: ArrayBuffer constructor uses NewTarget prototype" {
+  let output = run_output(
+    (
+      #|var fromObject = Reflect.construct(ArrayBuffer, [8], Object);
+      #|console.log(Object.getPrototypeOf(fromObject) === Object.prototype);
+      #|var newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get: function() { return Array.prototype; }
+      #|});
+      #|var fromAccessor = Reflect.construct(ArrayBuffer, [16], newTarget);
+      #|console.log(Object.getPrototypeOf(fromAccessor) === Array.prototype);
+      #|function DummyError() {}
+      #|var throwingTarget = function() {}.bind(null);
+      #|Object.defineProperty(throwingTarget, "prototype", {
+      #|  get: function() { throw new DummyError(); }
+      #|});
+      #|try {
+      #|  Reflect.construct(ArrayBuffer, [1], throwingTarget);
+      #|} catch (e) {
+      #|  console.log(e instanceof DummyError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
 test "test262: ArrayBuffer.prototype.slice" {
   let output = run_output(
     (
