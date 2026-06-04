@@ -16243,6 +16243,43 @@ test "TypedArray.from rejects non-callable mapFn without coercion" {
 }
 
 ///|
+test "TypedArray.from is inherited and validates custom constructor result" {
+  let src =
+    #|var TypedArray = Object.getPrototypeOf(Int8Array);
+    #|console.log(Int8Array.from === TypedArray.from);
+    #|console.log(Int8Array.hasOwnProperty("from"));
+    #|var called = 0;
+    #|function C(len) {
+    #|  called++;
+    #|  return new Int8Array(len);
+    #|}
+    #|var r = Int8Array.from.call(C, [7, 8]);
+    #|console.log(r.length);
+    #|console.log(r[0]);
+    #|console.log(r[1]);
+    #|console.log(called);
+    #|try {
+    #|  Int8Array.from.call(function() {}, []);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  Int8Array.from.call(function() { return new Int8Array(1); }, [1, 2]);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  Int8Array.from.call(function() { return new Int8Array(1); }, { length: 2 });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "false", "2", "7", "8", "1", "TypeError", "TypeError", "TypeError",
+  ])
+}
+
+///|
 test "Weak collection constructors check adders before iterables" {
   let src =
     #|function MyError() { this.name = "MyError"; }
