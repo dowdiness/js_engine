@@ -627,7 +627,9 @@ pub fn is_typedarray_class(name : String) -> Bool {
     | "Int32Array"
     | "Uint32Array"
     | "Float32Array"
-    | "Float64Array" => true
+    | "Float64Array"
+    | "BigInt64Array"
+    | "BigUint64Array" => true
     _ => false
   }
 }
@@ -661,7 +663,7 @@ pub fn typed_array_bytes_per_element(name : String) -> Int {
     "Int8Array" | "Uint8Array" | "Uint8ClampedArray" => 1
     "Int16Array" | "Uint16Array" => 2
     "Int32Array" | "Uint32Array" | "Float32Array" => 4
-    "Float64Array" => 8
+    "Float64Array" | "BigInt64Array" | "BigUint64Array" => 8
     _ => 1
   }
 }

@@ -10136,6 +10136,29 @@ test "test262: TypedArray constructors from length" {
 }
 
 ///|
+test "test262: BigInt typed array constructors exist for empty instances" {
+  let output = run_output(
+    (
+      #|var ctors = [BigInt64Array, BigUint64Array];
+      #|for (var i = 0; i < ctors.length; i++) {
+      #|  var C = ctors[i];
+      #|  var view = new C();
+      #|  console.log(typeof C);
+      #|  console.log(Object.getPrototypeOf(C) === Object.getPrototypeOf(Int8Array));
+      #|  console.log(view.length);
+      #|  console.log(view.byteLength);
+      #|  console.log(view.BYTES_PER_ELEMENT);
+      #|  console.log(Object.seal(view) === view);
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "function", "true", "0", "0", "8", "true", "function", "true", "0", "0", "8",
+    "true",
+  ])
+}
+
+///|
 test "test262: TypedArray constructor requires new" {
   let output = run_output(
     (
