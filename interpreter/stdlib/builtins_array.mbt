@@ -255,6 +255,7 @@ pub fn get_array_method_with_interp(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match prop {
+    "join" => Undefined // Delegated to Array.prototype (interpreter-aware ToString)
     "forEach" | "map" | "filter" => Undefined // Delegated to Array.prototype
     "reduce" | "reduceRight" => Undefined // Delegated to Array.prototype
     "find" | "findIndex" | "findLast" | "findLastIndex" => Undefined // Delegated to Array.prototype

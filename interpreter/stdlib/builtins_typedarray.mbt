@@ -1529,33 +1529,37 @@ pub fn setup_typedarray_builtins(
   )
 
   // join(separator)
-  ta_proto_props["join"] = @runtime.make_method_func(name="join", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    let (data, _) = validate_typed_array(this_val, "join", realm_state)
-    let len = match data.bag.properties.get("[[ArrayLength]]") {
-      Some(Value::Number(n)) => n.to_int()
-      _ => 0
-    }
-    let sep = if args.length() > 0 {
-      match args[0] {
-        Undefined => ","
-        _ => args[0].to_string()
+  ta_proto_props["join"] = @runtime.make_interp_method_func(
+    name="join",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let (data, _) = validate_typed_array(this_val, "join", realm_state)
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
-    } else {
-      ","
-    }
-    let buf = StringBuilder::new()
-    for i = 0; i < len; i = i + 1 {
-      if i > 0 {
-        buf.write_string(sep)
+      let sep = if args.length() > 0 {
+        match args[0] {
+          Undefined => ","
+          _ => interp.to_js_string(args[0])
+        }
+      } else {
+        ","
       }
-      let elem = typedarray_get_index(data, i, realm_state)
-      buf.write_string(elem.to_string())
-    }
-    Value::String_(buf.to_string())
-  })
+      let buf = StringBuilder::new()
+      for i = 0; i < len; i = i + 1 {
+        if i > 0 {
+          buf.write_string(sep)
+        }
+        let elem = typedarray_get_index(data, i, realm_state)
+        match elem {
+          Null | Undefined => ()
+          _ => buf.write_string(interp.to_js_string(elem))
+        }
+      }
+      Value::String_(buf.to_string())
+    },
+  )
 
   // toString - delegates to join
   ta_proto_props["toString"] = match array_to_string {

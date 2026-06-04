@@ -96,7 +96,7 @@ fn setup_array_builtins(
       let sep = if args.length() > 0 {
         match args[0] {
           Undefined => ","
-          v => v.to_string()
+          v => interp.to_js_string(v)
         }
       } else {
         ","
@@ -106,7 +106,7 @@ fn setup_array_builtins(
         let v = @runtime.get_array_like_element_interp(interp, o, i)
         match v {
           Null | Undefined => parts.push("")
-          _ => parts.push(v.to_string())
+          _ => parts.push(interp.to_js_string(v))
         }
       }
       Value::String_(parts.join(sep))
