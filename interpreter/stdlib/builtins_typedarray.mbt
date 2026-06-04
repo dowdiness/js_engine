@@ -885,8 +885,8 @@ pub fn setup_typedarray_builtins(
     name="set",
     length=1,
     fn(interp, this_val, args) raise {
-      let (data, _) = validate_typed_array(
-        this_val, "TypedArray.prototype.set", realm_state,
+      let data = require_typed_array_object(
+        this_val, "TypedArray.prototype.set",
       )
       if args.length() == 0 {
         raise @errors.TypeError(
@@ -898,6 +898,11 @@ pub fn setup_typedarray_builtins(
       } else {
         0
       }
+      if typedarray_is_detached(data, realm_state) {
+        raise @errors.TypeError(
+          message="Cannot perform TypedArray.prototype.set on a detached ArrayBuffer",
+        )
+      }
       let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -905,6 +910,11 @@ pub fn setup_typedarray_builtins(
       match args[0] {
         // Source is a TypedArray
         Object(src_data) if is_typedarray_class(src_data.class_name) => {
+          if typedarray_is_detached(src_data, realm_state) {
+            raise @errors.TypeError(
+              message="Cannot perform TypedArray.prototype.set on a detached ArrayBuffer",
+            )
+          }
           let src_len = match src_data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
@@ -926,41 +936,14 @@ pub fn setup_typedarray_builtins(
           }
           Undefined
         }
-        // Source is an array-like
-        Array(arr_data) => {
-          let src_len = arr_data.elements.length()
-          if target_offset + src_len > ta_length {
-            raise @errors.RangeError(message="Source is too large")
-          }
-          for i = 0; i < src_len; i = i + 1 {
-            let val = arr_data.elements[i]
-            let num = interp.to_number(val)
-            typedarray_set_index(data, target_offset + i, num, realm_state)
-          }
-          Undefined
-        }
         src => {
-          // Generic array-like with length property
-          let src_len = match src {
-            Object(src_obj) =>
-              match src_obj.bag.properties.get("length") {
-                Some(v) => interp.to_number(v).to_int()
-                _ => 0
-              }
-            _ => 0
-          }
+          let src_obj = to_object(src, interp)
+          let src_len = @runtime.to_array_like_length_interp(src_obj, interp)
           if target_offset + src_len > ta_length {
             raise @errors.RangeError(message="Source is too large")
           }
           for i = 0; i < src_len; i = i + 1 {
-            let val = match src {
-              Object(src_obj) =>
-                match src_obj.bag.properties.get(i.to_string()) {
-                  Some(v) => v
-                  _ => Undefined
-                }
-              _ => Undefined
-            }
+            let val = @runtime.get_array_like_element_interp(interp, src_obj, i)
             let num = interp.to_number(val)
             typedarray_set_index(data, target_offset + i, num, realm_state)
           }
