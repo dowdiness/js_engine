@@ -553,6 +553,32 @@ pub fn setup_dataview_builtins(
     },
   )
 
+  // getBigUint64(byteOffset [, littleEndian])
+  // BigInt values are not implemented yet, but the spec still exposes this
+  // built-in as a non-constructable Function object.
+  dv_proto_props["getBigUint64"] = @runtime.make_method_func(
+    name="getBigUint64",
+    length=1,
+    fn(_this_val, _args) raise {
+      raise @errors.TypeError(
+        message="DataView BigInt methods are not implemented",
+      )
+    },
+  )
+
+  // setBigUint64(byteOffset, value [, littleEndian])
+  // BigInt values are not implemented yet, but the spec still exposes this
+  // built-in as a non-constructable Function object.
+  dv_proto_props["setBigUint64"] = @runtime.make_method_func(
+    name="setBigUint64",
+    length=2,
+    fn(_this_val, _args) raise {
+      raise @errors.TypeError(
+        message="DataView BigInt methods are not implemented",
+      )
+    },
+  )
+
   // setInt8(byteOffset, value)
   dv_proto_props["setInt8"] = @runtime.make_interp_method_func(
     name="setInt8",
