@@ -93,6 +93,7 @@ pub fn set_function_name(val : Value, name : String) -> Unit {
 pub fn is_callable(val : Value) -> Bool {
   match val {
     Object(obj_data) => obj_data.callable is Some(_)
+    Proxy(proxy_data) => proxy_data.is_callable
     _ => false
   }
 }

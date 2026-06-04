@@ -58,96 +58,75 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
   })
 
   // Proxy.revocable(target, handler)
-  let revocable_props : Map[String, Value] = {}
-  revocable_props["name"] = Value::String_("revocable")
-  revocable_props["length"] = Value::Number(2.0)
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  let revocable_descs : Map[String, PropDescriptor] = {}
-  revocable_descs["name"] = nf_desc
-  revocable_descs["length"] = nf_desc
-  let revocable_func : Value = Value::Object({
-    bag: {
-      properties: revocable_props,
-      symbol_properties: {},
-      descriptors: revocable_descs,
-      symbol_descriptors: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("revocable", fn(args) raise {
-        if args.length() < 2 {
+  let revocable_func : Value = @runtime.make_native_func(
+    name="revocable",
+    length=2,
+    fn(args) raise {
+      if args.length() < 2 {
+        raise @errors.TypeError(
+          message="Cannot create proxy with a non-object as target or handler",
+        )
+      }
+      let target = args[0]
+      let handler = args[1]
+      // Validate target is an object
+      match target {
+        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+        _ =>
           raise @errors.TypeError(
             message="Cannot create proxy with a non-object as target or handler",
           )
-        }
-        let target = args[0]
-        let handler = args[1]
-        // Validate target is an object
-        match target {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot create proxy with a non-object as target or handler",
-            )
-        }
-        // Validate handler is an object
-        match handler {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot create proxy with a non-object as target or handler",
-            )
-        }
-        let proxy_data : ProxyData = {
-          target: Some(target),
-          handler: Some(handler),
-          is_callable: @runtime.is_callable(target),
-        }
-        let proxy_val : Value = Value::Proxy(proxy_data)
-        // Create revoke function that nullifies both slots
-        let revoke_func : Value = Value::Object({
-          bag: @runtime.PropertyBag(),
-          prototype: Null,
-          callable: Some(
-            NativeCallable("revoke", fn(_args) {
-              proxy_data.target = None
-              proxy_data.handler = None
-              Undefined
-            }),
-          ),
-          class_name: "Function",
-          extensible: true,
-          arraybuffer_state: None,
-        })
-        let result_props : Map[String, Value] = {}
-        result_props["proxy"] = proxy_val
-        result_props["revoke"] = revoke_func
-        Value::Object({
-          bag: {
-            properties: result_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
+      }
+      // Validate handler is an object
+      match handler {
+        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+        _ =>
+          raise @errors.TypeError(
+            message="Cannot create proxy with a non-object as target or handler",
+          )
+      }
+      let proxy_data : ProxyData = {
+        target: Some(target),
+        handler: Some(handler),
+        is_callable: @runtime.is_callable(target),
+      }
+      let proxy_val : Value = Value::Proxy(proxy_data)
+      // Create revoke function that nullifies both slots
+      let revoke_func : Value = {
+        let func = @runtime.make_native_func(
+          name="",
+          length=0,
+          fn(_args) {
+            proxy_data.target = None
+            proxy_data.handler = None
+            Value::Undefined
           },
-          prototype: Null,
-          callable: None,
-          class_name: "Object",
-          extensible: true,
-          arraybuffer_state: None,
-        })
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+        )
+        let func_proto = env.get("[[FunctionPrototype]]") catch { _ => Null }
+        match func {
+          Object(data) => data.prototype = func_proto
+          _ => ()
+        }
+        func
+      }
+      let result_props : Map[String, Value] = {}
+      result_props["proxy"] = proxy_val
+      result_props["revoke"] = revoke_func
+      Value::Object({
+        bag: {
+          properties: result_props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+        extensible: true,
+        arraybuffer_state: None,
+      })
+    },
+  )
 
   // Add Proxy.revocable as a static method
   match proxy_ctor {
