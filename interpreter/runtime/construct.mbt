@@ -24,6 +24,8 @@ fn is_object_like_for_constructor_return(value : Value) -> Bool {
 // for class constructors. Derived constructors may only return object or
 // undefined, while both base and derived constructors return `this` for the
 // remaining case.
+
+///|
 fn apply_class_constructor_return(
   ctor_env : Environment,
   super_ctor : Value?,
@@ -33,7 +35,7 @@ fn apply_class_constructor_return(
     return value
   }
   match super_ctor {
-    Some(_) => {
+    Some(_) =>
       match value {
         Undefined => ctor_env.get("this")
         _ =>
@@ -41,7 +43,6 @@ fn apply_class_constructor_return(
             message="Derived constructors may only return object or undefined",
           )
       }
-    }
     None => ctor_env.get("this")
   }
 }
@@ -59,7 +60,7 @@ fn set_derived_instance_prototype(
     _ => None
   }
   match target_proto {
-    Some(proto) => {
+    Some(proto) =>
       match super_result {
         Object(data) => data.prototype = proto
         Array(data) => set_array_prototype_override(data, proto)
@@ -68,7 +69,6 @@ fn set_derived_instance_prototype(
         Promise(data) => data.prototype = proto
         _ => ()
       }
-    }
     None => ()
   }
 }
@@ -1149,18 +1149,20 @@ fn Interpreter::construct_value_impl(
                 )
                 raise_if_break_continue(exec_result)
                 match exec_result {
-                  Normal(_) => apply_class_constructor_return(
-                    ctor_env,
-                    super_ctor,
-                    Undefined,
-                  )
+                  Normal(_) =>
+                    apply_class_constructor_return(
+                      ctor_env,
+                      super_ctor,
+                      Undefined,
+                    )
                   ReturnSignal(v) =>
                     apply_class_constructor_return(ctor_env, super_ctor, v)
-                  _ => apply_class_constructor_return(
-                    ctor_env,
-                    super_ctor,
-                    Undefined,
-                  )
+                  _ =>
+                    apply_class_constructor_return(
+                      ctor_env,
+                      super_ctor,
+                      Undefined,
+                    )
                 }
               }
               None => {

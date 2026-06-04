@@ -205,7 +205,9 @@ fn arraybuffer_species_constructor(
       if @runtime.is_constructor_value(s) {
         s
       } else {
-        raise @errors.TypeError(message="ArrayBuffer species is not a constructor")
+        raise @errors.TypeError(
+          message="ArrayBuffer species is not a constructor",
+        )
       }
   }
 }
@@ -342,10 +344,17 @@ pub fn setup_arraybuffer_builtins(
             }
             let new_len = if end > start { end - start } else { 0 }
             let default_ctor = env.get("ArrayBuffer")
-            let ctor = arraybuffer_species_constructor(interp, this_val, default_ctor)
-            let new_buf = interp.construct_value(ctor, [Number(new_len.to_double())], @token.Loc::default())
+            let ctor = arraybuffer_species_constructor(
+              interp, this_val, default_ctor,
+            )
+            let new_buf = interp.construct_value(
+              ctor,
+              [Number(new_len.to_double())],
+              @token.Loc::default(),
+            )
             match new_buf {
-              Object(data) => if data.class_name != "ArrayBuffer" {
+              Object(data) =>
+                if data.class_name != "ArrayBuffer" {
                   raise @errors.TypeError(
                     message="ArrayBuffer species constructor produced non-ArrayBuffer",
                   )

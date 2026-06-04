@@ -355,10 +355,7 @@ fn setup_function_builtins(
                   "name": Value::String_("anonymous"),
                 },
                 symbol_properties: {},
-                descriptors: {
-                  "length": nf_desc,
-                  "name": nf_desc,
-                },
+                descriptors: { "length": nf_desc, "name": nf_desc },
                 symbol_descriptors: {},
               },
               prototype: func_proto,
@@ -495,10 +492,7 @@ fn setup_function_builtins(
                 "name": Value::String_("anonymous"),
               },
               symbol_properties: {},
-              descriptors: {
-                "length": nf_desc,
-                "name": nf_desc,
-              },
+              descriptors: { "length": nf_desc, "name": nf_desc },
               symbol_descriptors: {},
             },
             prototype: func_proto,

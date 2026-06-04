@@ -17,14 +17,18 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         "prototype": Undefined,
       },
       symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      } },
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        },
+      },
       symbol_descriptors: {},
     },
     prototype: Null,
@@ -101,15 +105,11 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
       let proxy_val : Value = Value::Proxy(proxy_data)
       // Create revoke function that nullifies both slots
       let revoke_func : Value = {
-        let func = @runtime.make_native_func(
-          name="",
-          length=0,
-          fn(_args) {
-            proxy_data.target = None
-            proxy_data.handler = None
-            Value::Undefined
-          },
-        )
+        let func = @runtime.make_native_func(name="", length=0, fn(_args) {
+          proxy_data.target = None
+          proxy_data.handler = None
+          Value::Undefined
+        })
         let func_proto = env.get("[[FunctionPrototype]]") catch { _ => Null }
         match func {
           Object(data) => data.prototype = func_proto
