@@ -10510,6 +10510,27 @@ test "test262: TypedArray.prototype.lastIndexOf" {
 }
 
 ///|
+test "test262: TypedArray indexOf skips detached integer indices" {
+  let output = run_output(
+    (
+      #|var a = new Int8Array(1);
+      #|console.log(a.indexOf(undefined, {
+      #|  valueOf: function() { $262.detachArrayBuffer(a.buffer); return 0; }
+      #|}));
+      #|var b = new Int8Array(1);
+      #|console.log(b.lastIndexOf(undefined, {
+      #|  valueOf: function() { $262.detachArrayBuffer(b.buffer); return 0; }
+      #|}));
+      #|var c = new Int8Array(1);
+      #|console.log(c.includes(undefined, {
+      #|  valueOf: function() { $262.detachArrayBuffer(c.buffer); return 0; }
+      #|}));
+    ),
+  )
+  json_inspect(output, content=["-1", "-1", "true"])
+}
+
+///|
 test "test262: TypedArray.prototype.includes" {
   let output = run_output(
     (

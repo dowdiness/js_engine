@@ -1444,9 +1444,11 @@ pub fn setup_typedarray_builtins(
         0
       }
       for i = from_idx; i < len; i = i + 1 {
-        let elem = typedarray_get_index(data, i, realm_state)
-        if typedarray_index_search_matches(search_val, elem) {
-          return Value::Number(i.to_double())
+        if typedarray_is_valid_index(data, i, realm_state) {
+          let elem = typedarray_get_index(data, i, realm_state)
+          if typedarray_index_search_matches(search_val, elem) {
+            return Value::Number(i.to_double())
+          }
         }
       }
       Value::Number(-1.0)
@@ -1480,9 +1482,11 @@ pub fn setup_typedarray_builtins(
         len - 1
       }
       for i = from_idx; i >= 0; i = i - 1 {
-        let elem = typedarray_get_index(data, i, realm_state)
-        if typedarray_index_search_matches(search_val, elem) {
-          return Value::Number(i.to_double())
+        if typedarray_is_valid_index(data, i, realm_state) {
+          let elem = typedarray_get_index(data, i, realm_state)
+          if typedarray_index_search_matches(search_val, elem) {
+            return Value::Number(i.to_double())
+          }
         }
       }
       Value::Number(-1.0)
