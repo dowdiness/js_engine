@@ -754,22 +754,62 @@ fn setup_map_builtins(
             )
           }
           let loc = @token.Loc::default()
-          let o = to_object(items, interp)
-          let len = @runtime.to_array_like_length_interp(o, interp)
+          let iterator_sym = well_known_symbols.iterator
+          let iterator_method = interp.get_computed_property(
+            items,
+            Symbol(iterator_sym),
+            loc,
+          )
+          let iterator = match iterator_method {
+            Object(data) =>
+              match data.callable {
+                Some(_) => interp.call_value(iterator_method, items, [], loc)
+                None =>
+                  raise @errors.TypeError(
+                    message="Result of the Symbol.iterator method is not an object",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="\{@runtime.type_of(items)} is not iterable",
+              )
+          }
+          let next_method = interp.get_iterator_next_method(iterator, loc)
           let group_keys : Array[Value] = []
           let group_arrays : Array[Array[Value]] = []
-          for k = 0; k < len; k = k + 1 {
-            let kvalue = @runtime.get_array_like_element_interp(interp, o, k)
-            let key = interp.call_value(
+          let mut k = 0
+          while true {
+            let iter_result = match
+              interp.iterator_step_result(iterator, next_method, loc) {
+              None => break
+              Some(result) => result
+            }
+            let kvalue = interp.iterator_result_value(iter_result, loc) catch {
+              e => {
+                interp.iterator_close(iterator, loc) catch {
+                  _ => ()
+                }
+                raise e
+              }
+            }
+            let raw_key = interp.call_value(
               callback,
               Undefined,
               [kvalue, Value::Number(k.to_double())],
               loc,
-            )
+            ) catch {
+              e => {
+                interp.iterator_close(iterator, loc) catch {
+                  _ => ()
+                }
+                raise e
+              }
+            }
+            let key = canonicalize_keyed_collection_key(raw_key)
             // Find existing group
             let mut found_idx = -1
             for i = 0; i < group_keys.length(); i = i + 1 {
-              if same_value_zero(group_keys[i], key) {
+              if same_value(group_keys[i], key) {
                 found_idx = i
                 break
               }
@@ -780,6 +820,7 @@ fn setup_map_builtins(
               group_keys.push(key)
               group_arrays.push([kvalue])
             }
+            k = k + 1
           }
           // Build result Map
           let entries : Array[(Value, Value)] = []
