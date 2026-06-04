@@ -784,8 +784,14 @@ fn set_target_prototype(realm_state : RealmState, data : SetData) -> Value {
 }
 
 ///|
-fn promise_target_prototype(realm_state : RealmState) -> Value {
-  realm_state.get_promise_proto()
+fn promise_target_prototype(
+  realm_state : RealmState,
+  data : PromiseData,
+) -> Value {
+  match data.prototype {
+    Null => realm_state.get_promise_proto()
+    proto => proto
+  }
 }
 
 ///|
@@ -818,7 +824,7 @@ pub fn Interpreter::has_property_key(
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
-        promise_target_prototype(self.realm_state),
+        promise_target_prototype(self.realm_state, data),
         key,
       )
     _ => false
@@ -931,7 +937,7 @@ fn Interpreter::has_property_on_proto(
     Promise(data) =>
       self.has_bag_with_proto(
         data.bag,
-        promise_target_prototype(self.realm_state),
+        promise_target_prototype(self.realm_state, data),
         key,
       )
     _ => false

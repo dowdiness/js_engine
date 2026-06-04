@@ -604,7 +604,7 @@ fn Interpreter::get_property_of_object(
               | InterpreterCallable(_, _)
               | InterpreterCallableWithContext(_, _) => false
             }
-            if !is_constructable {
+            if !is_constructable || callable is ConstructorOnlyCallable(_, _) {
               return Undefined
             }
             // For constructable functions, check if prototype exists
@@ -1326,7 +1326,8 @@ fn Interpreter::get_computed_property_impl(
                   | InterpreterCallable(_, _)
                   | InterpreterCallableWithContext(_, _) => false
                 }
-                if !is_constructable {
+                if !is_constructable ||
+                  callable is ConstructorOnlyCallable(_, _) {
                   return Undefined
                 }
                 // For constructable functions, check if prototype exists
@@ -1552,26 +1553,10 @@ fn Interpreter::get_computed_property_impl(
       let prop = to_js_string(key, interp=Some(self))
       self.get_property(obj, prop, loc)
     }
-    Promise(data) =>
-      match key {
-        Symbol(sym) =>
-          match data.bag.symbol_properties.get(sym.id) {
-            Some(v) => v
-            None => Undefined
-          }
-        _ => {
-          let prop = to_js_string(key, interp=Some(self))
-          match data.bag.properties.get(prop) {
-            Some(v) => v
-            None =>
-              (self.stdlib_hooks.get_promise_method)(
-                data,
-                prop,
-                self.realm_state,
-              )
-          }
-        }
-      }
+    Promise(_) => {
+      let prop = to_js_string(key, interp=Some(self))
+      self.get_property(obj, prop, loc)
+    }
     Null => {
       let key_str = match key {
         Symbol(sym) =>

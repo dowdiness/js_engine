@@ -590,6 +590,7 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction]
   mut is_handled : Bool
   bag : PropertyBag
+  mut prototype : Value
 }
 
 pub(all) struct PromiseReaction {

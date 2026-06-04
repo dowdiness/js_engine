@@ -1497,7 +1497,6 @@ fn Interpreter::eval_expr(
                         | Set(_)
                         | Promise(_)
                         | Proxy(_) => {
-                          apply_super_return_prototype(v, this_val)
                           // Initialize 'this' (may be in TDZ for derived classes).
                           // Walk the chain: with the §10.2.11 param/body env
                           // split, 'this' lives on the caller's param env,
@@ -1527,9 +1526,17 @@ fn Interpreter::eval_expr(
               }
               env.get("this")
             }
-            Some(_) => {
+            Some(callable) => {
               // Support non-class constructible supers (e.g. built-in constructors like Error).
               // Use constructor semantics (`new`) instead of plain call.
+              let align_builtin_super_result = match callable {
+                NativeCallable(_, _)
+                | NativeCallableWithContext(_, _)
+                | InterpreterCallable(_, _)
+                | InterpreterCallableWithContext(_, _)
+                | ConstructorOnlyCallable(_, _) => true
+                _ => false
+              }
               let super_result = self.construct_value(
                 super_ctor,
                 args,
@@ -1543,7 +1550,9 @@ fn Interpreter::eval_expr(
                 | Set(_)
                 | Promise(_)
                 | Proxy(_) => {
-                  apply_super_return_prototype(super_result, this_val)
+                  if align_builtin_super_result {
+                    apply_super_return_prototype(super_result, this_val)
+                  }
                   env.initialize_in_chain("this", super_result)
                   if env.has("[[InitInstanceFields]]") {
                     let init_fn = env.get("[[InitInstanceFields]]")

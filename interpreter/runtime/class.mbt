@@ -63,11 +63,15 @@ fn Interpreter::create_class(
             @token.Loc::default(),
           )
           match super_proto {
-            Object(_) | Null => (Some(super_val), super_proto)
+            Null => (Some(super_val), super_proto)
             _ =>
-              raise @errors.TypeError(
-                message="Class extends value's prototype must be an object or null",
-              )
+              if is_object_value(super_proto) {
+                (Some(super_val), super_proto)
+              } else {
+                raise @errors.TypeError(
+                  message="Class extends value's prototype must be an object or null",
+                )
+              }
           }
         }
       }

@@ -296,7 +296,7 @@ pub fn setup_arraybuffer_builtins(
                 message="Cannot perform slice on a detached ArrayBuffer",
               )
             }
-            let bytes = match
+            let source_bytes = match
               get_arraybuffer_state_bytes(storage_state, buf_id) {
               Some(b) => b
               None =>
@@ -304,7 +304,7 @@ pub fn setup_arraybuffer_builtins(
                   message="Cannot perform slice on a detached ArrayBuffer",
                 )
             }
-            let len = bytes.length()
+            let len = source_bytes.length()
             let relative_start = if args.length() > 0 {
               interp.to_number(args[0]).to_int()
             } else {
@@ -352,9 +352,11 @@ pub fn setup_arraybuffer_builtins(
               [Number(new_len.to_double())],
               @token.Loc::default(),
             )
-            match new_buf {
+            let new_data = match new_buf {
               Object(data) =>
-                if data.class_name != "ArrayBuffer" {
+                if data.class_name == "ArrayBuffer" {
+                  data
+                } else {
                   raise @errors.TypeError(
                     message="ArrayBuffer species constructor produced non-ArrayBuffer",
                   )
@@ -364,16 +366,50 @@ pub fn setup_arraybuffer_builtins(
                   message="ArrayBuffer species constructor produced non-ArrayBuffer",
                 )
             }
+            if same_value(new_buf, this_val) {
+              raise @errors.TypeError(
+                message="ArrayBuffer species constructor returned source buffer",
+              )
+            }
             let new_id = match get_buffer_id(new_buf) {
               Some(id) => id
-              None => -1
+              None =>
+                raise @errors.TypeError(
+                  message="ArrayBuffer species constructor produced non-ArrayBuffer",
+                )
             }
-            match get_arraybuffer_bytes(realm_state, new_id) {
-              Some(new_bytes) =>
-                for i = 0; i < new_len; i = i + 1 {
-                  new_bytes[i] = bytes[start + i]
-                }
-              None => ()
+            let new_storage_state = arraybuffer_state_from_data(
+              new_data,
+              realm_state.arraybuffer_state,
+            )
+            let new_bytes = match
+              get_arraybuffer_state_bytes(new_storage_state, new_id) {
+              Some(b) => b
+              None =>
+                raise @errors.TypeError(
+                  message="ArrayBuffer species constructor produced detached ArrayBuffer",
+                )
+            }
+            if new_bytes.length() < new_len {
+              raise @errors.TypeError(
+                message="ArrayBuffer species constructor produced too-small ArrayBuffer",
+              )
+            }
+            if is_arraybuffer_state_detached(storage_state, buf_id) {
+              raise @errors.TypeError(
+                message="Cannot perform slice on a detached ArrayBuffer",
+              )
+            }
+            let source_bytes = match
+              get_arraybuffer_state_bytes(storage_state, buf_id) {
+              Some(b) => b
+              None =>
+                raise @errors.TypeError(
+                  message="Cannot perform slice on a detached ArrayBuffer",
+                )
+            }
+            for i = 0; i < new_len; i = i + 1 {
+              new_bytes[i] = source_bytes[start + i]
             }
             new_buf
           } else {
