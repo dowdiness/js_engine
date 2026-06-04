@@ -6923,6 +6923,98 @@ test "generator: for-of consuming generator inside generator" {
   json_inspect(output, content=["2", "4", "6", "true"])
 }
 
+///|
+test "PR 213 review: comma replay sees yield in destructuring pattern" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  let x;
+      #|  ({ [yield "key"]: x } = { p: 7 }), yield x;
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next("p").value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["key", "7", "true"])
+}
+
+///|
+test "PR 213 review: generator for-of destructuring body resumes same iterator" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  for (const [x] of [[1], [2]]) {
+      #|    yield x;
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["1", "2", "true"])
+}
+
+///|
+test "PR 213 review: generator for-of member assignment body resumes same iterator" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  const o = {};
+      #|  for (o.x of [1, 2]) {
+      #|    yield o.x;
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["1", "2", "true"])
+}
+
+///|
+test "PR 213 review: generator for-of pattern yield resumes binding" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  let x;
+      #|  for ({ [yield "key"]: x } of [{ p: 9 }]) {
+      #|    yield x;
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next("p").value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["key", "9", "true"])
+}
+
+///|
+test "PR 213 review: generator for-of assignment yield resumes assignment" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  const o = {};
+      #|  for (o[yield "key"] of [11]) {
+      #|    yield o.p;
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next("p").value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["key", "11", "true"])
+}
+
 // ================================================================
 // Generator Phase 6: yield* delegation
 // ================================================================

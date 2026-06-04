@@ -378,6 +378,13 @@ test "parse class field initializer does not inherit generator yield" {
 }
 
 ///|
+test "parse generator methods with yield regexp literal" {
+  let _ = @parser.parse("class C { *g(){ yield /x/g; } }")
+  let _ = @parser.parse("class C { m(){} *g(){ yield /x/g; } }")
+  let _ = @parser.parse("({ *g(){ yield /x/g; } })")
+}
+
+///|
 test "parse labeled statement" {
   let prog = @parser.parse("outer: for (let i = 0; i < 3; i = i + 1) { }")
   match prog.stmts[0] {

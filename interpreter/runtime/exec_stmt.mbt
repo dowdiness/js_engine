@@ -58,6 +58,73 @@ fn Interpreter::bind_function_decl_value(
 }
 
 ///|
+const FOR_OF_RESUME_VALUE_BINDING = "[[ForOfResumeValue]]"
+
+///|
+fn save_for_of_resume_state(
+  gen_opt : GeneratorObject?,
+  iterator : Value,
+  next_method : Value,
+  loop_env : Environment,
+  yield_base : Int,
+) -> Unit {
+  match gen_opt {
+    Some(g) => {
+      g.for_of_iterator = iterator
+      g.for_of_next = next_method
+      g.for_of_resume = true
+      g.loop_env_stack.push(loop_env)
+      g.loop_yield_base_stack.push(yield_base)
+    }
+    None => ()
+  }
+}
+
+///|
+fn save_for_of_resume_value(loop_env : Environment, value : Value) -> Unit {
+  loop_env.bindings[FOR_OF_RESUME_VALUE_BINDING] = {
+    value,
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+}
+
+///|
+fn take_for_of_resume_value(loop_env : Environment) -> Value? {
+  match loop_env.bindings.get(FOR_OF_RESUME_VALUE_BINDING) {
+    Some(binding) => {
+      let value = binding.value
+      let _ = loop_env.bindings.remove(FOR_OF_RESUME_VALUE_BINDING)
+      Some(value)
+    }
+    None => None
+  }
+}
+
+///|
+fn restore_for_of_loop_env(
+  gen_opt : GeneratorObject?,
+  fallback : Environment,
+) -> Environment {
+  match gen_opt {
+    Some(g) =>
+      if g.loop_env_stack.length() > 0 {
+        let saved_env = g.loop_env_stack.pop().unwrap()
+        match g.loop_yield_base_stack.pop() {
+          Some(base) => g.yield_index = base
+          None => ()
+        }
+        saved_env
+      } else {
+        fallback
+      }
+    None => fallback
+  }
+}
+
+///|
 fn Interpreter::exec_stmt(
   self : Interpreter,
   ctx : ExecContext,
@@ -889,88 +956,141 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForOfStmtPat(var_kind, pattern, iterable_expr, body, loc) => {
-      let iterable = self.eval_expr(ctx, iterable_expr, env)
-
-      // Try to get the iterator via Symbol.iterator protocol
-      let iterator_sym = self.realm_state.well_known_symbols.iterator
-      let iterator_method = self.get_computed_property(
-        iterable,
-        Symbol(iterator_sym),
-        loc,
-      )
-
-      // Get the iterator object
-      let iterator = match iterator_method {
-        Object(data) =>
-          match data.callable {
-            Some(_) => self.call_value(iterator_method, iterable, [], loc)
-            None =>
-              raise @errors.TypeError(
-                message="Result of the Symbol.iterator method is not an object",
-              )
-          }
-        Undefined =>
-          match iterable {
-            Array(arr) => self.realm_state.make_array_iterator_value(arr)
-            String_(s) => self.realm_state.make_string_iterator_value(s)
-            _ =>
-              raise @errors.TypeError(
-                message="\{type_of(iterable)} is not iterable",
-              )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Result of the Symbol.iterator method is not an object",
-          )
+      let gen_opt = ctx.current_generator
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        None => false
       }
+      let (iterator, next_method) : (Value, Value) = if resuming_for_of {
+        match gen_opt {
+          Some(g) => {
+            g.for_of_resume = false
+            (g.for_of_iterator, g.for_of_next)
+          }
+          None => (Undefined, Undefined)
+        }
+      } else {
+        let iterable = self.eval_expr(ctx, iterable_expr, env)
 
-      let next_method = self.get_iterator_next_method(iterator, loc)
+        // Try to get the iterator via Symbol.iterator protocol
+        let iterator_sym = self.realm_state.well_known_symbols.iterator
+        let iterator_method = self.get_computed_property(
+          iterable,
+          Symbol(iterator_sym),
+          loc,
+        )
+
+        // Get the iterator object
+        let iterator = match iterator_method {
+          Object(data) =>
+            match data.callable {
+              Some(_) => self.call_value(iterator_method, iterable, [], loc)
+              None =>
+                raise @errors.TypeError(
+                  message="Result of the Symbol.iterator method is not an object",
+                )
+            }
+          Undefined =>
+            match iterable {
+              Array(arr) => self.realm_state.make_array_iterator_value(arr)
+              String_(s) => self.realm_state.make_string_iterator_value(s)
+              _ =>
+                raise @errors.TypeError(
+                  message="\{type_of(iterable)} is not iterable",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Result of the Symbol.iterator method is not an object",
+            )
+        }
+
+        (iterator, self.get_iterator_next_method(iterator, loc))
+      }
 
       // Iterate using the iterator protocol
       let mut completion : Value = Undefined
+      let mut first_resume = resuming_for_of
       while true {
-        let value = match self.iterator_step_value(iterator, next_method, loc) {
-          None => break
-          Some(value) => value
-        }
-        let body_env = Environment::new(parent=Some(env))
-        match var_kind {
-          Some(kind) => {
-            let bk : BindingKind = match kind {
-              LetKind => LetBinding
-              ConstKind => ConstBinding
-              VarKind => VarBinding
-            }
-            let bind_env = match kind {
-              VarKind => env
-              _ => body_env
-            }
-            self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
-              e => {
-                if !(e is YieldSignal(_)) {
-                  close_iterator(self, iterator, loc) catch {
-                    _ => ()
-                  }
-                }
-                raise e
-              }
-            }
+        let (value, body_env, should_bind) : (Value, Environment, Bool) = if first_resume {
+          first_resume = false
+          let saved_env = restore_for_of_loop_env(
+            gen_opt,
+            Environment::new(parent=Some(env)),
+          )
+          match take_for_of_resume_value(saved_env) {
+            Some(value) => (value, saved_env, true)
+            None => (Undefined, saved_env, false)
           }
-          None =>
-            self.assign_pattern(ctx, pattern, value, env) catch {
-              e => {
-                if !(e is YieldSignal(_)) {
-                  close_iterator(self, iterator, loc) catch {
-                    _ => ()
+        } else {
+          let value = match
+            self.iterator_step_value(iterator, next_method, loc) {
+            None => break
+            Some(value) => value
+          }
+          (value, Environment::new(parent=Some(env)), true)
+        }
+        if should_bind {
+          let binding_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            None => 0
+          }
+          match var_kind {
+            Some(kind) => {
+              let bk : BindingKind = match kind {
+                LetKind => LetBinding
+                ConstKind => ConstBinding
+                VarKind => VarBinding
+              }
+              let bind_env = match kind {
+                VarKind => env
+                _ => body_env
+              }
+              self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
+                e => {
+                  if e is YieldSignal(_) {
+                    save_for_of_resume_value(body_env, value)
+                    save_for_of_resume_state(
+                      gen_opt, iterator, next_method, body_env, binding_yield_base,
+                    )
+                  } else {
+                    close_iterator(self, iterator, loc) catch {
+                      _ => ()
+                    }
                   }
+                  raise e
                 }
-                raise e
               }
             }
+            None =>
+              self.assign_pattern(ctx, pattern, value, env) catch {
+                e => {
+                  if e is YieldSignal(_) {
+                    save_for_of_resume_value(body_env, value)
+                    save_for_of_resume_state(
+                      gen_opt, iterator, next_method, body_env, binding_yield_base,
+                    )
+                  } else {
+                    close_iterator(self, iterator, loc) catch {
+                      _ => ()
+                    }
+                  }
+                  raise e
+                }
+              }
+          }
+        }
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          None => 0
         }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
-            if !(e is YieldSignal(_)) {
+            if e is YieldSignal(_) {
+              save_for_of_resume_state(
+                gen_opt, iterator, next_method, body_env, body_yield_base,
+              )
+            } else {
               close_iterator(self, iterator, loc) catch {
                 _ => ()
               }
@@ -1051,57 +1171,105 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForOfExpr(lhs_expr, iterable_expr, body, loc) => {
-      let iterable = self.eval_expr(ctx, iterable_expr, env)
-      let iterator_sym = self.realm_state.well_known_symbols.iterator
-      let iterator_method = self.get_computed_property(
-        iterable,
-        Symbol(iterator_sym),
-        loc,
-      )
-      let iterator = match iterator_method {
-        Object(data) =>
-          match data.callable {
-            Some(_) => self.call_value(iterator_method, iterable, [], loc)
-            None =>
-              raise @errors.TypeError(
-                message="Result of the Symbol.iterator method is not an object",
-              )
-          }
-        Undefined =>
-          match iterable {
-            Array(arr) => self.realm_state.make_array_iterator_value(arr)
-            String_(s) => self.realm_state.make_string_iterator_value(s)
-            _ =>
-              raise @errors.TypeError(
-                message="\{type_of(iterable)} is not iterable",
-              )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Result of the Symbol.iterator method is not an object",
-          )
+      let gen_opt = ctx.current_generator
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        None => false
       }
-      let next_method = self.get_iterator_next_method(iterator, loc)
-      let mut completion : Value = Undefined
-      while true {
-        let value = match self.iterator_step_value(iterator, next_method, loc) {
-          None => break
-          Some(value) => value
-        }
-        let body_env = Environment::new(parent=Some(env))
-        self.assign_to_expr(ctx, lhs_expr, value, env) catch {
-          e => {
-            if !(e is YieldSignal(_)) {
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
-            }
-            raise e
+      let (iterator, next_method) : (Value, Value) = if resuming_for_of {
+        match gen_opt {
+          Some(g) => {
+            g.for_of_resume = false
+            (g.for_of_iterator, g.for_of_next)
           }
+          None => (Undefined, Undefined)
+        }
+      } else {
+        let iterable = self.eval_expr(ctx, iterable_expr, env)
+        let iterator_sym = self.realm_state.well_known_symbols.iterator
+        let iterator_method = self.get_computed_property(
+          iterable,
+          Symbol(iterator_sym),
+          loc,
+        )
+        let iterator = match iterator_method {
+          Object(data) =>
+            match data.callable {
+              Some(_) => self.call_value(iterator_method, iterable, [], loc)
+              None =>
+                raise @errors.TypeError(
+                  message="Result of the Symbol.iterator method is not an object",
+                )
+            }
+          Undefined =>
+            match iterable {
+              Array(arr) => self.realm_state.make_array_iterator_value(arr)
+              String_(s) => self.realm_state.make_string_iterator_value(s)
+              _ =>
+                raise @errors.TypeError(
+                  message="\{type_of(iterable)} is not iterable",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Result of the Symbol.iterator method is not an object",
+            )
+        }
+        (iterator, self.get_iterator_next_method(iterator, loc))
+      }
+      let mut completion : Value = Undefined
+      let mut first_resume = resuming_for_of
+      while true {
+        let (value, body_env, should_assign) : (Value, Environment, Bool) = if first_resume {
+          first_resume = false
+          let saved_env = restore_for_of_loop_env(
+            gen_opt,
+            Environment::new(parent=Some(env)),
+          )
+          match take_for_of_resume_value(saved_env) {
+            Some(value) => (value, saved_env, true)
+            None => (Undefined, saved_env, false)
+          }
+        } else {
+          let value = match
+            self.iterator_step_value(iterator, next_method, loc) {
+            None => break
+            Some(value) => value
+          }
+          (value, Environment::new(parent=Some(env)), true)
+        }
+        if should_assign {
+          let assignment_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            None => 0
+          }
+          self.assign_to_expr(ctx, lhs_expr, value, env) catch {
+            e => {
+              if e is YieldSignal(_) {
+                save_for_of_resume_value(body_env, value)
+                save_for_of_resume_state(
+                  gen_opt, iterator, next_method, body_env, assignment_yield_base,
+                )
+              } else {
+                close_iterator(self, iterator, loc) catch {
+                  _ => ()
+                }
+              }
+              raise e
+            }
+          }
+        }
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          None => 0
         }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
-            if !(e is YieldSignal(_)) {
+            if e is YieldSignal(_) {
+              save_for_of_resume_state(
+                gen_opt, iterator, next_method, body_env, body_yield_base,
+              )
+            } else {
               close_iterator(self, iterator, loc) catch {
                 _ => ()
               }

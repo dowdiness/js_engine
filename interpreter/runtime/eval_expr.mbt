@@ -23,6 +23,53 @@ fn resolve_super_target(env : Environment) -> Value {
 }
 
 ///|
+fn pattern_may_contain_yield(pattern : @ast.Pattern) -> Bool {
+  match pattern {
+    IdentPat(_) => false
+    ArrayPat(elements, rest) => {
+      let elements_have_yield = elements
+        .iter()
+        .any(fn(pat) {
+          match pat {
+            Some(pat) => pattern_may_contain_yield(pat)
+            None => false
+          }
+        })
+      let rest_has_yield = match rest {
+        Some(pat) => pattern_may_contain_yield(pat)
+        None => false
+      }
+      elements_have_yield || rest_has_yield
+    }
+    ObjectPat(props, rest) => {
+      let props_have_yield = props
+        .iter()
+        .any(fn(prop) {
+          let key_has_yield = match prop.computed_key {
+            Some(expr) => expr_may_contain_yield(expr)
+            None => false
+          }
+          let default_has_yield = match prop.default_val {
+            Some(expr) => expr_may_contain_yield(expr)
+            None => false
+          }
+          key_has_yield ||
+          default_has_yield ||
+          pattern_may_contain_yield(prop.value)
+        })
+      let rest_has_yield = match rest {
+        Some(pat) => pattern_may_contain_yield(pat)
+        None => false
+      }
+      props_have_yield || rest_has_yield
+    }
+    DefaultPat(inner, default_expr) =>
+      pattern_may_contain_yield(inner) || expr_may_contain_yield(default_expr)
+    AssignTarget(expr) => expr_may_contain_yield(expr)
+  }
+}
+
+///|
 fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
   match expr {
     YieldExpr(_, _, _) => true
@@ -43,8 +90,9 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
     Assign(_, value, _)
     | Member(value, _, _)
     | UpdateExpr(_, value, _, _)
-    | SuperComputedMember(value, _)
-    | DestructureAssign(_, value, _) => expr_may_contain_yield(value)
+    | SuperComputedMember(value, _) => expr_may_contain_yield(value)
+    DestructureAssign(pattern, value, _) =>
+      pattern_may_contain_yield(pattern) || expr_may_contain_yield(value)
     ComputedAssign(obj, key, value, _) =>
       expr_may_contain_yield(obj) ||
       expr_may_contain_yield(key) ||

@@ -1521,11 +1521,20 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     match kind {
       Star => {
         let pending_len = pending_function_param_depth.length()
+        let follows_function = tokens.length() >= 2 &&
+          tokens[tokens.length() - 2].kind == Function
         if pending_len > 0 &&
           pending_function_param_depth[pending_len - 1] == -1 &&
-          tokens.length() >= 2 &&
-          tokens[tokens.length() - 2].kind == Function {
+          follows_function {
           pending_function_is_generator[pending_len - 1] = true
+        } else if tokens.length() >= 2 {
+          match tokens[tokens.length() - 2].kind {
+            LBrace | RBrace | Comma | Semicolon | Static => {
+              pending_function_is_generator.push(true)
+              pending_function_param_depth.push(-1)
+            }
+            _ => ()
+          }
         }
       }
       Colon | Comma | Semicolon | Assign => {
