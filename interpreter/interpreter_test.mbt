@@ -14963,6 +14963,22 @@ test "TypedArray Reflect.set different-receiver out-of-range is no-op" {
 }
 
 ///|
+/// §10.4.5.2 [[HasProperty]]: canonical numeric index strings are handled by
+/// IntegerIndexedExoticObject before falling through to OrdinaryHasProperty.
+test "TypedArray Reflect.has numeric keys bypass prototype chain" {
+  let src =
+    #|const ta = new Uint8Array([7]);
+    #|const proto = { foo: 42, 1: "proto-index" };
+    #|Object.setPrototypeOf(proto, Object.getPrototypeOf(ta));
+    #|Object.setPrototypeOf(ta, proto);
+    #|console.log(Reflect.has(ta, "0"));
+    #|console.log(Reflect.has(ta, "1"));
+    #|console.log(Reflect.has(ta, "foo"));
+  let output = run_output(src)
+  json_inspect(output, content=["true", "false", "true"])
+}
+
+///|
 /// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;
