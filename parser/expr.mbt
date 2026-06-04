@@ -752,8 +752,9 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       Ident("static", tok.loc)
     }
     Yield =>
-      // Outside generator context, yield is a valid identifier
-      if !self.in_generator() {
+      // Outside generator context, yield is a valid identifier unless this
+      // grammar production forbids Yield as an IdentifierReference.
+      if !self.in_generator() && self.allow_yield_identifier() {
         self.pos += 1
         Ident("yield", tok.loc)
       } else {
@@ -1997,11 +1998,9 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           | Extends
           | Super
           | Static => {
-            let kw_line = self.tokens[self.pos].loc.line
             let next_tok = self.tokens[self.pos + 1]
             let next_is_method_name_token = next_tok.kind != LParen &&
-              next_tok.kind != Star &&
-              next_tok.loc.line == kw_line
+              next_tok.kind != Star
             if next_is_method_name_token {
               self.pos += 1
               method_kind = @ast.Get
@@ -2056,11 +2055,9 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           | Extends
           | Super
           | Static => {
-            let kw_line = self.tokens[self.pos].loc.line
             let next_tok = self.tokens[self.pos + 1]
             let next_is_method_name_token = next_tok.kind != LParen &&
-              next_tok.kind != Star &&
-              next_tok.loc.line == kw_line
+              next_tok.kind != Star
             if next_is_method_name_token {
               self.pos += 1
               method_kind = @ast.Set
@@ -2180,7 +2177,18 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       }
     }
     let initializer : @ast.Expr? = if self.eat(Assign) {
-      Some(self.parse_assignment())
+      self.push_generator_context(false)
+      self.push_yield_identifier_context(false)
+      let parsed = self.parse_assignment() catch {
+        e => {
+          self.pop_yield_identifier_context()
+          self.pop_generator_context()
+          raise e
+        }
+      }
+      self.pop_yield_identifier_context()
+      self.pop_generator_context()
+      Some(parsed)
     } else {
       None
     }

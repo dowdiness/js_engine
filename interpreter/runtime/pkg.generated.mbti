@@ -444,10 +444,12 @@ pub(all) struct GeneratorObject {
   mut resuming : Bool
   mut resume_action : ResumeAction
   mut try_resume_phase : Int
+  mut try_resume_yield_base : Int
   mut try_resume_error : Value
   mut try_resume_result : Signal
   mut try_resume_pending_error : Error?
   loop_env_stack : Array[Environment]
+  loop_yield_base_stack : Array[Int]
   mut for_of_iterator : Value
   mut for_of_next : Value
   mut for_of_resume : Bool
@@ -456,6 +458,7 @@ pub(all) struct GeneratorObject {
   mut delegating : Bool
   mut yield_index : Int
   mut resume_at_yield : Int
+  mut yield_resume_values : Map[Int, Value]
 }
 
 pub(all) struct HostEnv {

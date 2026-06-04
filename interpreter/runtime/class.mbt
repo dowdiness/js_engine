@@ -521,7 +521,8 @@ fn Interpreter::create_class(
   } else {
     static_method_env
   }
-  // Class bodies (including field initializers) are always strict per spec
+  // Class bodies are strict, but field initializers are not generator bodies.
+  let static_field_ctx : ExecContext = { strict: true, current_generator: None }
   for sf in static_fields {
     let key_str : String = match sf.key {
       String_(s) => s
@@ -533,7 +534,7 @@ fn Interpreter::create_class(
         // Evaluate initializer with `this` = class_obj and class name in scope
         let field_env = Environment::new(parent=Some(static_init_base))
         field_env.def_builtin("this", class_obj)
-        self.eval_expr(class_ctx, expr, field_env)
+        self.eval_expr(static_field_ctx, expr, field_env)
       }
       None => Undefined
     }

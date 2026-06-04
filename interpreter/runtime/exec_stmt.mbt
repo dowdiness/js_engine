@@ -151,6 +151,10 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             let _ = g.loop_env_stack.pop()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
           }
           _ => ()
         }
@@ -163,11 +167,18 @@ fn Interpreter::exec_stmt(
         } else if !is_truthy(self.eval_expr(ctx, cond, env)) {
           break
         }
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, env) catch {
           e => {
             if e is YieldSignal(_) {
               match gen_opt {
-                Some(g) => g.loop_env_stack.push(env)
+                Some(g) => {
+                  g.loop_env_stack.push(env)
+                  g.loop_yield_base_stack.push(body_yield_base)
+                }
                 _ => ()
               }
             }
@@ -233,7 +244,14 @@ fn Interpreter::exec_stmt(
       let for_env = if resuming_loop {
         // Use saved loop env from stack (pop from end = outermost first)
         match gen_opt {
-          Some(g) => g.loop_env_stack.pop().unwrap()
+          Some(g) => {
+            let saved_env = g.loop_env_stack.pop().unwrap()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
+            saved_env
+          }
           _ => Environment::new(parent=Some(env))
         }
       } else {
@@ -268,12 +286,19 @@ fn Interpreter::exec_stmt(
           for_env
         }
         let mut do_continue = false
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, iter_env) catch {
           e => {
             if e is YieldSignal(_) {
               // Yield inside for loop body — save for_env for resume
               match gen_opt {
-                Some(g) => g.loop_env_stack.push(for_env)
+                Some(g) => {
+                  g.loop_env_stack.push(for_env)
+                  g.loop_yield_base_stack.push(body_yield_base)
+                }
                 _ => ()
               }
             }
@@ -440,17 +465,28 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             let _ = g.loop_env_stack.pop()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
           }
           _ => ()
         }
       }
       let mut completion : Value = Undefined
       while true {
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, env) catch {
           e => {
             if e is YieldSignal(_) {
               match gen_opt {
-                Some(g) => g.loop_env_stack.push(env)
+                Some(g) => {
+                  g.loop_env_stack.push(env)
+                  g.loop_yield_base_stack.push(body_yield_base)
+                }
                 _ => ()
               }
             }
@@ -638,11 +674,22 @@ fn Interpreter::exec_stmt(
           }
           let actual_body_env = if resuming_loop {
             match gen_opt {
-              Some(g) => g.loop_env_stack.pop().unwrap()
+              Some(g) => {
+                let saved_env = g.loop_env_stack.pop().unwrap()
+                match g.loop_yield_base_stack.pop() {
+                  Some(base) => g.yield_index = base
+                  None => ()
+                }
+                saved_env
+              }
               _ => body_env
             }
           } else {
             body_env
+          }
+          let body_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            _ => 0
           }
           let body_signal = self.exec_stmt(ctx, body, actual_body_env) catch {
             e => {
@@ -653,6 +700,7 @@ fn Interpreter::exec_stmt(
                     g.for_of_next = next_method
                     g.for_of_resume = true
                     g.loop_env_stack.push(actual_body_env)
+                    g.loop_yield_base_stack.push(body_yield_base)
                   }
                   _ => ()
                 }
@@ -727,6 +775,10 @@ fn Interpreter::exec_stmt(
         }
 
         // Execute the loop body
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
             if e is YieldSignal(_) {
@@ -737,6 +789,7 @@ fn Interpreter::exec_stmt(
                   g.for_of_next = next_method
                   g.for_of_resume = true
                   g.loop_env_stack.push(body_env)
+                  g.loop_yield_base_stack.push(body_yield_base)
                 }
                 _ => ()
               }
@@ -1628,6 +1681,7 @@ fn Interpreter::exec_try_catch(
       if g.try_resume_phase >= 0 {
         let p = g.try_resume_phase
         g.try_resume_phase = -1 // consume it
+        g.yield_index = g.try_resume_yield_base
         p
       } else {
         0
@@ -1652,12 +1706,19 @@ fn Interpreter::exec_try_catch(
   // Phase 0: Try body (skip if resuming at catch or finally)
   if start_phase == 0 {
     let try_env = Environment::new(parent=Some(env))
+    let try_yield_base = match gen_opt {
+      Some(g) => g.yield_index
+      _ => 0
+    }
     result = self.exec_stmts(ctx, try_body, try_env) catch {
       e =>
         if e is YieldSignal(_) {
           // Yield inside try body — save phase for resume
           match gen_opt {
-            Some(g) => g.try_resume_phase = 0
+            Some(g) => {
+              g.try_resume_phase = 0
+              g.try_resume_yield_base = try_yield_base
+            }
             _ => ()
           }
           raise e
@@ -1673,6 +1734,10 @@ fn Interpreter::exec_try_catch(
               let error_value = js_error_to_value_with_env(e, Some(env))
               // Bind the catch parameter - supports simple identifier and destructuring
               self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+              let catch_yield_base = match gen_opt {
+                Some(g) => g.yield_index
+                _ => 0
+              }
               self.exec_stmts(ctx, body, catch_env) catch {
                 ce =>
                   if ce is YieldSignal(_) {
@@ -1680,6 +1745,7 @@ fn Interpreter::exec_try_catch(
                     match gen_opt {
                       Some(g) => {
                         g.try_resume_phase = 1
+                        g.try_resume_yield_base = catch_yield_base
                         g.try_resume_error = error_value
                       }
                       _ => ()
@@ -1712,6 +1778,10 @@ fn Interpreter::exec_try_catch(
         }
         // Bind the catch parameter - supports simple identifier and destructuring
         self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+        let catch_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         result = self.exec_stmts(ctx, body, catch_env) catch {
           ce =>
             if ce is YieldSignal(_) {
@@ -1719,6 +1789,7 @@ fn Interpreter::exec_try_catch(
               match gen_opt {
                 Some(g) => {
                   g.try_resume_phase = 1
+                  g.try_resume_yield_base = catch_yield_base
                   g.try_resume_error = error_value
                 }
                 _ => ()
@@ -1736,6 +1807,10 @@ fn Interpreter::exec_try_catch(
   // Phase 2: Finally body (always runs if present)
   match finally_body {
     Some(body) => {
+      let finally_yield_base = match gen_opt {
+        Some(g) => g.yield_index
+        _ => 0
+      }
       let finally_result = self.exec_stmts(
         ctx,
         body,
@@ -1747,6 +1822,7 @@ fn Interpreter::exec_try_catch(
             match gen_opt {
               Some(g) => {
                 g.try_resume_phase = 2
+                g.try_resume_yield_base = finally_yield_base
                 g.try_resume_result = result
                 g.try_resume_pending_error = pending_error
               }

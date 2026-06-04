@@ -5392,6 +5392,40 @@ test "class getter and setter" {
 }
 
 ///|
+test "class accessors allow line terminator after get and set" {
+  let output = run_output(
+    (
+      #|class C {
+      #|  constructor() { this.seen = 0; }
+      #|  get
+      #|  x() { return 1; }
+      #|  set
+      #|  y(v) { this.seen = v; }
+      #|}
+      #|const c = new C();
+      #|c.y = 2;
+      #|console.log(c.x, c.seen);
+    ),
+  )
+  json_inspect(output, content=["1 2"])
+}
+
+///|
+test "class field initializer yield is rejected inside generator" {
+  let result = run_throws(
+    (
+      #|function* g() {
+      #|  class C { static x = yield 1; }
+      #|}
+    ),
+  )
+  inspect(
+    result,
+    content="SyntaxError: Unexpected yield in primary expression at line 2, col 24",
+  )
+}
+
+///|
 test "class constructor has arguments object through super call" {
   let output = run_output(
     (
@@ -6318,7 +6352,7 @@ test "generator: yield inside for loop (range)" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["1", "2", "2", "false"])
+  json_inspect(output, content=["1", "2", "3", "true"])
 }
 
 ///|
@@ -6389,6 +6423,85 @@ test "generator: yield as expression receives next value" {
     ),
   )
   json_inspect(output, content=["1", "15"])
+}
+
+///|
+test "sloppy yield identifier before slash remains division" {
+  let output = run_output(
+    (
+      #|var yield = 8, x = 2, g = 4;
+      #|console.log(yield / x / g);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "generator: yield regexp literal after yield keyword" {
+  let output = run_output(
+    (
+      #|function* g() { yield /x/g; }
+      #|const it = g();
+      #|const r = it.next();
+      #|console.log(r.value instanceof RegExp, r.value.source, r.value.flags);
+    ),
+  )
+  json_inspect(output, content=["true x g"])
+}
+
+///|
+test "generator: nested yield in loop keeps replay indexes stable" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  for (let i = 0; i < 1; i++) {
+      #|    return yield (yield 1);
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next(2).value);
+      #|const r = it.next(3);
+      #|console.log(r.value, r.done);
+    ),
+  )
+  json_inspect(output, content=["1", "2", "3 true"])
+}
+
+///|
+test "generator: abrupt resumes in loop target suspended yield" {
+  let output = run_output(
+    (
+      #|function* g() { while (true) { yield 1; } }
+      #|const thrown = g();
+      #|console.log(thrown.next().value);
+      #|try { thrown.throw(new Error("boom")); } catch (e) { console.log(e.message); }
+      #|console.log(thrown.next().done);
+      #|const returned = g();
+      #|console.log(returned.next().value);
+      #|let r = returned.return(9);
+      #|console.log(r.value, r.done);
+      #|console.log(returned.next().done);
+    ),
+  )
+  json_inspect(output, content=["1", "boom", "true", "1", "9 true", "true"])
+}
+
+///|
+test "generator: computed class name resume does not replay prefix effects" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  let n = 0;
+      #|  class C { [(++n, yield 1)]() {} }
+      #|  console.log(n);
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next(2).done);
+    ),
+  )
+  json_inspect(output, content=["1", "1", "true"])
 }
 
 ///|
@@ -6501,7 +6614,7 @@ test "generator: .throw() caught by try/catch in generator" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["1", "caught: boom", "caught: boom", "false"])
+  json_inspect(output, content=["1", "caught: boom", "3", "true"])
 }
 
 ///|
@@ -6608,7 +6721,7 @@ test "generator: .return() when finally yields" {
       #|console.log(r2.value, r2.done);
     ),
   )
-  json_inspect(output, content=["1", "from-finally false", "from-finally false"])
+  json_inspect(output, content=["1", "from-finally false", "42 true"])
 }
 
 ///|
@@ -6630,7 +6743,7 @@ test "generator: .throw() in try/catch/finally runs finally" {
       #|it.next();
     ),
   )
-  json_inspect(output, content=["1", "caught: err"])
+  json_inspect(output, content=["1", "caught: err", "finally"])
 }
 
 ///|
@@ -6652,7 +6765,7 @@ test "generator: multiple .throw() with try/catch" {
       #|it.throw(new Error("b"));
     ),
   )
-  json_inspect(output, content=["got: a"])
+  json_inspect(output, content=["got: a", "got: b"])
 }
 
 // ================================================================
@@ -6677,7 +6790,7 @@ test "generator: yield inside while loop" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["0", "1", "1", "false"])
+  json_inspect(output, content=["0", "1", "2", "true"])
 }
 
 ///|
@@ -6698,7 +6811,7 @@ test "generator: yield inside for loop with return" {
       #|console.log(r.value, r.done);
     ),
   )
-  json_inspect(output, content=["0", "1", "1", "2 false"])
+  json_inspect(output, content=["0", "1", "2", "done true"])
 }
 
 ///|
@@ -6724,7 +6837,7 @@ test "generator: yield in for loop preserves loop variable" {
       #|console.log(results.join(","));
     ),
   )
-  json_inspect(output, content=["0,1,1,1,1,2,2,3,3,5,5"])
+  json_inspect(output, content=["0,1,1,2,3,5"])
 }
 
 ///|
@@ -6746,7 +6859,7 @@ test "generator: yield in nested loops" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["0", "1", "1", "10", "false"])
+  json_inspect(output, content=["0", "1", "10", "11", "true"])
 }
 
 ///|
@@ -6768,7 +6881,7 @@ test "generator: break inside generator loop" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["0", "1", "1", "2", "false"])
+  json_inspect(output, content=["0", "1", "2", "after loop", "true"])
 }
 
 ///|
@@ -6787,7 +6900,7 @@ test "generator: yield inside for-of in generator" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["10", "20", "20", "false"])
+  json_inspect(output, content=["10", "20", "30", "true"])
 }
 
 ///|
@@ -6807,7 +6920,7 @@ test "generator: for-of consuming generator inside generator" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["2", "4", "4", "false"])
+  json_inspect(output, content=["2", "4", "6", "true"])
 }
 
 // ================================================================
@@ -6958,7 +7071,7 @@ test "generator: yield* forwards .throw() to delegate" {
       #|console.log(it.next().done);
     ),
   )
-  json_inspect(output, content=["1", "caught: err", "caught: err", "false"])
+  json_inspect(output, content=["1", "caught: err", "after", "true"])
 }
 
 // ================================================================
@@ -6979,7 +7092,7 @@ test "generator: for-of consuming generator (integration)" {
       #|console.log(results.join(","));
     ),
   )
-  json_inspect(output, content=["0,1,1,2,2,3,3,4,4"])
+  json_inspect(output, content=["0,1,2,3,4"])
 }
 
 ///|
@@ -7067,7 +7180,7 @@ test "generator: generator with closures" {
       #|console.log(c.next().value);
     ),
   )
-  json_inspect(output, content=["1", "2", "2", "1", "1"])
+  json_inspect(output, content=["1", "2", "3", "1", "2"])
 }
 
 ///|
@@ -7091,7 +7204,7 @@ test "generator: infinite fibonacci generator" {
       #|console.log(results.join(","));
     ),
   )
-  json_inspect(output, content=["0,1,1,1,1,2,2,3"])
+  json_inspect(output, content=["0,1,1,2,3,5,8,13"])
 }
 
 ///|
@@ -7119,7 +7232,7 @@ test "generator: generator pipeline" {
       #|console.log([...squares].join(","));
     ),
   )
-  json_inspect(output, content=["1,4,4,4,4,9,9,9,9,16,16,16,16,25,25,25,25"])
+  json_inspect(output, content=["1,4,9,16,25"])
 }
 
 // ================================================================
@@ -7140,7 +7253,7 @@ test "generator: deep iteration stress test" {
       #|console.log(sum);
     ),
   )
-  json_inspect(output, content=["9900"])
+  json_inspect(output, content=["4950"])
 }
 
 ///|
@@ -7158,7 +7271,7 @@ test "generator: yield* chain stress" {
       #|console.log(sum);
     ),
   )
-  json_inspect(output, content=["2450"])
+  json_inspect(output, content=["1225"])
 }
 
 ///|

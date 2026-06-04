@@ -52,6 +52,7 @@ pub(all) struct Parser {
   mut allow_import_export : Bool // true at module top-level, false in nested blocks
   generator_depth : Array[Bool] // Stack: true when inside a generator function body
   async_depth : Array[Bool] // Stack: true when inside an async function body
+  yield_identifier_depth : Array[Bool] // Stack: false where `yield` cannot be an IdentifierReference
 }
 
 ///|
@@ -62,6 +63,7 @@ pub fn Parser::new(tokens : Array[@token.Token]) -> Parser {
     allow_import_export: true,
     generator_depth: [false],
     async_depth: [false],
+    yield_identifier_depth: [true],
   }
 }
 
@@ -78,6 +80,21 @@ fn Parser::push_generator_context(self : Parser, is_generator : Bool) -> Unit {
 ///|
 fn Parser::pop_generator_context(self : Parser) -> Unit {
   let _ = self.generator_depth.pop()
+}
+
+///|
+fn Parser::allow_yield_identifier(self : Parser) -> Bool {
+  self.yield_identifier_depth[self.yield_identifier_depth.length() - 1]
+}
+
+///|
+fn Parser::push_yield_identifier_context(self : Parser, allowed : Bool) -> Unit {
+  self.yield_identifier_depth.push(allowed)
+}
+
+///|
+fn Parser::pop_yield_identifier_context(self : Parser) -> Unit {
+  let _ = self.yield_identifier_depth.pop()
 }
 
 ///|
@@ -185,7 +202,9 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
     }
     Yield =>
       // yield is only a keyword inside generator bodies; outside it's an identifier
-      if !self.in_generator() {
+      // unless the current grammar production (for example class field
+      // initializers) forbids Yield as an IdentifierReference.
+      if !self.in_generator() && self.allow_yield_identifier() {
         self.pos += 1
         "yield"
       } else {

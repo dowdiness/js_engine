@@ -49,11 +49,13 @@ pub(all) struct GeneratorObject {
   // Try/catch/finally resume tracking
   // -1 = no saved phase, 0 = try body, 1 = catch body, 2 = finally body
   mut try_resume_phase : Int
+  mut try_resume_yield_base : Int // yield index at the start of the resumed try/catch/finally phase
   mut try_resume_error : Value // saved error value when resuming in catch
   mut try_resume_result : Signal // saved try/catch result when resuming in finally
   mut try_resume_pending_error : Error? // saved non-catchable error for finally
   // Loop resume tracking — stack of saved loop envs (innermost first, outermost last)
   loop_env_stack : Array[Environment]
+  loop_yield_base_stack : Array[Int]
   // For-of resume state
   mut for_of_iterator : Value // saved iterator object
   mut for_of_next : Value // saved next method
@@ -96,11 +98,13 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.for_of_iterator = Undefined
   gen.for_of_next = Undefined
   gen.loop_env_stack.clear()
+  gen.loop_yield_base_stack.clear()
   gen.yield_resume_values.clear()
   // Clear mutable fields to allow GC
   // Note: body/args/closure/this_val are immutable and may be shared
   // across generator instances from the same function, so leave them.
   gen.yield_value = Undefined
+  gen.try_resume_yield_base = 0
   gen.try_resume_error = Undefined
   gen.try_resume_result = Normal(Undefined)
   gen.try_resume_pending_error = None
@@ -773,10 +777,12 @@ fn create_generator_instance(
       resuming: false,
       resume_action: NextAction,
       try_resume_phase: -1,
+      try_resume_yield_base: 0,
       try_resume_error: Undefined,
       try_resume_result: Normal(Undefined),
       try_resume_pending_error: None,
       loop_env_stack: [],
+      loop_yield_base_stack: [],
       for_of_iterator: Undefined,
       for_of_next: Undefined,
       for_of_resume: false,
@@ -882,9 +888,6 @@ fn generator_resume(
             gen.state = Executing
             gen.yield_value = v
             gen.yield_resume_values[gen.resume_at_yield] = v
-            if gen.loop_env_stack.length() > 0 {
-              gen.yield_index = gen.resume_at_yield
-            }
             gen.resume_action = NextAction
             generator_continue(interp, gen)
           }
@@ -944,9 +947,11 @@ fn run_generator_body(
       if !gen.resuming {
         gen.yield_resume_values.clear()
         gen.yield_index = 0 // Reset yield counter for each non-resuming statement
-      }
-      if gen.resuming && gen.loop_env_stack.length() == 0 {
-        // Non-loop resumes start from the beginning of the statement.
+      } else {
+        // Resumes replay the suspended statement from its beginning, including
+        // loop statements after their saved environments are restored. Keep
+        // yield indexes stable so earlier yields in the same statement can be
+        // replayed and abrupt resumes target the suspended yield.
         gen.yield_index = 0
       }
       let signal = interp.exec_stmt(gen_ctx, stmt, env) catch {
