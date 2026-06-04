@@ -170,10 +170,10 @@ pub fn setup_object_builtins(
       }
     },
   )
-  obj_proto_props["propertyIsEnumerable"] = @runtime.make_method_func(
+  obj_proto_props["propertyIsEnumerable"] = @runtime.make_interp_method_func(
     name="propertyIsEnumerable",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       // RequireObjectCoercible(this) - throw TypeError for null/undefined
       match this_val {
         Null | Undefined =>
@@ -183,8 +183,9 @@ pub fn setup_object_builtins(
         _ => ()
       }
       let key_val = if args.length() > 0 { args[0] } else { Undefined }
+      let prop_key = @runtime.to_property_key(key_val, interp=Some(interp))
       // Handle Symbol keys
-      match key_val {
+      match prop_key {
         Value::Symbol(sym) =>
           match this_val {
             Object(data) =>
@@ -211,7 +212,7 @@ pub fn setup_object_builtins(
           }
         _ => ()
       }
-      let key = @runtime.to_js_string(key_val)
+      let key = @runtime.to_js_string(prop_key)
       match this_val {
         Object(data) =>
           if data.bag.properties.contains(key) {

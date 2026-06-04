@@ -1914,7 +1914,12 @@ pub fn setup_date_builtins(
       },
       prototype: Null,
       callable: Some(
-        NativeCallableWithContext("Date", fn(context, args) raise {
+        InterpreterCallableWithContext("Date", fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
           // Date() without new returns a string of the current date/time
           // new Date(...) returns a Date object
           if !context.is_constructing() {
@@ -1926,16 +1931,21 @@ pub fn setup_date_builtins(
           } else if args.length() == 1 {
             // new Date(value)
             let val = args[0]
-            match val {
+            let primitive = match val {
+              Object(data) =>
+                @runtime.to_primitive_default(val, data, interp=Some(interp))
+              _ => val
+            }
+            match primitive {
               Value::String_(s) => parse_date_string(s)
               _ => {
-                let n = @runtime.to_number(val)
+                let n = interp.to_number(primitive)
                 time_clip(n)
               }
             }
           } else {
             // new Date(year, month [, date [, hours [, minutes [, seconds [, ms]]]]])
-            let year_arg = @runtime.to_number(args[0])
+            let year_arg = interp.to_number(args[0])
             if year_arg.is_nan() {
               0.0 / 0.0
             } else {
@@ -1946,32 +1956,32 @@ pub fn setup_date_builtins(
                 year_arg
               }
               let month = if args.length() > 1 {
-                @runtime.to_number(args[1])
+                interp.to_number(args[1])
               } else {
                 0.0
               }
               let date_arg = if args.length() > 2 {
-                @runtime.to_number(args[2])
+                interp.to_number(args[2])
               } else {
                 1.0
               }
               let hour = if args.length() > 3 {
-                @runtime.to_number(args[3])
+                interp.to_number(args[3])
               } else {
                 0.0
               }
               let min = if args.length() > 4 {
-                @runtime.to_number(args[4])
+                interp.to_number(args[4])
               } else {
                 0.0
               }
               let sec = if args.length() > 5 {
-                @runtime.to_number(args[5])
+                interp.to_number(args[5])
               } else {
                 0.0
               }
               let ms = if args.length() > 6 {
-                @runtime.to_number(args[6])
+                interp.to_number(args[6])
               } else {
                 0.0
               }
