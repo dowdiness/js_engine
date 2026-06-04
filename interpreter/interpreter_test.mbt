@@ -11914,7 +11914,7 @@ test "test262: TypedArray.prototype.map with zero length tolerates source detach
 }
 
 ///|
-/// §22.2.3.5.1 ValidateTypedArray: every %TypedArray%.prototype method must
+/// §22.2.3.5.1 ValidateTypedArray: most %TypedArray%.prototype methods must
 /// throw TypeError at entry if the underlying buffer is detached. Pinned
 /// per-method tests below mirror test262's
 /// `built-ins/TypedArray/prototype/<method>/detached-buffer.js` fixtures,
@@ -12001,6 +12001,81 @@ test "test262: TypedArray.prototype.subarray detached throws" {
     ),
   )
   json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray fill/copyWithin/subarray detachment order" {
+  let output = run_output(
+    (
+      #|function check(label, thunk) {
+      #|  try {
+      #|    thunk();
+      #|    console.log(label + ": no error");
+      #|  } catch (e) {
+      #|    console.log(label + ": " + (e instanceof TypeError));
+      #|  }
+      #|}
+      #|
+      #|var fillValue = new Int8Array(4);
+      #|check("fill value", function() {
+      #|  fillValue.fill({ valueOf: function() {
+      #|    $262.detachArrayBuffer(fillValue.buffer);
+      #|    return 1;
+      #|  } }, 0, 1);
+      #|});
+      #|
+      #|var fillStart = new Int8Array(4);
+      #|check("fill start", function() {
+      #|  fillStart.fill(1, { valueOf: function() {
+      #|    $262.detachArrayBuffer(fillStart.buffer);
+      #|    return 0;
+      #|  } }, 1);
+      #|});
+      #|
+      #|var fillEnd = new Int8Array(4);
+      #|check("fill end", function() {
+      #|  fillEnd.fill(1, 0, { valueOf: function() {
+      #|    $262.detachArrayBuffer(fillEnd.buffer);
+      #|    return 1;
+      #|  } });
+      #|});
+      #|
+      #|var copyStart = new Int8Array([1, 2, 3, 4]);
+      #|check("copyWithin start", function() {
+      #|  copyStart.copyWithin(0, { valueOf: function() {
+      #|    $262.detachArrayBuffer(copyStart.buffer);
+      #|    return 1;
+      #|  } }, 3);
+      #|});
+      #|
+      #|var copyEnd = new Int8Array([1, 2, 3, 4]);
+      #|check("copyWithin end", function() {
+      #|  copyEnd.copyWithin(0, 1, { valueOf: function() {
+      #|    $262.detachArrayBuffer(copyEnd.buffer);
+      #|    return 3;
+      #|  } });
+      #|});
+      #|
+      #|var sub = new Int8Array(2);
+      #|var begin = false;
+      #|var end = false;
+      #|$262.detachArrayBuffer(sub.buffer);
+      #|check("subarray", function() {
+      #|  sub.subarray({ valueOf: function() {
+      #|    begin = true;
+      #|    return 0;
+      #|  } }, { valueOf: function() {
+      #|    end = true;
+      #|    return 1;
+      #|  } });
+      #|});
+      #|console.log("subarray coercions: " + begin + "," + end);
+    ),
+  )
+  json_inspect(output, content=[
+    "fill value: true", "fill start: true", "fill end: true", "copyWithin start: true",
+    "copyWithin end: true", "subarray: true", "subarray coercions: true,true",
+  ])
 }
 
 ///|
