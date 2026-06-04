@@ -736,6 +736,31 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
 }
 
 ///|
+fn date_from_single_constructor_arg(
+  interp : Interpreter,
+  val : Value,
+) -> Double raise Error {
+  match val {
+    Object(data) =>
+      if data.class_name == "Date" {
+        get_date_value(val)
+      } else {
+        let primitive = @runtime.to_primitive_default(
+          val,
+          data,
+          interp=Some(interp),
+        )
+        match primitive {
+          String_(s) => parse_date_string(s)
+          _ => time_clip(interp.to_number(primitive))
+        }
+      }
+    String_(s) => parse_date_string(s)
+    _ => time_clip(interp.to_number(val))
+  }
+}
+
+///|
 /// Get current time in milliseconds since epoch
 fn current_time_ms() -> Double {
   @env.now().to_double()
@@ -1914,7 +1939,12 @@ pub fn setup_date_builtins(
       },
       prototype: Null,
       callable: Some(
-        NativeCallableWithContext("Date", fn(context, args) raise {
+        InterpreterCallableWithContext("Date", fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
           // Date() without new returns a string of the current date/time
           // new Date(...) returns a Date object
           if !context.is_constructing() {
@@ -1925,17 +1955,10 @@ pub fn setup_date_builtins(
             current_time_ms().floor()
           } else if args.length() == 1 {
             // new Date(value)
-            let val = args[0]
-            match val {
-              Value::String_(s) => parse_date_string(s)
-              _ => {
-                let n = @runtime.to_number(val)
-                time_clip(n)
-              }
-            }
+            date_from_single_constructor_arg(interp, args[0])
           } else {
             // new Date(year, month [, date [, hours [, minutes [, seconds [, ms]]]]])
-            let year_arg = @runtime.to_number(args[0])
+            let year_arg = interp.to_number(args[0])
             if year_arg.is_nan() {
               0.0 / 0.0
             } else {
@@ -1946,32 +1969,32 @@ pub fn setup_date_builtins(
                 year_arg
               }
               let month = if args.length() > 1 {
-                @runtime.to_number(args[1])
+                interp.to_number(args[1])
               } else {
                 0.0
               }
               let date_arg = if args.length() > 2 {
-                @runtime.to_number(args[2])
+                interp.to_number(args[2])
               } else {
                 1.0
               }
               let hour = if args.length() > 3 {
-                @runtime.to_number(args[3])
+                interp.to_number(args[3])
               } else {
                 0.0
               }
               let min = if args.length() > 4 {
-                @runtime.to_number(args[4])
+                interp.to_number(args[4])
               } else {
                 0.0
               }
               let sec = if args.length() > 5 {
-                @runtime.to_number(args[5])
+                interp.to_number(args[5])
               } else {
                 0.0
               }
               let ms = if args.length() > 6 {
-                @runtime.to_number(args[6])
+                interp.to_number(args[6])
               } else {
                 0.0
               }

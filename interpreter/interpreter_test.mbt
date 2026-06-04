@@ -2224,6 +2224,52 @@ test "string indexOf lastIndexOf empty needle clamping" {
 }
 
 ///|
+test "issue 203: string indexOf coercions call user code" {
+  let output = run_output(
+    (
+      #|console.log("__foo__".indexOf({ [Symbol.toPrimitive]: function() { return "foo"; } }));
+      #|console.log("aaaa".indexOf("aa", { valueOf: function() { return 1; }, toString: function() { throw new Error("unused"); } }));
+      #|console.log("__foo__".lastIndexOf({ toString: function() { return "foo"; } }, { valueOf: function() { return 5; } }));
+      #|console.log(String.prototype.indexOf.call("__bar__", { [Symbol.toPrimitive]: function() { return "bar"; } }));
+      #|console.log(String.prototype.lastIndexOf.call(new String("__bar__"), { toString: function() { return "bar"; } }, { valueOf: function() { return 6; } }));
+      #|try { "".indexOf("", { valueOf: function() { throw new Error("boom"); } }); } catch (e) { console.log(e.message); }
+    ),
+  )
+  json_inspect(output, content=["2", "1", "2", "2", "2", "boom"])
+}
+
+///|
+test "issue 203: object and date coercions call user code" {
+  let output = run_output(
+    (
+      #|var dateArg = {};
+      #|var dateCount = 0;
+      #|var dateThis = false;
+      #|var dateHint = "";
+      #|dateArg[Symbol.toPrimitive] = function(hint) { dateCount += 1; dateThis = this === dateArg; dateHint = hint; return 0; };
+      #|var d = new Date(dateArg);
+      #|console.log(dateCount, dateThis, dateHint, d.valueOf());
+      #|var original = new Date(1234);
+      #|var clonePrimitiveCalls = 0;
+      #|original[Symbol.toPrimitive] = function() { clonePrimitiveCalls += 1; return 0; };
+      #|var clone = new Date(original);
+      #|console.log(clone.valueOf(), clonePrimitiveCalls);
+      #|var obj = {};
+      #|var sym = Symbol();
+      #|var keyCalls = 0;
+      #|var wrapper = { toString: function() { keyCalls += 1; return sym; }, valueOf: function() { throw new Error("unused"); } };
+      #|obj[sym] = 0;
+      #|console.log(obj.propertyIsEnumerable(wrapper), keyCalls);
+      #|try { Object.prototype.propertyIsEnumerable.call(null, { toString: function() { throw new Error("key first"); } }); }
+      #|catch (e) { console.log(e.message); }
+    ),
+  )
+  json_inspect(output, content=[
+    "1 true default 0", "1234 0", "true 1", "key first",
+  ])
+}
+
+///|
 test "string includes" {
   let src =
     #|console.log("foobar".includes("bar"));

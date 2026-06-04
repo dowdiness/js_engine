@@ -212,18 +212,18 @@ pub fn get_string_method(
     }
     "indexOf" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="indexOf",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let search = if args.length() > 0 {
-            @runtime.to_js_string(args[0])
+            @runtime.to_js_string(args[0], interp=Some(interp))
           } else {
             "undefined"
           }
           let from_idx = if args.length() > 1 {
-            @runtime.to_number(args[1]).to_int()
+            interp.to_number(args[1]).to_int()
           } else {
             0
           }
@@ -254,20 +254,20 @@ pub fn get_string_method(
     }
     "lastIndexOf" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="lastIndexOf",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let search = if args.length() > 0 {
-            @runtime.to_js_string(args[0])
+            @runtime.to_js_string(args[0], interp=Some(interp))
           } else {
             "undefined"
           }
           let slen = str.length()
           let search_len = search.length()
           let from_idx = if args.length() > 1 {
-            @runtime.to_number(args[1]).to_int()
+            interp.to_number(args[1]).to_int()
           } else {
             slen
           }
@@ -1956,6 +1956,9 @@ pub fn setup_string_prototype(
                   Some(NonConstructableCallable(_, f)) => f(args)
                   Some(NonConstructableInterpreterCallable(_, f)) =>
                     f(interp, args)
+                  Some(InterpreterCallable(_, f)) => f(interp, this_val, args)
+                  Some(InterpreterCallableWithContext(_, f)) =>
+                    f(interp, Call, this_val, args)
                   _ => Undefined
                 }
               _ => Undefined
