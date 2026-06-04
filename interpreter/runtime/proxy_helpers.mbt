@@ -64,6 +64,22 @@ pub fn get_proxy_handler(proxy_data : ProxyData) -> Value raise Error {
 }
 
 ///|
+fn typedarray_index_count(data : ObjectData) -> Int {
+  guard is_typedarray_class(data.class_name) else { return 0 }
+  match data.bag.properties.get("[[ArrayLength]]") {
+    Some(Value::Number(n)) => n.to_int()
+    _ => 0
+  }
+}
+
+///|
+fn is_typedarray_own_index_key(key : String, length : Int) -> Bool {
+  guard length > 0 else { return false }
+  let idx = @string.parse_int(key) catch { _ => -1 }
+  idx >= 0 && idx < length && idx.to_string() == key
+}
+
+///|
 /// Collect own property keys from a non-proxy target value as Array[Value].
 /// Returns string keys and symbol keys (symbol keys require SymbolState).
 pub fn collect_target_own_keys(
@@ -73,14 +89,22 @@ pub fn collect_target_own_keys(
   let keys : Array[Value] = []
   match target {
     Object(data) => {
+      let typedarray_length = typedarray_index_count(data)
+      for i = 0; i < typedarray_length; i = i + 1 {
+        keys.push(Value::String_(i.to_string()))
+      }
       // Indexed (integer) string keys first, in ascending order
       let sorted = sort_property_keys(data.bag.properties)
       for k in sorted {
+        if is_typedarray_own_index_key(k, typedarray_length) {
+          continue
+        }
         keys.push(Value::String_(k))
       }
       // Also include keys from descriptors not in properties
       data.bag.descriptors.each(fn(k, _v) {
-        if !data.bag.properties.contains(k) {
+        if !data.bag.properties.contains(k) &&
+          !is_typedarray_own_index_key(k, typedarray_length) {
           keys.push(Value::String_(k))
         }
       })
