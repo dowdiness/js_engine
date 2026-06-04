@@ -2260,9 +2260,13 @@ test "issue 203: object and date coercions call user code" {
       #|var wrapper = { toString: function() { keyCalls += 1; return sym; }, valueOf: function() { throw new Error("unused"); } };
       #|obj[sym] = 0;
       #|console.log(obj.propertyIsEnumerable(wrapper), keyCalls);
+      #|try { Object.prototype.propertyIsEnumerable.call(null, { toString: function() { throw new Error("key first"); } }); }
+      #|catch (e) { console.log(e.message); }
     ),
   )
-  json_inspect(output, content=["1 true default 0", "1234 0", "true 1"])
+  json_inspect(output, content=[
+    "1 true default 0", "1234 0", "true 1", "key first",
+  ])
 }
 
 ///|

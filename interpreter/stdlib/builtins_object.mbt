@@ -174,6 +174,10 @@ pub fn setup_object_builtins(
     name="propertyIsEnumerable",
     length=1,
     fn(interp, this_val, args) raise {
+      let key_val = if args.length() > 0 { args[0] } else { Undefined }
+      // §20.1.3.4 step 1: ToPropertyKey runs before receiver validation, so
+      // user coercion errors from the key win over null/undefined receivers.
+      let prop_key = @runtime.to_property_key(key_val, interp=Some(interp))
       // RequireObjectCoercible(this) - throw TypeError for null/undefined
       match this_val {
         Null | Undefined =>
@@ -182,8 +186,6 @@ pub fn setup_object_builtins(
           )
         _ => ()
       }
-      let key_val = if args.length() > 0 { args[0] } else { Undefined }
-      let prop_key = @runtime.to_property_key(key_val, interp=Some(interp))
       // Handle Symbol keys
       match prop_key {
         Value::Symbol(sym) =>
