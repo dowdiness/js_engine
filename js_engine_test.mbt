@@ -394,6 +394,33 @@ test "arguments iterator observes live length" {
 }
 
 ///|
+test "Map iterator next uses receiver slots and stays exhausted" {
+  let src =
+    #|var map = new Map([[1, 11], [2, 22]]);
+    #|var iterator = map[Symbol.iterator]();
+    #|var next = iterator.next;
+    #|try {
+    #|  next.call({});
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+    #|var first = next.call(iterator);
+    #|console.log(first.value[0] + ":" + first.value[1] + ":" + first.done);
+    #|var other = new Map([[3, 33]]).keys();
+    #|console.log(next.call(other).value);
+    #|iterator.next();
+    #|var done = iterator.next();
+    #|console.log(String(done.value) + ":" + done.done);
+    #|map.set(4, 44);
+    #|done = iterator.next();
+    #|console.log(String(done.value) + ":" + done.done);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "true", "1:11:false", "3", "undefined:true", "undefined:true",
+  ])
+}
+
+///|
 test "Promise microtask ordering" {
   let src =
     #|console.log("1");
