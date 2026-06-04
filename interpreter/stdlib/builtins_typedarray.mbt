@@ -843,6 +843,36 @@ pub fn typedarray_set_index(
 }
 
 ///|
+fn typedarray_is_detached(
+  data : ObjectData,
+  realm_state : @runtime.RealmState,
+) -> Bool {
+  match data.bag.properties.get("[[ArrayBufferID]]") {
+    Some(Value::Number(n)) => {
+      let storage_state = typedarray_arraybuffer_state(data, realm_state)
+      is_arraybuffer_state_detached(storage_state, n.to_int())
+    }
+    _ => false
+  }
+}
+
+///|
+fn typedarray_get_view_slot(
+  data : ObjectData,
+  internal_slot : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  if typedarray_is_detached(data, realm_state) {
+    Value::Number(0.0)
+  } else {
+    match data.bag.properties.get(internal_slot) {
+      Some(n) => n
+      None => Value::Number(0.0)
+    }
+  }
+}
+
+///|
 /// Get a TypedArray property by name (handles length, byteLength, byteOffset, buffer, and methods).
 pub fn get_typedarray_prop(
   data : ObjectData,
@@ -850,21 +880,11 @@ pub fn get_typedarray_prop(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match prop {
-    "length" =>
-      match data.bag.properties.get("[[ArrayLength]]") {
-        Some(n) => n
-        None => Value::Number(0.0)
-      }
+    "length" => typedarray_get_view_slot(data, "[[ArrayLength]]", realm_state)
     "byteLength" =>
-      match data.bag.properties.get("[[ByteLength]]") {
-        Some(n) => n
-        None => Value::Number(0.0)
-      }
+      typedarray_get_view_slot(data, "[[ByteLength]]", realm_state)
     "byteOffset" =>
-      match data.bag.properties.get("[[ByteOffset]]") {
-        Some(n) => n
-        None => Value::Number(0.0)
-      }
+      typedarray_get_view_slot(data, "[[ByteOffset]]", realm_state)
     "buffer" =>
       match data.bag.properties.get("[[ViewedArrayBuffer]]") {
         Some(buf) => buf
@@ -940,10 +960,7 @@ pub fn setup_typedarray_builtins(
           match this_val {
             Object(data) =>
               if is_typedarray_class(data.class_name) {
-                match data.bag.properties.get(internal_slot) {
-                  Some(n) => n
-                  None => Value::Number(0.0)
-                }
+                typedarray_get_view_slot(data, internal_slot, realm_state)
               } else {
                 raise @errors.TypeError(
                   message="get \{getter_name} called on incompatible receiver",
