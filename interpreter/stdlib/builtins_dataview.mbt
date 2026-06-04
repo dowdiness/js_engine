@@ -740,7 +740,7 @@ pub fn setup_dataview_builtins(
           let value = if args.length() > 1 {
             interp.to_number(args[1])
           } else {
-            0.0
+            interp.to_number(Undefined)
           }
           let le = get_little_endian(args, 2)
           let (bytes, actual_offset) = validate_dataview_access(
@@ -770,7 +770,7 @@ pub fn setup_dataview_builtins(
           let value = if args.length() > 1 {
             interp.to_number(args[1])
           } else {
-            0.0
+            interp.to_number(Undefined)
           }
           let le = get_little_endian(args, 2)
           let (bytes, actual_offset) = validate_dataview_access(
