@@ -245,9 +245,7 @@ pub fn setup_arraybuffer_builtins(
               match data.bag.properties.get("[[ArrayBufferID]]") {
                 Some(Value::Number(id_n)) =>
                   if is_arraybuffer_state_detached(storage_state, id_n.to_int()) {
-                    raise @errors.TypeError(
-                      message="Cannot perform get on a detached ArrayBuffer",
-                    )
+                    Value::Number(0.0)
                   } else {
                     match data.bag.properties.get("[[ArrayBufferByteLength]]") {
                       Some(n) => n

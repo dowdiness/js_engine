@@ -11249,20 +11249,15 @@ test "test262: ArrayBuffer.prototype.slice detached throws" {
 }
 
 ///|
-test "test262: ArrayBuffer.prototype.byteLength detached throws" {
+test "test262: ArrayBuffer.prototype.byteLength detached returns 0" {
   let output = run_output(
     (
       #|var buf = new ArrayBuffer(8);
       #|$262.detachArrayBuffer(buf);
-      #|try {
-      #|  var len = buf.byteLength;
-      #|  console.log("no error: " + len);
-      #|} catch(e) {
-      #|  console.log(e instanceof TypeError);
-      #|}
+      #|console.log(buf.byteLength);
     ),
   )
-  json_inspect(output, content=["true"])
+  json_inspect(output, content=["0"])
 }
 
 ///|
