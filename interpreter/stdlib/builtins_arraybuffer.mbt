@@ -544,7 +544,19 @@ pub fn setup_arraybuffer_builtins(
         } else {
           0
         }
-        make_arraybuffer_object(realm_state, byte_length, ab_proto)
+        let loc = @token.Loc::default()
+        let proto = match context.new_target() {
+          Some(new_target) => {
+            let prototype = interp.get_property(new_target, "prototype", loc)
+            if @runtime.is_object_value(prototype) {
+              prototype
+            } else {
+              ab_proto
+            }
+          }
+          None => ab_proto
+        }
+        make_arraybuffer_object(realm_state, byte_length, proto)
       }),
     ),
     class_name: "Function",
