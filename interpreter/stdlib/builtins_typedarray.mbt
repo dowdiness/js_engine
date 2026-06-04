@@ -18,6 +18,17 @@ fn typedarray_collect_iterator_values(
 }
 
 ///|
+fn typedarray_stable_sort_tie_break(a_index : Int, b_index : Int) -> Int {
+  if a_index < b_index {
+    -1
+  } else if a_index > b_index {
+    1
+  } else {
+    0
+  }
+}
+
+///|
 /// Read a typed element from an ArrayBuffer's byte array at the given byte offset.
 /// Returns the JS Number value.
 fn typed_array_get_element(
@@ -1650,13 +1661,15 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
-      // Read all elements into temp array
-      let temp : Array[Double] = []
+      // Read all elements into a decorated temp array. MoonBit's Array::sort_by
+      // is intentionally unstable, so the original index is the spec-required
+      // stability tie-breaker whenever SortCompare returns +0/-0.
+      let temp : Array[(Double, Int)] = []
       for i = 0; i < len; i = i + 1 {
         let val = typedarray_get_index(data, i, realm_state)
         match val {
-          Value::Number(n) => temp.push(n)
-          _ => temp.push(0.0)
+          Value::Number(n) => temp.push((n, i))
+          _ => temp.push((0.0, i))
         }
       }
       let has_comparefn = args.length() > 0 && !(args[0] is Undefined)
@@ -1668,10 +1681,12 @@ pub fn setup_typedarray_builtins(
           if caught_error is Some(_) {
             return 0
           }
+          let a_num = a.0
+          let b_num = b.0
           let result = interp.call_value(
             comparefn,
             Undefined,
-            [Value::Number(a), Value::Number(b)],
+            [Value::Number(a_num), Value::Number(b_num)],
             loc,
           ) catch {
             e => {
@@ -1686,45 +1701,47 @@ pub fn setup_typedarray_builtins(
             }
           }
           if cmp.is_nan() {
-            0
+            typedarray_stable_sort_tie_break(a.1, b.1)
           } else if cmp < 0.0 {
             -1
           } else if cmp > 0.0 {
             1
           } else {
-            0
+            typedarray_stable_sort_tie_break(a.1, b.1)
           }
         })
       } else {
         // Default numeric sort per spec: NaN sorts last, -0 < +0
         temp.sort_by(fn(a, b) {
-          if a.is_nan() && b.is_nan() {
-            return 0
+          let a_num = a.0
+          let b_num = b.0
+          if a_num.is_nan() && b_num.is_nan() {
+            return typedarray_stable_sort_tie_break(a.1, b.1)
           }
-          if a.is_nan() {
+          if a_num.is_nan() {
             return 1
           }
-          if b.is_nan() {
+          if b_num.is_nan() {
             return -1
           }
-          if a == 0.0 && b == 0.0 {
+          if a_num == 0.0 && b_num == 0.0 {
             // Distinguish -0 and +0: -0 < +0
-            let a_neg = 1.0 / a < 0.0
-            let b_neg = 1.0 / b < 0.0
+            let a_neg = 1.0 / a_num < 0.0
+            let b_neg = 1.0 / b_num < 0.0
             if a_neg && !b_neg {
               return -1
             }
             if !a_neg && b_neg {
               return 1
             }
-            return 0
+            return typedarray_stable_sort_tie_break(a.1, b.1)
           }
-          if a < b {
+          if a_num < b_num {
             -1
-          } else if a > b {
+          } else if a_num > b_num {
             1
           } else {
-            0
+            typedarray_stable_sort_tie_break(a.1, b.1)
           }
         })
       }
@@ -1734,7 +1751,7 @@ pub fn setup_typedarray_builtins(
       }
       // Write sorted elements back
       for i = 0; i < len; i = i + 1 {
-        typedarray_set_index(data, i, temp[i], realm_state)
+        typedarray_set_index(data, i, temp[i].0, realm_state)
       }
       this_val
     },

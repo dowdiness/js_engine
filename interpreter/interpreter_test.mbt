@@ -10591,6 +10591,22 @@ test "test262: TypedArray.prototype.sort with comparator" {
 }
 
 ///|
+test "test262: TypedArray.prototype.sort stability" {
+  let output = run_output(
+    (
+      #|function compare(a, b) { return (a / 4 | 0) - (b / 4 | 0); }
+      #|var pre = new Float64Array([0, 1, 2, 3, 4, 5, 6, 7]);
+      #|pre.sort(compare);
+      #|console.log(pre.join(","));
+      #|var rev = new Float64Array([7, 6, 5, 4, 3, 2, 1, 0]);
+      #|rev.sort(compare);
+      #|console.log(rev.join(","));
+    ),
+  )
+  json_inspect(output, content=["0,1,2,3,4,5,6,7", "3,2,1,0,7,6,5,4"])
+}
+
+///|
 test "test262: TypedArray.prototype.sort NaN sorts last" {
   let output = run_output(
     (
