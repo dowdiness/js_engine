@@ -14,9 +14,17 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
       properties: {
         "name": Value::String_("Proxy"),
         "length": Value::Number(2.0),
+        "prototype": Undefined,
       },
       symbol_properties: {},
-      descriptors: { "name": nf_desc, "length": nf_desc },
+      descriptors: { "name": nf_desc, "length": nf_desc, "prototype": {
+        writable: false,
+        enumerable: false,
+        configurable: false,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      } },
       symbol_descriptors: {},
     },
     prototype: Null,

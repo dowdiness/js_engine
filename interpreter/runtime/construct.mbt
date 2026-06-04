@@ -1237,6 +1237,26 @@ fn Interpreter::construct_value_impl(
                               None => ()
                             }
                           }
+                          Some(UserFunc(_))
+                          | Some(UserFuncExt(_))
+                          | Some(BoundFunc(_, _, _)) => {
+                            let super_result = self.construct_value(
+                              sc,
+                              args,
+                              @token.Loc::default(),
+                              new_target=Some(new_target),
+                            )
+                            if is_object_like_for_constructor_return(
+                                super_result,
+                              ) {
+                              self.install_instance_fields(
+                                super_result, instance_fields,
+                              )
+                              return maybe_set_promise_constructor(
+                                super_result, derived_ctor,
+                              )
+                            }
+                          }
                           Some(ConstructorOnlyCallable(_, super_func)) => {
                             let super_result = super_func(self, args)
                             if is_object_like_for_constructor_return(
