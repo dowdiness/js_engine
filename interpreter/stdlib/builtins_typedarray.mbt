@@ -2165,10 +2165,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "reduce", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(message="reduce requires a callback function")
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="reduce callback is not callable")
       }
-      let callback = args[0]
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2206,12 +2206,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "reduceRight", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(
-          message="reduceRight requires a callback function",
-        )
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="reduceRight callback is not callable")
       }
-      let callback = args[0]
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2313,10 +2311,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "find", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(message="find requires a callback function")
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="find callback is not callable")
       }
-      let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -2345,12 +2343,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "findIndex", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(
-          message="findIndex requires a callback function",
-        )
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="findIndex callback is not callable")
       }
-      let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -2377,10 +2373,13 @@ pub fn setup_typedarray_builtins(
     name="findLast",
     length=1,
     fn(interp, this_val, args) raise {
+      let (data, _) = validate_typed_array(this_val, "findLast", realm_state)
       let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="findLast callback is not callable")
+      }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      let (data, _) = validate_typed_array(this_val, "findLast", realm_state)
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2405,12 +2404,17 @@ pub fn setup_typedarray_builtins(
     name="findLastIndex",
     length=1,
     fn(interp, this_val, args) raise {
-      let callback = if args.length() > 0 { args[0] } else { Undefined }
-      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let loc = @token.Loc::default()
       let (data, _) = validate_typed_array(
         this_val, "findLastIndex", realm_state,
       )
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(
+          message="findLastIndex callback is not callable",
+        )
+      }
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let loc = @token.Loc::default()
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2465,7 +2469,14 @@ pub fn setup_typedarray_builtins(
       let comparefn = if args.length() > 0 {
         match args[0] {
           Undefined => None
-          v => Some(v)
+          v => {
+            if !@runtime.is_callable(v) {
+              raise @errors.TypeError(
+                message="toSorted comparefn is not callable",
+              )
+            }
+            Some(v)
+          }
         }
       } else {
         None
@@ -2485,31 +2496,62 @@ pub fn setup_typedarray_builtins(
         }
       }
       let loc = @token.Loc::default()
+      let mut caught_error : Error? = None
       match comparefn {
         Some(cmp_fn) =>
           elements.sort_by(fn(a, b) {
+            if caught_error is Some(_) {
+              return 0
+            }
             let result = interp.call_value(
               cmp_fn,
               Undefined,
               [Value::Number(a), Value::Number(b)],
               loc,
             ) catch {
-              _ => Value::Number(0.0)
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
             }
-            match result {
-              Value::Number(n) =>
-                if n < 0.0 {
-                  -1
-                } else if n > 0.0 {
-                  1
-                } else {
-                  0
-                }
-              _ => 0
+            let cmp = interp.to_number(result) catch {
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
+            }
+            if cmp.is_nan() {
+              0
+            } else if cmp < 0.0 {
+              -1
+            } else if cmp > 0.0 {
+              1
+            } else {
+              0
             }
           })
         None =>
           elements.sort_by(fn(a, b) {
+            if a.is_nan() && b.is_nan() {
+              return 0
+            }
+            if a.is_nan() {
+              return 1
+            }
+            if b.is_nan() {
+              return -1
+            }
+            if a == 0.0 && b == 0.0 {
+              let a_neg = 1.0 / a < 0.0
+              let b_neg = 1.0 / b < 0.0
+              if a_neg && !b_neg {
+                return -1
+              }
+              if !a_neg && b_neg {
+                return 1
+              }
+              return 0
+            }
             if a < b {
               -1
             } else if a > b {
@@ -2518,6 +2560,10 @@ pub fn setup_typedarray_builtins(
               0
             }
           })
+      }
+      match caught_error {
+        Some(e) => raise e
+        None => ()
       }
       let proto = data.prototype
       let new_ta = make_typedarray_object(data.class_name, len, proto, env)
