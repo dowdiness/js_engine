@@ -282,7 +282,7 @@ pub fn make_typedarray_object(
   length : Int,
   proto : Value,
   env : Environment,
-) -> Value {
+) -> Value raise Error {
   let bpe = typed_array_bytes_per_element(type_name)
   let byte_length = length * bpe
   let ab_proto = env.get("[[ArrayBufferPrototype]]") catch { _ => Null }

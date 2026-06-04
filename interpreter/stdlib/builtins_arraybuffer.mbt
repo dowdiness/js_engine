@@ -1,11 +1,20 @@
 ///|
+/// Maximum in-memory backing store this interpreter will allocate. Larger Data
+/// Blocks are impossible for this implementation and must throw RangeError
+/// instead of leaking host allocation failures.
+const MAX_ARRAYBUFFER_BYTE_LENGTH = 16777216
+
+///|
 /// ArrayBuffer byte data is owned by the RealmState that allocated the buffer.
 /// Each ArrayBuffer Object gets a realm-local ID stored in "[[ArrayBufferID]]".
 /// The actual bytes are stored in `realm_state.arraybuffer_store`, keyed by ID.
 fn alloc_arraybuffer(
   arraybuffer_state : @runtime.ArrayBufferState,
   byte_length : Int,
-) -> Int {
+) -> Int raise Error {
+  if byte_length < 0 || byte_length > MAX_ARRAYBUFFER_BYTE_LENGTH {
+    raise @errors.RangeError(message="ArrayBuffer allocation size is too large")
+  }
   let id = arraybuffer_state.id_counter.val
   arraybuffer_state.id_counter.val = id + 1
   let bytes : Array[Int] = []
@@ -144,7 +153,7 @@ pub fn make_arraybuffer_object(
   realm_state : @runtime.RealmState,
   byte_length : Int,
   proto : Value,
-) -> Value {
+) -> Value raise Error {
   let id = alloc_arraybuffer(realm_state.arraybuffer_state, byte_length)
   let props : Map[String, Value] = {}
   props["[[ArrayBufferID]]"] = Value::Number(id.to_double())

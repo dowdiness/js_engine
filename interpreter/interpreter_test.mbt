@@ -10013,6 +10013,25 @@ test "test262: ArrayBuffer constructor requires new" {
 }
 
 ///|
+test "test262: ArrayBuffer allocation limit throws RangeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  new ArrayBuffer(7 * 1125899906842624);
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+      #|try {
+      #|  new ArrayBuffer(9007199254740992 - 1);
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
 test "test262: ArrayBuffer constructor uses NewTarget prototype" {
   let output = run_output(
     (
