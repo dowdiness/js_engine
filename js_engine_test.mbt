@@ -339,6 +339,61 @@ test "queueMicrotask callback gets no args" {
 }
 
 ///|
+test "arguments iterator observes live length" {
+  let src =
+    #|function sloppyExpansion(a, b, c) {
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 4;
+    #|  arguments[3] = 5;
+    #|  iterator.next();
+    #|  var result = iterator.next();
+    #|  console.log(result.value + ":" + result.done);
+    #|  result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|function sloppyTruncation(a, b, c) {
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 2;
+    #|  var result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|function strictExpansion(a, b, c) {
+    #|  "use strict";
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 4;
+    #|  arguments[3] = 5;
+    #|  iterator.next();
+    #|  var result = iterator.next();
+    #|  console.log(result.value + ":" + result.done);
+    #|  result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|function strictTruncation(a, b, c) {
+    #|  "use strict";
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 2;
+    #|  var result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|sloppyExpansion(2, 1, 3);
+    #|sloppyTruncation(2, 1, 3);
+    #|strictExpansion(2, 1, 3);
+    #|strictTruncation(2, 1, 3);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "5:false", "undefined:true", "undefined:true", "5:false", "undefined:true", "undefined:true",
+  ])
+}
+
+///|
 test "Promise microtask ordering" {
   let src =
     #|console.log("1");
