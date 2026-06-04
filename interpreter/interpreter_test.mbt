@@ -15046,6 +15046,38 @@ test "TypedArray Reflect.ownKeys integer indices" {
 }
 
 ///|
+/// §10.4.5.10 [[Delete]]: valid TypedArray integer indices are non-deletable,
+/// while out-of-range, detached, and canonical-invalid numeric keys return true.
+test "TypedArray delete integer-indexed elements" {
+  let src =
+    #|const ta = new Uint8Array([7]);
+    #|console.log(delete ta["0"]);
+    #|console.log(delete ta["1"]);
+    #|console.log(delete ta["-0"]);
+    #|console.log(delete ta[-0]);
+    #|$262.detachArrayBuffer(ta.buffer);
+    #|console.log(delete ta["0"]);
+  let output = run_output(src)
+  json_inspect(output, content=["false", "true", "true", "false", "true"])
+}
+
+///|
+test "strict TypedArray delete valid index throws" {
+  let src =
+    #|"use strict";
+    #|const ta = new Uint8Array([7]);
+    #|try {
+    #|  delete ta["0"];
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|console.log(delete ta["1"]);
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "true"])
+}
+
+///|
 /// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;

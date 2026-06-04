@@ -2164,6 +2164,32 @@ fn mark_array_hole_if_index(data : ArrayData, prop : String) -> Unit {
 }
 
 ///|
+fn delete_typedarray_string_property(
+  interp : Interpreter,
+  data : ObjectData,
+  prop : String,
+  strict : Bool,
+) -> Bool raise Error {
+  match classify_typedarray_string_key(prop) {
+    Some(idx) =>
+      if idx >= 0 &&
+        (interp.stdlib_hooks.typedarray_is_valid_index)(
+          data,
+          idx,
+          interp.realm_state,
+        ) {
+        if strict {
+          raise @errors.TypeError(message="Cannot delete property '\{prop}'")
+        }
+        false
+      } else {
+        true
+      }
+    None => delete_string_property_from_bag(data.bag, prop, strict)
+  }
+}
+
+///|
 pub fn eval_delete_property(
   interp : Interpreter,
   obj : Value,
@@ -2179,7 +2205,11 @@ pub fn eval_delete_property(
       Bool(result)
     }
     Object(data) =>
-      Bool(delete_string_property_from_bag(data.bag, prop, strict))
+      if is_typedarray_class(data.class_name) {
+        Bool(delete_typedarray_string_property(interp, data, prop, strict))
+      } else {
+        Bool(delete_string_property_from_bag(data.bag, prop, strict))
+      }
     Array(data) => {
       let result = delete_string_property_from_bag(data.bag, prop, strict)
       if result {
@@ -2217,7 +2247,11 @@ pub fn eval_delete_computed_property(
           Bool(delete_symbol_property_from_bag(data.bag, sym.id, strict))
         _ => {
           let k = to_js_string(key)
-          Bool(delete_string_property_from_bag(data.bag, k, strict))
+          if is_typedarray_class(data.class_name) {
+            Bool(delete_typedarray_string_property(interp, data, k, strict))
+          } else {
+            Bool(delete_string_property_from_bag(data.bag, k, strict))
+          }
         }
       }
     Array(data) =>
