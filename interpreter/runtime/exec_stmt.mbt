@@ -1662,7 +1662,10 @@ pub fn collect_for_in_keys(
         continue
       }
       Object(data) => {
-        // TypedArray: enumerate numeric indices as keys
+        // TypedArray: enumerate numeric indices as keys, but only while
+        // IntegerIndexedElementGet would report them present. A detached
+        // buffer makes every index invalid for [[GetOwnProperty]], so for-in
+        // must skip them instead of yielding stale 0..length-1 keys.
         if is_typedarray_class(data.class_name) {
           let ta_len = match data.bag.properties.get("[[ArrayLength]]") {
             Some(Number(n)) => n.to_int()
@@ -1670,7 +1673,12 @@ pub fn collect_for_in_keys(
           }
           for i = 0; i < ta_len; i = i + 1 {
             let k = i.to_string()
-            if !seen.contains(k) {
+            if !seen.contains(k) &&
+              (interp.stdlib_hooks.typedarray_is_valid_index)(
+                data,
+                i,
+                interp.realm_state,
+              ) {
               seen[k] = true
               keys.push(k)
             }
