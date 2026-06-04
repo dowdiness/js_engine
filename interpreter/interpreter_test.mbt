@@ -2028,9 +2028,14 @@ test "PR 214 review: Promise subclass prototypes are visible to bracket and in" 
       #|console.log(typeof p.m);
       #|console.log(typeof p["m"]);
       #|console.log("m" in p);
+      #|console.log(Object.getPrototypeOf(p) === P.prototype);
+      #|console.log(p.__proto__ === P.prototype);
+      #|console.log(P.prototype.isPrototypeOf(p));
     ),
   )
-  json_inspect(output, content=["function", "function", "true"])
+  json_inspect(output, content=[
+    "function", "function", "true", "true", "true", "true",
+  ])
 }
 
 ///|
