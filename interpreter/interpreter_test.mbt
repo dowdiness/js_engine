@@ -11404,6 +11404,22 @@ test "test262: ArrayBuffer.prototype.byteLength detached returns 0" {
 }
 
 ///|
+test "test262: TypedArray detached buffer accessors return 0" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(16);
+      #|var sample = new Int16Array(buf, 4, 3);
+      #|$262.detachArrayBuffer(buf);
+      #|console.log(sample.buffer === buf);
+      #|console.log(sample.byteOffset);
+      #|console.log(sample.byteLength);
+      #|console.log(sample.length);
+    ),
+  )
+  json_inspect(output, content=["true", "0", "0", "0"])
+}
+
+///|
 test "test262: DataView on detached buffer throws" {
   let output = run_output(
     (
