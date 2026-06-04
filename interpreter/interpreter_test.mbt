@@ -14963,6 +14963,54 @@ test "TypedArray Reflect.set different-receiver out-of-range is no-op" {
 }
 
 ///|
+/// §10.4.5.5 [[Set]] receiver-sensitive numeric semantics also apply when a
+/// TypedArray is encountered on the prototype chain.
+test "TypedArray Set receiver and prototype numeric semantics" {
+  let src =
+    #|let valueOfCalls = 0;
+    #|const value = { valueOf() { valueOfCalls++; return 7; } };
+    #|
+    #|const sameReceiver = new Uint8Array([1]);
+    #|sameReceiver["-1"] = value;
+    #|console.log(valueOfCalls);
+    #|console.log(sameReceiver.hasOwnProperty("-1"));
+    #|
+    #|valueOfCalls = 0;
+    #|const proto = new Uint8Array([2]);
+    #|const receiver = Object.create(proto);
+    #|receiver["0"] = value;
+    #|console.log(proto[0]);
+    #|console.log(receiver[0] === value);
+    #|console.log(valueOfCalls);
+    #|receiver["1.5"] = value;
+    #|console.log(receiver.hasOwnProperty("1.5"));
+    #|console.log(valueOfCalls);
+    #|const arr = Object.setPrototypeOf([], proto);
+    #|arr[1] = value;
+    #|console.log(arr.hasOwnProperty("1"));
+    #|console.log(arr.length);
+    #|const arrString = Object.setPrototypeOf([], proto);
+    #|arrString["1"] = value;
+    #|console.log(arrString.hasOwnProperty("1"));
+    #|console.log(arrString.length);
+    #|console.log(valueOfCalls);
+    #|
+    #|const typedReceiver = new Uint8Array([3]);
+    #|console.log(Reflect.set(proto, "0", new Number(9), typedReceiver));
+    #|console.log(typedReceiver[0]);
+    #|
+    #|valueOfCalls = 0;
+    #|const obj = Object.create(typedReceiver);
+    #|console.log(Reflect.set(obj, "100", value, typedReceiver));
+    #|console.log(valueOfCalls);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1", "false", "2", "true", "0", "false", "0", "false", "0", "false", "0", "0",
+    "true", "9", "true", "1",
+  ])
+}
+
+///|
 /// §10.4.5.2 [[HasProperty]]: canonical numeric index strings are handled by
 /// IntegerIndexedExoticObject before falling through to OrdinaryHasProperty.
 test "TypedArray Reflect.has numeric keys bypass prototype chain" {
