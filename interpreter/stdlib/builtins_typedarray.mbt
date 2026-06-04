@@ -565,9 +565,9 @@ fn typed_array_species_constructor(
 /// (if argumentList is a single-element length argument) that the resulting
 /// length is at least that value.
 ///
-/// Out of scope for this engine: ContentType check (spec step 7) — this
-/// engine doesn't yet implement BigInt64Array / BigUint64Array, so all
-/// TypedArrays have ContentType "Number" and the check is vacuous.
+/// Out of scope for this engine: ContentType check (spec step 7) — BigInt64Array
+/// and BigUint64Array currently exist for constructor/empty-instance shape only;
+/// BigInt element value semantics remain unsupported/skipped.
 pub fn typed_array_species_create(
   interp : @runtime.Interpreter,
   exemplar : Value,
@@ -2698,7 +2698,8 @@ pub fn setup_typedarray_builtins(
   // --- Create individual TypedArray constructors ---
   let type_names = [
     "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
-    "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
+    "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array",
+    "BigUint64Array",
   ]
 
   for type_name in type_names {
