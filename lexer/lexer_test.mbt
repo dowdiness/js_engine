@@ -303,6 +303,26 @@ test "lex slash after object generator method yield as regexp" {
 }
 
 ///|
+test "lex slash after async generator method yield as regexp" {
+  let kinds = tok_kinds("class C { async *g(){ yield /x/g; } }")
+  inspect_kinds(kinds, content=[
+    "Class", "Ident(\"C\")", "LBrace", "Ident(\"async\")", "Star", "Ident(\"g\")",
+    "LParen", "RParen", "LBrace", "Yield", "Regex(\"x\", \"g\")", "Semicolon", "RBrace",
+    "RBrace", "EOF",
+  ])
+}
+
+///|
+test "lex slash after object async generator method yield as regexp" {
+  let kinds = tok_kinds("({ async *g(){ yield /x/g; } })")
+  inspect_kinds(kinds, content=[
+    "LParen", "LBrace", "Ident(\"async\")", "Star", "Ident(\"g\")", "LParen", "RParen",
+    "LBrace", "Yield", "Regex(\"x\", \"g\")", "Semicolon", "RBrace", "RBrace", "RParen",
+    "EOF",
+  ])
+}
+
+///|
 test "lex unicode escape in string \\uXXXX" {
   let kinds = tok_kinds("\"\\u0041\"")
   inspect_kinds(kinds, content=["String_(\"A\")", "EOF"])

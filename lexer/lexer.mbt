@@ -1528,12 +1528,22 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           follows_function {
           pending_function_is_generator[pending_len - 1] = true
         } else if tokens.length() >= 2 {
-          match tokens[tokens.length() - 2].kind {
-            LBrace | RBrace | Comma | Semicolon | Static => {
-              pending_function_is_generator.push(true)
-              pending_function_param_depth.push(-1)
-            }
-            _ => ()
+          let starts_method = match tokens[tokens.length() - 2].kind {
+            LBrace | RBrace | Comma | Semicolon | Static => true
+            Ident("async") =>
+              if tokens.length() >= 3 {
+                match tokens[tokens.length() - 3].kind {
+                  LBrace | RBrace | Comma | Semicolon | Static => true
+                  _ => false
+                }
+              } else {
+                false
+              }
+            _ => false
+          }
+          if starts_method {
+            pending_function_is_generator.push(true)
+            pending_function_param_depth.push(-1)
           }
         }
       }

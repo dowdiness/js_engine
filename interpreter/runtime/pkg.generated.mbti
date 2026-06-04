@@ -452,6 +452,8 @@ pub(all) struct GeneratorObject {
   loop_yield_base_stack : Array[Int]
   mut for_of_iterator : Value
   mut for_of_next : Value
+  for_of_iterator_stack : Array[Value]
+  for_of_next_stack : Array[Value]
   mut for_of_resume : Bool
   mut delegate_iterator : Value
   mut delegate_next : Value

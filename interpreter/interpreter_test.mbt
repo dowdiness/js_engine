@@ -7034,6 +7034,28 @@ test "PR 213 review: generator for-of assignment yield resumes assignment" {
   json_inspect(output, content=["key", "11", "true"])
 }
 
+///|
+test "PR 214 review: nested generator for-of resumes inner iterator" {
+  let output = run_output(
+    (
+      #|function* g() {
+      #|  for (const x of [1, 2]) {
+      #|    for (const y of [10, 20]) {
+      #|      yield x + ":" + y;
+      #|    }
+      #|  }
+      #|}
+      #|const it = g();
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["1:10", "1:20", "2:10", "2:20", "true"])
+}
+
 // ================================================================
 // Generator Phase 6: yield* delegation
 // ================================================================
