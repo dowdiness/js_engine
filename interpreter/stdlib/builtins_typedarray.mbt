@@ -2585,6 +2585,18 @@ pub fn setup_typedarray_builtins(
         [Value::Number(len.to_double())],
         loc,
       )
+      let (result_data, _) = validate_typed_array(
+        result,
+        "TypedArray.from result",
+        interp.realm_state,
+      )
+      let actual_len = match result_data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
+      }
+      if actual_len < len {
+        raise @errors.TypeError(message="TypedArray.from result is too short")
+      }
       for i = 0; i < len; i = i + 1 {
         let value = source_values[i]
         let mapped = if has_map_fn {
@@ -2778,90 +2790,6 @@ pub fn setup_typedarray_builtins(
     ctor_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
     ctor_props["name"] = Value::String_(type_name)
     ctor_props["length"] = Value::Number(3.0) // TypedArray constructors have length 3
-
-    // Static from(source [, mapFn [, thisArg]])
-    ctor_props["from"] = @runtime.make_interp_method_func(
-      name="from",
-      length=1,
-      fn(interp, _this_val, args) raise {
-        if args.length() == 0 {
-          raise @errors.TypeError(
-            message="TypedArray.from requires at least 1 argument",
-          )
-        }
-        let source = args[0]
-        let has_map_fn = args.length() > 1 && !(args[1] is Undefined)
-        let map_fn = if has_map_fn { args[1] } else { Undefined }
-        let this_arg = if args.length() > 2 { args[2] } else { Undefined }
-        // Collect source values first
-        let source_values : Array[Value] = []
-        match source {
-          Array(arr_data) =>
-            for elem in arr_data.elements {
-              source_values.push(elem)
-            }
-          Object(src_data) =>
-            if is_typedarray_class(src_data.class_name) {
-              let src_len = match
-                src_data.bag.properties.get("[[ArrayLength]]") {
-                Some(Value::Number(n)) => n.to_int()
-                _ => 0
-              }
-              for i = 0; i < src_len; i = i + 1 {
-                source_values.push(
-                  typedarray_get_index(src_data, i, realm_state),
-                )
-              }
-            } else {
-              // Try length property
-              match src_data.bag.properties.get("length") {
-                Some(Value::Number(len_n)) => {
-                  let len = len_n.to_int()
-                  for i = 0; i < len; i = i + 1 {
-                    match src_data.bag.properties.get(i.to_string()) {
-                      Some(v) => source_values.push(v)
-                      None => source_values.push(Undefined)
-                    }
-                  }
-                }
-                _ => ()
-              }
-            }
-          _ => ()
-        }
-        // Apply mapFn if provided, then convert to numbers
-        let elements : Array[Double] = []
-        let loc = @token.Loc::default()
-        for i = 0; i < source_values.length(); i = i + 1 {
-          let val = source_values[i]
-          let mapped = if has_map_fn {
-            interp.call_value(
-              map_fn,
-              this_arg,
-              [val, Value::Number(i.to_double())],
-              loc,
-            )
-          } else {
-            val
-          }
-          elements.push(interp.to_number(mapped))
-        }
-        let result = make_typedarray_object(
-          type_name,
-          elements.length(),
-          per_proto,
-          env,
-        )
-        match result {
-          Object(result_data) =>
-            for i = 0; i < elements.length(); i = i + 1 {
-              typedarray_set_index(result_data, i, elements[i], realm_state)
-            }
-          _ => ()
-        }
-        result
-      },
-    )
 
     let ctor_descs : Map[String, PropDescriptor] = {}
     ctor_descs["prototype"] = {
