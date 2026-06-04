@@ -14998,6 +14998,32 @@ test "TypedArray Reflect.has numeric keys bypass prototype chain" {
 }
 
 ///|
+/// §10.4.5.1 [[GetOwnProperty]] synthesizes descriptors for valid integer
+/// indices, and detached buffers make those descriptors disappear.
+test "TypedArray getOwnPropertyDescriptor integer indices" {
+  let src =
+    #|const ta = new Uint8Array([42, 43]);
+    #|const d0 = Object.getOwnPropertyDescriptor(ta, "0");
+    #|console.log(d0.value);
+    #|console.log(d0.writable);
+    #|console.log(d0.enumerable);
+    #|console.log(d0.configurable);
+    #|console.log(Reflect.defineProperty(ta, "1", { value: 99 }));
+    #|console.log(ta[1]);
+    #|console.log(Reflect.defineProperty(ta, "1", { value: 100, writable: false }));
+    #|console.log(ta[1]);
+    #|$262.detachArrayBuffer(ta.buffer);
+    #|console.log(Object.getOwnPropertyDescriptor(ta, "0"));
+    #|let count = 0;
+    #|for (var key in ta) { count++; }
+    #|console.log(count);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "42", "true", "true", "true", "true", "99", "false", "99", "undefined", "0",
+  ])
+}
+
+///|
 /// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;

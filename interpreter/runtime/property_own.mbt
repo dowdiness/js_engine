@@ -693,8 +693,68 @@ pub fn Interpreter::define_own_property(
 }
 
 ///|
+fn typedarray_index_own_descriptor() -> PropDescriptor {
+  {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn ordinary_get_own_property_pair(
+  val : Value,
+  key : Value,
+) -> (PropDescriptor, Value)? raise Error {
+  match ordinary_get_own_property(val, key) {
+    None => None
+    Some(desc) => Some((desc, ordinary_get_own_value_for_descriptor(val, key)))
+  }
+}
+
+///|
+fn Interpreter::typedarray_get_own_property_pair(
+  self : Interpreter,
+  data : ObjectData,
+  key : Value,
+) -> (PropDescriptor, Value)? raise Error {
+  match key {
+    String_(s) =>
+      match classify_typedarray_string_key(s) {
+        Some(idx) =>
+          if idx >= 0 &&
+            (self.stdlib_hooks.typedarray_is_valid_index)(
+              data,
+              idx,
+              self.realm_state,
+            ) {
+            let value = (self.stdlib_hooks.typedarray_get_index)(
+              data,
+              idx,
+              self.realm_state,
+            )
+            if value is Undefined {
+              None
+            } else {
+              Some((typedarray_index_own_descriptor(), value))
+            }
+          } else {
+            None
+          }
+        None => ordinary_get_own_property_pair(Object(data), key)
+      }
+    _ => ordinary_get_own_property_pair(Object(data), key)
+  }
+}
+
+///|
 /// ES [[GetOwnProperty]] dispatcher — Proxy targets route through
-/// `proxy_get_own_property`, others through `ordinary_get_own_property`.
+/// `proxy_get_own_property`, TypedArrays synthesize integer-indexed element
+/// descriptors per §10.4.5.1, and others route through
+/// `ordinary_get_own_property`.
 /// Returns `(descriptor, value)` pairs so the trap-provided value in the
 /// Proxy case flows through (PropDescriptor has no `value` slot — the
 /// value is stored separately on the bag or synthesized by the trap).
@@ -705,20 +765,71 @@ pub fn Interpreter::get_own_property(
 ) -> (PropDescriptor, Value)? raise Error {
   match val {
     Value::Proxy(pdata) => proxy_get_own_property(self, pdata, key)
-    _ =>
-      match ordinary_get_own_property(val, key) {
+    Object(data) if is_typedarray_class(data.class_name) =>
+      self.typedarray_get_own_property_pair(data, key)
+    _ => ordinary_get_own_property_pair(val, key)
+  }
+}
+
+///|
+fn Interpreter::typedarray_define_own_property_numeric(
+  self : Interpreter,
+  data : ObjectData,
+  key : Value,
+  partial : PartialDescriptor,
+) -> Bool? raise Error {
+  match key {
+    String_(s) =>
+      match classify_typedarray_string_key(s) {
+        Some(idx) => {
+          if idx < 0 ||
+            !(self.stdlib_hooks.typedarray_is_valid_index)(
+              data,
+              idx,
+              self.realm_state,
+            ) {
+            return Some(false)
+          }
+          if partial.is_accessor() {
+            return Some(false)
+          }
+          match partial.configurable {
+            Some(false) => return Some(false)
+            _ => ()
+          }
+          match partial.enumerable {
+            Some(false) => return Some(false)
+            _ => ()
+          }
+          match partial.writable {
+            Some(false) => return Some(false)
+            _ => ()
+          }
+          match partial.value {
+            Some(value) => {
+              let num = self.to_number(value)
+              (self.stdlib_hooks.typedarray_set_index)(
+                data,
+                idx,
+                num,
+                self.realm_state,
+              )
+            }
+            None => ()
+          }
+          Some(true)
+        }
         None => None
-        Some(desc) =>
-          Some((desc, ordinary_get_own_value_for_descriptor(val, key)))
       }
+    _ => None
   }
 }
 
 ///|
 /// ES §10.1.6 `OrdinaryDefineOwnProperty(O, P, Desc)` + §10.4.2.1 Array
-/// exotic dispatch. Returns `true` on success, `false` on rejection (the
-/// caller — Object.defineProperty throws, Reflect.defineProperty returns
-/// false).
+/// exotic dispatch + §10.4.5.3 IntegerIndexed exotic dispatch. Returns `true`
+/// on success, `false` on rejection (the caller — Object.defineProperty
+/// throws, Reflect.defineProperty returns false).
 pub fn Interpreter::ordinary_define_own_property(
   self : Interpreter,
   val : Value,
@@ -726,8 +837,13 @@ pub fn Interpreter::ordinary_define_own_property(
   partial : PartialDescriptor,
   loc : @token.Loc,
 ) -> Bool raise Error {
-  // Array exotic dispatch
+  // Exotic dispatch
   match val {
+    Object(data) if is_typedarray_class(data.class_name) =>
+      match self.typedarray_define_own_property_numeric(data, key, partial) {
+        Some(result) => return result
+        None => ()
+      }
     Array(arr) => return self.array_define_own_property(arr, key, partial, loc)
     _ => ()
   }
