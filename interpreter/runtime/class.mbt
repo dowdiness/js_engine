@@ -48,15 +48,28 @@ fn Interpreter::create_class(
           // tries Construct(null, ...) which throws TypeError.  Represent this
           // as Some(Null) so construct_value follows the derived-class path.
           (Some(Null), Null)
-        Object(super_data) =>
-          match super_data.bag.properties.get("prototype") {
-            Some(sp) => (Some(super_val), sp)
-            None => (Some(super_val), Null)
+        _ => {
+          if !is_constructor_value(super_val) {
+            raise @errors.TypeError(
+              message="Class extends value is not a constructor",
+            )
           }
-        _ =>
-          raise @errors.TypeError(
-            message="Class extends value is not a constructor",
+          // Class heritage requires prototype lookup from [[Get]] semantics:
+          // evaluate prototype via property access (including proxies/getters)
+          // and require it to be Object or Null.
+          let super_proto = self.get_computed_property(
+            super_val,
+            String_("prototype"),
+            @token.Loc::default(),
           )
+          match super_proto {
+            Object(_) | Null => (Some(super_val), super_proto)
+            _ =>
+              raise @errors.TypeError(
+                message="Class extends value's prototype must be an object or null",
+              )
+          }
+        }
       }
     }
     None => (None, self.global.get("[[ObjectPrototype]]") catch { _ => Null })

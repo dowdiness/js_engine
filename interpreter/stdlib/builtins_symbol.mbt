@@ -292,21 +292,27 @@ fn setup_symbol_builtins(
       },
       prototype: Null,
       callable: Some(
-        NonConstructableCallable("Symbol", fn(args) raise {
-          let description : String? = if args.length() > 0 {
-            match args[0] {
-              Undefined => None
-              Symbol(_) =>
-                raise @errors.TypeError(
-                  message="Cannot convert a Symbol value to a string",
-                )
-              _ => Some(args[0].to_string())
+        InterpreterCallableWithContext(
+          "Symbol",
+          fn(_interp, context, _this_val, args) raise {
+            if context.is_constructing() {
+              raise @errors.TypeError(message="Symbol is not a constructor")
             }
-          } else {
-            None
-          }
-          Symbol(symbols.new_symbol(description))
-        }),
+            let description : String? = if args.length() > 0 {
+              match args[0] {
+                Undefined => None
+                Symbol(_) =>
+                  raise @errors.TypeError(
+                    message="Cannot convert a Symbol value to a string",
+                  )
+                _ => Some(args[0].to_string())
+              }
+            } else {
+              None
+            }
+            Symbol(symbols.new_symbol(description))
+          },
+        ),
       ),
       class_name: "Function",
       extensible: true,

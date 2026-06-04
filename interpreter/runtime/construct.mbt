@@ -20,6 +20,58 @@ fn is_object_like_for_constructor_return(value : Value) -> Bool {
   }
 }
 
+// Convert a constructor return value according to ES262 §9.2.2 step 13
+// for class constructors. Derived constructors may only return object or
+// undefined, while both base and derived constructors return `this` for the
+// remaining case.
+fn apply_class_constructor_return(
+  ctor_env : Environment,
+  super_ctor : Value?,
+  value : Value,
+) -> Value raise Error {
+  if is_object_like_for_constructor_return(value) {
+    return value
+  }
+  match super_ctor {
+    Some(_) => {
+      match value {
+        Undefined => ctor_env.get("this")
+        _ =>
+          raise @errors.TypeError(
+            message="Derived constructors may only return object or undefined",
+          )
+      }
+    }
+    None => ctor_env.get("this")
+  }
+}
+
+///|
+/// For subclass construction, align a built-in/special constructor return value
+/// with the derived class instance prototype when `new.target` points to a
+/// subclass constructor.
+fn set_derived_instance_prototype(
+  super_result : Value,
+  pending_this : Value,
+) -> Unit {
+  let target_proto : Value? = match pending_this {
+    Object(data) => Some(data.prototype)
+    _ => None
+  }
+  match target_proto {
+    Some(proto) => {
+      match super_result {
+        Object(data) => data.prototype = proto
+        Array(data) => set_array_prototype_override(data, proto)
+        Map(data) => data.prototype = proto
+        Set(data) => data.prototype = proto
+        _ => ()
+      }
+    }
+    None => ()
+  }
+}
+
 ///|
 /// Install instance field initializers onto `this_arg`.
 /// Used for base-class construction (before constructor body) and for
@@ -1017,6 +1069,9 @@ fn Interpreter::construct_value_impl(
               message=format_loc_context(_name + " is not a constructor", loc),
             )
           }
+          if _name == "Symbol" {
+            raise @errors.TypeError(message="Symbol is not a constructor")
+          }
           func(self, ConstructWithTarget(new_target), Undefined, args)
         }
         Some(MethodCallable(name, _)) =>
@@ -1091,17 +1146,20 @@ fn Interpreter::construct_value_impl(
                 let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
                   params, rest_param, body, ctor, args, ctor_env, class_ctx,
                 )
-                let current_this = ctor_env.get("this")
                 raise_if_break_continue(exec_result)
                 match exec_result {
-                  Normal(_) => current_this
+                  Normal(_) => apply_class_constructor_return(
+                    ctor_env,
+                    super_ctor,
+                    Undefined,
+                  )
                   ReturnSignal(v) =>
-                    if is_object_like_for_constructor_return(v) {
-                      v
-                    } else {
-                      current_this
-                    }
-                  _ => current_this
+                    apply_class_constructor_return(ctor_env, super_ctor, v)
+                  _ => apply_class_constructor_return(
+                    ctor_env,
+                    super_ctor,
+                    Undefined,
+                  )
                 }
               }
               None => {
@@ -1184,6 +1242,9 @@ fn Interpreter::construct_value_impl(
                             if is_object_like_for_constructor_return(
                                 super_result,
                               ) {
+                              set_derived_instance_prototype(
+                                super_result, new_obj,
+                              )
                               self.install_instance_fields(
                                 super_result, instance_fields,
                               )
@@ -1203,35 +1264,18 @@ fn Interpreter::construct_value_impl(
                               @token.Loc::default(),
                               new_target=Some(new_target),
                             )
-                            match super_result {
-                              Object(result_data) => {
-                                // Set prototype to the subclass's prototype (newTarget semantics)
-                                result_data.prototype = new_obj
-                                  |> fn(v) {
-                                    match v {
-                                      Object(d) => d.prototype
-                                      _ => Null
-                                    }
-                                  }
-                                self.install_instance_fields(
-                                  super_result, instance_fields,
-                                )
-                                return maybe_set_promise_constructor(
-                                  super_result, derived_ctor,
-                                )
-                              }
-                              _ =>
-                                // For Map, Set, Promise, etc. that return non-Object values
-                                if is_object_like_for_constructor_return(
-                                    super_result,
-                                  ) {
-                                  self.install_instance_fields(
-                                    super_result, instance_fields,
-                                  )
-                                  return maybe_set_promise_constructor(
-                                    super_result, derived_ctor,
-                                  )
-                                }
+                            if is_object_like_for_constructor_return(
+                                super_result,
+                              ) {
+                              set_derived_instance_prototype(
+                                super_result, new_obj,
+                              )
+                              self.install_instance_fields(
+                                super_result, instance_fields,
+                              )
+                              return maybe_set_promise_constructor(
+                                super_result, derived_ctor,
+                              )
                             }
                           }
                           _ => ()
