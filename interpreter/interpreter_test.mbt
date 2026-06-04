@@ -16411,6 +16411,40 @@ test "Map.prototype.forEach validates callback and visits readded keys" {
 }
 
 ///|
+test "Map.groupBy uses iterator protocol" {
+  let src =
+    #|var bad = {};
+    #|bad[Symbol.iterator] = undefined;
+    #|try {
+    #|  Map.groupBy(bad, function() { throw new Error("unreachable"); });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|
+    #|var throwing = {};
+    #|throwing[Symbol.iterator] = function() { return throwing; };
+    #|throwing.next = function() { throw new Error("next"); };
+    #|try {
+    #|  Map.groupBy(throwing, function() { return "key"; });
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|}
+    #|
+    #|var map = Map.groupBy("\uD83E\uDD70\uD83D\uDCA9\uD83D\uDE4F\uD83D\uDE08", function(char) {
+    #|  return char < "\uD83D\uDE4F" ? "before" : "after";
+    #|});
+    #|console.log(Array.from(map.keys()).join("|"));
+    #|console.log(map.get("before").length);
+    #|console.log(map.get("before")[0].length + "|" + map.get("before")[1].length);
+    #|console.log(map.get("after").length);
+    #|console.log(map.get("after")[0].length + "|" + map.get("after")[1].length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "TypeError", "next", "after|before", "2", "2|2", "2", "2|2",
+  ])
+}
+
+///|
 test "Map and Set constructors honor accessor adders" {
   let src =
     #|var mapGetterCalls = 0;
