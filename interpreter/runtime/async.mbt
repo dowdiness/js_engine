@@ -456,9 +456,13 @@ fn make_async_gen_function_inner(
   strict : Bool,
   closure : Environment,
 ) -> Value {
+  let object_prototype = interp.global.get("[[ObjectPrototype]]") catch {
+    _ => Null
+  }
   let async_gen_proto = init_async_generator_prototype(
     interp.realm_state.well_known_symbols,
     interp.realm_state,
+    object_prototype,
   )
   let func_prototype = Object({
     bag: PropertyBag(),
@@ -549,6 +553,7 @@ fn make_async_gen_function_inner(
 fn init_async_generator_prototype(
   well_known_symbols : WellKnownSymbols,
   realm_state : RealmState,
+  object_prototype : Value,
 ) -> Value {
   let async_iter_sym = well_known_symbols.async_iterator
   let props : Map[String, Value] = {}
@@ -614,7 +619,7 @@ fn init_async_generator_prototype(
       descriptors: descs,
       symbol_descriptors: {},
     },
-    prototype: Null,
+    prototype: object_prototype,
     callable: None,
     class_name: "AsyncGenerator",
     extensible: true,

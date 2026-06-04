@@ -645,6 +645,9 @@ fn Interpreter::eval_call(
           self.call_value(func_val, this_val, args, loc)
         }
         SuperComputedMember(key_expr, sloc) => {
+          // Evaluate super binding first to ensure `this` TDZ/derived checks
+          // happen before computed-key side effects.
+          let _ = eval_this_value(env)
           let key = self.eval_expr(ctx, key_expr, env)
           let (this_val, func_val) = self.eval_super_computed_call_reference(
             env, key, sloc,

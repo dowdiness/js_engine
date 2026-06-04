@@ -58,6 +58,73 @@ fn Interpreter::bind_function_decl_value(
 }
 
 ///|
+const FOR_OF_RESUME_VALUE_BINDING = "[[ForOfResumeValue]]"
+
+///|
+fn save_for_of_resume_state(
+  gen_opt : GeneratorObject?,
+  iterator : Value,
+  next_method : Value,
+  loop_env : Environment,
+  yield_base : Int,
+) -> Unit {
+  match gen_opt {
+    Some(g) => {
+      g.for_of_iterator = iterator
+      g.for_of_next = next_method
+      g.for_of_resume = true
+      g.loop_env_stack.push(loop_env)
+      g.loop_yield_base_stack.push(yield_base)
+    }
+    None => ()
+  }
+}
+
+///|
+fn save_for_of_resume_value(loop_env : Environment, value : Value) -> Unit {
+  loop_env.bindings[FOR_OF_RESUME_VALUE_BINDING] = {
+    value,
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+}
+
+///|
+fn take_for_of_resume_value(loop_env : Environment) -> Value? {
+  match loop_env.bindings.get(FOR_OF_RESUME_VALUE_BINDING) {
+    Some(binding) => {
+      let value = binding.value
+      let _ = loop_env.bindings.remove(FOR_OF_RESUME_VALUE_BINDING)
+      Some(value)
+    }
+    None => None
+  }
+}
+
+///|
+fn restore_for_of_loop_env(
+  gen_opt : GeneratorObject?,
+  fallback : Environment,
+) -> Environment {
+  match gen_opt {
+    Some(g) =>
+      if g.loop_env_stack.length() > 0 {
+        let saved_env = g.loop_env_stack.pop().unwrap()
+        match g.loop_yield_base_stack.pop() {
+          Some(base) => g.yield_index = base
+          None => ()
+        }
+        saved_env
+      } else {
+        fallback
+      }
+    None => fallback
+  }
+}
+
+///|
 fn Interpreter::exec_stmt(
   self : Interpreter,
   ctx : ExecContext,
@@ -151,6 +218,10 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             let _ = g.loop_env_stack.pop()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
           }
           _ => ()
         }
@@ -163,11 +234,18 @@ fn Interpreter::exec_stmt(
         } else if !is_truthy(self.eval_expr(ctx, cond, env)) {
           break
         }
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, env) catch {
           e => {
             if e is YieldSignal(_) {
               match gen_opt {
-                Some(g) => g.loop_env_stack.push(env)
+                Some(g) => {
+                  g.loop_env_stack.push(env)
+                  g.loop_yield_base_stack.push(body_yield_base)
+                }
                 _ => ()
               }
             }
@@ -233,7 +311,14 @@ fn Interpreter::exec_stmt(
       let for_env = if resuming_loop {
         // Use saved loop env from stack (pop from end = outermost first)
         match gen_opt {
-          Some(g) => g.loop_env_stack.pop().unwrap()
+          Some(g) => {
+            let saved_env = g.loop_env_stack.pop().unwrap()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
+            saved_env
+          }
           _ => Environment::new(parent=Some(env))
         }
       } else {
@@ -268,12 +353,19 @@ fn Interpreter::exec_stmt(
           for_env
         }
         let mut do_continue = false
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, iter_env) catch {
           e => {
             if e is YieldSignal(_) {
               // Yield inside for loop body — save for_env for resume
               match gen_opt {
-                Some(g) => g.loop_env_stack.push(for_env)
+                Some(g) => {
+                  g.loop_env_stack.push(for_env)
+                  g.loop_yield_base_stack.push(body_yield_base)
+                }
                 _ => ()
               }
             }
@@ -440,17 +532,28 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             let _ = g.loop_env_stack.pop()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
           }
           _ => ()
         }
       }
       let mut completion : Value = Undefined
       while true {
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, env) catch {
           e => {
             if e is YieldSignal(_) {
               match gen_opt {
-                Some(g) => g.loop_env_stack.push(env)
+                Some(g) => {
+                  g.loop_env_stack.push(env)
+                  g.loop_yield_base_stack.push(body_yield_base)
+                }
                 _ => ()
               }
             }
@@ -638,11 +741,22 @@ fn Interpreter::exec_stmt(
           }
           let actual_body_env = if resuming_loop {
             match gen_opt {
-              Some(g) => g.loop_env_stack.pop().unwrap()
+              Some(g) => {
+                let saved_env = g.loop_env_stack.pop().unwrap()
+                match g.loop_yield_base_stack.pop() {
+                  Some(base) => g.yield_index = base
+                  None => ()
+                }
+                saved_env
+              }
               _ => body_env
             }
           } else {
             body_env
+          }
+          let body_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            _ => 0
           }
           let body_signal = self.exec_stmt(ctx, body, actual_body_env) catch {
             e => {
@@ -653,6 +767,7 @@ fn Interpreter::exec_stmt(
                     g.for_of_next = next_method
                     g.for_of_resume = true
                     g.loop_env_stack.push(actual_body_env)
+                    g.loop_yield_base_stack.push(body_yield_base)
                   }
                   _ => ()
                 }
@@ -727,6 +842,10 @@ fn Interpreter::exec_stmt(
         }
 
         // Execute the loop body
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
             if e is YieldSignal(_) {
@@ -737,6 +856,7 @@ fn Interpreter::exec_stmt(
                   g.for_of_next = next_method
                   g.for_of_resume = true
                   g.loop_env_stack.push(body_env)
+                  g.loop_yield_base_stack.push(body_yield_base)
                 }
                 _ => ()
               }
@@ -836,88 +956,141 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForOfStmtPat(var_kind, pattern, iterable_expr, body, loc) => {
-      let iterable = self.eval_expr(ctx, iterable_expr, env)
-
-      // Try to get the iterator via Symbol.iterator protocol
-      let iterator_sym = self.realm_state.well_known_symbols.iterator
-      let iterator_method = self.get_computed_property(
-        iterable,
-        Symbol(iterator_sym),
-        loc,
-      )
-
-      // Get the iterator object
-      let iterator = match iterator_method {
-        Object(data) =>
-          match data.callable {
-            Some(_) => self.call_value(iterator_method, iterable, [], loc)
-            None =>
-              raise @errors.TypeError(
-                message="Result of the Symbol.iterator method is not an object",
-              )
-          }
-        Undefined =>
-          match iterable {
-            Array(arr) => self.realm_state.make_array_iterator_value(arr)
-            String_(s) => self.realm_state.make_string_iterator_value(s)
-            _ =>
-              raise @errors.TypeError(
-                message="\{type_of(iterable)} is not iterable",
-              )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Result of the Symbol.iterator method is not an object",
-          )
+      let gen_opt = ctx.current_generator
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        None => false
       }
+      let (iterator, next_method) : (Value, Value) = if resuming_for_of {
+        match gen_opt {
+          Some(g) => {
+            g.for_of_resume = false
+            (g.for_of_iterator, g.for_of_next)
+          }
+          None => (Undefined, Undefined)
+        }
+      } else {
+        let iterable = self.eval_expr(ctx, iterable_expr, env)
 
-      let next_method = self.get_iterator_next_method(iterator, loc)
+        // Try to get the iterator via Symbol.iterator protocol
+        let iterator_sym = self.realm_state.well_known_symbols.iterator
+        let iterator_method = self.get_computed_property(
+          iterable,
+          Symbol(iterator_sym),
+          loc,
+        )
+
+        // Get the iterator object
+        let iterator = match iterator_method {
+          Object(data) =>
+            match data.callable {
+              Some(_) => self.call_value(iterator_method, iterable, [], loc)
+              None =>
+                raise @errors.TypeError(
+                  message="Result of the Symbol.iterator method is not an object",
+                )
+            }
+          Undefined =>
+            match iterable {
+              Array(arr) => self.realm_state.make_array_iterator_value(arr)
+              String_(s) => self.realm_state.make_string_iterator_value(s)
+              _ =>
+                raise @errors.TypeError(
+                  message="\{type_of(iterable)} is not iterable",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Result of the Symbol.iterator method is not an object",
+            )
+        }
+
+        (iterator, self.get_iterator_next_method(iterator, loc))
+      }
 
       // Iterate using the iterator protocol
       let mut completion : Value = Undefined
+      let mut first_resume = resuming_for_of
       while true {
-        let value = match self.iterator_step_value(iterator, next_method, loc) {
-          None => break
-          Some(value) => value
-        }
-        let body_env = Environment::new(parent=Some(env))
-        match var_kind {
-          Some(kind) => {
-            let bk : BindingKind = match kind {
-              LetKind => LetBinding
-              ConstKind => ConstBinding
-              VarKind => VarBinding
-            }
-            let bind_env = match kind {
-              VarKind => env
-              _ => body_env
-            }
-            self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
-              e => {
-                if !(e is YieldSignal(_)) {
-                  close_iterator(self, iterator, loc) catch {
-                    _ => ()
-                  }
-                }
-                raise e
-              }
-            }
+        let (value, body_env, should_bind) : (Value, Environment, Bool) = if first_resume {
+          first_resume = false
+          let saved_env = restore_for_of_loop_env(
+            gen_opt,
+            Environment::new(parent=Some(env)),
+          )
+          match take_for_of_resume_value(saved_env) {
+            Some(value) => (value, saved_env, true)
+            None => (Undefined, saved_env, false)
           }
-          None =>
-            self.assign_pattern(ctx, pattern, value, env) catch {
-              e => {
-                if !(e is YieldSignal(_)) {
-                  close_iterator(self, iterator, loc) catch {
-                    _ => ()
+        } else {
+          let value = match
+            self.iterator_step_value(iterator, next_method, loc) {
+            None => break
+            Some(value) => value
+          }
+          (value, Environment::new(parent=Some(env)), true)
+        }
+        if should_bind {
+          let binding_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            None => 0
+          }
+          match var_kind {
+            Some(kind) => {
+              let bk : BindingKind = match kind {
+                LetKind => LetBinding
+                ConstKind => ConstBinding
+                VarKind => VarBinding
+              }
+              let bind_env = match kind {
+                VarKind => env
+                _ => body_env
+              }
+              self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
+                e => {
+                  if e is YieldSignal(_) {
+                    save_for_of_resume_value(body_env, value)
+                    save_for_of_resume_state(
+                      gen_opt, iterator, next_method, body_env, binding_yield_base,
+                    )
+                  } else {
+                    close_iterator(self, iterator, loc) catch {
+                      _ => ()
+                    }
                   }
+                  raise e
                 }
-                raise e
               }
             }
+            None =>
+              self.assign_pattern(ctx, pattern, value, env) catch {
+                e => {
+                  if e is YieldSignal(_) {
+                    save_for_of_resume_value(body_env, value)
+                    save_for_of_resume_state(
+                      gen_opt, iterator, next_method, body_env, binding_yield_base,
+                    )
+                  } else {
+                    close_iterator(self, iterator, loc) catch {
+                      _ => ()
+                    }
+                  }
+                  raise e
+                }
+              }
+          }
+        }
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          None => 0
         }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
-            if !(e is YieldSignal(_)) {
+            if e is YieldSignal(_) {
+              save_for_of_resume_state(
+                gen_opt, iterator, next_method, body_env, body_yield_base,
+              )
+            } else {
               close_iterator(self, iterator, loc) catch {
                 _ => ()
               }
@@ -998,57 +1171,105 @@ fn Interpreter::exec_stmt(
       Normal(completion)
     }
     ForOfExpr(lhs_expr, iterable_expr, body, loc) => {
-      let iterable = self.eval_expr(ctx, iterable_expr, env)
-      let iterator_sym = self.realm_state.well_known_symbols.iterator
-      let iterator_method = self.get_computed_property(
-        iterable,
-        Symbol(iterator_sym),
-        loc,
-      )
-      let iterator = match iterator_method {
-        Object(data) =>
-          match data.callable {
-            Some(_) => self.call_value(iterator_method, iterable, [], loc)
-            None =>
-              raise @errors.TypeError(
-                message="Result of the Symbol.iterator method is not an object",
-              )
-          }
-        Undefined =>
-          match iterable {
-            Array(arr) => self.realm_state.make_array_iterator_value(arr)
-            String_(s) => self.realm_state.make_string_iterator_value(s)
-            _ =>
-              raise @errors.TypeError(
-                message="\{type_of(iterable)} is not iterable",
-              )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Result of the Symbol.iterator method is not an object",
-          )
+      let gen_opt = ctx.current_generator
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        None => false
       }
-      let next_method = self.get_iterator_next_method(iterator, loc)
-      let mut completion : Value = Undefined
-      while true {
-        let value = match self.iterator_step_value(iterator, next_method, loc) {
-          None => break
-          Some(value) => value
-        }
-        let body_env = Environment::new(parent=Some(env))
-        self.assign_to_expr(ctx, lhs_expr, value, env) catch {
-          e => {
-            if !(e is YieldSignal(_)) {
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
-            }
-            raise e
+      let (iterator, next_method) : (Value, Value) = if resuming_for_of {
+        match gen_opt {
+          Some(g) => {
+            g.for_of_resume = false
+            (g.for_of_iterator, g.for_of_next)
           }
+          None => (Undefined, Undefined)
+        }
+      } else {
+        let iterable = self.eval_expr(ctx, iterable_expr, env)
+        let iterator_sym = self.realm_state.well_known_symbols.iterator
+        let iterator_method = self.get_computed_property(
+          iterable,
+          Symbol(iterator_sym),
+          loc,
+        )
+        let iterator = match iterator_method {
+          Object(data) =>
+            match data.callable {
+              Some(_) => self.call_value(iterator_method, iterable, [], loc)
+              None =>
+                raise @errors.TypeError(
+                  message="Result of the Symbol.iterator method is not an object",
+                )
+            }
+          Undefined =>
+            match iterable {
+              Array(arr) => self.realm_state.make_array_iterator_value(arr)
+              String_(s) => self.realm_state.make_string_iterator_value(s)
+              _ =>
+                raise @errors.TypeError(
+                  message="\{type_of(iterable)} is not iterable",
+                )
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="Result of the Symbol.iterator method is not an object",
+            )
+        }
+        (iterator, self.get_iterator_next_method(iterator, loc))
+      }
+      let mut completion : Value = Undefined
+      let mut first_resume = resuming_for_of
+      while true {
+        let (value, body_env, should_assign) : (Value, Environment, Bool) = if first_resume {
+          first_resume = false
+          let saved_env = restore_for_of_loop_env(
+            gen_opt,
+            Environment::new(parent=Some(env)),
+          )
+          match take_for_of_resume_value(saved_env) {
+            Some(value) => (value, saved_env, true)
+            None => (Undefined, saved_env, false)
+          }
+        } else {
+          let value = match
+            self.iterator_step_value(iterator, next_method, loc) {
+            None => break
+            Some(value) => value
+          }
+          (value, Environment::new(parent=Some(env)), true)
+        }
+        if should_assign {
+          let assignment_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            None => 0
+          }
+          self.assign_to_expr(ctx, lhs_expr, value, env) catch {
+            e => {
+              if e is YieldSignal(_) {
+                save_for_of_resume_value(body_env, value)
+                save_for_of_resume_state(
+                  gen_opt, iterator, next_method, body_env, assignment_yield_base,
+                )
+              } else {
+                close_iterator(self, iterator, loc) catch {
+                  _ => ()
+                }
+              }
+              raise e
+            }
+          }
+        }
+        let body_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          None => 0
         }
         let body_signal = self.exec_stmt(ctx, body, body_env) catch {
           e => {
-            if !(e is YieldSignal(_)) {
+            if e is YieldSignal(_) {
+              save_for_of_resume_state(
+                gen_opt, iterator, next_method, body_env, body_yield_base,
+              )
+            } else {
               close_iterator(self, iterator, loc) catch {
                 _ => ()
               }
@@ -1628,6 +1849,7 @@ fn Interpreter::exec_try_catch(
       if g.try_resume_phase >= 0 {
         let p = g.try_resume_phase
         g.try_resume_phase = -1 // consume it
+        g.yield_index = g.try_resume_yield_base
         p
       } else {
         0
@@ -1652,12 +1874,19 @@ fn Interpreter::exec_try_catch(
   // Phase 0: Try body (skip if resuming at catch or finally)
   if start_phase == 0 {
     let try_env = Environment::new(parent=Some(env))
+    let try_yield_base = match gen_opt {
+      Some(g) => g.yield_index
+      _ => 0
+    }
     result = self.exec_stmts(ctx, try_body, try_env) catch {
       e =>
         if e is YieldSignal(_) {
           // Yield inside try body — save phase for resume
           match gen_opt {
-            Some(g) => g.try_resume_phase = 0
+            Some(g) => {
+              g.try_resume_phase = 0
+              g.try_resume_yield_base = try_yield_base
+            }
             _ => ()
           }
           raise e
@@ -1673,6 +1902,10 @@ fn Interpreter::exec_try_catch(
               let error_value = js_error_to_value_with_env(e, Some(env))
               // Bind the catch parameter - supports simple identifier and destructuring
               self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+              let catch_yield_base = match gen_opt {
+                Some(g) => g.yield_index
+                _ => 0
+              }
               self.exec_stmts(ctx, body, catch_env) catch {
                 ce =>
                   if ce is YieldSignal(_) {
@@ -1680,6 +1913,7 @@ fn Interpreter::exec_try_catch(
                     match gen_opt {
                       Some(g) => {
                         g.try_resume_phase = 1
+                        g.try_resume_yield_base = catch_yield_base
                         g.try_resume_error = error_value
                       }
                       _ => ()
@@ -1712,6 +1946,10 @@ fn Interpreter::exec_try_catch(
         }
         // Bind the catch parameter - supports simple identifier and destructuring
         self.bind_pattern(param, error_value, catch_env, LetBinding, ctx~)
+        let catch_yield_base = match gen_opt {
+          Some(g) => g.yield_index
+          _ => 0
+        }
         result = self.exec_stmts(ctx, body, catch_env) catch {
           ce =>
             if ce is YieldSignal(_) {
@@ -1719,6 +1957,7 @@ fn Interpreter::exec_try_catch(
               match gen_opt {
                 Some(g) => {
                   g.try_resume_phase = 1
+                  g.try_resume_yield_base = catch_yield_base
                   g.try_resume_error = error_value
                 }
                 _ => ()
@@ -1736,6 +1975,10 @@ fn Interpreter::exec_try_catch(
   // Phase 2: Finally body (always runs if present)
   match finally_body {
     Some(body) => {
+      let finally_yield_base = match gen_opt {
+        Some(g) => g.yield_index
+        _ => 0
+      }
       let finally_result = self.exec_stmts(
         ctx,
         body,
@@ -1747,6 +1990,7 @@ fn Interpreter::exec_try_catch(
             match gen_opt {
               Some(g) => {
                 g.try_resume_phase = 2
+                g.try_resume_yield_base = finally_yield_base
                 g.try_resume_result = result
                 g.try_resume_pending_error = pending_error
               }

@@ -49,11 +49,13 @@ pub(all) struct GeneratorObject {
   // Try/catch/finally resume tracking
   // -1 = no saved phase, 0 = try body, 1 = catch body, 2 = finally body
   mut try_resume_phase : Int
+  mut try_resume_yield_base : Int // yield index at the start of the resumed try/catch/finally phase
   mut try_resume_error : Value // saved error value when resuming in catch
   mut try_resume_result : Signal // saved try/catch result when resuming in finally
   mut try_resume_pending_error : Error? // saved non-catchable error for finally
   // Loop resume tracking — stack of saved loop envs (innermost first, outermost last)
   loop_env_stack : Array[Environment]
+  loop_yield_base_stack : Array[Int]
   // For-of resume state
   mut for_of_iterator : Value // saved iterator object
   mut for_of_next : Value // saved next method
@@ -65,6 +67,7 @@ pub(all) struct GeneratorObject {
   // Yield index tracking for nested yields (e.g. yield yield 1)
   mut yield_index : Int // counter incremented each time eval_yield is called
   mut resume_at_yield : Int // index of the yield that was suspended
+  mut yield_resume_values : Map[Int, Value] // yield_index -> resume value for replay
 }
 
 ///|
@@ -72,9 +75,13 @@ pub(all) struct GeneratorObject {
 /// We create a new prototype each time to avoid stale symbol IDs
 /// across interpreter instances (each test creates a new interpreter).
 fn get_generator_prototype(interp : Interpreter) -> Value {
+  let object_proto = interp.global.get("[[ObjectPrototype]]") catch {
+    _ => Null
+  }
   init_generator_prototype(
     interp.realm_state.well_known_symbols,
     interp.realm_state,
+    object_proto,
   )
 }
 
@@ -91,10 +98,13 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.for_of_iterator = Undefined
   gen.for_of_next = Undefined
   gen.loop_env_stack.clear()
+  gen.loop_yield_base_stack.clear()
+  gen.yield_resume_values.clear()
   // Clear mutable fields to allow GC
   // Note: body/args/closure/this_val are immutable and may be shared
   // across generator instances from the same function, so leave them.
   gen.yield_value = Undefined
+  gen.try_resume_yield_base = 0
   gen.try_resume_error = Undefined
   gen.try_resume_result = Normal(Undefined)
   gen.try_resume_pending_error = None
@@ -105,6 +115,7 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 fn init_generator_prototype(
   well_known_symbols : WellKnownSymbols,
   realm_state : RealmState,
+  object_prototype : Value,
 ) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let props : Map[String, Value] = {}
@@ -194,7 +205,7 @@ fn init_generator_prototype(
       descriptors: descs,
       symbol_descriptors: sym_descs,
     },
-    prototype: Null,
+    prototype: object_prototype,
     callable: None,
     class_name: "Generator",
     extensible: true,
@@ -585,6 +596,36 @@ fn create_generator_instance(
   func_env.is_var_scope = true
   func_env.def("this", this_val, LetBinding)
   func_env.def("<new.target>", Undefined, LetBinding)
+  let has_arguments_param = match params_ext {
+    Some(pext) => ext_params_include_arguments(pext, rest_param)
+    None => params_include_arguments(params, rest_param)
+  }
+  if !has_arguments_param {
+    // Create arguments object before binding params so default value
+    // evaluation can reference it (ES2026 §10.2.11 step 20).
+    let args_props : Map[String, Value] = {}
+    for i = 0; i < args.length(); i = i + 1 {
+      args_props[i.to_string()] = args[i]
+    }
+    args_props["length"] = Number(args.length().to_double())
+    func_env.def(
+      "arguments",
+      Object({
+        bag: {
+          properties: args_props,
+          symbol_properties: {},
+          descriptors: {},
+          symbol_descriptors: {},
+        },
+        prototype: Null,
+        callable: None,
+        class_name: "Arguments",
+        extensible: true,
+        arraybuffer_state: None,
+      }),
+      VarBinding,
+    )
+  }
   // Bind parameters eagerly
   // §19.2.1.3 gate (#A.6): generator / async / async-gen functions are
   // all non-arrow, so default-expression evaluation activates the same
@@ -688,37 +729,6 @@ fn create_generator_instance(
         }
       }
     }
-    let has_arguments_param = match params_ext {
-      Some(pext) => ext_params_include_arguments(pext, rest_param)
-      None => params_include_arguments(params, rest_param)
-    }
-    if !has_arguments_param {
-      // Create arguments object on func_env (param env when split, single env
-      // otherwise). Ext / simple both install arguments here unless a formal
-      // parameter is named `arguments`.
-      let args_props : Map[String, Value] = {}
-      for i = 0; i < args.length(); i = i + 1 {
-        args_props[i.to_string()] = args[i]
-      }
-      args_props["length"] = Number(args.length().to_double())
-      func_env.def(
-        "arguments",
-        Object({
-          bag: {
-            properties: args_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-          },
-          prototype: Null,
-          callable: None,
-          class_name: "Arguments",
-          extensible: true,
-          arraybuffer_state: None,
-        }),
-        VarBinding,
-      )
-    }
     // Split body env iff Ext shape AND HasParameterExpressions; simple
     // params + plain-rest Ext both stay single-env per §10.2.11 step 26.
     let split_scope = match params_ext {
@@ -763,13 +773,16 @@ fn create_generator_instance(
       env: Some(body_exec_env),
       pc: 0,
       yield_value: Undefined,
+      yield_resume_values: {},
       resuming: false,
       resume_action: NextAction,
       try_resume_phase: -1,
+      try_resume_yield_base: 0,
       try_resume_error: Undefined,
       try_resume_result: Normal(Undefined),
       try_resume_pending_error: None,
       loop_env_stack: [],
+      loop_yield_base_stack: [],
       for_of_iterator: Undefined,
       for_of_next: Undefined,
       for_of_resume: false,
@@ -874,6 +887,7 @@ fn generator_resume(
           Next(v) => {
             gen.state = Executing
             gen.yield_value = v
+            gen.yield_resume_values[gen.resume_at_yield] = v
             gen.resume_action = NextAction
             generator_continue(interp, gen)
           }
@@ -930,7 +944,16 @@ fn run_generator_body(
     while gen.pc < gen.body.length() {
       let i = gen.pc
       let stmt = gen.body[i]
-      gen.yield_index = 0 // Reset yield counter for each statement
+      if !gen.resuming {
+        gen.yield_resume_values.clear()
+        gen.yield_index = 0 // Reset yield counter for each non-resuming statement
+      } else {
+        // Resumes replay the suspended statement from its beginning, including
+        // loop statements after their saved environments are restored. Keep
+        // yield indexes stable so earlier yields in the same statement can be
+        // replayed and abrupt resumes target the suspended yield.
+        gen.yield_index = 0
+      }
       let signal = interp.exec_stmt(gen_ctx, stmt, env) catch {
         YieldSignal(yielded_value) => {
           // Statement yielded. DON'T advance pc — on resume we'll replay this stmt.
@@ -1013,7 +1036,10 @@ fn Interpreter::eval_yield(
         // This is the exact yield that was suspended — apply resume action
         gen.resuming = false
         match gen.resume_action {
-          NextAction => gen.yield_value
+          NextAction => {
+            gen.yield_resume_values[current_yield_index] = gen.yield_value
+            return gen.yield_value
+          }
           ThrowAction(e) => {
             gen.resume_action = NextAction
             raise JsException(e)
@@ -1023,7 +1049,17 @@ fn Interpreter::eval_yield(
             raise GeneratorReturnSignal(v)
           }
         }
-      } else if delegate {
+      }
+      if gen.resuming && gen.loop_env_stack.length() == 0 {
+        // If this yield already completed on a prior pass, replay its value.
+        // Missing entries mean this is the active resume point or a yield nested
+        // above it, so we must continue evaluating it normally.
+        match gen.yield_resume_values.get(current_yield_index) {
+          Some(v) => return v
+          None => ()
+        }
+      }
+      if delegate {
         // yield* expr — delegate to another iterable
         let iterable = match argument {
           Some(expr) => self.eval_expr(ctx, expr, env)
@@ -1080,6 +1116,8 @@ fn Interpreter::eval_yield(
           Some(expr) => self.eval_expr(ctx, expr, env)
           None => Undefined
         }
+        // Track the value to use when re-running this yield during replay.
+        gen.yield_resume_values[current_yield_index] = Undefined
         gen.resume_at_yield = current_yield_index
         raise YieldSignal(yielded_value)
       }

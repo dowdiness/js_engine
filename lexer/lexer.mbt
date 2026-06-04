@@ -177,12 +177,27 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   // trigger regex context (a / after it starts a regex, not division).
   let paren_is_control_flow : Array[Bool] = []
   let mut last_rparen_is_control_flow = false
+  let mut paren_depth = 0
+  let mut brace_depth = 0
+  let pending_function_is_generator : Array[Bool] = []
+  let pending_function_param_depth : Array[Int] = []
+  let function_body_depth : Array[Int] = []
+  let function_body_is_generator : Array[Bool] = []
+  let mut last_yield_allows_regex = false
   fn make_loc() -> @token.Loc {
     { line, col, offset }
   }
 
   fn char_at(i : Int) -> Char {
     chars[i]
+  }
+
+  fn in_generator_lexer_context() -> Bool {
+    if function_body_is_generator.length() == 0 {
+      false
+    } else {
+      function_body_is_generator[function_body_is_generator.length() - 1]
+    }
   }
 
   // Parse unicode escape after \u has been consumed.
@@ -513,6 +528,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             | URShiftAssign
             | Case
             | Arrow => true
+            Yield => last_yield_allows_regex
             // RParen after control-flow keyword (if/while/for/switch) starts regex
             RParen => last_rparen_is_control_flow
             _ => false
@@ -924,6 +940,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         resolve_keyword(decoded)
       }
       tokens.push({ kind, loc, raw: decoded, lex_form: LexNormal })
+      match kind {
+        Function => {
+          let follows_dot = tokens.length() >= 2 &&
+            tokens[tokens.length() - 2].kind == Dot
+          if !follows_dot {
+            pending_function_is_generator.push(false)
+            pending_function_param_depth.push(-1)
+          }
+        }
+        Yield => last_yield_allows_regex = in_generator_lexer_context()
+        _ => ()
+      }
       continue
     }
     // Strings
@@ -1489,9 +1517,36 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         )
     }
     tokens.push({ kind, loc, raw, lex_form: LexNormal })
-    // Track control-flow parens for regex disambiguation
+    // Track function bodies and control-flow parens for regex disambiguation.
     match kind {
+      Star => {
+        let pending_len = pending_function_param_depth.length()
+        let follows_function = tokens.length() >= 2 &&
+          tokens[tokens.length() - 2].kind == Function
+        if pending_len > 0 &&
+          pending_function_param_depth[pending_len - 1] == -1 &&
+          follows_function {
+          pending_function_is_generator[pending_len - 1] = true
+        } else if tokens.length() >= 2 {
+          match tokens[tokens.length() - 2].kind {
+            LBrace | RBrace | Comma | Semicolon | Static => {
+              pending_function_is_generator.push(true)
+              pending_function_param_depth.push(-1)
+            }
+            _ => ()
+          }
+        }
+      }
+      Colon | Comma | Semicolon | Assign => {
+        let pending_len = pending_function_param_depth.length()
+        if pending_len > 0 &&
+          pending_function_param_depth[pending_len - 1] == -1 {
+          let _ = pending_function_is_generator.pop()
+          let _ = pending_function_param_depth.pop()
+        }
+      }
       LParen => {
+        paren_depth += 1
         // Check if the token before ( is a control-flow keyword
         let is_cf = if tokens.length() >= 2 {
           let prev = tokens[tokens.length() - 2].kind
@@ -1503,8 +1558,17 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           false
         }
         paren_is_control_flow.push(is_cf)
+        let pending_len = pending_function_param_depth.length()
+        if pending_len > 0 &&
+          pending_function_param_depth[pending_len - 1] == -1 {
+          pending_function_param_depth[pending_len - 1] = paren_depth
+        }
       }
-      RParen =>
+      RParen => {
+        let closing_depth = paren_depth
+        if paren_depth > 0 {
+          paren_depth -= 1
+        }
         last_rparen_is_control_flow = if paren_is_control_flow.length() > 0 {
           match paren_is_control_flow.pop() {
             Some(v) => v
@@ -1513,6 +1577,34 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         } else {
           false
         }
+        let pending_len = pending_function_param_depth.length()
+        if pending_len > 0 &&
+          pending_function_param_depth[pending_len - 1] == closing_depth {
+          pending_function_param_depth[pending_len - 1] = -2
+        }
+      }
+      LBrace => {
+        brace_depth += 1
+        let pending_len = pending_function_param_depth.length()
+        if pending_len > 0 &&
+          pending_function_param_depth[pending_len - 1] == -2 {
+          let is_gen = pending_function_is_generator[pending_len - 1]
+          let _ = pending_function_is_generator.pop()
+          let _ = pending_function_param_depth.pop()
+          function_body_depth.push(brace_depth)
+          function_body_is_generator.push(is_gen)
+        }
+      }
+      RBrace => {
+        let body_len = function_body_depth.length()
+        if body_len > 0 && function_body_depth[body_len - 1] == brace_depth {
+          let _ = function_body_depth.pop()
+          let _ = function_body_is_generator.pop()
+        }
+        if brace_depth > 0 {
+          brace_depth -= 1
+        }
+      }
       _ => ()
     }
     offset += 1

@@ -23,6 +23,124 @@ fn resolve_super_target(env : Environment) -> Value {
 }
 
 ///|
+fn pattern_may_contain_yield(pattern : @ast.Pattern) -> Bool {
+  match pattern {
+    IdentPat(_) => false
+    ArrayPat(elements, rest) => {
+      let elements_have_yield = elements
+        .iter()
+        .any(fn(pat) {
+          match pat {
+            Some(pat) => pattern_may_contain_yield(pat)
+            None => false
+          }
+        })
+      let rest_has_yield = match rest {
+        Some(pat) => pattern_may_contain_yield(pat)
+        None => false
+      }
+      elements_have_yield || rest_has_yield
+    }
+    ObjectPat(props, rest) => {
+      let props_have_yield = props
+        .iter()
+        .any(fn(prop) {
+          let key_has_yield = match prop.computed_key {
+            Some(expr) => expr_may_contain_yield(expr)
+            None => false
+          }
+          let default_has_yield = match prop.default_val {
+            Some(expr) => expr_may_contain_yield(expr)
+            None => false
+          }
+          key_has_yield ||
+          default_has_yield ||
+          pattern_may_contain_yield(prop.value)
+        })
+      let rest_has_yield = match rest {
+        Some(pat) => pattern_may_contain_yield(pat)
+        None => false
+      }
+      props_have_yield || rest_has_yield
+    }
+    DefaultPat(inner, default_expr) =>
+      pattern_may_contain_yield(inner) || expr_may_contain_yield(default_expr)
+    AssignTarget(expr) => expr_may_contain_yield(expr)
+  }
+}
+
+///|
+fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
+  match expr {
+    YieldExpr(_, _, _) => true
+    Grouping(inner, _)
+    | Unary(_, inner, _)
+    | SpreadExpr(inner, _)
+    | AwaitExpr(inner, _) => expr_may_contain_yield(inner)
+    Binary(_, left, right, _)
+    | Comma(left, right, _)
+    | ComputedMember(left, right, _)
+    | MemberAssign(left, _, right, _)
+    | CompoundAssign(_, left, right, _) =>
+      expr_may_contain_yield(left) || expr_may_contain_yield(right)
+    Ternary(cond, then_expr, else_expr, _) =>
+      expr_may_contain_yield(cond) ||
+      expr_may_contain_yield(then_expr) ||
+      expr_may_contain_yield(else_expr)
+    Assign(_, value, _)
+    | Member(value, _, _)
+    | UpdateExpr(_, value, _, _)
+    | SuperComputedMember(value, _) => expr_may_contain_yield(value)
+    DestructureAssign(pattern, value, _) =>
+      pattern_may_contain_yield(pattern) || expr_may_contain_yield(value)
+    ComputedAssign(obj, key, value, _) =>
+      expr_may_contain_yield(obj) ||
+      expr_may_contain_yield(key) ||
+      expr_may_contain_yield(value)
+    Call(callee, args, _)
+    | NewExpr(callee, args, _)
+    | OptionalCall(callee, args, _) =>
+      expr_may_contain_yield(callee) || args.iter().any(expr_may_contain_yield)
+    ArrayLit(elements, _) => elements.iter().any(expr_may_contain_yield)
+    ObjectLit(props, _) =>
+      props
+      .iter()
+      .any(fn(prop) {
+        expr_may_contain_yield(prop.key) || expr_may_contain_yield(prop.value)
+      })
+    OptionalMember(obj, _, _) => expr_may_contain_yield(obj)
+    OptionalComputedMember(obj, key, _) =>
+      expr_may_contain_yield(obj) || expr_may_contain_yield(key)
+    TemplateLit(_, exprs, _) => exprs.iter().any(expr_may_contain_yield)
+    TaggedTemplate(tag, _, exprs, _) =>
+      expr_may_contain_yield(tag) || exprs.iter().any(expr_may_contain_yield)
+    ClassExpr(_, superclass, members, _) => {
+      let super_has_yield = match superclass {
+        Some(expr) => expr_may_contain_yield(expr)
+        None => false
+      }
+      let members_have_yield = members
+        .iter()
+        .any(fn(mbr) {
+          match mbr {
+            @ast.ClassMember::Method(m) =>
+              expr_may_contain_yield(m.key) || expr_may_contain_yield(m.value)
+            @ast.ClassMember::Field(f) => {
+              let init_has_yield = match f.initializer {
+                Some(init) => expr_may_contain_yield(init)
+                None => false
+              }
+              expr_may_contain_yield(f.key) || init_has_yield
+            }
+          }
+        })
+      super_has_yield || members_have_yield
+    }
+    _ => false
+  }
+}
+
+///|
 fn Interpreter::get_symbol_property_from_prototype(
   self : Interpreter,
   receiver : Value,
@@ -969,7 +1087,13 @@ fn Interpreter::eval_expr(
     CompoundAssign(op, target, value_expr, loc) =>
       self.eval_compound_assign(ctx, op, target, value_expr, env, loc)
     Comma(left, right, _) => {
-      let _ = self.eval_expr(ctx, left, env)
+      let skip_left = match ctx.current_generator {
+        Some(gen) => gen.resuming && !expr_may_contain_yield(left)
+        None => false
+      }
+      if !skip_left {
+        let _ = self.eval_expr(ctx, left, env)
+      }
       self.eval_expr(ctx, right, env)
     }
     TemplateLit(strings, exprs, _) => {
@@ -1439,6 +1563,9 @@ fn Interpreter::eval_expr(
     }
     SuperMember(prop, loc) => self.eval_super_property(env, prop, loc)
     SuperComputedMember(key_expr, loc) => {
+      // Evaluate super binding first to ensure `this` TDZ/derived checks
+      // happen before computed-key side effects.
+      let _ = eval_this_value(env)
       let key = self.eval_expr(ctx, key_expr, env)
       self.eval_super_computed_property(env, key, loc)
     }

@@ -33,7 +33,10 @@ fn Interpreter::create_class(
   env : Environment,
 ) -> Value raise Error {
   // Class bodies are always strict per spec
-  let class_ctx : ExecContext = { strict: true, current_generator: None }
+  let class_ctx : ExecContext = {
+    strict: true,
+    current_generator: ctx.current_generator,
+  }
   // Evaluate superclass if present
   let (super_ctor, super_proto) : (Value?, Value) = match superclass_expr {
     Some(expr) => {
@@ -56,7 +59,7 @@ fn Interpreter::create_class(
           )
       }
     }
-    None => (None, Null)
+    None => (None, self.global.get("[[ObjectPrototype]]") catch { _ => Null })
   }
   // Create the prototype object
   // Pre-insert constructor so it appears first in property enumeration order
@@ -121,10 +124,7 @@ fn Interpreter::create_class(
           StringLit(s, _, _, _) => String_(s)
           _ => {
             let v = self.eval_expr(class_ctx, f.key, env)
-            match v {
-              Symbol(_) => v
-              _ => String_(to_js_string(v))
-            }
+            to_property_key(v, interp=Some(self))
           }
         }
         let field_init : ClassFieldInit = {
@@ -146,11 +146,15 @@ fn Interpreter::create_class(
         // Get the method key - could be string or symbol
         let key_val : Value = match m.key {
           StringLit(s, _, _, _) => String_(s)
-          _ => self.eval_expr(class_ctx, m.key, env)
+          _ =>
+            to_property_key(
+              self.eval_expr(class_ctx, m.key, env),
+              interp=Some(self),
+            )
         }
         let method_key_str : String = match key_val {
           Symbol(_) => key_val.to_string()
-          _ => to_js_string(key_val)
+          _ => self.to_js_string(key_val)
         }
         // ES2022 §15.7.10 ClassElementEvaluation: a static MethodDefinition
         // whose property key is the String "prototype" throws TypeError.
@@ -517,19 +521,20 @@ fn Interpreter::create_class(
   } else {
     static_method_env
   }
-  // Class bodies (including field initializers) are always strict per spec
+  // Class bodies are strict, but field initializers are not generator bodies.
+  let static_field_ctx : ExecContext = { strict: true, current_generator: None }
   for sf in static_fields {
     let key_str : String = match sf.key {
       String_(s) => s
       Symbol(sym) => sym.id.to_string() // use id for symbol-keyed static fields
-      _ => to_js_string(sf.key)
+      _ => self.to_js_string(sf.key)
     }
     let value : Value = match sf.initializer {
       Some(expr) => {
         // Evaluate initializer with `this` = class_obj and class name in scope
         let field_env = Environment::new(parent=Some(static_init_base))
         field_env.def_builtin("this", class_obj)
-        self.eval_expr(class_ctx, expr, field_env)
+        self.eval_expr(static_field_ctx, expr, field_env)
       }
       None => Undefined
     }

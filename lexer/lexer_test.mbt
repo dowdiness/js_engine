@@ -266,6 +266,43 @@ test "lex slash assign vs comment" {
 }
 
 ///|
+test "lex slash after sloppy yield identifier as division" {
+  let kinds = tok_kinds("var yield = 8, x = 2, g = 4; yield / x / g;")
+  inspect_kinds(kinds, content=[
+    "Var", "Yield", "Assign", "Number(8)", "Comma", "Ident(\"x\")", "Assign", "Number(2)",
+    "Comma", "Ident(\"g\")", "Assign", "Number(4)", "Semicolon", "Yield", "Slash",
+    "Ident(\"x\")", "Slash", "Ident(\"g\")", "Semicolon", "EOF",
+  ])
+}
+
+///|
+test "lex slash after generator yield as regexp" {
+  let kinds = tok_kinds("function* g() { yield /x/g; }")
+  inspect_kinds(kinds, content=[
+    "Function", "Star", "Ident(\"g\")", "LParen", "RParen", "LBrace", "Yield", "Regex(\"x\", \"g\")",
+    "Semicolon", "RBrace", "EOF",
+  ])
+}
+
+///|
+test "lex slash after class generator method yield as regexp" {
+  let kinds = tok_kinds("class C { *g(){ yield /x/g; } }")
+  inspect_kinds(kinds, content=[
+    "Class", "Ident(\"C\")", "LBrace", "Star", "Ident(\"g\")", "LParen", "RParen",
+    "LBrace", "Yield", "Regex(\"x\", \"g\")", "Semicolon", "RBrace", "RBrace", "EOF",
+  ])
+}
+
+///|
+test "lex slash after object generator method yield as regexp" {
+  let kinds = tok_kinds("({ *g(){ yield /x/g; } })")
+  inspect_kinds(kinds, content=[
+    "LParen", "LBrace", "Star", "Ident(\"g\")", "LParen", "RParen", "LBrace", "Yield",
+    "Regex(\"x\", \"g\")", "Semicolon", "RBrace", "RBrace", "RParen", "EOF",
+  ])
+}
+
+///|
 test "lex unicode escape in string \\uXXXX" {
   let kinds = tok_kinds("\"\\u0041\"")
   inspect_kinds(kinds, content=["String_(\"A\")", "EOF"])

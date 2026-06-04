@@ -344,6 +344,47 @@ test "parenthesized destructuring for-in/of heads are SyntaxError" {
 }
 
 ///|
+test "parse class accessors allow line terminator after keyword" {
+  let prog = @parser.parse("class C { get\nx() { return 1; } set\ny(v) { } }")
+  match prog.stmts[0] {
+    ClassDecl(name, None, members, _) => {
+      expect_string(name, "C", "class name")
+      guard members.length() == 2 else { fail("expected two class members") }
+      match members[0] {
+        @ast.ClassMember::Method(m) => {
+          guard m.kind == @ast.Get else { fail("expected getter") }
+        }
+        _ => fail("expected getter method")
+      }
+      match members[1] {
+        @ast.ClassMember::Method(m) => {
+          guard m.kind == @ast.Set else { fail("expected setter") }
+        }
+        _ => fail("expected setter method")
+      }
+    }
+    _ => fail("Expected ClassDecl")
+  }
+}
+
+///|
+test "parse class field initializer does not inherit generator yield" {
+  let result = Ok(
+    @parser.parse("function* g() { class C { static x = yield 1; } }"),
+  ) catch {
+    _ => Err(())
+  }
+  expect_err(result)
+}
+
+///|
+test "parse generator methods with yield regexp literal" {
+  let _ = @parser.parse("class C { *g(){ yield /x/g; } }")
+  let _ = @parser.parse("class C { m(){} *g(){ yield /x/g; } }")
+  let _ = @parser.parse("({ *g(){ yield /x/g; } })")
+}
+
+///|
 test "parse labeled statement" {
   let prog = @parser.parse("outer: for (let i = 0; i < 3; i = i + 1) { }")
   match prog.stmts[0] {

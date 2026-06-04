@@ -686,6 +686,13 @@ pub fn to_property_key(
 ) -> Value raise Error {
   match val {
     Symbol(_) => val
+    Object(data) => {
+      let primitive = to_primitive_string(Object(data), data, interp~)
+      match primitive {
+        Symbol(_) => primitive
+        _ => Value::String_(to_js_string(primitive, interp~))
+      }
+    }
     _ => Value::String_(to_js_string(val, interp~))
   }
 }

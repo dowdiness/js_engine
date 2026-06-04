@@ -752,8 +752,9 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
       Ident("static", tok.loc)
     }
     Yield =>
-      // Outside generator context, yield is a valid identifier
-      if !self.in_generator() {
+      // Outside generator context, yield is a valid identifier unless this
+      // grammar production forbids Yield as an IdentifierReference.
+      if !self.in_generator() && self.allow_yield_identifier() {
         self.pos += 1
         Ident("yield", tok.loc)
       } else {
@@ -1628,13 +1629,12 @@ fn Parser::parse_yield_expr(self : Parser) -> @ast.Expr raise Error {
   }
   // Parse argument: yield is prefix unary with very low precedence
   // yield without argument (e.g., at statement end, before }, ), ], ;, comma)
-  let has_argument = !(self.at(Semicolon) ||
-    self.at(RParen) ||
-    self.at(RBracket) ||
-    self.at(RBrace) ||
-    self.at(Comma) ||
-    self.at(Colon) ||
-    self.at(EOF))
+  let has_argument = match self.peek_kind() {
+    TemplateMiddle(_) => false
+    TemplateTail(_) => false
+    Semicolon | RParen | RBracket | RBrace | Comma | Colon | EOF => false
+    _ => true
+  }
   // Also check if the next token is on a different line (ASI)
   let next_on_new_line = if has_argument {
     let next_tok = self.peek()
@@ -1997,11 +1997,15 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           | Class
           | Extends
           | Super
-          | Static =>
-            if !self.at_kind_at(1, LParen) {
+          | Static => {
+            let next_tok = self.tokens[self.pos + 1]
+            let next_is_method_name_token = next_tok.kind != LParen &&
+              next_tok.kind != Star
+            if next_is_method_name_token {
               self.pos += 1
               method_kind = @ast.Get
             }
+          }
           _ => ()
         }
       Set =>
@@ -2050,11 +2054,15 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           | Class
           | Extends
           | Super
-          | Static =>
-            if !self.at_kind_at(1, LParen) {
+          | Static => {
+            let next_tok = self.tokens[self.pos + 1]
+            let next_is_method_name_token = next_tok.kind != LParen &&
+              next_tok.kind != Star
+            if next_is_method_name_token {
               self.pos += 1
               method_kind = @ast.Set
             }
+          }
           _ => ()
         }
       _ => ()
@@ -2169,7 +2177,18 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       }
     }
     let initializer : @ast.Expr? = if self.eat(Assign) {
-      Some(self.parse_assignment())
+      self.push_generator_context(false)
+      self.push_yield_identifier_context(false)
+      let parsed = self.parse_assignment() catch {
+        e => {
+          self.pop_yield_identifier_context()
+          self.pop_generator_context()
+          raise e
+        }
+      }
+      self.pop_yield_identifier_context()
+      self.pop_generator_context()
+      Some(parsed)
     } else {
       None
     }
@@ -2280,15 +2299,6 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     computed,
     is_static,
   })
-}
-
-///|
-fn Parser::at_kind_at(
-  self : Parser,
-  offset : Int,
-  kind : @token.TokenKind,
-) -> Bool {
-  self.peek_kind_at(offset) == kind
 }
 
 ///|
