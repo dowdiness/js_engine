@@ -2280,6 +2280,18 @@ test "issue 203: remaining ES2015 coercions call user code" {
 }
 
 ///|
+test "issue 203: array indexOf lastIndexOf empty arrays skip fromIndex coercion" {
+  let output = run_output(
+    (
+      #|var calls = 0;
+      #|var fromIndex = { valueOf: function() { calls += 1; throw new Error("boom"); } };
+      #|console.log([].indexOf(1, fromIndex), [].lastIndexOf(1, fromIndex), calls);
+    ),
+  )
+  json_inspect(output, content=["-1 -1 0"])
+}
+
+///|
 test "issue 203: object and date coercions call user code" {
   let output = run_output(
     (

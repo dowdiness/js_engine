@@ -118,6 +118,9 @@ fn setup_array_builtins(
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
+      if len == 0 {
+        return Value::Number(-1.0)
+      }
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let from_idx = if args.length() > 1 {
         interp.to_number(args[1]).to_int()
@@ -153,6 +156,9 @@ fn setup_array_builtins(
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
+      if len == 0 {
+        return Value::Number(-1.0)
+      }
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let start = if args.length() > 1 {
         interp.to_number(args[1]).to_int()
