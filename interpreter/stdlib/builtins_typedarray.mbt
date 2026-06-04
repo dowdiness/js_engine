@@ -1,4 +1,23 @@
 ///|
+fn typedarray_collect_iterator_values(
+  interp : Interpreter,
+  source : Value,
+  iterator_method : Value,
+  loc : @token.Loc,
+) -> Array[Value] raise Error {
+  let values : Array[Value] = []
+  let iterator = interp.call_value(iterator_method, source, [], loc)
+  let next_method = interp.get_iterator_next_method(iterator, loc)
+  while true {
+    match interp.iterator_step_value(iterator, next_method, loc) {
+      None => break
+      Some(value) => values.push(value)
+    }
+  }
+  values
+}
+
+///|
 /// Read a typed element from an ArrayBuffer's byte array at the given byte offset.
 /// Returns the JS Number value.
 fn typed_array_get_element(
@@ -368,6 +387,29 @@ fn make_typedarray_from_buffer(
 }
 
 ///|
+fn typedarray_to_array_like_length(
+  val : Value,
+  interp : Interpreter,
+) -> Int raise {
+  let length_val = interp.get_property(val, "length", @token.Loc::default())
+  let length_num = @runtime.to_number(length_val, interp=Some(interp))
+  if length_num.is_nan() || length_num < 0.0 {
+    return 0
+  }
+  if length_num > 2147483647.0 {
+    raise @errors.RangeError(message="Invalid typed array length")
+  }
+  if length_num.to_int() > 0x7FFFFFFF {
+    raise @errors.RangeError(message="Invalid typed array length")
+  }
+  let length = length_num.to_int()
+  if length < 0 {
+    raise @errors.RangeError(message="Invalid typed array length")
+  }
+  length
+}
+
+///|
 fn typedarray_arraybuffer_state(
   data : ObjectData,
   fallback_realm_state : @runtime.RealmState,
@@ -725,6 +767,19 @@ pub fn setup_typedarray_builtins(
   let obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
   let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
+  let array_ctor = env.get("Array") catch { _ => Undefined }
+  let array_to_string = match array_ctor {
+    Object(array_ctor_data) =>
+      match array_ctor_data.bag.properties.get("prototype") {
+        Some(Object(array_proto_data)) =>
+          match array_proto_data.bag.properties.get("toString") {
+            Some(value) => value
+            None => Undefined
+          }
+        _ => Undefined
+      }
+    _ => Undefined
+  }
 
   // Create %TypedArray%.prototype (shared prototype for all typed array instances)
   let ta_proto_props : Map[String, Value] = {}
@@ -1352,24 +1407,60 @@ pub fn setup_typedarray_builtins(
   })
 
   // toString - delegates to join
-  ta_proto_props["toString"] = @runtime.make_method_func(
-    name="toString",
+  ta_proto_props["toString"] = match array_to_string {
+    Undefined =>
+      @runtime.make_method_func(name="toString", length=0, fn(
+        this_val,
+        _args,
+      ) raise {
+        let (data, _) = validate_typed_array(this_val, "toString", realm_state)
+        let len = match data.bag.properties.get("[[ArrayLength]]") {
+          Some(Value::Number(n)) => n.to_int()
+          _ => 0
+        }
+        let buf = StringBuilder::new()
+        for i = 0; i < len; i = i + 1 {
+          if i > 0 {
+            buf.write_string(",")
+          }
+          let elem = typedarray_get_index(data, i, realm_state)
+          buf.write_string(elem.to_string())
+        }
+        Value::String_(buf.to_string())
+      })
+    to_string => to_string
+  }
+
+  ta_proto_props["toLocaleString"] = @runtime.make_interp_method_func(
+    name="toLocaleString",
     length=0,
-    fn(this_val, _args) raise {
-      let (data, _) = validate_typed_array(this_val, "toString", realm_state)
+    fn(interp, this_val, _args) raise {
+      let (data, _) = validate_typed_array(
+        this_val, "toLocaleString", realm_state,
+      )
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
-      let buf = StringBuilder::new()
+      let parts : Array[String] = []
+      let loc = @token.Loc::default()
       for i = 0; i < len; i = i + 1 {
-        if i > 0 {
-          buf.write_string(",")
-        }
         let elem = typedarray_get_index(data, i, realm_state)
-        buf.write_string(elem.to_string())
+        match elem {
+          Null | Undefined => parts.push("")
+          _ => {
+            let tls = interp.get_property(elem, "toLocaleString", loc)
+            if !@runtime.is_callable(tls) {
+              raise @errors.TypeError(
+                message="TypedArray.prototype.toLocaleString element method is not callable",
+              )
+            }
+            let result = interp.call_value(tls, elem, [], loc)
+            parts.push(interp.to_js_string(result))
+          }
+        }
       }
-      Value::String_(buf.to_string())
+      Value::String_(parts.join(","))
     },
   )
 
@@ -2349,6 +2440,7 @@ pub fn setup_typedarray_builtins(
   ta_proto_descs["lastIndexOf"] = method_desc
   ta_proto_descs["includes"] = method_desc
   ta_proto_descs["join"] = method_desc
+  ta_proto_descs["toLocaleString"] = method_desc
   ta_proto_descs["toString"] = method_desc
   ta_proto_descs["reverse"] = method_desc
   ta_proto_descs["sort"] = method_desc
@@ -2479,14 +2571,11 @@ pub fn setup_typedarray_builtins(
               message="TypedArray.from source is not iterable",
             )
           }
-          let iterator = interp.call_value(iterator_method, source, [], loc)
-          while true {
-            let next_method = interp.get_property(iterator, "next", loc)
-            let next = interp.call_value(next_method, iterator, [], loc)
-            if @runtime.is_truthy(interp.get_property(next, "done", loc)) {
-              break
-            }
-            source_values.push(interp.get_property(next, "value", loc))
+          for
+            value in typedarray_collect_iterator_values(
+              interp, source, iterator_method, loc,
+            ) {
+            source_values.push(value)
           }
         }
       }
@@ -2815,13 +2904,38 @@ pub fn setup_typedarray_builtins(
           _this_val,
           args,
         ) raise {
+          let loc = @token.Loc::default()
+          let resolve_ctor_proto = fn() -> Value raise Error {
+            match context.new_target() {
+              Some(new_target) => {
+                let prototype = interp.get_property(
+                  new_target, "prototype", loc,
+                )
+                match prototype {
+                  Object(_)
+                  | Array(_)
+                  | Map(_)
+                  | Set(_)
+                  | Promise(_)
+                  | Proxy(_) => prototype
+                  _ => per_proto
+                }
+              }
+              None => per_proto
+            }
+          }
           if !context.is_constructing() {
             raise @errors.TypeError(
               message="Constructor \{type_name} requires 'new'",
             )
           }
           if args.length() == 0 {
-            return make_typedarray_object(type_name, 0, per_proto, env)
+            return make_typedarray_object(
+              type_name,
+              0,
+              resolve_ctor_proto(),
+              env,
+            )
           }
           let first = args[0]
           match first {
@@ -2832,7 +2946,12 @@ pub fn setup_typedarray_builtins(
             | Value::Undefined
             | Value::Symbol(_) => {
               let length = interp.to_index(first)
-              make_typedarray_object(type_name, length, per_proto, env)
+              make_typedarray_object(
+                type_name,
+                length,
+                resolve_ctor_proto(),
+                env,
+              )
             }
             // From another TypedArray
             Object(src_data) if is_typedarray_class(src_data.class_name) => {
@@ -2842,7 +2961,10 @@ pub fn setup_typedarray_builtins(
                 _ => 0
               }
               let result = make_typedarray_object(
-                type_name, src_len, per_proto, env,
+                type_name,
+                src_len,
+                resolve_ctor_proto(),
+                env,
               )
               match result {
                 Object(result_data) =>
@@ -2860,24 +2982,6 @@ pub fn setup_typedarray_builtins(
             }
             // From ArrayBuffer
             Object(buf_data) if buf_data.class_name == "ArrayBuffer" => {
-              // Check for detached buffer
-              let check_buf_id = match
-                buf_data.bag.properties.get("[[ArrayBufferID]]") {
-                Some(Value::Number(n)) => n.to_int()
-                _ => -1
-              }
-              if check_buf_id >= 0 &&
-                is_arraybuffer_state_detached(
-                  arraybuffer_state_from_data(
-                    buf_data,
-                    realm_state.arraybuffer_state,
-                  ),
-                  check_buf_id,
-                ) {
-                raise @errors.TypeError(
-                  message="Cannot construct a TypedArray with a detached ArrayBuffer",
-                )
-              }
               let buf_byte_length = match
                 buf_data.bag.properties.get("[[ArrayBufferByteLength]]") {
                 Some(Value::Number(n)) => n.to_int()
@@ -2898,6 +3002,11 @@ pub fn setup_typedarray_builtins(
                 }
               } else {
                 0
+              }
+              if byte_offset > buf_byte_length {
+                raise @errors.RangeError(
+                  message="Start offset \{byte_offset} is outside the bounds of the buffer",
+                )
               }
               if byte_offset % bpe != 0 {
                 raise @errors.RangeError(
@@ -2923,36 +3032,41 @@ pub fn setup_typedarray_builtins(
               } else {
                 (buf_byte_length - byte_offset) / bpe
               }
+              if length < 0 {
+                raise @errors.RangeError(message="Invalid typed array length")
+              }
               if byte_offset + length * bpe > buf_byte_length {
                 raise @errors.RangeError(
                   message="Invalid typed array length: \{length}",
                 )
               }
-              make_typedarray_from_buffer(
-                type_name, first, byte_offset, length, per_proto,
-              )
-            }
-            // From array-like or iterable
-            Array(arr_data) => {
-              let len = arr_data.elements.length()
-              let result = make_typedarray_object(
-                type_name, len, per_proto, env,
-              )
-              match result {
-                Object(result_data) =>
-                  for i = 0; i < len; i = i + 1 {
-                    let num = @runtime.to_number(
-                      arr_data.elements[i],
-                      interp=Some(interp),
-                    )
-                    typedarray_set_index(result_data, i, num, realm_state)
-                  }
-                _ => ()
+              let check_buf_id = match
+                buf_data.bag.properties.get("[[ArrayBufferID]]") {
+                Some(Value::Number(n)) => n.to_int()
+                _ => -1
               }
-              result
+              if check_buf_id >= 0 &&
+                is_arraybuffer_state_detached(
+                  arraybuffer_state_from_data(
+                    buf_data,
+                    realm_state.arraybuffer_state,
+                  ),
+                  check_buf_id,
+                ) {
+                raise @errors.TypeError(
+                  message="Cannot construct a TypedArray with a detached ArrayBuffer",
+                )
+              }
+              make_typedarray_from_buffer(
+                type_name,
+                first,
+                byte_offset,
+                length,
+                resolve_ctor_proto(),
+              )
             }
-            // From generic object with length
-            Object(_) => {
+            // From array-like or iterable arrays
+            Array(_) => {
               let loc = @token.Loc::default()
               let iterator_sym = interp.realm_state.well_known_symbols.iterator
               let iterator_method = interp.get_computed_property(
@@ -2962,9 +3076,17 @@ pub fn setup_typedarray_builtins(
               )
               match iterator_method {
                 Undefined | Null => {
-                  let len = @runtime.to_array_like_length_interp(first, interp)
+                  let len = typedarray_to_array_like_length(first, interp)
+                  if len > 0x7FFFFFFF {
+                    raise @errors.RangeError(
+                      message="Invalid typed array length: \{len}",
+                    )
+                  }
                   let result = make_typedarray_object(
-                    type_name, len, per_proto, env,
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
                   )
                   match result {
                     Object(result_data) =>
@@ -2983,26 +3105,15 @@ pub fn setup_typedarray_builtins(
                       message="\{@runtime.type_of(first)} is not iterable",
                     )
                   }
-                  let values : Array[Value] = []
-                  let iterator = interp.call_value(
-                    iterator_method,
-                    first,
-                    [],
-                    loc,
+                  let values = typedarray_collect_iterator_values(
+                    interp, first, iterator_method, loc,
                   )
-                  while true {
-                    let next_method = interp.get_property(iterator, "next", loc)
-                    let next = interp.call_value(next_method, iterator, [], loc)
-                    if @runtime.is_truthy(
-                        interp.get_property(next, "done", loc),
-                      ) {
-                      break
-                    }
-                    values.push(interp.get_property(next, "value", loc))
-                  }
                   let len = values.length()
                   let result = make_typedarray_object(
-                    type_name, len, per_proto, env,
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
                   )
                   match result {
                     Object(result_data) =>
@@ -3019,7 +3130,72 @@ pub fn setup_typedarray_builtins(
                 }
               }
             }
-            _ => make_typedarray_object(type_name, 0, per_proto, env)
+            // From generic object with length
+            Object(_) => {
+              let loc = @token.Loc::default()
+              let iterator_sym = interp.realm_state.well_known_symbols.iterator
+              let iterator_method = interp.get_computed_property(
+                first,
+                Symbol(iterator_sym),
+                loc,
+              )
+              match iterator_method {
+                Undefined | Null => {
+                  let len = typedarray_to_array_like_length(first, interp)
+                  if len > 0x7FFFFFFF {
+                    raise @errors.RangeError(
+                      message="Invalid typed array length: \{len}",
+                    )
+                  }
+                  let result = make_typedarray_object(
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
+                  )
+                  match result {
+                    Object(result_data) =>
+                      for i = 0; i < len; i = i + 1 {
+                        let v = interp.get_property(first, i.to_string(), loc)
+                        let num = interp.to_number(v)
+                        typedarray_set_index(result_data, i, num, realm_state)
+                      }
+                    _ => ()
+                  }
+                  result
+                }
+                _ => {
+                  if !@runtime.is_callable(iterator_method) {
+                    raise @errors.TypeError(
+                      message="\{@runtime.type_of(first)} is not iterable",
+                    )
+                  }
+                  let values = typedarray_collect_iterator_values(
+                    interp, first, iterator_method, loc,
+                  )
+                  let len = values.length()
+                  let result = make_typedarray_object(
+                    type_name,
+                    len,
+                    resolve_ctor_proto(),
+                    env,
+                  )
+                  match result {
+                    Object(result_data) =>
+                      for i = 0; i < len; i = i + 1 {
+                        let num = @runtime.to_number(
+                          values[i],
+                          interp=Some(interp),
+                        )
+                        typedarray_set_index(result_data, i, num, realm_state)
+                      }
+                    _ => ()
+                  }
+                  result
+                }
+              }
+            }
+            _ => make_typedarray_object(type_name, 0, resolve_ctor_proto(), env)
           }
         }),
       ),

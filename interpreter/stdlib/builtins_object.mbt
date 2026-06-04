@@ -462,6 +462,78 @@ pub fn setup_object_builtins(
       Undefined
     },
   )
+  obj_proto_props["__proto__"] = Undefined
+  let proto_getter = @runtime.make_interp_method_func(
+    name="get __proto__",
+    length=0,
+    fn(interp, this_val, _args) raise {
+      let this_obj = to_object(this_val, interp)
+      match this_obj {
+        Object(data) => data.prototype
+        Array(data) =>
+          match @runtime.get_array_prototype_override(data) {
+            Some(proto) => proto
+            None => interp.realm_state.get_array_proto()
+          }
+        Proxy(proxy_data) => @runtime.proxy_get_prototype_of(interp, proxy_data)
+        Value::String_(_) =>
+          @runtime.get_string_proto(realm_state=Some(interp.realm_state))
+        Value::Number(_) =>
+          @runtime.get_number_proto(realm_state=Some(interp.realm_state))
+        Bool(_) =>
+          @runtime.get_boolean_proto(realm_state=Some(interp.realm_state))
+        Symbol(_) =>
+          @runtime.get_symbol_proto(realm_state=Some(interp.realm_state))
+        Map(data) =>
+          match data.prototype {
+            Null => interp.realm_state.get_map_proto()
+            proto => proto
+          }
+        Set(data) =>
+          match data.prototype {
+            Null => interp.realm_state.get_set_proto()
+            proto => proto
+          }
+        Promise(_) => interp.realm_state.get_promise_proto()
+        _ => interp.realm_state.get_obj_proto()
+      }
+    },
+  )
+  let proto_setter = @runtime.make_interp_method_func(
+    name="set __proto__",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let this_obj = to_object(this_val, interp)
+      let proto = if args.length() > 0 { args[0] } else { Null }
+      match proto {
+        Object(_) | Proxy(_) | Null => ()
+        _ => return Undefined
+      }
+      match this_obj {
+        Object(data) => {
+          if !data.extensible {
+            raise @errors.TypeError(
+              message="Cannot set prototype of non-extensible object",
+            )
+          }
+          data.prototype = proto
+        }
+        Array(data) => @runtime.set_array_prototype_override(data, proto)
+        Value::Proxy(proxy_data) => {
+          let success = @runtime.proxy_set_prototype_of(
+            interp, proxy_data, proto,
+          )
+          if !success {
+            raise @errors.TypeError(
+              message="Cannot set prototype of non-extensible object",
+            )
+          }
+        }
+        _ => ()
+      }
+      Undefined
+    },
+  )
   let obj_proto_descs : Map[String, PropDescriptor] = {}
   let obj_method_desc : PropDescriptor = {
     writable: true,
@@ -481,6 +553,14 @@ pub fn setup_object_builtins(
   obj_proto_descs["__defineSetter__"] = obj_method_desc
   obj_proto_descs["__lookupGetter__"] = obj_method_desc
   obj_proto_descs["__lookupSetter__"] = obj_method_desc
+  obj_proto_descs["__proto__"] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: Some(proto_getter),
+    setter: Some(proto_setter),
+    is_accessor: true,
+  }
   let obj_proto : Value = Value::Object({
     bag: {
       properties: obj_proto_props,

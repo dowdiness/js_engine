@@ -1123,6 +1123,29 @@ test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
 }
 
 ///|
+test "Annex B __proto__ setter ignores primitive prototype values" {
+  let src =
+    #|var obj = {};
+    #|var original = Object.getPrototypeOf(obj);
+    #|obj.__proto__ = 1;
+    #|console.log(Object.getPrototypeOf(obj) === original);
+    #|var setter = Object.getOwnPropertyDescriptor(Object.prototype, "__proto__").set;
+    #|console.log(setter.call(obj, "x") === undefined);
+    #|console.log(Object.getPrototypeOf(obj) === original);
+    #|var trapCalled = false;
+    #|var proxy = new Proxy({}, {
+    #|  setPrototypeOf: function() {
+    #|    trapCalled = true;
+    #|    return false;
+    #|  }
+    #|});
+    #|console.log(setter.call(proxy, 1) === undefined);
+    #|console.log(trapCalled);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true", "true", "false"])
+}
+
+///|
 test "comma expression" {
   let (_, result) = run_js("1, 2, 3")
   expect_value_string(result, "3", "comma expression result")
@@ -3180,6 +3203,27 @@ test "for-of array" {
     #|console.log(sum);
   let output = run_output(src)
   json_inspect(output, content=["60"])
+}
+
+///|
+test "for-of array iterator observes live length" {
+  let src =
+    #|var growing = [1];
+    #|var growOut = [];
+    #|for (var x of growing) {
+    #|  growOut.push(x);
+    #|  if (x === 1) growing.push(2);
+    #|}
+    #|console.log(growOut.join(","));
+    #|var shrinking = [1, 2];
+    #|var shrinkOut = [];
+    #|for (var y of shrinking) {
+    #|  shrinkOut.push(y);
+    #|  shrinking.length = 1;
+    #|}
+    #|console.log(shrinkOut.join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["1,2", "1"])
 }
 
 ///|
@@ -7463,6 +7507,29 @@ test "array iterator methods keep method realm when installed in another realm" 
 }
 
 ///|
+test "array iterator internal slots are not user properties" {
+  let output = run_output(
+    (
+      #|var it = [1, 2].values();
+      #|console.log(Object.getOwnPropertyNames(it).indexOf("[[ArrayIteratorNextIndex]]") === -1);
+      #|console.log(Object.getOwnPropertyNames(it).indexOf("[[ArrayIteratorTarget]]") === -1);
+      #|it["[[ArrayIteratorNextIndex]]"] = 1;
+      #|it["[[ArrayIteratorTarget]]"] = undefined;
+      #|console.log(it.next().value);
+      #|var it2 = [3].values();
+      #|var protoNext = Object.getPrototypeOf(it2).next;
+      #|console.log(protoNext.call(it2).value);
+      #|var source = [1, 2].values();
+      #|source.next();
+      #|var target = [9].values();
+      #|Object.assign(target, source);
+      #|console.log(target.next().value);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "1", "3", "9"])
+}
+
+///|
 test "borrowed Object.assign wraps primitive targets with method realm prototypes" {
   let output = run_output(
     (
@@ -9679,6 +9746,26 @@ test "test262: TypedArray constructor from array" {
 }
 
 ///|
+test "TypedArray constructor rejects primitive iterator results" {
+  let output = run_output(
+    (
+      #|function badIterator() {
+      #|  return { next: function() { return 1; } };
+      #|}
+      #|var arr = [1];
+      #|arr[Symbol.iterator] = badIterator;
+      #|try { new Int8Array(arr); console.log("array no throw"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|var obj = {};
+      #|obj[Symbol.iterator] = badIterator;
+      #|try { new Int8Array(obj); console.log("object no throw"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
 test "test262: TypedArray constructor from another TypedArray" {
   let output = run_output(
     (
@@ -10037,6 +10124,22 @@ test "test262: TypedArray.prototype.toString" {
     ),
   )
   json_inspect(output, content=["1,2,3"])
+}
+
+///|
+test "TypedArray.prototype.toLocaleString rejects non-callable element hook" {
+  let output = run_output(
+    (
+      #|Number.prototype.toLocaleString = 1;
+      #|try {
+      #|  new Int8Array([1]).toLocaleString();
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
 }
 
 ///|

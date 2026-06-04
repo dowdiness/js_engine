@@ -30,7 +30,7 @@ pub(all) suberror JsError {
 } derive(Debug)
 
 ///|
-pub impl Show for JsError with output(self, logger) {
+pub impl Show for JsError with fn output(self, logger) {
   logger.write_string(self.name())
   logger.write_string(": ")
   logger.write_string(self.get_message())
