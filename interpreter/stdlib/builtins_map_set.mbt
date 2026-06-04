@@ -46,6 +46,14 @@ fn get_set_lookup_prototype(
 }
 
 ///|
+fn canonicalize_keyed_collection_key(key : Value) -> Value {
+  match key {
+    Number(n) if n == 0.0 => Number(0.0)
+    _ => key
+  }
+}
+
+///|
 /// Get Map.prototype methods for a Map instance
 pub fn get_map_method(
   data : MapData,
@@ -453,8 +461,12 @@ fn setup_map_builtins(
     fn(interp, this_val, args) raise {
       match this_val {
         Value::Map(data) => {
-          let key = if args.length() > 0 { args[0] } else { Undefined }
+          let raw_key = if args.length() > 0 { args[0] } else { Undefined }
           let callbackfn = if args.length() > 1 { args[1] } else { Undefined }
+          if !@runtime.is_callable(callbackfn) {
+            raise @errors.TypeError(message="callbackfn is not callable")
+          }
+          let key = canonicalize_keyed_collection_key(raw_key)
           // If key exists, return existing value without calling callback
           for i = 0; i < data.entries.length(); i = i + 1 {
             let (k, v) = data.entries[i]
