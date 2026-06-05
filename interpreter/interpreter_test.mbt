@@ -11153,28 +11153,40 @@ test "test262: DataView setFloat missing value stores NaN" {
 }
 
 ///|
-test "test262: DataView BigUint64 methods are exposed but not constructors" {
+test "test262: DataView BigInt methods are exposed but not constructors" {
   let output = run_output(
     (
       #|var dv = new DataView(new ArrayBuffer(16));
-      #|console.log(typeof DataView.prototype.getBigUint64);
-      #|console.log(DataView.prototype.getBigUint64.length);
-      #|console.log(DataView.prototype.setBigUint64.length);
-      #|try {
-      #|  new dv.getBigUint64(0, 0);
-      #|  console.log("no error");
-      #|} catch(e) {
-      #|  console.log(e instanceof TypeError);
-      #|}
-      #|try {
-      #|  new dv.setBigUint64(0, 0);
-      #|  console.log("no error");
-      #|} catch(e) {
-      #|  console.log(e instanceof TypeError);
+      #|var methods = [
+      #|  ["getBigInt64", 1],
+      #|  ["getBigUint64", 1],
+      #|  ["setBigInt64", 2],
+      #|  ["setBigUint64", 2]
+      #|];
+      #|for (var i = 0; i < methods.length; i++) {
+      #|  var name = methods[i][0];
+      #|  var expectedLength = methods[i][1];
+      #|  var method = DataView.prototype[name];
+      #|  console.log(typeof method, method.length === expectedLength);
+      #|  try {
+      #|    method.call(dv, 0, 0);
+      #|    console.log("no call error");
+      #|  } catch(e) {
+      #|    console.log(e instanceof TypeError);
+      #|  }
+      #|  try {
+      #|    new method(0, 0);
+      #|    console.log("no construct error");
+      #|  } catch(e) {
+      #|    console.log(e instanceof TypeError);
+      #|  }
       #|}
     ),
   )
-  json_inspect(output, content=["function", "1", "2", "true", "true"])
+  json_inspect(output, content=[
+    "function true", "true", "true", "function true", "true", "true", "function true",
+    "true", "true", "function true", "true", "true",
+  ])
 }
 
 ///|
