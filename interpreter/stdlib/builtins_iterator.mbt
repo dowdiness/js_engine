@@ -24,6 +24,7 @@ fn setup_iterator_protocol(
               _ => realm_state.make_array_like_iterator_value(this_val)
             }
           })
+          realm_state.set_array_proto_values_intrinsic(values_fn)
           proto_data.bag.symbol_properties[iterator_sym.id] = values_fn
           proto_data.bag.symbol_descriptors[iterator_sym.id] = {
             writable: true,

@@ -416,6 +416,18 @@ test "arguments iterator observes live length" {
     #|  var after = iterator.next();
     #|  console.log(String(done.value) + ":" + done.done + ":" + String(after.value) + ":" + after.done);
     #|}
+    #|function overriddenArrayValues(a) {
+    #|  Array.prototype.values = function() {
+    #|    return { next: function() { return { value: "values override", done: false }; } };
+    #|  };
+    #|  Array.prototype[Symbol.iterator] = function() {
+    #|    return { next: function() { return { value: "symbol override", done: false }; } };
+    #|  };
+    #|  var result = arguments[Symbol.iterator]().next();
+    #|  console.log(result.value + ":" + result.done);
+    #|  console.log(arguments[Symbol.iterator] === Array.prototype.values);
+    #|  console.log(arguments[Symbol.iterator] === Array.prototype[Symbol.iterator]);
+    #|}
     #|sloppyExpansion(2, 1, 3);
     #|sloppyTruncation(2, 1, 3);
     #|strictExpansion(2, 1, 3);
@@ -424,11 +436,12 @@ test "arguments iterator observes live length" {
     #|strictUnmappedReads(1, 2);
     #|descriptorAndPrototype();
     #|exhaustionSticky(1);
+    #|overriddenArrayValues(11);
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=[
     "5:false", "undefined:true", "undefined:true", "5:false", "undefined:true", "undefined:true",
     "7:7", "8:8", "1:7", "8:2", "function:true:false:true", "true", "true", "false",
-    "undefined:true:undefined:true",
+    "undefined:true:undefined:true", "11:false", "false", "false",
   ])
 }
 

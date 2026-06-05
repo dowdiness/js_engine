@@ -8,6 +8,12 @@ const ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID = -3
 const ARRAY_ITERATOR_TARGET_SYMBOL_ID = -4
 
 ///|
+// Hidden slot on the realm-owned Array.prototype that preserves the original
+// %ArrayProto_values% intrinsic even if user code later mutates the public
+// `Array.prototype.values` property.
+const ARRAY_PROTO_VALUES_INTRINSIC_SYMBOL_ID = -112
+
+///|
 fn array_iterator_internal_slot_descriptor() -> PropDescriptor {
   {
     writable: false,
@@ -16,6 +22,33 @@ fn array_iterator_internal_slot_descriptor() -> PropDescriptor {
     getter: None,
     setter: None,
     is_accessor: false,
+  }
+}
+
+///|
+pub fn RealmState::set_array_proto_values_intrinsic(
+  self : RealmState,
+  values_fn : Value,
+) -> Unit {
+  match self.get_array_proto() {
+    Object(proto_data) => {
+      proto_data.bag.symbol_properties[ARRAY_PROTO_VALUES_INTRINSIC_SYMBOL_ID] = values_fn
+      proto_data.bag.symbol_descriptors[ARRAY_PROTO_VALUES_INTRINSIC_SYMBOL_ID] = array_iterator_internal_slot_descriptor()
+    }
+    _ => ()
+  }
+}
+
+///|
+pub fn RealmState::get_array_proto_values_intrinsic(
+  self : RealmState,
+) -> Value? {
+  match self.get_array_proto() {
+    Object(proto_data) =>
+      proto_data.bag.symbol_properties.get(
+        ARRAY_PROTO_VALUES_INTRINSIC_SYMBOL_ID,
+      )
+    _ => None
   }
 }
 
