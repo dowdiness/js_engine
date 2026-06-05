@@ -10136,25 +10136,32 @@ test "test262: TypedArray constructors from length" {
 }
 
 ///|
-test "test262: BigInt typed array constructors exist for empty instances" {
+test "test262: BigInt typed array constructors are empty-instance stubs" {
   let output = run_output(
     (
       #|var ctors = [BigInt64Array, BigUint64Array];
       #|for (var i = 0; i < ctors.length; i++) {
       #|  var C = ctors[i];
       #|  var view = new C();
+      #|  var zero = new C(0);
       #|  console.log(typeof C);
-      #|  console.log(Object.getPrototypeOf(C) === Object.getPrototypeOf(Int8Array));
-      #|  console.log(view.length);
-      #|  console.log(view.byteLength);
-      #|  console.log(view.BYTES_PER_ELEMENT);
+      #|  console.log(typeof C.of);
+      #|  console.log(typeof C.from);
+      #|  console.log(view.length, view.byteLength, view.BYTES_PER_ELEMENT);
+      #|  console.log(zero.length);
+      #|  view[0] = 1;
+      #|  console.log(view[0] === undefined);
       #|  console.log(Object.seal(view) === view);
+      #|  try { new C(1); console.log("no length throw"); }
+      #|  catch (e) { console.log(e instanceof TypeError); }
+      #|  try { C.of(1); console.log("no of throw"); }
+      #|  catch (e) { console.log(e instanceof TypeError); }
       #|}
     ),
   )
   json_inspect(output, content=[
-    "function", "true", "0", "0", "8", "true", "function", "true", "0", "0", "8",
-    "true",
+    "function", "undefined", "undefined", "0 0 8", "0", "true", "true", "true", "true",
+    "function", "undefined", "undefined", "0 0 8", "0", "true", "true", "true", "true",
   ])
 }
 

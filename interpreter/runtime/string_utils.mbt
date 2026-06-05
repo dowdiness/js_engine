@@ -49,7 +49,9 @@ pub fn is_typedarray_class(name : String) -> Bool {
     | "Int32Array"
     | "Uint32Array"
     | "Float32Array"
-    | "Float64Array" => true
+    | "Float64Array"
+    | "BigInt64Array"
+    | "BigUint64Array" => true
     _ => false
   }
 }

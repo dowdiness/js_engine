@@ -331,6 +331,127 @@ pub fn make_typedarray_object(
 }
 
 ///|
+fn typedarray_data_desc(
+  writable~ : Bool,
+  configurable~ : Bool,
+) -> PropDescriptor {
+  {
+    writable,
+    enumerable: false,
+    configurable,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn is_shape_only_bigint_typedarray_empty_request(args : Array[Value]) -> Bool {
+  if args.length() == 0 {
+    true
+  } else if args.length() == 1 {
+    match args[0] {
+      Undefined => true
+      Value::Number(n) => n == 0.0
+      _ => false
+    }
+  } else {
+    false
+  }
+}
+
+///|
+fn install_shape_only_bigint_typedarray_constructor(
+  env : Environment,
+  type_name : String,
+  ta_proto : Value,
+  func_proto : Value,
+) -> Unit {
+  let bpe = typed_array_bytes_per_element(type_name)
+  let per_proto_props : Map[String, Value] = {}
+  per_proto_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
+  let per_proto_descs : Map[String, PropDescriptor] = {}
+  per_proto_descs["BYTES_PER_ELEMENT"] = typedarray_data_desc(
+    writable=false,
+    configurable=false,
+  )
+  let per_proto : Value = Value::Object({
+    bag: {
+      properties: per_proto_props,
+      symbol_properties: {},
+      descriptors: per_proto_descs,
+      symbol_descriptors: {},
+    },
+    prototype: ta_proto,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let ctor_props : Map[String, Value] = {}
+  ctor_props["prototype"] = per_proto
+  ctor_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
+  ctor_props["name"] = Value::String_(type_name)
+  ctor_props["length"] = Value::Number(3.0)
+  let ctor_descs : Map[String, PropDescriptor] = {}
+  ctor_descs["prototype"] = typedarray_data_desc(
+    writable=false,
+    configurable=false,
+  )
+  ctor_descs["BYTES_PER_ELEMENT"] = typedarray_data_desc(
+    writable=false,
+    configurable=false,
+  )
+  ctor_descs["name"] = typedarray_data_desc(writable=false, configurable=true)
+  ctor_descs["length"] = typedarray_data_desc(writable=false, configurable=true)
+  let ctor : Value = Value::Object({
+    bag: {
+      properties: ctor_props,
+      symbol_properties: {},
+      descriptors: ctor_descs,
+      symbol_descriptors: {},
+    },
+    prototype: func_proto,
+    callable: Some(
+      InterpreterCallableWithContext(type_name, fn(
+        _interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        if !context.is_constructing() {
+          raise @errors.TypeError(
+            message="Constructor \{type_name} requires 'new'",
+          )
+        }
+        if !is_shape_only_bigint_typedarray_empty_request(args) {
+          raise @errors.TypeError(
+            message="\{type_name} BigInt element semantics are not implemented",
+          )
+        }
+        make_typedarray_object(type_name, 0, per_proto, env)
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  match per_proto {
+    Object(proto_data) => {
+      proto_data.bag.properties["constructor"] = ctor
+      proto_data.bag.descriptors["constructor"] = typedarray_data_desc(
+        writable=true,
+        configurable=true,
+      )
+    }
+    _ => ()
+  }
+  env.def_builtin(type_name, ctor)
+  env.def_builtin("[[\{type_name}Prototype]]", per_proto)
+  env.def_builtin("[[\{type_name}Constructor]]", ctor)
+}
+
+///|
 /// Create a TypedArray from an existing buffer.
 fn make_typedarray_from_buffer(
   type_name : String,
@@ -2750,8 +2871,7 @@ pub fn setup_typedarray_builtins(
   // --- Create individual TypedArray constructors ---
   let type_names = [
     "Int8Array", "Uint8Array", "Uint8ClampedArray", "Int16Array", "Uint16Array",
-    "Int32Array", "Uint32Array", "Float32Array", "Float64Array", "BigInt64Array",
-    "BigUint64Array",
+    "Int32Array", "Uint32Array", "Float32Array", "Float64Array",
   ]
 
   for type_name in type_names {
@@ -3165,4 +3285,11 @@ pub fn setup_typedarray_builtins(
     // `Int8Array = Uint8Array` doesn't drift the species default.
     env.def_builtin("[[\{type_name}Constructor]]", ctor)
   }
+
+  install_shape_only_bigint_typedarray_constructor(
+    env, "BigInt64Array", ta_proto, func_proto,
+  )
+  install_shape_only_bigint_typedarray_constructor(
+    env, "BigUint64Array", ta_proto, func_proto,
+  )
 }
