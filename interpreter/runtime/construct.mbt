@@ -554,77 +554,18 @@ fn make_arguments_object(
       None => ()
     }
   }
-  // Add Symbol.iterator - creates an iterator over the arguments
+  // Add Symbol.iterator using the generic Array.prototype.values semantics:
+  // each next() observes the live arguments object length and indexed props.
   let iter_sym = well_known_symbols.iterator
-  let args_copy = args
   let new_args_sym_props : Map[Int, Value] = {}
+  let new_args_sym_descs : Map[Int, PropDescriptor] = {}
   new_args_sym_props[iter_sym.id] = stamp_function_realm(
     Object({
       bag: PropertyBag(),
       prototype: Null,
       callable: Some(
-        MethodCallable("values", fn(_this_val, _args2) {
-          let index_ref : Ref[Int] = { val: 0 }
-          let len = args_copy.length()
-          let next_fn = stamp_function_realm(
-            Object({
-              bag: PropertyBag(),
-              prototype: Null,
-              callable: Some(
-                NativeCallable("next", fn(_a) {
-                  let idx = index_ref.val
-                  if idx < len {
-                    let value = args_copy[idx]
-                    index_ref.val = idx + 1
-                    Object({
-                      bag: {
-                        properties: { "value": value, "done": Bool(false) },
-                        symbol_properties: {},
-                        descriptors: {},
-                        symbol_descriptors: {},
-                      },
-                      prototype: Null,
-                      callable: None,
-                      class_name: "Object",
-                      extensible: true,
-                      arraybuffer_state: None,
-                    })
-                  } else {
-                    Object({
-                      bag: {
-                        properties: { "value": Undefined, "done": Bool(true) },
-                        symbol_properties: {},
-                        descriptors: {},
-                        symbol_descriptors: {},
-                      },
-                      prototype: Null,
-                      callable: None,
-                      class_name: "Object",
-                      extensible: true,
-                      arraybuffer_state: None,
-                    })
-                  }
-                }),
-              ),
-              class_name: "Function",
-              extensible: true,
-              arraybuffer_state: None,
-            }),
-            realm_state=Some(realm_state),
-          )
-          Object({
-            bag: {
-              properties: { "next": next_fn },
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Array Iterator",
-            extensible: true,
-            arraybuffer_state: None,
-          })
+        MethodCallable("values", fn(this_val, _args2) raise {
+          realm_state.make_array_like_iterator_value(this_val)
         }),
       ),
       class_name: "Function",
@@ -633,12 +574,20 @@ fn make_arguments_object(
     }),
     realm_state=Some(realm_state),
   )
+  new_args_sym_descs[iter_sym.id] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   Object({
     bag: {
       properties: new_args_props,
       symbol_properties: new_args_sym_props,
       descriptors: new_args_descs,
-      symbol_descriptors: {},
+      symbol_descriptors: new_args_sym_descs,
     },
     prototype: get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
