@@ -192,6 +192,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     chars[i]
   }
 
+  fn raw_slice(start : Int, stop : Int) -> String {
+    let buf = StringBuilder::new()
+    for i in start..<stop {
+      buf.write_char(char_at(i))
+    }
+    buf.to_string()
+  }
+
   fn in_generator_lexer_context() -> Bool {
     if function_body_is_generator.length() == 0 {
       false
@@ -621,7 +629,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = source.view()[start:offset].to_owned()
+          let raw = raw_slice(start, offset)
           tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
           continue
         } else if next == 'b' || next == 'B' {
@@ -639,7 +647,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = source.view()[start:offset].to_owned()
+          let raw = raw_slice(start, offset)
           tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
           continue
         } else if next == 'o' || next == 'O' {
@@ -657,7 +665,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = source.view()[start:offset].to_owned()
+          let raw = raw_slice(start, offset)
           tokens.push({ kind: Number(value), loc, raw, lex_form: LexNormal })
           continue
         } else if next == '8' || next == '9' {
@@ -725,7 +733,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               offset += 1
               col += 1
             }
-            let raw = source.view()[start:offset].to_owned()
+            let raw = raw_slice(start, offset)
             tokens.push({
               kind: Number(value),
               loc,
@@ -876,7 +884,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
         col += 1
       }
-      let raw = source.view()[start:offset].to_owned()
+      let raw = raw_slice(start, offset)
       let value = @string.parse_double(num_str)
       let lex_form : @token.LexForm = if is_non_octal_decimal_int {
         NumberNonOctalDecimalInt
@@ -1099,7 +1107,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       offset += 1 // skip closing quote
       col += 1
-      let raw = source.view()[start:offset].to_owned()
+      let raw = raw_slice(start, offset)
       let lex_form : @token.LexForm = if has_legacy_octal_escape {
         StringLegacyOctalEscape
       } else {
@@ -1452,7 +1460,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           )
         }
       }
-      let raw_str = source.view()[num_start:offset].to_owned()
+      let raw_str = raw_slice(num_start, offset)
       // Remove numeric separators for parsing
       let buf = StringBuilder::new()
       for ch in raw_str {
