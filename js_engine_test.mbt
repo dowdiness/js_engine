@@ -339,6 +339,140 @@ test "queueMicrotask callback gets no args" {
 }
 
 ///|
+test "arguments iterator observes live length" {
+  let src =
+    #|function sloppyExpansion(a, b, c) {
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 4;
+    #|  arguments[3] = 5;
+    #|  iterator.next();
+    #|  var result = iterator.next();
+    #|  console.log(result.value + ":" + result.done);
+    #|  result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|function sloppyTruncation(a, b, c) {
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 2;
+    #|  var result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|function strictExpansion(a, b, c) {
+    #|  "use strict";
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 4;
+    #|  arguments[3] = 5;
+    #|  iterator.next();
+    #|  var result = iterator.next();
+    #|  console.log(result.value + ":" + result.done);
+    #|  result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|function strictTruncation(a, b, c) {
+    #|  "use strict";
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  iterator.next();
+    #|  arguments.length = 2;
+    #|  var result = iterator.next();
+    #|  console.log(String(result.value) + ":" + result.done);
+    #|}
+    #|function sloppyMappedReads(a, b) {
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  a = 7;
+    #|  console.log(iterator.next().value + ":" + a);
+    #|  arguments[1] = 8;
+    #|  console.log(iterator.next().value + ":" + b);
+    #|}
+    #|function strictUnmappedReads(a, b) {
+    #|  "use strict";
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  a = 7;
+    #|  console.log(iterator.next().value + ":" + a);
+    #|  arguments[1] = 8;
+    #|  console.log(iterator.next().value + ":" + b);
+    #|}
+    #|function descriptorAndPrototype() {
+    #|  var desc = Object.getOwnPropertyDescriptor(arguments, Symbol.iterator);
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  var arrayIterator = [][Symbol.iterator]();
+    #|  console.log([typeof desc.value, desc.writable, desc.enumerable, desc.configurable].join(":"));
+    #|  console.log(arguments[Symbol.iterator] === Array.prototype[Symbol.iterator]);
+    #|  console.log(Object.getPrototypeOf(iterator) === Object.getPrototypeOf(arrayIterator));
+    #|  console.log(Object.prototype.hasOwnProperty.call(iterator, "next"));
+    #|}
+    #|function exhaustionSticky(a) {
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  iterator.next();
+    #|  var done = iterator.next();
+    #|  arguments.length = 2;
+    #|  arguments[1] = 9;
+    #|  var after = iterator.next();
+    #|  console.log(String(done.value) + ":" + done.done + ":" + String(after.value) + ":" + after.done);
+    #|}
+    #|function overriddenArrayValues(a, originalValues, originalIterator) {
+    #|  var result = arguments[Symbol.iterator]().next();
+    #|  console.log(result.value + ":" + result.done);
+    #|  console.log(arguments[Symbol.iterator] === originalValues);
+    #|  console.log(arguments[Symbol.iterator] === originalIterator);
+    #|  console.log(arguments[Symbol.iterator] === Array.prototype.values);
+    #|  console.log(arguments[Symbol.iterator] === Array.prototype[Symbol.iterator]);
+    #|}
+    #|function accessorBackedArguments(a, b) {
+    #|  var lengthGets = 0;
+    #|  var indexGets = 0;
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  Object.defineProperty(arguments, "length", { get: function() { lengthGets += 1; return 1; } });
+    #|  Object.defineProperty(arguments, "0", { get: function() { indexGets += 1; return 42; } });
+    #|  var first = iterator.next();
+    #|  var second = iterator.next();
+    #|  console.log(first.value + ":" + first.done + ":" + String(second.value) + ":" + second.done + ":" + lengthGets + ":" + indexGets);
+    #|}
+    #|function throwingAccessorAdvances(a, b) {
+    #|  "use strict";
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  Object.defineProperty(arguments, "0", { get: function() { throw new Error("boom"); } });
+    #|  try { iterator.next(); } catch (e) { console.log(e.message); }
+    #|  var result = iterator.next();
+    #|  console.log(result.value + ":" + result.done);
+    #|}
+    #|sloppyExpansion(2, 1, 3);
+    #|sloppyTruncation(2, 1, 3);
+    #|strictExpansion(2, 1, 3);
+    #|strictTruncation(2, 1, 3);
+    #|sloppyMappedReads(1, 2);
+    #|strictUnmappedReads(1, 2);
+    #|descriptorAndPrototype();
+    #|exhaustionSticky(1);
+    #|var originalArrayValues = Array.prototype.values;
+    #|var originalArrayIterator = Array.prototype[Symbol.iterator];
+    #|Array.prototype.values = function() {
+    #|  return { next: function() { return { value: "values override", done: false }; } };
+    #|};
+    #|Array.prototype[Symbol.iterator] = function() {
+    #|  return { next: function() { return { value: "symbol override", done: false }; } };
+    #|};
+    #|overriddenArrayValues(11, originalArrayValues, originalArrayIterator);
+    #|Array.prototype.values = originalArrayValues;
+    #|Array.prototype[Symbol.iterator] = originalArrayIterator;
+    #|accessorBackedArguments(1, 2);
+    #|throwingAccessorAdvances(1, 2);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "5:false", "undefined:true", "undefined:true", "5:false", "undefined:true", "undefined:true",
+    "7:7", "8:8", "1:7", "8:2", "function:true:false:true", "true", "true", "false",
+    "undefined:true:undefined:true", "11:false", "true", "true", "false", "false",
+    "42:false:undefined:true:2:1", "boom", "2:false",
+  ])
+}
+
+///|
 test "Promise microtask ordering" {
   let src =
     #|console.log("1");

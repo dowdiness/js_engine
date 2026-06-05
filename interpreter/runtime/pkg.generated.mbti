@@ -680,6 +680,7 @@ pub fn RealmState::RealmState() -> Self
 pub fn RealmState::from_symbols(SymbolState) -> Self
 pub fn RealmState::get_array_iterator_proto(Self) -> Value
 pub fn RealmState::get_array_proto(Self) -> Value
+pub fn RealmState::get_array_proto_values_intrinsic(Self) -> Value?
 pub fn RealmState::get_boolean_proto(Self) -> Value
 pub fn RealmState::get_func_proto(Self) -> Value
 pub fn RealmState::get_iterator_proto(Self) -> Value
@@ -696,6 +697,7 @@ pub fn RealmState::get_weakset_proto(Self) -> Value
 pub fn RealmState::make_array_iterator_value(Self, ArrayData) -> Value
 pub fn RealmState::make_array_like_iterator_value(Self, Value) -> Value raise
 pub fn RealmState::make_string_iterator_value(Self, String) -> Value
+pub fn RealmState::set_array_proto_values_intrinsic(Self, Value) -> Unit
 
 pub(all) enum ResumeAction {
   NextAction
