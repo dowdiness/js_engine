@@ -704,7 +704,12 @@ fn setup_builtins_with_realm_state_active(
       },
       prototype: Null,
       callable: Some(
-        NativeCallableWithContext("String", fn(context, args) raise {
+        InterpreterCallableWithContext("String", fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
           let str = if args.length() == 0 {
             // Per spec: String() with no args returns ""
             ""
@@ -717,7 +722,7 @@ fn setup_builtins_with_realm_state_active(
                   Some(d) => "Symbol(" + d + ")"
                   None => "Symbol()"
                 }
-              _ => @runtime.to_js_string(val)
+              _ => @runtime.to_js_string(val, interp=Some(interp))
             }
           }
           if context.is_constructing() {

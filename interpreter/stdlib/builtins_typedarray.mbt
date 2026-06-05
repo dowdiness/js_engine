@@ -18,6 +18,17 @@ fn typedarray_collect_iterator_values(
 }
 
 ///|
+fn typedarray_stable_sort_tie_break(a_index : Int, b_index : Int) -> Int {
+  if a_index < b_index {
+    -1
+  } else if a_index > b_index {
+    1
+  } else {
+    0
+  }
+}
+
+///|
 /// Read a typed element from an ArrayBuffer's byte array at the given byte offset.
 /// Returns the JS Number value.
 fn typed_array_get_element(
@@ -571,29 +582,14 @@ pub fn typedarray_is_valid_index(
 }
 
 ///|
-/// §22.2.3.5.1 ValidateTypedArray(O): the entry guard required at the top of
-/// every %TypedArray%.prototype method's algorithm. Two failure modes:
-///
-/// 1. `this` is not a TypedArray (RequireInternalSlot fails) → TypeError
-///    "<method> called on non-TypedArray".
-/// 2. The underlying ArrayBuffer is detached (IsDetachedBuffer is true) →
-///    TypeError "Cannot perform <method> on a detached ArrayBuffer".
-///
-/// Returns `(data, buf_id)` so the caller doesn't re-read them. `buf_id` is
-/// guaranteed `>= 0` and non-detached when this returns normally.
-///
-/// All ~30 prototype methods (reverse, copyWithin, fill, slice, subarray,
-/// set, map, filter, find*, indexOf, includes, join, sort, toSorted, ...)
-/// must call this at entry. Mid-method re-validation (for tests like
-/// `coerced-values-end-detached.js` where argument coercion detaches the
-/// buffer) is a separate follow-up — this helper covers entry-validation
-/// only.
-pub fn validate_typed_array(
+/// Require `this` to be a TypedArray object without checking the viewed
+/// buffer's detached state. A few algorithms, such as subarray, must still
+/// coerce later arguments before reaching their detached-buffer throw point.
+fn require_typed_array_object(
   this_val : Value,
   method_name : String,
-  realm_state : @runtime.RealmState,
-) -> (ObjectData, Int) raise Error {
-  let data = match this_val {
+) -> ObjectData raise Error {
+  match this_val {
     Object(d) =>
       if is_typedarray_class(d.class_name) {
         d
@@ -605,6 +601,21 @@ pub fn validate_typed_array(
     _ =>
       raise @errors.TypeError(message="\{method_name} called on non-TypedArray")
   }
+}
+
+///|
+/// Validate that `this` is a TypedArray with a non-detached buffer.
+///
+/// Returns `(data, buf_id)` so the caller doesn't re-read them. `buf_id` is
+/// guaranteed `>= 0` and non-detached when this returns normally. Methods
+/// whose arguments can detach the buffer should call this again at the
+/// spec-mandated post-coercion checkpoint.
+pub fn validate_typed_array(
+  this_val : Value,
+  method_name : String,
+  realm_state : @runtime.RealmState,
+) -> (ObjectData, Int) raise Error {
+  let data = require_typed_array_object(this_val, method_name)
   let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ =>
@@ -843,6 +854,36 @@ pub fn typedarray_set_index(
 }
 
 ///|
+fn typedarray_is_detached(
+  data : ObjectData,
+  realm_state : @runtime.RealmState,
+) -> Bool {
+  match data.bag.properties.get("[[ArrayBufferID]]") {
+    Some(Value::Number(n)) => {
+      let storage_state = typedarray_arraybuffer_state(data, realm_state)
+      is_arraybuffer_state_detached(storage_state, n.to_int())
+    }
+    _ => false
+  }
+}
+
+///|
+fn typedarray_get_view_slot(
+  data : ObjectData,
+  internal_slot : String,
+  realm_state : @runtime.RealmState,
+) -> Value {
+  if typedarray_is_detached(data, realm_state) {
+    Value::Number(0.0)
+  } else {
+    match data.bag.properties.get(internal_slot) {
+      Some(n) => n
+      None => Value::Number(0.0)
+    }
+  }
+}
+
+///|
 /// Get a TypedArray property by name (handles length, byteLength, byteOffset, buffer, and methods).
 pub fn get_typedarray_prop(
   data : ObjectData,
@@ -850,21 +891,11 @@ pub fn get_typedarray_prop(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match prop {
-    "length" =>
-      match data.bag.properties.get("[[ArrayLength]]") {
-        Some(n) => n
-        None => Value::Number(0.0)
-      }
+    "length" => typedarray_get_view_slot(data, "[[ArrayLength]]", realm_state)
     "byteLength" =>
-      match data.bag.properties.get("[[ByteLength]]") {
-        Some(n) => n
-        None => Value::Number(0.0)
-      }
+      typedarray_get_view_slot(data, "[[ByteLength]]", realm_state)
     "byteOffset" =>
-      match data.bag.properties.get("[[ByteOffset]]") {
-        Some(n) => n
-        None => Value::Number(0.0)
-      }
+      typedarray_get_view_slot(data, "[[ByteOffset]]", realm_state)
     "buffer" =>
       match data.bag.properties.get("[[ViewedArrayBuffer]]") {
         Some(buf) => buf
@@ -940,10 +971,7 @@ pub fn setup_typedarray_builtins(
           match this_val {
             Object(data) =>
               if is_typedarray_class(data.class_name) {
-                match data.bag.properties.get(internal_slot) {
-                  Some(n) => n
-                  None => Value::Number(0.0)
-                }
+                typedarray_get_view_slot(data, internal_slot, realm_state)
               } else {
                 raise @errors.TypeError(
                   message="get \{getter_name} called on incompatible receiver",
@@ -1002,8 +1030,8 @@ pub fn setup_typedarray_builtins(
     name="set",
     length=1,
     fn(interp, this_val, args) raise {
-      let (data, _) = validate_typed_array(
-        this_val, "TypedArray.prototype.set", realm_state,
+      let data = require_typed_array_object(
+        this_val, "TypedArray.prototype.set",
       )
       if args.length() == 0 {
         raise @errors.TypeError(
@@ -1015,6 +1043,11 @@ pub fn setup_typedarray_builtins(
       } else {
         0
       }
+      if typedarray_is_detached(data, realm_state) {
+        raise @errors.TypeError(
+          message="Cannot perform TypedArray.prototype.set on a detached ArrayBuffer",
+        )
+      }
       let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -1022,6 +1055,11 @@ pub fn setup_typedarray_builtins(
       match args[0] {
         // Source is a TypedArray
         Object(src_data) if is_typedarray_class(src_data.class_name) => {
+          if typedarray_is_detached(src_data, realm_state) {
+            raise @errors.TypeError(
+              message="Cannot perform TypedArray.prototype.set on a detached ArrayBuffer",
+            )
+          }
           let src_len = match src_data.bag.properties.get("[[ArrayLength]]") {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
@@ -1043,41 +1081,14 @@ pub fn setup_typedarray_builtins(
           }
           Undefined
         }
-        // Source is an array-like
-        Array(arr_data) => {
-          let src_len = arr_data.elements.length()
-          if target_offset + src_len > ta_length {
-            raise @errors.RangeError(message="Source is too large")
-          }
-          for i = 0; i < src_len; i = i + 1 {
-            let val = arr_data.elements[i]
-            let num = interp.to_number(val)
-            typedarray_set_index(data, target_offset + i, num, realm_state)
-          }
-          Undefined
-        }
         src => {
-          // Generic array-like with length property
-          let src_len = match src {
-            Object(src_obj) =>
-              match src_obj.bag.properties.get("length") {
-                Some(v) => interp.to_number(v).to_int()
-                _ => 0
-              }
-            _ => 0
-          }
+          let src_obj = to_object(src, interp)
+          let src_len = @runtime.to_array_like_length_interp(src_obj, interp)
           if target_offset + src_len > ta_length {
             raise @errors.RangeError(message="Source is too large")
           }
           for i = 0; i < src_len; i = i + 1 {
-            let val = match src {
-              Object(src_obj) =>
-                match src_obj.bag.properties.get(i.to_string()) {
-                  Some(v) => v
-                  _ => Undefined
-                }
-              _ => Undefined
-            }
+            let val = @runtime.get_array_like_element_interp(interp, src_obj, i)
             let num = interp.to_number(val)
             typedarray_set_index(data, target_offset + i, num, realm_state)
           }
@@ -1092,7 +1103,7 @@ pub fn setup_typedarray_builtins(
     name="subarray",
     length=2,
     fn(interp, this_val, args) raise {
-      let (data, _) = validate_typed_array(this_val, "subarray", realm_state)
+      let data = require_typed_array_object(this_val, "subarray")
       let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -1319,6 +1330,7 @@ pub fn setup_typedarray_builtins(
         }
       }
       if count > 0 {
+        let _ = validate_typed_array(this_val, "copyWithin", realm_state)
         // Read all source values first to handle overlapping
         let temp : Array[Double] = []
         for i = 0; i < count; i = i + 1 {
@@ -1390,6 +1402,7 @@ pub fn setup_typedarray_builtins(
       } else {
         len
       }
+      let _ = validate_typed_array(this_val, "fill", realm_state)
       for i = start_idx; i < end_idx; i = i + 1 {
         typedarray_set_index(data, i, fill_val, realm_state)
       }
@@ -1427,9 +1440,11 @@ pub fn setup_typedarray_builtins(
         0
       }
       for i = from_idx; i < len; i = i + 1 {
-        let elem = typedarray_get_index(data, i, realm_state)
-        if typedarray_index_search_matches(search_val, elem) {
-          return Value::Number(i.to_double())
+        if typedarray_is_valid_index(data, i, realm_state) {
+          let elem = typedarray_get_index(data, i, realm_state)
+          if typedarray_index_search_matches(search_val, elem) {
+            return Value::Number(i.to_double())
+          }
         }
       }
       Value::Number(-1.0)
@@ -1463,9 +1478,11 @@ pub fn setup_typedarray_builtins(
         len - 1
       }
       for i = from_idx; i >= 0; i = i - 1 {
-        let elem = typedarray_get_index(data, i, realm_state)
-        if typedarray_index_search_matches(search_val, elem) {
-          return Value::Number(i.to_double())
+        if typedarray_is_valid_index(data, i, realm_state) {
+          let elem = typedarray_get_index(data, i, realm_state)
+          if typedarray_index_search_matches(search_val, elem) {
+            return Value::Number(i.to_double())
+          }
         }
       }
       Value::Number(-1.0)
@@ -1512,33 +1529,37 @@ pub fn setup_typedarray_builtins(
   )
 
   // join(separator)
-  ta_proto_props["join"] = @runtime.make_method_func(name="join", length=1, fn(
-    this_val,
-    args,
-  ) raise {
-    let (data, _) = validate_typed_array(this_val, "join", realm_state)
-    let len = match data.bag.properties.get("[[ArrayLength]]") {
-      Some(Value::Number(n)) => n.to_int()
-      _ => 0
-    }
-    let sep = if args.length() > 0 {
-      match args[0] {
-        Undefined => ","
-        _ => args[0].to_string()
+  ta_proto_props["join"] = @runtime.make_interp_method_func(
+    name="join",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let (data, _) = validate_typed_array(this_val, "join", realm_state)
+      let len = match data.bag.properties.get("[[ArrayLength]]") {
+        Some(Value::Number(n)) => n.to_int()
+        _ => 0
       }
-    } else {
-      ","
-    }
-    let buf = StringBuilder::new()
-    for i = 0; i < len; i = i + 1 {
-      if i > 0 {
-        buf.write_string(sep)
+      let sep = if args.length() > 0 {
+        match args[0] {
+          Undefined => ","
+          _ => interp.to_js_string(args[0])
+        }
+      } else {
+        ","
       }
-      let elem = typedarray_get_index(data, i, realm_state)
-      buf.write_string(elem.to_string())
-    }
-    Value::String_(buf.to_string())
-  })
+      let buf = StringBuilder::new()
+      for i = 0; i < len; i = i + 1 {
+        if i > 0 {
+          buf.write_string(sep)
+        }
+        let elem = typedarray_get_index(data, i, realm_state)
+        match elem {
+          Null | Undefined => ()
+          _ => buf.write_string(interp.to_js_string(elem))
+        }
+      }
+      Value::String_(buf.to_string())
+    },
+  )
 
   // toString - delegates to join
   ta_proto_props["toString"] = match array_to_string {
@@ -1640,13 +1661,15 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
-      // Read all elements into temp array
-      let temp : Array[Double] = []
+      // Read all elements into a decorated temp array. MoonBit's Array::sort_by
+      // is intentionally unstable, so the original index is the spec-required
+      // stability tie-breaker whenever SortCompare returns +0/-0.
+      let temp : Array[(Double, Int)] = []
       for i = 0; i < len; i = i + 1 {
         let val = typedarray_get_index(data, i, realm_state)
         match val {
-          Value::Number(n) => temp.push(n)
-          _ => temp.push(0.0)
+          Value::Number(n) => temp.push((n, i))
+          _ => temp.push((0.0, i))
         }
       }
       let has_comparefn = args.length() > 0 && !(args[0] is Undefined)
@@ -1658,10 +1681,12 @@ pub fn setup_typedarray_builtins(
           if caught_error is Some(_) {
             return 0
           }
+          let a_num = a.0
+          let b_num = b.0
           let result = interp.call_value(
             comparefn,
             Undefined,
-            [Value::Number(a), Value::Number(b)],
+            [Value::Number(a_num), Value::Number(b_num)],
             loc,
           ) catch {
             e => {
@@ -1676,45 +1701,47 @@ pub fn setup_typedarray_builtins(
             }
           }
           if cmp.is_nan() {
-            0
+            typedarray_stable_sort_tie_break(a.1, b.1)
           } else if cmp < 0.0 {
             -1
           } else if cmp > 0.0 {
             1
           } else {
-            0
+            typedarray_stable_sort_tie_break(a.1, b.1)
           }
         })
       } else {
         // Default numeric sort per spec: NaN sorts last, -0 < +0
         temp.sort_by(fn(a, b) {
-          if a.is_nan() && b.is_nan() {
-            return 0
+          let a_num = a.0
+          let b_num = b.0
+          if a_num.is_nan() && b_num.is_nan() {
+            return typedarray_stable_sort_tie_break(a.1, b.1)
           }
-          if a.is_nan() {
+          if a_num.is_nan() {
             return 1
           }
-          if b.is_nan() {
+          if b_num.is_nan() {
             return -1
           }
-          if a == 0.0 && b == 0.0 {
+          if a_num == 0.0 && b_num == 0.0 {
             // Distinguish -0 and +0: -0 < +0
-            let a_neg = 1.0 / a < 0.0
-            let b_neg = 1.0 / b < 0.0
+            let a_neg = 1.0 / a_num < 0.0
+            let b_neg = 1.0 / b_num < 0.0
             if a_neg && !b_neg {
               return -1
             }
             if !a_neg && b_neg {
               return 1
             }
-            return 0
+            return typedarray_stable_sort_tie_break(a.1, b.1)
           }
-          if a < b {
+          if a_num < b_num {
             -1
-          } else if a > b {
+          } else if a_num > b_num {
             1
           } else {
-            0
+            typedarray_stable_sort_tie_break(a.1, b.1)
           }
         })
       }
@@ -1724,7 +1751,7 @@ pub fn setup_typedarray_builtins(
       }
       // Write sorted elements back
       for i = 0; i < len; i = i + 1 {
-        typedarray_set_index(data, i, temp[i], realm_state)
+        typedarray_set_index(data, i, temp[i].0, realm_state)
       }
       this_val
     },
@@ -2148,10 +2175,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "reduce", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(message="reduce requires a callback function")
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="reduce callback is not callable")
       }
-      let callback = args[0]
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2189,12 +2216,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "reduceRight", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(
-          message="reduceRight requires a callback function",
-        )
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="reduceRight callback is not callable")
       }
-      let callback = args[0]
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2296,10 +2321,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "find", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(message="find requires a callback function")
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="find callback is not callable")
       }
-      let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -2328,12 +2353,10 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "findIndex", realm_state)
-      if args.length() == 0 {
-        raise @errors.TypeError(
-          message="findIndex requires a callback function",
-        )
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="findIndex callback is not callable")
       }
-      let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
@@ -2360,10 +2383,13 @@ pub fn setup_typedarray_builtins(
     name="findLast",
     length=1,
     fn(interp, this_val, args) raise {
+      let (data, _) = validate_typed_array(this_val, "findLast", realm_state)
       let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(message="findLast callback is not callable")
+      }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      let (data, _) = validate_typed_array(this_val, "findLast", realm_state)
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2388,12 +2414,17 @@ pub fn setup_typedarray_builtins(
     name="findLastIndex",
     length=1,
     fn(interp, this_val, args) raise {
-      let callback = if args.length() > 0 { args[0] } else { Undefined }
-      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let loc = @token.Loc::default()
       let (data, _) = validate_typed_array(
         this_val, "findLastIndex", realm_state,
       )
+      let callback = if args.length() > 0 { args[0] } else { Undefined }
+      if !@runtime.is_callable(callback) {
+        raise @errors.TypeError(
+          message="findLastIndex callback is not callable",
+        )
+      }
+      let this_arg = if args.length() > 1 { args[1] } else { Undefined }
+      let loc = @token.Loc::default()
       let len = match data.bag.properties.get("[[ArrayLength]]") {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
@@ -2448,7 +2479,14 @@ pub fn setup_typedarray_builtins(
       let comparefn = if args.length() > 0 {
         match args[0] {
           Undefined => None
-          v => Some(v)
+          v => {
+            if !@runtime.is_callable(v) {
+              raise @errors.TypeError(
+                message="toSorted comparefn is not callable",
+              )
+            }
+            Some(v)
+          }
         }
       } else {
         None
@@ -2458,56 +2496,96 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
-      // Collect elements
-      let elements : Array[Double] = []
+      // Collect elements with original indices so toSorted remains stable even
+      // though MoonBit's Array::sort_by is intentionally unstable.
+      let elements : Array[(Double, Int)] = []
       for i = 0; i < len; i = i + 1 {
         let val = typedarray_get_index(data, i, realm_state)
         match val {
-          Value::Number(n) => elements.push(n)
-          _ => elements.push(0.0)
+          Value::Number(n) => elements.push((n, i))
+          _ => elements.push((0.0, i))
         }
       }
       let loc = @token.Loc::default()
+      let mut caught_error : Error? = None
       match comparefn {
         Some(cmp_fn) =>
           elements.sort_by(fn(a, b) {
+            if caught_error is Some(_) {
+              return 0
+            }
+            let a_num = a.0
+            let b_num = b.0
             let result = interp.call_value(
               cmp_fn,
               Undefined,
-              [Value::Number(a), Value::Number(b)],
+              [Value::Number(a_num), Value::Number(b_num)],
               loc,
             ) catch {
-              _ => Value::Number(0.0)
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
             }
-            match result {
-              Value::Number(n) =>
-                if n < 0.0 {
-                  -1
-                } else if n > 0.0 {
-                  1
-                } else {
-                  0
-                }
-              _ => 0
+            let cmp = interp.to_number(result) catch {
+              e => {
+                caught_error = Some(e)
+                return 0
+              }
+            }
+            if cmp.is_nan() {
+              typedarray_stable_sort_tie_break(a.1, b.1)
+            } else if cmp < 0.0 {
+              -1
+            } else if cmp > 0.0 {
+              1
+            } else {
+              typedarray_stable_sort_tie_break(a.1, b.1)
             }
           })
         None =>
           elements.sort_by(fn(a, b) {
-            if a < b {
+            let a_num = a.0
+            let b_num = b.0
+            if a_num.is_nan() && b_num.is_nan() {
+              return typedarray_stable_sort_tie_break(a.1, b.1)
+            }
+            if a_num.is_nan() {
+              return 1
+            }
+            if b_num.is_nan() {
+              return -1
+            }
+            if a_num == 0.0 && b_num == 0.0 {
+              let a_neg = 1.0 / a_num < 0.0
+              let b_neg = 1.0 / b_num < 0.0
+              if a_neg && !b_neg {
+                return -1
+              }
+              if !a_neg && b_neg {
+                return 1
+              }
+              return typedarray_stable_sort_tie_break(a.1, b.1)
+            }
+            if a_num < b_num {
               -1
-            } else if a > b {
+            } else if a_num > b_num {
               1
             } else {
-              0
+              typedarray_stable_sort_tie_break(a.1, b.1)
             }
           })
+      }
+      match caught_error {
+        Some(e) => raise e
+        None => ()
       }
       let proto = data.prototype
       let new_ta = make_typedarray_object(data.class_name, len, proto, env)
       match new_ta {
         Object(new_data) =>
           for i = 0; i < len; i = i + 1 {
-            typedarray_set_index(new_data, i, elements[i], realm_state)
+            typedarray_set_index(new_data, i, elements[i].0, realm_state)
           }
         _ => ()
       }

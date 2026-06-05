@@ -10510,6 +10510,27 @@ test "test262: TypedArray.prototype.lastIndexOf" {
 }
 
 ///|
+test "test262: TypedArray indexOf skips detached integer indices" {
+  let output = run_output(
+    (
+      #|var a = new Int8Array(1);
+      #|console.log(a.indexOf(undefined, {
+      #|  valueOf: function() { $262.detachArrayBuffer(a.buffer); return 0; }
+      #|}));
+      #|var b = new Int8Array(1);
+      #|console.log(b.lastIndexOf(undefined, {
+      #|  valueOf: function() { $262.detachArrayBuffer(b.buffer); return 0; }
+      #|}));
+      #|var c = new Int8Array(1);
+      #|console.log(c.includes(undefined, {
+      #|  valueOf: function() { $262.detachArrayBuffer(c.buffer); return 0; }
+      #|}));
+    ),
+  )
+  json_inspect(output, content=["-1", "-1", "true"])
+}
+
+///|
 test "test262: TypedArray.prototype.includes" {
   let output = run_output(
     (
@@ -10567,6 +10588,39 @@ test "test262: TypedArray.prototype.sort with comparator" {
     ),
   )
   json_inspect(output, content=["50", "40", "30", "20", "10"])
+}
+
+///|
+test "test262: TypedArray.prototype.sort stability" {
+  let output = run_output(
+    (
+      #|function compare(a, b) { return (a / 4 | 0) - (b / 4 | 0); }
+      #|var pre = new Float64Array([0, 1, 2, 3, 4, 5, 6, 7]);
+      #|pre.sort(compare);
+      #|console.log(pre.join(","));
+      #|var rev = new Float64Array([7, 6, 5, 4, 3, 2, 1, 0]);
+      #|rev.sort(compare);
+      #|console.log(rev.join(","));
+    ),
+  )
+  json_inspect(output, content=["0,1,2,3,4,5,6,7", "3,2,1,0,7,6,5,4"])
+}
+
+///|
+test "TypedArray.prototype.toSorted stability" {
+  let output = run_output(
+    (
+      #|function compare(a, b) { return (a / 10 | 0) - (b / 10 | 0); }
+      #|var values = [];
+      #|for (var i = 99; i >= 0; i--) values.push(i);
+      #|var sorted = new Float64Array(values).toSorted(compare);
+      #|console.log(sorted.slice(0, 20).join(","));
+      #|console.log(sorted.slice(90).join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "9,8,7,6,5,4,3,2,1,0,19,18,17,16,15,14,13,12,11,10", "99,98,97,96,95,94,93,92,91,90",
+  ])
 }
 
 ///|
@@ -10987,6 +11041,100 @@ test "test262: TypedArray.prototype.set array-like object" {
     ),
   )
   json_inspect(output, content=["10", "20", "30", "0"])
+}
+
+///|
+test "test262: TypedArray.prototype.set array-like coercion order" {
+  let output = run_output(
+    (
+      #|var fromString = new Uint8Array([1, 2, 3, 4, 5]);
+      #|fromString.set("678", 1);
+      #|console.log(fromString.join());
+      #|
+      #|var sample = new Uint8Array(5);
+      #|var calls = [];
+      #|var src = { length: 3 };
+      #|Object.defineProperty(src, "0", { get: function() {
+      #|  calls.push("0:" + sample.join());
+      #|  return 42;
+      #|} });
+      #|Object.defineProperty(src, "1", { get: function() {
+      #|  calls.push("1:" + sample.join());
+      #|  return 43;
+      #|} });
+      #|Object.defineProperty(src, "2", { get: function() {
+      #|  calls.push("2:" + sample.join());
+      #|  return 44;
+      #|} });
+      #|sample.set(src, 1);
+      #|console.log(sample.join());
+      #|console.log(calls.join("|"));
+      #|
+      #|var uncached = new Uint8Array(5);
+      #|var dynamic = { length: 5, 1: 7, 2: 7, 3: 7, 4: 7 };
+      #|Object.defineProperty(dynamic, "0", { get: function() {
+      #|  dynamic[1] = 43; dynamic[2] = 44; dynamic[3] = 45; dynamic[4] = 46;
+      #|  return 42;
+      #|} });
+      #|uncached.set(dynamic);
+      #|console.log(uncached.join());
+      #|
+      #|var abruptLength = {};
+      #|Object.defineProperty(abruptLength, "length", { get: function() {
+      #|  throw new Error("length");
+      #|} });
+      #|try {
+      #|  new Uint8Array(1).set(abruptLength);
+      #|  console.log("no length error");
+      #|} catch (e) {
+      #|  console.log(e instanceof Error && e.message === "length");
+      #|}
+      #|
+      #|try {
+      #|  new Uint8Array(1).set(undefined);
+      #|  console.log("no toobject error");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|
+      #|var detached = new Uint8Array(2);
+      #|var calledOffset = 0;
+      #|try {
+      #|  detached.set([1], { valueOf: function() {
+      #|    $262.detachArrayBuffer(detached.buffer);
+      #|    calledOffset += 1;
+      #|    return 0;
+      #|  } });
+      #|  console.log("no detach error");
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|console.log(calledOffset);
+      #|
+      #|var mid = new Uint8Array([1, 2, 3]);
+      #|var get2Called = false;
+      #|var midSrc = { length: 3, 0: 42 };
+      #|Object.defineProperty(midSrc, "1", { get: function() {
+      #|  $262.detachArrayBuffer(mid.buffer);
+      #|} });
+      #|Object.defineProperty(midSrc, "2", { get: function() {
+      #|  get2Called = true;
+      #|  return 2;
+      #|} });
+      #|try {
+      #|  mid.set(midSrc);
+      #|  console.log("mid ok");
+      #|} catch (e) {
+      #|  console.log("mid threw");
+      #|}
+      #|console.log(get2Called);
+      #|console.log(mid.length);
+    ),
+  )
+  json_inspect(output, content=[
+    "1,6,7,8,5", "0,42,43,44,0", "0:0,0,0,0,0|1:0,42,0,0,0|2:0,42,43,0,0", "42,43,44,45,46",
+    "true", "true", "true", "1", "mid ok", "true", "0",
+  ])
 }
 
 ///|
@@ -11423,6 +11571,22 @@ test "test262: ArrayBuffer.prototype.byteLength detached returns 0" {
 }
 
 ///|
+test "test262: TypedArray detached buffer accessors return 0" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(16);
+      #|var sample = new Int16Array(buf, 4, 3);
+      #|$262.detachArrayBuffer(buf);
+      #|console.log(sample.buffer === buf);
+      #|console.log(sample.byteOffset);
+      #|console.log(sample.byteLength);
+      #|console.log(sample.length);
+    ),
+  )
+  json_inspect(output, content=["true", "0", "0", "0"])
+}
+
+///|
 test "test262: DataView on detached buffer throws" {
   let output = run_output(
     (
@@ -11804,6 +11968,50 @@ test "test262: TypedArray.prototype.filter non-callable throws before species" {
 }
 
 ///|
+/// %TypedArray%.prototype reduce/find family methods must reject
+/// non-callable callbacks even when the loop body is unreachable, and
+/// toSorted must reject/cancel invalid or throwing comparators before it
+/// silently returns a copied array.
+test "test262: TypedArray callback and comparator callable checks" {
+  let output = run_output(
+    (
+      #|function check(label, thunk) {
+      #|  try {
+      #|    thunk();
+      #|    console.log(label + ":no");
+      #|  } catch (e) {
+      #|    console.log(label + ":" + (e instanceof TypeError));
+      #|  }
+      #|}
+      #|var empty = new Int8Array(0);
+      #|var single = new Int8Array([1]);
+      #|check("reduce", function() { single.reduce(undefined); });
+      #|check("reduceRight", function() { single.reduceRight(null); });
+      #|check("find", function() { empty.find({}); });
+      #|check("findIndex", function() { empty.findIndex([]); });
+      #|check("findLast", function() { empty.findLast(1); });
+      #|check("findLastIndex", function() { empty.findLastIndex(""); });
+      #|check("toSorted", function() { new Int8Array([1]).toSorted(null); });
+      #|console.log("stringRegExp:" + String(/a/g));
+      #|var calls = 0;
+      #|try {
+      #|  new Int8Array([3, 1, 2]).toSorted(function() {
+      #|    calls++;
+      #|    throw new TypeError("stop");
+      #|  });
+      #|  console.log("toSortedError:no");
+      #|} catch (e) {
+      #|  console.log("toSortedError:" + (e instanceof TypeError) + ":" + calls);
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "reduce:true", "reduceRight:true", "find:true", "findIndex:true", "findLast:true",
+    "findLastIndex:true", "toSorted:true", "stringRegExp:/a/g", "toSortedError:true:1",
+  ])
+}
+
+///|
 /// Codex finding 2 (post-PR-#121, second pass): §22.2.3.27 slice step 14
 /// guards source re-validation on `count > 0`. A zero-count slice with a
 /// species ctor that detaches the source must NOT throw — it returns an
@@ -11852,7 +12060,7 @@ test "test262: TypedArray.prototype.map with zero length tolerates source detach
 }
 
 ///|
-/// §22.2.3.5.1 ValidateTypedArray: every %TypedArray%.prototype method must
+/// §22.2.3.5.1 ValidateTypedArray: most %TypedArray%.prototype methods must
 /// throw TypeError at entry if the underlying buffer is detached. Pinned
 /// per-method tests below mirror test262's
 /// `built-ins/TypedArray/prototype/<method>/detached-buffer.js` fixtures,
@@ -11939,6 +12147,81 @@ test "test262: TypedArray.prototype.subarray detached throws" {
     ),
   )
   json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: TypedArray fill/copyWithin/subarray detachment order" {
+  let output = run_output(
+    (
+      #|function check(label, thunk) {
+      #|  try {
+      #|    thunk();
+      #|    console.log(label + ": no error");
+      #|  } catch (e) {
+      #|    console.log(label + ": " + (e instanceof TypeError));
+      #|  }
+      #|}
+      #|
+      #|var fillValue = new Int8Array(4);
+      #|check("fill value", function() {
+      #|  fillValue.fill({ valueOf: function() {
+      #|    $262.detachArrayBuffer(fillValue.buffer);
+      #|    return 1;
+      #|  } }, 0, 1);
+      #|});
+      #|
+      #|var fillStart = new Int8Array(4);
+      #|check("fill start", function() {
+      #|  fillStart.fill(1, { valueOf: function() {
+      #|    $262.detachArrayBuffer(fillStart.buffer);
+      #|    return 0;
+      #|  } }, 1);
+      #|});
+      #|
+      #|var fillEnd = new Int8Array(4);
+      #|check("fill end", function() {
+      #|  fillEnd.fill(1, 0, { valueOf: function() {
+      #|    $262.detachArrayBuffer(fillEnd.buffer);
+      #|    return 1;
+      #|  } });
+      #|});
+      #|
+      #|var copyStart = new Int8Array([1, 2, 3, 4]);
+      #|check("copyWithin start", function() {
+      #|  copyStart.copyWithin(0, { valueOf: function() {
+      #|    $262.detachArrayBuffer(copyStart.buffer);
+      #|    return 1;
+      #|  } }, 3);
+      #|});
+      #|
+      #|var copyEnd = new Int8Array([1, 2, 3, 4]);
+      #|check("copyWithin end", function() {
+      #|  copyEnd.copyWithin(0, 1, { valueOf: function() {
+      #|    $262.detachArrayBuffer(copyEnd.buffer);
+      #|    return 3;
+      #|  } });
+      #|});
+      #|
+      #|var sub = new Int8Array(2);
+      #|var begin = false;
+      #|var end = false;
+      #|$262.detachArrayBuffer(sub.buffer);
+      #|check("subarray", function() {
+      #|  sub.subarray({ valueOf: function() {
+      #|    begin = true;
+      #|    return 0;
+      #|  } }, { valueOf: function() {
+      #|    end = true;
+      #|    return 1;
+      #|  } });
+      #|});
+      #|console.log("subarray coercions: " + begin + "," + end);
+    ),
+  )
+  json_inspect(output, content=[
+    "fill value: true", "fill start: true", "fill end: true", "copyWithin start: true",
+    "copyWithin end: true", "subarray: true", "subarray coercions: true,true",
+  ])
 }
 
 ///|
@@ -16587,6 +16870,41 @@ test "TypedArray constructor consumes iterable sources before reduce callbacks" 
     #|}
   let output = run_output(src)
   json_inspect(output, content=["MyError", "MyError", "MyError", "MyError"])
+}
+
+///|
+test "TypedArray.prototype.join coerces separator and treats detached elements as empty" {
+  let src =
+    #|function MyError() { this.name = "MyError"; }
+    #|MyError.prototype = Object.create(Error.prototype);
+    #|console.log([1, 2, 3].join({ toString: function() { return "array"; } }));
+    #|var sample = new Uint8Array([1, 2, 3]);
+    #|console.log(sample.join({ toString: function() { return "foo"; } }));
+    #|console.log(sample.join({
+    #|  toString: undefined,
+    #|  valueOf: function() { return "bar"; }
+    #|}));
+    #|try {
+    #|  new Uint8Array(0).join(Symbol("s"));
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  new Uint8Array(0).join({ toString: function() { throw new MyError(); } });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var detached = new Uint8Array([1, 2, 3]);
+    #|console.log(detached.join({
+    #|  toString: function() {
+    #|    $262.detachArrayBuffer(detached.buffer);
+    #|    return ",";
+    #|  }
+    #|}));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1array2array3", "1foo2foo3", "1bar2bar3", "TypeError", "MyError", ",,",
+  ])
 }
 
 ///|
