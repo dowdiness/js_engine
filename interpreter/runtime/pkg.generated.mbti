@@ -548,6 +548,8 @@ pub fn Interpreter::with_active_value(Self, () -> Value raise) -> Value raise
 
 pub(all) struct MapData {
   entries : Array[(Value, Value)]
+  entry_ids : Array[Int]
+  mut next_entry_id : Int
   mut prototype : Value
   bag : PropertyBag
 }

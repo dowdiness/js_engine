@@ -16512,8 +16512,23 @@ test "Map.prototype.forEach validates callback and visits readded keys" {
     #|console.log(count);
     #|console.log(results.join("|"));
     #|console.log(map.size);
+    #|var single = new Map([["solo", 0]]);
+    #|var singleCount = 0;
+    #|var singleResults = [];
+    #|single.forEach(function(value, key) {
+    #|  singleResults.push(key + ":" + value);
+    #|  if (singleCount === 0) {
+    #|    single.clear();
+    #|    single.set("solo", 1);
+    #|  }
+    #|  singleCount++;
+    #|});
+    #|console.log(singleCount);
+    #|console.log(singleResults.join("|"));
   let output = run_output(src)
-  json_inspect(output, content=["TypeError", "3", "foo:0|bar:1|foo:baz", "2"])
+  json_inspect(output, content=[
+    "TypeError", "3", "foo:0|bar:1|foo:baz", "2", "2", "solo:0|solo:1",
+  ])
 }
 
 ///|
