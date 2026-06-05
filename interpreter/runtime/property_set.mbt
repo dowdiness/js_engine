@@ -311,7 +311,7 @@ pub fn Interpreter::set_property(
           let is_own = i < data.elements.length() && !data.holes.contains(i)
           if !is_own {
             match
-              self.typedarray_set_via_immediate_proto(
+              self.set_missing_array_index_via_proto_chain(
                 get_array_prototype(self.realm_state, data),
                 receiver,
                 prop,
@@ -625,10 +625,12 @@ fn Interpreter::typedarray_set_dispatch(
 }
 
 ///|
-/// Fast path for Array receivers whose immediate prototype is a TypedArray.
-/// Array uses ordinary [[Set]], so a missing array index delegates to the
-/// prototype's `[[Set]]` before Array `[[DefineOwnProperty]]` can extend length.
-fn Interpreter::typedarray_set_via_immediate_proto(
+/// Array uses ordinary [[Set]], so a missing array index delegates through the
+/// full prototype chain before Array [[DefineOwnProperty]] can extend length.
+/// This keeps TypedArray integer-index semantics observable even behind
+/// intermediate ordinary prototypes, while preserving ordinary prototype
+/// blockers (setters, getter-only accessors, and non-writable data props).
+fn Interpreter::set_missing_array_index_via_proto_chain(
   self : Interpreter,
   proto : Value,
   receiver : Value,
@@ -637,32 +639,85 @@ fn Interpreter::typedarray_set_via_immediate_proto(
   loc : @token.Loc,
   strict : Bool,
 ) -> Value? raise Error {
-  match proto {
-    Object(proto_data) =>
-      if is_typedarray_class(proto_data.class_name) {
-        match classify_typedarray_string_key(prop) {
-          Some(idx) =>
-            Some(
-              self.typedarray_set_dispatch(
-                proto_data,
-                proto,
-                receiver,
-                String_(prop),
-                idx,
-                value,
-                loc,
-                strict,
-              ),
-            )
-          None => None
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) => {
+        if is_typedarray_class(proto_data.class_name) {
+          match classify_typedarray_string_key(prop) {
+            Some(idx) =>
+              return Some(
+                self.typedarray_set_dispatch(
+                  proto_data,
+                  current,
+                  receiver,
+                  String_(prop),
+                  idx,
+                  value,
+                  loc,
+                  strict,
+                ),
+              )
+            None => ()
+          }
         }
-      } else {
-        None
+        match proto_data.bag.descriptors.get(prop) {
+          Some(desc) =>
+            match desc.setter {
+              Some(setter) => {
+                let _ = self.call_value(setter, receiver, [value], loc)
+                return Some(value)
+              }
+              None =>
+                if desc.getter is Some(_) {
+                  if strict {
+                    raise @errors.TypeError(
+                      message="Cannot set property \{prop} which has only a getter",
+                    )
+                  }
+                  return Some(value)
+                } else if !desc.writable {
+                  if strict {
+                    raise @errors.TypeError(
+                      message="Cannot assign to read only property '\{prop}'",
+                    )
+                  }
+                  return Some(value)
+                } else {
+                  return Some(
+                    self.define_value_on_receiver(
+                      receiver,
+                      String_(prop),
+                      value,
+                      loc,
+                      strict,
+                    ),
+                  )
+                }
+            }
+          None =>
+            if proto_data.bag.properties.contains(prop) {
+              return Some(
+                self.define_value_on_receiver(
+                  receiver,
+                  String_(prop),
+                  value,
+                  loc,
+                  strict,
+                ),
+              )
+            }
+        }
+        current = proto_data.prototype
       }
-    Proxy(_) =>
-      Some(self.set_property(proto, prop, value, loc, strict~, receiver~))
-    _ => None
+      Proxy(_) =>
+        return Some(
+          self.set_property(current, prop, value, loc, strict~, receiver~),
+        )
+      _ => return None
+    }
   }
+  None
 }
 
 ///|
@@ -1318,7 +1373,7 @@ pub fn Interpreter::set_computed_property(
             let is_own = i < data.elements.length() && !data.holes.contains(i)
             if !is_own {
               match
-                self.typedarray_set_via_immediate_proto(
+                self.set_missing_array_index_via_proto_chain(
                   get_array_prototype(self.realm_state, data),
                   receiver,
                   prop,
@@ -1450,7 +1505,7 @@ pub fn Interpreter::set_computed_property(
                       !data.holes.contains(idx)
                     if !is_own {
                       match
-                        self.typedarray_set_via_immediate_proto(
+                        self.set_missing_array_index_via_proto_chain(
                           get_array_prototype(self.realm_state, data),
                           receiver,
                           prop,

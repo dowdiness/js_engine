@@ -15126,6 +15126,49 @@ test "strict TypedArray delete valid index throws" {
 }
 
 ///|
+/// Review regression: Reflect and Proxy paths must route through the same
+/// TypedArray integer-index [[Delete]]/[[GetOwnProperty]]/[[OwnPropertyKeys]]
+/// dispatch as direct syntax, including detached-buffer filtering.
+test "TypedArray Reflect and Proxy integer-index internals" {
+  let src =
+    #|const ta = new Uint8Array([1, 2]);
+    #|console.log(Reflect.deleteProperty(ta, "0"));
+    #|const passthrough = new Proxy(ta, {});
+    #|console.log(Reflect.deleteProperty(passthrough, "0"));
+    #|console.log(delete passthrough[0]);
+    #|console.log(Object.getOwnPropertyDescriptor(passthrough, "0").value);
+    #|console.log(Object.getOwnPropertyDescriptor(ta, 0).value);
+    #|console.log(Reflect.getOwnPropertyDescriptor(ta, 1).value);
+    #|Object.preventExtensions(ta);
+    #|try {
+    #|  delete new Proxy(ta, { deleteProperty() { return true; } })[0];
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|const detached = new Uint8Array([3, 4]);
+    #|$262.detachArrayBuffer(detached.buffer);
+    #|console.log(Reflect.ownKeys(detached).length);
+    #|console.log(Reflect.deleteProperty(detached, "0"));
+    #|const proto = new Uint8Array([5]);
+    #|const mid = Object.create(proto);
+    #|const arrValid = Object.setPrototypeOf([], mid);
+    #|arrValid[0] = 9;
+    #|console.log(arrValid[0]);
+    #|console.log(proto[0]);
+    #|console.log(arrValid.length);
+    #|const arrInvalid = Object.setPrototypeOf([], mid);
+    #|arrInvalid[1] = 7;
+    #|console.log(arrInvalid.hasOwnProperty("1"));
+    #|console.log(arrInvalid.length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "false", "false", "false", "1", "1", "2", "TypeError", "0", "true", "9", "5",
+    "1", "false", "0",
+  ])
+}
+
+///|
 /// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;

@@ -27,7 +27,7 @@ pub fn clear_array_length_override(ArrayData) -> Unit
 
 pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
 
-pub fn collect_target_own_keys(Value, SymbolState) -> Array[Value]
+pub fn collect_target_own_keys(Value, Interpreter) -> Array[Value]
 
 pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
 
@@ -500,6 +500,7 @@ pub fn Interpreter::define_compiled_binding(Self, Environment, @ast.VarKind, Str
 pub fn Interpreter::define_own_property(Self, Value, Value, PartialDescriptor, @token.Loc) -> Bool raise
 pub fn Interpreter::define_simple_arguments_object(Self, Environment, Array[Value], Value, Bool, Array[String]) -> Unit raise
 pub fn Interpreter::define_unmapped_arguments_object(Self, Environment, Array[Value], Value, Bool) -> Unit raise
+pub fn Interpreter::delete_property_key(Self, Value, Value, strict? : Bool) -> Bool raise
 pub fn Interpreter::enqueue_microtask(Self, Value, Array[Value]) -> Unit
 pub fn Interpreter::eval_destructure_assign(Self, ExecContext, @ast.Pattern, Value, Environment) -> Value raise
 pub fn Interpreter::eval_super_computed_call_reference(Self, Environment, Value, @token.Loc) -> (Value, Value) raise

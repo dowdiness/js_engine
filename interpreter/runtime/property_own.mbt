@@ -763,11 +763,12 @@ pub fn Interpreter::get_own_property(
   val : Value,
   key : Value,
 ) -> (PropDescriptor, Value)? raise Error {
+  let prop_key = to_property_key(key, interp=Some(self))
   match val {
-    Value::Proxy(pdata) => proxy_get_own_property(self, pdata, key)
+    Value::Proxy(pdata) => proxy_get_own_property(self, pdata, prop_key)
     Object(data) if is_typedarray_class(data.class_name) =>
-      self.typedarray_get_own_property_pair(data, key)
-    _ => ordinary_get_own_property_pair(val, key)
+      self.typedarray_get_own_property_pair(data, prop_key)
+    _ => ordinary_get_own_property_pair(val, prop_key)
   }
 }
 

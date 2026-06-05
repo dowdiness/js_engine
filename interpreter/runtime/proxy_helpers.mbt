@@ -64,7 +64,7 @@ pub fn get_proxy_handler(proxy_data : ProxyData) -> Value raise Error {
 }
 
 ///|
-fn typedarray_index_count(data : ObjectData) -> Int {
+fn typedarray_declared_length(data : ObjectData) -> Int {
   guard is_typedarray_class(data.class_name) else { return 0 }
   match data.bag.properties.get("[[ArrayLength]]") {
     Some(Value::Number(n)) => n.to_int()
@@ -84,14 +84,20 @@ fn is_typedarray_own_index_key(key : String, length : Int) -> Bool {
 /// Returns string keys and symbol keys (symbol keys require SymbolState).
 pub fn collect_target_own_keys(
   target : Value,
-  sym_state : SymbolState,
+  interp : Interpreter,
 ) -> Array[Value] {
   let keys : Array[Value] = []
   match target {
     Object(data) => {
-      let typedarray_length = typedarray_index_count(data)
+      let typedarray_length = typedarray_declared_length(data)
       for i = 0; i < typedarray_length; i = i + 1 {
-        keys.push(Value::String_(i.to_string()))
+        if (interp.stdlib_hooks.typedarray_is_valid_index)(
+            data,
+            i,
+            interp.realm_state,
+          ) {
+          keys.push(Value::String_(i.to_string()))
+        }
       }
       // Indexed (integer) string keys first, in ascending order
       let sorted = sort_property_keys(data.bag.properties)
@@ -110,7 +116,7 @@ pub fn collect_target_own_keys(
       })
       // Symbol keys
       data.bag.symbol_properties.each(fn(id, _v) {
-        match sym_state.get_symbol_by_id(id) {
+        match interp.realm_state.symbols.get_symbol_by_id(id) {
           Some(sym) => keys.push(Value::Symbol(sym))
           None => ()
         }
@@ -306,82 +312,6 @@ fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
 }
 
 ///|
-/// Unified target own-descriptor lookup covering both String and Symbol
-/// keys across all object-typed variants. Synthesizes the default data
-/// descriptor (w/e/c all true) for assignment-created props that live
-/// only in `bag.properties` / `bag.symbol_properties`, matching the
-/// OrdinaryGetOwnProperty default data shape.
-fn target_own_descriptor_for_key(
-  target : Value,
-  key : Value,
-) -> PropDescriptor? {
-  let default_data : PropDescriptor = {
-    writable: true,
-    enumerable: true,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  match key {
-    Symbol(sym) =>
-      match target {
-        Object(data) =>
-          match data.bag.symbol_descriptors.get(sym.id) {
-            Some(d) => Some(d)
-            None =>
-              if data.bag.symbol_properties.contains(sym.id) {
-                Some(default_data)
-              } else {
-                None
-              }
-          }
-        Map(data) =>
-          match data.bag.symbol_descriptors.get(sym.id) {
-            Some(d) => Some(d)
-            None =>
-              if data.bag.symbol_properties.contains(sym.id) {
-                Some(default_data)
-              } else {
-                None
-              }
-          }
-        Set(data) =>
-          match data.bag.symbol_descriptors.get(sym.id) {
-            Some(d) => Some(d)
-            None =>
-              if data.bag.symbol_properties.contains(sym.id) {
-                Some(default_data)
-              } else {
-                None
-              }
-          }
-        Promise(data) =>
-          match data.bag.symbol_descriptors.get(sym.id) {
-            Some(d) => Some(d)
-            None =>
-              if data.bag.symbol_properties.contains(sym.id) {
-                Some(default_data)
-              } else {
-                None
-              }
-          }
-        Array(arr) =>
-          match arr.bag.symbol_descriptors.get(sym.id) {
-            Some(d) => Some(d)
-            None =>
-              match get_array_symbol_prop(arr, sym.id) {
-                Some(_) => Some(default_data)
-                None => None
-              }
-          }
-        _ => None
-      }
-    _ => target_get_own_descriptor(target, key.to_string())
-  }
-}
-
-///|
 /// Read the own string-keyed value from the target, or Undefined if absent.
 /// Mirrors the variant coverage of `target_get_own_descriptor`. Used by
 /// proxy invariant checks that compare trap results to target values for
@@ -422,34 +352,6 @@ fn target_get_own_value(target : Value, key : String) -> Value {
       }
     }
     _ => Undefined
-  }
-}
-
-///|
-/// Check if the target has a specific own string property.
-/// Sources: `bag.properties` + `bag.descriptors` for Object/Map/Set/Promise;
-/// Array length + indexed elements + bag descriptors for Array.
-fn target_has_own_property(target : Value, key : String) -> Bool {
-  match target {
-    Object(data) =>
-      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
-    Map(data) =>
-      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
-    Set(data) =>
-      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
-    Promise(data) =>
-      data.bag.properties.contains(key) || data.bag.descriptors.contains(key)
-    Array(arr) => {
-      if key == "length" {
-        return true
-      }
-      let idx = @string.parse_int(key) catch { _ => -1 }
-      if idx >= 0 && idx.to_string() == key && idx < arr.elements.length() {
-        return true
-      }
-      arr.bag.properties.contains(key) || arr.bag.descriptors.contains(key)
-    }
-    _ => false
   }
 }
 
@@ -624,9 +526,10 @@ pub fn proxy_has_property_key(
       let trap_result = is_truthy(result)
       // ES §10.5.7 step 9-10: If trap returns false, check invariants
       if !trap_result {
+        let target_desc = interp.get_own_property(target, key)
         // Cannot report a non-configurable own property as non-existent
-        match target_own_descriptor_for_key(target, key) {
-          Some(desc) =>
+        match target_desc {
+          Some((desc, _)) =>
             if !desc.configurable {
               raise @errors.TypeError(
                 message="'has' on proxy: trap returned falsish for property '\{key_display}' which exists in the proxy target as non-configurable",
@@ -635,8 +538,7 @@ pub fn proxy_has_property_key(
           None => ()
         }
         // Cannot report an own property as non-existent on non-extensible target
-        if !target_is_extensible(target) &&
-          target_own_descriptor_for_key(target, key) is Some(_) {
+        if !target_is_extensible(target) && target_desc is Some(_) {
           raise @errors.TypeError(
             message="'has' on proxy: trap returned falsish for property '\{key_display}' but the proxy target is not extensible",
           )
@@ -648,50 +550,65 @@ pub fn proxy_has_property_key(
 }
 
 ///|
+fn proxy_delete_key_display(key : Value) -> String {
+  match key {
+    Symbol(sym) => "Symbol(\{sym.description.unwrap_or_default()})"
+    String_(s) => s
+    _ => to_js_string(key) catch { _ => "<property key>" }
+  }
+}
+
+///|
 /// Implement the Proxy [[Delete]] invariant checks per ES §10.5.10.
 pub fn proxy_delete_property(
   interp : Interpreter,
   proxy_data : ProxyData,
   key : String,
 ) -> Bool raise Error {
+  proxy_delete_property_key(interp, proxy_data, String_(key))
+}
+
+///|
+fn proxy_delete_property_key(
+  interp : Interpreter,
+  proxy_data : ProxyData,
+  key : Value,
+) -> Bool raise Error {
+  let prop_key = match key {
+    Symbol(_) | String_(_) => key
+    _ => String_(to_js_string(key, interp=Some(interp)))
+  }
+  let key_display = proxy_delete_key_display(prop_key)
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "deleteProperty", interp)
   match trap {
     None =>
       match target {
-        Object(data) => {
-          match data.bag.descriptors.get(key) {
-            Some(desc) => if !desc.configurable { return false }
-            None => ()
-          }
-          let _ = data.bag.properties.remove(key)
-          let _ = data.bag.descriptors.remove(key)
-          true
-        }
-        Value::Proxy(inner) => proxy_delete_property(interp, inner, key)
-        _ => true
+        Value::Proxy(inner) =>
+          proxy_delete_property_key(interp, inner, prop_key)
+        _ => interp.delete_property_key(target, prop_key)
       }
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
-      let result = interp.call_value(
-        trap_fn,
-        handler,
-        [target, String_(key)],
-        loc,
-      )
+      let result = interp.call_value(trap_fn, handler, [target, prop_key], loc)
       let trap_result = is_truthy(result)
       // ES §10.5.10 step 10-11: Cannot delete non-configurable property
       if trap_result {
-        if target_has_non_configurable_key(target, key) {
-          raise @errors.TypeError(
-            message="'deleteProperty' on proxy: trap returned truish for property '\{key}' which is non-configurable in the proxy target",
-          )
+        let target_desc = interp.get_own_property(target, prop_key)
+        match target_desc {
+          Some((desc, _)) =>
+            if !desc.configurable {
+              raise @errors.TypeError(
+                message="'deleteProperty' on proxy: trap returned truish for property '\{key_display}' which is non-configurable in the proxy target",
+              )
+            }
+          None => ()
         }
         // Step 12: Cannot delete own property of non-extensible target
-        if !target_is_extensible(target) && target_has_own_property(target, key) {
+        if !target_is_extensible(target) && target_desc is Some(_) {
           raise @errors.TypeError(
-            message="'deleteProperty' on proxy: trap returned truish for property '\{key}' on a non-extensible proxy target",
+            message="'deleteProperty' on proxy: trap returned truish for property '\{key_display}' on a non-extensible proxy target",
           )
         }
       }
@@ -896,10 +813,7 @@ pub fn proxy_own_property_keys(
       match target {
         Value::Proxy(inner_proxy) =>
           return proxy_own_property_keys(interp, inner_proxy)
-        _ =>
-          return make_array(
-            collect_target_own_keys(target, interp.realm_state.symbols),
-          )
+        _ => return make_array(collect_target_own_keys(target, interp))
       }
     _ => ()
   }
@@ -973,7 +887,7 @@ pub fn proxy_own_property_keys(
   // Step 10: Get extensibleTarget
   let extensible_target = target_is_extensible(target)
   // Step 11-12: Get target keys, split into non-configurable and configurable
-  let target_keys = collect_target_own_keys(target, interp.realm_state.symbols)
+  let target_keys = collect_target_own_keys(target, interp)
   let target_nonconfigurable_keys : Array[Value] = []
   let target_configurable_keys : Array[Value] = []
   for key in target_keys {
@@ -1251,15 +1165,11 @@ pub fn proxy_get_own_property(
   match trap {
     None =>
       // Delegate to the target's own [[GetOwnProperty]]. For Proxy-of-Proxy
-      // this recurses; otherwise reads from the ordinary/Array path.
+      // this recurses; otherwise route through the dispatcher so TypedArray
+      // integer-index descriptors are synthesized.
       match target {
         Value::Proxy(inner) => proxy_get_own_property(interp, inner, key)
-        _ =>
-          match ordinary_get_own_property(target, key) {
-            None => None
-            Some(desc) =>
-              Some((desc, ordinary_get_own_value_for_descriptor(target, key)))
-          }
+        _ => interp.get_own_property(target, key)
       }
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
@@ -1287,7 +1197,10 @@ pub fn proxy_get_own_property(
             )
           }
       }
-      let target_desc = target_own_descriptor_for_key(target, key)
+      let target_desc = match interp.get_own_property(target, key_val) {
+        Some((desc, _)) => Some(desc)
+        None => None
+      }
       // §10.5.5 step 10: trap returns undefined.
       if trap_result is Undefined {
         match target_desc {
@@ -1500,29 +1413,15 @@ pub fn proxy_define_property(
         return false
       }
       // Invariant checks: §10.5.6 step 14+.
-      let target_desc = target_own_descriptor_for_key(target, key)
-      let target_extensible = target_is_extensible(target)
-      // is_new: key is absent as an own property. Ordinary assignment writes
-      // to bag.properties without always creating a bag.descriptors entry,
-      // so checking target_desc alone (descriptors-only) classifies bag-only
-      // props as "new" and fires the §10.5.6 step 16.b non-extensible TypeError
-      // when redefining them. Check both stores.
-      let is_new = match target_desc {
-        Some(_) => false
-        None =>
-          match key {
-            Symbol(sym) =>
-              match target {
-                Object(data) => !data.bag.symbol_properties.contains(sym.id)
-                Map(data) => !data.bag.symbol_properties.contains(sym.id)
-                Set(data) => !data.bag.symbol_properties.contains(sym.id)
-                Promise(data) => !data.bag.symbol_properties.contains(sym.id)
-                Array(arr) => get_array_symbol_prop(arr, sym.id) is None
-                _ => true
-              }
-            _ => !target_has_own_property(target, key.to_string())
-          }
+      let target_desc = match interp.get_own_property(target, key_val) {
+        Some((desc, _)) => Some(desc)
+        None => None
       }
+      let target_extensible = target_is_extensible(target)
+      // is_new: key is absent as an own property. Use the target's real
+      // [[GetOwnProperty]] dispatcher so synthetic TypedArray integer-index
+      // descriptors count as existing.
+      let is_new = target_desc is None
       // Step 16.b: cannot add a new non-configurable property to non-extensible target.
       if is_new {
         if !target_extensible {
