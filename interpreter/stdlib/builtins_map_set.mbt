@@ -84,6 +84,132 @@ pub fn setup_map_set_builtins(
 }
 
 ///|
+// Engine-private negative symbol IDs for Map Iterator internal slots.
+// These IDs are not registered in SymbolState, so JavaScript cannot obtain
+// or enumerate keys for them via string or symbol property access.
+const MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID = -130
+
+///|
+const MAP_ITERATOR_TARGET_SYMBOL_ID = -131
+
+///|
+const MAP_ITERATOR_KIND_SYMBOL_ID = -132
+
+///|
+const MAP_ITERATOR_KIND_KEY = 0
+
+///|
+const MAP_ITERATOR_KIND_VALUE = 1
+
+///|
+const MAP_ITERATOR_KIND_ENTRY = 2
+
+///|
+fn map_iterator_internal_slot_descriptor() -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn map_iterator_type_error() -> Value raise Error {
+  raise @errors.TypeError(
+    message="Map Iterator.prototype.next requires that |this| be a Map Iterator",
+  )
+}
+
+///|
+fn map_iterator_result_value(
+  kind : Int,
+  key : Value,
+  value : Value,
+) -> Value raise Error {
+  if kind == MAP_ITERATOR_KIND_KEY {
+    key
+  } else if kind == MAP_ITERATOR_KIND_VALUE {
+    value
+  } else if kind == MAP_ITERATOR_KIND_ENTRY {
+    @runtime.make_array([key, value])
+  } else {
+    map_iterator_type_error()
+  }
+}
+
+///|
+fn map_iterator_next(this_val : Value) -> Value raise Error {
+  match this_val {
+    Object(data) => {
+      guard data.class_name == "Map Iterator" else {
+        return map_iterator_type_error()
+      }
+      let (current, iterated_map, kind) = match
+        (
+          data.bag.symbol_properties.get(MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID),
+          data.bag.symbol_properties.get(MAP_ITERATOR_TARGET_SYMBOL_ID),
+          data.bag.symbol_properties.get(MAP_ITERATOR_KIND_SYMBOL_ID),
+        ) {
+        (Some(Number(index)), Some(target), Some(Number(kind))) =>
+          (index.to_int(), target, kind.to_int())
+        _ => return map_iterator_type_error()
+      }
+      match iterated_map {
+        Undefined => @runtime.create_iter_result(Undefined, true)
+        Map(map_data) => {
+          guard current < map_data.entries.length() else {
+            data.bag.symbol_properties[MAP_ITERATOR_TARGET_SYMBOL_ID] = Undefined
+            return @runtime.create_iter_result(Undefined, true)
+          }
+          let (key, value) = map_data.entries[current]
+          data.bag.symbol_properties[MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
+            (current + 1).to_double(),
+          )
+          let result_value = map_iterator_result_value(kind, key, value)
+          @runtime.create_iter_result(result_value, false)
+        }
+        _ => map_iterator_type_error()
+      }
+    }
+    _ => map_iterator_type_error()
+  }
+}
+
+///|
+fn make_map_iterator(
+  realm_state : @runtime.RealmState,
+  map_data : MapData,
+  kind : Int,
+) -> Value {
+  let map_iter_proto = get_map_iterator_proto(realm_state)
+  let iter_sym_props : Map[Int, Value] = {}
+  iter_sym_props[MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
+  iter_sym_props[MAP_ITERATOR_TARGET_SYMBOL_ID] = Value::Map(map_data)
+  iter_sym_props[MAP_ITERATOR_KIND_SYMBOL_ID] = Value::Number(kind.to_double())
+  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let slot_desc = map_iterator_internal_slot_descriptor()
+  iter_sym_descs[MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
+  iter_sym_descs[MAP_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
+  iter_sym_descs[MAP_ITERATOR_KIND_SYMBOL_ID] = slot_desc
+  Value::Object({
+    bag: {
+      properties: {},
+      symbol_properties: iter_sym_props,
+      descriptors: {},
+      symbol_descriptors: iter_sym_descs,
+    },
+    prototype: map_iter_proto,
+    callable: None,
+    class_name: "Map Iterator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
 /// Setup Map constructor and prototype
 fn setup_map_builtins(
   env : Environment,
@@ -1031,16 +1157,11 @@ fn get_map_iterator_proto(realm_state : @runtime.RealmState) -> Value {
         realm_state=Some(realm_state),
         fn(this_val, _args) { this_val },
       )
-      // Add a placeholder next method with correct name/length on prototype
       proto_props["next"] = @runtime.make_method_func(
         name="next",
         length=0,
         realm_state=Some(realm_state),
-        fn(_this_val, _args) raise {
-          raise @errors.TypeError(
-            message="Map Iterator.prototype.next requires that |this| be a Map Iterator",
-          )
-        },
+        fn(this_val, _args) raise { map_iterator_next(this_val) },
       )
       let proto = Value::Object({
         bag: {
@@ -1078,100 +1199,7 @@ fn make_map_keys_iterator(
   realm_state : @runtime.RealmState,
   map_data : MapData,
 ) -> Value {
-  let map_iter_proto = get_map_iterator_proto(realm_state)
-  let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Value::Object({
-    bag: {
-      properties: {
-        "length": Value::Number(0.0),
-        "name": Value::String_("next"),
-      },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
-        if idx < map_data.entries.length() {
-          let (key, _) = map_data.entries[idx]
-          index_ref.val = idx + 1
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = key
-          result_props["done"] = Value::Bool(false)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = @runtime.stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
-  )
-  Value::Object({
-    bag: {
-      properties: iter_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-    },
-    prototype: map_iter_proto,
-    callable: None,
-    class_name: "Map Iterator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+  make_map_iterator(realm_state, map_data, MAP_ITERATOR_KIND_KEY)
 }
 
 ///|
@@ -1180,100 +1208,7 @@ fn make_map_values_iterator(
   realm_state : @runtime.RealmState,
   map_data : MapData,
 ) -> Value {
-  let map_iter_proto = get_map_iterator_proto(realm_state)
-  let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Value::Object({
-    bag: {
-      properties: {
-        "length": Value::Number(0.0),
-        "name": Value::String_("next"),
-      },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
-        if idx < map_data.entries.length() {
-          let (_, value) = map_data.entries[idx]
-          index_ref.val = idx + 1
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = value
-          result_props["done"] = Value::Bool(false)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = @runtime.stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
-  )
-  Value::Object({
-    bag: {
-      properties: iter_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-    },
-    prototype: map_iter_proto,
-    callable: None,
-    class_name: "Map Iterator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+  make_map_iterator(realm_state, map_data, MAP_ITERATOR_KIND_VALUE)
 }
 
 ///|
@@ -1282,102 +1217,7 @@ fn make_map_entries_iterator(
   realm_state : @runtime.RealmState,
   map_data : MapData,
 ) -> Value {
-  let map_iter_proto = get_map_iterator_proto(realm_state)
-  let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Value::Object({
-    bag: {
-      properties: {
-        "length": Value::Number(0.0),
-        "name": Value::String_("next"),
-      },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
-        if idx < map_data.entries.length() {
-          let (key, value) = map_data.entries[idx]
-          index_ref.val = idx + 1
-          // Return [key, value] array
-          let entry_array = @runtime.make_array([key, value])
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = entry_array
-          result_props["done"] = Value::Bool(false)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = @runtime.stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
-  )
-  Value::Object({
-    bag: {
-      properties: iter_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-    },
-    prototype: map_iter_proto,
-    callable: None,
-    class_name: "Map Iterator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+  make_map_iterator(realm_state, map_data, MAP_ITERATOR_KIND_ENTRY)
 }
 
 ///|

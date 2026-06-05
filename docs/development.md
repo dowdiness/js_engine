@@ -191,6 +191,8 @@ maps. Reserve IDs in code comments before adding new hidden slots:
   `benchmarks/startup_new_interpreter_subphases.mbt`.
 - `-112`: realm-owned `%ArrayProto_values%` intrinsic cache on
   `Array.prototype` in `interpreter/runtime/iterators.mbt`.
+- `-130..-132`: Map iterator next-index, iterated-map, and kind slots in
+  `interpreter/stdlib/builtins_map_set.mbt`.
 
 Runtime-created user and well-known symbols must stay non-negative. Traversal
 code treats negative symbol IDs as engine-private metadata and must not expose
