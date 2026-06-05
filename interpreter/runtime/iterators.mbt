@@ -189,10 +189,10 @@ fn make_array_iterator_proto_value(
             data.bag.symbol_properties[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Undefined
             return make_iterator_result_object(Undefined, true)
           }
-          let value = get_array_like_element_interp(interp, target, current)
           data.bag.symbol_properties[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
             (current + 1).to_double(),
           )
+          let value = get_array_like_element_interp(interp, target, current)
           make_iterator_result_object(value, false)
         }
         _ =>

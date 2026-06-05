@@ -416,15 +416,11 @@ test "arguments iterator observes live length" {
     #|  var after = iterator.next();
     #|  console.log(String(done.value) + ":" + done.done + ":" + String(after.value) + ":" + after.done);
     #|}
-    #|function overriddenArrayValues(a) {
-    #|  Array.prototype.values = function() {
-    #|    return { next: function() { return { value: "values override", done: false }; } };
-    #|  };
-    #|  Array.prototype[Symbol.iterator] = function() {
-    #|    return { next: function() { return { value: "symbol override", done: false }; } };
-    #|  };
+    #|function overriddenArrayValues(a, originalValues, originalIterator) {
     #|  var result = arguments[Symbol.iterator]().next();
     #|  console.log(result.value + ":" + result.done);
+    #|  console.log(arguments[Symbol.iterator] === originalValues);
+    #|  console.log(arguments[Symbol.iterator] === originalIterator);
     #|  console.log(arguments[Symbol.iterator] === Array.prototype.values);
     #|  console.log(arguments[Symbol.iterator] === Array.prototype[Symbol.iterator]);
     #|}
@@ -438,6 +434,14 @@ test "arguments iterator observes live length" {
     #|  var second = iterator.next();
     #|  console.log(first.value + ":" + first.done + ":" + String(second.value) + ":" + second.done + ":" + lengthGets + ":" + indexGets);
     #|}
+    #|function throwingAccessorAdvances(a, b) {
+    #|  "use strict";
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  Object.defineProperty(arguments, "0", { get: function() { throw new Error("boom"); } });
+    #|  try { iterator.next(); } catch (e) { console.log(e.message); }
+    #|  var result = iterator.next();
+    #|  console.log(result.value + ":" + result.done);
+    #|}
     #|sloppyExpansion(2, 1, 3);
     #|sloppyTruncation(2, 1, 3);
     #|strictExpansion(2, 1, 3);
@@ -446,13 +450,25 @@ test "arguments iterator observes live length" {
     #|strictUnmappedReads(1, 2);
     #|descriptorAndPrototype();
     #|exhaustionSticky(1);
-    #|overriddenArrayValues(11);
+    #|var originalArrayValues = Array.prototype.values;
+    #|var originalArrayIterator = Array.prototype[Symbol.iterator];
+    #|Array.prototype.values = function() {
+    #|  return { next: function() { return { value: "values override", done: false }; } };
+    #|};
+    #|Array.prototype[Symbol.iterator] = function() {
+    #|  return { next: function() { return { value: "symbol override", done: false }; } };
+    #|};
+    #|overriddenArrayValues(11, originalArrayValues, originalArrayIterator);
+    #|Array.prototype.values = originalArrayValues;
+    #|Array.prototype[Symbol.iterator] = originalArrayIterator;
     #|accessorBackedArguments(1, 2);
+    #|throwingAccessorAdvances(1, 2);
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=[
     "5:false", "undefined:true", "undefined:true", "5:false", "undefined:true", "undefined:true",
     "7:7", "8:8", "1:7", "8:2", "function:true:false:true", "true", "true", "false",
-    "undefined:true:undefined:true", "11:false", "false", "false", "42:false:undefined:true:2:1",
+    "undefined:true:undefined:true", "11:false", "true", "true", "false", "false",
+    "42:false:undefined:true:2:1", "boom", "2:false",
   ])
 }
 
