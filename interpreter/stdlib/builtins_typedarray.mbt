@@ -347,16 +347,11 @@ fn typedarray_data_desc(
 
 ///|
 fn is_shape_only_bigint_typedarray_empty_request(args : Array[Value]) -> Bool {
-  if args.length() == 0 {
-    true
-  } else if args.length() == 1 {
-    match args[0] {
-      Undefined => true
-      Value::Number(n) => n == 0.0
-      _ => false
-    }
-  } else {
-    false
+  match args {
+    [] => true
+    [Undefined] => true
+    [Value::Number(n)] => n == 0.0
+    _ => false
   }
 }
 
@@ -625,6 +620,28 @@ pub fn validate_typed_array(
 }
 
 ///|
+fn typedarray_length(data : ObjectData) -> Int {
+  match data.bag.properties.get("[[ArrayLength]]") {
+    Some(Value::Number(n)) => n.to_int()
+    _ => 0
+  }
+}
+
+///|
+fn validate_typedarray_result_length(
+  result : Value,
+  method_name : String,
+  min_length : Int,
+  too_short_message : String,
+  realm_state : @runtime.RealmState,
+) -> Unit raise Error {
+  let (result_data, _) = validate_typed_array(result, method_name, realm_state)
+  if typedarray_length(result_data) < min_length {
+    raise @errors.TypeError(message=too_short_message)
+  }
+}
+
+///|
 /// §7.3.20 SpeciesConstructor(O, defaultConstructor) specialised for the
 /// %TypedArray% family. Mirrors the spec-correct shape used by Promise's
 /// `get_promise_species_constructor` (see `builtins_promise.mbt`).
@@ -721,30 +738,26 @@ pub fn typed_array_species_create(
   let loc = @token.Loc::default()
   let result = interp.construct_value(ctor, args, loc)
   // Result must itself be a TypedArray with non-detached buffer.
-  let (result_data, _) = validate_typed_array(
-    result,
-    "species create result",
-    interp.realm_state,
-  )
   // §22.2.4.7 step 8: if argumentList is « length », the result's length must
   // be at least that length. This catches a malicious species constructor
   // that ignores its argument or returns a shorter TA.
-  if args.length() == 1 {
-    match args[0] {
-      Value::Number(n) => {
-        let requested = n.to_int()
-        let actual = match result_data.bag.properties.get("[[ArrayLength]]") {
-          Some(Value::Number(m)) => m.to_int()
-          _ => 0
-        }
-        if actual < requested {
-          raise @errors.TypeError(
-            message="TypedArray species result is too short",
-          )
-        }
-      }
-      _ => ()
-    }
+  match args {
+    [Value::Number(n)] =>
+      validate_typedarray_result_length(
+        result,
+        "species create result",
+        n.to_int(),
+        "TypedArray species result is too short",
+        interp.realm_state,
+      )
+    _ =>
+      ignore(
+        validate_typed_array(
+          result,
+          "species create result",
+          interp.realm_state,
+        ),
+      )
   }
   result
 }
@@ -2706,18 +2719,13 @@ pub fn setup_typedarray_builtins(
         [Value::Number(len.to_double())],
         loc,
       )
-      let (result_data, _) = validate_typed_array(
+      validate_typedarray_result_length(
         result,
         "TypedArray.from result",
+        len,
+        "TypedArray.from result is too short",
         interp.realm_state,
       )
-      let actual_len = match result_data.bag.properties.get("[[ArrayLength]]") {
-        Some(Value::Number(n)) => n.to_int()
-        _ => 0
-      }
-      if actual_len < len {
-        raise @errors.TypeError(message="TypedArray.from result is too short")
-      }
       for i = 0; i < len; i = i + 1 {
         let value = source_values[i]
         let mapped = if has_map_fn {
@@ -2756,18 +2764,13 @@ pub fn setup_typedarray_builtins(
       [Value::Number(len.to_double())],
       loc,
     )
-    let (result_data, _) = validate_typed_array(
+    validate_typedarray_result_length(
       result,
       "TypedArray.of result",
+      len,
+      "TypedArray.of result is too short",
       interp.realm_state,
     )
-    let actual_len = match result_data.bag.properties.get("[[ArrayLength]]") {
-      Some(Value::Number(n)) => n.to_int()
-      _ => 0
-    }
-    if actual_len < len {
-      raise @errors.TypeError(message="TypedArray.of result is too short")
-    }
     for i = 0; i < len; i = i + 1 {
       let _ = interp.set_property(
         result,
