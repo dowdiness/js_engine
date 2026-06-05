@@ -508,6 +508,32 @@ test "Map iterator next uses receiver slots and stays exhausted" {
 }
 
 ///|
+test "Map getOrInsertComputed validates callback and canonicalizes zero key" {
+  let src =
+    #|var map = new Map();
+    #|function logsTypeError(key, callbackfn) {
+    #|  try {
+    #|    map.getOrInsertComputed(key, callbackfn);
+    #|    console.log("false");
+    #|  } catch (e) {
+    #|    console.log(String(e instanceof TypeError));
+    #|  }
+    #|}
+    #|logsTypeError(1, 1);
+    #|logsTypeError(1, undefined);
+    #|map.set(1, "present");
+    #|logsTypeError(1, 1);
+    #|var reciprocal;
+    #|new Map().getOrInsertComputed(-0, function(key) {
+    #|  reciprocal = 1 / key;
+    #|  return "computed";
+    #|});
+    #|console.log(String(reciprocal === Infinity));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["true", "true", "true", "true"])
+}
+
+///|
 test "Promise microtask ordering" {
   let src =
     #|console.log("1");
