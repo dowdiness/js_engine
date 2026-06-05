@@ -670,7 +670,7 @@ pub fn get_string_method(
           match args[1] {
             Undefined => 4294967295L // 2^32 - 1
             _ => {
-              let lim = @runtime.to_number(args[1]).to_int64()
+              let lim = interp.to_number(args[1]).to_int64()
               if lim < 0L {
                 0L
               } else {
@@ -693,7 +693,7 @@ pub fn get_string_method(
           Undefined => return @runtime.make_array([Value::String_(str)])
           _ => ()
         }
-        let sep = @runtime.to_js_string(args[0])
+        let sep = @runtime.to_js_string(args[0], interp=Some(interp))
         // Empty separator splits into individual characters
         if sep.length() == 0 {
           let result : Array[Value] = []
