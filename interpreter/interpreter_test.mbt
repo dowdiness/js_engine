@@ -16489,6 +16489,59 @@ test "Map and Set bracket access uses prototype accessors" {
 }
 
 ///|
+test "Map.prototype.forEach validates callback and visits readded keys" {
+  let src =
+    #|try {
+    #|  new Map().forEach({});
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|var map = new Map();
+    #|map.set("foo", 0);
+    #|map.set("bar", 1);
+    #|var count = 0;
+    #|var results = [];
+    #|map.forEach(function(value, key) {
+    #|  if (count === 0) {
+    #|    map.delete("foo");
+    #|    map.set("foo", "baz");
+    #|  }
+    #|  results.push(key + ":" + value);
+    #|  count++;
+    #|});
+    #|console.log(count);
+    #|console.log(results.join("|"));
+    #|console.log(map.size);
+    #|var single = new Map([["solo", 0]]);
+    #|var singleCount = 0;
+    #|var singleResults = [];
+    #|single.forEach(function(value, key) {
+    #|  singleResults.push(key + ":" + value);
+    #|  if (singleCount === 0) {
+    #|    single.clear();
+    #|    single.set("solo", 1);
+    #|  }
+    #|  singleCount++;
+    #|});
+    #|console.log(singleCount);
+    #|console.log(singleResults.join("|"));
+    #|var compacted = new Map([["a", 1], ["b", 2], ["c", 3]]);
+    #|var compactedResults = [];
+    #|compacted.forEach(function(value, key) {
+    #|  compactedResults.push(key + ":" + value);
+    #|  if (key === "b") {
+    #|    compacted.delete("a");
+    #|    compacted.delete("b");
+    #|  }
+    #|});
+    #|console.log(compactedResults.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "TypeError", "3", "foo:0|bar:1|foo:baz", "2", "2", "solo:0|solo:1", "a:1|b:2|c:3",
+  ])
+}
+
+///|
 test "Map and Set constructors honor accessor adders" {
   let src =
     #|var mapGetterCalls = 0;

@@ -54,6 +54,25 @@ fn canonicalize_keyed_collection_key(key : Value) -> Value {
 }
 
 ///|
+fn MapData::append_entry(self : MapData, key : Value, value : Value) -> Unit {
+  self.entries.push((key, value))
+  self.entry_ids.push(self.next_entry_id)
+  self.next_entry_id += 1
+}
+
+///|
+fn MapData::remove_entry_at(self : MapData, index : Int) -> Unit {
+  let _ = self.entries.remove(index)
+  let _ = self.entry_ids.remove(index)
+}
+
+///|
+fn MapData::clear_entries(self : MapData) -> Unit {
+  self.entries.clear()
+  self.entry_ids.clear()
+}
+
+///|
 /// Get Map.prototype methods for a Map instance
 pub fn get_map_method(
   data : MapData,
@@ -272,7 +291,7 @@ fn setup_map_builtins(
           }
         }
         // Add new entry
-        data.entries.push((key, value))
+        data.append_entry(key, value)
         this_val
       }
       _ =>
@@ -318,7 +337,7 @@ fn setup_map_builtins(
           for i = 0; i < data.entries.length(); i = i + 1 {
             let (k, _) = data.entries[i]
             if same_value_zero(k, key) {
-              let _ = data.entries.remove(i)
+              data.remove_entry_at(i)
               return Value::Bool(true)
             }
           }
@@ -339,7 +358,7 @@ fn setup_map_builtins(
   ) raise {
     match this_val {
       Value::Map(data) => {
-        data.entries.clear()
+        data.clear_entries()
         Undefined
       }
       _ =>
@@ -357,11 +376,31 @@ fn setup_map_builtins(
       match this_val {
         Value::Map(data) => {
           let callback = if args.length() > 0 { args[0] } else { Undefined }
+          if !@runtime.is_callable(callback) {
+            raise @errors.TypeError(message="callbackfn is not callable")
+          }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
-          // Iterate over entries
-          for i = 0; i < data.entries.length(); i = i + 1 {
-            let (key, value) = data.entries[i]
+          // Iterate by stable record id instead of compacted array index. Map
+          // deletions physically remove entries here, but the spec's MapData
+          // list keeps deleted records as empty slots; an id cursor preserves
+          // that order when earlier/current entries are removed and successors
+          // shift to lower indexes.
+          let mut next_entry_id = 0
+          while true {
+            let mut next_index = -1
+            for i = 0; i < data.entry_ids.length(); i = i + 1 {
+              if data.entry_ids[i] >= next_entry_id {
+                next_index = i
+                break
+              }
+            }
+            if next_index < 0 {
+              break
+            }
+            let entry_id = data.entry_ids[next_index]
+            let (key, value) = data.entries[next_index]
+            next_entry_id = entry_id + 1
             // Call callback(value, key, map)
             let _ = interp.call_value(
               callback,
@@ -441,7 +480,7 @@ fn setup_map_builtins(
             }
           }
           // Key not found, insert and return value
-          data.entries.push((key, value))
+          data.append_entry(key, value)
           value
         }
         _ =>
@@ -484,7 +523,7 @@ fn setup_map_builtins(
               return value
             }
           }
-          data.entries.push((key, value))
+          data.append_entry(key, value)
           value
         }
         _ =>

@@ -286,6 +286,8 @@ pub(all) struct SymbolData {
 /// Uses SameValueZero for key comparison (NaN === NaN, +0 === -0)
 pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
+  entry_ids : Array[Int] // Stable record identities for live-iteration semantics
+  mut next_entry_id : Int
   mut prototype : Value
   // Expando properties: stores instance fields from subclasses (class D extends Map)
   bag : PropertyBag
@@ -297,7 +299,17 @@ pub fn MapData::MapData(
   entries : Array[(Value, Value)],
   prototype? : Value = Null,
 ) -> MapData {
-  { entries, prototype, bag: PropertyBag() }
+  let entry_ids : Array[Int] = []
+  for i in 0..<entries.length() {
+    entry_ids.push(i)
+  }
+  {
+    entries,
+    entry_ids,
+    next_entry_id: entries.length(),
+    prototype,
+    bag: PropertyBag(),
+  }
 }
 
 ///|
