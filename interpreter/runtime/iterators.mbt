@@ -156,11 +156,11 @@ fn make_array_iterator_proto_value(
     realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
-  proto_props["next"] = make_method_func(
+  proto_props["next"] = make_interp_method_func(
     name="next",
     length=0,
     realm_state=Some(realm_state),
-    fn(this_val, _args) raise {
+    fn(interp, this_val, _args) raise {
       match this_val {
         Object(data) => {
           if data.class_name != "Array Iterator" {
@@ -184,12 +184,12 @@ fn make_array_iterator_proto_value(
           if target is Undefined {
             return make_iterator_result_object(Undefined, true)
           }
-          let total = to_array_like_length(target)
+          let total = to_array_like_length_interp(target, interp)
           if current >= total {
             data.bag.symbol_properties[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Undefined
             return make_iterator_result_object(Undefined, true)
           }
-          let value = get_array_like_element(target, current)
+          let value = get_array_like_element_interp(interp, target, current)
           data.bag.symbol_properties[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
             (current + 1).to_double(),
           )

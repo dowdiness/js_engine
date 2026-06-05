@@ -428,6 +428,16 @@ test "arguments iterator observes live length" {
     #|  console.log(arguments[Symbol.iterator] === Array.prototype.values);
     #|  console.log(arguments[Symbol.iterator] === Array.prototype[Symbol.iterator]);
     #|}
+    #|function accessorBackedArguments(a, b) {
+    #|  var lengthGets = 0;
+    #|  var indexGets = 0;
+    #|  var iterator = arguments[Symbol.iterator]();
+    #|  Object.defineProperty(arguments, "length", { get: function() { lengthGets += 1; return 1; } });
+    #|  Object.defineProperty(arguments, "0", { get: function() { indexGets += 1; return 42; } });
+    #|  var first = iterator.next();
+    #|  var second = iterator.next();
+    #|  console.log(first.value + ":" + first.done + ":" + String(second.value) + ":" + second.done + ":" + lengthGets + ":" + indexGets);
+    #|}
     #|sloppyExpansion(2, 1, 3);
     #|sloppyTruncation(2, 1, 3);
     #|strictExpansion(2, 1, 3);
@@ -437,11 +447,12 @@ test "arguments iterator observes live length" {
     #|descriptorAndPrototype();
     #|exhaustionSticky(1);
     #|overriddenArrayValues(11);
+    #|accessorBackedArguments(1, 2);
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=[
     "5:false", "undefined:true", "undefined:true", "5:false", "undefined:true", "undefined:true",
     "7:7", "8:8", "1:7", "8:2", "function:true:false:true", "true", "true", "false",
-    "undefined:true:undefined:true", "11:false", "false", "false",
+    "undefined:true:undefined:true", "11:false", "false", "false", "42:false:undefined:true:2:1",
   ])
 }
 

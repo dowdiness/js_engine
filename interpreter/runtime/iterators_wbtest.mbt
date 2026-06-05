@@ -167,17 +167,17 @@ test "iterator prototypes use their realm well-known symbol ids" {
 }
 
 ///|
-fn call_array_iterator_next_for_test(iter : Value) -> Value raise Error {
+fn call_array_iterator_next_for_test(
+  interp : Interpreter,
+  iter : Value,
+) -> Value raise Error {
   match iter {
     Object(iter_data) =>
       match iter_data.prototype {
         Object(proto_data) =>
           match proto_data.bag.properties.get("next") {
-            Some(Object(next_data)) =>
-              match next_data.callable {
-                Some(MethodCallable(_, f)) => f(iter, [])
-                _ => fail("expected array iterator next method callable")
-              }
+            Some(next_method) =>
+              interp.call_value(next_method, iter, [], @token.Loc::default())
             _ => fail("expected array iterator next method")
           }
         _ => fail("expected array iterator prototype")
@@ -232,7 +232,8 @@ fn expect_iterator_done_result(
 
 ///|
 test "array iterators read live length" {
-  let realm_state = RealmState()
+  let interp = Interpreter::new()
+  let realm_state = interp.realm_state
   let growing_data : ArrayData = {
     elements: [Number(1.0)],
     bag: PropertyBag(),
@@ -244,22 +245,22 @@ test "array iterators read live length" {
   growing_data.elements.push(Number(2.0))
   expect_iterator_number_result(
     "first growing result",
-    call_array_iterator_next_for_test(growing_iter),
+    call_array_iterator_next_for_test(interp, growing_iter),
     1.0,
   )
   expect_iterator_number_result(
     "second growing result",
-    call_array_iterator_next_for_test(growing_iter),
+    call_array_iterator_next_for_test(interp, growing_iter),
     2.0,
   )
   expect_iterator_done_result(
     "done growing result",
-    call_array_iterator_next_for_test(growing_iter),
+    call_array_iterator_next_for_test(interp, growing_iter),
   )
   growing_data.elements.push(Number(3.0))
   expect_iterator_done_result(
     "still done after growing exhausted iterator",
-    call_array_iterator_next_for_test(growing_iter),
+    call_array_iterator_next_for_test(interp, growing_iter),
   )
 
   let shrinking_data : ArrayData = {
@@ -272,12 +273,12 @@ test "array iterators read live length" {
   let shrinking_iter = realm_state.make_array_iterator_value(shrinking_data)
   expect_iterator_number_result(
     "first shrinking result",
-    call_array_iterator_next_for_test(shrinking_iter),
+    call_array_iterator_next_for_test(interp, shrinking_iter),
     1.0,
   )
   let _ = shrinking_data.elements.pop()
   expect_iterator_done_result(
     "done shrinking result",
-    call_array_iterator_next_for_test(shrinking_iter),
+    call_array_iterator_next_for_test(interp, shrinking_iter),
   )
 }
