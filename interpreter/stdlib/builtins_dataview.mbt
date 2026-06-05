@@ -296,6 +296,34 @@ fn validate_dataview_access(
 }
 
 ///|
+fn make_unimplemented_dataview_bigint_method(
+  name : String,
+  length : Int,
+) -> Value {
+  @runtime.make_method_func(name~, length~, fn(_this_val, _args) raise {
+    raise @errors.TypeError(
+      message="DataView BigInt methods are not implemented",
+    )
+  })
+}
+
+///|
+fn install_unimplemented_dataview_bigint_methods(
+  props : Map[String, Value],
+) -> Unit {
+  let method_specs : Array[(String, Int)] = [
+    ("getBigInt64", 1),
+    ("getBigUint64", 1),
+    ("setBigInt64", 2),
+    ("setBigUint64", 2),
+  ]
+  for spec in method_specs {
+    let (name, length) = spec
+    props[name] = make_unimplemented_dataview_bigint_method(name, length)
+  }
+}
+
+///|
 pub fn setup_dataview_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
@@ -329,6 +357,25 @@ pub fn setup_dataview_builtins(
           match this_val {
             Object(data) =>
               if data.class_name == "DataView" {
+                if getter_name != "buffer" {
+                  let buf_id = match
+                    data.bag.properties.get("[[ArrayBufferID]]") {
+                    Some(Value::Number(n)) => n.to_int()
+                    _ =>
+                      raise @errors.TypeError(
+                        message="DataView accessor on invalid object",
+                      )
+                  }
+                  let storage_state = arraybuffer_state_from_data(
+                    data,
+                    realm_state.arraybuffer_state,
+                  )
+                  if is_arraybuffer_state_detached(storage_state, buf_id) {
+                    raise @errors.TypeError(
+                      message="Cannot access DataView property on a detached ArrayBuffer",
+                    )
+                  }
+                }
                 match data.bag.properties.get(internal_slot) {
                   Some(n) => n
                   None => Value::Number(0.0)
@@ -534,6 +581,8 @@ pub fn setup_dataview_builtins(
     },
   )
 
+  install_unimplemented_dataview_bigint_methods(dv_proto_props)
+
   // setInt8(byteOffset, value)
   dv_proto_props["setInt8"] = @runtime.make_interp_method_func(
     name="setInt8",
@@ -721,7 +770,7 @@ pub fn setup_dataview_builtins(
           let value = if args.length() > 1 {
             interp.to_number(args[1])
           } else {
-            0.0
+            interp.to_number(Undefined)
           }
           let le = get_little_endian(args, 2)
           let (bytes, actual_offset) = validate_dataview_access(
@@ -751,7 +800,7 @@ pub fn setup_dataview_builtins(
           let value = if args.length() > 1 {
             interp.to_number(args[1])
           } else {
-            0.0
+            interp.to_number(Undefined)
           }
           let le = get_little_endian(args, 2)
           let (bytes, actual_offset) = validate_dataview_access(
@@ -884,6 +933,14 @@ pub fn setup_dataview_builtins(
           buffer,
           realm_state.arraybuffer_state,
         )
+        let byte_offset = if args.length() > 1 {
+          match args[1] {
+            Undefined => 0
+            _ => interp.to_index(args[1])
+          }
+        } else {
+          0
+        }
         if is_arraybuffer_state_detached(storage_state, buf_id) {
           raise @errors.TypeError(
             message="Cannot construct DataView with a detached ArrayBuffer",
@@ -897,28 +954,17 @@ pub fn setup_dataview_builtins(
             }
           _ => 0
         }
-        let byte_offset = if args.length() > 1 {
-          match args[1] {
-            Undefined => 0
-            _ => {
-              let n = interp.to_index(args[1])
-              if n < 0 || n > buf_byte_length {
-                raise @errors.RangeError(
-                  message="Start offset \{n} is outside the bounds of the buffer",
-                )
-              }
-              n
-            }
-          }
-        } else {
-          0
+        if byte_offset > buf_byte_length {
+          raise @errors.RangeError(
+            message="Start offset \{byte_offset} is outside the bounds of the buffer",
+          )
         }
         let byte_length = if args.length() > 2 {
           match args[2] {
             Undefined => buf_byte_length - byte_offset
             _ => {
               let n = interp.to_index(args[2])
-              if n < 0 || byte_offset + n > buf_byte_length {
+              if byte_offset + n > buf_byte_length {
                 raise @errors.RangeError(message="Invalid DataView length \{n}")
               }
               n
@@ -926,6 +972,23 @@ pub fn setup_dataview_builtins(
           }
         } else {
           buf_byte_length - byte_offset
+        }
+        let loc = @token.Loc::default()
+        let proto = match context.new_target() {
+          Some(new_target) => {
+            let prototype = interp.get_property(new_target, "prototype", loc)
+            if @runtime.is_object_value(prototype) {
+              prototype
+            } else {
+              dv_proto
+            }
+          }
+          None => dv_proto
+        }
+        if is_arraybuffer_state_detached(storage_state, buf_id) {
+          raise @errors.TypeError(
+            message="Cannot construct DataView with a detached ArrayBuffer",
+          )
         }
         let props : Map[String, Value] = {}
         props["[[ViewedArrayBuffer]]"] = buffer
@@ -953,7 +1016,7 @@ pub fn setup_dataview_builtins(
             descriptors: descs,
             symbol_descriptors: {},
           },
-          prototype: dv_proto,
+          prototype: proto,
           callable: None,
           class_name: "DataView",
           extensible: true,

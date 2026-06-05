@@ -42,7 +42,7 @@ pub fn is_typedarray_class(String) -> Bool
 
 pub fn make_accessor_desc_obj(@runtime.Value, @runtime.Value, Bool, Bool, realm_state? : @runtime.RealmState?) -> @runtime.Value
 
-pub fn make_arraybuffer_object(@runtime.RealmState, Int, @runtime.Value) -> @runtime.Value
+pub fn make_arraybuffer_object(@runtime.RealmState, Int, @runtime.Value) -> @runtime.Value raise
 
 pub fn make_data_desc_obj(@runtime.Value, Bool, Bool, Bool, realm_state? : @runtime.RealmState?) -> @runtime.Value
 
@@ -52,7 +52,7 @@ pub fn make_regexp_object(String, String) -> @runtime.Value raise
 
 pub fn make_regexp_object_with_realm_state(String, String, @runtime.RealmState) -> @runtime.Value raise
 
-pub fn make_typedarray_object(String, Int, @runtime.Value, @runtime.Environment) -> @runtime.Value
+pub fn make_typedarray_object(String, Int, @runtime.Value, @runtime.Environment) -> @runtime.Value raise
 
 pub fn profile_setup_builtins_with_realm_state(@runtime.Environment, Array[String], @runtime.RealmState, annex_b? : Bool) -> Array[(String, Double)]
 

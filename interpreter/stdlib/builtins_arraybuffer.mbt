@@ -1,11 +1,20 @@
 ///|
+/// Maximum in-memory backing store this interpreter will allocate. Larger Data
+/// Blocks are impossible for this implementation and must throw RangeError
+/// instead of leaking host allocation failures.
+const MAX_ARRAYBUFFER_BYTE_LENGTH = 16777216
+
+///|
 /// ArrayBuffer byte data is owned by the RealmState that allocated the buffer.
 /// Each ArrayBuffer Object gets a realm-local ID stored in "[[ArrayBufferID]]".
 /// The actual bytes are stored in `realm_state.arraybuffer_store`, keyed by ID.
 fn alloc_arraybuffer(
   arraybuffer_state : @runtime.ArrayBufferState,
   byte_length : Int,
-) -> Int {
+) -> Int raise Error {
+  if byte_length < 0 || byte_length > MAX_ARRAYBUFFER_BYTE_LENGTH {
+    raise @errors.RangeError(message="ArrayBuffer allocation size is too large")
+  }
   let id = arraybuffer_state.id_counter.val
   arraybuffer_state.id_counter.val = id + 1
   let bytes : Array[Int] = []
@@ -144,7 +153,7 @@ pub fn make_arraybuffer_object(
   realm_state : @runtime.RealmState,
   byte_length : Int,
   proto : Value,
-) -> Value {
+) -> Value raise Error {
   let id = alloc_arraybuffer(realm_state.arraybuffer_state, byte_length)
   let props : Map[String, Value] = {}
   props["[[ArrayBufferID]]"] = Value::Number(id.to_double())
@@ -245,9 +254,7 @@ pub fn setup_arraybuffer_builtins(
               match data.bag.properties.get("[[ArrayBufferID]]") {
                 Some(Value::Number(id_n)) =>
                   if is_arraybuffer_state_detached(storage_state, id_n.to_int()) {
-                    raise @errors.TypeError(
-                      message="Cannot perform get on a detached ArrayBuffer",
-                    )
+                    Value::Number(0.0)
                   } else {
                     match data.bag.properties.get("[[ArrayBufferByteLength]]") {
                       Some(n) => n
@@ -546,7 +553,19 @@ pub fn setup_arraybuffer_builtins(
         } else {
           0
         }
-        make_arraybuffer_object(realm_state, byte_length, ab_proto)
+        let loc = @token.Loc::default()
+        let proto = match context.new_target() {
+          Some(new_target) => {
+            let prototype = interp.get_property(new_target, "prototype", loc)
+            if @runtime.is_object_value(prototype) {
+              prototype
+            } else {
+              ab_proto
+            }
+          }
+          None => ab_proto
+        }
+        make_arraybuffer_object(realm_state, byte_length, proto)
       }),
     ),
     class_name: "Function",

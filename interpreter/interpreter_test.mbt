@@ -10013,6 +10013,52 @@ test "test262: ArrayBuffer constructor requires new" {
 }
 
 ///|
+test "test262: ArrayBuffer allocation limit throws RangeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  new ArrayBuffer(7 * 1125899906842624);
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+      #|try {
+      #|  new ArrayBuffer(9007199254740992 - 1);
+      #|} catch(e) {
+      #|  console.log(e instanceof RangeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "test262: ArrayBuffer constructor uses NewTarget prototype" {
+  let output = run_output(
+    (
+      #|var fromObject = Reflect.construct(ArrayBuffer, [8], Object);
+      #|console.log(Object.getPrototypeOf(fromObject) === Object.prototype);
+      #|var newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get: function() { return Array.prototype; }
+      #|});
+      #|var fromAccessor = Reflect.construct(ArrayBuffer, [16], newTarget);
+      #|console.log(Object.getPrototypeOf(fromAccessor) === Array.prototype);
+      #|function DummyError() {}
+      #|var throwingTarget = function() {}.bind(null);
+      #|Object.defineProperty(throwingTarget, "prototype", {
+      #|  get: function() { throw new DummyError(); }
+      #|});
+      #|try {
+      #|  Reflect.construct(ArrayBuffer, [1], throwingTarget);
+      #|} catch (e) {
+      #|  console.log(e instanceof DummyError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
 test "test262: ArrayBuffer.prototype.slice" {
   let output = run_output(
     (
@@ -11092,6 +11138,58 @@ test "test262: DataView getFloat64/setFloat64" {
 }
 
 ///|
+test "test262: DataView setFloat missing value stores NaN" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(16);
+      #|var dv = new DataView(buf);
+      #|console.log(dv.setFloat32(0) === undefined);
+      #|console.log(isNaN(dv.getFloat32(0)));
+      #|console.log(dv.setFloat64(8) === undefined);
+      #|console.log(isNaN(dv.getFloat64(8)));
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true"])
+}
+
+///|
+test "test262: DataView BigInt methods are exposed but not constructors" {
+  let output = run_output(
+    (
+      #|var dv = new DataView(new ArrayBuffer(16));
+      #|var methods = [
+      #|  ["getBigInt64", 1],
+      #|  ["getBigUint64", 1],
+      #|  ["setBigInt64", 2],
+      #|  ["setBigUint64", 2]
+      #|];
+      #|for (var i = 0; i < methods.length; i++) {
+      #|  var name = methods[i][0];
+      #|  var expectedLength = methods[i][1];
+      #|  var method = DataView.prototype[name];
+      #|  console.log(typeof method, method.length === expectedLength);
+      #|  try {
+      #|    method.call(dv, 0, 0);
+      #|    console.log("no call error");
+      #|  } catch(e) {
+      #|    console.log(e instanceof TypeError);
+      #|  }
+      #|  try {
+      #|    new method(0, 0);
+      #|    console.log("no construct error");
+      #|  } catch(e) {
+      #|    console.log(e instanceof TypeError);
+      #|  }
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "function true", "true", "true", "function true", "true", "true", "function true",
+    "true", "true", "function true", "true", "true",
+  ])
+}
+
+///|
 test "test262: DataView out-of-bounds access" {
   let output = run_output(
     (
@@ -11249,20 +11347,15 @@ test "test262: ArrayBuffer.prototype.slice detached throws" {
 }
 
 ///|
-test "test262: ArrayBuffer.prototype.byteLength detached throws" {
+test "test262: ArrayBuffer.prototype.byteLength detached returns 0" {
   let output = run_output(
     (
       #|var buf = new ArrayBuffer(8);
       #|$262.detachArrayBuffer(buf);
-      #|try {
-      #|  var len = buf.byteLength;
-      #|  console.log("no error: " + len);
-      #|} catch(e) {
-      #|  console.log(e instanceof TypeError);
-      #|}
+      #|console.log(buf.byteLength);
     ),
   )
-  json_inspect(output, content=["true"])
+  json_inspect(output, content=["0"])
 }
 
 ///|
@@ -11284,6 +11377,31 @@ test "test262: DataView on detached buffer throws" {
 }
 
 ///|
+test "test262: DataView detached buffer accessors" {
+  let output = run_output(
+    (
+      #|var buf = new ArrayBuffer(8);
+      #|var dv = new DataView(buf, 2, 4);
+      #|$262.detachArrayBuffer(buf);
+      #|console.log(dv.buffer === buf);
+      #|try {
+      #|  dv.byteOffset;
+      #|  console.log("no offset error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|try {
+      #|  dv.byteLength;
+      #|  console.log("no length error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
 test "test262: DataView constructor rejects detached ArrayBuffer" {
   let output = run_output(
     (
@@ -11298,6 +11416,51 @@ test "test262: DataView constructor rejects detached ArrayBuffer" {
     ),
   )
   json_inspect(output, content=["true"])
+}
+
+///|
+test "test262: DataView constructor orders offset/prototype/detach checks" {
+  let output = run_output(
+    (
+      #|var detached = new ArrayBuffer(8);
+      #|var offsetCalls = 0;
+      #|var offset = { valueOf: function() { offsetCalls += 1; return 0; } };
+      #|$262.detachArrayBuffer(detached);
+      #|try {
+      #|  new DataView(detached, offset);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|console.log(offsetCalls);
+      #|
+      #|function newTarget() {}
+      #|var proto = {};
+      #|newTarget.prototype = proto;
+      #|var sample = Reflect.construct(DataView, [new ArrayBuffer(8), 0], newTarget);
+      #|console.log(Object.getPrototypeOf(sample) === proto);
+      #|console.log(sample.constructor === Object);
+      #|
+      #|var buffer = new ArrayBuffer(8);
+      #|var called = false;
+      #|var detachingOffset = { valueOf: function() { called = true; return 0; } };
+      #|var detachingNewTarget = function() {}.bind(null);
+      #|Object.defineProperty(detachingNewTarget, "prototype", {
+      #|  get: function() {
+      #|    $262.detachArrayBuffer(buffer);
+      #|    return DataView.prototype;
+      #|  }
+      #|});
+      #|try {
+      #|  Reflect.construct(DataView, [buffer, detachingOffset], detachingNewTarget);
+      #|  console.log("no error");
+      #|} catch(e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+      #|console.log(called);
+    ),
+  )
+  json_inspect(output, content=["true", "1", "true", "true", "true", "true"])
 }
 
 ///|
