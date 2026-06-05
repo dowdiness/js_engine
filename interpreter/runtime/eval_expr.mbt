@@ -2225,6 +2225,24 @@ pub fn Interpreter::delete_property_key(
         }
         _ => true
       }
+    Map(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) => delete_string_property_from_bag(data.bag, prop, strict)
+        _ => true
+      }
+    Set(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) => delete_string_property_from_bag(data.bag, prop, strict)
+        _ => true
+      }
+    Promise(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) => delete_string_property_from_bag(data.bag, prop, strict)
+        _ => true
+      }
     Undefined | Null =>
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",

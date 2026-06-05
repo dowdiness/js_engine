@@ -15169,6 +15169,33 @@ test "TypedArray Reflect and Proxy integer-index internals" {
 }
 
 ///|
+/// Reflect.deleteProperty must dispatch to Map/Set/Promise [[Delete]], not just
+/// accept them as object-like and report success while leaving expando props.
+test "Reflect.deleteProperty removes Map Set Promise expandos" {
+  let src =
+    #|function check(o) {
+    #|  o.x = 1;
+    #|  console.log(Reflect.deleteProperty(o, "x"));
+    #|  console.log(Object.prototype.hasOwnProperty.call(o, "x"));
+    #|  const sym = Symbol("expando");
+    #|  o[sym] = 2;
+    #|  console.log(Reflect.deleteProperty(o, sym));
+    #|  console.log(Object.prototype.hasOwnProperty.call(o, sym));
+    #|  Object.defineProperty(o, "locked", { value: 3, configurable: false });
+    #|  console.log(Reflect.deleteProperty(o, "locked"));
+    #|  console.log(o.locked);
+    #|}
+    #|check(new Map());
+    #|check(new Set());
+    #|check(Promise.resolve(1));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "false", "true", "false", "false", "3", "true", "false", "true", "false",
+    "false", "3", "true", "false", "true", "false", "false", "3",
+  ])
+}
+
+///|
 /// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;
