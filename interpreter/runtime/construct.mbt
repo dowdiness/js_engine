@@ -393,6 +393,33 @@ pub fn Interpreter::define_unmapped_arguments_object(
 }
 
 ///|
+fn arguments_iterator_value(
+  realm_state : RealmState,
+  iterator_sym : SymbolData,
+) -> Value {
+  fn fallback() -> Value {
+    make_method_func(name="values", length=0, realm_state=Some(realm_state), fn(
+      this_val,
+      _args,
+    ) raise {
+      realm_state.make_array_like_iterator_value(this_val)
+    })
+  }
+  match realm_state.get_array_proto() {
+    Object(proto_data) =>
+      match proto_data.bag.properties.get("values") {
+        Some(value) => value
+        None =>
+          match proto_data.bag.symbol_properties.get(iterator_sym.id) {
+            Some(value) => value
+            None => fallback()
+          }
+      }
+    _ => fallback()
+  }
+}
+
+///|
 fn make_arguments_object(
   realm_state : RealmState,
   well_known_symbols : WellKnownSymbols,
@@ -554,25 +581,13 @@ fn make_arguments_object(
       None => ()
     }
   }
-  // Add Symbol.iterator using the generic Array.prototype.values semantics:
+  // Add Symbol.iterator using the realm's Array.prototype.values function;
   // each next() observes the live arguments object length and indexed props.
   let iter_sym = well_known_symbols.iterator
   let new_args_sym_props : Map[Int, Value] = {}
   let new_args_sym_descs : Map[Int, PropDescriptor] = {}
-  new_args_sym_props[iter_sym.id] = stamp_function_realm(
-    Object({
-      bag: PropertyBag(),
-      prototype: Null,
-      callable: Some(
-        MethodCallable("values", fn(this_val, _args2) raise {
-          realm_state.make_array_like_iterator_value(this_val)
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    }),
-    realm_state=Some(realm_state),
+  new_args_sym_props[iter_sym.id] = arguments_iterator_value(
+    realm_state, iter_sym,
   )
   new_args_sym_descs[iter_sym.id] = {
     writable: true,

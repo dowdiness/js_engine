@@ -403,6 +403,7 @@ test "arguments iterator observes live length" {
     #|  var iterator = arguments[Symbol.iterator]();
     #|  var arrayIterator = [][Symbol.iterator]();
     #|  console.log([typeof desc.value, desc.writable, desc.enumerable, desc.configurable].join(":"));
+    #|  console.log(arguments[Symbol.iterator] === Array.prototype[Symbol.iterator]);
     #|  console.log(Object.getPrototypeOf(iterator) === Object.getPrototypeOf(arrayIterator));
     #|  console.log(Object.prototype.hasOwnProperty.call(iterator, "next"));
     #|}
@@ -426,7 +427,8 @@ test "arguments iterator observes live length" {
   let (output, _) = @js_engine.run(src)
   json_inspect(output, content=[
     "5:false", "undefined:true", "undefined:true", "5:false", "undefined:true", "undefined:true",
-    "7:7", "8:8", "1:7", "8:2", "function:true:false:true", "true", "false", "undefined:true:undefined:true",
+    "7:7", "8:8", "1:7", "8:2", "function:true:false:true", "true", "true", "false",
+    "undefined:true:undefined:true",
   ])
 }
 
