@@ -381,13 +381,26 @@ fn setup_map_builtins(
           }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
-          // Iterate over the live MapData list. If the callback removes the
-          // current compacted entry, keep the same index so entries shifted into
-          // that slot and newly appended entries are still observed.
-          let mut i = 0
-          while i < data.entries.length() {
-            let entry_id = data.entry_ids[i]
-            let (key, value) = data.entries[i]
+          // Iterate by stable record id instead of compacted array index. Map
+          // deletions physically remove entries here, but the spec's MapData
+          // list keeps deleted records as empty slots; an id cursor preserves
+          // that order when earlier/current entries are removed and successors
+          // shift to lower indexes.
+          let mut next_entry_id = 0
+          while true {
+            let mut next_index = -1
+            for i = 0; i < data.entry_ids.length(); i = i + 1 {
+              if data.entry_ids[i] >= next_entry_id {
+                next_index = i
+                break
+              }
+            }
+            if next_index < 0 {
+              break
+            }
+            let entry_id = data.entry_ids[next_index]
+            let (key, value) = data.entries[next_index]
+            next_entry_id = entry_id + 1
             // Call callback(value, key, map)
             let _ = interp.call_value(
               callback,
@@ -395,9 +408,6 @@ fn setup_map_builtins(
               [value, key, this_val],
               loc,
             )
-            if i < data.entry_ids.length() && data.entry_ids[i] == entry_id {
-              i += 1
-            }
           }
           Undefined
         }

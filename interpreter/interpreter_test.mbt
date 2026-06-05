@@ -16525,9 +16525,19 @@ test "Map.prototype.forEach validates callback and visits readded keys" {
     #|});
     #|console.log(singleCount);
     #|console.log(singleResults.join("|"));
+    #|var compacted = new Map([["a", 1], ["b", 2], ["c", 3]]);
+    #|var compactedResults = [];
+    #|compacted.forEach(function(value, key) {
+    #|  compactedResults.push(key + ":" + value);
+    #|  if (key === "b") {
+    #|    compacted.delete("a");
+    #|    compacted.delete("b");
+    #|  }
+    #|});
+    #|console.log(compactedResults.join("|"));
   let output = run_output(src)
   json_inspect(output, content=[
-    "TypeError", "3", "foo:0|bar:1|foo:baz", "2", "2", "solo:0|solo:1",
+    "TypeError", "3", "foo:0|bar:1|foo:baz", "2", "2", "solo:0|solo:1", "a:1|b:2|c:3",
   ])
 }
 
