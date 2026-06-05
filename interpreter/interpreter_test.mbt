@@ -16561,6 +16561,32 @@ test "Map.groupBy uses iterator protocol" {
     #|  console.log(e.message);
     #|}
     #|
+    #|var valueThrowing = {};
+    #|var closed = false;
+    #|valueThrowing[Symbol.iterator] = function() { return valueThrowing; };
+    #|valueThrowing.next = function() {
+    #|  var result = { done: false };
+    #|  Object.defineProperty(result, "value", {
+    #|    get: function() { throw new Error("value"); }
+    #|  });
+    #|  return result;
+    #|};
+    #|valueThrowing.return = function() { closed = true; return {}; };
+    #|try {
+    #|  Map.groupBy(valueThrowing, function() { return "key"; });
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|}
+    #|console.log(String(closed));
+    #|
+    #|var proxied = {};
+    #|proxied[Symbol.iterator] = new Proxy(function() {
+    #|  return [1, 2][Symbol.iterator]();
+    #|}, {});
+    #|var proxiedMap = Map.groupBy(proxied, function(value) { return value % 2; });
+    #|console.log(Array.from(proxiedMap.keys()).join("|"));
+    #|console.log(proxiedMap.get(1)[0] + "|" + proxiedMap.get(0)[0]);
+    #|
     #|var map = Map.groupBy("\uD83E\uDD70\uD83D\uDCA9\uD83D\uDE4F\uD83D\uDE08", function(char) {
     #|  return char < "\uD83D\uDE4F" ? "before" : "after";
     #|});
@@ -16571,7 +16597,8 @@ test "Map.groupBy uses iterator protocol" {
     #|console.log(map.get("after")[0].length + "|" + map.get("after")[1].length);
   let output = run_output(src)
   json_inspect(output, content=[
-    "TypeError", "next", "after|before", "2", "2|2", "2", "2|2",
+    "TypeError", "next", "value", "false", "1|0", "1|2", "after|before", "2", "2|2",
+    "2", "2|2",
   ])
 }
 

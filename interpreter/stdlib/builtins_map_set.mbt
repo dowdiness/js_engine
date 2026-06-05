@@ -760,19 +760,18 @@ fn setup_map_builtins(
             Symbol(iterator_sym),
             loc,
           )
-          let iterator = match iterator_method {
-            Object(data) =>
-              match data.callable {
-                Some(_) => interp.call_value(iterator_method, items, [], loc)
-                None =>
-                  raise @errors.TypeError(
-                    message="Result of the Symbol.iterator method is not an object",
-                  )
-              }
-            _ =>
+          let iterator = if @runtime.is_callable(iterator_method) {
+            let result = interp.call_value(iterator_method, items, [], loc)
+            if !@runtime.is_object_value(result) {
               raise @errors.TypeError(
-                message="\{@runtime.type_of(items)} is not iterable",
+                message="Result of the Symbol.iterator method is not an object",
               )
+            }
+            result
+          } else {
+            raise @errors.TypeError(
+              message="\{@runtime.type_of(items)} is not iterable",
+            )
           }
           let next_method = interp.get_iterator_next_method(iterator, loc)
           let group_keys : Array[Value] = []
@@ -784,14 +783,7 @@ fn setup_map_builtins(
               None => break
               Some(result) => result
             }
-            let kvalue = interp.iterator_result_value(iter_result, loc) catch {
-              e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
-                raise e
-              }
-            }
+            let kvalue = interp.iterator_result_value(iter_result, loc)
             let raw_key = interp.call_value(
               callback,
               Undefined,
