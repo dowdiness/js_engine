@@ -43,7 +43,8 @@ pub fn Interpreter::set_property(
       }
       // TypedArray indexed write via dot notation (numeric string prop).
       // Receiver-sensitive per §10.4.5.5 step 1.b:
-      // - canonical-invalid → no-op regardless of receiver
+      // - canonical-invalid AND O === Receiver → ToNumber(value), then no-op
+      // - canonical-invalid AND O !== Receiver → no-op without coercion
       // - canonical valid AND O === Receiver → write to buffer
       // - canonical valid AND O !== Receiver → land on Receiver (OrdinarySet)
       // The classifier raises nothing; to_number does — keep the raising
@@ -51,7 +52,6 @@ pub fn Interpreter::set_property(
       // §10.4.5.16 (PR #75 wide-catch fix).
       if is_typedarray_class(data.class_name) {
         match classify_typedarray_string_key(prop) {
-          Some(-1) => return value // canonical-invalid: no-op intercept
           Some(idx) =>
             return self.typedarray_set_dispatch(
               data,
@@ -117,6 +117,22 @@ pub fn Interpreter::set_property(
           while true {
             match current {
               Object(proto_data) => {
+                if is_typedarray_class(proto_data.class_name) {
+                  match classify_typedarray_string_key(prop) {
+                    Some(idx) =>
+                      return self.typedarray_set_dispatch(
+                        proto_data,
+                        current,
+                        receiver,
+                        String_(prop),
+                        idx,
+                        value,
+                        loc,
+                        strict,
+                      )
+                    None => ()
+                  }
+                }
                 let mut stop_at_writable_data = false
                 match proto_data.bag.descriptors.get(prop) {
                   Some(desc) =>
@@ -292,6 +308,21 @@ pub fn Interpreter::set_property(
               }
             None => ()
           }
+          let is_own = i < data.elements.length() && !data.holes.contains(i)
+          if !is_own {
+            match
+              self.set_missing_array_index_via_proto_chain(
+                get_array_prototype(self.realm_state, data),
+                receiver,
+                prop,
+                value,
+                loc,
+                strict,
+              ) {
+              Some(result) => return result
+              None => ()
+            }
+          }
           // §10.4.2.1 step 3.b: extend requires length_writable.
           if i >= logical_len && !data.length_writable {
             if strict {
@@ -301,7 +332,6 @@ pub fn Interpreter::set_property(
             }
             return value
           }
-          let is_own = i < data.elements.length() && !data.holes.contains(i)
           if !is_own && !data.extensible {
             if strict {
               raise @errors.TypeError(
@@ -549,16 +579,18 @@ fn Interpreter::landing_via_define_own_property(
 
 ///|
 /// §10.4.5.5 step 1.b TypedArray `[[Set]]` dispatch for a canonical-numeric
-/// index whose classifier already returned `Some(idx)` with `idx >= 0`.
+/// index whose classifier already returned `Some(idx)` (`idx == -1` means a
+/// canonical numeric string that is not a valid integer-index form).
 /// Called from the three TypedArray intercept sites (`set_property` string
 /// path, `set_computed_property` `Number` and `String_` paths) to centralize
-/// the (same-receiver vs out-of-range vs in-range cross-receiver) triad.
+/// the same-receiver, invalid-index, and cross-receiver landing cases.
 ///
-/// - `O === Receiver` → `IntegerIndexedElementSet` (write to buffer or
-///   silent bounds-check no-op inside the hook).
-/// - `O !== Receiver` AND `!IsValidIntegerIndex` → no-op per step 1.b.ii.
-/// - `O !== Receiver` AND in-range → `OrdinarySet` on `Receiver` (lands as
-///   ordinary data property; the TypedArray's backing buffer is untouched).
+/// - `O === Receiver` → `TypedArraySetElement`: coerce `value`, then write to
+///   the buffer only when `idx` is a valid in-range integer index.
+/// - `O !== Receiver` AND `!IsValidIntegerIndex` → no-op per step 1.b.ii,
+///   without coercing `value`.
+/// - `O !== Receiver` AND in-range → `OrdinarySet` on `Receiver` (lands via
+///   `Receiver.[[DefineOwnProperty]]`; the TypedArray's backing buffer is untouched).
 ///
 /// The `to_number(value)` raise must remain outside the classifier's
 /// try/catch: Symbol → TypeError must propagate per §10.4.5.16 (the PR #75
@@ -576,17 +608,116 @@ fn Interpreter::typedarray_set_dispatch(
 ) -> Value raise Error {
   if strict_equal(obj, receiver) {
     let num = self.to_number(value)
-    (self.stdlib_hooks.typedarray_set_index)(data, idx, num, self.realm_state)
+    if idx >= 0 {
+      (self.stdlib_hooks.typedarray_set_index)(data, idx, num, self.realm_state)
+    }
     value
-  } else if !(self.stdlib_hooks.typedarray_is_valid_index)(
-      data,
-      idx,
-      self.realm_state,
-    ) {
+  } else if idx < 0 ||
+    !(self.stdlib_hooks.typedarray_is_valid_index)(data, idx, self.realm_state) {
     value
   } else {
-    self.define_value_on_receiver(receiver, key, value, loc, strict)
+    let landing_key = match key {
+      String_(_) => key
+      _ => String_(to_js_string(key, interp=Some(self)))
+    }
+    self.define_value_on_receiver(receiver, landing_key, value, loc, strict)
   }
+}
+
+///|
+/// Array uses ordinary [[Set]], so a missing array index delegates through the
+/// full prototype chain before Array [[DefineOwnProperty]] can extend length.
+/// This keeps TypedArray integer-index semantics observable even behind
+/// intermediate ordinary prototypes, while preserving ordinary prototype
+/// blockers (setters, getter-only accessors, and non-writable data props).
+fn Interpreter::set_missing_array_index_via_proto_chain(
+  self : Interpreter,
+  proto : Value,
+  receiver : Value,
+  prop : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value? raise Error {
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) => {
+        if is_typedarray_class(proto_data.class_name) {
+          match classify_typedarray_string_key(prop) {
+            Some(idx) =>
+              return Some(
+                self.typedarray_set_dispatch(
+                  proto_data,
+                  current,
+                  receiver,
+                  String_(prop),
+                  idx,
+                  value,
+                  loc,
+                  strict,
+                ),
+              )
+            None => ()
+          }
+        }
+        match proto_data.bag.descriptors.get(prop) {
+          Some(desc) =>
+            match desc.setter {
+              Some(setter) => {
+                let _ = self.call_value(setter, receiver, [value], loc)
+                return Some(value)
+              }
+              None =>
+                if desc.getter is Some(_) {
+                  if strict {
+                    raise @errors.TypeError(
+                      message="Cannot set property \{prop} which has only a getter",
+                    )
+                  }
+                  return Some(value)
+                } else if !desc.writable {
+                  if strict {
+                    raise @errors.TypeError(
+                      message="Cannot assign to read only property '\{prop}'",
+                    )
+                  }
+                  return Some(value)
+                } else {
+                  return Some(
+                    self.define_value_on_receiver(
+                      receiver,
+                      String_(prop),
+                      value,
+                      loc,
+                      strict,
+                    ),
+                  )
+                }
+            }
+          None =>
+            if proto_data.bag.properties.contains(prop) {
+              return Some(
+                self.define_value_on_receiver(
+                  receiver,
+                  String_(prop),
+                  value,
+                  loc,
+                  strict,
+                ),
+              )
+            }
+        }
+        current = proto_data.prototype
+      }
+      Proxy(_) =>
+        return Some(
+          self.set_property(current, prop, value, loc, strict~, receiver~),
+        )
+      _ => return None
+    }
+  }
+  None
 }
 
 ///|
@@ -620,7 +751,12 @@ fn Interpreter::define_value_on_receiver(
     // defineProperty traps fire.
     Proxy(_) =>
       self.landing_via_define_own_property(receiver, key, value, loc, strict)
-    Object(rdata) =>
+    Object(rdata) => {
+      if is_typedarray_class(rdata.class_name) {
+        return self.landing_via_define_own_property(
+          receiver, key, value, loc, strict,
+        )
+      }
       match key {
         Symbol(sym) => {
           // §10.1.9.2 step 3.e: existing own descriptor blocker check.
@@ -673,6 +809,7 @@ fn Interpreter::define_value_on_receiver(
           value
         }
       }
+    }
     Promise(rdata) =>
       match key {
         Symbol(sym) => {
@@ -1008,8 +1145,11 @@ pub fn Interpreter::set_computed_property(
                 let idx = n.to_int()
                 if !(idx.to_double() == n && idx >= 0) {
                   // Canonical numeric (Number always is) but not a valid
-                  // integer-index form → §10.4.5.5 step 1.b.ii no-op.
-                  return value
+                  // integer-index form. Same-receiver writes still perform
+                  // ToNumber(value); cross-receiver writes are no-ops.
+                  return self.typedarray_set_dispatch(
+                    data, obj, receiver, key, -1, value, loc, strict,
+                  )
                 }
                 return self.typedarray_set_dispatch(
                   data, obj, receiver, key, idx, value, loc, strict,
@@ -1017,7 +1157,6 @@ pub fn Interpreter::set_computed_property(
               }
               String_(s) =>
                 match classify_typedarray_string_key(s) {
-                  Some(-1) => return value // canonical-invalid: no-op
                   Some(idx) =>
                     return self.typedarray_set_dispatch(
                       data, obj, receiver, key, idx, value, loc, strict,
@@ -1061,6 +1200,22 @@ pub fn Interpreter::set_computed_property(
               while true {
                 match current {
                   Object(proto_data) => {
+                    if is_typedarray_class(proto_data.class_name) {
+                      match classify_typedarray_string_key(prop) {
+                        Some(idx) =>
+                          return self.typedarray_set_dispatch(
+                            proto_data,
+                            current,
+                            receiver,
+                            String_(prop),
+                            idx,
+                            value,
+                            loc,
+                            strict,
+                          )
+                        None => ()
+                      }
+                    }
                     let mut stop_at_writable_data = false
                     match proto_data.bag.descriptors.get(prop) {
                       Some(desc) =>
@@ -1191,20 +1346,11 @@ pub fn Interpreter::set_computed_property(
         Number(n) => {
           let i = n.to_int()
           if i >= 0 {
+            let prop = i.to_string()
             let logical_len = match get_array_length_override(data) {
               Some(n64) => n64.to_int()
               None => data.elements.length()
             }
-            // §10.4.2.1 step 3.b: extending beyond length requires length to be writable.
-            if i >= logical_len && !data.length_writable {
-              if strict {
-                raise @errors.TypeError(
-                  message="Cannot add property \{i}, array's length is non-writable",
-                )
-              }
-              return value
-            }
-            let prop = i.to_string()
             match data.bag.descriptors.get(prop) {
               Some(desc) =>
                 match desc.setter {
@@ -1225,6 +1371,29 @@ pub fn Interpreter::set_computed_property(
               None => ()
             }
             let is_own = i < data.elements.length() && !data.holes.contains(i)
+            if !is_own {
+              match
+                self.set_missing_array_index_via_proto_chain(
+                  get_array_prototype(self.realm_state, data),
+                  receiver,
+                  prop,
+                  value,
+                  loc,
+                  strict,
+                ) {
+                Some(result) => return result
+                None => ()
+              }
+            }
+            // §10.4.2.1 step 3.b: extending beyond length requires length to be writable.
+            if i >= logical_len && !data.length_writable {
+              if strict {
+                raise @errors.TypeError(
+                  message="Cannot add property \{i}, array's length is non-writable",
+                )
+              }
+              return value
+            }
             if !is_own && !data.extensible {
               if strict {
                 raise @errors.TypeError(
@@ -1308,15 +1477,6 @@ pub fn Interpreter::set_computed_property(
                       Some(n64) => n64.to_int()
                       None => data.elements.length()
                     }
-                    // §10.4.2.1 step 3.b: extend requires writable length.
-                    if idx >= logical_len && !data.length_writable {
-                      if strict {
-                        raise @errors.TypeError(
-                          message="Cannot add property \{idx}, array's length is non-writable",
-                        )
-                      }
-                      return value
-                    }
                     match data.bag.descriptors.get(prop) {
                       Some(desc) =>
                         match desc.setter {
@@ -1343,6 +1503,29 @@ pub fn Interpreter::set_computed_property(
                     }
                     let is_own = idx < data.elements.length() &&
                       !data.holes.contains(idx)
+                    if !is_own {
+                      match
+                        self.set_missing_array_index_via_proto_chain(
+                          get_array_prototype(self.realm_state, data),
+                          receiver,
+                          prop,
+                          value,
+                          loc,
+                          strict,
+                        ) {
+                        Some(result) => return result
+                        None => ()
+                      }
+                    }
+                    // §10.4.2.1 step 3.b: extend requires writable length.
+                    if idx >= logical_len && !data.length_writable {
+                      if strict {
+                        raise @errors.TypeError(
+                          message="Cannot add property \{idx}, array's length is non-writable",
+                        )
+                      }
+                      return value
+                    }
                     if !is_own && !data.extensible {
                       if strict {
                         raise @errors.TypeError(

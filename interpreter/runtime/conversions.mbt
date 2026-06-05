@@ -837,6 +837,22 @@ fn Interpreter::has_object_property(
   data : ObjectData,
   key : Value,
 ) -> Bool raise Error {
+  if is_typedarray_class(data.class_name) {
+    match key {
+      String_(s) =>
+        match classify_typedarray_string_key(s) {
+          Some(-1) => return false
+          Some(idx) =>
+            return (self.stdlib_hooks.typedarray_is_valid_index)(
+              data,
+              idx,
+              self.realm_state,
+            )
+          None => ()
+        }
+      _ => ()
+    }
+  }
   match key {
     Symbol(sym) =>
       if data.bag.symbol_properties.contains(sym.id) ||

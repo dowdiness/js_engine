@@ -14982,6 +14982,220 @@ test "TypedArray Reflect.set different-receiver out-of-range is no-op" {
 }
 
 ///|
+/// §10.4.5.5 [[Set]] receiver-sensitive numeric semantics also apply when a
+/// TypedArray is encountered on the prototype chain.
+test "TypedArray Set receiver and prototype numeric semantics" {
+  let src =
+    #|let valueOfCalls = 0;
+    #|const value = { valueOf() { valueOfCalls++; return 7; } };
+    #|
+    #|const sameReceiver = new Uint8Array([1]);
+    #|sameReceiver["-1"] = value;
+    #|console.log(valueOfCalls);
+    #|console.log(sameReceiver.hasOwnProperty("-1"));
+    #|
+    #|valueOfCalls = 0;
+    #|const proto = new Uint8Array([2]);
+    #|const receiver = Object.create(proto);
+    #|receiver["0"] = value;
+    #|console.log(proto[0]);
+    #|console.log(receiver[0] === value);
+    #|console.log(valueOfCalls);
+    #|receiver["1.5"] = value;
+    #|console.log(receiver.hasOwnProperty("1.5"));
+    #|console.log(valueOfCalls);
+    #|const arr = Object.setPrototypeOf([], proto);
+    #|arr[1] = value;
+    #|console.log(arr.hasOwnProperty("1"));
+    #|console.log(arr.length);
+    #|const arrString = Object.setPrototypeOf([], proto);
+    #|arrString["1"] = value;
+    #|console.log(arrString.hasOwnProperty("1"));
+    #|console.log(arrString.length);
+    #|console.log(valueOfCalls);
+    #|
+    #|const typedReceiver = new Uint8Array([3]);
+    #|console.log(Reflect.set(proto, "0", new Number(9), typedReceiver));
+    #|console.log(typedReceiver[0]);
+    #|
+    #|valueOfCalls = 0;
+    #|const obj = Object.create(typedReceiver);
+    #|console.log(Reflect.set(obj, "100", value, typedReceiver));
+    #|console.log(valueOfCalls);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1", "false", "2", "true", "0", "false", "0", "false", "0", "false", "0", "0",
+    "true", "9", "true", "1",
+  ])
+}
+
+///|
+/// §10.4.5.2 [[HasProperty]]: canonical numeric index strings are handled by
+/// IntegerIndexedExoticObject before falling through to OrdinaryHasProperty.
+test "TypedArray Reflect.has numeric keys bypass prototype chain" {
+  let src =
+    #|const ta = new Uint8Array([7]);
+    #|const proto = { foo: 42, 1: "proto-index" };
+    #|Object.setPrototypeOf(proto, Object.getPrototypeOf(ta));
+    #|Object.setPrototypeOf(ta, proto);
+    #|console.log(Reflect.has(ta, "0"));
+    #|console.log(Reflect.has(ta, "1"));
+    #|console.log(Reflect.has(ta, "foo"));
+  let output = run_output(src)
+  json_inspect(output, content=["true", "false", "true"])
+}
+
+///|
+/// §10.4.5.1 [[GetOwnProperty]] synthesizes descriptors for valid integer
+/// indices, and detached buffers make those descriptors disappear.
+test "TypedArray getOwnPropertyDescriptor integer indices" {
+  let src =
+    #|const ta = new Uint8Array([42, 43]);
+    #|const d0 = Object.getOwnPropertyDescriptor(ta, "0");
+    #|console.log(d0.value);
+    #|console.log(d0.writable);
+    #|console.log(d0.enumerable);
+    #|console.log(d0.configurable);
+    #|console.log(Reflect.defineProperty(ta, "1", { value: 99 }));
+    #|console.log(ta[1]);
+    #|console.log(Reflect.defineProperty(ta, "1", { value: 100, writable: false }));
+    #|console.log(ta[1]);
+    #|$262.detachArrayBuffer(ta.buffer);
+    #|console.log(Object.getOwnPropertyDescriptor(ta, "0"));
+    #|let count = 0;
+    #|for (var key in ta) { count++; }
+    #|console.log(count);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "42", "true", "true", "true", "true", "99", "false", "99", "undefined", "0",
+  ])
+}
+
+///|
+/// §10.4.5.6 [[OwnPropertyKeys]] reports integer indices first, followed by
+/// ordinary string keys in insertion order and then symbol keys.
+test "TypedArray Reflect.ownKeys integer indices" {
+  let src =
+    #|const sym = Symbol("s");
+    #|const ta = new Uint8Array([1, 2, 3]);
+    #|ta.test262 = 1;
+    #|ta.ecma262 = 2;
+    #|ta[sym] = 3;
+    #|const keys = Reflect.ownKeys(ta);
+    #|const parts = [];
+    #|for (var i = 0; i < keys.length; i++) {
+    #|  parts.push(typeof keys[i] === "symbol" ? keys[i] === sym : keys[i]);
+    #|}
+    #|console.log(parts.join("|"));
+    #|console.log(Reflect.ownKeys(ta.subarray(1)).join(","));
+    #|console.log(Reflect.ownKeys(new Uint8Array()).length);
+  let output = run_output(src)
+  json_inspect(output, content=["0|1|2|test262|ecma262|true", "0,1", "0"])
+}
+
+///|
+/// §10.4.5.10 [[Delete]]: valid TypedArray integer indices are non-deletable,
+/// while out-of-range, detached, and canonical-invalid numeric keys return true.
+test "TypedArray delete integer-indexed elements" {
+  let src =
+    #|const ta = new Uint8Array([7]);
+    #|console.log(delete ta["0"]);
+    #|console.log(delete ta["1"]);
+    #|console.log(delete ta["-0"]);
+    #|console.log(delete ta[-0]);
+    #|$262.detachArrayBuffer(ta.buffer);
+    #|console.log(delete ta["0"]);
+  let output = run_output(src)
+  json_inspect(output, content=["false", "true", "true", "false", "true"])
+}
+
+///|
+test "strict TypedArray delete valid index throws" {
+  let src =
+    #|"use strict";
+    #|const ta = new Uint8Array([7]);
+    #|try {
+    #|  delete ta["0"];
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|console.log(delete ta["1"]);
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "true"])
+}
+
+///|
+/// Review regression: Reflect and Proxy paths must route through the same
+/// TypedArray integer-index [[Delete]]/[[GetOwnProperty]]/[[OwnPropertyKeys]]
+/// dispatch as direct syntax, including detached-buffer filtering.
+test "TypedArray Reflect and Proxy integer-index internals" {
+  let src =
+    #|const ta = new Uint8Array([1, 2]);
+    #|console.log(Reflect.deleteProperty(ta, "0"));
+    #|const passthrough = new Proxy(ta, {});
+    #|console.log(Reflect.deleteProperty(passthrough, "0"));
+    #|console.log(delete passthrough[0]);
+    #|console.log(Object.getOwnPropertyDescriptor(passthrough, "0").value);
+    #|console.log(Object.getOwnPropertyDescriptor(ta, 0).value);
+    #|console.log(Reflect.getOwnPropertyDescriptor(ta, 1).value);
+    #|Object.preventExtensions(ta);
+    #|try {
+    #|  delete new Proxy(ta, { deleteProperty() { return true; } })[0];
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|const detached = new Uint8Array([3, 4]);
+    #|$262.detachArrayBuffer(detached.buffer);
+    #|console.log(Reflect.ownKeys(detached).length);
+    #|console.log(Reflect.deleteProperty(detached, "0"));
+    #|const proto = new Uint8Array([5]);
+    #|const mid = Object.create(proto);
+    #|const arrValid = Object.setPrototypeOf([], mid);
+    #|arrValid[0] = 9;
+    #|console.log(arrValid[0]);
+    #|console.log(proto[0]);
+    #|console.log(arrValid.length);
+    #|const arrInvalid = Object.setPrototypeOf([], mid);
+    #|arrInvalid[1] = 7;
+    #|console.log(arrInvalid.hasOwnProperty("1"));
+    #|console.log(arrInvalid.length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "false", "false", "false", "1", "1", "2", "TypeError", "0", "true", "9", "5",
+    "1", "false", "0",
+  ])
+}
+
+///|
+/// Reflect.deleteProperty must dispatch to Map/Set/Promise [[Delete]], not just
+/// accept them as object-like and report success while leaving expando props.
+test "Reflect.deleteProperty removes Map Set Promise expandos" {
+  let src =
+    #|function check(o) {
+    #|  o.x = 1;
+    #|  console.log(Reflect.deleteProperty(o, "x"));
+    #|  console.log(Object.prototype.hasOwnProperty.call(o, "x"));
+    #|  const sym = Symbol("expando");
+    #|  o[sym] = 2;
+    #|  console.log(Reflect.deleteProperty(o, sym));
+    #|  console.log(Object.prototype.hasOwnProperty.call(o, sym));
+    #|  Object.defineProperty(o, "locked", { value: 3, configurable: false });
+    #|  console.log(Reflect.deleteProperty(o, "locked"));
+    #|  console.log(o.locked);
+    #|}
+    #|check(new Map());
+    #|check(new Set());
+    #|check(Promise.resolve(1));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "false", "true", "false", "false", "3", "true", "false", "true", "false",
+    "false", "3", "true", "false", "true", "false", "false", "3",
+  ])
+}
+
+///|
 /// §7.4.10 IteratorClose via §7.3.10 GetMethod: non-callable `return`
 /// inherited from the prototype chain must throw TypeError. Pre-fix the
 /// close walked `bag.properties` directly without descriptor awareness;

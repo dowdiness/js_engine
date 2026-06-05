@@ -122,24 +122,13 @@ fn setup_reflect_builtins(
         )
       }
       let target = args[0]
-      let prop = args[1].to_string()
-      match target {
-        Value::Proxy(proxy_data) =>
-          Bool(@runtime.proxy_delete_property(interp, proxy_data, prop))
-        Object(data) => {
-          match data.bag.descriptors.get(prop) {
-            Some(desc) => if !desc.configurable { return Value::Bool(false) }
-            None => ()
-          }
-          let _ = data.bag.properties.remove(prop)
-          let _ = data.bag.descriptors.remove(prop)
-          Value::Bool(true)
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Reflect.deleteProperty called on non-object",
-          )
+      if !@runtime.is_object_value(target) {
+        raise @errors.TypeError(
+          message="Reflect.deleteProperty called on non-object",
+        )
       }
+      let prop = @runtime.to_property_key(args[1], interp=Some(interp))
+      Bool(interp.delete_property_key(target, prop))
     },
   )
 
@@ -348,9 +337,7 @@ fn setup_reflect_builtins(
         Value::Proxy(proxy_data) =>
           @runtime.proxy_own_property_keys(interp, proxy_data)
         Object(_) | Value::Array(_) =>
-          @runtime.make_array(
-            @runtime.collect_target_own_keys(target, interp.realm_state.symbols),
-          )
+          @runtime.make_array(@runtime.collect_target_own_keys(target, interp))
         _ =>
           raise @errors.TypeError(
             message="Reflect.ownKeys called on non-object",

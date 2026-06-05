@@ -2164,35 +2164,101 @@ fn mark_array_hole_if_index(data : ArrayData, prop : String) -> Unit {
 }
 
 ///|
+fn delete_typedarray_string_property(
+  interp : Interpreter,
+  data : ObjectData,
+  prop : String,
+  strict : Bool,
+) -> Bool raise Error {
+  match classify_typedarray_string_key(prop) {
+    Some(idx) =>
+      if idx >= 0 &&
+        (interp.stdlib_hooks.typedarray_is_valid_index)(
+          data,
+          idx,
+          interp.realm_state,
+        ) {
+        if strict {
+          raise @errors.TypeError(message="Cannot delete property '\{prop}'")
+        }
+        false
+      } else {
+        true
+      }
+    None => delete_string_property_from_bag(data.bag, prop, strict)
+  }
+}
+
+///|
+pub fn Interpreter::delete_property_key(
+  self : Interpreter,
+  obj : Value,
+  key : Value,
+  strict? : Bool = false,
+) -> Bool raise Error {
+  let prop_key = to_property_key(key, interp=Some(self))
+  match obj {
+    Proxy(proxy_data) => {
+      let result = proxy_delete_property_key(self, proxy_data, prop_key)
+      if !result && strict {
+        raise @errors.TypeError(message="Cannot delete property")
+      }
+      result
+    }
+    Object(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) if is_typedarray_class(data.class_name) =>
+          delete_typedarray_string_property(self, data, prop, strict)
+        String_(prop) => delete_string_property_from_bag(data.bag, prop, strict)
+        _ => true
+      }
+    Array(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) => {
+          let result = delete_string_property_from_bag(data.bag, prop, strict)
+          if result {
+            mark_array_hole_if_index(data, prop)
+          }
+          result
+        }
+        _ => true
+      }
+    Map(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) => delete_string_property_from_bag(data.bag, prop, strict)
+        _ => true
+      }
+    Set(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) => delete_string_property_from_bag(data.bag, prop, strict)
+        _ => true
+      }
+    Promise(data) =>
+      match prop_key {
+        Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_(prop) => delete_string_property_from_bag(data.bag, prop, strict)
+        _ => true
+      }
+    Undefined | Null =>
+      raise @errors.TypeError(
+        message="Cannot convert undefined or null to object",
+      )
+    _ => true
+  }
+}
+
+///|
 pub fn eval_delete_property(
   interp : Interpreter,
   obj : Value,
   prop : String,
   strict : Bool,
 ) -> Value raise Error {
-  match obj {
-    Proxy(proxy_data) => {
-      let result = proxy_delete_property(interp, proxy_data, prop)
-      if !result && strict {
-        raise @errors.TypeError(message="Cannot delete property '\{prop}'")
-      }
-      Bool(result)
-    }
-    Object(data) =>
-      Bool(delete_string_property_from_bag(data.bag, prop, strict))
-    Array(data) => {
-      let result = delete_string_property_from_bag(data.bag, prop, strict)
-      if result {
-        mark_array_hole_if_index(data, prop)
-      }
-      Bool(result)
-    }
-    Undefined | Null =>
-      raise @errors.TypeError(
-        message="Cannot convert undefined or null to object",
-      )
-    _ => Bool(true)
-  }
+  Bool(interp.delete_property_key(obj, String_(prop), strict~))
 }
 
 ///|
@@ -2202,43 +2268,7 @@ pub fn eval_delete_computed_property(
   key : Value,
   strict : Bool,
 ) -> Value raise Error {
-  match obj {
-    Proxy(proxy_data) => {
-      let k = to_js_string(key)
-      let result = proxy_delete_property(interp, proxy_data, k)
-      if !result && strict {
-        raise @errors.TypeError(message="Cannot delete property '\{k}'")
-      }
-      Bool(result)
-    }
-    Object(data) =>
-      match key {
-        Symbol(sym) =>
-          Bool(delete_symbol_property_from_bag(data.bag, sym.id, strict))
-        _ => {
-          let k = to_js_string(key)
-          Bool(delete_string_property_from_bag(data.bag, k, strict))
-        }
-      }
-    Array(data) =>
-      match key {
-        Symbol(sym) =>
-          Bool(delete_symbol_property_from_bag(data.bag, sym.id, strict))
-        _ => {
-          let k = to_js_string(key)
-          let result = delete_string_property_from_bag(data.bag, k, strict)
-          if result {
-            mark_array_hole_if_index(data, k)
-          }
-          Bool(result)
-        }
-      }
-    Undefined | Null =>
-      raise @errors.TypeError(
-        message="Cannot convert undefined or null to object",
-      )
-    _ => Bool(true)
-  }
+  Bool(interp.delete_property_key(obj, key, strict~))
 }
 
 ///|
