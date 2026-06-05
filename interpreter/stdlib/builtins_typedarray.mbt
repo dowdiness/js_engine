@@ -331,6 +331,122 @@ pub fn make_typedarray_object(
 }
 
 ///|
+fn typedarray_data_desc(
+  writable~ : Bool,
+  configurable~ : Bool,
+) -> PropDescriptor {
+  {
+    writable,
+    enumerable: false,
+    configurable,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn is_shape_only_bigint_typedarray_empty_request(args : Array[Value]) -> Bool {
+  match args {
+    [] => true
+    [Undefined] => true
+    [Value::Number(n)] => n == 0.0
+    _ => false
+  }
+}
+
+///|
+fn install_shape_only_bigint_typedarray_constructor(
+  env : Environment,
+  type_name : String,
+  ta_proto : Value,
+  func_proto : Value,
+) -> Unit {
+  let bpe = typed_array_bytes_per_element(type_name)
+  let per_proto_props : Map[String, Value] = {}
+  per_proto_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
+  let per_proto_descs : Map[String, PropDescriptor] = {}
+  per_proto_descs["BYTES_PER_ELEMENT"] = typedarray_data_desc(
+    writable=false,
+    configurable=false,
+  )
+  let per_proto : Value = Value::Object({
+    bag: {
+      properties: per_proto_props,
+      symbol_properties: {},
+      descriptors: per_proto_descs,
+      symbol_descriptors: {},
+    },
+    prototype: ta_proto,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let ctor_props : Map[String, Value] = {}
+  ctor_props["prototype"] = per_proto
+  ctor_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
+  ctor_props["name"] = Value::String_(type_name)
+  ctor_props["length"] = Value::Number(3.0)
+  let ctor_descs : Map[String, PropDescriptor] = {}
+  ctor_descs["prototype"] = typedarray_data_desc(
+    writable=false,
+    configurable=false,
+  )
+  ctor_descs["BYTES_PER_ELEMENT"] = typedarray_data_desc(
+    writable=false,
+    configurable=false,
+  )
+  ctor_descs["name"] = typedarray_data_desc(writable=false, configurable=true)
+  ctor_descs["length"] = typedarray_data_desc(writable=false, configurable=true)
+  let ctor : Value = Value::Object({
+    bag: {
+      properties: ctor_props,
+      symbol_properties: {},
+      descriptors: ctor_descs,
+      symbol_descriptors: {},
+    },
+    prototype: func_proto,
+    callable: Some(
+      InterpreterCallableWithContext(type_name, fn(
+        _interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        if !context.is_constructing() {
+          raise @errors.TypeError(
+            message="Constructor \{type_name} requires 'new'",
+          )
+        }
+        if !is_shape_only_bigint_typedarray_empty_request(args) {
+          raise @errors.TypeError(
+            message="\{type_name} BigInt element semantics are not implemented",
+          )
+        }
+        make_typedarray_object(type_name, 0, per_proto, env)
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  match per_proto {
+    Object(proto_data) => {
+      proto_data.bag.properties["constructor"] = ctor
+      proto_data.bag.descriptors["constructor"] = typedarray_data_desc(
+        writable=true,
+        configurable=true,
+      )
+    }
+    _ => ()
+  }
+  env.def_builtin(type_name, ctor)
+  env.def_builtin("[[\{type_name}Prototype]]", per_proto)
+  env.def_builtin("[[\{type_name}Constructor]]", ctor)
+}
+
+///|
 /// Create a TypedArray from an existing buffer.
 fn make_typedarray_from_buffer(
   type_name : String,
@@ -504,6 +620,28 @@ pub fn validate_typed_array(
 }
 
 ///|
+fn typedarray_length(data : ObjectData) -> Int {
+  match data.bag.properties.get("[[ArrayLength]]") {
+    Some(Value::Number(n)) => n.to_int()
+    _ => 0
+  }
+}
+
+///|
+fn validate_typedarray_result_length(
+  result : Value,
+  method_name : String,
+  min_length : Int,
+  too_short_message : String,
+  realm_state : @runtime.RealmState,
+) -> Unit raise Error {
+  let (result_data, _) = validate_typed_array(result, method_name, realm_state)
+  if typedarray_length(result_data) < min_length {
+    raise @errors.TypeError(message=too_short_message)
+  }
+}
+
+///|
 /// §7.3.20 SpeciesConstructor(O, defaultConstructor) specialised for the
 /// %TypedArray% family. Mirrors the spec-correct shape used by Promise's
 /// `get_promise_species_constructor` (see `builtins_promise.mbt`).
@@ -565,9 +703,9 @@ fn typed_array_species_constructor(
 /// (if argumentList is a single-element length argument) that the resulting
 /// length is at least that value.
 ///
-/// Out of scope for this engine: ContentType check (spec step 7) — this
-/// engine doesn't yet implement BigInt64Array / BigUint64Array, so all
-/// TypedArrays have ContentType "Number" and the check is vacuous.
+/// Out of scope for this engine: ContentType check (spec step 7) — BigInt64Array
+/// and BigUint64Array currently exist for constructor/empty-instance shape only;
+/// BigInt element value semantics remain unsupported/skipped.
 pub fn typed_array_species_create(
   interp : @runtime.Interpreter,
   exemplar : Value,
@@ -600,30 +738,26 @@ pub fn typed_array_species_create(
   let loc = @token.Loc::default()
   let result = interp.construct_value(ctor, args, loc)
   // Result must itself be a TypedArray with non-detached buffer.
-  let (result_data, _) = validate_typed_array(
-    result,
-    "species create result",
-    interp.realm_state,
-  )
   // §22.2.4.7 step 8: if argumentList is « length », the result's length must
   // be at least that length. This catches a malicious species constructor
   // that ignores its argument or returns a shorter TA.
-  if args.length() == 1 {
-    match args[0] {
-      Value::Number(n) => {
-        let requested = n.to_int()
-        let actual = match result_data.bag.properties.get("[[ArrayLength]]") {
-          Some(Value::Number(m)) => m.to_int()
-          _ => 0
-        }
-        if actual < requested {
-          raise @errors.TypeError(
-            message="TypedArray species result is too short",
-          )
-        }
-      }
-      _ => ()
-    }
+  match args {
+    [Value::Number(n)] =>
+      validate_typedarray_result_length(
+        result,
+        "species create result",
+        n.to_int(),
+        "TypedArray species result is too short",
+        interp.realm_state,
+      )
+    _ =>
+      ignore(
+        validate_typed_array(
+          result,
+          "species create result",
+          interp.realm_state,
+        ),
+      )
   }
   result
 }
@@ -2585,6 +2719,13 @@ pub fn setup_typedarray_builtins(
         [Value::Number(len.to_double())],
         loc,
       )
+      validate_typedarray_result_length(
+        result,
+        "TypedArray.from result",
+        len,
+        "TypedArray.from result is too short",
+        interp.realm_state,
+      )
       for i = 0; i < len; i = i + 1 {
         let value = source_values[i]
         let mapped = if has_map_fn {
@@ -2608,6 +2749,40 @@ pub fn setup_typedarray_builtins(
       result
     },
   )
+  ta_ctor_props["of"] = @runtime.make_interp_method_func(name="of", length=0, fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    if !@runtime.is_constructor_value(this_val) {
+      raise @errors.TypeError(message="TypedArray.of called on non-constructor")
+    }
+    let loc = @token.Loc::default()
+    let len = args.length()
+    let result = interp.construct_value(
+      this_val,
+      [Value::Number(len.to_double())],
+      loc,
+    )
+    validate_typedarray_result_length(
+      result,
+      "TypedArray.of result",
+      len,
+      "TypedArray.of result is too short",
+      interp.realm_state,
+    )
+    for i = 0; i < len; i = i + 1 {
+      let _ = interp.set_property(
+        result,
+        i.to_string(),
+        args[i],
+        loc,
+        strict=true,
+      )
+    }
+    result
+  })
+
   let ta_ctor_descs : Map[String, PropDescriptor] = {}
   ta_ctor_descs["prototype"] = {
     writable: false,
@@ -2634,6 +2809,7 @@ pub fn setup_typedarray_builtins(
     is_accessor: false,
   }
   ta_ctor_descs["from"] = method_desc
+  ta_ctor_descs["of"] = method_desc
   let ta_ctor : Value = Value::Object({
     bag: {
       properties: ta_ctor_props,
@@ -2737,123 +2913,6 @@ pub fn setup_typedarray_builtins(
     ctor_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
     ctor_props["name"] = Value::String_(type_name)
     ctor_props["length"] = Value::Number(3.0) // TypedArray constructors have length 3
-
-    // Static from(source [, mapFn [, thisArg]])
-    ctor_props["from"] = @runtime.make_interp_method_func(
-      name="from",
-      length=1,
-      fn(interp, _this_val, args) raise {
-        if args.length() == 0 {
-          raise @errors.TypeError(
-            message="TypedArray.from requires at least 1 argument",
-          )
-        }
-        let source = args[0]
-        let has_map_fn = args.length() > 1 && !(args[1] is Undefined)
-        let map_fn = if has_map_fn { args[1] } else { Undefined }
-        let this_arg = if args.length() > 2 { args[2] } else { Undefined }
-        // Collect source values first
-        let source_values : Array[Value] = []
-        match source {
-          Array(arr_data) =>
-            for elem in arr_data.elements {
-              source_values.push(elem)
-            }
-          Object(src_data) =>
-            if is_typedarray_class(src_data.class_name) {
-              let src_len = match
-                src_data.bag.properties.get("[[ArrayLength]]") {
-                Some(Value::Number(n)) => n.to_int()
-                _ => 0
-              }
-              for i = 0; i < src_len; i = i + 1 {
-                source_values.push(
-                  typedarray_get_index(src_data, i, realm_state),
-                )
-              }
-            } else {
-              // Try length property
-              match src_data.bag.properties.get("length") {
-                Some(Value::Number(len_n)) => {
-                  let len = len_n.to_int()
-                  for i = 0; i < len; i = i + 1 {
-                    match src_data.bag.properties.get(i.to_string()) {
-                      Some(v) => source_values.push(v)
-                      None => source_values.push(Undefined)
-                    }
-                  }
-                }
-                _ => ()
-              }
-            }
-          _ => ()
-        }
-        // Apply mapFn if provided, then convert to numbers
-        let elements : Array[Double] = []
-        let loc = @token.Loc::default()
-        for i = 0; i < source_values.length(); i = i + 1 {
-          let val = source_values[i]
-          let mapped = if has_map_fn {
-            interp.call_value(
-              map_fn,
-              this_arg,
-              [val, Value::Number(i.to_double())],
-              loc,
-            )
-          } else {
-            val
-          }
-          elements.push(interp.to_number(mapped))
-        }
-        let result = make_typedarray_object(
-          type_name,
-          elements.length(),
-          per_proto,
-          env,
-        )
-        match result {
-          Object(result_data) =>
-            for i = 0; i < elements.length(); i = i + 1 {
-              typedarray_set_index(result_data, i, elements[i], realm_state)
-            }
-          _ => ()
-        }
-        result
-      },
-    )
-
-    // Static of(...items)
-    ctor_props["of"] = Value::Object({
-      bag: {
-        properties: { "length": Value::Number(0.0) },
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-      },
-      prototype: Null,
-      callable: Some(
-        NonConstructableInterpreterCallable("of", fn(interp, args) raise {
-          let result = make_typedarray_object(
-            type_name,
-            args.length(),
-            per_proto,
-            env,
-          )
-          match result {
-            Object(result_data) =>
-              for i = 0; i < args.length(); i = i + 1 {
-                let num = interp.to_number(args[i])
-                typedarray_set_index(result_data, i, num, realm_state)
-              }
-            _ => ()
-          }
-          result
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    })
 
     let ctor_descs : Map[String, PropDescriptor] = {}
     ctor_descs["prototype"] = {
@@ -3229,4 +3288,11 @@ pub fn setup_typedarray_builtins(
     // `Int8Array = Uint8Array` doesn't drift the species default.
     env.def_builtin("[[\{type_name}Constructor]]", ctor)
   }
+
+  install_shape_only_bigint_typedarray_constructor(
+    env, "BigInt64Array", ta_proto, func_proto,
+  )
+  install_shape_only_bigint_typedarray_constructor(
+    env, "BigUint64Array", ta_proto, func_proto,
+  )
 }

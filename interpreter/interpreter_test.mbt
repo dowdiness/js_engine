@@ -10136,6 +10136,70 @@ test "test262: TypedArray constructors from length" {
 }
 
 ///|
+test "test262: BigInt typed array constructors are empty-instance stubs" {
+  let output = run_output(
+    (
+      #|var ctors = [BigInt64Array, BigUint64Array];
+      #|for (var i = 0; i < ctors.length; i++) {
+      #|  var C = ctors[i];
+      #|  var view = new C();
+      #|  var zero = new C(0);
+      #|  console.log(typeof C);
+      #|  console.log(typeof C.of);
+      #|  console.log(typeof C.from);
+      #|  console.log(view.length, view.byteLength, view.BYTES_PER_ELEMENT);
+      #|  console.log(zero.length);
+      #|  view[0] = 1;
+      #|  console.log(view[0] === undefined);
+      #|  console.log(Object.seal(view) === view);
+      #|  try { new C(1); console.log("no length throw"); }
+      #|  catch (e) { console.log(e instanceof TypeError); }
+      #|  try { C.of(1); console.log("no of throw"); }
+      #|  catch (e) { console.log(e instanceof TypeError); }
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "function", "undefined", "undefined", "0 0 8", "0", "true", "true", "true", "true",
+    "function", "undefined", "undefined", "0 0 8", "0", "true", "true", "true", "true",
+  ])
+}
+
+///|
+test "test262: TypedArray.of inherited custom constructor semantics" {
+  let output = run_output(
+    (
+      #|var TypedArray = Object.getPrototypeOf(Int8Array);
+      #|console.log(Int8Array.of === TypedArray.of);
+      #|console.log(Int8Array.hasOwnProperty("of"));
+      #|var of = Int8Array.of;
+      #|try { of(1); console.log("no throw"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|var calls = 0;
+      #|function custom(len) {
+      #|  calls++;
+      #|  return new Uint8Array(len + 1);
+      #|}
+      #|var result = Int8Array.of.call(custom, 7, 8);
+      #|console.log(calls);
+      #|console.log(result.length);
+      #|console.log(result[0]);
+      #|console.log(result[1]);
+      #|console.log(result instanceof Uint8Array);
+      #|function notTypedArray(len) { return {}; }
+      #|try { TypedArray.of.call(notTypedArray, 1); console.log("no throw"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|function tooShort(len) { return new Int8Array(0); }
+      #|try { TypedArray.of.call(tooShort, 1); console.log("no throw"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "false", "true", "1", "3", "7", "8", "true", "true", "true",
+  ])
+}
+
+///|
 test "test262: TypedArray constructor requires new" {
   let output = run_output(
     (
@@ -16195,6 +16259,43 @@ test "TypedArray.from rejects non-callable mapFn without coercion" {
     #|}
   let output = run_output(src)
   json_inspect(output, content=["TypeError", "false"])
+}
+
+///|
+test "TypedArray.from is inherited and validates custom constructor result" {
+  let src =
+    #|var TypedArray = Object.getPrototypeOf(Int8Array);
+    #|console.log(Int8Array.from === TypedArray.from);
+    #|console.log(Int8Array.hasOwnProperty("from"));
+    #|var called = 0;
+    #|function C(len) {
+    #|  called++;
+    #|  return new Int8Array(len);
+    #|}
+    #|var r = Int8Array.from.call(C, [7, 8]);
+    #|console.log(r.length);
+    #|console.log(r[0]);
+    #|console.log(r[1]);
+    #|console.log(called);
+    #|try {
+    #|  Int8Array.from.call(function() {}, []);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  Int8Array.from.call(function() { return new Int8Array(1); }, [1, 2]);
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  Int8Array.from.call(function() { return new Int8Array(1); }, { length: 2 });
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "false", "2", "7", "8", "1", "TypeError", "TypeError", "TypeError",
+  ])
 }
 
 ///|
