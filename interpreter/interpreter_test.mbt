@@ -10607,6 +10607,23 @@ test "test262: TypedArray.prototype.sort stability" {
 }
 
 ///|
+test "TypedArray.prototype.toSorted stability" {
+  let output = run_output(
+    (
+      #|function compare(a, b) { return (a / 10 | 0) - (b / 10 | 0); }
+      #|var values = [];
+      #|for (var i = 99; i >= 0; i--) values.push(i);
+      #|var sorted = new Float64Array(values).toSorted(compare);
+      #|console.log(sorted.slice(0, 20).join(","));
+      #|console.log(sorted.slice(90).join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "9,8,7,6,5,4,3,2,1,0,19,18,17,16,15,14,13,12,11,10", "99,98,97,96,95,94,93,92,91,90",
+  ])
+}
+
+///|
 test "test262: TypedArray.prototype.sort NaN sorts last" {
   let output = run_output(
     (

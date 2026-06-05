@@ -2496,13 +2496,14 @@ pub fn setup_typedarray_builtins(
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
-      // Collect elements
-      let elements : Array[Double] = []
+      // Collect elements with original indices so toSorted remains stable even
+      // though MoonBit's Array::sort_by is intentionally unstable.
+      let elements : Array[(Double, Int)] = []
       for i = 0; i < len; i = i + 1 {
         let val = typedarray_get_index(data, i, realm_state)
         match val {
-          Value::Number(n) => elements.push(n)
-          _ => elements.push(0.0)
+          Value::Number(n) => elements.push((n, i))
+          _ => elements.push((0.0, i))
         }
       }
       let loc = @token.Loc::default()
@@ -2513,10 +2514,12 @@ pub fn setup_typedarray_builtins(
             if caught_error is Some(_) {
               return 0
             }
+            let a_num = a.0
+            let b_num = b.0
             let result = interp.call_value(
               cmp_fn,
               Undefined,
-              [Value::Number(a), Value::Number(b)],
+              [Value::Number(a_num), Value::Number(b_num)],
               loc,
             ) catch {
               e => {
@@ -2531,43 +2534,45 @@ pub fn setup_typedarray_builtins(
               }
             }
             if cmp.is_nan() {
-              0
+              typedarray_stable_sort_tie_break(a.1, b.1)
             } else if cmp < 0.0 {
               -1
             } else if cmp > 0.0 {
               1
             } else {
-              0
+              typedarray_stable_sort_tie_break(a.1, b.1)
             }
           })
         None =>
           elements.sort_by(fn(a, b) {
-            if a.is_nan() && b.is_nan() {
-              return 0
+            let a_num = a.0
+            let b_num = b.0
+            if a_num.is_nan() && b_num.is_nan() {
+              return typedarray_stable_sort_tie_break(a.1, b.1)
             }
-            if a.is_nan() {
+            if a_num.is_nan() {
               return 1
             }
-            if b.is_nan() {
+            if b_num.is_nan() {
               return -1
             }
-            if a == 0.0 && b == 0.0 {
-              let a_neg = 1.0 / a < 0.0
-              let b_neg = 1.0 / b < 0.0
+            if a_num == 0.0 && b_num == 0.0 {
+              let a_neg = 1.0 / a_num < 0.0
+              let b_neg = 1.0 / b_num < 0.0
               if a_neg && !b_neg {
                 return -1
               }
               if !a_neg && b_neg {
                 return 1
               }
-              return 0
+              return typedarray_stable_sort_tie_break(a.1, b.1)
             }
-            if a < b {
+            if a_num < b_num {
               -1
-            } else if a > b {
+            } else if a_num > b_num {
               1
             } else {
-              0
+              typedarray_stable_sort_tie_break(a.1, b.1)
             }
           })
       }
@@ -2580,7 +2585,7 @@ pub fn setup_typedarray_builtins(
       match new_ta {
         Object(new_data) =>
           for i = 0; i < len; i = i + 1 {
-            typedarray_set_index(new_data, i, elements[i], realm_state)
+            typedarray_set_index(new_data, i, elements[i].0, realm_state)
           }
         _ => ()
       }
