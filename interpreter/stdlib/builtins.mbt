@@ -675,30 +675,9 @@ fn setup_builtins_with_realm_state_active(
             setter: None,
             is_accessor: false,
           },
-          "fromCharCode": {
-            writable: true,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          },
-          "fromCodePoint": {
-            writable: true,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          },
-          "raw": {
-            writable: true,
-            enumerable: false,
-            configurable: true,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          },
+          "fromCharCode": builtin_method_desc(),
+          "fromCodePoint": builtin_method_desc(),
+          "raw": builtin_method_desc(),
         },
         symbol_descriptors: {},
       },
@@ -998,14 +977,7 @@ fn setup_builtins_with_realm_state_active(
           }
         },
       )
-      error_data.bag.descriptors["isError"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      error_data.bag.descriptors["isError"] = builtin_method_desc()
     }
     _ => ()
   }
