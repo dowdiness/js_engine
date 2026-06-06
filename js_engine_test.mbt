@@ -1017,6 +1017,24 @@ test "ES module: graph evaluates dependencies before importers" {
 }
 
 ///|
+test "ES module: graph resolves indirect re-export chain before importers" {
+  let modules : Array[(String, String)] = [
+    (
+      "./main",
+      (
+        #|import { x } from './b';
+        #|console.log(x);
+      ),
+    ),
+    ("./b", "export { x } from './a';"),
+    ("./a", "export { x } from './base';"),
+    ("./base", "export const x = 1;"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
 test "ES module: import default" {
   let modules : Array[(String, String)] = [
     (

@@ -493,15 +493,44 @@ pub fn Interpreter::run_modules(
   for record in records {
     self.instantiate_module_record(record)
   }
-  for record in records {
-    self.instantiate_module_indirect_exports(record)
-  }
-  for record in records {
-    self.instantiate_module_imports(record)
-  }
   let records_by_specifier : Map[String, ModuleRunRecord] = {}
   for record in records {
     records_by_specifier[record.specifier] = record
+  }
+  let indirect_state : Map[String, Int] = {}
+  let mut indirect_remaining = records.length()
+  while indirect_remaining > 0 {
+    let mut progressed = false
+    for record in records {
+      match indirect_state.get(record.specifier) {
+        Some(2) => ()
+        _ =>
+          if module_record_dependencies_ready(
+              record, records_by_specifier, indirect_state,
+            ) {
+            self.instantiate_module_indirect_exports(record)
+            indirect_state[record.specifier] = 2
+            indirect_remaining = indirect_remaining - 1
+            progressed = true
+          }
+      }
+    }
+    if !progressed {
+      for record in records {
+        match indirect_state.get(record.specifier) {
+          Some(2) => ()
+          _ => {
+            self.instantiate_module_indirect_exports(record)
+            indirect_state[record.specifier] = 2
+            indirect_remaining = indirect_remaining - 1
+            break
+          }
+        }
+      }
+    }
+  }
+  for record in records {
+    self.instantiate_module_imports(record)
   }
   let evaluation_state : Map[String, Int] = {}
   let mut remaining = records.length()
