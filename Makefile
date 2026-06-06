@@ -14,7 +14,8 @@ architecture-state-audit: architecture-state-audit-test architecture-state-audit
 	python3 scripts/architecture-state-audit.py
 
 architecture-state-audit-mbt: architecture-state-audit-mbt-test
-	moon run --target native cmd/architecture_state_audit -- --root .
+	moon build --target native cmd/architecture_state_audit
+	./_build/native/debug/build/cmd/architecture_state_audit/architecture_state_audit.exe --root .
 
 architecture-state-audit-mbt-test:
 	moon test --target native tooling/architecture_state_audit

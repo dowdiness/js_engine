@@ -3,6 +3,7 @@ import {
   "moonbitlang/core/argparse",
   "moonbitlang/core/env",
   "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x/sys",
 }
 
 supported_targets = "+native"

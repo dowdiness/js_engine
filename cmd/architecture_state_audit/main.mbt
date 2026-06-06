@@ -8,15 +8,12 @@ fn program_args(args : Array[String]) -> ArrayView[String] {
 }
 
 ///|
-extern "c" fn native_exit(code : Int) -> Unit = "exit"
-
-///|
 #borrow(message)
 extern "c" fn stderr_write_bytes(message : Bytes) -> Unit = "moonbit_architecture_state_audit_stderr_write"
 
 ///|
 fn exit_with_error() -> Unit {
-  native_exit(1)
+  @sys.exit(1)
 }
 
 ///|
@@ -45,7 +42,7 @@ fn main {
   )
   let matches = cmd.parse(argv=program_args(@env.args()), env={}) catch {
     err => {
-      println("\{err}")
+      eprintln("\{err}")
       exit_with_error()
       return
     }
