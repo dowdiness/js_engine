@@ -2,97 +2,87 @@
 """
 Shared Test262 skip metadata for js_engine tooling.
 
-This module has no runner side effects. It contains only the skip constants and
-pure metadata classification used by scripts/test262-runner.py and
+This module has no runner side effects. It loads strict JSON metadata and
+provides pure classification used by scripts/test262-runner.py and
 scripts/test262-analyze.py.
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+import json
+from pathlib import Path
+from typing import Any
 
 
-SKIP_FEATURES = {
-    # Features this engine definitely doesn't support yet
-
-    # Async / Promises (async-iteration still unsupported)
-    "async-iteration",
-    "top-level-await",
-
-    # Classes (advanced features not yet supported)
-    "class-fields-private",
-    "class-methods-private", "class-static-fields-private",
-    "class-static-methods-private",
-    "class-static-block",
-
-    # Iteration / ordering
-    "for-in-order",
-    "iterator-helpers", "iterator-sequencing", "joint-iteration",
-    "set-methods",
-
-    # Collections
-    "WeakRef",
-
-    # Typed arrays and buffers (partially supported)
-    "SharedArrayBuffer", "Float16Array", "Atomics",
-    "resizable-arraybuffer", "arraybuffer-transfer", "immutable-arraybuffer",
-
-    # Tail calls
-    "tail-call-optimization",
-
-    # Modules / dynamic import
-    "import.meta", "dynamic-import",
-    "json-modules", "import-attributes",
-    "source-phase-imports", "source-phase-imports-module-source",
-
-    # RegExp advanced features
-    "regexp-lookbehind", "regexp-unicode-property-escapes",
-    "regexp-match-indices", "regexp-v-flag",
-    "regexp-modifiers",
-    "RegExp.escape",
-
-    # Missing operators and syntax
-    "hashbang",
-
-    # Intl normative optional behavior
-    "intl-normative-optional",
-
-    # Other missing features
-    "FinalizationRegistry",
-    "BigInt",
-    "IsHTMLDDA",
-    "cross-realm",
-    "caller",
-    "Temporal", "ShadowRealm",
-    "decorators",
-    "explicit-resource-management",
-    "json-parse-with-source",
-
-    # Removed in Phase 2+3 (now supported): arrow-function, template, let,
-    # const, destructuring-binding, destructuring-assignment,
-    # default-parameters, for-of, Object.entries, Array.prototype.flat,
-    # Array.prototype.flatMap, Array.prototype.includes
-    # Removed in Phase 3.6+4 (now supported): class, numeric-separator-literal,
-    # logical-assignment-operators
-    # Removed in Phase 6 (now supported): regexp-dotall, async-functions,
-    # promise-with-resolvers, promise-try
-    # Removed in Phase 5 (now supported): Promise, Promise.allSettled,
-    # Promise.any, Promise.prototype.finally, Object.fromEntries, Object.is,
-    # Object.hasOwn, Array.from, Array.prototype.at,
-    # String.prototype.replaceAll, String.prototype.isWellFormed,
-    # String.prototype.toWellFormed, change-array-by-copy,
-    # array-find-from-last, string-trimming, new.target,
-    # object-spread, object-rest
-}
+SKIP_METADATA_SCHEMA_VERSION = 1
+SKIP_METADATA_PATH = Path(__file__).with_name("test262_skip_metadata.json")
 
 
-SKIP_FLAGS = {"CanBlockIsFalse", "CanBlockIsTrue"}
+def _object_pairs_without_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in out:
+            raise ValueError(f"duplicate key in Test262 skip metadata: {key}")
+        out[key] = value
+    return out
 
 
-# Tests that depend on unsupported runtime features but don't declare
-# corresponding Test262 `features` metadata.
-SKIP_PATH_SUFFIXES = {
-}
+def _load_json_object(path: Path) -> dict[str, Any]:
+    with path.open(encoding="utf-8") as f:
+        data = json.load(f, object_pairs_hook=_object_pairs_without_duplicates)
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must contain a JSON object")
+    return data
+
+
+def _string_set(data: Mapping[str, Any], key: str, path: Path) -> set[str]:
+    value = data.get(key)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{path}: {key} must be an array of strings")
+    out = set(value)
+    if len(out) != len(value):
+        raise ValueError(f"{path}: {key} must not contain duplicate entries")
+    return out
+
+
+def _string_map(data: Mapping[str, Any], key: str, path: Path) -> dict[str, str]:
+    value = data.get(key)
+    if not isinstance(value, dict) or not all(
+        isinstance(map_key, str) and isinstance(map_value, str)
+        for map_key, map_value in value.items()
+    ):
+        raise ValueError(f"{path}: {key} must be an object of string reasons")
+    return dict(value)
+
+
+def load_skip_metadata(path: Path = SKIP_METADATA_PATH) -> tuple[set[str], set[str], dict[str, str]]:
+    """Load and validate the strict JSON Test262 skip metadata file."""
+    data = _load_json_object(path)
+    allowed_keys = {
+        "schema_version",
+        "skip_features",
+        "skip_flags",
+        "skip_path_suffixes",
+    }
+    extra_keys = set(data) - allowed_keys
+    missing_keys = allowed_keys - set(data)
+    if extra_keys:
+        raise ValueError(f"{path}: unknown keys: {', '.join(sorted(extra_keys))}")
+    if missing_keys:
+        raise ValueError(f"{path}: missing keys: {', '.join(sorted(missing_keys))}")
+    if data["schema_version"] != SKIP_METADATA_SCHEMA_VERSION:
+        raise ValueError(
+            f"{path}: schema_version must be {SKIP_METADATA_SCHEMA_VERSION}"
+        )
+    return (
+        _string_set(data, "skip_features", path),
+        _string_set(data, "skip_flags", path),
+        _string_map(data, "skip_path_suffixes", path),
+    )
+
+
+SKIP_FEATURES, SKIP_FLAGS, SKIP_PATH_SUFFIXES = load_skip_metadata()
 
 
 def skip_reason(

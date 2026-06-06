@@ -127,12 +127,18 @@ For `scripts/test262-runner.py`, the authoritative behavior is:
 
 ## Shared Test262 metadata contract
 
-Skip metadata must migrate to a strict data file before both Python and MoonBit
-consume it. The shared data must represent:
+Skip metadata lives in `scripts/test262_skip_metadata.json`, a strict JSON
+object with these fields:
 
-- unsupported `features` entries;
-- unsupported `flags` entries;
-- path suffix skip reasons.
+- `schema_version`: integer, currently `1`;
+- `skip_features`: array of unsupported Test262 `features` strings;
+- `skip_flags`: array of unsupported Test262 `flags` strings;
+- `skip_path_suffixes`: object mapping Test262 path suffixes to skip reasons.
+
+`make test262-metadata-test` runs the Python metadata tests and the MoonBit
+shadow reader tests against shared parity fixtures. `make test262-validate-skips`
+checks that the metadata entries still exist in the checked-out Test262 suite; it
+does not run tests or produce conformance numbers.
 
 Both implementations must produce identical `skip_reason(path, features, flags,
 mode)` values for fixture cases and for the checked-out Test262 tree.
