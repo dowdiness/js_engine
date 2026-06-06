@@ -2675,3 +2675,20 @@ test "run_modules: legacy octal escape in module body rejected" {
     "legacy octal loader body error",
   )
 }
+
+///|
+test "builtin method descriptors use standard metadata" {
+  let src =
+    #|function attrs(desc) {
+    #|  return [typeof desc.value, desc.writable, desc.enumerable, desc.configurable].join(":");
+    #|}
+    #|console.log(attrs(Object.getOwnPropertyDescriptor(Boolean.prototype, "toString")));
+    #|console.log(attrs(Object.getOwnPropertyDescriptor(RegExp.prototype, "exec")));
+    #|console.log(attrs(Object.getOwnPropertyDescriptor(RegExp.prototype, Symbol.match)));
+    #|console.log(attrs(Object.getOwnPropertyDescriptor(String.prototype, "trim")));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "function:true:false:true", "function:true:false:true", "function:true:false:true",
+    "function:true:false:true",
+  ])
+}
