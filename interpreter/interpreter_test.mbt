@@ -2122,6 +2122,24 @@ test "array join" {
 }
 
 ///|
+test "array toString delegates to live join" {
+  let src =
+    #|var arr = [1, 2];
+    #|arr.join = function() { return "custom"; };
+    #|console.log(arr.toString());
+    #|var fallback = [1];
+    #|fallback.join = 1;
+    #|console.log(fallback.toString());
+    #|Array.prototype[1] = 1;
+    #|var sparse = [0];
+    #|sparse.length = 2;
+    #|console.log(sparse.toString());
+    #|delete Array.prototype[1];
+  let output = run_output(src)
+  json_inspect(output, content=["custom", "[object Array]", "0,1"])
+}
+
+///|
 test "array indexOf includes" {
   let src =
     #|var arr = [10, 20, 30];
@@ -2131,6 +2149,19 @@ test "array indexOf includes" {
     #|console.log(arr.includes(99));
   let output = run_output(src)
   json_inspect(output, content=["1", "-1", "true", "false"])
+}
+
+///|
+test "array includes and at observe inherited indexed properties" {
+  let src =
+    #|Array.prototype[0] = "inherited";
+    #|var arr = [];
+    #|arr.length = 1;
+    #|console.log(arr.includes("inherited"));
+    #|console.log(arr.at(0));
+    #|delete Array.prototype[0];
+  let output = run_output(src)
+  json_inspect(output, content=["true", "inherited"])
 }
 
 ///|
