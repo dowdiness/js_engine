@@ -9,8 +9,16 @@ Options:
     --engine CMD        Command to run the JS engine (default: auto-detect built JS bundle)
     --test262 DIR       Path to test262 directory (default: ./test262)
     --filter PATTERN    Only run tests matching this pattern (e.g. "language/expressions")
+    --tests-file FILE   Run an explicit list of test files
+    --start N           Start at expanded task offset N (0-based)
+    --count N           Run at most N expanded tasks
+    --shard I/N         Run balanced contiguous shard I of N (1-based)
+    --resume-from FILE  Skip expanded tasks already present in a results JSON file
+    --log FILE          Write per-task JSONL progress log
+    --merged-log FILE   Append fail/timeout/error JSONL records for shard merging
     --timeout SECS      Timeout per test in seconds (default: 5)
     --threads N         Number of parallel workers (default: auto-detect, min 4)
+    --harness-helper H  Opt into modified harness helper(s), e.g. codePointRange
     --output FILE       Write JSON results to this file
     --summary           Print summary only (no individual failures)
     --verbose           Print each test result as it runs
@@ -20,6 +28,7 @@ Performance Optimizations:
     - Auto-detected CPU-based parallelism (minimum 4 threads, scales with CPU count)
     - Moderate timeout (5s) balancing speed and test completion
     - Optimized progress reporting with ETA
+    - Explicit opt-in modified harness helpers, disabled by default
 
 Prerequisites:
     Run `moon build --target js` first to produce the JS bundle.
@@ -40,9 +49,9 @@ import sys
 import shlex
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 
 from test262_skip_metadata import (
     SKIP_FEATURES,
@@ -50,7 +59,15 @@ from test262_skip_metadata import (
     SKIP_PATH_SUFFIXES,
     skip_reason,
 )
+from test262_task_selection import (
+    apply_task_selection,
+    build_test_tasks,
+    load_tests_file,
+    normalize_test262_path,
+    parse_shard_spec,
+)
 from test262_utils import parse_yaml_frontmatter, as_list
+from test262_harness_helpers import DEFAULT_HARNESS_OPTIONS, HarnessOptions
 
 # Preamble injected before all test harness code to provide host-defined print()
 PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += " "; s += String(arguments[i]); } console.log(s); }\n'
@@ -76,7 +93,6 @@ if (typeof $DONE === "undefined") {
   };
 }
 """
-
 
 @dataclass
 class TestMetadata:
@@ -128,19 +144,39 @@ def should_skip(meta: TestMetadata, filepath: str, mode: str = "non-strict") -> 
 
 
 # ---------------------------------------------------------------------------
+# Runner progress/logging constants
+# ---------------------------------------------------------------------------
+
+MERGED_LOG_STATUSES = {"fail", "timeout", "error"}
+STATUS_MARKS = {
+    "pass": ".",
+    "fail": "F",
+    "skip": "S",
+    "timeout": "T",
+    "error": "E",
+}
+
+
+# ---------------------------------------------------------------------------
 # Harness loading with caching
 # ---------------------------------------------------------------------------
 
 # Global cache for harness files to avoid repeated disk I/O
 _harness_cache = {}
 
-def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool = False) -> str:
+def load_harness(
+    test262_dir: str,
+    includes: list,
+    is_raw: bool,
+    is_async: bool = False,
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
+) -> str:
     """Load the required harness files for a test with caching."""
     if is_raw:
         return ""
 
-    # Create cache key from includes list
-    cache_key = (test262_dir, tuple(sorted(includes)), is_async)
+    # Create cache key from includes list and opt-in helper set
+    cache_key = (test262_dir, tuple(sorted(includes)), is_async, harness_options.helpers)
     if cache_key in _harness_cache:
         return _harness_cache[cache_key]
 
@@ -149,6 +185,9 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool 
 
     # Inject print() preamble for host environment compatibility
     parts.append(PRINT_PREAMBLE)
+    helper_source = harness_options.preamble()
+    if helper_source:
+        parts.append(helper_source)
 
     # Always load sta.js and assert.js (unless raw)
     for default_file in ["sta.js", "assert.js"]:
@@ -161,7 +200,7 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool 
             else:
                 _harness_cache[file_key] = ""
         if _harness_cache[file_key]:
-            parts.append(_harness_cache[file_key])
+            parts.append(harness_options.transform_include(default_file, _harness_cache[file_key]))
 
     # Load additional includes
     for inc in includes:
@@ -174,7 +213,7 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool 
             else:
                 _harness_cache[file_key] = ""
         if _harness_cache[file_key]:
-            parts.append(_harness_cache[file_key])
+            parts.append(harness_options.transform_include(inc, _harness_cache[file_key]))
 
     # For async tests, inject $DONE fallback if not provided by harness includes
     if is_async:
@@ -253,6 +292,7 @@ def run_single_test(
     test_path: str,
     timeout: int,
     mode: str = "non-strict",
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
 ) -> TestResult:
     """Execute a single test262 test and return the result."""
     try:
@@ -275,7 +315,13 @@ def run_single_test(
     is_module = "module" in meta.flags
 
     # Build the full source with harness
-    harness = load_harness(test262_dir, meta.includes, meta.raw, is_async)
+    harness = load_harness(
+        test262_dir,
+        meta.includes,
+        meta.raw,
+        is_async,
+        harness_options,
+    )
 
     if mode == "strict" and not meta.raw:
         full_source = '"use strict";\n' + harness + "\n" + source
@@ -519,7 +565,13 @@ def aggregate_results(results: list) -> dict:
 # Reporting
 # ---------------------------------------------------------------------------
 
-def print_report(agg: dict, results: list, verbose: bool, summary_only: bool):
+def print_report(
+    agg: dict,
+    results: list,
+    verbose: bool,
+    summary_only: bool,
+    methodology_label: str = "default",
+):
     """Print the conformance report."""
     overall = agg["overall"]
     categories = agg["categories"]
@@ -528,6 +580,8 @@ def print_report(agg: dict, results: list, verbose: bool, summary_only: bool):
     print("  Test262 ECMAScript Conformance Report")
     print("  Engine: MoonBit JS Engine")
     print(f"  Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    if methodology_label != "default":
+        print(f"  Methodology: {methodology_label}")
     print("=" * 72)
 
     executed = overall.passed + overall.failed
@@ -570,21 +624,150 @@ def print_report(agg: dict, results: list, verbose: bool, summary_only: bool):
     print()
 
 
-def save_results(results: list, agg: dict, output_file: str):
+def result_json_record(result: TestResult) -> dict:
+    """Return the JSON-compatible result shape used by runner artifacts and logs."""
+    return {
+        "path": os.path.relpath(result.path),
+        "status": result.status,
+        "reason": result.reason,
+        "duration_ms": round(result.duration_ms, 1),
+        "mode": result.mode,
+    }
+
+
+def open_result_log(log_file: str, append: bool = False):
+    """Open a JSONL result log, creating parent directories when needed."""
+    if not log_file:
+        return None
+    parent = Path(log_file).parent
+    if str(parent) not in ("", "."):
+        parent.mkdir(parents=True, exist_ok=True)
+    mode = "a" if append else "w"
+    return open(log_file, mode, encoding="utf-8")
+
+
+def write_result_log(log_file, result: TestResult) -> None:
+    """Write one result record to an open JSONL log and flush it."""
+    if log_file is None:
+        return
+    json.dump(result_json_record(result), log_file, separators=(",", ":"))
+    log_file.write("\n")
+    log_file.flush()
+
+
+def write_result_logs(progress_log, merged_log, result: TestResult) -> None:
+    """Write progress and merged failure logs for a completed task."""
+    write_result_log(progress_log, result)
+    if result.status in MERGED_LOG_STATUSES:
+        write_result_log(merged_log, result)
+
+
+def print_task_progress(
+    result: TestResult,
+    completed: int,
+    total_tasks: int,
+    start_time: float,
+    verbose: bool,
+) -> None:
+    """Print per-task or periodic aggregate progress."""
+    if verbose:
+        print(STATUS_MARKS.get(result.status, "?"), end="", flush=True)
+        if completed % 80 == 0:
+            print()
+    elif completed % 500 == 0:
+        elapsed = time.monotonic() - start_time
+        rate = completed / elapsed if elapsed > 0 else 0
+        eta = (total_tasks - completed) / rate if rate > 0 else 0
+        print(
+            f"  Progress: {completed}/{total_tasks} "
+            f"({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)",
+            flush=True,
+        )
+
+
+def run_test_tasks(
+    engine_cmd: list,
+    test262_dir: str,
+    test_tasks: list[tuple[str, str]],
+    timeout: int,
+    threads: int,
+    verbose: bool,
+    progress_log,
+    merged_log,
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
+) -> tuple[list[TestResult], float]:
+    """Run expanded test tasks and return ``(results, elapsed_seconds)``."""
+    results = []
+    completed = 0
+    total_tasks = len(test_tasks)
+    start_time = time.monotonic()
+
+    def record_result(result: TestResult) -> None:
+        nonlocal completed
+        results.append(result)
+        completed += 1
+        write_result_logs(progress_log, merged_log, result)
+        print_task_progress(result, completed, total_tasks, start_time, verbose)
+
+    if threads > 1:
+        with ThreadPoolExecutor(max_workers=threads) as executor:
+            futures = {
+                executor.submit(
+                    run_single_test,
+                    engine_cmd,
+                    test262_dir,
+                    tf,
+                    timeout,
+                    mode,
+                    harness_options,
+                ): (tf, mode)
+                for tf, mode in test_tasks
+            }
+            for future in as_completed(futures):
+                record_result(future.result())
+    else:
+        for tf, mode in test_tasks:
+            record_result(
+                run_single_test(
+                    engine_cmd,
+                    test262_dir,
+                    tf,
+                    timeout,
+                    mode,
+                    harness_options,
+                )
+            )
+
+    if verbose:
+        print()
+
+    return results, time.monotonic() - start_time
+
+
+def save_results(
+    results: list,
+    agg: dict,
+    output_file: str,
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
+):
     """Save results as JSON for later analysis."""
     overall = agg["overall"]
+    methodology = harness_options.methodology_json_record()
+    summary = {
+        "total": overall.total,
+        "passed": overall.passed,
+        "failed": overall.failed,
+        "skipped": overall.skipped,
+        "timeout": overall.timeout,
+        "error": overall.error,
+        "pass_rate": round(overall.pass_rate, 2),
+    }
+    if methodology is not None:
+        summary["methodology"] = methodology["label"]
     data = {
         "engine": "moonbit-js-engine",
         "date": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "summary": {
-            "total": overall.total,
-            "passed": overall.passed,
-            "failed": overall.failed,
-            "skipped": overall.skipped,
-            "timeout": overall.timeout,
-            "error": overall.error,
-            "pass_rate": round(overall.pass_rate, 2),
-        },
+        "summary": summary,
         "categories": {
             cat: {
                 "total": stats.total,
@@ -595,17 +778,10 @@ def save_results(results: list, agg: dict, output_file: str):
             }
             for cat, stats in sorted(agg["categories"].items())
         },
-        "results": [
-            {
-                "path": os.path.relpath(r.path),
-                "status": r.status,
-                "reason": r.reason,
-                "duration_ms": round(r.duration_ms, 1),
-                "mode": r.mode,
-            }
-            for r in results
-        ],
+        "results": [result_json_record(r) for r in results],
     }
+    if methodology is not None:
+        data["methodology"] = methodology
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     print(f"  Results saved to: {output_file}")
@@ -623,6 +799,20 @@ def main():
                         help="Path to test262 directory")
     parser.add_argument("--filter", default="",
                         help="Only run tests matching this pattern (e.g. 'language/expressions')")
+    parser.add_argument("--tests-file", default="",
+                        help="Run an explicit newline-delimited list of test files")
+    parser.add_argument("--start", type=int, default=0,
+                        help="Start at expanded task offset N (0-based)")
+    parser.add_argument("--count", type=int, default=None,
+                        help="Run at most N expanded tasks")
+    parser.add_argument("--shard", default="",
+                        help="Run balanced contiguous shard I/N after mode expansion")
+    parser.add_argument("--resume-from", default="",
+                        help="Skip expanded tasks already present in a results JSON file")
+    parser.add_argument("--log", default="",
+                        help="Write a per-task JSONL progress log")
+    parser.add_argument("--merged-log", default="",
+                        help="Append fail/timeout/error JSONL records for shard merging")
     parser.add_argument("--timeout", type=int, default=5,
                         help="Timeout per test in seconds (default: 5)")
     parser.add_argument("--threads", type=int, default=None,
@@ -635,8 +825,22 @@ def main():
                         help="Print each test result as it runs")
     parser.add_argument("--mode", choices=["both", "strict", "non-strict"], default="both",
                         help="Test mode: 'strict' only, 'non-strict' only, or 'both' (default: both)")
+    parser.add_argument("--harness-helper", action="append", default=[], metavar="NAME[,NAME]",
+                        help="Opt into modified Test262 harness helper(s); currently: codePointRange")
 
     args = parser.parse_args()
+
+    try:
+        shard_spec = parse_shard_spec(args.shard) if args.shard else None
+        harness_options = HarnessOptions.from_cli(args.harness_helper)
+        if args.start < 0:
+            raise ValueError("--start must be >= 0")
+        if args.count is not None and args.count < 0:
+            raise ValueError("--count must be >= 0")
+        if shard_spec is not None and (args.start != 0 or args.count is not None):
+            raise ValueError("--shard cannot be combined with --start/--count")
+    except ValueError as e:
+        parser.error(str(e))
 
     # Auto-detect engine JS bundle if not specified
     if args.engine is None:
@@ -692,104 +896,83 @@ def main():
         print("Warning: Engine verification timed out")
 
     # Discover tests
-    print(f"Discovering tests in {test262_dir}...")
-    test_files = discover_tests(test262_dir, args.filter)
-    print(f"Found {len(test_files)} test files")
-
-    # Build (test_file, mode) pairs
-    # For tests with onlyStrict: run in strict mode
-    # For tests with noStrict or raw or module: run in non-strict mode
-    # For other tests: run in both modes (or filtered by --mode)
-    run_mode = args.mode  # "both", "strict", or "non-strict"
-    test_tasks = []
-    for tf in test_files:
-        # Quick-read metadata to determine modes
+    if args.tests_file:
+        print(f"Loading tests from {args.tests_file}...")
         try:
-            with open(tf, "r", encoding="utf-8") as f:
-                source = f.read()
-            meta = parse_metadata(source)
-            flags = meta.flags
-            if "raw" in flags or "module" in flags:
-                if run_mode != "strict":
-                    test_tasks.append((tf, "non-strict"))
-            elif "onlyStrict" in flags:
-                if run_mode != "non-strict":
-                    test_tasks.append((tf, "strict"))
-            elif "noStrict" in flags:
-                if run_mode != "strict":
-                    test_tasks.append((tf, "non-strict"))
-            else:
-                if run_mode in ("both", "non-strict"):
-                    test_tasks.append((tf, "non-strict"))
-                if run_mode in ("both", "strict"):
-                    test_tasks.append((tf, "strict"))
-        except Exception:
-            if run_mode in ("both", "non-strict"):
-                test_tasks.append((tf, "non-strict"))
-            if run_mode in ("both", "strict"):
-                test_tasks.append((tf, "strict"))
+            test_files = load_tests_file(args.tests_file, test262_dir)
+        except OSError as e:
+            print(f"Error: failed to read tests file {args.tests_file}: {e}", file=sys.stderr)
+            sys.exit(1)
+        if args.filter:
+            test_files = [
+                tf for tf in test_files
+                if args.filter in normalize_test262_path(tf, test262_dir)
+            ]
+        print(f"Loaded {len(test_files)} test files")
+    else:
+        print(f"Discovering tests in {test262_dir}...")
+        test_files = discover_tests(test262_dir, args.filter)
+        print(f"Found {len(test_files)} test files")
+
+    run_mode = args.mode  # "both", "strict", or "non-strict"
+    test_tasks = build_test_tasks(test_files, run_mode)
+    try:
+        test_tasks, selection_messages = apply_task_selection(
+            test_tasks,
+            shard_spec=shard_spec,
+            start=args.start,
+            count=args.count,
+            resume_from=args.resume_from,
+            test262_dir=test262_dir,
+        )
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"Error: failed to read resume file {args.resume_from}: {e}", file=sys.stderr)
+        sys.exit(1)
+    for message in selection_messages:
+        print(message)
 
     mode_label = run_mode if run_mode != "both" else "strict+non-strict"
     print(f"Running {len(test_tasks)} test tasks ({len(test_files)} files, {mode_label})")
     print(f"Using {args.threads} parallel worker(s) with {args.timeout}s timeout per test")
+    if harness_options.is_modified:
+        print(f"Using modified Test262 harness helpers: {', '.join(harness_options.helpers)}")
 
-    # Run tests
-    results = []
-    completed = 0
-    total_tasks = len(test_tasks)
-    start_time = time.monotonic()
+    progress_log = None
+    merged_log = None
+    try:
+        progress_log = open_result_log(args.log, append=False)
+        merged_log = open_result_log(args.merged_log, append=True)
+    except OSError as e:
+        print(f"Error: failed to open result log: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    if args.threads > 1:
-        with ThreadPoolExecutor(max_workers=args.threads) as executor:
-            futures = {
-                executor.submit(
-                    run_single_test, engine_cmd, test262_dir, tf, args.timeout, mode
-                ): (tf, mode)
-                for tf, mode in test_tasks
-            }
-            for future in as_completed(futures):
-                r = future.result()
-                results.append(r)
-                completed += 1
-                if args.verbose:
-                    status_mark = {"pass": ".", "fail": "F", "skip": "S", "timeout": "T", "error": "E"}
-                    print(status_mark.get(r.status, "?"), end="", flush=True)
-                    if completed % 80 == 0:
-                        print()
-                elif completed % 500 == 0:
-                    elapsed = time.monotonic() - start_time
-                    rate = completed / elapsed if elapsed > 0 else 0
-                    eta = (total_tasks - completed) / rate if rate > 0 else 0
-                    print(f"  Progress: {completed}/{total_tasks} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
-    else:
-        for tf, mode in test_tasks:
-            r = run_single_test(engine_cmd, test262_dir, tf, args.timeout, mode)
-            results.append(r)
-            completed += 1
-            if args.verbose:
-                status_mark = {"pass": ".", "fail": "F", "skip": "S", "timeout": "T", "error": "E"}
-                print(status_mark.get(r.status, "?"), end="", flush=True)
-                if completed % 80 == 0:
-                    print()
-            elif completed % 500 == 0:
-                elapsed = time.monotonic() - start_time
-                rate = completed / elapsed if elapsed > 0 else 0
-                eta = (total_tasks - completed) / rate if rate > 0 else 0
-                print(f"  Progress: {completed}/{total_tasks} ({rate:.0f} tests/sec, ETA: {eta/60:.1f}m)", flush=True)
+    try:
+        results, total_time = run_test_tasks(
+            engine_cmd,
+            test262_dir,
+            test_tasks,
+            args.timeout,
+            args.threads,
+            args.verbose,
+            progress_log,
+            merged_log,
+            harness_options,
+        )
+    finally:
+        for log_file in (progress_log, merged_log):
+            if log_file is not None:
+                log_file.close()
 
-    if args.verbose:
-        print()
-
-    total_time = time.monotonic() - start_time
     print(f"\nCompleted in {total_time:.1f}s")
 
     # Aggregate and report
     agg = aggregate_results(results)
-    print_report(agg, results, args.verbose, args.summary)
+    methodology_label = harness_options.methodology_label
+    print_report(agg, results, args.verbose, args.summary, methodology_label)
 
     # Save results
     output_file = args.output or "test262-results.json"
-    save_results(results, agg, output_file)
+    save_results(results, agg, output_file, harness_options)
 
     # Exit with non-zero if any tests failed (useful for CI)
     if agg["overall"].failed > 0:
