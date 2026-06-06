@@ -215,19 +215,7 @@ fn Interpreter::create_class(
                 strict_body,
               )
               ctor_fn = Some((params, rest, strict_body))
-              // ES262 §10.2.4 ExpectedArgumentCount: count params before
-              // first default or rest.
-              let mut count = 0
-              for p in params {
-                if p.default_val is Some(_) {
-                  break
-                }
-                if p.is_rest_pattern {
-                  break
-                }
-                count += 1
-              }
-              ctor_param_count = count
+              ctor_param_count = expected_argument_count_ext(params)
             }
             _ => ()
           }

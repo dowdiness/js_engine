@@ -503,18 +503,7 @@ fn Interpreter::make_generator_function_ext(
     Some(n) => n
     None => ""
   }
-  // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-  // default or rest.
-  let mut expected_arg_count = 0
-  for p in params {
-    if p.default_val is Some(_) {
-      break
-    }
-    if p.is_rest_pattern {
-      break
-    }
-    expected_arg_count += 1
-  }
+  let expected_arg_count = expected_argument_count_ext(params)
   let fn_props : Map[String, Value] = {}
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)

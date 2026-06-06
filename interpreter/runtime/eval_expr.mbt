@@ -1215,18 +1215,7 @@ fn Interpreter::eval_expr(
         setter: None,
         is_accessor: false,
       }
-      // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-      // default or rest.
-      let mut arrow_len = 0
-      for p in params {
-        if p.default_val is Some(_) {
-          break
-        }
-        if p.is_rest_pattern {
-          break
-        }
-        arrow_len += 1
-      }
+      let arrow_len = expected_argument_count_ext(params)
       stamp_function_realm(
         Object({
           bag: {

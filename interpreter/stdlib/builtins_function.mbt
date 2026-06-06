@@ -9,6 +9,20 @@ fn func_kind_prefix(class_name : String) -> String {
 }
 
 ///|
+/// ES262 §10.2.4 ExpectedArgumentCount for extended parameter lists:
+/// count parameters before the first default initializer or rest parameter.
+fn expected_argument_count_ext(params : Array[@ast.Param]) -> Int {
+  for p in params; count = 0 {
+    if p.default_val is Some(_) || p.is_rest_pattern {
+      break count
+    }
+    continue count + 1
+  } nobreak {
+    count
+  }
+}
+
+///|
 fn setup_function_builtins(
   env : Environment,
   realm_state : @runtime.RealmState,
@@ -404,18 +418,7 @@ fn setup_function_builtins(
             }
             FuncDeclExt(_, params, rest_param, body, _) => {
               let fn_props : Map[String, Value] = {}
-              // ES262 §10.2.4 ExpectedArgumentCount: count params before
-              // first default or rest.
-              let mut fn_length = 0
-              for p in params {
-                if p.default_val is Some(_) {
-                  break
-                }
-                if p.is_rest_pattern {
-                  break
-                }
-                fn_length += 1
-              }
+              let fn_length = expected_argument_count_ext(params)
               fn_props["length"] = Value::Number(fn_length.to_double())
               fn_props["name"] = Value::String_("anonymous")
               // Validate static early errors against the function's strict context.
