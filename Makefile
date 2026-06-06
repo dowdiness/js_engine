@@ -1,4 +1,4 @@
-.PHONY: build test architecture-state-audit architecture-state-audit-test test262 test262-quick test262-analyze test262-validate-skips test262-download test262-report unicode-tables clean
+.PHONY: build test architecture-state-audit architecture-state-audit-test test262 test262-runner-test test262-quick test262-analyze test262-validate-skips test262-download test262-report unicode-tables clean
 
 # Build the JS engine
 build:
@@ -26,6 +26,10 @@ test262-download:
 	else \
 		echo "Test262 already present."; \
 	fi
+
+# Unit tests for Test262 runner task selection helpers.
+test262-runner-test:
+	python3 scripts/test262_runner_task_selection_test.py
 
 # Run the full Test262 conformance suite
 test262: build test262-download

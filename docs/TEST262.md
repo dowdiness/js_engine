@@ -77,6 +77,56 @@ python3 scripts/test262-runner.py --filter "built-ins/Promise" --summary
 python3 scripts/test262-runner.py --filter "built-ins/TypedArray" --verbose
 ```
 
+## Sharded and Resumable Local Runs
+
+Long local investigations can be chunked without changing CI defaults. Task
+selection happens **after** strict/non-strict mode expansion, so use
+`--mode strict` or `--mode non-strict` when you want per-mode shards that match
+CI jobs.
+
+```bash
+# Run an explicit file list. Relative entries are resolved under test262/test/.
+python3 scripts/test262-runner.py \
+    --test262 ./test262 \
+    --tests-file /tmp/test262-list.txt \
+    --mode non-strict \
+    --summary
+
+# Run one balanced shard of the expanded task list.
+python3 scripts/test262-runner.py \
+    --test262 ./test262 \
+    --mode non-strict \
+    --shard 2/8 \
+    --output test262-non-strict-shard-2.json \
+    --log logs/test262-non-strict-shard-2.jsonl \
+    --merged-log logs/test262-failures.jsonl \
+    --summary
+
+# Resume the same shard by skipping (path, mode) records already in the JSON.
+python3 scripts/test262-runner.py \
+    --test262 ./test262 \
+    --mode non-strict \
+    --shard 2/8 \
+    --resume-from test262-non-strict-shard-2.json \
+    --output test262-non-strict-shard-2-retry.json \
+    --summary
+
+# Use an explicit 0-based task slice instead of --shard.
+python3 scripts/test262-runner.py \
+    --test262 ./test262 \
+    --mode strict \
+    --start 10000 \
+    --count 2000 \
+    --summary
+```
+
+`--shard` cannot be combined with `--start`/`--count`. `--log` writes every
+completed task as JSON Lines and is overwritten for each invocation.
+`--merged-log` appends fail/timeout/error records as JSON Lines, which is handy
+when collecting failures across several shard runs. The main `--output` JSON
+schema is unchanged and remains compatible with `scripts/report-test262.py` and
+`scripts/classify-by-edition.py`.
+
 ## Runner Options
 
 | Option | Default | Description |
@@ -84,9 +134,16 @@ python3 scripts/test262-runner.py --filter "built-ins/TypedArray" --verbose
 | `--engine CMD` | Auto-detect | Command to invoke the JS engine |
 | `--test262 DIR` | `./test262` | Path to the test262 directory |
 | `--filter PATTERN` | (all tests) | Only run tests whose path contains this string |
+| `--tests-file FILE` | (none) | Run a newline-delimited explicit list of test files |
+| `--start N` | `0` | Start at expanded task offset `N` (0-based) |
+| `--count N` | (remaining) | Run at most `N` expanded tasks |
+| `--shard I/N` | (none) | Run balanced contiguous shard `I` of `N` after mode expansion |
+| `--resume-from FILE` | (none) | Skip `(path, mode)` tasks already present in a runner results JSON |
+| `--log FILE` | (none) | Write every completed task as JSON Lines (overwrites per invocation) |
+| `--merged-log FILE` | (none) | Append fail/timeout/error records as JSON Lines |
 | `--timeout SECS` | `5` | Timeout per test in seconds |
 | `--threads N` | Auto (CPU count) | Number of parallel workers |
-| `--output FILE` | (none) | Write JSON results to this file |
+| `--output FILE` | `test262-results.json` | Write JSON results to this file |
 | `--summary` | off | Print summary only, no individual failures |
 | `--verbose` | off | Print each test result as it runs |
 | `--mode MODE` | `both` | `strict`, `non-strict`, or `both` |
@@ -119,7 +176,7 @@ Always quote **both** denominators when reporting a pass rate so the skip contex
 
 ### JSON Results
 
-When `--output` is specified, results are saved as JSON with:
+Results are saved as JSON with:
 - `summary`: Overall pass/fail/skip counts
 - `categories`: Per-category breakdown
 - `results`: Individual test outcomes (pass/fail/skip/timeout with error details)
@@ -131,6 +188,8 @@ When `--output` is specified, results are saved as JSON with:
 | `test262-results.json` | Structured JSON with full results |
 | `test262-strict-results.json` | CI artifact produced by the strict-mode job |
 | `test262-non-strict-results.json` | CI artifact produced by the non-strict-mode job |
+| `*.jsonl` from `--log` | Per-invocation task progress log |
+| `*.jsonl` from `--merged-log` | Append-only fail/timeout/error log for shard collection |
 
 ## Skipped Features
 
