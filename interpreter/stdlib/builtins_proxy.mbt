@@ -128,14 +128,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
   match proxy_ctor {
     Object(data) => {
       data.bag.properties["revocable"] = revocable_func
-      data.bag.descriptors["revocable"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      data.bag.descriptors["revocable"] = builtin_method_desc()
     }
     _ => ()
   }
