@@ -21,14 +21,7 @@ fn setup_symbol_builtins(
     is_accessor: false,
   }
   // Descriptor for methods: { writable: true, enumerable: false, configurable: true }
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = builtin_method_desc()
   // Well-known symbols are allocated from the SymbolState passed to public
   // setup, so standalone setup_builtins reserves the same IDs Symbol() uses.
   let symbols = realm_state.symbols
