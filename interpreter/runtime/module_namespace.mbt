@@ -302,6 +302,7 @@ fn Interpreter::module_namespace_define_own_property(
 
 ///|
 priv struct ModuleRunRecord {
+  specifier : String
   stmts : Array[@ast.Stmt]
   exports : Map[String, Value]
   env : Environment

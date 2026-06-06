@@ -137,23 +137,14 @@ fn Interpreter::predeclare_module_exports(
 ///|
 fn Interpreter::materialize_module_exports(
   self : Interpreter,
-) -> Unit raise Error {
-  let resolved : Array[(String, Value)] = []
-  let private_keys : Array[String] = []
+) -> Map[String, Value] raise Error {
+  let materialized : Map[String, Value] = {}
   self.module_exports.each(fn(k, v) raise {
-    if is_private_module_export_entry(k, v) {
-      private_keys.push(k)
-    } else {
-      resolved.push((k, resolve_module_export_value(v)))
+    if !is_private_module_export_entry(k, v) {
+      materialized[k] = resolve_module_export_value(v)
     }
   })
-  for k in private_keys {
-    self.module_exports.remove(k)
-  }
-  for pair in resolved {
-    let (k, v) = pair
-    self.module_exports[k] = v
-  }
+  materialized
 }
 
 ///|
@@ -316,6 +307,87 @@ fn Interpreter::instantiate_module_imports(
 }
 
 ///|
+fn collect_module_dependencies_from_stmt(
+  stmt : @ast.Stmt,
+  deps : Array[String],
+) -> Unit {
+  match stmt {
+    ImportDecl(_, _, _, source, _, _) => deps.push(source)
+    ExportNamedDecl(_, _, Some(source), _, _) => deps.push(source)
+    ExportAllDecl(_, source, _, _) => deps.push(source)
+    StmtList(stmts, _) =>
+      for inner in stmts {
+        collect_module_dependencies_from_stmt(inner, deps)
+      }
+    _ => ()
+  }
+}
+
+///|
+fn ModuleRunRecord::dependencies(self : ModuleRunRecord) -> Array[String] {
+  let deps : Array[String] = []
+  for stmt in self.stmts {
+    collect_module_dependencies_from_stmt(stmt, deps)
+  }
+  deps
+}
+
+///|
+fn module_dependency_path_exists(
+  start : String,
+  target : String,
+  records_by_specifier : Map[String, ModuleRunRecord],
+  seen : Map[String, Bool],
+) -> Bool {
+  if start == target {
+    return true
+  }
+  if seen.contains(start) {
+    return false
+  }
+  seen[start] = true
+  match records_by_specifier.get(start) {
+    Some(record) =>
+      for dependency in record.dependencies() {
+        if module_dependency_path_exists(
+            dependency, target, records_by_specifier, seen,
+          ) {
+          return true
+        }
+      }
+    None => ()
+  }
+  false
+}
+
+///|
+fn module_record_dependencies_ready(
+  record : ModuleRunRecord,
+  records_by_specifier : Map[String, ModuleRunRecord],
+  evaluation_state : Map[String, Int],
+) -> Bool {
+  for dependency in record.dependencies() {
+    match records_by_specifier.get(dependency) {
+      Some(_) =>
+        match evaluation_state.get(dependency) {
+          Some(2) => ()
+          _ =>
+            if !module_dependency_path_exists(
+                dependency,
+                record.specifier,
+                records_by_specifier,
+                {},
+              ) {
+              return false
+            }
+        }
+      None => ()
+    }
+  }
+  true
+}
+
+///|
 fn Interpreter::evaluate_module_record(
   self : Interpreter,
   record : ModuleRunRecord,
@@ -360,7 +432,6 @@ fn Interpreter::materialize_module_record(
 ) -> Map[String, Value] raise Error {
   self.with_module_exports(record.exports, fn() raise {
     self.materialize_module_exports()
-    self.module_exports
   })
 }
 
@@ -371,6 +442,7 @@ fn Interpreter::run_module_into(
   exports_map : Map[String, Value],
 ) -> Map[String, Value] raise Error {
   let record = {
+    specifier: "<module>",
     stmts,
     exports: exports_map,
     env: self.new_module_environment(),
@@ -393,8 +465,8 @@ pub fn Interpreter::run_module(
 
 ///|
 /// Run multiple modules with all specifiers registered before evaluation.
-/// This lightweight module-graph pass lets self-imports and simple cyclic
-/// fixtures resolve through the registry instead of failing as missing modules.
+/// The graph pass evaluates provided dependencies before importers while still
+/// letting self-imports and simple cyclic fixtures resolve through the registry.
 pub fn Interpreter::run_modules(
   self : Interpreter,
   modules : Array[(String, String)],
@@ -406,6 +478,7 @@ pub fn Interpreter::run_modules(
     let prog = @parser.parse(source)
     let exports : Map[String, Value] = {}
     let record = {
+      specifier,
       stmts: prog.stmts,
       exports,
       env: self.new_module_environment(),
@@ -426,12 +499,44 @@ pub fn Interpreter::run_modules(
   for record in records {
     self.instantiate_module_imports(record)
   }
+  let records_by_specifier : Map[String, ModuleRunRecord] = {}
   for record in records {
-    ignore(self.evaluate_module_record(record))
+    records_by_specifier[record.specifier] = record
   }
-  let mut last_exports : Map[String, Value] = {}
-  for record in records {
-    last_exports = self.materialize_module_record(record)
+  let evaluation_state : Map[String, Int] = {}
+  let mut remaining = records.length()
+  while remaining > 0 {
+    let mut progressed = false
+    for record in records {
+      match evaluation_state.get(record.specifier) {
+        Some(2) => ()
+        _ =>
+          if module_record_dependencies_ready(
+              record, records_by_specifier, evaluation_state,
+            ) {
+            ignore(self.evaluate_module_record(record))
+            evaluation_state[record.specifier] = 2
+            remaining = remaining - 1
+            progressed = true
+          }
+      }
+    }
+    if !progressed {
+      for record in records {
+        match evaluation_state.get(record.specifier) {
+          Some(2) => ()
+          _ => {
+            ignore(self.evaluate_module_record(record))
+            evaluation_state[record.specifier] = 2
+            remaining = remaining - 1
+            break
+          }
+        }
+      }
+    }
   }
-  last_exports
+  match records.last() {
+    Some(last_record) => self.materialize_module_record(last_record)
+    None => {}
+  }
 }

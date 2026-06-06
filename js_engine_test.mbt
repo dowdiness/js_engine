@@ -1001,6 +1001,22 @@ test "ES module: import named from module" {
 }
 
 ///|
+test "ES module: graph evaluates dependencies before importers" {
+  let modules : Array[(String, String)] = [
+    (
+      "./main",
+      (
+        #|import { x } from './dep';
+        #|console.log(x);
+      ),
+    ),
+    ("./dep", "export const x = 1;"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
 test "ES module: import default" {
   let modules : Array[(String, String)] = [
     (
@@ -1065,6 +1081,32 @@ test "ES module: import namespace" {
   ]
   let (output, _) = @js_engine.run_modules(modules)
   json_inspect(output, content=["1", "2", "3"])
+}
+
+///|
+test "ES module: namespace remains live during timer drain" {
+  let modules : Array[(String, String)] = [
+    (
+      "./state",
+      (
+        #|export let x = 0;
+        #|export function inc() { x = x + 1; }
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns from './state';
+        #|import { inc } from './state';
+        #|setTimeout(function() {
+        #|  inc();
+        #|  console.log(ns.x);
+        #|}, 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
 }
 
 ///|
