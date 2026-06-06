@@ -1,4 +1,4 @@
-.PHONY: build test architecture-state-audit architecture-state-audit-test test262 test262-contract-test test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
+.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
 
 # Build the JS engine
 build:
@@ -9,8 +9,16 @@ test:
 	moon test
 
 # Guardrail for the realm-state migration track.
-architecture-state-audit: architecture-state-audit-test
+# Keep Python authoritative while requiring the MoonBit shadow to build and match.
+architecture-state-audit: architecture-state-audit-test architecture-state-audit-mbt
 	python3 scripts/architecture-state-audit.py
+
+architecture-state-audit-mbt: architecture-state-audit-mbt-test
+	moon build --target native cmd/architecture_state_audit
+	./_build/native/debug/build/cmd/architecture_state_audit/architecture_state_audit.exe --root .
+
+architecture-state-audit-mbt-test:
+	moon test --target native tooling/architecture_state_audit
 
 architecture-state-audit-test:
 	python3 scripts/architecture_state_audit_test.py
