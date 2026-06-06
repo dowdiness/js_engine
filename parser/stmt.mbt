@@ -1272,11 +1272,21 @@ fn Parser::parse_import_specifiers(
   let _ = self.expect(LBrace)
   let specs : Array[@ast.ImportSpecifier] = []
   while !self.at(RBrace) && !self.at(EOF) {
+    let imported_tok = self.peek()
+    let imported_was_string = match imported_tok.kind {
+      String_(_) => true
+      _ => false
+    }
     let imported = self.expect_module_export_name()
     let local_name = if self.at(As) {
       let _ = self.advance() // consume 'as'
       self.expect_ident()
     } else {
+      if imported_was_string {
+        raise @errors.SyntaxError(
+          message="String-literal import names require an explicit alias at line \{imported_tok.loc.line}, col \{imported_tok.loc.col}",
+        )
+      }
       imported
     }
     specs.push({ local_name, imported })

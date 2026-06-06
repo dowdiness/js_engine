@@ -1138,6 +1138,44 @@ test "ES module: exact namespace cache key can be a string export name" {
 }
 
 ///|
+test "ES module: string-named import requires alias" {
+  let src =
+    #|import { "[[x]]" } from './m';
+  let result = run_module_throws(src)
+  expect_bool(
+    result.contains("String-literal import names require an explicit alias"),
+    true,
+    "string import alias error",
+  )
+}
+
+///|
+test "ES module: proxy descriptor trap sees namespace data descriptors" {
+  let modules : Array[(String, String)] = [
+    ("./m", "export const x = 1;"),
+    (
+      "./main",
+      (
+        #|import * as ns from './m';
+        #|const proxy = new Proxy(ns, {
+        #|  getOwnPropertyDescriptor(target, prop) {
+        #|    if (prop === 'x') {
+        #|      return { value: 1, writable: true, enumerable: true, configurable: false };
+        #|    }
+        #|    return Object.getOwnPropertyDescriptor(target, prop);
+        #|  }
+        #|});
+        #|const desc = Object.getOwnPropertyDescriptor(proxy, 'x');
+        #|console.log(desc.value);
+        #|console.log(desc.writable);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1", "true"])
+}
+
+///|
 test "ES module: Object.freeze on empty namespace succeeds" {
   let modules : Array[(String, String)] = [
     ("./empty", ""),
