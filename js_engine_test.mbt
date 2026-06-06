@@ -1035,6 +1035,105 @@ test "ES module: graph resolves indirect re-export chain before importers" {
 }
 
 ///|
+test "ES module: ambiguous export star makes named import throw" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 2;"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x);"),
+  ]
+  let result = try {
+    let _ = @js_engine.run_modules(modules)
+    "no error thrown"
+  } catch {
+    e => e.to_string()
+  }
+  expect_bool(
+    result.contains("does not export 'x'"),
+    true,
+    "ambiguous star named import error",
+  )
+}
+
+///|
+test "ES module: duplicate stars to same binding are unambiguous" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export const x = 1;"),
+    ("./a", "export * from './base';"),
+    ("./b", "export * from './base';"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: direct export wins over ambiguous star exports" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 2;"),
+    (
+      "./barrel",
+      (
+        #|export const x = 3;
+        #|export * from './a';
+        #|export * from './b';
+      ),
+    ),
+    ("./main", "import * as ns from './barrel'; console.log(ns.x);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["3"])
+}
+
+///|
+test "ES module: namespace omits ambiguous star export names" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 2;"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    (
+      "./main",
+      (
+        #|import * as ns from './barrel';
+        #|console.log('x' in ns);
+        #|console.log(Object.keys(ns).indexOf('x') >= 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["false", "false"])
+}
+
+///|
+test "ES module: cyclic re-export keeps live binding" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export { x, inc } from './b';"),
+    (
+      "./b",
+      (
+        #|import './a';
+        #|export let x = 0;
+        #|export function inc() { x = x + 1; }
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import { x, inc } from './a';
+        #|setTimeout(function() {
+        #|  inc();
+        #|  console.log(x);
+        #|}, 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
 test "ES module: graph preserves dependency-first execution inside cycles" {
   let modules : Array[(String, String)] = [
     (
