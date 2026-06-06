@@ -64,6 +64,9 @@ jobs:
       - name: Architecture state audit
         run: make architecture-state-audit
 
+      - name: Test262 metadata parity
+        run: make test262-metadata-test
+
       - name: Check and test
         run: |
           moon check

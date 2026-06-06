@@ -1,0 +1,58 @@
+[
+  {
+    "name": "fixture files are skipped before metadata",
+    "filepath": "test/harness/assert_FIXTURE.js",
+    "features": [],
+    "flags": [],
+    "mode": "non-strict",
+    "reason": "fixture file"
+  },
+  {
+    "name": "unsupported flags are reported before mode filtering",
+    "filepath": "test/language/example.js",
+    "features": [],
+    "flags": ["CanBlockIsFalse", "onlyStrict"],
+    "mode": "non-strict",
+    "reason": "unsupported flag: CanBlockIsFalse"
+  },
+  {
+    "name": "onlyStrict is inapplicable in non-strict runner mode",
+    "filepath": "test/language/example.js",
+    "features": [],
+    "flags": ["onlyStrict"],
+    "mode": "non-strict",
+    "reason": "requires strict mode"
+  },
+  {
+    "name": "noStrict is inapplicable in strict runner mode",
+    "filepath": "test/language/example.js",
+    "features": [],
+    "flags": ["noStrict"],
+    "mode": "strict",
+    "reason": "cannot run in strict mode"
+  },
+  {
+    "name": "analyzer census mode ignores onlyStrict/noStrict",
+    "filepath": "test/language/example.js",
+    "features": [],
+    "flags": ["onlyStrict"],
+    "mode": null,
+    "reason": null
+  },
+  {
+    "name": "unsupported features preserve test metadata order",
+    "filepath": "test/built-ins/BigInt/example.js",
+    "features": ["class-fields-private", "BigInt"],
+    "flags": [],
+    "mode": "strict",
+    "reason": "unsupported feature: class-fields-private"
+  },
+  {
+    "name": "supported metadata does not skip",
+    "filepath": "test/language/literals/string.js",
+    "features": ["arrow-function"],
+    "flags": [],
+    "mode": "non-strict",
+    "reason": null
+  }
+]

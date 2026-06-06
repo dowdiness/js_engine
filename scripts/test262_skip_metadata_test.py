@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -23,6 +24,13 @@ def load_script(module_name: str, filename: str):
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def parity_cases() -> list[dict]:
+    with (SCRIPT_DIR / "test262_skip_metadata_parity_cases.json").open(encoding="utf-8") as f:
+        cases = json.load(f)
+    assert isinstance(cases, list)
+    return cases
 
 
 def main() -> int:
@@ -54,6 +62,21 @@ def main() -> int:
         "test/language/example.js",
         {"features": [], "flags": ["onlyStrict"]},
     ) == ("applicable", "")
+
+    loaded_features, loaded_flags, loaded_path_suffixes = skip_metadata.load_skip_metadata()
+    assert loaded_features is not skip_metadata.SKIP_FEATURES
+    assert loaded_features == skip_metadata.SKIP_FEATURES
+    assert loaded_flags == skip_metadata.SKIP_FLAGS
+    assert loaded_path_suffixes == skip_metadata.SKIP_PATH_SUFFIXES
+
+    for case in parity_cases():
+        reason = skip_metadata.skip_reason(
+            case["filepath"],
+            case.get("features", []),
+            case.get("flags", []),
+            mode=case.get("mode"),
+        )
+        assert reason == case["reason"], case["name"]
 
     print("ok")
     return 0
