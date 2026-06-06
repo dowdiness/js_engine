@@ -2,6 +2,55 @@
 const MODULE_NAMESPACE_OBJECT_KEY = "[[NamespaceObject]]"
 
 ///|
+const MODULE_NAMESPACE_CACHE_CLASS = "ModuleNamespaceCache"
+
+///|
+fn make_module_namespace_cache(ns_obj : Value) -> Value {
+  let props : Map[String, Value] = {}
+  props[MODULE_NAMESPACE_OBJECT_KEY] = ns_obj
+  Object({
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
+    prototype: Null,
+    callable: None,
+    class_name: MODULE_NAMESPACE_CACHE_CLASS,
+    extensible: false,
+    arraybuffer_state: None,
+  })
+}
+
+///|
+fn module_namespace_cached_value(value : Value) -> Value? {
+  match value {
+    Object(data) if data.class_name == MODULE_NAMESPACE_CACHE_CLASS =>
+      data.bag.properties.get(MODULE_NAMESPACE_OBJECT_KEY)
+    _ => None
+  }
+}
+
+///|
+fn is_private_module_export_entry(name : String, value : Value) -> Bool {
+  name == MODULE_NAMESPACE_OBJECT_KEY &&
+  module_namespace_cached_value(value) is Some(_)
+}
+
+///|
+fn module_export_map_get_public(
+  exports_map : Map[String, Value],
+  export_name : String,
+) -> Value? {
+  match exports_map.get(export_name) {
+    Some(value) if !is_private_module_export_entry(export_name, value) =>
+      Some(value)
+    _ => None
+  }
+}
+
+///|
 /// A private marker for exported bindings that exist during module
 /// instantiation but have not been initialized yet. Namespace access resolves
 /// this marker to the ReferenceError required for TDZ exports.
@@ -55,7 +104,7 @@ fn make_module_import_cell(
     prototype: Null,
     callable: Some(
       NonConstructableCallable("get import \{export_name}", fn(_args) raise {
-        match module_exports.get(export_name) {
+        match module_export_map_get_public(module_exports, export_name) {
           Some(value) => resolve_module_export_value(value)
           None =>
             raise @errors.SyntaxError(
@@ -110,13 +159,17 @@ fn Interpreter::create_module_namespace_object(
   module_exports : Map[String, Value],
 ) -> Value {
   match module_exports.get(MODULE_NAMESPACE_OBJECT_KEY) {
-    Some(cached) => return cached
+    Some(cached) =>
+      match module_namespace_cached_value(cached) {
+        Some(ns_obj) => return ns_obj
+        None => ()
+      }
     None => ()
   }
   let ns_props : Map[String, Value] = {}
   let ns_descs : Map[String, PropDescriptor] = {}
-  module_exports.each(fn(k, _) {
-    if k.has_prefix("[[") {
+  module_exports.each(fn(k, v) {
+    if is_private_module_export_entry(k, v) {
       return
     }
     ns_props[k] = Undefined
@@ -154,7 +207,11 @@ fn Interpreter::create_module_namespace_object(
     extensible: false,
     arraybuffer_state: None,
   })
-  module_exports[MODULE_NAMESPACE_OBJECT_KEY] = ns_obj
+  if !module_exports.contains(MODULE_NAMESPACE_OBJECT_KEY) {
+    module_exports[MODULE_NAMESPACE_OBJECT_KEY] = make_module_namespace_cache(
+      ns_obj,
+    )
+  }
   ns_obj
 }
 
@@ -173,7 +230,7 @@ fn module_namespace_export_descriptor() -> PropDescriptor {
 ///|
 fn module_namespace_own_string_keys(data : ObjectData) -> Array[String] {
   let keys : Array[String] = []
-  data.bag.properties.each(fn(k, _) { if !k.has_prefix("[[") { keys.push(k) } })
+  data.bag.properties.each(fn(k, _) { keys.push(k) })
   keys.sort_by(fn(a, b) { a.lexical_compare(b) })
   keys
 }

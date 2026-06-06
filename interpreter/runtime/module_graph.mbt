@@ -139,11 +139,17 @@ fn Interpreter::materialize_module_exports(
   self : Interpreter,
 ) -> Unit raise Error {
   let resolved : Array[(String, Value)] = []
+  let private_keys : Array[String] = []
   self.module_exports.each(fn(k, v) raise {
-    if !k.has_prefix("[[") {
+    if is_private_module_export_entry(k, v) {
+      private_keys.push(k)
+    } else {
       resolved.push((k, resolve_module_export_value(v)))
     }
   })
+  for k in private_keys {
+    self.module_exports.remove(k)
+  }
   for pair in resolved {
     let (k, v) = pair
     self.module_exports[k] = v
@@ -231,7 +237,8 @@ fn Interpreter::instantiate_indirect_exports_from_stmt(
     ExportNamedDecl(None, specifiers, Some(source), _, loc) => {
       let src_exports = self.module_exports_for_source(source, loc)
       for spec in specifiers {
-        let value = match src_exports.get(spec.local_name) {
+        let value = match
+          module_export_map_get_public(src_exports, spec.local_name) {
           Some(v) => v
           None =>
             raise @errors.SyntaxError(
@@ -245,7 +252,7 @@ fn Interpreter::instantiate_indirect_exports_from_stmt(
       let src_exports = self.module_exports_for_source(source, loc)
       src_exports.each(fn(k, v) {
         if k != "default" &&
-          !k.has_prefix("[[") &&
+          !is_private_module_export_entry(k, v) &&
           !self.module_exports.contains(k) {
           self.module_exports[k] = v
         }

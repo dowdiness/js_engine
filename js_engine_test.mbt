@@ -1068,6 +1068,76 @@ test "ES module: import namespace" {
 }
 
 ///|
+test "ES module: namespace preserves bracketed string export names" {
+  let modules : Array[(String, String)] = [
+    (
+      "./m",
+      (
+        #|const value = 42;
+        #|export { value as "[[x]]" };
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns from './m';
+        #|console.log(ns["[[x]]"]);
+        #|console.log(Object.keys(ns).indexOf("[[x]]") >= 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["42", "true"])
+}
+
+///|
+test "ES module: export star preserves bracketed string export names" {
+  let modules : Array[(String, String)] = [
+    (
+      "./source",
+      (
+        #|const value = 7;
+        #|export { value as "[[x]]" };
+      ),
+    ),
+    ("./barrel", "export * from './source';"),
+    (
+      "./main",
+      (
+        #|import { "[[x]]" as bracketed } from './barrel';
+        #|import * as ns from './barrel';
+        #|console.log(bracketed);
+        #|console.log(ns["[[x]]"]);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["7", "7"])
+}
+
+///|
+test "ES module: exact namespace cache key can be a string export name" {
+  let modules : Array[(String, String)] = [
+    (
+      "./m",
+      (
+        #|const value = 99;
+        #|export { value as "[[NamespaceObject]]" };
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns from './m';
+        #|console.log(ns["[[NamespaceObject]]"]);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["99"])
+}
+
+///|
 test "ES module: Object.freeze on empty namespace succeeds" {
   let modules : Array[(String, String)] = [
     ("./empty", ""),

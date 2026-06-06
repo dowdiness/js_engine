@@ -1718,8 +1718,10 @@ pub fn collect_for_in_keys(
         }
         for k in sorted {
           if !seen.contains(k) {
-            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
-            if k.has_prefix("[[") {
+            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]]).
+            // Module namespace properties are export names, and string-named
+            // exports may legally begin with `[[`.
+            if data.class_name != "Module" && k.has_prefix("[[") {
               continue
             }
             seen[k] = true

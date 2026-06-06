@@ -29,7 +29,7 @@ fn Interpreter::exec_import(
   // import defaultExport from 'source'
   match default_import {
     Some(name) =>
-      match module_exports.get("default") {
+      match module_export_map_get_public(module_exports, "default") {
         Some(_) =>
           env.def(
             name,
@@ -45,7 +45,7 @@ fn Interpreter::exec_import(
   }
   // import { name1, name2 as alias } from 'source'
   for spec in specifiers {
-    match module_exports.get(spec.imported) {
+    match module_export_map_get_public(module_exports, spec.imported) {
       Some(_) =>
         env.def(
           spec.local_name,
@@ -114,7 +114,8 @@ fn Interpreter::exec_export_named(
           }
       }
       for spec in specifiers {
-        let value = match src_exports.get(spec.local_name) {
+        let value = match
+          module_export_map_get_public(src_exports, spec.local_name) {
           Some(v) => v
           None =>
             raise @errors.SyntaxError(
@@ -170,7 +171,9 @@ fn Interpreter::exec_export_all(
           Some(_) => false
           None => true
         }
-        if k != "default" && !k.has_prefix("[[") && should_copy {
+        if k != "default" &&
+          !is_private_module_export_entry(k, v) &&
+          should_copy {
           self.module_exports[k] = v
         }
       })
