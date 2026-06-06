@@ -442,6 +442,14 @@ Largest cluster (390/399) but lowest individual-test confidence. With Stage C (A
 - Step 3: remove fast-path, re-run that cohort, compare.
 - Likely splits into 2–3 PRs. Mechanical-ish — Sonnet delegation candidate per `feedback_delegation_mechanical_fixes.md`.
 
+**Progress (2026-06-06):** First small slice delegates `toString`,
+`includes`, and `at` from the direct Array hook to the live `Array.prototype`
+path. These non-mutating methods were reading dense storage directly and missed
+receiver/prototype state such as custom `join` and inherited indexed properties.
+Keep mutating methods (`push`, `pop`, etc.) for separate audit because some
+direct paths still carry length-writable checks that the prototype branches must
+preserve before removal.
+
 ### Cluster 3 — Strict-mode TypeError residual re-triage
 
 The 04-21 drill deferred ~27 tests pending Stage C. Stage C is now done.

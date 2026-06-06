@@ -356,21 +356,25 @@ fn setup_array_builtins(
       array_fill_indexed_properties(interp, o, args)
     },
   )
+  let object_proto_to_string = match obj_proto {
+    Object(data) => data.bag.properties.get("toString").unwrap_or(Undefined)
+    _ => Undefined
+  }
   array_proto_props["toString"] = @runtime.make_interp_method_func(
     name="toString",
     length=0,
     fn(interp, this_val, _args) raise {
       let o = to_object(this_val, interp)
-      // Per spec, toString calls join if available, otherwise Object.prototype.toString
-      let join_fn = interp.get_property(o, "join", @token.Loc::default())
+      let loc = @token.Loc::default()
+      // Per spec, toString calls join if available, otherwise the intrinsic
+      // Object.prototype.toString.
+      let join_fn = interp.get_property(o, "join", loc)
       if @runtime.is_callable(join_fn) {
-        interp.call_value(join_fn, o, [], @token.Loc::default())
+        interp.call_value(join_fn, o, [], loc)
+      } else if @runtime.is_callable(object_proto_to_string) {
+        interp.call_value(object_proto_to_string, o, [], loc)
       } else {
-        let cls = match o {
-          Object(d) => d.class_name
-          _ => "Object"
-        }
-        Value::String_("[object " + cls + "]")
+        Value::String_("[object Object]")
       }
     },
   )
