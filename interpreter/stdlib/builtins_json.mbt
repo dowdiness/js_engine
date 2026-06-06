@@ -5,14 +5,7 @@ fn setup_json_builtins(
 ) -> Unit {
   let json_props : Map[String, Value] = {}
   let json_descs : Map[String, PropDescriptor] = {}
-  let ne_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let ne_desc = builtin_method_desc()
   json_props["parse"] = @runtime.make_interp_static_func(
     name="parse",
     length=2,
