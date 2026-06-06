@@ -174,7 +174,11 @@ fn Interpreter::exec_export_all(
         if k != "default" &&
           !is_private_module_export_entry(k, v) &&
           should_copy {
-          self.module_exports[k] = v
+          let export_value = match module_namespace_public_export_value(v) {
+            Some(public_value) => public_value
+            None => v
+          }
+          self.module_exports[k] = export_value
         }
       })
   }

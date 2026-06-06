@@ -1320,6 +1320,30 @@ test "ES module: exact namespace cache key can be a string export name" {
 }
 
 ///|
+test "ES module: exact namespace cache key preserves namespace identity" {
+  let modules : Array[(String, String)] = [
+    (
+      "./m",
+      (
+        #|const value = 99;
+        #|export { value as "[[NamespaceObject]]" };
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns1 from './m';
+        #|import * as ns2 from './m';
+        #|console.log(ns1 === ns2);
+        #|console.log(ns1["[[NamespaceObject]]"]);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["true", "99"])
+}
+
+///|
 test "ES module: string-named import requires alias" {
   let src =
     #|import { "[[x]]" } from './m';

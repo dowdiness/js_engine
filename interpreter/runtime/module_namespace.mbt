@@ -2,12 +2,38 @@
 const MODULE_NAMESPACE_OBJECT_KEY = "[[NamespaceObject]]"
 
 ///|
+const MODULE_NAMESPACE_EXPORT_VALUE_KEY = "[[ExportValue]]"
+
+///|
 const MODULE_NAMESPACE_CACHE_CLASS = "ModuleNamespaceCache"
 
 ///|
 fn make_module_namespace_cache(ns_obj : Value) -> Value {
   let props : Map[String, Value] = {}
   props[MODULE_NAMESPACE_OBJECT_KEY] = ns_obj
+  Object({
+    bag: {
+      properties: props,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+    },
+    prototype: Null,
+    callable: None,
+    class_name: MODULE_NAMESPACE_CACHE_CLASS,
+    extensible: false,
+    arraybuffer_state: None,
+  })
+}
+
+///|
+fn make_module_namespace_cache_with_export(
+  ns_obj : Value,
+  export_value : Value,
+) -> Value {
+  let props : Map[String, Value] = {}
+  props[MODULE_NAMESPACE_OBJECT_KEY] = ns_obj
+  props[MODULE_NAMESPACE_EXPORT_VALUE_KEY] = export_value
   Object({
     bag: {
       properties: props,
@@ -33,9 +59,19 @@ fn module_namespace_cached_value(value : Value) -> Value? {
 }
 
 ///|
+fn module_namespace_public_export_value(value : Value) -> Value? {
+  match value {
+    Object(data) if data.class_name == MODULE_NAMESPACE_CACHE_CLASS =>
+      data.bag.properties.get(MODULE_NAMESPACE_EXPORT_VALUE_KEY)
+    _ => None
+  }
+}
+
+///|
 fn is_private_module_export_entry(name : String, value : Value) -> Bool {
   name == MODULE_NAMESPACE_OBJECT_KEY &&
-  module_namespace_cached_value(value) is Some(_)
+  module_namespace_cached_value(value) is Some(_) &&
+  module_namespace_public_export_value(value) is None
 }
 
 ///|
@@ -44,9 +80,29 @@ fn module_export_map_get_public(
   export_name : String,
 ) -> Value? {
   match exports_map.get(export_name) {
-    Some(value) if !is_private_module_export_entry(export_name, value) =>
-      Some(value)
+    Some(value) =>
+      match module_namespace_public_export_value(value) {
+        Some(public_value) => Some(public_value)
+        None =>
+          if is_private_module_export_entry(export_name, value) {
+            None
+          } else {
+            Some(value)
+          }
+      }
     _ => None
+  }
+}
+
+///|
+fn module_export_entry_is_live_cell(value : Value) -> Bool {
+  let public_value = match module_namespace_public_export_value(value) {
+    Some(v) => v
+    None => value
+  }
+  match public_value {
+    Object(data) => data.class_name == "ModuleExportCell"
+    _ => false
   }
 }
 
@@ -121,6 +177,10 @@ fn make_module_import_cell(
 
 ///|
 fn resolve_module_export_value(value : Value) -> Value raise Error {
+  match module_namespace_public_export_value(value) {
+    Some(public_value) => return resolve_module_export_value(public_value)
+    None => ()
+  }
   match value {
     Object(data) if data.class_name == "ModuleTDZ" => {
       let export_name = match data.bag.properties.get("[[ExportName]]") {
@@ -207,10 +267,15 @@ fn Interpreter::create_module_namespace_object(
     extensible: false,
     arraybuffer_state: None,
   })
-  if !module_exports.contains(MODULE_NAMESPACE_OBJECT_KEY) {
-    module_exports[MODULE_NAMESPACE_OBJECT_KEY] = make_module_namespace_cache(
-      ns_obj,
-    )
+  match module_exports.get(MODULE_NAMESPACE_OBJECT_KEY) {
+    Some(public_value) =>
+      module_exports[MODULE_NAMESPACE_OBJECT_KEY] = make_module_namespace_cache_with_export(
+        ns_obj, public_value,
+      )
+    None =>
+      module_exports[MODULE_NAMESPACE_OBJECT_KEY] = make_module_namespace_cache(
+        ns_obj,
+      )
   }
   ns_obj
 }

@@ -901,7 +901,7 @@ fn Interpreter::evaluate_module_record(
       for pair in self.module_export_bindings {
         let (export_name, local_name) = pair
         match self.module_exports.get(export_name) {
-          Some(Object({ class_name: "ModuleExportCell", .. })) => ()
+          Some(value) if module_export_entry_is_live_cell(value) => ()
           _ => self.module_exports[export_name] = record.env.get(local_name)
         }
       }
