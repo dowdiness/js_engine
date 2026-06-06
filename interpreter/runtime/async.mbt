@@ -89,18 +89,7 @@ fn Interpreter::make_async_function_ext(
     is_accessor: false,
   }
   let async_proto = get_function_prototype(self)
-  // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-  // default or rest.
-  let mut func_length = 0
-  for p in params {
-    if p.default_val is Some(_) {
-      break
-    }
-    if p.is_rest_pattern {
-      break
-    }
-    func_length += 1
-  }
+  let func_length = expected_argument_count_ext(params)
   stamp_function_realm(
     Object({
       bag: {
@@ -481,22 +470,8 @@ fn make_async_gen_function_inner(
     Some(n) => n
     None => ""
   }
-  // ES262 §10.2.4 ExpectedArgumentCount: count params before first
-  // default or rest.
   let func_length = match params_ext {
-    Some(pext) => {
-      let mut count = 0
-      for p in pext {
-        if p.default_val is Some(_) {
-          break
-        }
-        if p.is_rest_pattern {
-          break
-        }
-        count += 1
-      }
-      count
-    }
+    Some(pext) => expected_argument_count_ext(pext)
     None => params.length()
   }
   let fn_props : Map[String, Value] = {}

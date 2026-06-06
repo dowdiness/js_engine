@@ -352,13 +352,13 @@ No test262 cohort exercises this — `$0` is a valid but unusual identifier — 
 
 ---
 
-### Small cleanup: helper for ExpectedArgumentCount over extended params
+### ~~Small cleanup: helper for ExpectedArgumentCount over extended params~~ — DONE (2026-06-06)
 
 **Source:** Follow-up after PR #163 (2026-05-29).
 
 **Why:** PR #163 fixed the ambiguity by changing each length loop to stop on `p.default_val is Some(_) || p.is_rest_pattern`, but that logic is still duplicated across runtime factories (`factories.mbt`, `generator.mbt`, `async.mbt`, `eval_expr.mbt`, `class.mbt`), dynamic `Function` construction (`interpreter/stdlib/builtins_function.mbt`), and `compiler/closure_conversion.mbt`.
 
-**Fix:** Add a small helper such as `expected_argument_count_ext(params : Array[@ast.Param]) -> Int` and use it at the duplicated call sites. If the helper must be shared outside `interpreter/runtime`, make the public API change explicit and regenerate `.mbti` with `moon info`; otherwise keep it package-local and leave the compiler with a local equivalent. This should be a no-behavior-change cleanup.
+**Fix:** Added package-local `expected_argument_count_ext(params : Array[@ast.Param]) -> Int` helpers in `interpreter/runtime` and `interpreter/stdlib`. Runtime function-length call sites use the runtime helper; dynamic `Function` construction uses the stdlib helper without exporting a new runtime API. `compiler/closure_conversion.mbt` keeps its local equivalent. This is a no-behavior-change cleanup.
 
 **Validation:** Run the existing function-length regression tests, then `moon check`, `moon test`, `moon info`, and targeted `moon fmt`.
 

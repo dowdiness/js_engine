@@ -151,6 +151,20 @@ pub fn make_func(data : FuncData) -> Value {
 }
 
 ///|
+/// ES262 §10.2.4 ExpectedArgumentCount for extended parameter lists:
+/// count parameters before the first default initializer or rest parameter.
+fn expected_argument_count_ext(params : Array[@ast.Param]) -> Int {
+  for p in params; count = 0 {
+    if p.default_val is Some(_) || p.is_rest_pattern {
+      break count
+    }
+    continue count + 1
+  } nobreak {
+    count
+  }
+}
+
+///|
 pub fn make_func_ext(data : FuncDataExt) -> Value {
   let realm_state = match data.closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -171,18 +185,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     Some(n) => n
     None => ""
   }
-  // ES262 §10.2.4 ExpectedArgumentCount: count params before the first
-  // one with a default initializer or rest.
-  let mut func_length = 0
-  for p in data.params {
-    if p.default_val is Some(_) {
-      break
-    }
-    if p.is_rest_pattern {
-      break
-    }
-    func_length += 1
-  }
+  let func_length = expected_argument_count_ext(data.params)
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
