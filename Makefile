@@ -27,9 +27,10 @@ test262-download:
 		echo "Test262 already present."; \
 	fi
 
-# Unit tests for Test262 runner task selection helpers.
+# Unit tests for Test262 runner task selection and harness helpers.
 test262-runner-test:
 	python3 scripts/test262_runner_task_selection_test.py
+	python3 scripts/test262_runner_harness_test.py
 
 # Run the full Test262 conformance suite
 test262: build test262-download

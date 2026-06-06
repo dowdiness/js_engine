@@ -18,6 +18,7 @@ Options:
     --merged-log FILE   Append fail/timeout/error JSONL records for shard merging
     --timeout SECS      Timeout per test in seconds (default: 5)
     --threads N         Number of parallel workers (default: auto-detect, min 4)
+    --harness-helper H  Opt into modified harness helper(s), e.g. codePointRange
     --output FILE       Write JSON results to this file
     --summary           Print summary only (no individual failures)
     --verbose           Print each test result as it runs
@@ -27,6 +28,7 @@ Performance Optimizations:
     - Auto-detected CPU-based parallelism (minimum 4 threads, scales with CPU count)
     - Moderate timeout (5s) balancing speed and test completion
     - Optimized progress reporting with ETA
+    - Explicit opt-in modified harness helpers, disabled by default
 
 Prerequisites:
     Run `moon build --target js` first to produce the JS bundle.
@@ -65,6 +67,7 @@ from test262_task_selection import (
     parse_shard_spec,
 )
 from test262_utils import parse_yaml_frontmatter, as_list
+from test262_harness_helpers import DEFAULT_HARNESS_OPTIONS, HarnessOptions
 
 # Preamble injected before all test harness code to provide host-defined print()
 PRINT_PREAMBLE = 'function print() { var s = ""; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += " "; s += String(arguments[i]); } console.log(s); }\n'
@@ -90,7 +93,6 @@ if (typeof $DONE === "undefined") {
   };
 }
 """
-
 
 @dataclass
 class TestMetadata:
@@ -162,13 +164,19 @@ STATUS_MARKS = {
 # Global cache for harness files to avoid repeated disk I/O
 _harness_cache = {}
 
-def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool = False) -> str:
+def load_harness(
+    test262_dir: str,
+    includes: list,
+    is_raw: bool,
+    is_async: bool = False,
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
+) -> str:
     """Load the required harness files for a test with caching."""
     if is_raw:
         return ""
 
-    # Create cache key from includes list
-    cache_key = (test262_dir, tuple(sorted(includes)), is_async)
+    # Create cache key from includes list and opt-in helper set
+    cache_key = (test262_dir, tuple(sorted(includes)), is_async, harness_options.helpers)
     if cache_key in _harness_cache:
         return _harness_cache[cache_key]
 
@@ -177,6 +185,9 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool 
 
     # Inject print() preamble for host environment compatibility
     parts.append(PRINT_PREAMBLE)
+    helper_source = harness_options.preamble()
+    if helper_source:
+        parts.append(helper_source)
 
     # Always load sta.js and assert.js (unless raw)
     for default_file in ["sta.js", "assert.js"]:
@@ -189,7 +200,7 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool 
             else:
                 _harness_cache[file_key] = ""
         if _harness_cache[file_key]:
-            parts.append(_harness_cache[file_key])
+            parts.append(harness_options.transform_include(default_file, _harness_cache[file_key]))
 
     # Load additional includes
     for inc in includes:
@@ -202,7 +213,7 @@ def load_harness(test262_dir: str, includes: list, is_raw: bool, is_async: bool 
             else:
                 _harness_cache[file_key] = ""
         if _harness_cache[file_key]:
-            parts.append(_harness_cache[file_key])
+            parts.append(harness_options.transform_include(inc, _harness_cache[file_key]))
 
     # For async tests, inject $DONE fallback if not provided by harness includes
     if is_async:
@@ -281,6 +292,7 @@ def run_single_test(
     test_path: str,
     timeout: int,
     mode: str = "non-strict",
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
 ) -> TestResult:
     """Execute a single test262 test and return the result."""
     try:
@@ -303,7 +315,13 @@ def run_single_test(
     is_module = "module" in meta.flags
 
     # Build the full source with harness
-    harness = load_harness(test262_dir, meta.includes, meta.raw, is_async)
+    harness = load_harness(
+        test262_dir,
+        meta.includes,
+        meta.raw,
+        is_async,
+        harness_options,
+    )
 
     if mode == "strict" and not meta.raw:
         full_source = '"use strict";\n' + harness + "\n" + source
@@ -547,7 +565,13 @@ def aggregate_results(results: list) -> dict:
 # Reporting
 # ---------------------------------------------------------------------------
 
-def print_report(agg: dict, results: list, verbose: bool, summary_only: bool):
+def print_report(
+    agg: dict,
+    results: list,
+    verbose: bool,
+    summary_only: bool,
+    methodology_label: str = "default",
+):
     """Print the conformance report."""
     overall = agg["overall"]
     categories = agg["categories"]
@@ -556,6 +580,8 @@ def print_report(agg: dict, results: list, verbose: bool, summary_only: bool):
     print("  Test262 ECMAScript Conformance Report")
     print("  Engine: MoonBit JS Engine")
     print(f"  Date: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    if methodology_label != "default":
+        print(f"  Methodology: {methodology_label}")
     print("=" * 72)
 
     executed = overall.passed + overall.failed
@@ -668,6 +694,7 @@ def run_test_tasks(
     verbose: bool,
     progress_log,
     merged_log,
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
 ) -> tuple[list[TestResult], float]:
     """Run expanded test tasks and return ``(results, elapsed_seconds)``."""
     results = []
@@ -686,7 +713,13 @@ def run_test_tasks(
         with ThreadPoolExecutor(max_workers=threads) as executor:
             futures = {
                 executor.submit(
-                    run_single_test, engine_cmd, test262_dir, tf, timeout, mode
+                    run_single_test,
+                    engine_cmd,
+                    test262_dir,
+                    tf,
+                    timeout,
+                    mode,
+                    harness_options,
                 ): (tf, mode)
                 for tf, mode in test_tasks
             }
@@ -694,7 +727,16 @@ def run_test_tasks(
                 record_result(future.result())
     else:
         for tf, mode in test_tasks:
-            record_result(run_single_test(engine_cmd, test262_dir, tf, timeout, mode))
+            record_result(
+                run_single_test(
+                    engine_cmd,
+                    test262_dir,
+                    tf,
+                    timeout,
+                    mode,
+                    harness_options,
+                )
+            )
 
     if verbose:
         print()
@@ -702,21 +744,30 @@ def run_test_tasks(
     return results, time.monotonic() - start_time
 
 
-def save_results(results: list, agg: dict, output_file: str):
+def save_results(
+    results: list,
+    agg: dict,
+    output_file: str,
+    harness_options: HarnessOptions = DEFAULT_HARNESS_OPTIONS,
+):
     """Save results as JSON for later analysis."""
     overall = agg["overall"]
+    methodology = harness_options.methodology_json_record()
+    summary = {
+        "total": overall.total,
+        "passed": overall.passed,
+        "failed": overall.failed,
+        "skipped": overall.skipped,
+        "timeout": overall.timeout,
+        "error": overall.error,
+        "pass_rate": round(overall.pass_rate, 2),
+    }
+    if methodology is not None:
+        summary["methodology"] = methodology["label"]
     data = {
         "engine": "moonbit-js-engine",
         "date": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "summary": {
-            "total": overall.total,
-            "passed": overall.passed,
-            "failed": overall.failed,
-            "skipped": overall.skipped,
-            "timeout": overall.timeout,
-            "error": overall.error,
-            "pass_rate": round(overall.pass_rate, 2),
-        },
+        "summary": summary,
         "categories": {
             cat: {
                 "total": stats.total,
@@ -729,6 +780,8 @@ def save_results(results: list, agg: dict, output_file: str):
         },
         "results": [result_json_record(r) for r in results],
     }
+    if methodology is not None:
+        data["methodology"] = methodology
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     print(f"  Results saved to: {output_file}")
@@ -772,11 +825,14 @@ def main():
                         help="Print each test result as it runs")
     parser.add_argument("--mode", choices=["both", "strict", "non-strict"], default="both",
                         help="Test mode: 'strict' only, 'non-strict' only, or 'both' (default: both)")
+    parser.add_argument("--harness-helper", action="append", default=[], metavar="NAME[,NAME]",
+                        help="Opt into modified Test262 harness helper(s); currently: codePointRange")
 
     args = parser.parse_args()
 
     try:
         shard_spec = parse_shard_spec(args.shard) if args.shard else None
+        harness_options = HarnessOptions.from_cli(args.harness_helper)
         if args.start < 0:
             raise ValueError("--start must be >= 0")
         if args.count is not None and args.count < 0:
@@ -878,6 +934,8 @@ def main():
     mode_label = run_mode if run_mode != "both" else "strict+non-strict"
     print(f"Running {len(test_tasks)} test tasks ({len(test_files)} files, {mode_label})")
     print(f"Using {args.threads} parallel worker(s) with {args.timeout}s timeout per test")
+    if harness_options.is_modified:
+        print(f"Using modified Test262 harness helpers: {', '.join(harness_options.helpers)}")
 
     progress_log = None
     merged_log = None
@@ -898,6 +956,7 @@ def main():
             args.verbose,
             progress_log,
             merged_log,
+            harness_options,
         )
     finally:
         for log_file in (progress_log, merged_log):
@@ -908,11 +967,12 @@ def main():
 
     # Aggregate and report
     agg = aggregate_results(results)
-    print_report(agg, results, args.verbose, args.summary)
+    methodology_label = harness_options.methodology_label
+    print_report(agg, results, args.verbose, args.summary, methodology_label)
 
     # Save results
     output_file = args.output or "test262-results.json"
-    save_results(results, agg, output_file)
+    save_results(results, agg, output_file, harness_options)
 
     # Exit with non-zero if any tests failed (useful for CI)
     if agg["overall"].failed > 0:

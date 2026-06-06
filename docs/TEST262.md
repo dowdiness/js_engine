@@ -123,9 +123,32 @@ python3 scripts/test262-runner.py \
 `--shard` cannot be combined with `--start`/`--count`. `--log` writes every
 completed task as JSON Lines and is overwritten for each invocation.
 `--merged-log` appends fail/timeout/error records as JSON Lines, which is handy
-when collecting failures across several shard runs. The main `--output` JSON
-schema is unchanged and remains compatible with `scripts/report-test262.py` and
-`scripts/classify-by-edition.py`.
+when collecting failures across several shard runs. These task-selection flags
+do not change the main `--output` JSON schema, which remains compatible with
+`scripts/report-test262.py` and `scripts/classify-by-edition.py`.
+
+## Opt-in Modified Harness Helpers
+
+Official CI and default local runs do not enable modified harness helpers. For
+local investigations, the runner can opt into explicitly labeled helpers:
+
+```bash
+python3 scripts/test262-runner.py \
+    --test262 ./test262 \
+    --filter "built-ins/RegExp" \
+    --harness-helper codePointRange \
+    --summary
+```
+
+`--harness-helper codePointRange` injects a `$262.codePointRange` helper before
+Test262 harness files load and rewrites loaded `regExpUtils.js` source in memory
+to use it when the checked-out harness matches the known Test262 helper shape.
+If the engine already provides a native helper, the injected source leaves it in
+place; otherwise it installs a JavaScript fallback. This is for RegExp-heavy
+local diagnosis only: it does not change skip metadata, pass/fail/timeout
+classification, the checked-out Test262 tree, or CI defaults. Modified-harness
+runs print a methodology line and add `methodology` metadata to the output JSON
+so their numbers are not confused with official CI results.
 
 ## Runner Options
 
@@ -143,6 +166,7 @@ schema is unchanged and remains compatible with `scripts/report-test262.py` and
 | `--merged-log FILE` | (none) | Append fail/timeout/error records as JSON Lines |
 | `--timeout SECS` | `5` | Timeout per test in seconds |
 | `--threads N` | Auto (CPU count) | Number of parallel workers |
+| `--harness-helper NAME` | (none) | Opt into a modified harness helper; currently `codePointRange` |
 | `--output FILE` | `test262-results.json` | Write JSON results to this file |
 | `--summary` | off | Print summary only, no individual failures |
 | `--verbose` | off | Print each test result as it runs |
@@ -180,6 +204,7 @@ Results are saved as JSON with:
 - `summary`: Overall pass/fail/skip counts
 - `categories`: Per-category breakdown
 - `results`: Individual test outcomes (pass/fail/skip/timeout with error details)
+- `methodology`: Present only for modified-harness runs, describing the opt-in helpers used
 
 ### Result Files
 
