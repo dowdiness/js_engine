@@ -9,7 +9,8 @@ test:
 	moon test
 
 # Guardrail for the realm-state migration track.
-architecture-state-audit: architecture-state-audit-test
+# Keep Python authoritative while requiring the MoonBit shadow to build and match.
+architecture-state-audit: architecture-state-audit-test architecture-state-audit-mbt
 	python3 scripts/architecture-state-audit.py
 
 architecture-state-audit-mbt: architecture-state-audit-mbt-test
