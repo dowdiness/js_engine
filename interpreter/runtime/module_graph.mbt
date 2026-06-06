@@ -307,27 +307,38 @@ fn Interpreter::instantiate_module_imports(
 }
 
 ///|
-fn collect_module_dependencies_from_stmt(
+fn collect_module_dependency_edges_from_stmt(
   stmt : @ast.Stmt,
-  deps : Array[String],
+  edges : Array[(String, Bool)],
 ) -> Unit {
   match stmt {
-    ImportDecl(_, _, _, source, _, _) => deps.push(source)
-    ExportNamedDecl(_, _, Some(source), _, _) => deps.push(source)
-    ExportAllDecl(_, source, _, _) => deps.push(source)
+    ImportDecl(_, _, _, source, _, _) => edges.push((source, true))
+    ExportNamedDecl(_, _, Some(source), _, _) => edges.push((source, false))
+    ExportAllDecl(_, source, _, _) => edges.push((source, false))
     StmtList(stmts, _) =>
       for inner in stmts {
-        collect_module_dependencies_from_stmt(inner, deps)
+        collect_module_dependency_edges_from_stmt(inner, edges)
       }
     _ => ()
   }
 }
 
 ///|
+fn ModuleRunRecord::dependency_edges(
+  self : ModuleRunRecord,
+) -> Array[(String, Bool)] {
+  let edges : Array[(String, Bool)] = []
+  for stmt in self.stmts {
+    collect_module_dependency_edges_from_stmt(stmt, edges)
+  }
+  edges
+}
+
+///|
 fn ModuleRunRecord::dependencies(self : ModuleRunRecord) -> Array[String] {
   let deps : Array[String] = []
-  for stmt in self.stmts {
-    collect_module_dependencies_from_stmt(stmt, deps)
+  for edge in self.dependency_edges() {
+    deps.push(edge.0)
   }
   deps
 }
@@ -361,30 +372,53 @@ fn module_dependency_path_exists(
 }
 
 ///|
-fn module_record_dependencies_ready(
+fn should_skip_weak_module_back_edge(
+  record : ModuleRunRecord,
+  dependency : String,
+  strong : Bool,
+  records_by_specifier : Map[String, ModuleRunRecord],
+) -> Bool {
+  !strong &&
+  module_dependency_path_exists(
+    dependency,
+    record.specifier,
+    records_by_specifier,
+    {},
+  )
+}
+
+///|
+fn Interpreter::visit_module_dependencies_first(
+  self : Interpreter,
   record : ModuleRunRecord,
   records_by_specifier : Map[String, ModuleRunRecord],
-  evaluation_state : Map[String, Int],
-) -> Bool {
-  for dependency in record.dependencies() {
+  state : Map[String, Int],
+  action : (Interpreter, ModuleRunRecord) -> Unit raise Error,
+) -> Unit raise Error {
+  match state.get(record.specifier) {
+    Some(2) => return
+    Some(1) => return
+    _ => ()
+  }
+  state[record.specifier] = 1
+  for edge in record.dependency_edges() {
+    let dependency = edge.0
+    let strong = edge.1
+    if should_skip_weak_module_back_edge(
+        record, dependency, strong, records_by_specifier,
+      ) {
+      continue
+    }
     match records_by_specifier.get(dependency) {
-      Some(_) =>
-        match evaluation_state.get(dependency) {
-          Some(2) => ()
-          _ =>
-            if !module_dependency_path_exists(
-                dependency,
-                record.specifier,
-                records_by_specifier,
-                {},
-              ) {
-              return false
-            }
-        }
+      Some(dep_record) =>
+        self.visit_module_dependencies_first(
+          dep_record, records_by_specifier, state, action,
+        )
       None => ()
     }
   }
-  true
+  action(self, record)
+  state[record.specifier] = 2
 }
 
 ///|
@@ -498,71 +532,25 @@ pub fn Interpreter::run_modules(
     records_by_specifier[record.specifier] = record
   }
   let indirect_state : Map[String, Int] = {}
-  let mut indirect_remaining = records.length()
-  while indirect_remaining > 0 {
-    let mut progressed = false
-    for record in records {
-      match indirect_state.get(record.specifier) {
-        Some(2) => ()
-        _ =>
-          if module_record_dependencies_ready(
-              record, records_by_specifier, indirect_state,
-            ) {
-            self.instantiate_module_indirect_exports(record)
-            indirect_state[record.specifier] = 2
-            indirect_remaining = indirect_remaining - 1
-            progressed = true
-          }
-      }
-    }
-    if !progressed {
-      for record in records {
-        match indirect_state.get(record.specifier) {
-          Some(2) => ()
-          _ => {
-            self.instantiate_module_indirect_exports(record)
-            indirect_state[record.specifier] = 2
-            indirect_remaining = indirect_remaining - 1
-            break
-          }
-        }
-      }
-    }
+  for record in records {
+    self.visit_module_dependencies_first(
+      record,
+      records_by_specifier,
+      indirect_state,
+      fn(interp, rec) raise { interp.instantiate_module_indirect_exports(rec) },
+    )
   }
   for record in records {
     self.instantiate_module_imports(record)
   }
   let evaluation_state : Map[String, Int] = {}
-  let mut remaining = records.length()
-  while remaining > 0 {
-    let mut progressed = false
-    for record in records {
-      match evaluation_state.get(record.specifier) {
-        Some(2) => ()
-        _ =>
-          if module_record_dependencies_ready(
-              record, records_by_specifier, evaluation_state,
-            ) {
-            ignore(self.evaluate_module_record(record))
-            evaluation_state[record.specifier] = 2
-            remaining = remaining - 1
-            progressed = true
-          }
-      }
-    }
-    if !progressed {
-      for record in records {
-        match evaluation_state.get(record.specifier) {
-          Some(2) => ()
-          _ => {
-            ignore(self.evaluate_module_record(record))
-            evaluation_state[record.specifier] = 2
-            remaining = remaining - 1
-            break
-          }
-        }
-      }
-    }
+  for record in records {
+    self.visit_module_dependencies_first(
+      record,
+      records_by_specifier,
+      evaluation_state,
+      fn(interp, rec) raise { ignore(interp.evaluate_module_record(rec)) },
+    )
   }
   match records.last() {
     Some(last_record) => self.materialize_module_record(last_record)
