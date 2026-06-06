@@ -2,6 +2,10 @@
 const SKIP_METADATA_SCHEMA_VERSION = 1
 
 ///|
+/// Parsed shared Test262 skip metadata.
+///
+/// Keep the fields private so consumers use `skip_reason` instead of copying
+/// classification logic.
 pub struct SkipMetadata {
   priv features : Map[String, Bool]
   priv flags : Map[String, Bool]
@@ -20,7 +24,7 @@ fn join_path(left : String, right : String) -> String {
 }
 
 ///|
-pub fn skip_metadata_path(root~ : String) -> String {
+fn skip_metadata_path(root~ : String) -> String {
   join_path(root, "scripts/test262_skip_metadata.json")
 }
 
@@ -121,7 +125,7 @@ fn string_membership(values : Array[String]) -> Map[String, Bool] {
 }
 
 ///|
-pub fn load_skip_metadata_file(path : String) -> SkipMetadata raise {
+fn load_skip_metadata_file(path : String) -> SkipMetadata raise {
   let data = decode_object(@json.parse(@fs.read_file_to_string(path)), path)
   validate_schema_keys(data, path)
   decode_schema_version(data, path)
@@ -135,11 +139,16 @@ pub fn load_skip_metadata_file(path : String) -> SkipMetadata raise {
 }
 
 ///|
+/// Load shared Test262 skip metadata from `scripts/test262_skip_metadata.json`
+/// under `root`.
 pub fn load_skip_metadata(root~ : String) -> SkipMetadata raise {
   load_skip_metadata_file(skip_metadata_path(root~))
 }
 
 ///|
+/// Return the metadata skip reason for one Test262 file, or `None` when the
+/// metadata does not skip it. `mode` should be `Some("strict")`,
+/// `Some("non-strict")`, or `None` for analyzer-style census mode.
 pub fn SkipMetadata::skip_reason(
   self : SkipMetadata,
   filepath : String,
