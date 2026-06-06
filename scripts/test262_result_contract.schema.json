@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dowdiness/js_engine/scripts/test262_result_contract.schema.json",
+  "title": "js_engine Test262 runner artifact",
+  "type": "object",
+  "required": ["engine", "date", "summary", "categories", "results"],
+  "additionalProperties": false,
+  "properties": {
+    "engine": {
+      "type": "string",
+      "const": "moonbit-js-engine"
+    },
+    "date": {
+      "type": "string"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "categories": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/category"
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/result"
+      }
+    },
+    "methodology": {
+      "$ref": "#/$defs/methodology"
+    }
+  },
+  "$defs": {
+    "nonNegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "passRate": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "skipped",
+        "timeout",
+        "error",
+        "pass_rate"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "passed": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "failed": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "skipped": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "timeout": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "error": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pass_rate": {
+          "$ref": "#/$defs/passRate"
+        },
+        "methodology": {
+          "type": "string"
+        }
+      }
+    },
+    "category": {
+      "type": "object",
+      "required": ["total", "passed", "failed", "skipped", "pass_rate"],
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "passed": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "failed": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "skipped": {
+          "$ref": "#/$defs/nonNegativeInteger"
+        },
+        "pass_rate": {
+          "$ref": "#/$defs/passRate"
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": ["path", "status", "reason", "duration_ms", "mode"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pass", "fail", "skip", "timeout", "error"]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["strict", "non-strict"]
+        }
+      }
+    },
+    "methodology": {
+      "type": "object",
+      "required": ["label", "harness", "harness_helpers"],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "harness": {
+          "type": "string"
+        },
+        "harness_helpers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

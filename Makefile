@@ -1,4 +1,4 @@
-.PHONY: build test architecture-state-audit architecture-state-audit-test test262 test262-runner-test test262-quick test262-analyze test262-validate-skips test262-download test262-report unicode-tables clean
+.PHONY: build test architecture-state-audit architecture-state-audit-test test262 test262-contract-test test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
 
 # Build the JS engine
 build:
@@ -27,10 +27,19 @@ test262-download:
 		echo "Test262 already present."; \
 	fi
 
+# Unit tests for Test262 artifact contracts and parity helpers.
+test262-contract-test:
+	python3 scripts/compare_test262_results_test.py
+
 # Unit tests for Test262 runner task selection and harness helpers.
-test262-runner-test:
+test262-runner-test: test262-contract-test
 	python3 scripts/test262_runner_task_selection_test.py
 	python3 scripts/test262_runner_harness_test.py
+
+# Compare two Test262 result artifacts under the migration parity contract.
+# Pass ARGS="left.json right.json [--ignore-reason]".
+test262-compare-results:
+	python3 scripts/compare-test262-results.py $(ARGS)
 
 # Run the full Test262 conformance suite
 test262: build test262-download

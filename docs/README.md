@@ -9,6 +9,7 @@ truth; when a doc and the code disagree, trust the code.
 - [ROADMAP.md](ROADMAP.md) — headline status, phase history, next targets
 - [supported-features.md](supported-features.md) — per-category pass rates, Annex B, missing features
 - [TEST262.md](TEST262.md) — how to run the test262 conformance suite
+- [tooling-migration-contracts.md](tooling-migration-contracts.md) — parity contract for migrating Python scripts to MoonBit
 
 ## Reference
 
