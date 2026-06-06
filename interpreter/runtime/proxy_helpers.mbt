@@ -89,6 +89,18 @@ pub fn collect_target_own_keys(
   let keys : Array[Value] = []
   match target {
     Object(data) => {
+      if data.class_name == "Module" {
+        for k in module_namespace_own_string_keys(data) {
+          keys.push(Value::String_(k))
+        }
+        data.bag.symbol_properties.each(fn(id, _v) {
+          match interp.realm_state.symbols.get_symbol_by_id(id) {
+            Some(sym) => keys.push(Value::Symbol(sym))
+            None => ()
+          }
+        })
+        return keys
+      }
       let typedarray_length = typedarray_declared_length(data)
       for i = 0; i < typedarray_length; i = i + 1 {
         if (interp.stdlib_hooks.typedarray_is_valid_index)(
@@ -221,7 +233,11 @@ fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
 /// Get the descriptor for a string-keyed own property on the target.
 /// Arrays synthesize `length` and indexed element descriptors; other own
 /// named props live on `bag`.
-fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
+fn target_get_own_descriptor(
+  interp : Interpreter?,
+  target : Value,
+  key : String,
+) -> PropDescriptor? raise Error {
   // Properties created via ordinary assignment (`o.x = 1`) live in
   // bag.properties without always receiving a bag.descriptors entry.
   // For §10.5.5 / §10.5.6 invariants we must report such keys as
@@ -237,14 +253,31 @@ fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
   }
   match target {
     Object(data) =>
-      match data.bag.descriptors.get(key) {
-        Some(d) => Some(d)
-        None =>
-          if data.bag.properties.contains(key) {
-            Some(default_data)
-          } else {
-            None
-          }
+      if data.class_name == "Module" {
+        match interp {
+          Some(ip) =>
+            match
+              ip.module_namespace_get_own_property_pair(data, String_(key)) {
+              Some((desc, _)) => Some(desc)
+              None => None
+            }
+          None =>
+            if data.bag.properties.contains(key) {
+              Some(module_namespace_export_descriptor())
+            } else {
+              None
+            }
+        }
+      } else {
+        match data.bag.descriptors.get(key) {
+          Some(d) => Some(d)
+          None =>
+            if data.bag.properties.contains(key) {
+              Some(default_data)
+            } else {
+              None
+            }
+        }
       }
     Map(data) =>
       match data.bag.descriptors.get(key) {
@@ -316,12 +349,33 @@ fn target_get_own_descriptor(target : Value, key : String) -> PropDescriptor? {
 /// Mirrors the variant coverage of `target_get_own_descriptor`. Used by
 /// proxy invariant checks that compare trap results to target values for
 /// non-configurable non-writable data descriptors.
-fn target_get_own_value(target : Value, key : String) -> Value {
+fn target_get_own_value(
+  interp : Interpreter?,
+  target : Value,
+  key : String,
+) -> Value raise Error {
   match target {
     Object(data) =>
-      match data.bag.properties.get(key) {
-        Some(v) => v
-        None => Undefined
+      if data.class_name == "Module" {
+        match interp {
+          Some(ip) =>
+            match
+              ip.module_namespace_get_own_property_pair(data, String_(key)) {
+              Some((_, value)) => value
+              None => Undefined
+            }
+          None =>
+            match data.bag.descriptors.get(key) {
+              Some({ getter: Some(getter), .. }) =>
+                call_callable_direct(getter, Object(data), [])
+              _ => Undefined
+            }
+        }
+      } else {
+        match data.bag.properties.get(key) {
+          Some(v) => v
+          None => Undefined
+        }
       }
     Map(data) =>
       match data.bag.properties.get(key) {
@@ -645,12 +699,12 @@ pub fn proxy_get(
         loc,
       )
       // ES §10.5.8 step 10-11: Invariant checks
-      match target_get_own_descriptor(target, key) {
+      match target_get_own_descriptor(Some(interp), target, key) {
         Some(desc) =>
           if !desc.configurable {
             // Non-configurable data property: trap result must match target value
             if desc.getter is None && !desc.writable {
-              let target_value = target_get_own_value(target, key)
+              let target_value = target_get_own_value(Some(interp), target, key)
               if !strict_equal(result, target_value) {
                 raise @errors.TypeError(
                   message="'get' on proxy: property '\{key}' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
@@ -679,14 +733,19 @@ pub fn proxy_get(
 /// `proxy_set` and the computed (String or Symbol) path in
 /// `set_computed_property`. Raises TypeError if the target's own descriptor
 /// for `key` is non-configurable and the trap's truish return is a lie.
-pub fn check_proxy_set_trap_invariants(
+fn check_proxy_set_trap_invariants_with_interp(
+  interp : Interpreter?,
   target : Value,
   key : Value,
   value : Value,
 ) -> Unit raise Error {
   let (desc_opt, target_value, key_display) = match key {
     String_(k) =>
-      (target_get_own_descriptor(target, k), target_get_own_value(target, k), k)
+      (
+        target_get_own_descriptor(interp, target, k),
+        target_get_own_value(interp, target, k),
+        k,
+      )
     Symbol(sym) =>
       (
         match target {
@@ -750,6 +809,15 @@ pub fn check_proxy_set_trap_invariants(
 }
 
 ///|
+pub fn check_proxy_set_trap_invariants(
+  target : Value,
+  key : Value,
+  value : Value,
+) -> Unit raise Error {
+  check_proxy_set_trap_invariants_with_interp(None, target, key, value)
+}
+
+///|
 /// Implement the Proxy [[Set]] invariant checks per ES §10.5.9.
 pub fn proxy_set(
   interp : Interpreter,
@@ -790,7 +858,12 @@ pub fn proxy_set(
         }
         return value
       }
-      check_proxy_set_trap_invariants(target, String_(key), value)
+      check_proxy_set_trap_invariants_with_interp(
+        Some(interp),
+        target,
+        String_(key),
+        value,
+      )
       value
     }
   }
@@ -1310,7 +1383,7 @@ pub fn proxy_get_own_property(
                     }
                   _ => Undefined
                 }
-              _ => target_get_own_value(target, key.to_string())
+              _ => target_get_own_value(Some(interp), target, key.to_string())
             }
             let trap_val = match trap_value_opt {
               Some(v) => v
@@ -1503,7 +1576,7 @@ pub fn proxy_define_property(
                   }
                 _ => Undefined
               }
-            _ => target_get_own_value(target, key.to_string())
+            _ => target_get_own_value(Some(interp), target, key.to_string())
           }
           if !is_compatible_with_non_configurable(current, partial, cur_val) {
             raise @errors.TypeError(

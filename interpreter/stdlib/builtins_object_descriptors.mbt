@@ -38,7 +38,11 @@ fn make_get_own_property_names_func() -> Value {
       }
       Object(data) => {
         let keys : Array[Value] = []
-        let sorted = @runtime.sort_property_keys(data.bag.properties)
+        let sorted = if data.class_name == "Module" {
+          stdlib_module_namespace_own_string_keys(data)
+        } else {
+          @runtime.sort_property_keys(data.bag.properties)
+        }
         for k in sorted {
           keys.push(Value::String_(k))
         }
@@ -260,7 +264,20 @@ fn own_property_keys_snapshot(
 ) -> Array[Value] raise Error {
   let keys : Array[Value] = []
   match source {
-    Object(data) => append_bag_own_keys(keys, source, data.bag, sym_state)
+    Object(data) =>
+      if data.class_name == "Module" {
+        for prop_name in stdlib_module_namespace_own_string_keys(data) {
+          keys.push(Value::String_(prop_name))
+        }
+        data.bag.symbol_properties.each(fn(sym_id, _raw) {
+          match sym_state.get_symbol_by_id(sym_id) {
+            Some(sym) => keys.push(Value::Symbol(sym))
+            None => ()
+          }
+        })
+      } else {
+        append_bag_own_keys(keys, source, data.bag, sym_state)
+      }
     Array(data) => append_array_own_keys(keys, data, sym_state)
     Map(data) => append_bag_own_keys(keys, source, data.bag, sym_state)
     Set(data) => append_bag_own_keys(keys, source, data.bag, sym_state)

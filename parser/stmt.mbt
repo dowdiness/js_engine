@@ -1068,6 +1068,10 @@ fn Parser::expect_module_export_name(self : Parser) -> String raise Error {
       self.pos += 1
       name
     }
+    String_(name) => {
+      self.pos += 1
+      name
+    }
     Default => {
       self.pos += 1
       "default"
@@ -1268,11 +1272,21 @@ fn Parser::parse_import_specifiers(
   let _ = self.expect(LBrace)
   let specs : Array[@ast.ImportSpecifier] = []
   while !self.at(RBrace) && !self.at(EOF) {
+    let imported_tok = self.peek()
+    let imported_was_string = match imported_tok.kind {
+      String_(_) => true
+      _ => false
+    }
     let imported = self.expect_module_export_name()
     let local_name = if self.at(As) {
       let _ = self.advance() // consume 'as'
       self.expect_ident()
     } else {
+      if imported_was_string {
+        raise @errors.SyntaxError(
+          message="String-literal import names require an explicit alias at line \{imported_tok.loc.line}, col \{imported_tok.loc.col}",
+        )
+      }
       imported
     }
     specs.push({ local_name, imported })
@@ -1385,9 +1399,13 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       tok.loc,
     )
   }
-  // export function name() {}
+  // export function name() {} / export function* name() {}
   if self.at(Function) {
-    let decl = self.parse_func_decl()
+    let decl = if self.peek_kind_at(1) == Star {
+      self.parse_generator_decl()
+    } else {
+      self.parse_func_decl()
+    }
     return ExportNamedDecl(
       Some(decl),
       [],

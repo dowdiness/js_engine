@@ -93,23 +93,16 @@ pub fn run_module(
 }
 
 ///|
-/// Run multiple modules with dependency resolution
-/// modules is a list of (specifier, source) pairs in dependency order
-/// (dependencies must come before dependents)
-/// Returns the exports of the last module
+/// Run multiple modules with dependency resolution.
+/// The runtime graph runner pre-registers every module specifier before
+/// instantiation/evaluation, so callers do not need to order modules by
+/// dependency. Returns the exports of the last module.
 pub fn run_modules(
   modules : Array[(String, String)],
   annex_b? : Bool = false,
 ) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
   let interp = @interpreter.new_interpreter(annex_b~)
-  let mut last_exports : Map[String, @interpreter.Value] = {}
-  for pair in modules {
-    let (specifier, source) = pair
-    let prog = @parser.parse(source)
-    let exports = interp.run_module(prog.stmts)
-    interp.register_module(specifier, exports)
-    last_exports = exports
-  }
+  let last_exports = interp.run_modules(modules)
   interp.run_microtasks()
   interp.run_timers()
   (interp.host.output, last_exports)

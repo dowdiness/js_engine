@@ -65,6 +65,10 @@ fn main {
         action=Append,
         about="<spec> <src> — register a module fixture (may be repeated)",
       ),
+      @argparse.OptionArg(
+        "module-specifier",
+        about="specifier to register the main module under",
+      ),
     ],
     positionals=[
       @argparse.PositionArg("source", about="JavaScript source to execute"),
@@ -95,6 +99,10 @@ fn main {
     Some(arr) if arr.length() > 0 => Some(arr[0])
     _ => None
   }
+  let main_module_specifier = match matches.values.get("module-specifier") {
+    Some(arr) if arr.length() > 0 => arr[0]
+    _ => "<test>"
+  }
   match source {
     None => {
       println(
@@ -110,14 +118,31 @@ fn main {
             exit_with_error()
             return
           }
-          // Run any fixture modules first (in dep order), then the main module.
-          // run_modules registers each module's exports under its specifier so
-          // the main test's `import` lookups succeed.
+          let registered_specifiers : Map[String, Bool] = {}
+          for fixture in fixtures {
+            let (specifier, _) = fixture
+            if registered_specifiers.contains(specifier) {
+              println("error: duplicate module specifier '\{specifier}'")
+              exit_with_error()
+              return
+            }
+            registered_specifiers[specifier] = true
+          }
+          if registered_specifiers.contains(main_module_specifier) {
+            println(
+              "error: duplicate module specifier '\{main_module_specifier}'",
+            )
+            exit_with_error()
+            return
+          }
+          // Run fixture modules plus the main module through the graph runner.
+          // run_modules pre-registers each module's exports under its specifier
+          // so the main test's `import` lookups succeed.
           let modules : Array[(String, String)] = []
           for f in fixtures {
             modules.push(f)
           }
-          modules.push(("<test>", src))
+          modules.push((main_module_specifier, src))
           let (output, _) = @lib.run_modules(modules, annex_b~)
           for line in output {
             println(line)

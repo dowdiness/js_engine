@@ -1001,6 +1001,162 @@ test "ES module: import named from module" {
 }
 
 ///|
+test "ES module: graph evaluates dependencies before importers" {
+  let modules : Array[(String, String)] = [
+    (
+      "./main",
+      (
+        #|import { x } from './dep';
+        #|console.log(x);
+      ),
+    ),
+    ("./dep", "export const x = 1;"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: graph resolves indirect re-export chain before importers" {
+  let modules : Array[(String, String)] = [
+    (
+      "./main",
+      (
+        #|import { x } from './b';
+        #|console.log(x);
+      ),
+    ),
+    ("./b", "export { x } from './a';"),
+    ("./a", "export { x } from './base';"),
+    ("./base", "export const x = 1;"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: ambiguous export star makes named import throw" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 2;"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x);"),
+  ]
+  let result = try {
+    let _ = @js_engine.run_modules(modules)
+    "no error thrown"
+  } catch {
+    e => e.to_string()
+  }
+  expect_bool(
+    result.contains("does not export 'x'"),
+    true,
+    "ambiguous star named import error",
+  )
+}
+
+///|
+test "ES module: duplicate stars to same binding are unambiguous" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export const x = 1;"),
+    ("./a", "export * from './base';"),
+    ("./b", "export * from './base';"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: direct export wins over ambiguous star exports" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 2;"),
+    (
+      "./barrel",
+      (
+        #|export const x = 3;
+        #|export * from './a';
+        #|export * from './b';
+      ),
+    ),
+    ("./main", "import * as ns from './barrel'; console.log(ns.x);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["3"])
+}
+
+///|
+test "ES module: namespace omits ambiguous star export names" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 2;"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    (
+      "./main",
+      (
+        #|import * as ns from './barrel';
+        #|console.log('x' in ns);
+        #|console.log(Object.keys(ns).indexOf('x') >= 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["false", "false"])
+}
+
+///|
+test "ES module: cyclic re-export keeps live binding" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export { x, inc } from './b';"),
+    (
+      "./b",
+      (
+        #|import './a';
+        #|export let x = 0;
+        #|export function inc() { x = x + 1; }
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import { x, inc } from './a';
+        #|setTimeout(function() {
+        #|  inc();
+        #|  console.log(x);
+        #|}, 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: graph preserves dependency-first execution inside cycles" {
+  let modules : Array[(String, String)] = [
+    (
+      "./a",
+      (
+        #|import { b } from './b';
+        #|console.log(b);
+        #|export const a = 1;
+      ),
+    ),
+    (
+      "./b",
+      (
+        #|import { a } from './a';
+        #|export const b = 2;
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["2"])
+}
+
+///|
 test "ES module: import default" {
   let modules : Array[(String, String)] = [
     (
@@ -1065,6 +1221,201 @@ test "ES module: import namespace" {
   ]
   let (output, _) = @js_engine.run_modules(modules)
   json_inspect(output, content=["1", "2", "3"])
+}
+
+///|
+test "ES module: namespace remains live during timer drain" {
+  let modules : Array[(String, String)] = [
+    (
+      "./state",
+      (
+        #|export let x = 0;
+        #|export function inc() { x = x + 1; }
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns from './state';
+        #|import { inc } from './state';
+        #|setTimeout(function() {
+        #|  inc();
+        #|  console.log(ns.x);
+        #|}, 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: namespace preserves bracketed string export names" {
+  let modules : Array[(String, String)] = [
+    (
+      "./m",
+      (
+        #|const value = 42;
+        #|export { value as "[[x]]" };
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns from './m';
+        #|console.log(ns["[[x]]"]);
+        #|console.log(Object.keys(ns).indexOf("[[x]]") >= 0);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["42", "true"])
+}
+
+///|
+test "ES module: export star preserves bracketed string export names" {
+  let modules : Array[(String, String)] = [
+    (
+      "./source",
+      (
+        #|const value = 7;
+        #|export { value as "[[x]]" };
+      ),
+    ),
+    ("./barrel", "export * from './source';"),
+    (
+      "./main",
+      (
+        #|import { "[[x]]" as bracketed } from './barrel';
+        #|import * as ns from './barrel';
+        #|console.log(bracketed);
+        #|console.log(ns["[[x]]"]);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["7", "7"])
+}
+
+///|
+test "ES module: exact namespace cache key can be a string export name" {
+  let modules : Array[(String, String)] = [
+    (
+      "./m",
+      (
+        #|const value = 99;
+        #|export { value as "[[NamespaceObject]]" };
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns from './m';
+        #|console.log(ns["[[NamespaceObject]]"]);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["99"])
+}
+
+///|
+test "ES module: exact namespace cache key preserves namespace identity" {
+  let modules : Array[(String, String)] = [
+    (
+      "./m",
+      (
+        #|const value = 99;
+        #|export { value as "[[NamespaceObject]]" };
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import * as ns1 from './m';
+        #|import * as ns2 from './m';
+        #|console.log(ns1 === ns2);
+        #|console.log(ns1["[[NamespaceObject]]"]);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["true", "99"])
+}
+
+///|
+test "ES module: string-named import requires alias" {
+  let src =
+    #|import { "[[x]]" } from './m';
+  let result = run_module_throws(src)
+  expect_bool(
+    result.contains("String-literal import names require an explicit alias"),
+    true,
+    "string import alias error",
+  )
+}
+
+///|
+test "ES module: proxy descriptor trap sees namespace data descriptors" {
+  let modules : Array[(String, String)] = [
+    ("./m", "export const x = 1;"),
+    (
+      "./main",
+      (
+        #|import * as ns from './m';
+        #|const proxy = new Proxy(ns, {
+        #|  getOwnPropertyDescriptor(target, prop) {
+        #|    if (prop === 'x') {
+        #|      return { value: 1, writable: true, enumerable: true, configurable: false };
+        #|    }
+        #|    return Object.getOwnPropertyDescriptor(target, prop);
+        #|  }
+        #|});
+        #|const desc = Object.getOwnPropertyDescriptor(proxy, 'x');
+        #|console.log(desc.value);
+        #|console.log(desc.writable);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1", "true"])
+}
+
+///|
+test "ES module: Object.freeze on empty namespace succeeds" {
+  let modules : Array[(String, String)] = [
+    ("./empty", ""),
+    (
+      "./main",
+      (
+        #|import * as ns from './empty';
+        #|console.log(Object.isFrozen(Object.freeze(ns)));
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "ES module: Object.freeze on namespace exports throws" {
+  let modules : Array[(String, String)] = [
+    ("./values", "export const x = 1;"),
+    (
+      "./main",
+      (
+        #|import * as ns from './values';
+        #|try {
+        #|  Object.freeze(ns);
+        #|  console.log('no throw');
+        #|} catch (e) {
+        #|  console.log(e instanceof TypeError);
+        #|}
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -1147,6 +1498,29 @@ test "ES module: re-export all" {
 }
 
 ///|
+test "ES module: direct export wins over export star" {
+  let modules : Array[(String, String)] = [
+    ("./source", "export const a = 2;"),
+    (
+      "./barrel",
+      (
+        #|export const a = 1;
+        #|export * from './source';
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import { a } from './barrel';
+        #|console.log(a);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
 test "ES module: re-export all as namespace" {
   let modules : Array[(String, String)] = [
     (
@@ -1171,6 +1545,41 @@ test "ES module: re-export all as namespace" {
   ]
   let (output, _) = @js_engine.run_modules(modules)
   json_inspect(output, content=["99"])
+}
+
+///|
+test "ES module: self namespace import observes live export" {
+  let modules : Array[(String, String)] = [
+    (
+      "./self",
+      (
+        #|import * as ns from './self';
+        #|export var value = 1;
+        #|value = 2;
+        #|console.log(ns.value);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["2"])
+}
+
+///|
+test "ES module: imports are available before source-order import declaration" {
+  let modules : Array[(String, String)] = [
+    (
+      "./self",
+      (
+        #|let before = defaultValue;
+        #|console.log(defaultValue());
+        #|import defaultValue from './self';
+        #|export default function() { return 23; }
+        #|console.log(before === defaultValue);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["23", "true"])
 }
 
 ///|

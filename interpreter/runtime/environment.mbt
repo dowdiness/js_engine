@@ -334,7 +334,7 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
           message="Cannot access '\{name}' before initialization",
         )
       } else {
-        binding.value
+        resolve_module_export_value(binding.value)
       }
     None =>
       match self.parent {

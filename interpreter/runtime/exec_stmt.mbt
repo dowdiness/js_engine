@@ -1,8 +1,10 @@
 ///|
 /// Returns true when a FunctionDeclaration's name is already present as a
-/// `VarBinding` in the current var scope — meaning the hoisting pass already
-/// bound the function value into the variable environment, so the
-/// FunctionDeclaration's *execution* step is a no-op.
+/// `VarBinding` in the current environment — meaning the instantiation/hoisting
+/// pass already bound the function value, so the FunctionDeclaration's
+/// *execution* step is a no-op. Module environments are also var scopes for
+/// module-scoped `var` bindings, and module declaration instantiation
+/// pre-initializes top-level function declarations this way.
 fn function_decl_is_hoisted_noop(env : Environment, name : String) -> Bool {
   env.is_var_scope &&
   (match env.bindings.get(name) {
@@ -1339,22 +1341,26 @@ fn Interpreter::exec_stmt(
     }
     GeneratorDecl(name, params, body, _) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
-      let gen_func = self.make_generator_function(
-        Some(name),
-        params,
-        None,
-        body,
-        is_function_strict(ctx.strict, body),
-        env,
-      )
-      if env.bindings.contains(name) {
-        env.assign(name, gen_func)
-      } else if should_reconcile_eval_function_decl(env, name) {
-        env.assign_var(name, gen_func)
+      if function_decl_is_hoisted_noop(env, name) {
+        Normal(Undefined)
       } else {
-        env.def(name, gen_func, VarBinding)
+        let gen_func = self.make_generator_function(
+          Some(name),
+          params,
+          None,
+          body,
+          is_function_strict(ctx.strict, body),
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else if should_reconcile_eval_function_decl(env, name) {
+          env.assign_var(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
+        }
+        Normal(Undefined)
       }
-      Normal(Undefined)
     }
     GeneratorDeclExt(name, params, rest_param, body, _) => {
       validate_function_signature_ext(
@@ -1364,22 +1370,26 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
-      let gen_func = self.make_generator_function_ext(
-        Some(name),
-        params,
-        rest_param,
-        body,
-        is_function_strict(ctx.strict, body),
-        env,
-      )
-      if env.bindings.contains(name) {
-        env.assign(name, gen_func)
-      } else if should_reconcile_eval_function_decl(env, name) {
-        env.assign_var(name, gen_func)
+      if function_decl_is_hoisted_noop(env, name) {
+        Normal(Undefined)
       } else {
-        env.def(name, gen_func, VarBinding)
+        let gen_func = self.make_generator_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          is_function_strict(ctx.strict, body),
+          env,
+        )
+        if env.bindings.contains(name) {
+          env.assign(name, gen_func)
+        } else if should_reconcile_eval_function_decl(env, name) {
+          env.assign_var(name, gen_func)
+        } else {
+          env.def(name, gen_func, VarBinding)
+        }
+        Normal(Undefined)
       }
-      Normal(Undefined)
     }
     AsyncFuncDecl(name, params, body, _) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
@@ -1497,7 +1507,14 @@ fn Interpreter::exec_stmt(
     ExportNamedDecl(decl, specifiers, source, _, loc) =>
       self.exec_export_named(ctx, decl, specifiers, source, env, loc)
     ExportDefaultDecl(expr, _) => {
+      if is_hoisted_default_export_expr(expr) &&
+        self.module_exports.contains("default") {
+        return Normal(Undefined)
+      }
       let value = self.eval_expr(ctx, expr, env)
+      if is_anonymous_function_definition(expr) {
+        set_function_name(value, "default")
+      }
       self.module_exports["default"] = value
       // Named default exports also bind the name locally
       match expr {
@@ -1507,6 +1524,16 @@ fn Interpreter::exec_stmt(
           }
         GeneratorExpr(Some(name), _, _, _)
         | GeneratorExprExt(Some(name), _, _, _, _) =>
+          if !env.bindings.contains(name) {
+            env.def(name, value, LetBinding)
+          }
+        AsyncFuncExpr(Some(name), _, _, _)
+        | AsyncFuncExprExt(Some(name), _, _, _, _) =>
+          if !env.bindings.contains(name) {
+            env.def(name, value, LetBinding)
+          }
+        AsyncGeneratorExpr(Some(name), _, _, _)
+        | AsyncGeneratorExprExt(Some(name), _, _, _, _) =>
           if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
@@ -1684,17 +1711,30 @@ pub fn collect_for_in_keys(
             }
           }
         }
-        let sorted = sort_property_keys(data.bag.properties)
+        let sorted = if data.class_name == "Module" {
+          module_namespace_own_string_keys(data)
+        } else {
+          sort_property_keys(data.bag.properties)
+        }
         for k in sorted {
           if !seen.contains(k) {
-            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
-            if k.has_prefix("[[") {
+            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]]).
+            // Module namespace properties are export names, and string-named
+            // exports may legally begin with `[[`.
+            if data.class_name != "Module" && k.has_prefix("[[") {
               continue
             }
             seen[k] = true
-            let enumerable = match data.bag.descriptors.get(k) {
-              Some(d) => d.enumerable
-              None => true
+            let enumerable = if data.class_name == "Module" {
+              match interp.get_own_property(Object(data), String_(k)) {
+                Some((d, _)) => d.enumerable
+                None => false
+              }
+            } else {
+              match data.bag.descriptors.get(k) {
+                Some(d) => d.enumerable
+                None => true
+              }
             }
             if enumerable {
               keys.push(k)

@@ -120,18 +120,22 @@ pub fn setup_object_builtins(
       }
       match this_val {
         Object(data) =>
-          match prop_key {
-            Value::Symbol(sym) =>
-              Bool(
-                data.bag.symbol_properties.contains(sym.id) ||
-                data.bag.symbol_descriptors.contains(sym.id),
-              )
-            Value::String_(key) =>
-              Bool(
-                data.bag.properties.contains(key) ||
-                data.bag.descriptors.contains(key),
-              )
-            _ => Value::Bool(false)
+          if data.class_name == "Module" {
+            Bool(interp.get_own_property(this_val, prop_key) is Some(_))
+          } else {
+            match prop_key {
+              Value::Symbol(sym) =>
+                Bool(
+                  data.bag.symbol_properties.contains(sym.id) ||
+                  data.bag.symbol_descriptors.contains(sym.id),
+                )
+              Value::String_(key) =>
+                Bool(
+                  data.bag.properties.contains(key) ||
+                  data.bag.descriptors.contains(key),
+                )
+              _ => Value::Bool(false)
+            }
           }
         Value::Array(data) =>
           match prop_key {
@@ -217,7 +221,12 @@ pub fn setup_object_builtins(
       let key = @runtime.to_js_string(prop_key)
       match this_val {
         Object(data) =>
-          if data.bag.properties.contains(key) {
+          if data.class_name == "Module" {
+            match interp.get_own_property(this_val, prop_key) {
+              Some((desc, _)) => Bool(desc.enumerable)
+              None => Value::Bool(false)
+            }
+          } else if data.bag.properties.contains(key) {
             match data.bag.descriptors.get(key) {
               Some(d) => Bool(d.enumerable)
               None => Value::Bool(true)
@@ -629,11 +638,22 @@ pub fn setup_object_builtins(
               }
               Object(data) => {
                 let keys : Array[Value] = []
-                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                let sorted = if data.class_name == "Module" {
+                  stdlib_module_namespace_own_string_keys(data)
+                } else {
+                  @runtime.sort_property_keys(data.bag.properties)
+                }
                 for k in sorted {
-                  let enumerable = match data.bag.descriptors.get(k) {
-                    Some(d) => d.enumerable
-                    None => true
+                  let enumerable = if data.class_name == "Module" {
+                    match interp.get_own_property(obj, String_(k)) {
+                      Some((desc, _)) => desc.enumerable
+                      None => false
+                    }
+                  } else {
+                    match data.bag.descriptors.get(k) {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
                   }
                   if enumerable {
                     keys.push(Value::String_(k))
@@ -697,16 +717,27 @@ pub fn setup_object_builtins(
                 )
               Object(data) => {
                 let vals : Array[Value] = []
-                let sorted = @runtime.sort_property_keys(data.bag.properties)
+                let sorted = if data.class_name == "Module" {
+                  stdlib_module_namespace_own_string_keys(data)
+                } else {
+                  @runtime.sort_property_keys(data.bag.properties)
+                }
                 for k in sorted {
-                  let enumerable = match data.bag.descriptors.get(k) {
-                    Some(d) => d.enumerable
-                    None => true
-                  }
-                  if enumerable {
-                    match data.bag.properties.get(k) {
-                      Some(v) => vals.push(v)
-                      None => ()
+                  if data.class_name == "Module" {
+                    match interp.get_own_property(obj, String_(k)) {
+                      Some((desc, value)) if desc.enumerable => vals.push(value)
+                      _ => ()
+                    }
+                  } else {
+                    let enumerable = match data.bag.descriptors.get(k) {
+                      Some(d) => d.enumerable
+                      None => true
+                    }
+                    if enumerable {
+                      match data.bag.properties.get(k) {
+                        Some(v) => vals.push(v)
+                        None => ()
+                      }
                     }
                   }
                 }
@@ -771,19 +802,33 @@ pub fn setup_object_builtins(
                   )
                 Object(data) => {
                   let entries : Array[Value] = []
-                  let sorted = @runtime.sort_property_keys(data.bag.properties)
+                  let sorted = if data.class_name == "Module" {
+                    stdlib_module_namespace_own_string_keys(data)
+                  } else {
+                    @runtime.sort_property_keys(data.bag.properties)
+                  }
                   for k in sorted {
-                    let enumerable = match data.bag.descriptors.get(k) {
-                      Some(d) => d.enumerable
-                      None => true
-                    }
-                    if enumerable {
-                      match data.bag.properties.get(k) {
-                        Some(v) =>
+                    if data.class_name == "Module" {
+                      match interp.get_own_property(obj, String_(k)) {
+                        Some((desc, value)) if desc.enumerable =>
                           entries.push(
-                            @runtime.make_array([Value::String_(k), v]),
+                            @runtime.make_array([Value::String_(k), value]),
                           )
-                        None => ()
+                        _ => ()
+                      }
+                    } else {
+                      let enumerable = match data.bag.descriptors.get(k) {
+                        Some(d) => d.enumerable
+                        None => true
+                      }
+                      if enumerable {
+                        match data.bag.properties.get(k) {
+                          Some(v) =>
+                            entries.push(
+                              @runtime.make_array([Value::String_(k), v]),
+                            )
+                          None => ()
+                        }
                       }
                     }
                   }
@@ -1336,14 +1381,23 @@ pub fn setup_object_builtins(
                     )
                   }
                 }
-                Object(data) => {
-                  if !data.extensible {
-                    raise @errors.TypeError(
-                      message="Cannot set prototype of non-extensible object",
-                    )
+                Object(data) =>
+                  match
+                    stdlib_module_namespace_set_prototype_result(data, proto) {
+                    Some(true) => ()
+                    Some(false) =>
+                      raise @errors.TypeError(
+                        message="Cannot set prototype of non-extensible object",
+                      )
+                    None => {
+                      if !data.extensible {
+                        raise @errors.TypeError(
+                          message="Cannot set prototype of non-extensible object",
+                        )
+                      }
+                      data.prototype = proto
+                    }
                   }
-                  data.prototype = proto
-                }
                 Array(data) =>
                   @runtime.set_array_prototype_override(data, proto)
                 _ => ()

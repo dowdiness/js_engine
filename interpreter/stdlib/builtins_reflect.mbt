@@ -487,13 +487,18 @@ fn setup_reflect_builtins(
       match target {
         Value::Proxy(proxy_data) =>
           Bool(@runtime.proxy_set_prototype_of(interp, proxy_data, proto))
-        Object(data) => {
-          if !data.extensible && !@runtime.strict_equal(proto, data.prototype) {
-            return Value::Bool(false)
+        Object(data) =>
+          match stdlib_module_namespace_set_prototype_result(data, proto) {
+            Some(result) => Value::Bool(result)
+            None => {
+              if !data.extensible &&
+                !@runtime.strict_equal(proto, data.prototype) {
+                return Value::Bool(false)
+              }
+              data.prototype = proto
+              Value::Bool(true)
+            }
           }
-          data.prototype = proto
-          Value::Bool(true)
-        }
         Array(data) => {
           @runtime.set_array_prototype_override(data, proto)
           Value::Bool(true)

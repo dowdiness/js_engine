@@ -8,10 +8,19 @@
 
 ///|
 fn make_freeze_func() -> Value {
-  @runtime.make_native_func(name="freeze", length=1, fn(args) {
+  @runtime.make_native_func(name="freeze", length=1, fn(args) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
     match obj {
       Object(data) => {
+        if data.class_name == "Module" {
+          let mut has_string_export = false
+          data.bag.properties.each(fn(_, _) { has_string_export = true })
+          if has_string_export {
+            raise @errors.TypeError(
+              message="Cannot freeze module namespace object",
+            )
+          }
+        }
         data.extensible = false
         // Freeze string properties
         let keys : Array[String] = []
@@ -177,6 +186,13 @@ fn make_is_frozen_func() -> Value {
       Object(data) => {
         if data.extensible {
           return Value::Bool(false)
+        }
+        if data.class_name == "Module" {
+          let mut has_string_export = false
+          data.bag.properties.each(fn(_, _) { has_string_export = true })
+          if has_string_export {
+            return Value::Bool(false)
+          }
         }
         let mut frozen = true
         data.bag.properties.each(fn(k, _v) {
