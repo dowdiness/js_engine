@@ -1941,39 +1941,34 @@ pub fn setup_string_prototype(
             }
           _ => 0
         }
-        data.bag.properties[mname] = @runtime.make_interp_method_func(
-          realm_state=Some(realm_state),
-          name=display_name,
-          length=meth_length,
-          fn(interp, this_val, args) raise {
-            let s = this_to_string_impl(this_val, interp=Some(interp))
-            let meth_val = get_string_method(s, mname, realm_state, annex_b~)
-            match meth_val {
-              Object(fdata) =>
-                match fdata.callable {
-                  Some(NativeCallable(_, f)) => f(args)
-                  Some(NativeCallableWithContext(_, f)) => f(Call, args)
-                  Some(NonConstructableCallable(_, f)) => f(args)
-                  Some(NonConstructableInterpreterCallable(_, f)) =>
-                    f(interp, args)
-                  Some(InterpreterCallable(_, f)) => f(interp, this_val, args)
-                  Some(InterpreterCallableWithContext(_, f)) =>
-                    f(interp, Call, this_val, args)
-                  _ => Undefined
-                }
-              _ => Undefined
-            }
-          },
+        install_builtin_method(
+          data,
+          mname,
+          @runtime.make_interp_method_func(
+            realm_state=Some(realm_state),
+            name=display_name,
+            length=meth_length,
+            fn(interp, this_val, args) raise {
+              let s = this_to_string_impl(this_val, interp=Some(interp))
+              let meth_val = get_string_method(s, mname, realm_state, annex_b~)
+              match meth_val {
+                Object(fdata) =>
+                  match fdata.callable {
+                    Some(NativeCallable(_, f)) => f(args)
+                    Some(NativeCallableWithContext(_, f)) => f(Call, args)
+                    Some(NonConstructableCallable(_, f)) => f(args)
+                    Some(NonConstructableInterpreterCallable(_, f)) =>
+                      f(interp, args)
+                    Some(InterpreterCallable(_, f)) => f(interp, this_val, args)
+                    Some(InterpreterCallableWithContext(_, f)) =>
+                      f(interp, Call, this_val, args)
+                    _ => Undefined
+                  }
+                _ => Undefined
+              }
+            },
+          ),
         )
-        // Make methods non-enumerable
-        data.bag.descriptors[mname] = {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        }
       }
       // Per spec, trimLeft === trimStart and trimRight === trimEnd (same object)
       data.bag.properties["trimLeft"] = data.bag.properties["trimStart"]
