@@ -11,3 +11,7 @@ license = "Apache-2.0"
 keywords = [ "javascript", "interpreter" ]
 
 description = "JavaScript interpreter in MoonBit"
+
+import {
+  "moonbitlang/x@0.4.45",
+}

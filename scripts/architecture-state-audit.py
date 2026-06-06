@@ -10,6 +10,7 @@ ambient mutable state from being added without an explicit classification.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,9 +41,26 @@ MODULE_LET_START_RE = re.compile(
 
 
 # Known ambient mutable state as of 2026-05-19. These entries are the migration
-# inventory for Stage 1+. Adding a new entry here should be reviewed as an
-# architecture decision, not as routine test maintenance.
-CLASSIFIED_MUTABLE_STATE: dict[str, str] = {}
+# inventory for Stage 1+. Adding a new entry should be reviewed as an
+# architecture decision, not as routine test maintenance. Keep the data in a
+# strict JSON file so the Python audit and MoonBit shadow audit share one source.
+CLASSIFIED_MUTABLE_STATE_PATH = Path(__file__).with_name(
+    "architecture_state_classified_mutable_state.json"
+)
+
+
+def load_classified_mutable_state(path: Path = CLASSIFIED_MUTABLE_STATE_PATH) -> dict[str, str]:
+    with path.open(encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict) or not all(
+        isinstance(key, str) and isinstance(value, str)
+        for key, value in data.items()
+    ):
+        raise ValueError(f"{path} must contain a JSON object of string reasons")
+    return data
+
+
+CLASSIFIED_MUTABLE_STATE: dict[str, str] = load_classified_mutable_state()
 
 
 @dataclass(frozen=True)
