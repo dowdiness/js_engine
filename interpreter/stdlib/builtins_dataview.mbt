@@ -816,14 +816,7 @@ pub fn setup_dataview_builtins(
   )
 
   // Non-enumerable descriptors for all DataView prototype methods
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = builtin_method_desc()
   dv_proto_descs["getInt8"] = method_desc
   dv_proto_descs["getUint8"] = method_desc
   dv_proto_descs["getInt16"] = method_desc

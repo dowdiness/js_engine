@@ -9,14 +9,7 @@ fn setup_array_builtins(
   // Create Array.prototype with all array methods
   let array_proto_props : Map[String, Value] = {}
   let array_proto_descs : Map[String, PropDescriptor] = {}
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = builtin_method_desc()
 
   // Non-callback methods (using MethodCallable for this-aware dispatch)
   array_proto_props["push"] = @runtime.make_interp_method_func(

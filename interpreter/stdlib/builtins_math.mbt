@@ -530,14 +530,7 @@ fn setup_math_builtins(
     setter: None,
     is_accessor: false,
   }
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = builtin_method_desc()
   // Constants are non-writable, non-enumerable, non-configurable
   let math_constants = [
     "PI", "E", "LN2", "LN10", "LOG2E", "LOG10E", "SQRT2", "SQRT1_2",

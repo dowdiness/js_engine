@@ -271,14 +271,7 @@ fn setup_iterator_protocol(
         },
       )
       proto_data.bag.symbol_properties[iterator_sym.id] = iter_method
-      let iter_method_desc : PropDescriptor = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      let iter_method_desc = builtin_method_desc()
       proto_data.bag.symbol_descriptors[iterator_sym.id] = iter_method_desc
     }
     _ => ()

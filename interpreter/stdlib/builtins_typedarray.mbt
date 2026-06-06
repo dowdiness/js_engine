@@ -2635,14 +2635,7 @@ pub fn setup_typedarray_builtins(
   )
 
   // Mark all prototype methods as non-enumerable (per spec)
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = builtin_method_desc()
   ta_proto_descs["set"] = method_desc
   ta_proto_descs["subarray"] = method_desc
   ta_proto_descs["slice"] = method_desc
