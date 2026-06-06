@@ -1068,6 +1068,10 @@ fn Parser::expect_module_export_name(self : Parser) -> String raise Error {
       self.pos += 1
       name
     }
+    String_(name) => {
+      self.pos += 1
+      name
+    }
     Default => {
       self.pos += 1
       "default"
@@ -1385,9 +1389,13 @@ fn Parser::parse_export_decl(self : Parser) -> @ast.Stmt raise Error {
       tok.loc,
     )
   }
-  // export function name() {}
+  // export function name() {} / export function* name() {}
   if self.at(Function) {
-    let decl = self.parse_func_decl()
+    let decl = if self.peek_kind_at(1) == Star {
+      self.parse_generator_decl()
+    } else {
+      self.parse_func_decl()
+    }
     return ExportNamedDecl(
       Some(decl),
       [],

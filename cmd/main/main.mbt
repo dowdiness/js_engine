@@ -65,6 +65,10 @@ fn main {
         action=Append,
         about="<spec> <src> — register a module fixture (may be repeated)",
       ),
+      @argparse.OptionArg(
+        "module-specifier",
+        about="specifier to register the main module under",
+      ),
     ],
     positionals=[
       @argparse.PositionArg("source", about="JavaScript source to execute"),
@@ -95,6 +99,10 @@ fn main {
     Some(arr) if arr.length() > 0 => Some(arr[0])
     _ => None
   }
+  let main_module_specifier = match matches.values.get("module-specifier") {
+    Some(arr) if arr.length() > 0 => arr[0]
+    _ => "<test>"
+  }
   match source {
     None => {
       println(
@@ -117,7 +125,7 @@ fn main {
           for f in fixtures {
             modules.push(f)
           }
-          modules.push(("<test>", src))
+          modules.push((main_module_specifier, src))
           let (output, _) = @lib.run_modules(modules, annex_b~)
           for line in output {
             println(line)

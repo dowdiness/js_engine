@@ -766,6 +766,8 @@ pub fn Interpreter::get_own_property(
   let prop_key = to_property_key(key, interp=Some(self))
   match val {
     Value::Proxy(pdata) => proxy_get_own_property(self, pdata, prop_key)
+    Object(data) if data.class_name == "Module" =>
+      self.module_namespace_get_own_property_pair(data, prop_key)
     Object(data) if is_typedarray_class(data.class_name) =>
       self.typedarray_get_own_property_pair(data, prop_key)
     _ => ordinary_get_own_property_pair(val, prop_key)
@@ -840,6 +842,16 @@ pub fn Interpreter::ordinary_define_own_property(
 ) -> Bool raise Error {
   // Exotic dispatch
   match val {
+    Object(data) if data.class_name == "Module" =>
+      match
+        self.module_namespace_define_own_property(
+          data,
+          to_property_key(key, interp=Some(self)),
+          partial,
+        ) {
+        Some(result) => return result
+        None => ()
+      }
     Object(data) if is_typedarray_class(data.class_name) =>
       match self.typedarray_define_own_property_numeric(data, key, partial) {
         Some(result) => return result

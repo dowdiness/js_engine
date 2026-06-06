@@ -89,6 +89,18 @@ pub fn collect_target_own_keys(
   let keys : Array[Value] = []
   match target {
     Object(data) => {
+      if data.class_name == "Module" {
+        for k in module_namespace_own_string_keys(data) {
+          keys.push(Value::String_(k))
+        }
+        data.bag.symbol_properties.each(fn(id, _v) {
+          match interp.realm_state.symbols.get_symbol_by_id(id) {
+            Some(sym) => keys.push(Value::Symbol(sym))
+            None => ()
+          }
+        })
+        return keys
+      }
       let typedarray_length = typedarray_declared_length(data)
       for i = 0; i < typedarray_length; i = i + 1 {
         if (interp.stdlib_hooks.typedarray_is_valid_index)(

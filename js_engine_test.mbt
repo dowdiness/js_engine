@@ -1068,6 +1068,43 @@ test "ES module: import namespace" {
 }
 
 ///|
+test "ES module: Object.freeze on empty namespace succeeds" {
+  let modules : Array[(String, String)] = [
+    ("./empty", ""),
+    (
+      "./main",
+      (
+        #|import * as ns from './empty';
+        #|console.log(Object.isFrozen(Object.freeze(ns)));
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "ES module: Object.freeze on namespace exports throws" {
+  let modules : Array[(String, String)] = [
+    ("./values", "export const x = 1;"),
+    (
+      "./main",
+      (
+        #|import * as ns from './values';
+        #|try {
+        #|  Object.freeze(ns);
+        #|  console.log('no throw');
+        #|} catch (e) {
+        #|  console.log(e instanceof TypeError);
+        #|}
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "ES module: import default and named" {
   let modules : Array[(String, String)] = [
     (
@@ -1147,6 +1184,29 @@ test "ES module: re-export all" {
 }
 
 ///|
+test "ES module: direct export wins over export star" {
+  let modules : Array[(String, String)] = [
+    ("./source", "export const a = 2;"),
+    (
+      "./barrel",
+      (
+        #|export const a = 1;
+        #|export * from './source';
+      ),
+    ),
+    (
+      "./main",
+      (
+        #|import { a } from './barrel';
+        #|console.log(a);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
 test "ES module: re-export all as namespace" {
   let modules : Array[(String, String)] = [
     (
@@ -1171,6 +1231,41 @@ test "ES module: re-export all as namespace" {
   ]
   let (output, _) = @js_engine.run_modules(modules)
   json_inspect(output, content=["99"])
+}
+
+///|
+test "ES module: self namespace import observes live export" {
+  let modules : Array[(String, String)] = [
+    (
+      "./self",
+      (
+        #|import * as ns from './self';
+        #|export var value = 1;
+        #|value = 2;
+        #|console.log(ns.value);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["2"])
+}
+
+///|
+test "ES module: imports are available before source-order import declaration" {
+  let modules : Array[(String, String)] = [
+    (
+      "./self",
+      (
+        #|let before = defaultValue;
+        #|console.log(defaultValue());
+        #|import defaultValue from './self';
+        #|export default function() { return 23; }
+        #|console.log(before === defaultValue);
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["23", "true"])
 }
 
 ///|

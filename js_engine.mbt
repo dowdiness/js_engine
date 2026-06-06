@@ -102,14 +102,7 @@ pub fn run_modules(
   annex_b? : Bool = false,
 ) -> (Array[String], Map[String, @interpreter.Value]) raise Error {
   let interp = @interpreter.new_interpreter(annex_b~)
-  let mut last_exports : Map[String, @interpreter.Value] = {}
-  for pair in modules {
-    let (specifier, source) = pair
-    let prog = @parser.parse(source)
-    let exports = interp.run_module(prog.stmts)
-    interp.register_module(specifier, exports)
-    last_exports = exports
-  }
+  let last_exports = interp.run_modules(modules)
   interp.run_microtasks()
   interp.run_timers()
   (interp.host.output, last_exports)

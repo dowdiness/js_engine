@@ -288,10 +288,13 @@ def run_single_test(
     # Build engine command - add --module and --annex-b flags as needed
     cmd = engine_cmd
     if is_module:
-        cmd = cmd + ["--module"]
+        main_specifier = "./" + os.path.basename(test_path)
+        cmd = cmd + ["--module", "--module-specifier", main_specifier]
         # Module tests may import sibling _FIXTURE.js files relative to the test
         # path. The engine has no FS access, so we resolve them here and pass each
         # as a `--fixture <specifier> <source>` triple (registered before main runs).
+        # The main module is registered under its basename specifier so self-imports
+        # like `import * as ns from './current-test.js'` resolve to the same module.
         for spec, fixture_src in resolve_fixtures(test_path, source):
             cmd = cmd + ["--fixture", spec, fixture_src]
     if is_annex_b:

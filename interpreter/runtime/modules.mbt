@@ -28,61 +28,44 @@ fn Interpreter::exec_import(
   }
   // import defaultExport from 'source'
   match default_import {
-    Some(name) => {
-      let value = match module_exports.get("default") {
-        Some(v) => v
+    Some(name) =>
+      match module_exports.get("default") {
+        Some(_) =>
+          env.def(
+            name,
+            make_module_import_cell("default", module_exports),
+            ConstBinding,
+          )
         None =>
           raise @errors.SyntaxError(
             message="Module '\{source}' does not have a default export at line \{loc.line}, col \{loc.col}",
           )
       }
-      env.def(name, value, ConstBinding)
-    }
     None => ()
   }
   // import { name1, name2 as alias } from 'source'
   for spec in specifiers {
-    let value = match module_exports.get(spec.imported) {
-      Some(v) => v
+    match module_exports.get(spec.imported) {
+      Some(_) =>
+        env.def(
+          spec.local_name,
+          make_module_import_cell(spec.imported, module_exports),
+          ConstBinding,
+        )
       None =>
         raise @errors.SyntaxError(
           message="Module '\{source}' does not export '\{spec.imported}' at line \{loc.line}, col \{loc.col}",
         )
     }
-    env.def(spec.local_name, value, ConstBinding)
   }
   // import * as namespace from 'source'
   match namespace_import {
-    Some(name) => {
-      // Create a namespace object with all exports as properties
-      let ns_props : Map[String, Value] = {}
-      let ns_descs : Map[String, PropDescriptor] = {}
-      module_exports.each(fn(k, v) {
-        ns_props[k] = v
-        ns_descs[k] = {
-          writable: false,
-          enumerable: true,
-          configurable: false,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        }
-      })
-      let ns_obj : Value = Object({
-        bag: {
-          properties: ns_props,
-          symbol_properties: {},
-          descriptors: ns_descs,
-          symbol_descriptors: {},
-        },
-        prototype: Null,
-        callable: None,
-        class_name: "Module",
-        extensible: false,
-        arraybuffer_state: None,
-      })
-      env.def(name, ns_obj, ConstBinding)
-    }
+    Some(name) =>
+      env.def(
+        name,
+        self.create_module_namespace_object(module_exports),
+        ConstBinding,
+      )
     None => ()
   }
   Normal(Undefined)
@@ -103,7 +86,8 @@ fn Interpreter::exec_export_named(
   match decl {
     Some(inner_decl) => {
       let signal = self.exec_stmt(ctx, inner_decl, env)
-      // Record declared names for deferred resolution (live bindings)
+      // Record declared names for final materialization. During evaluation,
+      // predeclared ModuleExportCell entries read directly from `env`.
       self.extract_export_names(inner_decl)
       return signal
     }
@@ -112,7 +96,8 @@ fn Interpreter::exec_export_named(
   // export { name1, name2 as alias } [from 'source']
   match source {
     Some(src) => {
-      // Re-export from another module - resolve immediately (source already finalized)
+      // Re-export from another module. Keep any ModuleExportCell intact so
+      // namespace objects observe live values while a cycle is evaluating.
       let src_exports = match self.module_registry.get(src) {
         Some(exports) => exports
         None =>
@@ -140,7 +125,7 @@ fn Interpreter::exec_export_named(
       }
     }
     None =>
-      // Local export: defer resolution for live bindings
+      // Local export: defer final resolution for live bindings.
       for spec in specifiers {
         self.module_export_bindings.push((spec.exported, spec.local_name))
       }
@@ -172,40 +157,20 @@ fn Interpreter::exec_export_all(
       }
   }
   match ns_alias {
-    Some(name) => {
+    Some(name) =>
       // export * as name from 'source' - create namespace object
-      let ns_props : Map[String, Value] = {}
-      let ns_descs : Map[String, PropDescriptor] = {}
-      src_exports.each(fn(k, v) {
-        ns_props[k] = v
-        ns_descs[k] = {
-          writable: false,
-          enumerable: true,
-          configurable: false,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        }
-      })
-      let ns_obj : Value = Object({
-        bag: {
-          properties: ns_props,
-          symbol_properties: {},
-          descriptors: ns_descs,
-          symbol_descriptors: {},
-        },
-        prototype: Null,
-        callable: None,
-        class_name: "Module",
-        extensible: false,
-        arraybuffer_state: None,
-      })
-      self.module_exports[name] = ns_obj
-    }
+      self.module_exports[name] = self.create_module_namespace_object(
+        src_exports,
+      )
     None =>
       // export * from 'source' - re-export all (except default)
       src_exports.each(fn(k, v) {
-        if k != "default" {
+        let should_copy = match self.module_exports.get(k) {
+          Some(Object(data)) if data.class_name == "ModuleTDZ" => true
+          Some(_) => false
+          None => true
+        }
+        if k != "default" && !k.has_prefix("[[") && should_copy {
           self.module_exports[k] = v
         }
       })
@@ -289,56 +254,4 @@ pub fn Interpreter::register_module(
   exports : Map[String, Value],
 ) -> Unit {
   self.module_registry[specifier] = exports
-}
-
-///|
-/// Run a module source and return its exports
-pub fn Interpreter::run_module(
-  self : Interpreter,
-  stmts : Array[@ast.Stmt],
-) -> Map[String, Value] raise Error {
-  // Save and reset module exports for this module
-  let saved_exports = self.module_exports
-  let saved_bindings = self.module_export_bindings
-  self.module_exports = {}
-  self.module_export_bindings = []
-  // Create a module-scoped environment that inherits from global
-  let module_env = Environment::new(parent=Some(self.global))
-  // Modules are always strict mode per ES2022 §16.2.1
-  let module_ctx : ExecContext = { strict: true, current_generator: None }
-  try {
-    let exports = with_cleared_active_callee_realm(self.realm_state, fn() raise {
-      // Static block-scoped redeclaration checks (applies to module code too).
-      self.validate_block_early_errors(stmts, true)
-      // Hoist var declarations and function declarations
-      self.hoist_declarations(stmts, module_env, strict=true)
-      // Also hoist block-scoped (let/const/class) with TDZ
-      hoist_block_tdz(stmts, module_env)
-      for stmt in stmts {
-        match self.exec_stmt(module_ctx, stmt, module_env) {
-          Normal(_) => ()
-          ReturnSignal(_) =>
-            raise @errors.SyntaxError(
-              message="return statement outside of function",
-            )
-          sig => raise_if_break_continue(sig)
-        }
-      }
-      // Resolve deferred export bindings from module environment (live bindings)
-      for pair in self.module_export_bindings {
-        let (export_name, local_name) = pair
-        self.module_exports[export_name] = module_env.get(local_name)
-      }
-      self.module_exports
-    })
-    self.module_exports = saved_exports
-    self.module_export_bindings = saved_bindings
-    exports
-  } catch {
-    e => {
-      self.module_exports = saved_exports
-      self.module_export_bindings = saved_bindings
-      raise e
-    }
-  }
 }
