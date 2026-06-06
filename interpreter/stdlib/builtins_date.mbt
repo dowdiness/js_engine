@@ -1741,14 +1741,7 @@ pub fn setup_date_builtins(
   )
 
   // Create descriptor map for Date.prototype methods (non-enumerable, writable, configurable)
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = builtin_method_desc()
   let date_proto_descs : Map[String, PropDescriptor] = {}
   date_proto_descs["getTime"] = method_desc
   date_proto_descs["getFullYear"] = method_desc
