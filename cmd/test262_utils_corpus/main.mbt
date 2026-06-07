@@ -35,13 +35,13 @@ fn join_path(left : String, right : String) -> String {
 ///|
 fn resolve_test_dir(test262_root : String) -> String raise {
   let test_dir = join_path(test262_root, "test")
-  if @fs.path_exists(test_dir) && @fs.is_dir(test_dir) {
-    return test_dir
-  }
-  if @fs.path_exists(test262_root) && @fs.is_dir(test262_root) {
+  guard @fs.path_exists(test_dir) && @fs.is_dir(test_dir) else {
+    guard @fs.path_exists(test262_root) && @fs.is_dir(test262_root) else {
+      fail("Test262 test directory not found under: \{test262_root}")
+    }
     return test262_root
   }
-  fail("Test262 test directory not found under: \{test262_root}")
+  test_dir
 }
 
 ///|
