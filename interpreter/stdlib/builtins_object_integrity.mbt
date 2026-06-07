@@ -7,6 +7,67 @@
 /// lambda parameters and package-level helpers.
 
 ///|
+fn frozen_descriptor(existing : PropDescriptor?) -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: match existing {
+      Some(d) => d.enumerable
+      None => true
+    },
+    configurable: false,
+    getter: match existing {
+      Some(d) => d.getter
+      None => None
+    },
+    setter: match existing {
+      Some(d) => d.setter
+      None => None
+    },
+    is_accessor: match existing {
+      Some(d) => d.is_accessor
+      None => false
+    },
+  }
+}
+
+///|
+fn freeze_string_properties(bag : @runtime.PropertyBag) -> Unit {
+  let keys : Array[String] = []
+  bag.properties.each(fn(k, _v) { keys.push(k) })
+  bag.descriptors.each(fn(k, _desc) {
+    if !bag.properties.contains(k) {
+      keys.push(k)
+    }
+  })
+  for key in keys {
+    bag.descriptors[key] = frozen_descriptor(bag.descriptors.get(key))
+  }
+}
+
+///|
+fn freeze_symbol_properties(bag : @runtime.PropertyBag) -> Unit {
+  let sym_ids : Array[Int] = []
+  bag.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
+  for id in sym_ids {
+    bag.symbol_descriptors[id] = frozen_descriptor(
+      bag.symbol_descriptors.get(id),
+    )
+  }
+}
+
+///|
+fn freeze_array_index_properties(data : ArrayData) -> Unit {
+  for i in 0..<data.elements.length() {
+    if !data.holes.contains(i) {
+      let key = i.to_string()
+      data.bag.descriptors[key] = frozen_descriptor(
+        data.bag.descriptors.get(key),
+      )
+    }
+  }
+}
+
+///|
 fn make_freeze_func() -> Value {
   @runtime.make_native_func(name="freeze", length=1, fn(args) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
@@ -22,58 +83,16 @@ fn make_freeze_func() -> Value {
           }
         }
         data.extensible = false
-        // Freeze string properties
-        let keys : Array[String] = []
-        data.bag.properties.each(fn(k, _v) { keys.push(k) })
-        for key in keys {
-          let existing = data.bag.descriptors.get(key)
-          data.bag.descriptors[key] = {
-            writable: false,
-            enumerable: match existing {
-              Some(d) => d.enumerable
-              None => true
-            },
-            configurable: false,
-            getter: match existing {
-              Some(d) => d.getter
-              None => None
-            },
-            setter: match existing {
-              Some(d) => d.setter
-              None => None
-            },
-            is_accessor: match existing {
-              Some(d) => d.is_accessor
-              None => false
-            },
-          }
-        }
-        // Freeze symbol properties
-        let sym_ids : Array[Int] = []
-        data.bag.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
-        for id in sym_ids {
-          let existing = data.bag.symbol_descriptors.get(id)
-          data.bag.symbol_descriptors[id] = {
-            writable: false,
-            enumerable: match existing {
-              Some(d) => d.enumerable
-              None => true
-            },
-            configurable: false,
-            getter: match existing {
-              Some(d) => d.getter
-              None => None
-            },
-            setter: match existing {
-              Some(d) => d.setter
-              None => None
-            },
-            is_accessor: match existing {
-              Some(d) => d.is_accessor
-              None => false
-            },
-          }
-        }
+        freeze_string_properties(data.bag)
+        freeze_symbol_properties(data.bag)
+        obj
+      }
+      Array(data) => {
+        data.extensible = false
+        data.length_writable = false
+        freeze_array_index_properties(data)
+        freeze_string_properties(data.bag)
+        freeze_symbol_properties(data.bag)
         obj
       }
       _ => obj
@@ -395,27 +414,7 @@ fn make_has_own_func() -> Value {
     let raw = if args.length() > 0 { args[0] } else { Undefined }
     let key_val = if args.length() > 1 { args[1] } else { Undefined }
     let obj = to_object(raw, interp)
-    match obj {
-      Object(data) =>
-        // Handle Symbol keys
-        match key_val {
-          Value::Symbol(sym) =>
-            Bool(data.bag.symbol_properties.contains(sym.id))
-          _ => Bool(data.bag.properties.contains(key_val.to_string()))
-        }
-      Value::Array(data) => {
-        let key = key_val.to_string()
-        // Arrays support numeric index check
-        if key == "length" {
-          Value::Bool(true)
-        } else {
-          let idx = @string.parse_int(key) catch { _ => -1 }
-          Bool(
-            idx >= 0 && idx.to_string() == key && idx < data.elements.length(),
-          )
-        }
-      }
-      _ => Value::Bool(false)
-    }
+    let prop_key = @runtime.to_property_key(key_val, interp=Some(interp))
+    Bool(interp.get_own_property(obj, prop_key) is Some(_))
   })
 }

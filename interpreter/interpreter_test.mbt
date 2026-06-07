@@ -2100,6 +2100,225 @@ test "array push pop" {
 }
 
 ///|
+test "array push and pop observe prototype method overrides" {
+  let src =
+    #|var savedPush = Array.prototype.push;
+    #|var savedPop = Array.prototype.pop;
+    #|Array.prototype.push = function(a, b) { return "push:" + this.length + ":" + a + ":" + b; };
+    #|Array.prototype.pop = function() { return "pop:" + this.length; };
+    #|console.log([1, 2].push(3, 4));
+    #|console.log([1, 2].pop());
+    #|Array.prototype.push = savedPush;
+    #|Array.prototype.pop = savedPop;
+  let output = run_output(src)
+  json_inspect(output, content=["push:2:3:4", "pop:2"])
+}
+
+///|
+test "array push length set and inherited setter side effects" {
+  let src =
+    #|var empty = [];
+    #|Object.defineProperty(empty, "length", { writable: false });
+    #|try { empty.push(); console.log("empty:no throw"); }
+    #|catch (e) { console.log("empty:" + (e instanceof TypeError)); }
+    #|var array = [];
+    #|var calls = 0;
+    #|Object.defineProperty(Array.prototype, "0", {
+    #|  configurable: true,
+    #|  set: function(_value) {
+    #|    calls = calls + 1;
+    #|    Object.defineProperty(array, "length", { writable: false });
+    #|  }
+    #|});
+    #|try { array.push(1); console.log("setter:no throw"); }
+    #|catch (e) { console.log("setter:" + (e instanceof TypeError)); }
+    #|console.log(array.hasOwnProperty("0"));
+    #|console.log(array.length);
+    #|console.log(calls);
+    #|delete Array.prototype[0];
+  let output = run_output(src)
+  json_inspect(output, content=["empty:true", "setter:true", "false", "0", "1"])
+}
+
+///|
+test "array push and pop preserve sparse large indices" {
+  let src =
+    #|var array = [];
+    #|array.length = 2147483647;
+    #|console.log(array.push("x"));
+    #|console.log(array.length);
+    #|console.log(array[2147483647]);
+    #|console.log(array[0]);
+    #|console.log(array.pop());
+    #|console.log(array.length);
+    #|console.log(array[2147483647]);
+    #|var blocked = [];
+    #|blocked.length = 2147483648;
+    #|Object.defineProperty(blocked, "length", { writable: false });
+    #|try { blocked.push("blocked"); console.log("blocked:no throw"); }
+    #|catch (e) { console.log("blocked:" + (e instanceof TypeError)); }
+    #|console.log(blocked.hasOwnProperty("2147483648"));
+    #|console.log(blocked.length);
+    #|var computedString = [];
+    #|computedString["2147483648"] = "string";
+    #|console.log(computedString.length);
+    #|console.log(computedString["2147483648"]);
+    #|var computedNumber = [];
+    #|computedNumber[2147483648] = "number";
+    #|console.log(computedNumber.length);
+    #|console.log(computedNumber[2147483648]);
+    #|var computedBlocked = [];
+    #|computedBlocked.length = 2147483648;
+    #|Object.defineProperty(computedBlocked, "length", { writable: false });
+    #|(function() { "use strict"; try { computedBlocked["2147483648"] = "blocked"; console.log("computed:no throw"); }
+    #|catch (e) { console.log("computed:" + (e instanceof TypeError)); } })();
+    #|console.log(computedBlocked.hasOwnProperty("2147483648"));
+    #|console.log(computedBlocked.length);
+    #|var shrink = [];
+    #|shrink[200000] = "sparse";
+    #|shrink.length = 0;
+    #|console.log(shrink.hasOwnProperty("200000"));
+    #|console.log(shrink[200000]);
+    #|console.log(shrink.length);
+    #|var shrinkDefine = [];
+    #|shrinkDefine[200000] = "sparse";
+    #|Object.defineProperty(shrinkDefine, "length", { value: 0 });
+    #|console.log(shrinkDefine.hasOwnProperty("200000"));
+    #|console.log(shrinkDefine[200000]);
+    #|console.log(shrinkDefine.length);
+    #|var partial = [];
+    #|partial.length = 3000000001;
+    #|partial["3000000000"] = "deleted";
+    #|Object.defineProperty(partial, "2500000000", { value: "fixed", configurable: false });
+    #|try { partial.length = 0; console.log("partial:ok"); }
+    #|catch (e) { console.log("partial:" + e.name); }
+    #|console.log(partial.hasOwnProperty("3000000000"));
+    #|console.log(partial["3000000000"]);
+    #|console.log(partial.length);
+    #|console.log(partial["2500000000"]);
+    #|var partialDefine = [];
+    #|partialDefine.length = 3000000001;
+    #|partialDefine["3000000000"] = "deleted";
+    #|Object.defineProperty(partialDefine, "2500000000", { value: "fixed", configurable: false });
+    #|try { Object.defineProperty(partialDefine, "length", { value: 0 }); console.log("define:ok"); }
+    #|catch (e) { console.log("define:" + e.name); }
+    #|console.log(partialDefine.hasOwnProperty("3000000000"));
+    #|console.log(partialDefine["3000000000"]);
+    #|console.log(partialDefine.length);
+    #|console.log(partialDefine["2500000000"]);
+    #|var denseBlocked = [];
+    #|denseBlocked.length = 200000;
+    #|Object.defineProperty(denseBlocked, "5", { value: 1, configurable: false });
+    #|denseBlocked.length = 0;
+    #|console.log(denseBlocked.length);
+    #|console.log(denseBlocked[5]);
+    #|var denseBlockedDefine = [];
+    #|denseBlockedDefine.length = 200000;
+    #|Object.defineProperty(denseBlockedDefine, "5", { value: 1, configurable: false });
+    #|try { Object.defineProperty(denseBlockedDefine, "length", { value: 0 }); console.log("denseDefine:ok"); }
+    #|catch (e) { console.log("denseDefine:" + e.name); }
+    #|console.log(denseBlockedDefine.length);
+    #|console.log(denseBlockedDefine[5]);
+    #|var extendSparse = [];
+    #|extendSparse.length = 3000000000;
+    #|extendSparse.length = 3000000001;
+    #|console.log(extendSparse.length);
+    #|console.log(extendSparse.hasOwnProperty("0"));
+    #|Object.defineProperty(extendSparse, "length", { value: 3000000002 });
+    #|console.log(extendSparse.length);
+    #|console.log(extendSparse.hasOwnProperty("3000000001"));
+    #|var methodSparse = [];
+    #|methodSparse[200000] = "needle";
+    #|console.log(methodSparse.indexOf("needle"));
+    #|console.log(methodSparse.includes("needle"));
+    #|console.log(Object.hasOwn(methodSparse, "200000"));
+    #|var inheritedSparse = [];
+    #|inheritedSparse.length = 100001;
+    #|Array.prototype[100000] = "proto";
+    #|console.log(inheritedSparse.indexOf("proto"));
+    #|delete Array.prototype[100000];
+    #|var holeOnly = [];
+    #|holeOnly.length = 100001;
+    #|console.log(holeOnly.join(",").length);
+    #|var sparseAccessor = [];
+    #|Object.defineProperty(sparseAccessor, "200000", { configurable: true, get: function() { return "accessor"; } });
+    #|Object.freeze(sparseAccessor);
+    #|var sparseDesc = Object.getOwnPropertyDescriptor(sparseAccessor, "200000");
+    #|console.log(sparseDesc.configurable);
+    #|console.log(sparseAccessor[200000]);
+    #|var rematerialize = [];
+    #|rematerialize.length = 99999;
+    #|rematerialize[200000] = "x";
+    #|rematerialize[150000] = "y";
+    #|rematerialize[200000] = "z";
+    #|var names = Object.getOwnPropertyNames(rematerialize);
+    #|var nameCount = 0;
+    #|for (var ni = 0; ni < names.length; ni = ni + 1) { if (names[ni] === "200000") nameCount = nameCount + 1; }
+    #|console.log(nameCount);
+    #|console.log(delete rematerialize[200000]);
+    #|console.log(rematerialize.hasOwnProperty("200000"));
+    #|console.log(rematerialize[200000]);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "2147483648", "2147483648", "x", "undefined", "x", "2147483647", "undefined",
+    "blocked:true", "false", "2147483648", "2147483649", "string", "2147483649",
+    "number", "computed:true", "false", "2147483648", "false", "undefined", "0",
+    "false", "undefined", "0", "partial:ok", "false", "undefined", "2500000001",
+    "fixed", "define:TypeError", "false", "undefined", "2500000001", "fixed", "6",
+    "1", "denseDefine:TypeError", "6", "1", "3000000001", "false", "3000000002",
+    "false", "200000", "true", "true", "100000", "100000", "false", "accessor", "1",
+    "true", "false", "undefined",
+  ])
+}
+
+///|
+test "array pop reads inherited elements before deleting and setting length" {
+  let src =
+    #|Array.prototype[1] = "inherited";
+    #|var sparse = [0];
+    #|sparse.length = 2;
+    #|console.log(sparse.pop());
+    #|console.log(sparse.length);
+    #|console.log(sparse[1]);
+    #|delete Array.prototype[1];
+    #|var array = new Array(1);
+    #|var calls = 0;
+    #|Object.defineProperty(Array.prototype, "0", {
+    #|  configurable: true,
+    #|  get: function() {
+    #|    calls = calls + 1;
+    #|    Object.defineProperty(array, "length", { writable: false });
+    #|    return "from getter";
+    #|  }
+    #|});
+    #|try { array.pop(); console.log("getter:no throw"); }
+    #|catch (e) { console.log("getter:" + (e instanceof TypeError)); }
+    #|console.log(array.length);
+    #|console.log(calls);
+    #|delete Array.prototype[0];
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "inherited", "1", "inherited", "getter:true", "1", "1",
+  ])
+}
+
+///|
+test "array push and pop reject frozen array length sets" {
+  let src =
+    #|var pushArray = [];
+    #|Object.freeze(pushArray);
+    #|try { pushArray.push(); console.log("push:no throw"); }
+    #|catch (e) { console.log("push:" + (e instanceof TypeError)); }
+    #|var popArray = new Array(1);
+    #|Object.freeze(popArray);
+    #|try { popArray.pop(); console.log("pop:no throw"); }
+    #|catch (e) { console.log("pop:" + (e instanceof TypeError)); }
+    #|console.log(popArray.length);
+  let output = run_output(src)
+  json_inspect(output, content=["push:true", "pop:true", "1"])
+}
+
+///|
 test "array shift unshift" {
   let src =
     #|var arr = [1, 2, 3];

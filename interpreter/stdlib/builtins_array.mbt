@@ -5,48 +5,7 @@ pub fn get_array_method(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match prop {
-    "push" => {
-      let arr = data
-      @runtime.make_native_func(name="push", realm_state=Some(realm_state), fn(
-        args,
-      ) raise {
-        // §23.1.3.20 step 6: Set(A, "length", newLen) — throws if length
-        // is non-writable. We must reject BEFORE mutating elements.
-        if args.length() > 0 && !arr.length_writable {
-          raise @errors.TypeError(
-            message="Cannot assign to read only property 'length' of array",
-          )
-        }
-        for arg in args {
-          arr.elements.push(arg)
-        }
-        Value::Number(arr.elements.length().to_double())
-      })
-    }
-    "pop" => {
-      let arr = data
-      @runtime.make_native_func(name="pop", realm_state=Some(realm_state), fn(
-        _args,
-      ) raise {
-        if arr.elements.length() == 0 {
-          // §23.1.3.19 step 3.b.ii: even for an empty array, pop attempts
-          // Set(A, "length", 0), which throws when length is non-writable.
-          if !arr.length_writable {
-            raise @errors.TypeError(
-              message="Cannot assign to read only property 'length' of array",
-            )
-          }
-          Undefined
-        } else {
-          if !arr.length_writable {
-            raise @errors.TypeError(
-              message="Cannot assign to read only property 'length' of array",
-            )
-          }
-          arr.elements.pop() |> Option::unwrap
-        }
-      })
-    }
+    "push" | "pop" => Undefined // Delegated to Array.prototype (overrides and indexed [[Set]]/[[Get]])
     "shift" => {
       let arr = data
       @runtime.make_native_func(name="shift", realm_state=Some(realm_state), fn(

@@ -1226,7 +1226,10 @@ pub fn Interpreter::array_set_length(
     raise @errors.RangeError(message="Invalid array length")
   }
   let new_len64 = n.to_int64()
-  let cur_len64 = arr.elements.length().to_int64()
+  let cur_len64 = match get_array_length_override(arr) {
+    Some(len) => len
+    None => arr.elements.length().to_int64()
+  }
   // Step 6: extension requires writable length; no-op (equal) always succeeds.
   if new_len64 > cur_len64 {
     if !arr.length_writable {
@@ -1237,7 +1240,10 @@ pub fn Interpreter::array_set_length(
     // Larger gaps fall back to the logical-length override so something like
     // `Object.defineProperty(arr, "length", { value: 1e9 })` doesn't try to
     // allocate a billion slots.
-    if new_len64 - cur_len64 <= 100000L {
+    let physical_len64 = arr.elements.length().to_int64()
+    if new_len64 > physical_len64 &&
+      new_len64 - physical_len64 <= 100000L &&
+      new_len64 <= 0x7FFFFFFFL {
       let prev_len = arr.elements.length()
       while arr.elements.length().to_int64() < new_len64 {
         arr.elements.push(Undefined)
@@ -1270,16 +1276,36 @@ pub fn Interpreter::array_set_length(
   }
   // Step 8-9: defer writable:false until after truncation; remember intent.
   let lock_after = partial.writable is Some(false)
+  match cleanup_sparse_array_indices_above_length(arr, new_len64) {
+    Some(blocked_len) => {
+      set_array_length_override(arr, blocked_len)
+      if lock_after {
+        arr.length_writable = false
+      }
+      return false
+    }
+    None => ()
+  }
   // Step 10: partial-truncation loop. Delete indices in descending order.
   // `new_len64` safely fits in Int for truncation targets (must be less
   // than current length, which is bounded by JS engine).
-  let new_len = new_len64.to_int()
+  let new_len = if new_len64 > 0x7FFFFFFFL {
+    0x7FFFFFFF
+  } else {
+    new_len64.to_int()
+  }
   let mut i = arr.elements.length() - 1
   while i >= new_len {
     // Per §10.4.2.4 step 14.b: if element is non-configurable, stop.
     match arr.bag.descriptors.get(i.to_string()) {
       Some(desc) =>
         if !desc.configurable {
+          let blocked_len = i.to_int64() + 1L
+          if blocked_len > arr.elements.length().to_int64() {
+            set_array_length_override(arr, blocked_len)
+          } else {
+            clear_array_length_override(arr)
+          }
           if lock_after {
             arr.length_writable = false
           }
@@ -1291,6 +1317,12 @@ pub fn Interpreter::array_set_length(
     let _ = arr.bag.descriptors.remove(i.to_string())
     let _ = arr.holes.remove(i)
     i = i - 1
+  }
+  cleanup_holes_above_length(arr.holes, new_len64)
+  if new_len64 > arr.elements.length().to_int64() {
+    set_array_length_override(arr, new_len64)
+  } else {
+    clear_array_length_override(arr)
   }
   if lock_after {
     arr.length_writable = false

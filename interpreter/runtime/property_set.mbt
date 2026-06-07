@@ -1,4 +1,101 @@
 ///|
+fn array_index64_from_string(prop : String) -> Int64? {
+  let idx = @string.parse_int(prop) catch { _ => -1 }
+  if idx >= 0 && idx.to_string() == prop {
+    return Some(idx.to_int64())
+  }
+  try {
+    let n = @string.parse_double(prop)
+    let i64 = n.to_int64()
+    if n >= 2147483648.0 &&
+      n == i64.to_double() &&
+      i64 <= 4294967294L &&
+      i64.to_string() == prop {
+      Some(i64)
+    } else {
+      None
+    }
+  } catch {
+    _ => None
+  }
+}
+
+///|
+fn Interpreter::set_array_sparse_index64(
+  self : Interpreter,
+  data : ArrayData,
+  receiver : Value,
+  prop : String,
+  idx64 : Int64,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value raise Error {
+  let logical_len64 = match get_array_length_override(data) {
+    Some(n64) => n64
+    None => data.elements.length().to_int64()
+  }
+  match data.bag.descriptors.get(prop) {
+    Some(desc) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          return value
+        }
+        None =>
+          if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property '\{prop}'",
+              )
+            }
+            return value
+          }
+      }
+    None => ()
+  }
+  let is_own = data.bag.properties.contains(prop) ||
+    data.bag.descriptors.contains(prop)
+  if !is_own {
+    match
+      self.set_missing_array_index_via_proto_chain(
+        get_array_prototype(self.realm_state, data),
+        receiver,
+        prop,
+        value,
+        loc,
+        strict,
+      ) {
+      Some(result) => return result
+      None => ()
+    }
+  }
+  // §10.4.2.1 step 3.b: extend requires length_writable.
+  if idx64 >= logical_len64 && !data.length_writable {
+    if strict {
+      raise @errors.TypeError(
+        message="Cannot add property \{idx64}, array's length is non-writable",
+      )
+    }
+    return value
+  }
+  if !is_own && !data.extensible {
+    if strict {
+      raise @errors.TypeError(
+        message="Cannot add property \{idx64}, object is not extensible",
+      )
+    }
+    return value
+  }
+  set_array_named_prop(data, prop, value)
+  let new_len = idx64 + 1L
+  if new_len > logical_len64 {
+    set_array_length_override(data, new_len)
+  }
+  value
+}
+
+///|
 /// Stage B.1 [[Set]] dispatcher.
 ///
 /// `receiver` threads through the prototype chain and proxy fallbacks per
@@ -226,7 +323,8 @@ pub fn Interpreter::set_property(
         )
       }
       if prop == "length" {
-        // §10.4.2.4 step 3: reject writes when length is non-writable.
+        // Ordinary [[Set]] rejects non-writable Array length even when the
+        // numeric value is unchanged (push()/pop() with no length change).
         if !data.length_writable {
           if strict {
             raise @errors.TypeError(
@@ -235,43 +333,12 @@ pub fn Interpreter::set_property(
           }
           return value
         }
-        let num = to_number(value)
-        // Validate: length must be a non-negative integer <= 2^32-1
-        if num.is_nan() ||
-          num < 0.0 ||
-          num > 4294967295.0 ||
-          num != @math.floor(num) {
-          raise @errors.RangeError(message="Invalid array length")
-        }
-        let n64 = num.to_int64()
-        // Truncate array if new length is shorter
-        while data.elements.length().to_int64() > n64 {
-          let _ = data.elements.pop()
-        }
-        // Drop hole entries that fell out of range with the shrink.
-        cleanup_holes_above_length(data.holes, n64)
-        let cur_elem_len = data.elements.length().to_int64()
-        // Expand elements if the gap is small enough to materialise. The
-        // 100000 cap plus the explicit Int-range guard below keeps the
-        // n64→Int cast safe.
-        if n64 > cur_elem_len &&
-          n64 - cur_elem_len <= 100000L &&
-          n64 <= 0x7FFFFFFFL {
-          let prev_len = data.elements.length()
-          let target = n64.to_int()
-          while data.elements.length() < target {
-            data.elements.push(Undefined)
-          }
-          for j in prev_len..<target {
-            data.holes.set(j, ())
-          }
-        }
-        // Keep the length override in sync: set it when the logical length
-        // exceeds elements.length(), clear it when they match.
-        if n64 > data.elements.length().to_int64() {
-          set_array_length_override(data, n64)
-        } else {
-          clear_array_length_override(data)
+        let ok = self.array_set_length(
+          data,
+          PartialDescriptor::value_only(value),
+        )
+        if !ok && strict {
+          raise @errors.TypeError(message="Cannot delete property")
         }
       } else {
         // Parse numeric index OUTSIDE any try/catch so strict-mode TypeError
@@ -285,9 +352,9 @@ pub fn Interpreter::set_property(
         let i = @string.parse_int(prop) catch { _ => -1 }
         if i >= 0 && i.to_string() == prop {
           // Compare against logical length (override when set), not physical.
-          let logical_len = match get_array_length_override(data) {
-            Some(n64) => n64.to_int()
-            None => data.elements.length()
+          let logical_len64 = match get_array_length_override(data) {
+            Some(n64) => n64
+            None => data.elements.length().to_int64()
           }
           match data.bag.descriptors.get(prop) {
             Some(desc) =>
@@ -308,7 +375,10 @@ pub fn Interpreter::set_property(
               }
             None => ()
           }
-          let is_own = i < data.elements.length() && !data.holes.contains(i)
+          let is_sparse_own = data.bag.properties.contains(prop) ||
+            data.bag.descriptors.contains(prop)
+          let is_own = (i < data.elements.length() && !data.holes.contains(i)) ||
+            is_sparse_own
           if !is_own {
             match
               self.set_missing_array_index_via_proto_chain(
@@ -324,7 +394,7 @@ pub fn Interpreter::set_property(
             }
           }
           // §10.4.2.1 step 3.b: extend requires length_writable.
-          if i >= logical_len && !data.length_writable {
+          if i.to_int64() >= logical_len64 && !data.length_writable {
             if strict {
               raise @errors.TypeError(
                 message="Cannot add property \{i}, array's length is non-writable",
@@ -340,16 +410,34 @@ pub fn Interpreter::set_property(
             }
             return value
           }
-          let prev_len = data.elements.length()
-          while data.elements.length() <= i {
-            data.elements.push(Undefined)
+          let gap = i.to_int64() - data.elements.length().to_int64()
+          if gap <= 100000L {
+            let prev_len = data.elements.length()
+            while data.elements.length() <= i {
+              data.elements.push(Undefined)
+            }
+            for j in prev_len..<i {
+              data.holes.set(j, ())
+            }
+            data.holes.remove(i)
+            data.elements[i] = value
+            let _ = data.bag.properties.remove(prop)
+          } else {
+            set_array_named_prop(data, prop, value)
           }
-          for j in prev_len..<i {
-            data.holes.set(j, ())
+          let new_len = i.to_int64() + 1L
+          if new_len > logical_len64 &&
+            new_len > data.elements.length().to_int64() {
+            set_array_length_override(data, new_len)
           }
-          data.holes.remove(i)
-          data.elements[i] = value
         } else {
+          match array_index64_from_string(prop) {
+            Some(idx64) =>
+              return self.set_array_sparse_index64(
+                data, receiver, prop, idx64, value, loc, strict,
+              )
+            None => ()
+          }
           match data.bag.descriptors.get(prop) {
             Some(desc) =>
               match desc.setter {
@@ -1349,12 +1437,20 @@ pub fn Interpreter::set_computed_property(
           value
         }
         Number(n) => {
+          let prop64 = n.to_string()
+          match array_index64_from_string(prop64) {
+            Some(idx64) if idx64 > 0x7FFFFFFFL =>
+              return self.set_array_sparse_index64(
+                data, receiver, prop64, idx64, value, loc, strict,
+              )
+            _ => ()
+          }
           let i = n.to_int()
           if i >= 0 {
             let prop = i.to_string()
-            let logical_len = match get_array_length_override(data) {
-              Some(n64) => n64.to_int()
-              None => data.elements.length()
+            let logical_len64 = match get_array_length_override(data) {
+              Some(n64) => n64
+              None => data.elements.length().to_int64()
             }
             match data.bag.descriptors.get(prop) {
               Some(desc) =>
@@ -1375,7 +1471,10 @@ pub fn Interpreter::set_computed_property(
                 }
               None => ()
             }
-            let is_own = i < data.elements.length() && !data.holes.contains(i)
+            let is_sparse_own = data.bag.properties.contains(prop) ||
+              data.bag.descriptors.contains(prop)
+            let is_own = (i < data.elements.length() && !data.holes.contains(i)) ||
+              is_sparse_own
             if !is_own {
               match
                 self.set_missing_array_index_via_proto_chain(
@@ -1391,7 +1490,7 @@ pub fn Interpreter::set_computed_property(
               }
             }
             // §10.4.2.1 step 3.b: extending beyond length requires length to be writable.
-            if i >= logical_len && !data.length_writable {
+            if i.to_int64() >= logical_len64 && !data.length_writable {
               if strict {
                 raise @errors.TypeError(
                   message="Cannot add property \{i}, array's length is non-writable",
@@ -1407,22 +1506,34 @@ pub fn Interpreter::set_computed_property(
               }
               return value
             }
-            let prev_len = data.elements.length()
-            while data.elements.length() <= i {
-              data.elements.push(Undefined)
+            let gap = i.to_int64() - data.elements.length().to_int64()
+            if gap <= 100000L {
+              let prev_len = data.elements.length()
+              while data.elements.length() <= i {
+                data.elements.push(Undefined)
+              }
+              for j in prev_len..<i {
+                data.holes.set(j, ())
+              }
+              data.holes.remove(i)
+              data.elements[i] = value
+              let _ = data.bag.properties.remove(prop)
+            } else {
+              set_array_named_prop(data, prop, value)
             }
-            for j in prev_len..<i {
-              data.holes.set(j, ())
+            let new_len = i.to_int64() + 1L
+            if new_len > logical_len64 &&
+              new_len > data.elements.length().to_int64() {
+              set_array_length_override(data, new_len)
             }
-            data.holes.remove(i)
-            data.elements[i] = value
           }
           value
         }
         _ => {
           let prop = to_js_string(key, interp=Some(self))
           if prop == "length" {
-            // §10.4.2.4 step 3: reject when length is non-writable.
+            // Ordinary [[Set]] rejects non-writable Array length even when the
+            // numeric value is unchanged (push()/pop() with no length change).
             if !data.length_writable {
               if strict {
                 raise @errors.TypeError(
@@ -1431,40 +1542,12 @@ pub fn Interpreter::set_computed_property(
               }
               return value
             }
-            let num = to_number(value)
-            // §9.4.2.4 step 2: ToUint32(newLen) must equal newLen.
-            if num.is_nan() ||
-              num < 0.0 ||
-              num > 4294967295.0 ||
-              num != @math.floor(num) {
-              raise @errors.RangeError(message="Invalid array length")
-            }
-            let n64 = num.to_int64()
-            // Truncate array if new length is shorter.
-            while data.elements.length().to_int64() > n64 {
-              let _ = data.elements.pop()
-            }
-            // Drop hole entries that fell out of range with the shrink.
-            cleanup_holes_above_length(data.holes, n64)
-            // Expand elements if gap is small enough to materialise.
-            let cur_elem_len = data.elements.length().to_int64()
-            if n64 > cur_elem_len &&
-              n64 - cur_elem_len <= 100000L &&
-              n64 <= 0x7FFFFFFFL {
-              let prev_len = data.elements.length()
-              let target = n64.to_int()
-              while data.elements.length() < target {
-                data.elements.push(Undefined)
-              }
-              for j in prev_len..<target {
-                data.holes.set(j, ())
-              }
-            }
-            // Keep the length override in sync.
-            if n64 > data.elements.length().to_int64() {
-              set_array_length_override(data, n64)
-            } else {
-              clear_array_length_override(data)
+            let ok = self.array_set_length(
+              data,
+              PartialDescriptor::value_only(value),
+            )
+            if !ok && strict {
+              raise @errors.TypeError(message="Cannot delete property")
             }
           } else {
             // Canonical numeric index string check: parseDouble(s).toString() === s
@@ -1473,14 +1556,21 @@ pub fn Interpreter::set_computed_property(
               _ => None
             }
             let mut handled = false
+            match array_index64_from_string(prop) {
+              Some(idx64) if idx64 > 0x7FFFFFFFL =>
+                return self.set_array_sparse_index64(
+                  data, receiver, prop, idx64, value, loc, strict,
+                )
+              _ => ()
+            }
             match maybe_n {
               Some(n) =>
                 if n.to_string() == prop {
                   let idx = n.to_int()
                   if idx.to_double() == n && idx >= 0 {
-                    let logical_len = match get_array_length_override(data) {
-                      Some(n64) => n64.to_int()
-                      None => data.elements.length()
+                    let logical_len64 = match get_array_length_override(data) {
+                      Some(n64) => n64
+                      None => data.elements.length().to_int64()
                     }
                     match data.bag.descriptors.get(prop) {
                       Some(desc) =>
@@ -1506,8 +1596,13 @@ pub fn Interpreter::set_computed_property(
                         }
                       None => ()
                     }
-                    let is_own = idx < data.elements.length() &&
-                      !data.holes.contains(idx)
+                    let is_sparse_own = data.bag.properties.contains(prop) ||
+                      data.bag.descriptors.contains(prop)
+                    let is_own = (
+                        idx < data.elements.length() &&
+                        !data.holes.contains(idx)
+                      ) ||
+                      is_sparse_own
                     if !is_own {
                       match
                         self.set_missing_array_index_via_proto_chain(
@@ -1523,7 +1618,7 @@ pub fn Interpreter::set_computed_property(
                       }
                     }
                     // §10.4.2.1 step 3.b: extend requires writable length.
-                    if idx >= logical_len && !data.length_writable {
+                    if idx.to_int64() >= logical_len64 && !data.length_writable {
                       if strict {
                         raise @errors.TypeError(
                           message="Cannot add property \{idx}, array's length is non-writable",
@@ -1539,15 +1634,26 @@ pub fn Interpreter::set_computed_property(
                       }
                       return value
                     }
-                    let prev_len = data.elements.length()
-                    while data.elements.length() <= idx {
-                      data.elements.push(Undefined)
+                    let gap = idx.to_int64() - data.elements.length().to_int64()
+                    if gap <= 100000L {
+                      let prev_len = data.elements.length()
+                      while data.elements.length() <= idx {
+                        data.elements.push(Undefined)
+                      }
+                      for j in prev_len..<idx {
+                        data.holes.set(j, ())
+                      }
+                      data.holes.remove(idx)
+                      data.elements[idx] = value
+                      let _ = data.bag.properties.remove(prop)
+                    } else {
+                      set_array_named_prop(data, prop, value)
                     }
-                    for j in prev_len..<idx {
-                      data.holes.set(j, ())
+                    let new_len = idx.to_int64() + 1L
+                    if new_len > logical_len64 &&
+                      new_len > data.elements.length().to_int64() {
+                      set_array_length_override(data, new_len)
                     }
-                    data.holes.remove(idx)
-                    data.elements[idx] = value
                     handled = true
                   }
                 }
