@@ -5,23 +5,7 @@ pub fn get_array_method(
   realm_state : @runtime.RealmState,
 ) -> Value {
   match prop {
-    "push" | "pop" => Undefined // Delegated to Array.prototype (overrides and indexed [[Set]]/[[Get]])
-    "shift" => {
-      let arr = data
-      @runtime.make_native_func(name="shift", realm_state=Some(realm_state), fn(
-        _args,
-      ) raise {
-        array_direct_shift(arr)
-      })
-    }
-    "unshift" => {
-      let arr = data
-      @runtime.make_native_func(name="unshift", realm_state=Some(realm_state), fn(
-        args,
-      ) raise {
-        array_direct_unshift(arr, args)
-      })
-    }
+    "push" | "pop" | "shift" | "unshift" => Undefined // Delegated to Array.prototype (overrides and indexed [[Set]]/[[Get]]/[[Delete]])
     "join" => {
       let arr = data
       @runtime.make_native_func(name="join", realm_state=Some(realm_state), fn(
@@ -165,30 +149,7 @@ pub fn get_array_method_with_interp(
     "reduce" | "reduceRight" => Undefined // Delegated to Array.prototype
     "find" | "findIndex" | "findLast" | "findLastIndex" => Undefined // Delegated to Array.prototype
     "every" | "some" => Undefined // Delegated to Array.prototype
-    "shift" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="shift",
-        length=0,
-        realm_state=Some(realm_state),
-        fn(interp, this_val, _args) raise {
-          let _ = this_val
-          array_shift_indexed_properties(interp, Value::Array(arr))
-        },
-      )
-    }
-    "unshift" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="unshift",
-        length=1,
-        realm_state=Some(realm_state),
-        fn(interp, this_val, args) raise {
-          let _ = this_val
-          array_unshift_indexed_properties(interp, Value::Array(arr), args)
-        },
-      )
-    }
+    "shift" | "unshift" => Undefined // Delegated to Array.prototype (overrides and indexed mutation semantics)
     "reverse" => {
       let arr = data
       @runtime.make_interp_method_func(

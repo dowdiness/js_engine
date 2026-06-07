@@ -39,6 +39,123 @@ fn array_mutator_set_length(
 const ARRAY_MAX_SAFE_LENGTH : Double = 9007199254740991.0
 
 ///|
+fn array_mutator_array_index64_from_key(key : String) -> Int64? {
+  let idx = @string.parse_int(key) catch { _ => -1 }
+  if idx >= 0 && idx.to_int64() <= 4294967294L && idx.to_string() == key {
+    return Some(idx.to_int64())
+  }
+  try {
+    let n = @string.parse_double(key)
+    let i64 = n.to_int64()
+    if n >= 2147483648.0 &&
+      n == i64.to_double() &&
+      i64 <= 4294967294L &&
+      i64.to_string() == key {
+      Some(i64)
+    } else {
+      None
+    }
+  } catch {
+    _ => None
+  }
+}
+
+///|
+fn array_mutator_push_indexed_entry_if_absent(
+  entries : Array[(Int64, String, Value)],
+  idx64 : Int64,
+  key : String,
+  value : Value,
+) -> Unit {
+  if !array_mutator_entries_contain_index(entries, idx64) {
+    entries.push((idx64, key, value))
+  }
+}
+
+///|
+fn array_mutator_append_indexed_bag_properties(
+  entries : Array[(Int64, String, Value)],
+  bag : @runtime.PropertyBag,
+  len64 : Int64,
+) -> Unit {
+  bag.properties.each(fn(key, value) {
+    match array_mutator_array_index64_from_key(key) {
+      Some(idx64) if idx64 < len64 =>
+        array_mutator_push_indexed_entry_if_absent(entries, idx64, key, value)
+      _ => ()
+    }
+  })
+  bag.descriptors.each(fn(key, _) {
+    match array_mutator_array_index64_from_key(key) {
+      Some(idx64) if idx64 < len64 =>
+        array_mutator_push_indexed_entry_if_absent(
+          entries,
+          idx64,
+          key,
+          Undefined,
+        )
+      _ => ()
+    }
+  })
+}
+
+///|
+fn array_mutator_append_dense_indexed_properties(
+  entries : Array[(Int64, String, Value)],
+  data : ArrayData,
+  len64 : Int64,
+) -> Unit {
+  for i = 0; i < data.elements.length(); i = i + 1 {
+    if !data.holes.contains(i) {
+      let idx64 = i.to_int64()
+      if idx64 < len64 {
+        array_mutator_push_indexed_entry_if_absent(
+          entries,
+          idx64,
+          i.to_string(),
+          data.elements[i],
+        )
+      }
+    }
+  }
+}
+
+///|
+fn array_mutator_entries_contain_index(
+  entries : Array[(Int64, String, Value)],
+  idx64 : Int64,
+) -> Bool {
+  for entry in entries {
+    if entry.0 == idx64 {
+      return true
+    }
+  }
+  false
+}
+
+///|
+fn array_mutator_compare_entry_index_ascending(
+  a : (Int64, String, Value),
+  b : (Int64, String, Value),
+) -> Int {
+  if a.0 < b.0 {
+    -1
+  } else if a.0 > b.0 {
+    1
+  } else {
+    0
+  }
+}
+
+///|
+fn array_mutator_compare_entry_index_descending(
+  a : (Int64, String, Value),
+  b : (Int64, String, Value),
+) -> Int {
+  -array_mutator_compare_entry_index_ascending(a, b)
+}
+
+///|
 fn array_mutator_set_property_key(
   interp : Interpreter,
   o : Value,
@@ -147,71 +264,6 @@ fn array_mutator_relative_index(index : Int, len : Int) -> Int {
   } else {
     index
   }
-}
-
-///|
-fn array_direct_shift(arr : ArrayData) -> Value raise Error {
-  let len = arr.elements.length()
-  if len == 0 {
-    if !arr.length_writable {
-      raise @errors.TypeError(
-        message="Cannot assign to read only property 'length' of array",
-      )
-    }
-    return Undefined
-  }
-  if !arr.length_writable {
-    raise @errors.TypeError(
-      message="Cannot assign to read only property 'length' of array",
-    )
-  }
-  let first = if arr.holes.contains(0) {
-    Value::Undefined
-  } else {
-    arr.elements[0]
-  }
-  for i = 1; i < len; i = i + 1 {
-    arr.elements[i - 1] = arr.elements[i]
-    if arr.holes.contains(i) {
-      arr.holes[i - 1] = ()
-    } else {
-      arr.holes.remove(i - 1)
-    }
-  }
-  let _ = arr.elements.pop()
-  arr.holes.remove(len - 1)
-  first
-}
-
-///|
-fn array_direct_unshift(
-  arr : ArrayData,
-  args : Array[Value],
-) -> Value raise Error {
-  if args.length() > 0 && !arr.length_writable {
-    raise @errors.TypeError(
-      message="Cannot assign to read only property 'length' of array",
-    )
-  }
-  let len = arr.elements.length()
-  let argc = args.length()
-  while arr.elements.length() < len + argc {
-    arr.elements.push(Undefined)
-  }
-  for i = len - 1; i >= 0; i = i - 1 {
-    let to = i + argc
-    arr.elements[to] = arr.elements[i]
-    if arr.holes.contains(i) {
-      arr.holes[to] = ()
-    } else {
-      arr.holes.remove(to)
-    }
-  }
-  for i = 0; i < argc; i = i + 1 {
-    arr.elements[i] = args[i]
-    arr.holes.remove(i)
-  }
-  Value::Number(arr.elements.length().to_double())
 }
 
 ///|
@@ -470,30 +522,149 @@ fn array_fill_indexed_properties(
 }
 
 ///|
+fn array_mutator_sparse_high_index_sources(
+  interp : Interpreter,
+  arr : ArrayData,
+  len64 : Int64,
+) -> Array[(Int64, String, Value)]? {
+  let entries : Array[(Int64, String, Value)] = []
+  array_mutator_append_dense_indexed_properties(entries, arr, len64)
+  array_mutator_append_indexed_bag_properties(entries, arr.bag, len64)
+  let mut current = @runtime.get_array_prototype(interp.realm_state, arr)
+  while true {
+    match current {
+      Object(data) => {
+        array_mutator_append_indexed_bag_properties(entries, data.bag, len64)
+        current = data.prototype
+      }
+      Array(data) => {
+        array_mutator_append_dense_indexed_properties(entries, data, len64)
+        array_mutator_append_indexed_bag_properties(entries, data.bag, len64)
+        current = @runtime.get_array_prototype(interp.realm_state, data)
+      }
+      Proxy(_) => return None
+      _ => return Some(entries)
+    }
+  }
+  None
+}
+
+///|
+fn array_shift_sparse_high_index_properties(
+  interp : Interpreter,
+  arr : ArrayData,
+  len : Double,
+  len64 : Int64,
+) -> Value? raise Error {
+  guard len64 > 0x7FFFFFFFL else { return None }
+  let entries = match
+    array_mutator_sparse_high_index_sources(interp, arr, len64) {
+    Some(entries) => entries
+    None => return None
+  }
+  entries.sort_by(array_mutator_compare_entry_index_ascending)
+  let mut first : Value = Undefined
+  let target = Value::Array(arr)
+  for entry in entries {
+    let idx64 = entry.0
+    let from_value = interp.get_property(target, entry.1, @token.Loc::default())
+    if idx64 == 0L {
+      first = from_value
+    } else {
+      array_mutator_set_property_key(
+        interp,
+        target,
+        (idx64 - 1L).to_string(),
+        from_value,
+      )
+    }
+    if idx64 + 1L >= len64 ||
+      !array_mutator_entries_contain_index(entries, idx64 + 1L) {
+      array_mutator_delete_property_key(interp, target, entry.1)
+    }
+  }
+  array_mutator_set_length_number(interp, target, len - 1.0)
+  Some(first)
+}
+
+///|
+fn array_unshift_sparse_high_index_properties(
+  interp : Interpreter,
+  arr : ArrayData,
+  args : Array[Value],
+  len : Double,
+  len64 : Int64,
+) -> Value? raise Error {
+  guard len64 > 0x7FFFFFFFL else { return None }
+  let entries = match
+    array_mutator_sparse_high_index_sources(interp, arr, len64) {
+    Some(entries) => entries
+    None => return None
+  }
+  entries.sort_by(array_mutator_compare_entry_index_descending)
+  let target = Value::Array(arr)
+  let arg_count64 = args.length().to_int64()
+  for entry in entries {
+    let from_value = interp.get_property(target, entry.1, @token.Loc::default())
+    array_mutator_set_property_key(
+      interp,
+      target,
+      (entry.0 + arg_count64).to_string(),
+      from_value,
+    )
+  }
+  for entry in entries {
+    let idx64 = entry.0
+    if idx64 >= arg_count64 &&
+      !array_mutator_entries_contain_index(entries, idx64 - arg_count64) {
+      array_mutator_delete_property_key(interp, target, entry.1)
+    }
+  }
+  for j = 0; j < args.length(); j = j + 1 {
+    array_mutator_set_property_key(interp, target, j.to_string(), args[j])
+  }
+  let new_len = len + args.length().to_double()
+  array_mutator_set_length_number(interp, target, new_len)
+  Some(Value::Number(new_len))
+}
+
+///|
 fn array_shift_indexed_properties(
   interp : Interpreter,
   o : Value,
 ) -> Value raise Error {
   // ES2024 §23.1.3.29 shifts only present source indices; absent sources
-  // delete their target slots, preserving holes.
-  let len = @runtime.to_array_like_length_interp(o, interp)
-  if len == 0 {
-    array_mutator_set_length(interp, o, 0)
+  // delete their target slots, preserving holes. Use string keys so sparse
+  // Array lengths and generic array-likes near 2^53 do not narrow through Int.
+  let len = array_mutator_length_number(interp, o)
+  let len64 = len.to_int64()
+  if len64 == 0L {
+    array_mutator_set_length_number(interp, o, 0.0)
     return Undefined
   }
-  let first = @runtime.get_array_like_element_interp(interp, o, 0)
-  for k = 1; k < len; k = k + 1 {
-    let from = k
-    let to = k - 1
-    if array_mutator_has_index(interp, o, from) {
-      let from_value = @runtime.get_array_like_element_interp(interp, o, from)
-      array_mutator_set_index(interp, o, to, from_value)
-    } else {
-      array_mutator_delete_index(interp, o, to)
-    }
+  match o {
+    Array(arr) =>
+      match array_shift_sparse_high_index_properties(interp, arr, len, len64) {
+        Some(result) => return result
+        None => ()
+      }
+    _ => ()
   }
-  array_mutator_delete_index(interp, o, len - 1)
-  array_mutator_set_length(interp, o, len - 1)
+  let first = interp.get_property(o, "0", @token.Loc::default())
+  let mut k = 1L
+  while k < len64 {
+    let from_key = k.to_string()
+    let to_key = (k - 1L).to_string()
+    if interp.has_property(o, from_key) {
+      let from_value = interp.get_property(o, from_key, @token.Loc::default())
+      array_mutator_set_property_key(interp, o, to_key, from_value)
+    } else {
+      array_mutator_delete_property_key(interp, o, to_key)
+    }
+    k = k + 1L
+  }
+  array_mutator_delete_property_key(interp, o, (len64 - 1L).to_string())
+  array_mutator_set_length_number(interp, o, len - 1.0)
   first
 }
 
@@ -505,28 +676,45 @@ fn array_unshift_indexed_properties(
 ) -> Value raise Error {
   // ES2024 §23.1.3.34 walks from the end so shifted holes remain holes and
   // inserted arguments become present properties even when they are undefined.
-  let len = @runtime.to_array_like_length_interp(o, interp)
+  // String keys preserve large sparse indices that cannot fit in Int.
+  let len = array_mutator_length_number(interp, o)
+  let len64 = len.to_int64()
   let arg_count = args.length()
   if arg_count > 0 {
-    let mut k = len
-    while k > 0 {
-      let from = k - 1
-      let to = k + arg_count - 1
-      if array_mutator_has_index(interp, o, from) {
-        let from_value = @runtime.get_array_like_element_interp(interp, o, from)
-        array_mutator_set_index(interp, o, to, from_value)
+    if len + arg_count.to_double() > ARRAY_MAX_SAFE_LENGTH {
+      raise @errors.TypeError(message="Invalid array length")
+    }
+    match o {
+      Array(arr) =>
+        match
+          array_unshift_sparse_high_index_properties(
+            interp, arr, args, len, len64,
+          ) {
+          Some(result) => return result
+          None => ()
+        }
+      _ => ()
+    }
+    let arg_count64 = arg_count.to_int64()
+    let mut k = len64
+    while k > 0L {
+      let from_key = (k - 1L).to_string()
+      let to_key = (k + arg_count64 - 1L).to_string()
+      if interp.has_property(o, from_key) {
+        let from_value = interp.get_property(o, from_key, @token.Loc::default())
+        array_mutator_set_property_key(interp, o, to_key, from_value)
       } else {
-        array_mutator_delete_index(interp, o, to)
+        array_mutator_delete_property_key(interp, o, to_key)
       }
-      k = k - 1
+      k = k - 1L
     }
     for j = 0; j < arg_count; j = j + 1 {
-      array_mutator_set_index(interp, o, j, args[j])
+      array_mutator_set_property_key(interp, o, j.to_string(), args[j])
     }
   }
-  let new_len = len + arg_count
-  array_mutator_set_length(interp, o, new_len)
-  Value::Number(new_len.to_double())
+  let new_len = len + arg_count.to_double()
+  array_mutator_set_length_number(interp, o, new_len)
+  Value::Number(new_len)
 }
 
 ///|
