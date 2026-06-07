@@ -1,0 +1,14 @@
+import {
+  "dowdiness/js_engine/tooling/test262_metadata" @metadata,
+  "dowdiness/js_engine/tooling/test262_utils" @utils,
+  "moonbitlang/async",
+  "moonbitlang/async/fs" @afs,
+  "moonbitlang/async/process",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/string",
+  "moonbitlang/x/fs",
+}
+
+supported_targets = "+native"

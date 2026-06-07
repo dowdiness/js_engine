@@ -73,6 +73,9 @@ jobs:
       - name: Test262 utils corpus parity
         run: make test262-utils-corpus-test
 
+      - name: Test262 runner shadow unit parity
+        run: make test262-runner-test
+
       - name: Check and test
         run: |
           moon check

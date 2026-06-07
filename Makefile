@@ -1,4 +1,4 @@
-.PHONY: build test bench-focus bench-focus-test bench-focus-mbt subprocess-helpers-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-quick test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-compare-results test262-download test262-report test262-report-test test262-report-mbt unicode-tables unicode-tables-test unicode-tables-mbt clean
+.PHONY: build test bench-focus bench-focus-test bench-focus-mbt subprocess-helpers-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-compare-results test262-download test262-report test262-report-test test262-report-mbt unicode-tables unicode-tables-test unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 
@@ -94,10 +94,23 @@ test262-utils-corpus-test: test262-download test262-utils-corpus-mbt
 		--moonbit-output "$$tmp" \
 		--yaml-mode fallback
 
-# Unit tests for Test262 runner task selection and harness helpers.
-test262-runner-test: test262-contract-test
+# Unit tests for Test262 runner task selection, harness helpers, and MoonBit shadow.
+test262-runner-test: test262-contract-test test262-runner-mbt-test
 	python3 scripts/test262_runner_task_selection_test.py
 	python3 scripts/test262_runner_harness_test.py
+
+test262-runner-mbt-test:
+	moon test --target native tooling/test262_runner
+
+# Build/run the non-authoritative MoonBit async Test262 runner shadow.
+# Pass ARGS="--mode strict --count 10 ..." to run it; Python remains authoritative.
+test262-runner-mbt: test262-runner-mbt-test
+	moon build --target native cmd/test262_runner
+	@if [ -n "$(ARGS)" ]; then \
+		./_build/native/debug/build/cmd/test262_runner/test262_runner.exe $(ARGS); \
+	else \
+		echo "built cmd/test262_runner (pass ARGS='--count 10 ...' to run; Python remains authoritative)"; \
+	fi
 
 # Compare two Test262 result artifacts under the migration parity contract.
 # Pass ARGS="left.json right.json [--ignore-reason]".
