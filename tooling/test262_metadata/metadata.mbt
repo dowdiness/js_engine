@@ -146,6 +146,66 @@ pub fn load_skip_metadata(root~ : String) -> SkipMetadata raise {
 }
 
 ///|
+fn[V] sorted_keys(map : Map[String, V]) -> Array[String] {
+  let keys : Array[String] = []
+  for key, _ in map {
+    keys.push(key)
+  }
+  keys.sort()
+  keys
+}
+
+///|
+/// Return the configured unsupported Test262 feature names.
+///
+/// This is for shadow metadata validation/reporting tools only. Runtime skip
+/// classification should continue to call `skip_reason` so the decision order
+/// stays centralized.
+pub fn SkipMetadata::skip_feature_names(self : SkipMetadata) -> Array[String] {
+  sorted_keys(self.features)
+}
+
+///|
+/// Return the configured unsupported Test262 flag names.
+///
+/// This is for shadow metadata validation/reporting tools only. Runtime skip
+/// classification should continue to call `skip_reason` so the decision order
+/// stays centralized.
+pub fn SkipMetadata::skip_flag_names(self : SkipMetadata) -> Array[String] {
+  sorted_keys(self.flags)
+}
+
+///|
+/// Return the configured path suffix skips as `(suffix, reason)` pairs sorted
+/// by suffix.
+///
+/// This is for shadow metadata validation/reporting tools only. Runtime skip
+/// classification should continue to call `skip_reason` so the decision order
+/// stays centralized.
+pub fn SkipMetadata::skip_path_suffix_entries(
+  self : SkipMetadata,
+) -> Array[(String, String)] {
+  let suffixes = sorted_keys(self.path_suffixes)
+  suffixes.map(suffix => (suffix, self.path_suffixes[suffix]))
+}
+
+///|
+/// Return whether `feature` is configured as unsupported in shared skip
+/// metadata. This supports non-authoritative static analysis summaries.
+pub fn SkipMetadata::is_skip_feature(
+  self : SkipMetadata,
+  feature : String,
+) -> Bool {
+  self.features.contains(feature)
+}
+
+///|
+/// Return whether `flag` is configured as unsupported in shared skip metadata.
+pub fn SkipMetadata::is_skip_flag(self : SkipMetadata, flag : String) -> Bool {
+  self.flags.contains(flag)
+}
+
+///|
 /// Return the metadata skip reason for one Test262 file, or `None` when the
 /// metadata does not skip it. `mode` should be `Some("strict")`,
 /// `Some("non-strict")`, or `None` for analyzer-style census mode.

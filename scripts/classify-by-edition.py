@@ -269,7 +269,7 @@ EDITION_RANK = {e: i for i, e in enumerate(EDITION_ORDER)}
 FRONTMATTER_RE = re.compile(r"/\*---\s*(.*?)\s*---\*/", re.DOTALL)
 FEATURES_INLINE_RE = re.compile(r"^features:\s*\[([^\]]*)\]", re.MULTILINE)
 FEATURES_BLOCK_RE = re.compile(
-    r"^features:\s*\n((?:\s{2,}-\s*\S+.*\n)+)", re.MULTILINE
+    r"^features:\s*\n((?:\s{2,}-\s*\S+.*(?:\n|$))+)", re.MULTILINE
 )
 
 

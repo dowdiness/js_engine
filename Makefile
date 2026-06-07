@@ -1,4 +1,4 @@
-.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
+.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-quick test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-compare-results test262-download test262-report unicode-tables clean
 
 TEST262_COMMIT ?= main
 
@@ -40,14 +40,18 @@ test262-download:
 # Unit tests for Test262 artifact contracts and parity helpers.
 test262-contract-test:
 	python3 scripts/compare_test262_results_test.py
+	python3 scripts/classify_by_edition_test.py
 
 # Shared Test262 metadata tests. Python remains authoritative; MoonBit shadows it.
-test262-metadata-test: test262-metadata-mbt-test
+test262-metadata-test: test262-metadata-mbt-test test262-metadata-tools-mbt-test
 	python3 scripts/test262_skip_metadata_test.py
 	python3 scripts/validate_test262_skip_metadata_test.py
 
 test262-metadata-mbt-test:
 	moon test --target native tooling/test262_metadata
+
+test262-metadata-tools-mbt-test:
+	moon test --target native tooling/test262_metadata_tools
 
 # Shared Test262 frontmatter utility tests. Python remains authoritative; MoonBit shadows it.
 test262-utils-test: test262-utils-mbt-test
@@ -111,16 +115,40 @@ test262-filter: build test262-download
 # Non-authoritative static metadata analysis (no engine build required).
 # Use scripts/test262-runner.py / CI artifacts for conformance and skip truth.
 # Shared skip metadata only prevents runner/analyzer drift.
-test262-analyze: test262-download
+test262-analyze: test262-download test262-analyze-mbt
 	python3 scripts/test262-analyze.py \
 		--test262 ./test262 \
 		--output test262-analysis.json
+	python3 -c 'import json, sys; from pathlib import Path; expected = json.loads(Path("test262-analysis.json").read_text()); actual = json.loads(Path("test262-analysis.moonbit-shadow.json").read_text()); keys = ("summary", "complexity", "categories", "feature_gaps"); mismatches = [key for key in keys if expected.get(key) != actual.get(key)]; sys.exit("MoonBit shadow test262-analyze mismatch in " + mismatches[0]) if mismatches else print("ok: MoonBit shadow test262-analyze summary/category output matches Python")'
+
+test262-analyze-mbt: test262-download test262-metadata-tools-mbt-test
+	moon build --target native cmd/test262_analyze
+	./_build/native/debug/build/cmd/test262_analyze/test262_analyze.exe \
+		--test262 ./test262 \
+		--output test262-analysis.moonbit-shadow.json
 
 # Check that shared skip metadata still matches the checked-out Test262 suite.
 # This does not run tests or produce conformance numbers.
-test262-validate-skips: test262-download
+test262-validate-skips: test262-download test262-validate-skips-mbt
 	python3 scripts/validate-test262-skip-metadata.py \
 		--test262 ./test262
+
+test262-validate-skips-mbt: test262-download test262-metadata-tools-mbt-test
+	moon build --target native cmd/test262_validate_skips
+	./_build/native/debug/build/cmd/test262_validate_skips/test262_validate_skips.exe \
+		--test262 ./test262
+
+# Build/run the MoonBit shadow edition classifier over existing result artifacts.
+# Pass ARGS="[--test262-root .] result.json ..." to run it; this never runs the engine.
+test262-classify-by-edition-mbt: test262-metadata-tools-mbt-test
+	moon build --target native cmd/classify_by_edition
+	@if [ -n "$(ARGS)" ]; then \
+		./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe $(ARGS); \
+	else \
+		echo "built cmd/classify_by_edition (pass ARGS='result.json ...' to run)"; \
+	fi
+
+classify-by-edition-mbt: test262-classify-by-edition-mbt
 
 # Download the latest Test262 CI results and print a paste-ready report.
 # Pass ARGS="..." to forward flags, e.g. make test262-report ARGS="--run 24730849102"
@@ -135,4 +163,4 @@ unicode-tables:
 # Clean build artifacts
 clean:
 	moon clean
-	rm -f test262-results.json test262-analysis.json
+	rm -f test262-results.json test262-analysis.json test262-analysis.moonbit-shadow.json
