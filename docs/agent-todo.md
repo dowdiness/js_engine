@@ -450,6 +450,12 @@ Keep mutating methods (`push`, `pop`, etc.) for separate audit because some
 direct paths still carry length-writable checks that the prototype branches must
 preserve before removal.
 
+**Progress (2026-06-06, batch 2):** Delegated the non-mutating
+change-array-by-copy methods (`toReversed`, `toSorted`, `toSpliced`, `with`) from
+the direct Array hook to the live `Array.prototype` path. This removes another
+prototype-shadowing fast path batch while keeping mutating methods and iterator
+methods for separate audits.
+
 ### Cluster 3 — Strict-mode TypeError residual re-triage
 
 The 04-21 drill deferred ~27 tests pending Stage C. Stage C is now done.
