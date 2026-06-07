@@ -1,0 +1,17 @@
+import {
+  "dowdiness/js_engine/tooling/test262_utils" @utils,
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "moonbitlang/core/string",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/sys",
+}
+
+supported_targets = "+native"
+
+options(
+  "is-main": true,
+  "native-stub": [ "stderr.c" ],
+)

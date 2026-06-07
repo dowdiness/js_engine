@@ -153,9 +153,14 @@ Python utility test and the native-only MoonBit shadow package against
 The shared fixtures pin the lightweight fallback YAML subset used when PyYAML is
 unavailable: scalar coercion, inline lists and dictionaries, indented lists and
 dictionaries, block scalars, inline comment stripping, missing frontmatter, and
-`as_list` null/scalar/list coercion. The MoonBit package must not change Test262
-runner behavior until a later promotion issue explicitly replaces the Python
-call sites.
+`as_list` null/scalar/list coercion. `make test262-utils-corpus-test` also checks
+that same fallback mode explicitly over the checked-out `test262/test/**/*.js`
+corpus by comparing deterministic Python-authoritative and MoonBit-shadow JSON
+records for parsed frontmatter plus `as_list`-coerced `features`, `flags`, and
+`includes`. This corpus check is shadow-only, does not run the engine, and is
+not Test262 conformance data. The MoonBit package must not change Test262 runner
+behavior until a later promotion issue explicitly replaces the Python call
+sites.
 
 ## Parity comparison rules
 

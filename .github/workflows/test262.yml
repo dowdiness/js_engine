@@ -70,6 +70,9 @@ jobs:
       - name: Test262 utils parity
         run: make test262-utils-test
 
+      - name: Test262 utils corpus parity
+        run: make test262-utils-corpus-test
+
       - name: Check and test
         run: |
           moon check
