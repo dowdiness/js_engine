@@ -1,4 +1,4 @@
-.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-quick test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-compare-results test262-download test262-report unicode-tables clean
+.PHONY: build test bench-focus bench-focus-test bench-focus-mbt subprocess-helpers-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-quick test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-compare-results test262-download test262-report test262-report-test test262-report-mbt unicode-tables unicode-tables-test unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 
@@ -9,6 +9,24 @@ build:
 # Run MoonBit unit tests
 test:
 	moon test
+
+# Shadow subprocess/network helper tests. Python scripts remain authoritative.
+subprocess-helpers-mbt-test:
+	moon test --target native tooling/subprocess_helpers
+
+bench-focus-test: subprocess-helpers-mbt-test
+	python3 scripts/bench_focus_test.py
+
+bench-focus:
+	python3 scripts/bench-focus.py $(ARGS)
+
+bench-focus-mbt: subprocess-helpers-mbt-test
+	moon build --target native cmd/bench_focus
+	@if [ -n "$(ARGS)" ]; then \
+		./_build/native/debug/build/cmd/bench_focus/bench_focus.exe $(ARGS); \
+	else \
+		echo "built cmd/bench_focus (pass ARGS='--runs 1 ...' to run)"; \
+	fi
 
 # Guardrail for the realm-state migration track.
 # Keep Python authoritative while requiring the MoonBit shadow to build and match.
@@ -41,6 +59,7 @@ test262-download:
 test262-contract-test:
 	python3 scripts/compare_test262_results_test.py
 	python3 scripts/classify_by_edition_test.py
+	python3 scripts/report_test262_test.py
 
 # Shared Test262 metadata tests. Python remains authoritative; MoonBit shadows it.
 test262-metadata-test: test262-metadata-mbt-test test262-metadata-tools-mbt-test
@@ -152,13 +171,34 @@ classify-by-edition-mbt: test262-classify-by-edition-mbt
 
 # Download the latest Test262 CI results and print a paste-ready report.
 # Pass ARGS="..." to forward flags, e.g. make test262-report ARGS="--run 24730849102"
+test262-report-test: test262-contract-test subprocess-helpers-mbt-test
+
 test262-report:
 	python3 scripts/report-test262.py --with-editions $(ARGS)
 
+test262-report-mbt: subprocess-helpers-mbt-test
+	moon build --target native cmd/report_test262
+	@if [ -n "$(ARGS)" ]; then \
+		./_build/native/debug/build/cmd/report_test262/report_test262.exe $(ARGS); \
+	else \
+		echo "built cmd/report_test262 (pass ARGS='--run ...' to run; does not run the engine)"; \
+	fi
+
 # Regenerate lexer/unicode_id.mbt from DerivedCoreProperties.txt.
 # Pass UNICODE_VERSION=X.Y.Z to target a specific Unicode release (default: 17.0.0).
+unicode-tables-test: subprocess-helpers-mbt-test
+	python3 scripts/generate_unicode_id_tables_test.py
+
 unicode-tables:
 	python3 scripts/generate-unicode-id-tables.py $(if $(UNICODE_VERSION),--unicode-version $(UNICODE_VERSION))
+
+unicode-tables-mbt: subprocess-helpers-mbt-test
+	moon build --target native cmd/generate_unicode_id_tables
+	@if [ -n "$(ARGS)" ]; then \
+		./_build/native/debug/build/cmd/generate_unicode_id_tables/generate_unicode_id_tables.exe $(ARGS); \
+	else \
+		echo "built cmd/generate_unicode_id_tables (pass ARGS='--output /tmp/unicode_id.mbt' to fetch/generate)"; \
+	fi
 
 # Clean build artifacts
 clean:

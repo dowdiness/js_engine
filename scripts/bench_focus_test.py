@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
+import shlex
 import sys
 from pathlib import Path
 
@@ -56,6 +59,25 @@ def main() -> int:
 
     missing = bench_focus.summarize_row("missing", rows_by_run)
     assert missing == {"name": "missing", "runs": 0}
+
+    child_code = (
+        "import sys; "
+        "sys.stdout.write('child-out'); "
+        "sys.stderr.write('child-err'); "
+        "raise SystemExit(7)"
+    )
+    command = f"{shlex.quote(sys.executable)} -c {shlex.quote(child_code)}"
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            bench_focus.run_once(command)
+    except RuntimeError as exc:
+        assert str(exc) == "benchmark command failed with exit code 7"
+    else:
+        raise AssertionError("run_once should fail for non-zero child status")
+    assert stdout.getvalue() == "child-out"
+    assert stderr.getvalue() == "child-err"
 
     return 0
 
