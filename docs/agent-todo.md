@@ -463,6 +463,11 @@ separate iterator-semantics audit: the direct `values` path currently returns a
 live iterator over the original array, while the prototype `values` path
 snapshots values first.
 
+**Progress (2026-06-07, iterator semantics batch):** Added kinded live Array
+Iterator internal slots for `keys`, `values`, and `entries`; wired
+`Array.prototype.values` and default `@@iterator` through that path; and removed
+the remaining direct `values` hook. Mutating fast paths remain separate.
+
 ### Cluster 3 — Strict-mode TypeError residual re-triage
 
 The 04-21 drill deferred ~27 tests pending Stage C. Stage C is now done.

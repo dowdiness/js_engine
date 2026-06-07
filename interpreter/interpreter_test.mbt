@@ -2211,16 +2211,71 @@ test "array iterator methods observe prototype overrides" {
   let src =
     #|var saved = {
     #|  entries: Array.prototype.entries,
-    #|  keys: Array.prototype.keys
+    #|  keys: Array.prototype.keys,
+    #|  values: Array.prototype.values,
+    #|  iterator: Array.prototype[Symbol.iterator]
     #|};
     #|Array.prototype.entries = function() { return "entries:" + this.length; };
     #|Array.prototype.keys = function() { return "keys:" + this.length; };
+    #|Array.prototype.values = function() { return "values:" + this.length; };
+    #|Array.prototype[Symbol.iterator] = function() { return "iterator:" + this.length; };
     #|console.log([1, 2].entries());
     #|console.log([1, 2].keys());
+    #|console.log([1, 2].values());
+    #|console.log([1, 2][Symbol.iterator]());
     #|Array.prototype.entries = saved.entries;
     #|Array.prototype.keys = saved.keys;
+    #|Array.prototype.values = saved.values;
+    #|Array.prototype[Symbol.iterator] = saved.iterator;
   let output = run_output(src)
-  json_inspect(output, content=["entries:2", "keys:2"])
+  json_inspect(output, content=["entries:2", "keys:2", "values:2", "iterator:2"])
+}
+
+///|
+test "array iterators read live array state through prototype next" {
+  let src =
+    #|var arr = ["a"];
+    #|var entries = arr.entries();
+    #|var keys = arr.keys();
+    #|var values = arr.values();
+    #|var next = Object.getPrototypeOf(values).next;
+    #|arr.push("b");
+    #|var pair = next.call(entries).value;
+    #|console.log(pair[0] + ":" + pair[1]);
+    #|pair = next.call(entries).value;
+    #|console.log(pair[0] + ":" + pair[1]);
+    #|console.log(next.call(entries).done);
+    #|console.log(next.call(keys).value);
+    #|console.log(next.call(keys).value);
+    #|console.log(next.call(keys).done);
+    #|console.log(next.call(values).value);
+    #|console.log(next.call(values).value);
+    #|console.log(next.call(values).done);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "0:a", "1:b", "true", "0", "1", "true", "a", "b", "true",
+  ])
+}
+
+///|
+test "array default iterator and for-of read live array state" {
+  let src =
+    #|console.log(Array.prototype.values === Array.prototype[Symbol.iterator]);
+    #|var arr = ["a"];
+    #|var iterator = arr[Symbol.iterator]();
+    #|arr.push("b");
+    #|console.log(iterator.next().value);
+    #|console.log(iterator.next().value);
+    #|console.log(iterator.next().done);
+    #|var out = [];
+    #|var loop = ["x"];
+    #|for (var value of loop) {
+    #|  out.push(value);
+    #|  if (value === "x") loop.push("y");
+    #|}
+    #|console.log(out.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=["true", "a", "b", "true", "x|y"])
 }
 
 ///|

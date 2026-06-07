@@ -8,6 +8,25 @@ const ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID = -3
 const ARRAY_ITERATOR_TARGET_SYMBOL_ID = -4
 
 ///|
+const ARRAY_ITERATOR_KIND_SYMBOL_ID = -5
+
+///|
+const ARRAY_ITERATOR_KIND_KEY = 0
+
+///|
+const ARRAY_ITERATOR_KIND_VALUE = 1
+
+///|
+const ARRAY_ITERATOR_KIND_KEY_AND_VALUE = 2
+
+///|
+priv enum ArrayIteratorKind {
+  Keys
+  Values
+  Entries
+}
+
+///|
 // Hidden slot on the realm-owned Array.prototype that preserves the original
 // %ArrayProto_values% intrinsic even if user code later mutates the public
 // `Array.prototype.values` property.
@@ -67,6 +86,95 @@ fn make_iterator_result_object(value : Value, done : Bool) -> Value {
     extensible: true,
     arraybuffer_state: None,
   })
+}
+
+///|
+fn array_iterator_kind_to_slot_value(kind : ArrayIteratorKind) -> Value {
+  match kind {
+    Keys => Number(ARRAY_ITERATOR_KIND_KEY.to_double())
+    Values => Number(ARRAY_ITERATOR_KIND_VALUE.to_double())
+    Entries => Number(ARRAY_ITERATOR_KIND_KEY_AND_VALUE.to_double())
+  }
+}
+
+///|
+fn array_iterator_kind_from_slot_value(value : Value) -> ArrayIteratorKind? {
+  match value {
+    Number(n) =>
+      match n.to_int() {
+        0 => Some(Keys)
+        1 => Some(Values)
+        2 => Some(Entries)
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+fn array_iterator_type_error() -> Value raise Error {
+  raise @errors.TypeError(
+    message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
+  )
+}
+
+///|
+fn array_iterator_result_value(
+  kind : ArrayIteratorKind,
+  current : Int,
+  target : Value,
+  interp : Interpreter,
+) -> Value raise Error {
+  match kind {
+    Keys => Number(current.to_double())
+    Values => get_array_like_element_interp(interp, target, current)
+    Entries =>
+      make_array([
+        Number(current.to_double()),
+        get_array_like_element_interp(interp, target, current),
+      ])
+  }
+}
+
+///|
+fn array_iterator_next(
+  interp : Interpreter,
+  this_val : Value,
+) -> Value raise Error {
+  match this_val {
+    Object(data) => {
+      guard data.class_name == "Array Iterator" else {
+        return array_iterator_type_error()
+      }
+      let (current, target, kind) = match
+        (
+          data.bag.symbol_properties.get(ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID),
+          data.bag.symbol_properties.get(ARRAY_ITERATOR_TARGET_SYMBOL_ID),
+          data.bag.symbol_properties.get(ARRAY_ITERATOR_KIND_SYMBOL_ID),
+        ) {
+        (Some(Number(n)), Some(target), Some(kind_value)) =>
+          match array_iterator_kind_from_slot_value(kind_value) {
+            Some(kind) => (n.to_int(), target, kind)
+            None => return array_iterator_type_error()
+          }
+        _ => return array_iterator_type_error()
+      }
+      if target is Undefined {
+        return make_iterator_result_object(Undefined, true)
+      }
+      let total = to_array_like_length_interp(target, interp)
+      if current >= total {
+        data.bag.symbol_properties[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Undefined
+        return make_iterator_result_object(Undefined, true)
+      }
+      data.bag.symbol_properties[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
+        (current + 1).to_double(),
+      )
+      let value = array_iterator_result_value(kind, current, target, interp)
+      make_iterator_result_object(value, false)
+    }
+    _ => array_iterator_type_error()
+  }
 }
 
 ///|
@@ -160,47 +268,7 @@ fn make_array_iterator_proto_value(
     name="next",
     length=0,
     realm_state=Some(realm_state),
-    fn(interp, this_val, _args) raise {
-      match this_val {
-        Object(data) => {
-          if data.class_name != "Array Iterator" {
-            raise @errors.TypeError(
-              message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
-            )
-          }
-          let (current, target) = match
-            (
-              data.bag.symbol_properties.get(
-                ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID,
-              ),
-              data.bag.symbol_properties.get(ARRAY_ITERATOR_TARGET_SYMBOL_ID),
-            ) {
-            (Some(Number(n)), Some(target)) => (n.to_int(), target)
-            _ =>
-              raise @errors.TypeError(
-                message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
-              )
-          }
-          if target is Undefined {
-            return make_iterator_result_object(Undefined, true)
-          }
-          let total = to_array_like_length_interp(target, interp)
-          if current >= total {
-            data.bag.symbol_properties[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Undefined
-            return make_iterator_result_object(Undefined, true)
-          }
-          data.bag.symbol_properties[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
-            (current + 1).to_double(),
-          )
-          let value = get_array_like_element_interp(interp, target, current)
-          make_iterator_result_object(value, false)
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Array Iterator.prototype.next requires that |this| be an Array Iterator",
-          )
-      }
-    },
+    fn(interp, this_val, _args) raise { array_iterator_next(interp, this_val) },
   )
   let proto_descs : Map[String, PropDescriptor] = {}
   proto_descs["next"] = {
@@ -244,20 +312,24 @@ pub fn RealmState::get_array_iterator_proto(self : RealmState) -> Value {
 }
 
 ///|
-/// Create an array iterator object that iterates over array elements
+/// Create an Array Iterator object with a live target and iteration kind.
 fn make_array_iterator_value_with_proto(
   arr_iter_proto : Value,
-  arr : ArrayData,
+  target : Value,
+  kind : ArrayIteratorKind,
   _realm_state : RealmState,
 ) -> Value {
-  // Create the iterator object with next method
   let iter_sym_props : Map[Int, Value] = {}
   iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
-  iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = Array(arr)
+  iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = target
+  iter_sym_props[ARRAY_ITERATOR_KIND_SYMBOL_ID] = array_iterator_kind_to_slot_value(
+    kind,
+  )
   let iter_sym_descs : Map[Int, PropDescriptor] = {}
   let slot_desc = array_iterator_internal_slot_descriptor()
   iter_sym_descs[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
   iter_sym_descs[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
+  iter_sym_descs[ARRAY_ITERATOR_KIND_SYMBOL_ID] = slot_desc
 
   Object({
     bag: {
@@ -281,18 +353,18 @@ pub fn RealmState::make_array_iterator_value(
 ) -> Value {
   make_array_iterator_value_with_proto(
     self.get_array_iterator_proto(),
-    arr,
+    Array(arr),
+    Values,
     self,
   )
 }
 
 ///|
-/// Create an array-like iterator for non-array objects with a `length` property.
-/// Uses `get_array_like_element` / `to_array_like_length` to read indexed values.
 fn make_array_like_iterator_value_with_proto(
   arr_iter_proto : Value,
   val : Value,
-  _realm_state : RealmState,
+  kind : ArrayIteratorKind,
+  realm_state : RealmState,
 ) -> Value raise Error {
   match val {
     Null | Undefined =>
@@ -301,30 +373,11 @@ fn make_array_like_iterator_value_with_proto(
       )
     _ => ()
   }
-  let iter_sym_props : Map[Int, Value] = {}
-  iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
-  iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = val
-  let iter_sym_descs : Map[Int, PropDescriptor] = {}
-  let slot_desc = array_iterator_internal_slot_descriptor()
-  iter_sym_descs[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
-  iter_sym_descs[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
-
-  Object({
-    bag: {
-      properties: {},
-      symbol_properties: iter_sym_props,
-      descriptors: {},
-      symbol_descriptors: iter_sym_descs,
-    },
-    prototype: arr_iter_proto,
-    callable: None,
-    class_name: "Array Iterator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+  make_array_iterator_value_with_proto(arr_iter_proto, val, kind, realm_state)
 }
 
 ///|
+/// Create an array-like values iterator for objects with a `length` property.
 pub fn RealmState::make_array_like_iterator_value(
   self : RealmState,
   val : Value,
@@ -332,6 +385,46 @@ pub fn RealmState::make_array_like_iterator_value(
   make_array_like_iterator_value_with_proto(
     self.get_array_iterator_proto(),
     val,
+    Values,
+    self,
+  )
+}
+
+///|
+pub fn RealmState::make_array_keys_iterator_value(
+  self : RealmState,
+  val : Value,
+) -> Value raise Error {
+  make_array_like_iterator_value_with_proto(
+    self.get_array_iterator_proto(),
+    val,
+    Keys,
+    self,
+  )
+}
+
+///|
+pub fn RealmState::make_array_values_iterator_value(
+  self : RealmState,
+  val : Value,
+) -> Value raise Error {
+  make_array_like_iterator_value_with_proto(
+    self.get_array_iterator_proto(),
+    val,
+    Values,
+    self,
+  )
+}
+
+///|
+pub fn RealmState::make_array_entries_iterator_value(
+  self : RealmState,
+  val : Value,
+) -> Value raise Error {
+  make_array_like_iterator_value_with_proto(
+    self.get_array_iterator_proto(),
+    val,
+    Entries,
     self,
   )
 }

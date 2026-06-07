@@ -15,15 +15,14 @@ fn setup_iterator_protocol(
         Some(Object(proto_data)) => {
           // values() and [Symbol.iterator] are the same function object per spec
           // (Array.prototype.values === Array.prototype[Symbol.iterator]).
-          let values_fn = @runtime.make_method_func(name="values", length=0, fn(
-            this_val,
-            _args,
-          ) raise {
-            match this_val {
-              Value::Array(arr) => realm_state.make_array_iterator_value(arr)
-              _ => realm_state.make_array_like_iterator_value(this_val)
-            }
-          })
+          let values_fn = @runtime.make_interp_method_func(
+            name="values",
+            length=0,
+            fn(interp, this_val, _args) raise {
+              let o = to_object(this_val, interp)
+              realm_state.make_array_values_iterator_value(o)
+            },
+          )
           realm_state.set_array_proto_values_intrinsic(values_fn)
           proto_data.bag.symbol_properties[iterator_sym.id] = values_fn
           proto_data.bag.symbol_descriptors[iterator_sym.id] = {
@@ -36,167 +35,21 @@ fn setup_iterator_protocol(
           }
           proto_data.bag.properties["values"] = values_fn
 
-          // Add keys() method that returns an iterator over indices
-          proto_data.bag.properties["keys"] = @runtime.make_method_func(
+          proto_data.bag.properties["keys"] = @runtime.make_interp_method_func(
             name="keys",
             length=0,
-            (this_val, _args) => {
-              let the_val = this_val
-              let index_ref : Ref[Int] = { val: 0 }
-              let next_method = Value::Object({
-                bag: @runtime.PropertyBag(),
-                prototype: Null,
-                callable: Some(
-                  NativeCallable("next", _args => {
-                    let idx = index_ref.val
-                    // Read live length each call so mutations during iteration are observed
-                    let len = @runtime.to_array_like_length(the_val)
-                    if idx < len {
-                      index_ref.val = idx + 1
-                      let result_props : Map[String, Value] = {}
-                      result_props["value"] = Value::Number(idx.to_double())
-                      result_props["done"] = Value::Bool(false)
-                      Value::Object({
-                        bag: {
-                          properties: result_props,
-                          symbol_properties: {},
-                          descriptors: {},
-                          symbol_descriptors: {},
-                        },
-                        prototype: Null,
-                        callable: None,
-                        class_name: "Object",
-                        extensible: true,
-                        arraybuffer_state: None,
-                      })
-                    } else {
-                      let result_props : Map[String, Value] = {}
-                      result_props["value"] = Undefined
-                      result_props["done"] = Value::Bool(true)
-                      Value::Object({
-                        bag: {
-                          properties: result_props,
-                          symbol_properties: {},
-                          descriptors: {},
-                          symbol_descriptors: {},
-                        },
-                        prototype: Null,
-                        callable: None,
-                        class_name: "Object",
-                        extensible: true,
-                        arraybuffer_state: None,
-                      })
-                    }
-                  }),
-                ),
-                class_name: "Function",
-                extensible: true,
-                arraybuffer_state: None,
-              })
-              let iter_props : Map[String, Value] = {}
-              iter_props["next"] = @runtime.stamp_function_realm(
-                next_method,
-                realm_state=Some(realm_state),
-              )
-              let iter_obj = Value::Object({
-                bag: {
-                  properties: iter_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                },
-                prototype: realm_state.get_array_iterator_proto(),
-                callable: None,
-                class_name: "Array Iterator",
-                extensible: true,
-                arraybuffer_state: None,
-              })
-
-              iter_obj
+            fn(interp, this_val, _args) raise {
+              let o = to_object(this_val, interp)
+              realm_state.make_array_keys_iterator_value(o)
             },
           )
 
-          // Add entries() method that returns an iterator over [index, value] pairs
-          proto_data.bag.properties["entries"] = @runtime.make_method_func(
+          proto_data.bag.properties["entries"] = @runtime.make_interp_method_func(
             name="entries",
             length=0,
-            (this_val, _args) => {
-              let the_val = this_val
-              let index_ref : Ref[Int] = { val: 0 }
-              let next_method = Value::Object({
-                bag: @runtime.PropertyBag(),
-                prototype: Null,
-                callable: Some(
-                  NativeCallable("next", _args => {
-                    let idx = index_ref.val
-                    // Read live length each call so mutations during iteration are observed
-                    let len = @runtime.to_array_like_length(the_val)
-                    if idx < len {
-                      let value = @runtime.get_array_like_element(the_val, idx)
-                      index_ref.val = idx + 1
-                      let result_props : Map[String, Value] = {}
-                      result_props["value"] = @runtime.make_array([
-                        Value::Number(idx.to_double()),
-                        value,
-                      ])
-                      result_props["done"] = Value::Bool(false)
-                      Value::Object({
-                        bag: {
-                          properties: result_props,
-                          symbol_properties: {},
-                          descriptors: {},
-                          symbol_descriptors: {},
-                        },
-                        prototype: Null,
-                        callable: None,
-                        class_name: "Object",
-                        extensible: true,
-                        arraybuffer_state: None,
-                      })
-                    } else {
-                      let result_props : Map[String, Value] = {}
-                      result_props["value"] = Undefined
-                      result_props["done"] = Value::Bool(true)
-                      Value::Object({
-                        bag: {
-                          properties: result_props,
-                          symbol_properties: {},
-                          descriptors: {},
-                          symbol_descriptors: {},
-                        },
-                        prototype: Null,
-                        callable: None,
-                        class_name: "Object",
-                        extensible: true,
-                        arraybuffer_state: None,
-                      })
-                    }
-                  }),
-                ),
-                class_name: "Function",
-                extensible: true,
-                arraybuffer_state: None,
-              })
-              let iter_props : Map[String, Value] = {}
-              iter_props["next"] = @runtime.stamp_function_realm(
-                next_method,
-                realm_state=Some(realm_state),
-              )
-              let iter_obj = Value::Object({
-                bag: {
-                  properties: iter_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                },
-                prototype: realm_state.get_array_iterator_proto(),
-                callable: None,
-                class_name: "Array Iterator",
-                extensible: true,
-                arraybuffer_state: None,
-              })
-
-              iter_obj
+            fn(interp, this_val, _args) raise {
+              let o = to_object(this_val, interp)
+              realm_state.make_array_entries_iterator_value(o)
             },
           )
           // Add @@unscopables to Array.prototype
