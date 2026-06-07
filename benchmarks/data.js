@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1780217384445,
+  "lastUpdate": 1780814130664,
   "repoUrl": "https://github.com/dowdiness/js_engine",
   "entries": {
     "Benchmark": [
@@ -1126,6 +1126,238 @@ window.BENCHMARK_DATA = {
             "value": 0.4886705500000001,
             "unit": "ms",
             "extra": "category=workflow, cv=4.9%, noisy=false"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Ishimoto Koji",
+            "username": "dowdiness",
+            "email": "koji.ishimoto@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "7c7f102f92d011bfb79f2162188b2e37752ffc42",
+          "message": "Fix live Array iterator semantics (#274)\n\n* Fix live Array iterator semantics\n\n* Use enum source for Array iterator kind\n\n* Refactor Array iterator construction helpers",
+          "timestamp": "2026-06-07T05:44:26Z",
+          "url": "https://github.com/dowdiness/js_engine/commit/7c7f102f92d011bfb79f2162188b2e37752ffc42"
+        },
+        "date": 1780814130167,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "startup/startup/tiny_program",
+            "value": 1.399875991600001,
+            "unit": "ms",
+            "extra": "category=regression, cv=7.8%, noisy=false"
+          },
+          {
+            "name": "frontend/lexer/small",
+            "value": 0.031935156000000006,
+            "unit": "ms",
+            "extra": "category=regression, cv=27.7%, noisy=true"
+          },
+          {
+            "name": "frontend/lexer/large",
+            "value": 0.2661626111999988,
+            "unit": "ms",
+            "extra": "category=regression, cv=2.8%, noisy=false"
+          },
+          {
+            "name": "execution/exec/fibonacci_30",
+            "value": 15568.206102600001,
+            "unit": "ms",
+            "extra": "category=regression, cv=1.0%, noisy=false"
+          },
+          {
+            "name": "execution/exec/property_chain",
+            "value": 14.33809837499939,
+            "unit": "ms",
+            "extra": "category=regression, cv=3.7%, noisy=false"
+          },
+          {
+            "name": "frontend/startup/phase/parse_tiny",
+            "value": 0.001868894221999945,
+            "unit": "ms",
+            "extra": "category=component, cv=5.0%, noisy=false"
+          },
+          {
+            "name": "startup/startup/phase/new_interpreter",
+            "value": 1.2537532979997632,
+            "unit": "ms",
+            "extra": "category=component, cv=10.9%, noisy=false"
+          },
+          {
+            "name": "execution/startup/phase/execute_preparsed_tiny",
+            "value": 0.0005300860179999142,
+            "unit": "ms",
+            "extra": "category=component, cv=1.1%, noisy=false"
+          },
+          {
+            "name": "startup/startup/phase/event_loop_drain_empty",
+            "value": 0.00017964420320002827,
+            "unit": "ms",
+            "extra": "category=component, cv=0.7%, noisy=false"
+          },
+          {
+            "name": "execution/startup/phase/result_stringify_output",
+            "value": 0.00002784744724000106,
+            "unit": "ms",
+            "extra": "category=component, cv=0.3%, noisy=false"
+          },
+          {
+            "name": "execution/exec/array_map_filter",
+            "value": 23.592482399998698,
+            "unit": "ms",
+            "extra": "category=component, cv=22.1%, noisy=true"
+          },
+          {
+            "name": "execution/exec/closure_factory",
+            "value": 32.698906633333536,
+            "unit": "ms",
+            "extra": "category=component, cv=7.2%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/closure_conversion/closure_factory",
+            "value": 30.547068416668726,
+            "unit": "ms",
+            "extra": "category=component, cv=7.8%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/bytecode/closure_factory",
+            "value": 18.97846178333275,
+            "unit": "ms",
+            "extra": "category=component, cv=6.6%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/dispatch_stack",
+            "value": 24.417567688889626,
+            "unit": "ms",
+            "extra": "category=component, cv=2.6%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/local_access",
+            "value": 36.0261694222223,
+            "unit": "ms",
+            "extra": "category=component, cv=0.7%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/env_access",
+            "value": 35.66654666666679,
+            "unit": "ms",
+            "extra": "category=component, cv=0.7%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/captured_access",
+            "value": 38.59783657777847,
+            "unit": "ms",
+            "extra": "category=component, cv=1.8%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/call_frame",
+            "value": 16.632381933332525,
+            "unit": "ms",
+            "extra": "category=component, cv=1.6%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/runtime_helpers",
+            "value": 21.92909437777643,
+            "unit": "ms",
+            "extra": "category=component, cv=1.0%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/property_get",
+            "value": 45.12268584444407,
+            "unit": "ms",
+            "extra": "category=component, cv=1.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/property_set",
+            "value": 42.215171244443624,
+            "unit": "ms",
+            "extra": "category=component, cv=1.7%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/method_call",
+            "value": 18.702605622222315,
+            "unit": "ms",
+            "extra": "category=component, cv=1.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/object_literal",
+            "value": 12.713855777777889,
+            "unit": "ms",
+            "extra": "category=component, cv=0.9%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/array_literal",
+            "value": 13.692106977778412,
+            "unit": "ms",
+            "extra": "category=component, cv=3.0%, noisy=false"
+          },
+          {
+            "name": "execution/exec/arithmetic_loop",
+            "value": 1038.1454066250044,
+            "unit": "ms",
+            "extra": "category=component, cv=0.7%, noisy=false"
+          },
+          {
+            "name": "execution/exec/object_construction",
+            "value": 8.915286483333329,
+            "unit": "ms",
+            "extra": "category=component, cv=3.9%, noisy=false"
+          },
+          {
+            "name": "execution/exec/string_ops",
+            "value": 2.1799451600009343,
+            "unit": "ms",
+            "extra": "category=component, cv=13.8%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/exec/lex",
+            "value": 0.028162477400000597,
+            "unit": "ms",
+            "extra": "category=workflow, cv=0.9%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/exec/parse",
+            "value": 0.025919158449998935,
+            "unit": "ms",
+            "extra": "category=workflow, cv=4.5%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/exec/evaluate",
+            "value": 27.53303639999067,
+            "unit": "ms",
+            "extra": "category=workflow, cv=1.4%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/closure_conversion/evaluate",
+            "value": 26.980007710000212,
+            "unit": "ms",
+            "extra": "category=workflow, cv=4.5%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/bytecode/compile",
+            "value": 0.020514073833323595,
+            "unit": "ms",
+            "extra": "category=workflow, cv=21.7%, noisy=true"
+          },
+          {
+            "name": "execution/pipeline/bytecode/evaluate",
+            "value": 13.915317069998997,
+            "unit": "ms",
+            "extra": "category=workflow, cv=5.5%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/parse_heavy",
+            "value": 0.48346938133338696,
+            "unit": "ms",
+            "extra": "category=workflow, cv=7.1%, noisy=false"
           }
         ]
       }
