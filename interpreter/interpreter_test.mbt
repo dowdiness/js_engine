@@ -2331,6 +2331,180 @@ test "array shift unshift" {
 }
 
 ///|
+test "array shift and unshift observe prototype method overrides" {
+  let src =
+    #|var savedShift = Array.prototype.shift;
+    #|var savedUnshift = Array.prototype.unshift;
+    #|Array.prototype.shift = function() { return "shift:" + this.length; };
+    #|Array.prototype.unshift = function(a, b) { return "unshift:" + this.length + ":" + a + ":" + b; };
+    #|console.log([1, 2].shift());
+    #|console.log([1, 2].unshift("a", "b"));
+    #|Array.prototype.shift = savedShift;
+    #|Array.prototype.unshift = savedUnshift;
+  let output = run_output(src)
+  json_inspect(output, content=["shift:2", "unshift:2:a:b"])
+}
+
+///|
+test "array shift and unshift observe inherited indexed properties" {
+  let src =
+    #|Array.prototype[1] = "inherited";
+    #|var shifted = ["own"];
+    #|shifted.length = 2;
+    #|console.log(shifted.shift());
+    #|console.log(shifted[0]);
+    #|console.log(shifted.hasOwnProperty("0"));
+    #|console.log(shifted[1]);
+    #|delete Array.prototype[1];
+    #|Array.prototype[0] = "proto0";
+    #|var unshifted = [];
+    #|unshifted.length = 1;
+    #|console.log(unshifted.unshift("head"));
+    #|console.log(unshifted[0]);
+    #|console.log(unshifted[1]);
+    #|console.log(unshifted.hasOwnProperty("1"));
+    #|delete Array.prototype[0];
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "own", "inherited", "true", "inherited", "2", "head", "proto0", "true",
+  ])
+}
+
+///|
+test "array shift and unshift reject non-writable length" {
+  let src =
+    #|var empty = [];
+    #|Object.defineProperty(empty, "length", { writable: false });
+    #|try { empty.shift(); console.log("shift-empty:no throw"); }
+    #|catch (e) { console.log("shift-empty:" + (e instanceof TypeError)); }
+    #|var array = [1];
+    #|Object.defineProperty(array, "length", { writable: false });
+    #|try { array.shift(); console.log("shift:no throw"); }
+    #|catch (e) { console.log("shift:" + (e instanceof TypeError)); }
+    #|console.log(array.length);
+    #|console.log(array[0]);
+    #|var unshiftEmpty = [];
+    #|Object.defineProperty(unshiftEmpty, "length", { writable: false });
+    #|try { unshiftEmpty.unshift(); console.log("unshift-empty:no throw"); }
+    #|catch (e) { console.log("unshift-empty:" + (e instanceof TypeError)); }
+    #|try { unshiftEmpty.unshift(1); console.log("unshift-one:no throw"); }
+    #|catch (e) { console.log("unshift-one:" + (e instanceof TypeError)); }
+    #|console.log(unshiftEmpty.length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "shift-empty:true", "shift:true", "1", "undefined", "unshift-empty:true", "unshift-one:true",
+    "0",
+  ])
+}
+
+///|
+test "array shift and unshift preserve sparse high-index length" {
+  let src =
+    #|var high = [];
+    #|high.length = 2147483648;
+    #|console.log(high.unshift());
+    #|console.log(high.length);
+    #|console.log(high.shift());
+    #|console.log(high.length);
+    #|var sparse = [];
+    #|sparse[100001] = "tail";
+    #|console.log(sparse.length);
+    #|console.log(sparse.shift());
+    #|console.log(sparse.length);
+    #|console.log(sparse[100000]);
+    #|console.log(Object.hasOwn(sparse, "100000"));
+    #|console.log(Object.hasOwn(sparse, "100001"));
+    #|var highSparse = [];
+    #|highSparse[2147483648] = "high-tail";
+    #|console.log(highSparse.length);
+    #|console.log(highSparse.shift());
+    #|console.log(highSparse.length);
+    #|console.log(highSparse[2147483647]);
+    #|console.log(Object.hasOwn(highSparse, "2147483648"));
+    #|console.log(Object.hasOwn(highSparse, "2147483647"));
+    #|var denseHigh = ["first"];
+    #|denseHigh[2147483648] = "dense-tail";
+    #|console.log(denseHigh.shift());
+    #|console.log(denseHigh[0]);
+    #|console.log(denseHigh[2147483647]);
+    #|console.log(Object.hasOwn(denseHigh, "2147483648"));
+    #|Array.prototype[2147483648] = "proto-tail";
+    #|var inheritedHigh = [];
+    #|inheritedHigh.length = 2147483649;
+    #|console.log(inheritedHigh.shift());
+    #|console.log(inheritedHigh.length);
+    #|console.log(inheritedHigh[2147483647]);
+    #|console.log(Object.hasOwn(inheritedHigh, "2147483647"));
+    #|delete Array.prototype[2147483648];
+    #|var unshiftSparse = [];
+    #|unshiftSparse[2147483648] = "tail";
+    #|console.log(unshiftSparse.unshift("head"));
+    #|console.log(unshiftSparse[0]);
+    #|console.log(unshiftSparse[2147483649]);
+    #|console.log(Object.hasOwn(unshiftSparse, "2147483648"));
+    #|console.log(Object.hasOwn(unshiftSparse, "2147483649"));
+    #|Array.prototype[2147483648] = "proto-tail";
+    #|var unshiftInheritedHigh = [];
+    #|unshiftInheritedHigh.length = 2147483649;
+    #|console.log(unshiftInheritedHigh.unshift("head"));
+    #|console.log(unshiftInheritedHigh[0]);
+    #|console.log(unshiftInheritedHigh[2147483649]);
+    #|console.log(Object.hasOwn(unshiftInheritedHigh, "2147483649"));
+    #|delete Array.prototype[2147483648];
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "2147483648", "2147483648", "undefined", "2147483647", "100002", "undefined",
+    "100001", "tail", "true", "false", "2147483649", "undefined", "2147483648", "high-tail",
+    "false", "true", "first", "undefined", "dense-tail", "false", "undefined", "2147483648",
+    "proto-tail", "true", "2147483650", "head", "tail", "false", "true", "2147483650",
+    "head", "proto-tail", "true",
+  ])
+}
+
+///|
+test "array shift and unshift respect Object integrity" {
+  let src =
+    #|var frozenShift = [1];
+    #|Object.freeze(frozenShift);
+    #|try { frozenShift.shift(); console.log("frozen-shift:no throw"); }
+    #|catch (e) { console.log("frozen-shift:" + (e instanceof TypeError)); }
+    #|console.log(frozenShift.length);
+    #|console.log(frozenShift[0]);
+    #|var frozenUnshift = [];
+    #|Object.freeze(frozenUnshift);
+    #|try { frozenUnshift.unshift(1); console.log("frozen-unshift:no throw"); }
+    #|catch (e) { console.log("frozen-unshift:" + (e instanceof TypeError)); }
+    #|console.log(Object.hasOwn(frozenUnshift, "0"));
+    #|console.log(frozenUnshift.length);
+    #|var nonext = [];
+    #|Object.preventExtensions(nonext);
+    #|try { nonext.unshift(1); console.log("nonext-unshift:no throw"); }
+    #|catch (e) { console.log("nonext-unshift:" + (e instanceof TypeError)); }
+    #|console.log(Object.hasOwn(nonext, "0"));
+    #|console.log(nonext.length);
+    #|var highShift = [];
+    #|highShift[2147483648] = "x";
+    #|Object.preventExtensions(highShift);
+    #|try { highShift.shift(); console.log("high-shift:no throw"); }
+    #|catch (e) { console.log("high-shift:" + (e instanceof TypeError)); }
+    #|console.log(Object.hasOwn(highShift, "2147483648"));
+    #|console.log(Object.hasOwn(highShift, "2147483647"));
+    #|var highUnshift = [];
+    #|highUnshift[2147483648] = "x";
+    #|Object.preventExtensions(highUnshift);
+    #|try { highUnshift.unshift("head"); console.log("high-unshift:no throw"); }
+    #|catch (e) { console.log("high-unshift:" + (e instanceof TypeError)); }
+    #|console.log(Object.hasOwn(highUnshift, "2147483648"));
+    #|console.log(Object.hasOwn(highUnshift, "2147483649"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "frozen-shift:true", "1", "1", "frozen-unshift:true", "false", "0", "nonext-unshift:true",
+    "false", "0", "high-shift:true", "true", "false", "high-unshift:true", "true",
+    "false",
+  ])
+}
+
+///|
 test "array join" {
   let src =
     #|var arr = [1, 2, 3];
