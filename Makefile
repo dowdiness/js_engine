@@ -1,4 +1,4 @@
-.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
+.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-utils-test test262-utils-mbt-test test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
 
 # Build the JS engine
 build:
@@ -46,6 +46,13 @@ test262-metadata-test: test262-metadata-mbt-test
 
 test262-metadata-mbt-test:
 	moon test --target native tooling/test262_metadata
+
+# Shared Test262 frontmatter utility tests. Python remains authoritative; MoonBit shadows it.
+test262-utils-test: test262-utils-mbt-test
+	python3 scripts/test262_utils_test.py
+
+test262-utils-mbt-test:
+	moon test --target native tooling/test262_utils
 
 # Unit tests for Test262 runner task selection and harness helpers.
 test262-runner-test: test262-contract-test
