@@ -1,0 +1,91 @@
+{
+  "parse_yaml_frontmatter": [
+    {
+      "name": "missing frontmatter returns null",
+      "source": "// no metadata here\nprint('x');\n",
+      "expected": null
+    },
+    {
+      "name": "crlf frontmatter line endings",
+      "source": "/*---\r\nflags: [onlyStrict]\r\n---*/\r\n",
+      "expected": {
+        "flags": ["onlyStrict"]
+      }
+    },
+    {
+      "name": "inline lists dictionaries comments and quoted scalars",
+      "source": "/*---\n# top-level comments are ignored\nflags: [onlyStrict, \"raw # value\", false, null, 'it''s'] # trailing comment\nfeatures: [BigInt, class-fields-private]\nnegative: { phase: parse, type: SyntaxError, note: \"colon: stays\" }\ndescription: \"line\\nwith\\ttab and \\\"quote\\\"\"\nesid: 'sec-example'\n---*/\n",
+      "expected": {
+        "flags": ["onlyStrict", "raw # value", false, null, "it's"],
+        "features": ["BigInt", "class-fields-private"],
+        "negative": {
+          "phase": "parse",
+          "type": "SyntaxError",
+          "note": "colon: stays"
+        },
+        "description": "line\nwith\ttab and \"quote\"",
+        "esid": "sec-example"
+      }
+    },
+    {
+      "name": "block lists dictionaries and empty keys",
+      "source": "/*---\nincludes:\n  - sta.js\n  - assert.js\nfeatures:\n  - BigInt\n  - \"class-fields-private\"\nnegative:\n  phase: runtime\n  type: TypeError\nemptyKey:\nnot yaml metadata\n---*/\n",
+      "expected": {
+        "includes": ["sta.js", "assert.js"],
+        "features": ["BigInt", "class-fields-private"],
+        "negative": {
+          "phase": "runtime",
+          "type": "TypeError"
+        },
+        "emptyKey": null
+      }
+    },
+    {
+      "name": "literal and folded block scalars",
+      "source": "/*---\ninfo: |\n  first line\n  second line\n\n  next paragraph\nsummary: >\n  folded line\n  continues\n\n  next paragraph\n---*/\n",
+      "expected": {
+        "info": "first line\nsecond line\n\nnext paragraph",
+        "summary": "folded line continues\n\nnext paragraph"
+      }
+    },
+    {
+      "name": "comment stripping respects quotes and nesting",
+      "source": "/*---\ndescription: value # stripped\nhashValue: value#kept\nlistWithHash: [a, b # kept]\ninlineDict: { key: value # kept }\n---*/\n",
+      "expected": {
+        "description": "value",
+        "hashValue": "value#kept",
+        "listWithHash": ["a", "b # kept"],
+        "inlineDict": {
+          "key": "value # kept"
+        }
+      }
+    }
+  ],
+  "as_list": [
+    {
+      "name": "arrays pass through",
+      "input": ["onlyStrict", false, null],
+      "expected": ["onlyStrict", false, null]
+    },
+    {
+      "name": "null becomes empty",
+      "input": null,
+      "expected": []
+    },
+    {
+      "name": "scalar becomes singleton",
+      "input": "onlyStrict",
+      "expected": ["onlyStrict"]
+    },
+    {
+      "name": "object becomes singleton",
+      "input": {"phase": "parse"},
+      "expected": [{"phase": "parse"}]
+    },
+    {
+      "name": "boolean becomes singleton",
+      "input": true,
+      "expected": [true]
+    }
+  ]
+}

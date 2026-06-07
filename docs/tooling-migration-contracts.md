@@ -143,6 +143,20 @@ does not run tests or produce conformance numbers.
 Both implementations must produce identical `skip_reason(path, features, flags,
 mode)` values for fixture cases and for the checked-out Test262 tree.
 
+## Shared Test262 utility contract
+
+`scripts/test262_utils.py` remains the authoritative implementation for YAML
+frontmatter extraction and `as_list` coercion. `make test262-utils-test` runs the
+Python utility test and the native-only MoonBit shadow package against
+`scripts/test262_utils_parity_cases.json`.
+
+The shared fixtures pin the lightweight fallback YAML subset used when PyYAML is
+unavailable: scalar coercion, inline lists and dictionaries, indented lists and
+dictionaries, block scalars, inline comment stripping, missing frontmatter, and
+`as_list` null/scalar/list coercion. The MoonBit package must not change Test262
+runner behavior until a later promotion issue explicitly replaces the Python
+call sites.
+
 ## Parity comparison rules
 
 The comparison harness for Python-vs-MoonBit Test262 artifacts must:
