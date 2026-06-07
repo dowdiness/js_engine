@@ -179,53 +179,7 @@ pub fn get_array_method(
         fn(args) raise { array_direct_copy_within(arr, args) },
       )
     }
-    "entries" => {
-      let arr = data
-      @runtime.make_method_func(
-        name="entries",
-        length=0,
-        realm_state=Some(realm_state),
-        fn(_this_val, _args) {
-          let result : Array[Value] = []
-          for i = 0; i < arr.elements.length(); i = i + 1 {
-            result.push(
-              @runtime.make_array([
-                Value::Number(i.to_double()),
-                arr.elements[i],
-              ]),
-            )
-          }
-          realm_state.make_array_iterator_value({
-            elements: result,
-            bag: @runtime.PropertyBag(),
-            length_writable: true,
-            holes: {},
-            extensible: true,
-          })
-        },
-      )
-    }
-    "keys" => {
-      let arr = data
-      @runtime.make_method_func(
-        name="keys",
-        length=0,
-        realm_state=Some(realm_state),
-        fn(_this_val, _args) {
-          let result : Array[Value] = []
-          for i = 0; i < arr.elements.length(); i = i + 1 {
-            result.push(Value::Number(i.to_double()))
-          }
-          realm_state.make_array_iterator_value({
-            elements: result,
-            bag: @runtime.PropertyBag(),
-            length_writable: true,
-            holes: {},
-            extensible: true,
-          })
-        },
-      )
-    }
+    "entries" | "keys" => Undefined // Delegated to Array.prototype (iterator method overrides)
     "values" => {
       let arr = data
       @runtime.make_method_func(

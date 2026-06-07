@@ -2207,6 +2207,23 @@ test "array copy methods observe inherited indexed properties" {
 }
 
 ///|
+test "array iterator methods observe prototype overrides" {
+  let src =
+    #|var saved = {
+    #|  entries: Array.prototype.entries,
+    #|  keys: Array.prototype.keys
+    #|};
+    #|Array.prototype.entries = function() { return "entries:" + this.length; };
+    #|Array.prototype.keys = function() { return "keys:" + this.length; };
+    #|console.log([1, 2].entries());
+    #|console.log([1, 2].keys());
+    #|Array.prototype.entries = saved.entries;
+    #|Array.prototype.keys = saved.keys;
+  let output = run_output(src)
+  json_inspect(output, content=["entries:2", "keys:2"])
+}
+
+///|
 test "array slice" {
   let src =
     #|var arr = [1, 2, 3, 4, 5];

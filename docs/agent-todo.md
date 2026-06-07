@@ -456,6 +456,13 @@ the direct Array hook to the live `Array.prototype` path. This removes another
 prototype-shadowing fast path batch while keeping mutating methods and iterator
 methods for separate audits.
 
+**Progress (2026-06-07, `entries`/`keys` batch):** Delegated the string-key
+`entries` and `keys` direct hooks to the live `Array.prototype` path so prototype
+method overrides are observed. Leave `values` and `Symbol.iterator` for a
+separate iterator-semantics audit: the direct `values` path currently returns a
+live iterator over the original array, while the prototype `values` path
+snapshots values first.
+
 ### Cluster 3 — Strict-mode TypeError residual re-triage
 
 The 04-21 drill deferred ~27 tests pending Stage C. Stage C is now done.
