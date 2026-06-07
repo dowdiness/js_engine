@@ -1,0 +1,15 @@
+import {
+  "dowdiness/js_engine/tooling/subprocess_helpers" @helpers,
+  "moonbitlang/async",
+  "moonbitlang/async/stdio",
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "moonbitlang/x/sys",
+}
+
+supported_targets = "+native"
+
+options(
+  "is-main": true,
+)
