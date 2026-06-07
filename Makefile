@@ -1,4 +1,6 @@
-.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-utils-test test262-utils-mbt-test test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
+.PHONY: build test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-quick test262-analyze test262-validate-skips test262-compare-results test262-download test262-report unicode-tables clean
+
+TEST262_COMMIT ?= main
 
 # Build the JS engine
 build:
@@ -26,8 +28,8 @@ architecture-state-audit-test:
 # Download the Test262 test suite
 test262-download:
 	@if [ ! -d "test262/test" ]; then \
-		echo "Downloading Test262..."; \
-		curl -fsSL -L "https://api.github.com/repos/tc39/test262/tarball/main" -o /tmp/test262.tar.gz; \
+		echo "Downloading Test262 ($(TEST262_COMMIT))..."; \
+		curl -fsSL -L "https://api.github.com/repos/tc39/test262/tarball/$(TEST262_COMMIT)" -o /tmp/test262.tar.gz; \
 		mkdir -p test262; \
 		tar -xzf /tmp/test262.tar.gz -C test262 --strip-components=1; \
 		echo "Test262 downloaded."; \
@@ -53,6 +55,21 @@ test262-utils-test: test262-utils-mbt-test
 
 test262-utils-mbt-test:
 	moon test --target native tooling/test262_utils
+
+test262-utils-corpus-mbt:
+	moon build --target native cmd/test262_utils_corpus
+
+test262-utils-corpus-test: test262-download test262-utils-corpus-mbt
+	@set -e; \
+	tmp="$$(mktemp)"; \
+	trap 'rm -f "$$tmp"' EXIT; \
+	./_build/native/debug/build/cmd/test262_utils_corpus/test262_utils_corpus.exe \
+		--test262 ./test262 \
+		--output "$$tmp"; \
+	python3 scripts/test262_utils_corpus_test.py \
+		--test262 ./test262 \
+		--moonbit-output "$$tmp" \
+		--yaml-mode fallback
 
 # Unit tests for Test262 runner task selection and harness helpers.
 test262-runner-test: test262-contract-test
