@@ -909,30 +909,9 @@ fn setup_array_builtins(
       array_copy_within_indexed_properties(interp, o, args)
     },
   )
-  array_proto_props["entries"] = @runtime.make_interp_method_func(
-    name="entries",
-    length=0,
-    fn(interp, this_val, _args) raise {
-      let o = to_object(this_val, interp)
-      realm_state.make_array_entries_iterator_value(o)
-    },
-  )
-  array_proto_props["keys"] = @runtime.make_interp_method_func(
-    name="keys",
-    length=0,
-    fn(interp, this_val, _args) raise {
-      let o = to_object(this_val, interp)
-      realm_state.make_array_keys_iterator_value(o)
-    },
-  )
-  array_proto_props["values"] = @runtime.make_interp_method_func(
-    name="values",
-    length=0,
-    fn(interp, this_val, _args) raise {
-      let o = to_object(this_val, interp)
-      realm_state.make_array_values_iterator_value(o)
-    },
-  )
+  array_proto_props["entries"] = make_array_entries_iterator_method(realm_state)
+  array_proto_props["keys"] = make_array_keys_iterator_method(realm_state)
+  array_proto_props["values"] = make_array_values_iterator_method(realm_state)
   array_proto_props["toReversed"] = @runtime.make_interp_method_func(
     name="toReversed",
     length=0,

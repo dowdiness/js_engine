@@ -308,7 +308,6 @@ fn make_array_iterator_value_with_proto(
   arr_iter_proto : Value,
   target : Value,
   kind : ArrayIteratorKind,
-  _realm_state : RealmState,
 ) -> Value {
   let iter_sym_props : Map[Int, Value] = {}
   iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
@@ -346,16 +345,14 @@ pub fn RealmState::make_array_iterator_value(
     self.get_array_iterator_proto(),
     Array(arr),
     Values,
-    self,
   )
 }
 
 ///|
-fn make_array_like_iterator_value_with_proto(
-  arr_iter_proto : Value,
+fn RealmState::make_array_iterator_for_value(
+  self : RealmState,
   val : Value,
   kind : ArrayIteratorKind,
-  realm_state : RealmState,
 ) -> Value raise Error {
   match val {
     Null | Undefined =>
@@ -364,7 +361,11 @@ fn make_array_like_iterator_value_with_proto(
       )
     _ => ()
   }
-  make_array_iterator_value_with_proto(arr_iter_proto, val, kind, realm_state)
+  make_array_iterator_value_with_proto(
+    self.get_array_iterator_proto(),
+    val,
+    kind,
+  )
 }
 
 ///|
@@ -373,12 +374,7 @@ pub fn RealmState::make_array_like_iterator_value(
   self : RealmState,
   val : Value,
 ) -> Value raise Error {
-  make_array_like_iterator_value_with_proto(
-    self.get_array_iterator_proto(),
-    val,
-    Values,
-    self,
-  )
+  self.make_array_values_iterator_value(val)
 }
 
 ///|
@@ -386,12 +382,7 @@ pub fn RealmState::make_array_keys_iterator_value(
   self : RealmState,
   val : Value,
 ) -> Value raise Error {
-  make_array_like_iterator_value_with_proto(
-    self.get_array_iterator_proto(),
-    val,
-    Keys,
-    self,
-  )
+  self.make_array_iterator_for_value(val, Keys)
 }
 
 ///|
@@ -399,12 +390,7 @@ pub fn RealmState::make_array_values_iterator_value(
   self : RealmState,
   val : Value,
 ) -> Value raise Error {
-  make_array_like_iterator_value_with_proto(
-    self.get_array_iterator_proto(),
-    val,
-    Values,
-    self,
-  )
+  self.make_array_iterator_for_value(val, Values)
 }
 
 ///|
@@ -412,12 +398,7 @@ pub fn RealmState::make_array_entries_iterator_value(
   self : RealmState,
   val : Value,
 ) -> Value raise Error {
-  make_array_like_iterator_value_with_proto(
-    self.get_array_iterator_proto(),
-    val,
-    Entries,
-    self,
-  )
+  self.make_array_iterator_for_value(val, Entries)
 }
 
 ///|

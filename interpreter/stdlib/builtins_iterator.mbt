@@ -1,4 +1,44 @@
 ///|
+fn make_array_values_iterator_method(
+  realm_state : @runtime.RealmState,
+) -> Value {
+  @runtime.make_interp_method_func(name="values", length=0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    realm_state.make_array_values_iterator_value(o)
+  })
+}
+
+///|
+fn make_array_keys_iterator_method(realm_state : @runtime.RealmState) -> Value {
+  @runtime.make_interp_method_func(name="keys", length=0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    realm_state.make_array_keys_iterator_value(o)
+  })
+}
+
+///|
+fn make_array_entries_iterator_method(
+  realm_state : @runtime.RealmState,
+) -> Value {
+  @runtime.make_interp_method_func(name="entries", length=0, fn(
+    interp,
+    this_val,
+    _args,
+  ) raise {
+    let o = to_object(this_val, interp)
+    realm_state.make_array_entries_iterator_value(o)
+  })
+}
+
+///|
 /// Set up iterator protocol on Array and String prototypes
 fn setup_iterator_protocol(
   env : Environment,
@@ -15,14 +55,7 @@ fn setup_iterator_protocol(
         Some(Object(proto_data)) => {
           // values() and [Symbol.iterator] are the same function object per spec
           // (Array.prototype.values === Array.prototype[Symbol.iterator]).
-          let values_fn = @runtime.make_interp_method_func(
-            name="values",
-            length=0,
-            fn(interp, this_val, _args) raise {
-              let o = to_object(this_val, interp)
-              realm_state.make_array_values_iterator_value(o)
-            },
-          )
+          let values_fn = make_array_values_iterator_method(realm_state)
           realm_state.set_array_proto_values_intrinsic(values_fn)
           proto_data.bag.symbol_properties[iterator_sym.id] = values_fn
           proto_data.bag.symbol_descriptors[iterator_sym.id] = {
@@ -35,22 +68,12 @@ fn setup_iterator_protocol(
           }
           proto_data.bag.properties["values"] = values_fn
 
-          proto_data.bag.properties["keys"] = @runtime.make_interp_method_func(
-            name="keys",
-            length=0,
-            fn(interp, this_val, _args) raise {
-              let o = to_object(this_val, interp)
-              realm_state.make_array_keys_iterator_value(o)
-            },
+          proto_data.bag.properties["keys"] = make_array_keys_iterator_method(
+            realm_state,
           )
 
-          proto_data.bag.properties["entries"] = @runtime.make_interp_method_func(
-            name="entries",
-            length=0,
-            fn(interp, this_val, _args) raise {
-              let o = to_object(this_val, interp)
-              realm_state.make_array_entries_iterator_value(o)
-            },
+          proto_data.bag.properties["entries"] = make_array_entries_iterator_method(
+            realm_state,
           )
           // Add @@unscopables to Array.prototype
           let unscopables_sym_data = match env.get("Symbol") {
