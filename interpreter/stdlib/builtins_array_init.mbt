@@ -909,68 +909,9 @@ fn setup_array_builtins(
       array_copy_within_indexed_properties(interp, o, args)
     },
   )
-  array_proto_props["entries"] = @runtime.make_interp_method_func(
-    name="entries",
-    length=0,
-    fn(interp, this_val, _args) raise {
-      let o = to_object(this_val, interp)
-      let len = @runtime.to_array_like_length_interp(o, interp)
-      let result : Array[Value] = []
-      for i = 0; i < len; i = i + 1 {
-        result.push(
-          @runtime.make_array([
-            Value::Number(i.to_double()),
-            @runtime.get_array_like_element_interp(interp, o, i),
-          ]),
-        )
-      }
-      realm_state.make_array_iterator_value({
-        elements: result,
-        bag: @runtime.PropertyBag(),
-        length_writable: true,
-        holes: {},
-        extensible: true,
-      })
-    },
-  )
-  array_proto_props["keys"] = @runtime.make_interp_method_func(
-    name="keys",
-    length=0,
-    fn(interp, this_val, _args) raise {
-      let o = to_object(this_val, interp)
-      let len = @runtime.to_array_like_length_interp(o, interp)
-      let result : Array[Value] = []
-      for i = 0; i < len; i = i + 1 {
-        result.push(Value::Number(i.to_double()))
-      }
-      realm_state.make_array_iterator_value({
-        elements: result,
-        bag: @runtime.PropertyBag(),
-        length_writable: true,
-        holes: {},
-        extensible: true,
-      })
-    },
-  )
-  array_proto_props["values"] = @runtime.make_interp_method_func(
-    name="values",
-    length=0,
-    fn(interp, this_val, _args) raise {
-      let o = to_object(this_val, interp)
-      let len = @runtime.to_array_like_length_interp(o, interp)
-      let result : Array[Value] = []
-      for i = 0; i < len; i = i + 1 {
-        result.push(@runtime.get_array_like_element_interp(interp, o, i))
-      }
-      realm_state.make_array_iterator_value({
-        elements: result,
-        bag: @runtime.PropertyBag(),
-        length_writable: true,
-        holes: {},
-        extensible: true,
-      })
-    },
-  )
+  array_proto_props["entries"] = make_array_entries_iterator_method(realm_state)
+  array_proto_props["keys"] = make_array_keys_iterator_method(realm_state)
+  array_proto_props["values"] = make_array_values_iterator_method(realm_state)
   array_proto_props["toReversed"] = @runtime.make_interp_method_func(
     name="toReversed",
     length=0,

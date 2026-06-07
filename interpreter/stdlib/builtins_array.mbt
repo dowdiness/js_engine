@@ -179,16 +179,7 @@ pub fn get_array_method(
         fn(args) raise { array_direct_copy_within(arr, args) },
       )
     }
-    "entries" | "keys" => Undefined // Delegated to Array.prototype (iterator method overrides)
-    "values" => {
-      let arr = data
-      @runtime.make_method_func(
-        name="values",
-        length=0,
-        realm_state=Some(realm_state),
-        fn(_this_val, _args) { realm_state.make_array_iterator_value(arr) },
-      )
-    }
+    "entries" | "keys" | "values" => Undefined // Delegated to Array.prototype (iterator method overrides)
     "splice" => Undefined // Delegated to Array.prototype (species support)
     "sort" => {
       let arr = data
