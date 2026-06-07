@@ -94,10 +94,11 @@ test262-utils-corpus-test: test262-download test262-utils-corpus-mbt
 		--moonbit-output "$$tmp" \
 		--yaml-mode fallback
 
-# Unit tests for Test262 runner task selection, harness helpers, and MoonBit shadow.
-test262-runner-test: test262-contract-test test262-runner-mbt-test
+# Unit tests plus a curated real-Test262 parity slice for the MoonBit runner shadow.
+test262-runner-test: test262-download test262-contract-test test262-runner-mbt-test
 	python3 scripts/test262_runner_task_selection_test.py
 	python3 scripts/test262_runner_harness_test.py
+	python3 scripts/test262_runner_shadow_parity_test.py
 
 test262-runner-mbt-test:
 	moon test --target native tooling/test262_runner
