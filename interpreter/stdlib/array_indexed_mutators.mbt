@@ -5,13 +5,7 @@ fn array_mutator_set_index(
   index : Int,
   value : Value,
 ) -> Unit raise Error {
-  let _ = interp.set_property(
-    o,
-    index.to_string(),
-    value,
-    @token.Loc::default(),
-    strict=true,
-  )
+  array_mutator_set_property_key(interp, o, index.to_string(), value)
 }
 
 ///|
@@ -20,7 +14,7 @@ fn array_mutator_delete_index(
   o : Value,
   index : Int,
 ) -> Unit raise Error {
-  let _ = @runtime.eval_delete_property(interp, o, index.to_string(), true)
+  array_mutator_delete_property_key(interp, o, index.to_string())
 }
 
 ///|
@@ -38,13 +32,105 @@ fn array_mutator_set_length(
   o : Value,
   len : Int,
 ) -> Unit raise Error {
+  array_mutator_set_length_number(interp, o, len.to_double())
+}
+
+///|
+const ARRAY_MAX_SAFE_LENGTH : Double = 9007199254740991.0
+
+///|
+fn array_mutator_set_property_key(
+  interp : Interpreter,
+  o : Value,
+  key : String,
+  value : Value,
+) -> Unit raise Error {
+  let _ = interp.set_property(o, key, value, @token.Loc::default(), strict=true)
+}
+
+///|
+fn array_mutator_delete_property_key(
+  interp : Interpreter,
+  o : Value,
+  key : String,
+) -> Unit raise Error {
+  let _ = @runtime.eval_delete_property(interp, o, key, true)
+}
+
+///|
+fn array_mutator_set_length_number(
+  interp : Interpreter,
+  o : Value,
+  len : Double,
+) -> Unit raise Error {
   let _ = interp.set_property(
     o,
     "length",
-    Value::Number(len.to_double()),
+    Value::Number(len),
     @token.Loc::default(),
     strict=true,
   )
+}
+
+///|
+fn array_mutator_length_number(
+  interp : Interpreter,
+  o : Value,
+) -> Double raise Error {
+  match o {
+    Array(arr) =>
+      match @runtime.get_array_length_override(arr) {
+        Some(n64) => n64.to_double()
+        None => arr.elements.length().to_double()
+      }
+    _ => {
+      let len_val = interp.get_property(o, "length", @token.Loc::default())
+      let n = interp.to_number(len_val)
+      if n.is_nan() || n <= 0.0 {
+        0.0
+      } else if n.is_inf() || n >= ARRAY_MAX_SAFE_LENGTH {
+        ARRAY_MAX_SAFE_LENGTH
+      } else {
+        @math.floor(n)
+      }
+    }
+  }
+}
+
+///|
+fn array_push_indexed_properties(
+  interp : Interpreter,
+  o : Value,
+  args : Array[Value],
+) -> Value raise Error {
+  let mut len = array_mutator_length_number(interp, o)
+  if len + args.length().to_double() > ARRAY_MAX_SAFE_LENGTH {
+    raise @errors.TypeError(message="Invalid array length")
+  }
+  for arg in args {
+    array_mutator_set_property_key(interp, o, len.to_string(), arg)
+    len = len + 1.0
+  }
+  array_mutator_set_length_number(interp, o, len)
+  Value::Number(len)
+}
+
+///|
+fn array_pop_indexed_properties(
+  interp : Interpreter,
+  o : Value,
+) -> Value raise Error {
+  let len = array_mutator_length_number(interp, o)
+  if len == 0.0 {
+    array_mutator_set_length_number(interp, o, 0.0)
+    return Undefined
+  }
+  let new_len = len - 1.0
+  let key = new_len.to_string()
+  let element = interp.get_property(o, key, @token.Loc::default())
+  array_mutator_delete_property_key(interp, o, key)
+  array_mutator_set_length_number(interp, o, new_len)
+  element
 }
 
 ///|

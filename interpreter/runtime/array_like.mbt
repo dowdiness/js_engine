@@ -25,7 +25,10 @@ fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
       } else if i >= 0 && i < data.elements.length() {
         Present(data.elements[i])
       } else {
-        OutOfRange
+        match data.bag.properties.get(key) {
+          Some(v) => Present(v)
+          None => OutOfRange
+        }
       }
     None =>
       if i < 0 {
@@ -50,7 +53,10 @@ fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
       } else if data.holes.contains(i) {
         Hole
       } else {
-        OutOfRange
+        match data.bag.properties.get(key) {
+          Some(v) => Present(v)
+          None => OutOfRange
+        }
       }
   }
 }
@@ -75,6 +81,34 @@ pub fn flatten_array_val(
 }
 
 ///|
+fn array_sparse_own_length_as_int(data : ArrayData) -> Int {
+  let mut observed = data.elements.length()
+  let include_key = fn(key : String) -> Unit {
+    match array_index64_from_string(key) {
+      Some(idx64) if idx64 < 0x7FFFFFFFL => {
+        let len64 = idx64 + 1L
+        if len64 > observed.to_int64() {
+          observed = len64.to_int()
+        }
+      }
+      _ => ()
+    }
+  }
+  data.bag.properties.each(fn(key, _) { include_key(key) })
+  data.bag.descriptors.each(fn(key, _) { include_key(key) })
+  observed
+}
+
+///|
+fn array_logical_length_as_int(data : ArrayData) -> Int {
+  let observed = array_sparse_own_length_as_int(data)
+  match get_array_length_override(data) {
+    Some(n64) => if n64 <= 0x7FFFFFFFL { n64.to_int() } else { observed }
+    None => observed
+  }
+}
+
+///|
 /// ToLength: Get length from any value as per ECMAScript spec (array-like objects)
 pub fn to_array_like_length(val : Value) -> Int raise {
   match val {
@@ -86,7 +120,7 @@ pub fn to_array_like_length(val : Value) -> Int raise {
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Array(data) => data.elements.length()
+    Array(data) => array_logical_length_as_int(data)
     Object(data) => {
       // Check for getter-based length first, then fall back to properties
       let length_val : Value? = match data.bag.properties.get("length") {
@@ -131,7 +165,7 @@ pub fn to_array_like_length_interp(
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Array(data) => data.elements.length()
+    Array(data) => array_logical_length_as_int(data)
     String_(s) => s.length()
     _ => {
       // Use interpreter's get_property to properly handle getters and prototype chains
@@ -403,6 +437,53 @@ pub fn cleanup_holes_above_length(
   for k in stale {
     holes.remove(k)
   }
+}
+
+///|
+fn cleanup_sparse_array_indices_above_length(
+  arr : ArrayData,
+  new_len : Int64,
+) -> Int64? {
+  let entries : Array[(Int64, String)] = []
+  let dense_len64 = arr.elements.length().to_int64()
+  arr.bag.properties.each(fn(key, _) {
+    match array_index64_from_string(key) {
+      Some(idx64) if idx64 >= new_len && idx64 >= dense_len64 =>
+        entries.push((idx64, key))
+      _ => ()
+    }
+  })
+  arr.bag.descriptors.each(fn(key, _) {
+    match array_index64_from_string(key) {
+      Some(idx64) =>
+        if idx64 >= new_len &&
+          idx64 >= dense_len64 &&
+          !arr.bag.properties.contains(key) {
+          entries.push((idx64, key))
+        }
+      _ => ()
+    }
+  })
+  entries.sort_by(fn(a, b) {
+    if a.0 > b.0 {
+      -1
+    } else if a.0 < b.0 {
+      1
+    } else {
+      0
+    }
+  })
+  for entry in entries {
+    let idx64 = entry.0
+    let key = entry.1
+    match arr.bag.descriptors.get(key) {
+      Some(desc) if !desc.configurable => return Some(idx64 + 1L)
+      _ => ()
+    }
+    let _ = arr.bag.properties.remove(key)
+    let _ = arr.bag.descriptors.remove(key)
+  }
+  None
 }
 
 ///|

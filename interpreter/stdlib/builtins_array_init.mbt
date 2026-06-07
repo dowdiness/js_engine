@@ -17,23 +17,7 @@ fn setup_array_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      match o {
-        Value::Array(arr) => {
-          for arg in args {
-            arr.elements.push(arg)
-          }
-          Value::Number(arr.elements.length().to_double())
-        }
-        _ => {
-          let mut len = @runtime.to_array_like_length_interp(o, interp)
-          for arg in args {
-            @runtime.set_array_like_element(o, len, arg)
-            len = len + 1
-          }
-          @runtime.set_array_like_length(o, len)
-          Value::Number(len.to_double())
-        }
-      }
+      array_push_indexed_properties(interp, o, args)
     },
   )
   array_proto_props["pop"] = @runtime.make_interp_method_func(
@@ -41,27 +25,7 @@ fn setup_array_builtins(
     length=0,
     fn(interp, this_val, _args) raise {
       let o = to_object(this_val, interp)
-      match o {
-        Value::Array(arr) =>
-          if arr.elements.length() == 0 {
-            Undefined
-          } else {
-            arr.elements.pop() |> Option::unwrap
-          }
-        _ => {
-          let len = @runtime.to_array_like_length_interp(o, interp)
-          if len == 0 {
-            @runtime.set_array_like_length(o, 0)
-            Undefined
-          } else {
-            let new_len = len - 1
-            let val = @runtime.get_array_like_element_interp(interp, o, new_len)
-            @runtime.delete_array_like_element(o, new_len)
-            @runtime.set_array_like_length(o, new_len)
-            val
-          }
-        }
-      }
+      array_pop_indexed_properties(interp, o)
     },
   )
   array_proto_props["shift"] = @runtime.make_interp_method_func(
