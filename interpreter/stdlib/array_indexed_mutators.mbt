@@ -61,31 +61,6 @@ fn array_mutator_array_index64_from_key(key : String) -> Int64? {
 }
 
 ///|
-fn array_mutator_key_is_array_index(key : String) -> Bool {
-  array_mutator_array_index64_from_key(key) is Some(_)
-}
-
-///|
-fn array_mutator_bag_has_non_default_indexed_descriptor(
-  bag : @runtime.PropertyBag,
-) -> Bool {
-  let mut found = false
-  bag.descriptors.each(fn(key, desc) {
-    if !found &&
-      array_mutator_key_is_array_index(key) &&
-      (
-        desc.is_accessor ||
-        !desc.writable ||
-        !desc.enumerable ||
-        !desc.configurable
-      ) {
-      found = true
-    }
-  })
-  found
-}
-
-///|
 fn array_mutator_push_indexed_entry_if_absent(
   entries : Array[(Int64, String, Value)],
   idx64 : Int64,
@@ -98,7 +73,7 @@ fn array_mutator_push_indexed_entry_if_absent(
 }
 
 ///|
-fn array_mutator_append_indexed_data_properties(
+fn array_mutator_append_indexed_bag_properties(
   entries : Array[(Int64, String, Value)],
   bag : @runtime.PropertyBag,
   len64 : Int64,
@@ -107,6 +82,18 @@ fn array_mutator_append_indexed_data_properties(
     match array_mutator_array_index64_from_key(key) {
       Some(idx64) if idx64 < len64 =>
         array_mutator_push_indexed_entry_if_absent(entries, idx64, key, value)
+      _ => ()
+    }
+  })
+  bag.descriptors.each(fn(key, _) {
+    match array_mutator_array_index64_from_key(key) {
+      Some(idx64) if idx64 < len64 =>
+        array_mutator_push_indexed_entry_if_absent(
+          entries,
+          idx64,
+          key,
+          Undefined,
+        )
       _ => ()
     }
   })
@@ -540,28 +527,19 @@ fn array_mutator_sparse_high_index_sources(
   arr : ArrayData,
   len64 : Int64,
 ) -> Array[(Int64, String, Value)]? {
-  if array_mutator_bag_has_non_default_indexed_descriptor(arr.bag) {
-    return None
-  }
   let entries : Array[(Int64, String, Value)] = []
   array_mutator_append_dense_indexed_properties(entries, arr, len64)
-  array_mutator_append_indexed_data_properties(entries, arr.bag, len64)
+  array_mutator_append_indexed_bag_properties(entries, arr.bag, len64)
   let mut current = @runtime.get_array_prototype(interp.realm_state, arr)
   while true {
     match current {
       Object(data) => {
-        if array_mutator_bag_has_non_default_indexed_descriptor(data.bag) {
-          return None
-        }
-        array_mutator_append_indexed_data_properties(entries, data.bag, len64)
+        array_mutator_append_indexed_bag_properties(entries, data.bag, len64)
         current = data.prototype
       }
       Array(data) => {
-        if array_mutator_bag_has_non_default_indexed_descriptor(data.bag) {
-          return None
-        }
         array_mutator_append_dense_indexed_properties(entries, data, len64)
-        array_mutator_append_indexed_data_properties(entries, data.bag, len64)
+        array_mutator_append_indexed_bag_properties(entries, data.bag, len64)
         current = @runtime.get_array_prototype(interp.realm_state, data)
       }
       Proxy(_) => return None
@@ -589,14 +567,15 @@ fn array_shift_sparse_high_index_properties(
   let target = Value::Array(arr)
   for entry in entries {
     let idx64 = entry.0
+    let from_value = interp.get_property(target, entry.1, @token.Loc::default())
     if idx64 == 0L {
-      first = entry.2
+      first = from_value
     } else {
       array_mutator_set_property_key(
         interp,
         target,
         (idx64 - 1L).to_string(),
-        entry.2,
+        from_value,
       )
     }
     if idx64 + 1L >= len64 ||
@@ -626,11 +605,12 @@ fn array_unshift_sparse_high_index_properties(
   let target = Value::Array(arr)
   let arg_count64 = args.length().to_int64()
   for entry in entries {
+    let from_value = interp.get_property(target, entry.1, @token.Loc::default())
     array_mutator_set_property_key(
       interp,
       target,
       (entry.0 + arg_count64).to_string(),
-      entry.2,
+      from_value,
     )
   }
   for entry in entries {

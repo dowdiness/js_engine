@@ -2451,13 +2451,28 @@ test "array shift and unshift preserve sparse high-index length" {
     #|console.log(unshiftInheritedHigh[2147483649]);
     #|console.log(Object.hasOwn(unshiftInheritedHigh, "2147483649"));
     #|delete Array.prototype[2147483648];
+    #|var accessorShift = [];
+    #|Object.defineProperty(accessorShift, "2147483648", { configurable: true, get: function() { return "accessor-tail"; } });
+    #|accessorShift.length = 2147483649;
+    #|console.log(accessorShift.shift());
+    #|console.log(accessorShift[2147483647]);
+    #|console.log(Object.hasOwn(accessorShift, "2147483648"));
+    #|console.log(Object.hasOwn(accessorShift, "2147483647"));
+    #|var accessorUnshift = [];
+    #|Object.defineProperty(accessorUnshift, "2147483648", { configurable: true, get: function() { return "accessor-tail"; } });
+    #|accessorUnshift.length = 2147483649;
+    #|console.log(accessorUnshift.unshift("head"));
+    #|console.log(accessorUnshift[2147483649]);
+    #|console.log(Object.hasOwn(accessorUnshift, "2147483648"));
+    #|console.log(Object.hasOwn(accessorUnshift, "2147483649"));
   let output = run_output(src)
   json_inspect(output, content=[
     "2147483648", "2147483648", "undefined", "2147483647", "100002", "undefined",
     "100001", "tail", "true", "false", "2147483649", "undefined", "2147483648", "high-tail",
     "false", "true", "first", "undefined", "dense-tail", "false", "undefined", "2147483648",
     "proto-tail", "true", "2147483650", "head", "tail", "false", "true", "2147483650",
-    "head", "proto-tail", "true",
+    "head", "proto-tail", "true", "undefined", "accessor-tail", "false", "true",
+    "2147483650", "accessor-tail", "false", "true",
   ])
 }
 
