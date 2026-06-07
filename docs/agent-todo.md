@@ -450,6 +450,12 @@ Keep mutating methods (`push`, `pop`, etc.) for separate audit because some
 direct paths still carry length-writable checks that the prototype branches must
 preserve before removal.
 
+**Progress (2026-06-06, batch 2):** Delegated the non-mutating
+change-array-by-copy methods (`toReversed`, `toSorted`, `toSpliced`, `with`) from
+the direct Array hook to the live `Array.prototype` path. This removes another
+prototype-shadowing fast path batch while keeping mutating methods and iterator
+methods for separate audits.
+
 **Progress (2026-06-07, `entries`/`keys` batch):** Delegated the string-key
 `entries` and `keys` direct hooks to the live `Array.prototype` path so prototype
 method overrides are observed. Leave `values` and `Symbol.iterator` for a

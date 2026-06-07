@@ -1001,7 +1001,12 @@ fn setup_array_builtins(
             }
         }
       }
-      let result = @runtime.to_array_like_elements(this_val)
+      let o = to_object(this_val, interp)
+      let len = @runtime.to_array_like_length_interp(o, interp)
+      let result : Array[Value] = []
+      for i in 0..<len {
+        result.push(@runtime.get_array_like_element_interp(interp, o, i))
+      }
       if args.length() > 0 {
         match args[0] {
           Undefined =>

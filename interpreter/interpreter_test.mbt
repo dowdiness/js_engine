@@ -2165,6 +2165,48 @@ test "array includes and at observe inherited indexed properties" {
 }
 
 ///|
+test "array copy methods observe prototype overrides" {
+  let src =
+    #|var saved = {
+    #|  toReversed: Array.prototype.toReversed,
+    #|  toSorted: Array.prototype.toSorted,
+    #|  toSpliced: Array.prototype.toSpliced,
+    #|  with: Array.prototype.with
+    #|};
+    #|Array.prototype.toReversed = function() { return "rev:" + this.length; };
+    #|Array.prototype.toSorted = function() { return "sorted:" + this.length; };
+    #|Array.prototype.toSpliced = function() { return "spliced:" + this.length; };
+    #|Array.prototype.with = function() { return "with:" + this.length; };
+    #|console.log([1, 2].toReversed());
+    #|console.log([1, 2].toSorted());
+    #|console.log([1, 2].toSpliced());
+    #|console.log([1, 2].with(0, 9));
+    #|Array.prototype.toReversed = saved.toReversed;
+    #|Array.prototype.toSorted = saved.toSorted;
+    #|Array.prototype.toSpliced = saved.toSpliced;
+    #|Array.prototype.with = saved.with;
+  let output = run_output(src)
+  json_inspect(output, content=["rev:2", "sorted:2", "spliced:2", "with:2"])
+}
+
+///|
+test "array copy methods observe inherited indexed properties" {
+  let src =
+    #|Array.prototype[1] = "inherited";
+    #|var arr = ["own"];
+    #|arr.length = 2;
+    #|console.log(arr.toReversed().join("|"));
+    #|console.log(arr.toSorted().join("|"));
+    #|console.log(arr.toSpliced(1, 0, "inserted").join("|"));
+    #|console.log(arr.with(0, "replaced").join("|"));
+    #|delete Array.prototype[1];
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "inherited|own", "own|inherited", "own|inserted|inherited", "replaced|inherited",
+  ])
+}
+
+///|
 test "array iterator methods observe prototype overrides" {
   let src =
     #|var saved = {
