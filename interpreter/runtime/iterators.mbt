@@ -11,15 +11,6 @@ const ARRAY_ITERATOR_TARGET_SYMBOL_ID = -4
 const ARRAY_ITERATOR_KIND_SYMBOL_ID = -5
 
 ///|
-const ARRAY_ITERATOR_KIND_KEY = 0
-
-///|
-const ARRAY_ITERATOR_KIND_VALUE = 1
-
-///|
-const ARRAY_ITERATOR_KIND_KEY_AND_VALUE = 2
-
-///|
 priv enum ArrayIteratorKind {
   Keys
   Values
@@ -91,9 +82,9 @@ fn make_iterator_result_object(value : Value, done : Bool) -> Value {
 ///|
 fn array_iterator_kind_to_slot_value(kind : ArrayIteratorKind) -> Value {
   match kind {
-    Keys => Number(ARRAY_ITERATOR_KIND_KEY.to_double())
-    Values => Number(ARRAY_ITERATOR_KIND_VALUE.to_double())
-    Entries => Number(ARRAY_ITERATOR_KIND_KEY_AND_VALUE.to_double())
+    Keys => Number(0.0)
+    Values => Number(1.0)
+    Entries => Number(2.0)
   }
 }
 
