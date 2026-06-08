@@ -115,6 +115,7 @@ class PairConfig:
     count: int | None = None
     shard: str = ""
     timeout: int = 5
+    runner_threads: int = 1
     harness_helpers: tuple[str, ...] = ()
 
 
@@ -320,7 +321,7 @@ def runner_command(artifacts: RunnerArtifacts, config: PairConfig) -> list[str]:
         "--mode",
         config.mode,
         "--threads",
-        "1",
+        str(config.runner_threads),
         "--timeout",
         str(config.timeout),
         "--summary",
@@ -635,7 +636,14 @@ def assert_invalid_cli_parity() -> None:
         )
 
 
-def assert_bad_path_parity(tmp: Path, anchored_test262: Path, tests_file: Path, engine: Path) -> None:
+def assert_bad_path_parity(
+    tmp: Path,
+    anchored_test262: Path,
+    tests_file: Path,
+    engine: Path,
+    *,
+    runner_threads: int,
+) -> None:
     common_runtime = [
         "--engine",
         str(engine),
@@ -644,7 +652,7 @@ def assert_bad_path_parity(tmp: Path, anchored_test262: Path, tests_file: Path, 
         "--mode",
         "non-strict",
         "--threads",
-        "1",
+        str(runner_threads),
         "--timeout",
         "1",
         "--summary",
@@ -739,7 +747,7 @@ def assert_modified_harness_metadata(label: str, artifacts: RunnerArtifacts) -> 
         raise AssertionError(f"{label} {artifacts.runner}: missing codePointRange methodology record")
 
 
-def run_synthetic_parity(tmp: Path, support: SupportModules) -> None:
+def run_synthetic_parity(tmp: Path, support: SupportModules, *, runner_threads: int = 1) -> None:
     synthetic_root = tmp / "synthetic-test262"
     write_text(synthetic_root / "harness" / "sta.js", "")
     write_text(synthetic_root / "harness" / "assert.js", "")
@@ -801,7 +809,13 @@ def run_synthetic_parity(tmp: Path, support: SupportModules) -> None:
 
     assert_invalid_cli_parity()
     with python_category_anchor(synthetic_root) as anchored_test262:
-        assert_bad_path_parity(tmp, anchored_test262, selection_file, pass_engine)
+        assert_bad_path_parity(
+            tmp,
+            anchored_test262,
+            selection_file,
+            pass_engine,
+            runner_threads=runner_threads,
+        )
 
         selection_base = PairConfig(
             engine=str(pass_engine),
@@ -809,6 +823,7 @@ def run_synthetic_parity(tmp: Path, support: SupportModules) -> None:
             tests_file=selection_file,
             tmp=tmp,
             mode="non-strict",
+            runner_threads=runner_threads,
         )
         for label, config in (
             ("filter", replace(selection_base, filter="selection/keep")),
@@ -825,6 +840,7 @@ def run_synthetic_parity(tmp: Path, support: SupportModules) -> None:
             tmp=tmp,
             mode="non-strict",
             timeout=1,
+            runner_threads=runner_threads,
         )
         timeout_pair = run_pair("timeout", timeout_config)
         assert_pair_contract("timeout", timeout_pair, expected_task_keys(timeout_config, support), support.compare)
@@ -837,6 +853,7 @@ def run_synthetic_parity(tmp: Path, support: SupportModules) -> None:
             tests_file=error_file,
             tmp=tmp,
             mode="non-strict",
+            runner_threads=runner_threads,
         )
         error_python = RunnerArtifacts.for_run(tmp, "infrastructure-error", "python")
         error_moonbit = RunnerArtifacts.for_run(tmp, "infrastructure-error", "moonbit")
@@ -864,6 +881,7 @@ def run_synthetic_parity(tmp: Path, support: SupportModules) -> None:
             tests_file=helper_file,
             tmp=tmp,
             mode="non-strict",
+            runner_threads=runner_threads,
             harness_helpers=("codePointRange",),
         )
         helper_pair = run_pair("harness-helper", helper_config)
@@ -889,7 +907,13 @@ def run_parity(args: argparse.Namespace) -> None:
         write_resume_file(resume_file)
 
         with python_category_anchor(test262_root) as anchored_test262:
-            base_config = PairConfig(engine=engine, test262=anchored_test262, tests_file=tests_file, tmp=tmp_dir)
+            base_config = PairConfig(
+                engine=engine,
+                test262=anchored_test262,
+                tests_file=tests_file,
+                tmp=tmp_dir,
+                runner_threads=args.runner_threads,
+            )
             expected_full = expected_task_keys(base_config, support)
 
             full_pair = run_pair("full", base_config)
@@ -921,7 +945,7 @@ def run_parity(args: argparse.Namespace) -> None:
                     process_timeout=full_shadow_process_timeout,
                 )
 
-        run_synthetic_parity(tmp_dir, support)
+        run_synthetic_parity(tmp_dir, support, runner_threads=args.runner_threads)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -954,6 +978,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="mode for --broad-filter/default discovery parity (default: strict and non-strict)",
     )
     parser.add_argument(
+        "--runner-threads",
+        type=int,
+        default=1,
+        help=(
+            "runner --threads value for parity invocations "
+            "(default: 1; use 4+ with --full-shadow because artifact comparison ignores result order)"
+        ),
+    )
+    parser.add_argument(
         "--full-shadow",
         action="store_true",
         help="run full strict and non-strict discovery artifact parity; slow and explicit-only",
@@ -968,6 +1001,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if args.runner_threads <= 0:
+        parser.error("--runner-threads must be > 0")
     if args.full_shadow_process_timeout < 0:
         parser.error("--full-shadow-process-timeout must be >= 0")
     return args
