@@ -131,7 +131,17 @@ def main() -> int:
         ignore_reason=False,
         allow_python_broken_categories=True,
     )
-    assert any("must preserve normalized categories" in diff for diff in copied_broken_category), copied_broken_category
+    assert any("missing normalized category language/literals" in diff for diff in copied_broken_category), copied_broken_category
+
+    empty_categories = artifact()
+    empty_categories["categories"] = {}
+    empty_category_diffs = compare.compare_artifacts(
+        python_broken_categories,
+        empty_categories,
+        ignore_reason=False,
+        allow_python_broken_categories=True,
+    )
+    assert any("missing normalized category output" in diff for diff in empty_category_diffs), empty_category_diffs
 
     real_category_mismatch = artifact()
     real_category_mismatch["categories"] = dict(real_category_mismatch["categories"])

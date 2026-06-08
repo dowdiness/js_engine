@@ -175,8 +175,8 @@ The comparison harness for Python-vs-MoonBit Test262 artifacts must:
 - compare summary counts and pass rates exactly;
 - compare category keys and counts exactly when the Python artifact has valid categories;
 - for full CI artifact comparison, discard only the known broken Python
-  singleton `../..` category shape and preserve/validate MoonBit's normalized
-  category output instead;
+  singleton `../..` category shape and validate MoonBit's normalized category
+  output against its own result records instead;
 - compare result keys and statuses exactly;
 - compare result reasons unless an invocation explicitly allows reason drift.
 

@@ -262,6 +262,84 @@ def has_broken_python_categories(data: dict[str, Any]) -> bool:
     return isinstance(categories, dict) and set(categories) == {"../.."}
 
 
+def category_for_result_path(path: str) -> str:
+    normalized = normalize_path(path)
+    parts = [part for part in normalized.split("/") if part]
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    if parts:
+        return parts[0]
+    return ""
+
+
+def expected_categories_from_results(
+    data: dict[str, Any],
+    label: str,
+    diffs: list[str],
+) -> dict[str, dict[str, Any]]:
+    records = data.get("results")
+    if not isinstance(records, list):
+        diffs.append(f"{label} results: expected array")
+        return {}
+
+    expected: dict[str, dict[str, Any]] = {}
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            diffs.append(f"{label} results[{index}]: expected object")
+            continue
+        path = record.get("path")
+        status = record.get("status")
+        if not isinstance(path, str) or not path or status not in RESULT_STATUSES:
+            continue
+        category = category_for_result_path(path)
+        if category not in expected:
+            expected[category] = {
+                "total": 0,
+                "passed": 0,
+                "failed": 0,
+                "skipped": 0,
+                "pass_rate": 0.0,
+            }
+        stats = expected[category]
+        stats["total"] += 1
+        if status == "pass":
+            stats["passed"] += 1
+        elif status == "fail":
+            stats["failed"] += 1
+        elif status == "skip":
+            stats["skipped"] += 1
+
+    for stats in expected.values():
+        executed = stats["passed"] + stats["failed"]
+        stats["pass_rate"] = round((stats["passed"] / executed) * 100, 2) if executed else 0.0
+    return expected
+
+
+def compare_categories_to_results(data: dict[str, Any], label: str, diffs: list[str]) -> None:
+    categories = data.get("categories")
+    if not isinstance(categories, dict):
+        diffs.append(f"{label} categories: expected object")
+        return
+
+    expected = expected_categories_from_results(data, label, diffs)
+    if expected and not categories:
+        diffs.append(f"{label} categories: missing normalized category output")
+    actual_keys = set(categories)
+    expected_keys = set(expected)
+    for key in sorted(expected_keys - actual_keys):
+        diffs.append(f"{label} categories: missing normalized category {key}")
+    for key in sorted(actual_keys - expected_keys):
+        diffs.append(f"{label} categories: unexpected category {key}")
+    for key in sorted(actual_keys & expected_keys):
+        compare_required_object(
+            f"{label} categories[{key!r}]",
+            categories[key],
+            expected[key],
+            CATEGORY_FIELDS,
+            diffs,
+        )
+
+
 def compare_categories(left: dict[str, Any], right: dict[str, Any], diffs: list[str]) -> None:
     left_categories = left.get("categories")
     right_categories = right.get("categories")
@@ -333,8 +411,7 @@ def compare_artifacts(
     compare_required_object("summary", left.get("summary"), right.get("summary"), SUMMARY_ALLOWED, diffs)
     compare_scalar("methodology", left.get("methodology"), right.get("methodology"), diffs)
     if allow_python_broken_categories and has_broken_python_categories(left):
-        if has_broken_python_categories(right):
-            diffs.append("right categories: must preserve normalized categories, not singleton '../..'")
+        compare_categories_to_results(right, "right", diffs)
     else:
         compare_categories(left, right, diffs)
     compare_results(left, right, diffs, ignore_reason)
