@@ -1,9 +1,8 @@
 ///|
 fn program_args(args : Array[String]) -> ArrayView[String] {
-  if args.length() >= 1 {
-    args[1:]
-  } else {
-    args[0:]
+  match args {
+    [_, .. rest] => rest
+    [] => args[0:]
   }
 }
 
@@ -14,7 +13,7 @@ fn first_value(
   default : String,
 ) -> String {
   match values.get(key) {
-    Some(items) if items.length() > 0 => items[0]
+    Some([first, ..]) => first
     _ => default
   }
 }
@@ -22,7 +21,7 @@ fn first_value(
 ///|
 fn optional_value(values : Map[String, Array[String]], key : String) -> String? {
   match values.get(key) {
-    Some(items) if items.length() > 0 => Some(items[0])
+    Some([first, ..]) => Some(first)
     _ => None
   }
 }
@@ -49,7 +48,7 @@ fn flag_value(flags : Map[String, Bool], key : String) -> Bool {
 ///|
 fn parse_int_arg(raw : String, label : String) -> Int raise {
   @string.parse_int(raw) catch {
-    _ => fail("error: \{label} must be an integer")
+    _ => fail("argument \{label}: invalid int value: '\{raw}'")
   }
 }
 
@@ -77,9 +76,60 @@ fn exit_with_code(code : Int) -> Unit {
 }
 
 ///|
+async fn exit_cli_error(message : String) -> Unit {
+  @stdio.stderr.write("test262-runner.py: error: " + message + "\n")
+  @sys.exit(2)
+}
+
+///|
+fn first_single_quoted_value(message : String) -> String? {
+  match message.split_once("'") {
+    Some((_, rest)) =>
+      match rest.to_owned().split_once("'") {
+        Some((value, _)) => Some(value.to_owned())
+        None => None
+      }
+    None => None
+  }
+}
+
+///|
+fn normalize_parse_error(message : String) -> String {
+  let head = match message.split_once("\n\nUsage:") {
+    Some((before_usage, _)) => before_usage.to_owned()
+    None => message
+  }
+  if head.has_prefix("error: unexpected argument ") {
+    match first_single_quoted_value(head) {
+      Some(arg) => "unrecognized arguments: " + arg
+      None => head["error: ".length():].to_owned()
+    }
+  } else if head.has_prefix("error: a value is required for ") {
+    match first_single_quoted_value(head) {
+      Some(arg) => "argument " + arg + ": expected one argument"
+      None => head["error: ".length():].to_owned()
+    }
+  } else if head.has_prefix("error: ") {
+    head["error: ".length():].to_owned()
+  } else {
+    head
+  }
+}
+
+///|
+async fn exit_runtime_error(message : String) -> Unit {
+  let rendered = match message.view() {
+    [.. "Error: ", ..] => message
+    _ => "Error: " + message
+  }
+  @stdio.stderr.write(rendered + "\n")
+  @sys.exit(1)
+}
+
+///|
 async fn main {
   let cmd = @argparse.Command(
-    "test262-runner-mbt",
+    "test262-runner.py",
     flags=[
       @argparse.FlagArg(
         "summary",
@@ -110,9 +160,14 @@ async fn main {
       @argparse.OptionArg(
         "start",
         default_values=["0"],
+        allow_hyphen_values=true,
         about="Start at expanded task offset N (0-based)",
       ),
-      @argparse.OptionArg("count", about="Run at most N expanded tasks"),
+      @argparse.OptionArg(
+        "count",
+        allow_hyphen_values=true,
+        about="Run at most N expanded tasks",
+      ),
       @argparse.OptionArg(
         "shard",
         default_values=[""],
@@ -136,10 +191,12 @@ async fn main {
       @argparse.OptionArg(
         "timeout",
         default_values=["5"],
+        allow_hyphen_values=true,
         about="Timeout per test in seconds (default: 5)",
       ),
       @argparse.OptionArg(
         "threads",
+        allow_hyphen_values=true,
         about="Number of parallel workers (default: auto-detect CPU count, minimum 4)",
       ),
       @argparse.OptionArg(
@@ -163,8 +220,7 @@ async fn main {
   let raw_args = @env.args()
   let matches = cmd.parse(argv=program_args(raw_args), env={}) catch {
     err => {
-      @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-      @sys.exit(1)
+      exit_cli_error(normalize_parse_error(@helpers.cli_error_message(err)))
       return
     }
   }
@@ -173,8 +229,7 @@ async fn main {
     "--start",
   ) catch {
     err => {
-      @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-      @sys.exit(1)
+      exit_cli_error(@helpers.cli_error_message(err))
       return
     }
   }
@@ -183,8 +238,7 @@ async fn main {
     "--count",
   ) catch {
     err => {
-      @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-      @sys.exit(1)
+      exit_cli_error(@helpers.cli_error_message(err))
       return
     }
   }
@@ -193,8 +247,7 @@ async fn main {
     "--timeout",
   ) catch {
     err => {
-      @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-      @sys.exit(1)
+      exit_cli_error(@helpers.cli_error_message(err))
       return
     }
   }
@@ -203,8 +256,7 @@ async fn main {
     "--threads",
   ) catch {
     err => {
-      @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-      @sys.exit(1)
+      exit_cli_error(@helpers.cli_error_message(err))
       return
     }
   }
@@ -215,8 +267,7 @@ async fn main {
     Some(
       @runner.parse_shard_spec(shard_raw) catch {
         err => {
-          @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-          @sys.exit(1)
+          exit_cli_error(@helpers.cli_error_message(err))
           return
         }
       },
@@ -226,10 +277,31 @@ async fn main {
     all_values(matches.values, "harness-helper"),
   ) catch {
     err => {
-      @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-      @sys.exit(1)
+      exit_cli_error(@helpers.cli_error_message(err))
       return
     }
+  }
+  guard start >= 0 else {
+    exit_cli_error("--start must be >= 0")
+    return
+  }
+  match count {
+    Some(value) if value < 0 => {
+      exit_cli_error("--count must be >= 0")
+      return
+    }
+    _ => ()
+  }
+  guard !(shard is Some(_) && (start != 0 || count is Some(_))) else {
+    exit_cli_error("--shard cannot be combined with --start/--count")
+    return
+  }
+  let mode = first_value(matches.values, "mode", "both")
+  guard mode == "both" || mode == "strict" || mode == "non-strict" else {
+    exit_cli_error(
+      "argument --mode: invalid choice: '\{mode}' (choose from 'both', 'strict', 'non-strict')",
+    )
+    return
   }
   let config = @runner.RunnerConfig(
     engine=optional_value(matches.values, "engine"),
@@ -247,14 +319,13 @@ async fn main {
     output=first_value(matches.values, "output", ""),
     summary=flag_value(matches.flags, "summary"),
     verbose=flag_value(matches.flags, "verbose"),
-    mode=first_value(matches.values, "mode", "both"),
+    mode~,
     harness_options~,
     repo_root=@helpers.resolve_repo_root(argv0(raw_args)),
   )
   let run = @runner.run_runner(config) catch {
     err => {
-      @stdio.stderr.write(@helpers.cli_error_message(err) + "\n")
-      @sys.exit(1)
+      exit_runtime_error(@helpers.cli_error_message(err))
       return
     }
   }

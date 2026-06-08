@@ -229,7 +229,9 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   }
   let test_files = if config.tests_file != "" {
     out.write_string("Loading tests from \{config.tests_file}...\n")
-    let loaded = load_tests_file(config.tests_file, test262_dir)
+    let loaded = load_tests_file(config.tests_file, test262_dir) catch {
+      err => fail("failed to read tests file \{config.tests_file}: \{err}")
+    }
     let filtered = if config.filter == "" {
       loaded
     } else {
@@ -253,7 +255,14 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
     count=config.count,
     resume_from=config.resume_from,
     test262_dir~,
-  )
+  ) catch {
+    err =>
+      if config.resume_from != "" {
+        fail("failed to read resume file \{config.resume_from}: \{err}")
+      } else {
+        fail("\{err}")
+      }
+  }
   for message in selection_messages {
     out.write_string(message + "\n")
   }
@@ -274,7 +283,9 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
     )
   }
   let skip_metadata = @metadata.load_skip_metadata(root=config.repo_root)
-  initialize_result_logs(config.log, config.merged_log)
+  initialize_result_logs(config.log, config.merged_log) catch {
+    err => fail("failed to open result log: \{err}")
+  }
   let (results, total_time) = run_test_tasks(
     engine_cmd,
     test262_dir,

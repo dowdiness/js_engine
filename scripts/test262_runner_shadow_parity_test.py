@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Real-Test262 parity slice for the MoonBit Test262 runner shadow.
+"""Parity slices for the MoonBit Test262 runner shadow.
 
 Python remains authoritative. This test builds the native MoonBit shadow
 executable directly, runs it and ``scripts/test262-runner.py`` against the same
-small checked-out Test262 tests-file, and compares their artifacts with
-``scripts/compare-test262-results.py``.
+small checked-out Test262 tests-file plus deterministic synthetic CLI/error
+fixtures, and compares their artifacts with ``scripts/compare-test262-results.py``.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Iterator
+from typing import Any, Iterator, Sequence
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -98,6 +98,13 @@ class PairConfig:
     tests_file: Path
     tmp: Path
     resume_from: Path | None = None
+    filter: str = ""
+    mode: str = "both"
+    start: int = 0
+    count: int | None = None
+    shard: str = ""
+    timeout: int = 5
+    harness_helpers: tuple[str, ...] = ()
 
 
 JsonRecord = dict[str, Any]
@@ -206,19 +213,25 @@ def python_category_anchor(test262_root: Path) -> Iterator[Path]:
     anchor = SCRIPT_DIR / "test262"
     expected = test262_root.resolve()
     created = False
+    original_target: str | None = None
     if anchor.exists() or anchor.is_symlink():
-        if anchor.resolve() != expected:
+        if anchor.resolve() == expected:
+            yield anchor
+            return
+        if not anchor.is_symlink():
             raise AssertionError(f"{anchor} exists but does not resolve to {expected}")
-        yield anchor
-        return
+        original_target = os.readlink(anchor)
+        anchor.unlink()
 
     os.symlink(os.path.relpath(expected, SCRIPT_DIR), anchor, target_is_directory=True)
     created = True
     try:
         yield anchor
     finally:
-        if created:
+        if created and (anchor.exists() or anchor.is_symlink()):
             anchor.unlink()
+        if original_target is not None:
+            os.symlink(original_target, anchor, target_is_directory=True)
 
 
 @contextmanager
@@ -234,12 +247,22 @@ def parity_temp_dir(keep_temp: bool) -> Iterator[Path]:
             yield Path(name)
 
 
-def write_tests_file(path: Path) -> None:
-    path.write_text("\n".join(CURATED_TESTS) + "\n", encoding="utf-8")
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def write_executable(path: Path, text: str) -> None:
+    write_text(path, text)
+    path.chmod(0o755)
+
+
+def write_tests_file(path: Path, tests: Sequence[str] = CURATED_TESTS) -> None:
+    write_text(path, "\n".join(tests) + "\n")
 
 
 def write_resume_file(path: Path) -> None:
-    path.write_text(json.dumps({"results": list(RESUME_RECORDS)}, indent=2) + "\n", encoding="utf-8")
+    write_text(path, json.dumps({"results": list(RESUME_RECORDS)}, indent=2) + "\n")
 
 
 def run_one_runner(
@@ -261,8 +284,11 @@ def run_one_runner(
     return proc
 
 
-def compare_artifacts(left: Path, right: Path) -> None:
-    run_checked([sys.executable, str(COMPARE_SCRIPT), str(left), str(right)], timeout=60)
+def compare_artifacts(left: Path, right: Path, *, ignore_reason: bool = False) -> None:
+    args = [sys.executable, str(COMPARE_SCRIPT), str(left), str(right)]
+    if ignore_reason:
+        args.append("--ignore-reason")
+    run_checked(args, timeout=60)
 
 
 def runner_base(runner: str) -> list[str]:
@@ -282,11 +308,11 @@ def runner_command(artifacts: RunnerArtifacts, config: PairConfig) -> list[str]:
         "--tests-file",
         str(config.tests_file),
         "--mode",
-        "both",
+        config.mode,
         "--threads",
         "1",
         "--timeout",
-        "5",
+        str(config.timeout),
         "--summary",
         "--output",
         str(artifacts.output),
@@ -295,8 +321,18 @@ def runner_command(artifacts: RunnerArtifacts, config: PairConfig) -> list[str]:
         "--merged-log",
         str(artifacts.merged_log),
     ]
+    if config.filter:
+        args += ["--filter", config.filter]
+    if config.start != 0:
+        args += ["--start", str(config.start)]
+    if config.count is not None:
+        args += ["--count", str(config.count)]
+    if config.shard:
+        args += ["--shard", config.shard]
     if config.resume_from is not None:
         args += ["--resume-from", str(config.resume_from)]
+    for helper in config.harness_helpers:
+        args += ["--harness-helper", helper]
     return args
 
 
@@ -319,13 +355,48 @@ def assert_same_exit_status(
     )
 
 
-def run_pair(label: str, config: PairConfig) -> PairResult:
+def run_unchecked(args: list[str], *, timeout: int = 60) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args,
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        timeout=timeout,
+    )
+
+
+def assert_runner_error_case(
+    label: str,
+    common_args: list[str],
+    *,
+    expected_code: int,
+    fragments: Sequence[str],
+) -> None:
+    py_proc = run_unchecked(runner_base("python") + common_args)
+    mb_proc = run_unchecked(runner_base("moonbit") + common_args)
+    assert_same_exit_status(label, py_proc, mb_proc)
+    if py_proc.returncode != expected_code:
+        raise AssertionError(
+            f"{label}: expected exit {expected_code}, got {py_proc.returncode}\n"
+            + format_process_failure(runner_base("python") + common_args, py_proc)
+        )
+    for runner, proc in (("python", py_proc), ("moonbit", mb_proc)):
+        missing = [fragment for fragment in fragments if fragment not in proc.stderr]
+        if missing:
+            raise AssertionError(
+                f"{label} {runner}: missing diagnostic fragment(s) {missing}\n"
+                f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+            )
+
+
+def run_pair(label: str, config: PairConfig, *, ignore_reason: bool = False) -> PairResult:
     python = RunnerArtifacts.for_run(config.tmp, label, "python")
     moonbit = RunnerArtifacts.for_run(config.tmp, label, "moonbit")
     py_proc = run_runner(python, config)
     mb_proc = run_runner(moonbit, config)
     assert_same_exit_status(label, py_proc, mb_proc)
-    compare_artifacts(python.output, moonbit.output)
+    compare_artifacts(python.output, moonbit.output, ignore_reason=ignore_reason)
     return PairResult(python=python, moonbit=moonbit, exit_code=py_proc.returncode)
 
 
@@ -413,14 +484,25 @@ def artifact_keys(path: Path, compare: ModuleType) -> set[ResultKey]:
     return {result_key(record, compare) for record in artifact_results(path)}
 
 
-def expected_task_keys(tests_file: Path, test262: Path, support: SupportModules) -> set[ResultKey]:
-    test_files = support.task_selection.load_tests_file(str(tests_file), str(test262))
-    tasks = support.task_selection.build_test_tasks(test_files, "both")
+def expected_task_keys(config: PairConfig, support: SupportModules) -> set[ResultKey]:
+    test_files = support.task_selection.load_tests_file(str(config.tests_file), str(config.test262))
+    if config.filter:
+        test_files = [
+            path
+            for path in test_files
+            if config.filter in support.task_selection.normalize_test262_path(path, str(config.test262))
+        ]
+    tasks = support.task_selection.build_test_tasks(test_files, config.mode)
+    shard_spec = support.task_selection.parse_shard_spec(config.shard) if config.shard else None
+    tasks, _ = support.task_selection.apply_task_selection(
+        tasks,
+        shard_spec=shard_spec,
+        start=config.start,
+        count=config.count,
+        resume_from=str(config.resume_from) if config.resume_from is not None else "",
+        test262_dir=str(config.test262),
+    )
     return {(support.compare.normalize_path(path), mode) for path, mode in tasks}
-
-
-def resume_keys(compare: ModuleType) -> set[ResultKey]:
-    return {(compare.normalize_path(record["path"]), record["mode"]) for record in RESUME_RECORDS}
 
 
 def assert_expected_keys(label: str, actual: set[ResultKey], expected: set[ResultKey]) -> None:
@@ -444,6 +526,293 @@ def assert_pair_contract(label: str, pair: PairResult, expected_keys: set[Result
     )
 
 
+def assert_artifact_statuses(label: str, artifacts: RunnerArtifacts, expected: Sequence[str]) -> None:
+    statuses = [record.get("status") for record in artifact_results(artifacts.output)]
+    if statuses != list(expected):
+        raise AssertionError(f"{label} {artifacts.runner}: statuses {statuses} != {list(expected)}")
+
+
+def write_synthetic_test(
+    test262_root: Path,
+    rel: str,
+    *,
+    frontmatter: str = "description: synthetic",
+    body: str = "",
+) -> None:
+    write_text(test262_root / "test" / rel, "/*---\n" + frontmatter + "\n---*/\n" + body + "\n")
+
+
+def assert_invalid_cli_parity() -> None:
+    cases: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
+        ("unknown option", ("--badflag",), ("unrecognized arguments: --badflag",)),
+        ("missing --start value", ("--start",), ("argument --start: expected one argument",)),
+        ("non-integer --start", ("--start", "nope"), ("argument --start: invalid int value", "nope")),
+        ("negative --start", ("--start", "-1"), ("--start must be >= 0",)),
+        ("negative --count", ("--count", "-1"), ("--count must be >= 0",)),
+        ("bad --shard", ("--shard", "0/2"), ("shard index must be between 1",)),
+        (
+            "mixed --shard and slice",
+            ("--shard", "1/2", "--start", "1"),
+            ("--shard cannot be combined with --start/--count",),
+        ),
+        (
+            "bad --mode",
+            ("--mode", "weird"),
+            ("argument --mode: invalid choice", "weird"),
+        ),
+        (
+            "bad --harness-helper",
+            ("--harness-helper", "notAHelper"),
+            ("unknown harness helper 'notAHelper'", "codePointRange"),
+        ),
+    )
+    for label, extra_args, fragments in cases:
+        assert_runner_error_case(
+            f"invalid CLI {label}",
+            list(extra_args),
+            expected_code=2,
+            fragments=fragments,
+        )
+
+
+def assert_bad_path_parity(tmp: Path, anchored_test262: Path, tests_file: Path, engine: Path) -> None:
+    common_runtime = [
+        "--engine",
+        str(engine),
+        "--test262",
+        path_arg(anchored_test262),
+        "--mode",
+        "non-strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "1",
+        "--summary",
+    ]
+    assert_runner_error_case(
+        "missing Test262 directory",
+        [
+            "--engine",
+            str(engine),
+            "--test262",
+            str(tmp / "missing-test262"),
+            "--summary",
+            "--output",
+            str(tmp / "missing-test262.json"),
+        ],
+        expected_code=1,
+        fragments=("Error: test262 directory not found",),
+    )
+    assert_runner_error_case(
+        "missing --tests-file",
+        common_runtime
+        + [
+            "--tests-file",
+            str(tmp / "missing-tests.txt"),
+            "--output",
+            str(tmp / "missing-tests-file.json"),
+        ],
+        expected_code=1,
+        fragments=("Error: failed to read tests file", "missing-tests.txt"),
+    )
+    assert_runner_error_case(
+        "missing --resume-from",
+        common_runtime
+        + [
+            "--tests-file",
+            str(tests_file),
+            "--resume-from",
+            str(tmp / "missing-resume.json"),
+            "--output",
+            str(tmp / "missing-resume-file.json"),
+        ],
+        expected_code=1,
+        fragments=("Error: failed to read resume file", "missing-resume.json"),
+    )
+    bad_log_dir = tmp / "bad-progress-log-dir"
+    bad_log_dir.mkdir()
+    assert_runner_error_case(
+        "bad --log path",
+        common_runtime
+        + [
+            "--tests-file",
+            str(tests_file),
+            "--count",
+            "0",
+            "--output",
+            str(tmp / "bad-progress-log.json"),
+            "--log",
+            str(bad_log_dir),
+        ],
+        expected_code=1,
+        fragments=("Error: failed to open result log",),
+    )
+    bad_merged_log_dir = tmp / "bad-merged-log-dir"
+    bad_merged_log_dir.mkdir()
+    assert_runner_error_case(
+        "bad --merged-log path",
+        common_runtime
+        + [
+            "--tests-file",
+            str(tests_file),
+            "--count",
+            "0",
+            "--output",
+            str(tmp / "bad-merged-log.json"),
+            "--merged-log",
+            str(bad_merged_log_dir),
+        ],
+        expected_code=1,
+        fragments=("Error: failed to open result log",),
+    )
+
+
+def assert_modified_harness_metadata(label: str, artifacts: RunnerArtifacts) -> None:
+    data = load_json(artifacts.output)
+    summary = data.get("summary")
+    if not isinstance(summary, dict):
+        raise AssertionError(f"{label} {artifacts.runner}: summary must be an object")
+    if summary.get("methodology") != "modified harness (helpers: codePointRange)":
+        raise AssertionError(f"{label} {artifacts.runner}: missing modified-harness summary label")
+    methodology = data.get("methodology")
+    if not isinstance(methodology, dict) or methodology.get("harness_helpers") != ["codePointRange"]:
+        raise AssertionError(f"{label} {artifacts.runner}: missing codePointRange methodology record")
+
+
+def run_synthetic_parity(tmp: Path, support: SupportModules) -> None:
+    synthetic_root = tmp / "synthetic-test262"
+    write_text(synthetic_root / "harness" / "sta.js", "")
+    write_text(synthetic_root / "harness" / "assert.js", "")
+
+    selection_tests = (
+        "language/selection/keep-a.js",
+        "language/selection/keep-b.js",
+        "language/selection/drop.js",
+        "language/selection/tail.js",
+    )
+    for rel in selection_tests:
+        write_synthetic_test(synthetic_root, rel, body="0;")
+    timeout_test = "language/status/timeout.js"
+    error_test = "language/status/error.js"
+    helper_test = "language/harness/helper.js"
+    write_synthetic_test(synthetic_root, timeout_test, body="0;")
+    write_synthetic_test(synthetic_root, error_test, body="0;")
+    write_synthetic_test(synthetic_root, helper_test, body="0;")
+
+    selection_file = tmp / "synthetic-selection-tests.txt"
+    timeout_file = tmp / "synthetic-timeout-tests.txt"
+    error_file = tmp / "synthetic-error-tests.txt"
+    helper_file = tmp / "synthetic-helper-tests.txt"
+    write_tests_file(selection_file, selection_tests)
+    write_tests_file(timeout_file, (timeout_test,))
+    write_tests_file(error_file, (error_test,))
+    write_tests_file(helper_file, (helper_test,))
+
+    pass_engine = tmp / "pass-engine.sh"
+    timeout_engine = tmp / "timeout-engine.sh"
+    helper_engine = tmp / "helper-engine.sh"
+    error_engine_python = tmp / "permission-error-engine-python.sh"
+    error_engine_moonbit = tmp / "permission-error-engine-moonbit.sh"
+    write_executable(pass_engine, "#!/bin/sh\nexit 0\n")
+    write_executable(
+        timeout_engine,
+        "#!/bin/sh\nif [ \"${1:-}\" = \"1 + 1\" ]; then exit 0; fi\nsleep 2\nexit 0\n",
+    )
+    write_executable(
+        helper_engine,
+        (
+            "#!/bin/sh\n"
+            "if [ \"${1:-}\" = \"1 + 1\" ]; then exit 0; fi\n"
+            "last=\"\"\n"
+            "for arg in \"$@\"; do last=\"$arg\"; done\n"
+            "case \"$last\" in\n"
+            "  *'$262.codePointRange'*) exit 0 ;;\n"
+            "  *) echo 'Error: missing codePointRange'; exit 1 ;;\n"
+            "esac\n"
+        ),
+    )
+    permission_error_engine = (
+        "#!/bin/sh\n"
+        "if [ \"${1:-}\" = \"1 + 1\" ]; then chmod -x \"$0\"; exit 0; fi\n"
+        "exit 0\n"
+    )
+    write_executable(error_engine_python, permission_error_engine)
+    write_executable(error_engine_moonbit, permission_error_engine)
+
+    assert_invalid_cli_parity()
+    with python_category_anchor(synthetic_root) as anchored_test262:
+        assert_bad_path_parity(tmp, anchored_test262, selection_file, pass_engine)
+
+        selection_base = PairConfig(
+            engine=str(pass_engine),
+            test262=anchored_test262,
+            tests_file=selection_file,
+            tmp=tmp,
+            mode="non-strict",
+        )
+        for label, config in (
+            ("filter", replace(selection_base, filter="selection/keep")),
+            ("slice", replace(selection_base, start=1, count=2)),
+            ("shard", replace(selection_base, shard="2/3")),
+        ):
+            pair = run_pair(label, config)
+            assert_pair_contract(label, pair, expected_task_keys(config, support), support.compare)
+
+        timeout_config = PairConfig(
+            engine=str(timeout_engine),
+            test262=anchored_test262,
+            tests_file=timeout_file,
+            tmp=tmp,
+            mode="non-strict",
+            timeout=1,
+        )
+        timeout_pair = run_pair("timeout", timeout_config)
+        assert_pair_contract("timeout", timeout_pair, expected_task_keys(timeout_config, support), support.compare)
+        for artifacts in (timeout_pair.python, timeout_pair.moonbit):
+            assert_artifact_statuses("timeout", artifacts, ["timeout"])
+
+        error_config = PairConfig(
+            engine=str(error_engine_python),
+            test262=anchored_test262,
+            tests_file=error_file,
+            tmp=tmp,
+            mode="non-strict",
+        )
+        error_python = RunnerArtifacts.for_run(tmp, "infrastructure-error", "python")
+        error_moonbit = RunnerArtifacts.for_run(tmp, "infrastructure-error", "moonbit")
+        py_proc = run_runner(error_python, error_config)
+        mb_proc = run_runner(
+            error_moonbit,
+            replace(error_config, engine=str(error_engine_moonbit)),
+        )
+        assert_same_exit_status("infrastructure-error", py_proc, mb_proc)
+        compare_artifacts(error_python.output, error_moonbit.output, ignore_reason=True)
+        error_pair = PairResult(python=error_python, moonbit=error_moonbit, exit_code=py_proc.returncode)
+        expected_error = expected_task_keys(error_config, support)
+        for artifacts in (error_pair.python, error_pair.moonbit):
+            assert_expected_keys(
+                f"infrastructure-error {artifacts.runner}",
+                artifact_keys(artifacts.output, support.compare),
+                expected_error,
+            )
+            assert_log_contract(f"infrastructure-error {artifacts.runner}", artifacts, support.compare)
+            assert_artifact_statuses("infrastructure-error", artifacts, ["error"])
+
+        helper_config = PairConfig(
+            engine=str(helper_engine),
+            test262=anchored_test262,
+            tests_file=helper_file,
+            tmp=tmp,
+            mode="non-strict",
+            harness_helpers=("codePointRange",),
+        )
+        helper_pair = run_pair("harness-helper", helper_config)
+        assert_pair_contract("harness-helper", helper_pair, expected_task_keys(helper_config, support), support.compare)
+        for artifacts in (helper_pair.python, helper_pair.moonbit):
+            assert_artifact_statuses("harness-helper", artifacts, ["pass"])
+            assert_modified_harness_metadata("harness-helper", artifacts)
+
+
 def run_parity(args: argparse.Namespace) -> None:
     test262_root = (REPO_ROOT / args.test262).resolve()
     if not (test262_root / "test").is_dir():
@@ -460,24 +829,26 @@ def run_parity(args: argparse.Namespace) -> None:
         write_resume_file(resume_file)
 
         with python_category_anchor(test262_root) as anchored_test262:
-            expected_full = expected_task_keys(tests_file, anchored_test262, support)
-            expected_resume = expected_full - resume_keys(support.compare)
             base_config = PairConfig(engine=engine, test262=anchored_test262, tests_file=tests_file, tmp=tmp_dir)
+            expected_full = expected_task_keys(base_config, support)
 
             full_pair = run_pair("full", base_config)
             assert_pair_contract("full", full_pair, expected_full, support.compare)
 
-            resume_pair = run_pair("resume", replace(base_config, resume_from=resume_file))
-            assert_pair_contract("resume", resume_pair, expected_resume, support.compare)
+            resume_config = replace(base_config, resume_from=resume_file)
+            resume_pair = run_pair("resume", resume_config)
+            assert_pair_contract("resume", resume_pair, expected_task_keys(resume_config, support), support.compare)
             if resume_pair.exit_code != 0:
                 raise AssertionError(
                     f"resume parity slice should have no failed executed tests, got exit {resume_pair.exit_code}"
                 )
 
+        run_synthetic_parity(tmp_dir, support)
+
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run a small real-Test262 parity slice for the MoonBit runner shadow."
+        description="Run deterministic Test262 runner shadow parity slices."
     )
     parser.add_argument("--test262", default="./test262", help="checked-out Test262 directory")
     parser.add_argument(
@@ -491,7 +862,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     run_parity(parse_args(argv))
-    print("ok: MoonBit Test262 runner shadow matches Python on curated real-Test262 parity slice")
+    print("ok: MoonBit Test262 runner shadow matches Python on curated, CLI/error, timeout, and selection parity slices")
     return 0
 
 
