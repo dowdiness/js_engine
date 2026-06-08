@@ -184,16 +184,23 @@ fn result_log_line(result : TestResult) -> String {
 }
 
 ///|
-fn initialize_result_logs(
+async fn initialize_result_logs(
   progress_log : String,
   merged_log : String,
-) -> Unit raise {
+) -> Unit {
   if progress_log != "" {
     ensure_parent_dir(progress_log)
     @fs.write_string_to_file(progress_log, "")
   }
   if merged_log != "" {
     ensure_parent_dir(merged_log)
+    let file = @afs.open(
+      merged_log,
+      mode=WriteOnly,
+      create_mode=OpenOrCreate,
+      append=true,
+    )
+    file.close()
   }
 }
 

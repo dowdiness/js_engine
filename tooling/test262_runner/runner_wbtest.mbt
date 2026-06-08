@@ -304,4 +304,18 @@ async test "run_single_test preserves external subprocess status semantics" {
   inspect(progress_text.contains("\"status\":\"fail\""), content="true")
   inspect(merged_text.contains("\"status\":\"pass\""), content="false")
   inspect(merged_text.contains("\"status\":\"fail\""), content="true")
+
+  let empty_merged_log = join_path(TEST_ROOT, "execute/empty-merged.jsonl")
+  initialize_result_logs("", empty_merged_log)
+  inspect(@fs.path_exists(empty_merged_log), content="true")
+  inspect(@fs.read_file_to_string(empty_merged_log), content="")
+
+  let bad_merged_log = join_path(TEST_ROOT, "execute/merged-log-dir")
+  ensure_dir(bad_merged_log)
+  try {
+    initialize_result_logs("", bad_merged_log)
+    abort("expected merged log initialization failure")
+  } catch {
+    _ => ()
+  }
 }
