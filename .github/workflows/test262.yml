@@ -83,7 +83,7 @@ jobs:
 
   test262:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     permissions:
       contents: read
 
@@ -184,6 +184,38 @@ jobs:
         with:
           name: test262-${{ matrix.mode }}-results
           path: test262-${{ matrix.mode }}-results.json
+          retention-days: 90
+
+      - name: Run MoonBit Test262 shadow (${{ matrix.mode }})
+        # Non-authoritative: Python artifacts above remain the regression/report input.
+        # This step may fail (ordinary Test262 failures or shadow infrastructure) without
+        # changing the authoritative Python outcome.
+        shell: bash
+        run: |
+          set +e
+          moon build --target native cmd/test262_runner
+          build_rc=$?
+          if [ "$build_rc" -ne 0 ]; then
+            exit "$build_rc"
+          fi
+          ./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
+            --test262 ./test262 \
+            --mode ${{ matrix.mode }} \
+            --threads 4 \
+            --timeout 5 \
+            --output test262-${{ matrix.mode }}-moonbit-shadow-results.json \
+            --summary
+          shadow_rc=$?
+          exit "$shadow_rc"
+        continue-on-error: true
+
+      - name: Upload MoonBit shadow results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test262-${{ matrix.mode }}-moonbit-shadow
+          path: test262-${{ matrix.mode }}-moonbit-shadow-results.json
+          if-no-files-found: warn
           retention-days: 90
 
   regression-check:

@@ -95,10 +95,11 @@ test262-utils-corpus-test: test262-download test262-utils-corpus-mbt
 		--yaml-mode fallback
 
 # Unit tests plus a curated real-Test262 parity slice for the MoonBit runner shadow.
+# Pass ARGS="--runner-threads 4 --full-shadow" for explicit full-suite parity.
 test262-runner-test: test262-download test262-contract-test test262-runner-mbt-test
 	python3 scripts/test262_runner_task_selection_test.py
 	python3 scripts/test262_runner_harness_test.py
-	python3 scripts/test262_runner_shadow_parity_test.py
+	python3 scripts/test262_runner_shadow_parity_test.py $(ARGS)
 
 test262-runner-mbt-test:
 	moon test --target native tooling/test262_runner
