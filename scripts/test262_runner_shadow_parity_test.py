@@ -3,8 +3,10 @@
 
 Python remains authoritative. This test builds the native MoonBit shadow
 executable directly, runs it and ``scripts/test262-runner.py`` against the same
-small checked-out Test262 tests-file plus deterministic synthetic CLI/error
-fixtures, and compares their artifacts with ``scripts/compare-test262-results.py``.
+small checked-out Test262 tests-file, filtered real-suite discovery slices, and
+deterministic synthetic CLI/error fixtures. It compares JSON/log artifacts with
+``scripts/compare-test262-results.py``. Full strict/non-strict discovery parity
+is explicit-only via ``--full-shadow``.
 """
 
 from __future__ import annotations
@@ -28,9 +30,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 COMPARE_SCRIPT = SCRIPT_DIR / "compare-test262-results.py"
 TASK_SELECTION_SCRIPT = SCRIPT_DIR / "test262_task_selection.py"
+PYTHON_RUNNER_SCRIPT = SCRIPT_DIR / "test262-runner.py"
 SHADOW_EXE = REPO_ROOT / "_build/native/debug/build/cmd/test262_runner/test262_runner.exe"
 JS_ENGINE = REPO_ROOT / "_build/js/debug/build/cmd/main/main.js"
 MERGED_LOG_STATUSES = {"fail", "timeout", "error"}
+DEFAULT_RUNNER_PROCESS_TIMEOUT_SECONDS = 120
+DEFAULT_FULL_SHADOW_PROCESS_TIMEOUT_SECONDS = 7200
 
 # Deliberately tiny, but each file pins a distinct runner path over the real
 # checked-out suite: ordinary strict/non-strict expansion, raw source handling,
@@ -58,12 +63,18 @@ CURATED_MARKERS = (
     ("language/keywords/ident-ref-this.js", "negative metadata", "negative:"),
     ("language/comments/hashbang/not-empty.js", "skip metadata feature", "features: [hashbang]"),
 )
+# Broader than the curated tests-file slice, but still small enough for normal
+# shadow CI/local parity: exercises real Test262 discovery plus per-mode artifact
+# comparison without running a full conformance suite.
+DEFAULT_DISCOVERY_FILTERS = ("language/literals/numeric/S7.8.3_A1",)
+DEFAULT_DISCOVERY_MODES = ("strict", "non-strict")
 
 
 @dataclass(frozen=True)
 class SupportModules:
     compare: ModuleType
     task_selection: ModuleType
+    runner: ModuleType
 
 
 @dataclass(frozen=True)
@@ -95,7 +106,7 @@ class PairResult:
 class PairConfig:
     engine: str
     test262: Path
-    tests_file: Path
+    tests_file: Path | None
     tmp: Path
     resume_from: Path | None = None
     filter: str = ""
@@ -126,6 +137,7 @@ def load_support_modules() -> SupportModules:
     return SupportModules(
         compare=load_module("compare_test262_results_for_shadow_parity", COMPARE_SCRIPT),
         task_selection=load_module("test262_task_selection_for_shadow_parity", TASK_SELECTION_SCRIPT),
+        runner=load_module("test262_runner_for_shadow_parity", PYTHON_RUNNER_SCRIPT),
     )
 
 
@@ -269,7 +281,7 @@ def run_one_runner(
     args: list[str],
     *,
     output: Path,
-    timeout: int = 120,
+    timeout: int | None = DEFAULT_RUNNER_PROCESS_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(
         args,
@@ -305,8 +317,6 @@ def runner_command(artifacts: RunnerArtifacts, config: PairConfig) -> list[str]:
         config.engine,
         "--test262",
         path_arg(config.test262),
-        "--tests-file",
-        str(config.tests_file),
         "--mode",
         config.mode,
         "--threads",
@@ -321,6 +331,8 @@ def runner_command(artifacts: RunnerArtifacts, config: PairConfig) -> list[str]:
         "--merged-log",
         str(artifacts.merged_log),
     ]
+    if config.tests_file is not None:
+        args += ["--tests-file", str(config.tests_file)]
     if config.filter:
         args += ["--filter", config.filter]
     if config.start != 0:
@@ -336,8 +348,17 @@ def runner_command(artifacts: RunnerArtifacts, config: PairConfig) -> list[str]:
     return args
 
 
-def run_runner(artifacts: RunnerArtifacts, config: PairConfig) -> subprocess.CompletedProcess[str]:
-    return run_one_runner(runner_command(artifacts, config), output=artifacts.output)
+def run_runner(
+    artifacts: RunnerArtifacts,
+    config: PairConfig,
+    *,
+    process_timeout: int | None = DEFAULT_RUNNER_PROCESS_TIMEOUT_SECONDS,
+) -> subprocess.CompletedProcess[str]:
+    return run_one_runner(
+        runner_command(artifacts, config),
+        output=artifacts.output,
+        timeout=process_timeout,
+    )
 
 
 def assert_same_exit_status(
@@ -390,11 +411,17 @@ def assert_runner_error_case(
             )
 
 
-def run_pair(label: str, config: PairConfig, *, ignore_reason: bool = False) -> PairResult:
+def run_pair(
+    label: str,
+    config: PairConfig,
+    *,
+    ignore_reason: bool = False,
+    process_timeout: int | None = DEFAULT_RUNNER_PROCESS_TIMEOUT_SECONDS,
+) -> PairResult:
     python = RunnerArtifacts.for_run(config.tmp, label, "python")
     moonbit = RunnerArtifacts.for_run(config.tmp, label, "moonbit")
-    py_proc = run_runner(python, config)
-    mb_proc = run_runner(moonbit, config)
+    py_proc = run_runner(python, config, process_timeout=process_timeout)
+    mb_proc = run_runner(moonbit, config, process_timeout=process_timeout)
     assert_same_exit_status(label, py_proc, mb_proc)
     compare_artifacts(python.output, moonbit.output, ignore_reason=ignore_reason)
     return PairResult(python=python, moonbit=moonbit, exit_code=py_proc.returncode)
@@ -485,13 +512,16 @@ def artifact_keys(path: Path, compare: ModuleType) -> set[ResultKey]:
 
 
 def expected_task_keys(config: PairConfig, support: SupportModules) -> set[ResultKey]:
-    test_files = support.task_selection.load_tests_file(str(config.tests_file), str(config.test262))
-    if config.filter:
-        test_files = [
-            path
-            for path in test_files
-            if config.filter in support.task_selection.normalize_test262_path(path, str(config.test262))
-        ]
+    if config.tests_file is None:
+        test_files = support.runner.discover_tests(str(config.test262), config.filter)
+    else:
+        test_files = support.task_selection.load_tests_file(str(config.tests_file), str(config.test262))
+        if config.filter:
+            test_files = [
+                path
+                for path in test_files
+                if config.filter in support.task_selection.normalize_test262_path(path, str(config.test262))
+            ]
     tasks = support.task_selection.build_test_tasks(test_files, config.mode)
     shard_spec = support.task_selection.parse_shard_spec(config.shard) if config.shard else None
     tasks, _ = support.task_selection.apply_task_selection(
@@ -530,6 +560,36 @@ def assert_artifact_statuses(label: str, artifacts: RunnerArtifacts, expected: S
     statuses = [record.get("status") for record in artifact_results(artifacts.output)]
     if statuses != list(expected):
         raise AssertionError(f"{label} {artifacts.runner}: statuses {statuses} != {list(expected)}")
+
+
+def discovery_label(prefix: str, filter_pattern: str, mode: str) -> str:
+    raw = filter_pattern if filter_pattern else "full-suite"
+    slug = "".join(ch if ch.isalnum() else "-" for ch in raw).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    if len(slug) > 80:
+        slug = slug[:80].rstrip("-")
+    return f"{prefix}-{mode}-{slug}"
+
+
+def run_discovery_parity(
+    prefix: str,
+    base_config: PairConfig,
+    filters: Sequence[str],
+    modes: Sequence[str],
+    support: SupportModules,
+    *,
+    process_timeout: int | None = DEFAULT_RUNNER_PROCESS_TIMEOUT_SECONDS,
+) -> None:
+    for filter_pattern in filters:
+        for mode in modes:
+            config = replace(base_config, tests_file=None, filter=filter_pattern, mode=mode)
+            label = discovery_label(prefix, filter_pattern, mode)
+            expected = expected_task_keys(config, support)
+            if not expected:
+                raise AssertionError(f"{label}: discovery filter selected no expanded tasks")
+            pair = run_pair(label, config, process_timeout=process_timeout)
+            assert_pair_contract(label, pair, expected, support.compare)
 
 
 def write_synthetic_test(
@@ -843,6 +903,24 @@ def run_parity(args: argparse.Namespace) -> None:
                     f"resume parity slice should have no failed executed tests, got exit {resume_pair.exit_code}"
                 )
 
+            broad_filters = [] if args.skip_default_broad else list(DEFAULT_DISCOVERY_FILTERS)
+            broad_filters.extend(args.broad_filter)
+            broad_modes = args.broad_mode or list(DEFAULT_DISCOVERY_MODES)
+            if broad_filters:
+                run_discovery_parity("discovery", base_config, broad_filters, broad_modes, support)
+            if args.full_shadow:
+                full_shadow_process_timeout = (
+                    None if args.full_shadow_process_timeout == 0 else args.full_shadow_process_timeout
+                )
+                run_discovery_parity(
+                    "full-shadow",
+                    base_config,
+                    [""],
+                    DEFAULT_DISCOVERY_MODES,
+                    support,
+                    process_timeout=full_shadow_process_timeout,
+                )
+
         run_synthetic_parity(tmp_dir, support)
 
 
@@ -857,12 +935,47 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="engine command to pass to both runners (default: build/use JS bundle when node exists)",
     )
     parser.add_argument("--keep-temp", action="store_true", help="keep temporary artifacts for debugging")
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--skip-default-broad",
+        action="store_true",
+        help="skip the default filtered discovery parity slice",
+    )
+    parser.add_argument(
+        "--broad-filter",
+        action="append",
+        default=[],
+        help="additional real-suite discovery filter to compare (may be repeated)",
+    )
+    parser.add_argument(
+        "--broad-mode",
+        action="append",
+        choices=["strict", "non-strict", "both"],
+        default=[],
+        help="mode for --broad-filter/default discovery parity (default: strict and non-strict)",
+    )
+    parser.add_argument(
+        "--full-shadow",
+        action="store_true",
+        help="run full strict and non-strict discovery artifact parity; slow and explicit-only",
+    )
+    parser.add_argument(
+        "--full-shadow-process-timeout",
+        type=int,
+        default=DEFAULT_FULL_SHADOW_PROCESS_TIMEOUT_SECONDS,
+        help=(
+            "subprocess timeout in seconds for each full-shadow runner invocation "
+            f"(default: {DEFAULT_FULL_SHADOW_PROCESS_TIMEOUT_SECONDS}; 0 disables)"
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.full_shadow_process_timeout < 0:
+        parser.error("--full-shadow-process-timeout must be >= 0")
+    return args
 
 
 def main(argv: list[str]) -> int:
     run_parity(parse_args(argv))
-    print("ok: MoonBit Test262 runner shadow matches Python on curated, CLI/error, timeout, and selection parity slices")
+    print("ok: MoonBit Test262 runner shadow matches Python on curated, filtered discovery, CLI/error, timeout, and selection parity slices")
     return 0
 
 
