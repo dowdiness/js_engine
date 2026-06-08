@@ -84,6 +84,9 @@ Each category record must contain:
 
 The current Python runner does not include per-category `timeout` or `error`
 fields, so MoonBit shadow output must not add them to the compatibility artifact.
+MoonBit shadow output should derive category keys from normalized Test262 paths;
+do not copy the Python CI path bug that can collapse all categories into the
+singleton key `../..` when the Python runner is invoked from the repository root.
 A future schema version may add fields only after consumers are updated.
 
 ### Result fields
@@ -170,7 +173,10 @@ The comparison harness for Python-vs-MoonBit Test262 artifacts must:
 - ignore `duration_ms` by default;
 - ignore result array order;
 - compare summary counts and pass rates exactly;
-- compare category keys and counts exactly;
+- compare category keys and counts exactly when the Python artifact has valid categories;
+- for full CI artifact comparison, discard only the known broken Python
+  singleton `../..` category shape and preserve/validate MoonBit's normalized
+  category output instead;
 - compare result keys and statuses exactly;
 - compare result reasons unless an invocation explicitly allows reason drift.
 

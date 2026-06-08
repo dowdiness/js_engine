@@ -107,6 +107,45 @@ def main() -> int:
     diffs = compare.compare_artifacts(left, extra_category_field, ignore_reason=False)
     assert any("unexpected field 'timeout'" in diff for diff in diffs), diffs
 
+    python_broken_categories = artifact()
+    python_broken_categories["categories"] = {
+        "../..": {
+            "total": 2,
+            "passed": 1,
+            "failed": 0,
+            "skipped": 1,
+            "pass_rate": 100.0,
+        }
+    }
+    diffs = compare.compare_artifacts(left, python_broken_categories, ignore_reason=False)
+    assert any("categories:" in diff for diff in diffs), diffs
+    assert compare.compare_artifacts(
+        python_broken_categories,
+        left,
+        ignore_reason=False,
+        allow_python_broken_categories=True,
+    ) == []
+    copied_broken_category = compare.compare_artifacts(
+        python_broken_categories,
+        python_broken_categories,
+        ignore_reason=False,
+        allow_python_broken_categories=True,
+    )
+    assert any("must preserve normalized categories" in diff for diff in copied_broken_category), copied_broken_category
+
+    real_category_mismatch = artifact()
+    real_category_mismatch["categories"] = dict(real_category_mismatch["categories"])
+    real_category_mismatch["categories"]["built-ins/Array"] = real_category_mismatch["categories"].pop(
+        "language/literals"
+    )
+    diffs = compare.compare_artifacts(
+        left,
+        real_category_mismatch,
+        ignore_reason=False,
+        allow_python_broken_categories=True,
+    )
+    assert any("categories:" in diff for diff in diffs), diffs
+
     assert compare.normalize_path("./test262/test/language/literals/pass.js") == "language/literals/pass.js"
     assert compare.normalize_path("test/language/literals/pass.js") == "language/literals/pass.js"
 

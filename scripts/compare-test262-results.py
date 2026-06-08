@@ -249,6 +249,19 @@ def compare_required_object(
             compare_scalar(f"{name}.{field}", left.get(field), right.get(field), diffs)
 
 
+def has_broken_python_categories(data: dict[str, Any]) -> bool:
+    """Return true for the current Python CI category path bug.
+
+    When scripts/test262-runner.py is invoked from the repository root, it
+    groups every result under ../.. because category aggregation is hardcoded
+    relative to scripts/test262/test. MoonBit shadow artifacts should keep their
+    normalized Test262 categories instead of copying that broken shape.
+    """
+
+    categories = data.get("categories")
+    return isinstance(categories, dict) and set(categories) == {"../.."}
+
+
 def compare_categories(left: dict[str, Any], right: dict[str, Any], diffs: list[str]) -> None:
     left_categories = left.get("categories")
     right_categories = right.get("categories")
@@ -310,6 +323,7 @@ def compare_artifacts(
     left: dict[str, Any],
     right: dict[str, Any],
     ignore_reason: bool,
+    allow_python_broken_categories: bool = False,
 ) -> list[str]:
     diffs: list[str] = []
 
@@ -318,7 +332,11 @@ def compare_artifacts(
     compare_scalar("engine", left.get("engine"), right.get("engine"), diffs)
     compare_required_object("summary", left.get("summary"), right.get("summary"), SUMMARY_ALLOWED, diffs)
     compare_scalar("methodology", left.get("methodology"), right.get("methodology"), diffs)
-    compare_categories(left, right, diffs)
+    if allow_python_broken_categories and has_broken_python_categories(left):
+        if has_broken_python_categories(right):
+            diffs.append("right categories: must preserve normalized categories, not singleton '../..'")
+    else:
+        compare_categories(left, right, diffs)
     compare_results(left, right, diffs, ignore_reason)
 
     return diffs
@@ -336,6 +354,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="compare per-result status but allow reason text drift",
     )
     parser.add_argument(
+        "--allow-python-broken-categories",
+        action="store_true",
+        help=(
+            "when the left artifact has the Python CI category bug (a singleton '../..' category), "
+            "discard only that category comparison while preserving MoonBit's normalized categories"
+        ),
+    )
+    parser.add_argument(
         "--max-diffs",
         type=int,
         default=50,
@@ -351,7 +377,12 @@ def main(argv: list[str]) -> int:
 
     left = load_artifact(args.left)
     right = load_artifact(args.right)
-    diffs = compare_artifacts(left, right, ignore_reason=args.ignore_reason)
+    diffs = compare_artifacts(
+        left,
+        right,
+        ignore_reason=args.ignore_reason,
+        allow_python_broken_categories=args.allow_python_broken_categories,
+    )
 
     if not diffs:
         print("ok: Test262 result artifacts match migration parity contract")
