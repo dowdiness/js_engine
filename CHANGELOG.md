@@ -92,14 +92,18 @@ Unit tests: **2055 passing** (was 1227 at v0.2.3).
 
 ### Architecture — Stage 2c realm hermeticity
 
-Completed migration of ambient/global mutable interpreter state into an
-explicit `RealmState` threaded through the interpreter (#128–#153):
-well-known symbols, iterator caches, primitive-wrapper / object / function /
-Map / Set / Promise / RegExp / WeakMap / WeakSet prototype references,
-ArrayBuffer storage, and per-call construction state. The
-ambient-interpreter-context fallback was removed (#153, follow-up to the
-migration), closing the last implicit global-state path and preventing
-cross-realm leakage of prototypes and caches.
+Migrated ambient/global mutable interpreter state into an explicit
+`RealmState` threaded through the interpreter (#128–#153). The state moved
+into `RealmState` covers:
+
+- well-known symbols and iterator caches;
+- prototype references for the primitive wrappers, `Object`, `Function`,
+  `Map`, `Set`, `Promise`, `RegExp`, `WeakMap`, and `WeakSet`;
+- `ArrayBuffer` storage and per-call construction state.
+
+Removing the ambient-interpreter-context fallback (#153) closed the last
+implicit global-state path, preventing cross-realm leakage of prototypes
+and caches.
 
 ### Performance
 
