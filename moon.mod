@@ -1,6 +1,6 @@
 name = "dowdiness/js_engine"
 
-version = "0.2.3"
+version = "0.3.0"
 
 readme = "README.mbt.md"
 

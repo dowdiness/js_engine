@@ -80,7 +80,8 @@ python3 scripts/test262-runner.py --test262 ./test262 --filter built-ins/Promise
 The native MoonBit runner (`cmd/test262_runner`) is authoritative for execution
 and skip decisions; `scripts/test262-runner.py` is kept as a transitional,
 non-authoritative fallback. Shared skip metadata lives in
-`scripts/test262_skip_metadata.py` to keep runner and analyzer classifications
+`scripts/test262_skip_metadata.json` (the `.py` alongside it is a shared
+reader/classifier, not the data) to keep runner and analyzer classifications
 from drifting. The static analyzer is still only a
 rough metadata census; it does not execute tests and must not be treated as
 conformance data or the skip-list source of truth.
@@ -141,9 +142,12 @@ For less-noisy local timing on a focused set of rows, repeat full CSV snapshots
 and compare medians instead of a single process run:
 
 ```bash
-scripts/bench-focus.py --runs 5
-scripts/bench-focus.py --runs 3 --rows isolate/bytecode/property_get,pipeline/bytecode/evaluate
+make bench-focus ARGS="--runs 5"
+make bench-focus ARGS="--runs 3 --rows isolate/bytecode/property_get,pipeline/bytecode/evaluate"
 ```
+
+(`make bench-focus` runs the native `cmd/bench_focus`; `make bench-focus-py` is
+the transitional Python fallback.)
 
 The helper saves each raw CSV under `_build/bench-focus/<timestamp>/` and
 reports median/mean/range across runs plus the median in-run CV. Use this for
