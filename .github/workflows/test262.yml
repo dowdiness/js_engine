@@ -7,9 +7,10 @@ on:
       # Docs and markdown never affect the engine or the runner.
       - 'docs/**'
       - '*.md'
-      # NOTE: scripts/** is intentionally NOT ignored. The workflow now
-      # invokes scripts/test262-runner.py and scripts/classify-by-edition.py
-      # directly, so changes there must re-trigger CI.
+      # NOTE: scripts/** is intentionally NOT ignored. The authoritative native
+      # MoonBit tooling reads shared data under scripts/ (e.g.
+      # test262_skip_metadata.json) and the transitional Python shadow still runs
+      # scripts/test262-runner.py, so changes there must re-trigger CI.
       - '.gitignore'
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
@@ -137,15 +138,28 @@ jobs:
         run: pip install pyyaml
 
       - name: Run Test262 (${{ matrix.mode }})
-        # `shell: bash` enables `-eo pipefail`. We disable errexit locally so
-        # a non-zero runner status doesn't skip the per-edition table — it's
-        # the more useful signal in CI logs than the runner's one-row summary.
-        # The runner's exit code is preserved at the end via `exit $rc`, and
-        # `continue-on-error: true` lets the workflow proceed to upload.
+        # MoonBit cmd/test262_runner is authoritative (issue #255 promotion);
+        # the demoted Python runner runs below as a non-authoritative
+        # transitional shadow. `shell: bash` enables `-eo pipefail`. We disable
+        # errexit locally so a non-zero runner status doesn't skip the
+        # per-edition table — it's the more useful signal in CI logs than the
+        # runner's one-row summary. The runner's exit code is preserved at the
+        # end via `exit $rc`, and `continue-on-error: true` lets the workflow
+        # proceed to upload.
         shell: bash
         run: |
           set +e
-          python3 scripts/test262-runner.py \
+          moon build --target native cmd/test262_runner
+          build_rc=$?
+          if [ "$build_rc" -ne 0 ]; then
+            exit "$build_rc"
+          fi
+          moon build --target native cmd/classify_by_edition
+          build_rc=$?
+          if [ "$build_rc" -ne 0 ]; then
+            exit "$build_rc"
+          fi
+          ./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
             --test262 ./test262 \
             --mode ${{ matrix.mode }} \
             --threads 4 \
@@ -159,14 +173,14 @@ jobs:
           if [ -s "test262-${{ matrix.mode }}-results.json" ]; then
             echo
             echo "──────── Per-edition breakdown (${{ matrix.mode }}) ────────"
-            python3 scripts/classify-by-edition.py --markdown \
+            ./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe --markdown \
               --test262-root ./test262 \
               "test262-${{ matrix.mode }}-results.json" \
               | tee -a "$GITHUB_STEP_SUMMARY"
             # PIPESTATUS[0] = classifier (tee always succeeds with -a).
             classify_rc=${PIPESTATUS[0]}
             if [ "$classify_rc" -ne 0 ]; then
-              echo "::warning::classify-by-edition.py exited $classify_rc — per-edition table may be incomplete" >&2
+              echo "::warning::classify_by_edition exited $classify_rc — per-edition table may be incomplete" >&2
             fi
           fi
           # Runner failure dominates; otherwise propagate classifier failure
@@ -186,35 +200,32 @@ jobs:
           path: test262-${{ matrix.mode }}-results.json
           retention-days: 90
 
-      - name: Run MoonBit Test262 shadow (${{ matrix.mode }})
-        # Non-authoritative: Python artifacts above remain the regression/report input.
-        # This step may fail (ordinary Test262 failures or shadow infrastructure) without
-        # changing the authoritative Python outcome.
+      - name: Run Python Test262 shadow (${{ matrix.mode }})
+        # Non-authoritative transitional shadow (issue #255). The MoonBit
+        # artifacts above remain the regression/report input. This step may fail
+        # (ordinary Test262 failures or shadow infrastructure) without changing
+        # the authoritative MoonBit outcome. The artifact name intentionally does
+        # NOT match the `test262-*-results` glob the regression-check job downloads.
         shell: bash
         run: |
           set +e
-          moon build --target native cmd/test262_runner
-          build_rc=$?
-          if [ "$build_rc" -ne 0 ]; then
-            exit "$build_rc"
-          fi
-          ./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
+          python3 scripts/test262-runner.py \
             --test262 ./test262 \
             --mode ${{ matrix.mode }} \
             --threads 4 \
             --timeout 5 \
-            --output test262-${{ matrix.mode }}-moonbit-shadow-results.json \
+            --output test262-${{ matrix.mode }}-python-shadow-results.json \
             --summary
           shadow_rc=$?
           exit "$shadow_rc"
         continue-on-error: true
 
-      - name: Upload MoonBit shadow results
+      - name: Upload Python shadow results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test262-${{ matrix.mode }}-moonbit-shadow
-          path: test262-${{ matrix.mode }}-moonbit-shadow-results.json
+          name: test262-${{ matrix.mode }}-python-shadow
+          path: test262-${{ matrix.mode }}-python-shadow-results.json
           if-no-files-found: warn
           retention-days: 90
 

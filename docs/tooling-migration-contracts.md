@@ -118,7 +118,9 @@ A completed result log may contain all five statuses. Merged logs contain only
 
 ## Exit-code contract
 
-For `scripts/test262-runner.py`, the authoritative behavior is:
+The Test262 runner (native `cmd/test262_runner`, authoritative;
+`scripts/test262-runner.py` matches it as the transitional fallback) follows
+this exit-code contract:
 
 - invalid CLI arguments exit non-zero through argparse;
 - missing Test262 directory, unreadable tests file, missing engine command, or
@@ -192,3 +194,33 @@ A migrated MoonBit tool can replace its Python target only when:
 4. CI runs the MoonBit command in shadow mode without hiding Python failures.
 5. For the Test262 runner, full strict and non-strict artifacts match Python
    except for documented approved differences.
+
+## Promotion status
+
+Issue #255 promoted the following tools from shadow to authoritative, keeping the
+Python implementations as clearly-marked transitional fallbacks (the `*-py` Make
+targets; not deleted):
+
+- **Test262 runner** (`cmd/test262_runner`): authoritative in CI
+  (`.github/workflows/test262.yml`) and in `make test262` / `test262-quick` /
+  `test262-filter`. The demoted Python runner runs in CI as a non-authoritative
+  shadow uploading `test262-${mode}-python-shadow-results.json` — a name that
+  deliberately does not match the `test262-*-results` glob the `regression-check`
+  job consumes, so regression detection reads the native artifacts.
+- **Tier 1 utilities**: `make bench-focus`, `test262-analyze`,
+  `test262-validate-skips`, `test262-report`, `unicode-tables`, and the
+  per-edition classifier (`cmd/classify_by_edition`, used for the CI per-edition
+  table).
+
+**Gate #5 (full-artifact parity) — met.** The native runner's strict and
+non-strict CI artifacts match the Python runner except for non-deterministic
+`timeout`/`pass` flips at the `--timeout 5` boundary on a small set of heavy
+tests (`built-ins/encodeURI/S15.1.3.3_A2.3_T1.js`,
+`built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js`,
+`annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js`). These flips were
+observed in opposite directions across CI runs `026b2c9` and `0fd7d3a`, sit well
+within the regression baseline's `passed_min` margin, and are exhibited by the
+Python runner too. They are an **approved difference** — wall-clock timeout
+flakiness, not a runner divergence. The earlier CRLF/CR reason, embedded-NUL
+status, and module source-order differences were fixed in PR #285 and are no
+longer present.

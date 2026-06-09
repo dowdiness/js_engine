@@ -1,4 +1,4 @@
-.PHONY: build test bench-focus bench-focus-test bench-focus-mbt subprocess-helpers-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-compare-results test262-download test262-report test262-report-test test262-report-mbt unicode-tables unicode-tables-test unicode-tables-mbt clean
+.PHONY: build test bench-focus bench-focus-py bench-focus-test bench-focus-mbt subprocess-helpers-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test architecture-state-audit-test test262 test262-contract-test test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-py test262-quick test262-quick-py test262-filter test262-filter-py test262-analyze test262-analyze-py test262-analyze-mbt test262-validate-skips test262-validate-skips-py test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-compare-results test262-download test262-report test262-report-py test262-report-test test262-report-mbt unicode-tables unicode-tables-py unicode-tables-test unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 
@@ -17,7 +17,13 @@ subprocess-helpers-mbt-test:
 bench-focus-test: subprocess-helpers-mbt-test
 	python3 scripts/bench_focus_test.py
 
-bench-focus:
+# MoonBit native is authoritative. bench-focus-py is the transitional Python fallback.
+bench-focus: subprocess-helpers-mbt-test
+	moon build --target native cmd/bench_focus
+	./_build/native/debug/build/cmd/bench_focus/bench_focus.exe $(ARGS)
+
+# Transitional Python fallback (pre-promotion behavior).
+bench-focus-py:
 	python3 scripts/bench-focus.py $(ARGS)
 
 bench-focus-mbt: subprocess-helpers-mbt-test
@@ -119,15 +125,35 @@ test262-runner-mbt: test262-runner-mbt-test
 test262-compare-results:
 	python3 scripts/compare-test262-results.py $(ARGS)
 
-# Run the full Test262 conformance suite
+# Run the full Test262 conformance suite (MoonBit native authoritative;
+# test262-py is the transitional Python fallback).
 test262: build test262-download
+	moon build --target native cmd/test262_runner
+	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
+		--engine "moon run cmd/main --" \
+		--test262 ./test262 \
+		--output test262-results.json
+
+# Transitional Python fallback (pre-promotion behavior).
+test262-py: build test262-download
 	python3 scripts/test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
 		--output test262-results.json
 
-# Run a quick subset of Test262 (language/literals only)
+# Run a quick subset of Test262 (language/literals only).
 test262-quick: build test262-download
+	moon build --target native cmd/test262_runner
+	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
+		--engine "moon run cmd/main --" \
+		--test262 ./test262 \
+		--filter "language/literals" \
+		--timeout 10 \
+		--output test262-results.json \
+		--verbose
+
+# Transitional Python fallback (pre-promotion behavior).
+test262-quick-py: build test262-download
 	python3 scripts/test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
@@ -136,8 +162,19 @@ test262-quick: build test262-download
 		--output test262-results.json \
 		--verbose
 
-# Run Test262 for a specific category (e.g., make test262-filter FILTER=language/expressions)
+# Run Test262 for a specific category (e.g., make test262-filter FILTER=language/expressions).
 test262-filter: build test262-download
+	moon build --target native cmd/test262_runner
+	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
+		--engine "moon run cmd/main --" \
+		--test262 ./test262 \
+		--filter "$(FILTER)" \
+		--timeout 10 \
+		--output test262-results.json \
+		--verbose
+
+# Transitional Python fallback (pre-promotion behavior).
+test262-filter-py: build test262-download
 	python3 scripts/test262-runner.py \
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
@@ -149,11 +186,23 @@ test262-filter: build test262-download
 # Non-authoritative static metadata analysis (no engine build required).
 # Use scripts/test262-runner.py / CI artifacts for conformance and skip truth.
 # Shared skip metadata only prevents runner/analyzer drift.
-test262-analyze: test262-download test262-analyze-mbt
+# MoonBit native produces the authoritative test262-analysis.json; the Python run
+# is retained as a transitional cross-check. test262-analyze-py is the fallback.
+test262-analyze: test262-download test262-metadata-tools-mbt-test
+	moon build --target native cmd/test262_analyze
+	./_build/native/debug/build/cmd/test262_analyze/test262_analyze.exe \
+		--test262 ./test262 \
+		--output test262-analysis.json
+	python3 scripts/test262-analyze.py \
+		--test262 ./test262 \
+		--output test262-analysis.python-shadow.json
+	python3 -c 'import json, sys; from pathlib import Path; expected = json.loads(Path("test262-analysis.json").read_text()); actual = json.loads(Path("test262-analysis.python-shadow.json").read_text()); keys = ("summary", "complexity", "categories", "feature_gaps"); mismatches = [key for key in keys if expected.get(key) != actual.get(key)]; sys.exit("Python cross-check test262-analyze mismatch in " + mismatches[0]) if mismatches else print("ok: Python cross-check matches MoonBit authoritative test262-analyze output")'
+
+# Transitional Python-authoritative fallback (pre-promotion behavior).
+test262-analyze-py: test262-download
 	python3 scripts/test262-analyze.py \
 		--test262 ./test262 \
 		--output test262-analysis.json
-	python3 -c 'import json, sys; from pathlib import Path; expected = json.loads(Path("test262-analysis.json").read_text()); actual = json.loads(Path("test262-analysis.moonbit-shadow.json").read_text()); keys = ("summary", "complexity", "categories", "feature_gaps"); mismatches = [key for key in keys if expected.get(key) != actual.get(key)]; sys.exit("MoonBit shadow test262-analyze mismatch in " + mismatches[0]) if mismatches else print("ok: MoonBit shadow test262-analyze summary/category output matches Python")'
 
 test262-analyze-mbt: test262-download test262-metadata-tools-mbt-test
 	moon build --target native cmd/test262_analyze
@@ -163,7 +212,11 @@ test262-analyze-mbt: test262-download test262-metadata-tools-mbt-test
 
 # Check that shared skip metadata still matches the checked-out Test262 suite.
 # This does not run tests or produce conformance numbers.
-test262-validate-skips: test262-download test262-validate-skips-mbt
+# MoonBit native is authoritative; test262-validate-skips-py is the transitional fallback.
+test262-validate-skips: test262-validate-skips-mbt
+
+# Transitional Python fallback (pre-promotion behavior).
+test262-validate-skips-py: test262-download
 	python3 scripts/validate-test262-skip-metadata.py \
 		--test262 ./test262
 
@@ -188,7 +241,13 @@ classify-by-edition-mbt: test262-classify-by-edition-mbt
 # Pass ARGS="..." to forward flags, e.g. make test262-report ARGS="--run 24730849102"
 test262-report-test: test262-contract-test subprocess-helpers-mbt-test
 
-test262-report:
+# MoonBit native is authoritative; test262-report-py is the transitional Python fallback.
+test262-report: subprocess-helpers-mbt-test
+	moon build --target native cmd/report_test262
+	./_build/native/debug/build/cmd/report_test262/report_test262.exe --with-editions $(ARGS)
+
+# Transitional Python fallback (pre-promotion behavior).
+test262-report-py:
 	python3 scripts/report-test262.py --with-editions $(ARGS)
 
 test262-report-mbt: subprocess-helpers-mbt-test
@@ -204,7 +263,13 @@ test262-report-mbt: subprocess-helpers-mbt-test
 unicode-tables-test: subprocess-helpers-mbt-test
 	python3 scripts/generate_unicode_id_tables_test.py
 
-unicode-tables:
+# MoonBit native is authoritative; unicode-tables-py is the transitional Python fallback.
+unicode-tables: subprocess-helpers-mbt-test
+	moon build --target native cmd/generate_unicode_id_tables
+	./_build/native/debug/build/cmd/generate_unicode_id_tables/generate_unicode_id_tables.exe $(if $(UNICODE_VERSION),--unicode-version $(UNICODE_VERSION))
+
+# Transitional Python fallback (pre-promotion behavior).
+unicode-tables-py:
 	python3 scripts/generate-unicode-id-tables.py $(if $(UNICODE_VERSION),--unicode-version $(UNICODE_VERSION))
 
 unicode-tables-mbt: subprocess-helpers-mbt-test
@@ -218,4 +283,4 @@ unicode-tables-mbt: subprocess-helpers-mbt-test
 # Clean build artifacts
 clean:
 	moon clean
-	rm -f test262-results.json test262-analysis.json test262-analysis.moonbit-shadow.json
+	rm -f test262-results.json test262-analysis.json test262-analysis.moonbit-shadow.json test262-analysis.python-shadow.json
