@@ -25,8 +25,9 @@ reported separately — summing would double-count files):
 - **Passed / Executed**: 94.2% strict (25,136 / 26,675),
   92.9% non-strict (26,797 / 28,840). Excludes ~40% of
   discovered files skipped for unimplemented features.
-- **Passed / Discovered**: 55.9% strict, 56.2%
-  non-strict. Counts skipped files as un-passed.
+- **Passed / Discovered**: 55.9% strict (25,136 / 44,986),
+  56.2% non-strict (26,797 / 47,692). Counts skipped files
+  (18,270 strict / 18,811 non-strict) as un-passed.
 
 Measured on CI run [27203832547] (tip `028fde7`, 2026-06-09).
 Regression baseline: +2,686 strict / +3,277 non-strict vs
