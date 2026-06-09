@@ -55,15 +55,16 @@ fn is_space_code(ch : UInt16) -> Bool {
 fn collect_import_after_keyword(
   source : String,
   keyword : String,
-  specs : Array[String],
+  specs : Array[(Int, String)],
 ) -> Unit {
   let mut offset = 0
+  let keyword_len = keyword.length()
   while offset < source.length() {
     match source[offset:].find(keyword) {
       None => return
       Some(relative_index) => {
         let index = offset + relative_index
-        let mut j = index + keyword.length()
+        let mut j = index + keyword_len
         let mut had_space = false
         while j < source.length() && is_space_code(source[j]) {
           had_space = true
@@ -81,11 +82,11 @@ fn collect_import_after_keyword(
           if j < source.length() {
             let spec = source[spec_start:j].to_owned()
             if spec.has_prefix("./") || spec.has_prefix("../") {
-              specs.push(spec)
+              specs.push((index, spec))
             }
           }
         }
-        offset = index + keyword.length()
+        offset = index + keyword_len
       }
     }
   }
@@ -93,10 +94,11 @@ fn collect_import_after_keyword(
 
 ///|
 fn import_relative_specifiers(source : String) -> Array[String] {
-  let specs : Array[String] = []
-  collect_import_after_keyword(source, "from", specs)
-  collect_import_after_keyword(source, "import", specs)
-  specs
+  let matches : Array[(Int, String)] = []
+  collect_import_after_keyword(source, "from", matches)
+  collect_import_after_keyword(source, "import", matches)
+  matches.sort_by(fn(a, b) { a.0.compare(b.0) })
+  matches.map(item => item.1)
 }
 
 ///|
