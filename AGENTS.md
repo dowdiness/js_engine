@@ -41,11 +41,11 @@ See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-the
 
 ## Test262 Tool Boundaries
 
-- `scripts/test262-runner.py` is authoritative for Test262 execution and applying skip decisions.
+- The native MoonBit runner `cmd/test262_runner` (invoked by `make test262` / `test262-quick` / `test262-filter` and by CI) is authoritative for Test262 execution and applying skip decisions. `scripts/test262-runner.py` is kept as a transitional, non-authoritative fallback (the `*-py` Make targets) until the migration's Python-removal phase; do not treat its output as authoritative.
 - `scripts/test262_skip_metadata.py` is the single edit point for shared skip metadata used by runner/analyzer tooling.
-- `scripts/test262-analyze.py` is a non-authoritative metadata helper. It uses shared skip metadata but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
-- After editing shared skip metadata, run `make test262-validate-skips`. It detects dead or unknown metadata entries only; it does not run Test262 or produce conformance numbers.
-- `scripts/report-test262.py` plus CI artifacts are authoritative for current conformance numbers.
+- `test262-analyze` (native `cmd/test262_analyze`, authoritative, with `scripts/test262-analyze.py` retained as a cross-check via `make test262-analyze`) is a non-authoritative metadata helper. It uses shared skip metadata but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
+- After editing shared skip metadata, run `make test262-validate-skips` (native; `make test262-validate-skips-py` is the transitional fallback). It detects dead or unknown metadata entries only; it does not run Test262 or produce conformance numbers.
+- `make test262-report` (native `cmd/report_test262`) plus CI artifacts are authoritative for current conformance numbers.
 
 ## Snapshot Assertions
 

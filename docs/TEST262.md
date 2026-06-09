@@ -245,8 +245,9 @@ This runs `scripts/test262-analyze.py`, which uses shared skip metadata from
 Do not use this output as a conformance rate, pass/fail status, or skip-list
 source of truth. Shared metadata prevents drift between tools, but the analyzer
 does not execute the engine, expand strict/non-strict tasks, load harnesses,
-resolve module fixtures, or observe runtime failures/timeouts. Use
-`scripts/test262-runner.py` and CI artifacts for authoritative results.
+resolve module fixtures, or observe runtime failures/timeouts. Use the native
+runner (`cmd/test262_runner`, via `make test262`) and CI artifacts for
+authoritative results.
 
 To check that shared skip metadata still names features, flags, and path
 suffixes present in the checked-out Test262 suite:

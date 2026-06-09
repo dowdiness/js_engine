@@ -193,7 +193,7 @@ moon run cmd/main -- --annex-b 'console.log("x".bold())'
 
 - **CLI**: `--annex-b` flag parsed in `cmd/main/main.mbt`, passed to interpreter as `self.annex_b : Bool`
 - **Test262 runner**: `scripts/test262-runner.py` passes `--annex-b` for tests in `annexB/` directories
-- **Metadata parsing**: `scripts/test262-runner.py` and `scripts/test262-analyze.py` share `scripts/test262_utils.py` and run with or without PyYAML installed. Shared skip metadata lives in `scripts/test262_skip_metadata.py` to prevent drift. The analyzer is a non-authoritative metadata helper; runner results are authoritative.
+- **Metadata parsing**: `scripts/test262-runner.py` and `scripts/test262-analyze.py` share `scripts/test262_utils.py` and run with or without PyYAML installed. Shared skip metadata lives in `scripts/test262_skip_metadata.py` to prevent drift. The analyzer is a non-authoritative metadata helper; the native runner (`cmd/test262_runner`) is authoritative for results, with `scripts/test262-runner.py` kept as the transitional fallback.
 
 ### Legacy feature status
 
@@ -220,8 +220,9 @@ Low. These features are not required for modern JavaScript usage. Implement only
 ## Skipped Features
 
 Shared skip metadata lives in `scripts/test262_skip_metadata.py` and is applied
-by `scripts/test262-runner.py`; runner results remain authoritative for actual
-execution. The table below is a dated snapshot from CI run 24885185424
+by the Test262 runner (native `cmd/test262_runner`, authoritative; the Python
+runner is the transitional fallback); runner results remain authoritative for
+actual execution. The table below is a dated snapshot from CI run 24885185424
 (2026-04-24, tip `b225cda`), kept as orientation rather than a current source
 of truth.
 

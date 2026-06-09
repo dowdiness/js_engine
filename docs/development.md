@@ -48,10 +48,12 @@ and `@js_engine/interpreter/runtime`.
 ## Test262
 
 The authoritative full-suite workflow is `.github/workflows/test262.yml`.
-It currently builds the JS target with `moon build --target js --release` and
-runs `scripts/test262-runner.py` once per mode (`strict`, `non-strict`) with
-4 threads and a 5-second per-test timeout. The GitHub Actions job timeout is
-set in the workflow file.
+It builds the JS target with `moon build --target js --release` and runs the
+native MoonBit runner (`cmd/test262_runner`) once per mode (`strict`,
+`non-strict`) with 4 threads and a 5-second per-test timeout. The demoted
+Python runner (`scripts/test262-runner.py`) runs alongside as a transitional,
+non-authoritative shadow. The GitHub Actions job timeout is set in the workflow
+file.
 
 Generate release-grade conformance text from CI artifacts:
 
@@ -62,20 +64,24 @@ make test262-report ARGS="--with-editions"
 ```
 
 Do not hand-copy headline conformance numbers between docs. If a table needs
-refreshing, regenerate it with `scripts/report-test262.py` or state clearly
-that it is a dated snapshot.
+refreshing, regenerate it with `make test262-report` (native; `make
+test262-report-py` is the transitional Python fallback) or state clearly that
+it is a dated snapshot.
 
 For local focused runs:
 
 ```bash
 make test262-quick
 make test262-filter FILTER=language/expressions
+# transitional Python fallback for an ad-hoc filtered run:
 python3 scripts/test262-runner.py --test262 ./test262 --filter built-ins/Promise --summary
 ```
 
-`scripts/test262-runner.py` is authoritative for execution and skip decisions.
-Shared skip metadata lives in `scripts/test262_skip_metadata.py` to keep runner
-and analyzer classifications from drifting. The static analyzer is still only a
+The native MoonBit runner (`cmd/test262_runner`) is authoritative for execution
+and skip decisions; `scripts/test262-runner.py` is kept as a transitional,
+non-authoritative fallback. Shared skip metadata lives in
+`scripts/test262_skip_metadata.py` to keep runner and analyzer classifications
+from drifting. The static analyzer is still only a
 rough metadata census; it does not execute tests and must not be treated as
 conformance data or the skip-list source of truth.
 
