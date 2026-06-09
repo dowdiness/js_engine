@@ -13,8 +13,9 @@ For changes before this file existed, see `git log`.
 
 188 commits since v0.2.3. Themes summarised below; full list via
 `git log v0.2.3..v0.3.0`. The `@js_engine` root facade API is unchanged
-(additive only); the one breaking change is confined to the
-`interpreter/stdlib` sub-package (see Breaking changes).
+(additive only); all breaking changes are confined to the
+interpreter-internal layers (`interpreter/runtime`, `interpreter/stdlib`,
+`parser`, `ast`) — see Breaking changes.
 
 ### Conformance
 
@@ -177,6 +178,10 @@ churn by replacing module-global ambient state with explicit `RealmState` /
   fields/methods, and add wildcard arms for the new `Callable` variants.
   Construct the changed structs through their constructors rather than
   positional literals.
+- **Direct importers of `parser` / `ast`**: `parser.Parser` gained a
+  `yield_identifier_depth` field and `ast.Param` gained an `is_rest_pattern`
+  field — construct these through their constructors rather than positional
+  literals. `parser` also adds `parse_tokens` (additive).
 
 ### Known limitations at 0.3.0
 
