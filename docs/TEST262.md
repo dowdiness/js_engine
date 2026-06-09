@@ -49,15 +49,18 @@ Downloads the latest Test262 suite from `tc39/test262` into `./test262/`. Skips 
 ### 3. Run the test suite
 
 ```bash
-# Auto-detect engine (recommended)
-python3 scripts/test262-runner.py --test262 ./test262 --output test262-results.json
+# Recommended: native runner via make (authoritative)
+make test262
 
-# Explicit engine command
-python3 scripts/test262-runner.py \
-    --engine "node _build/js/debug/build/cmd/main/main.js" \
+# Or invoke the native runner binary directly (built by `make test262`)
+./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
     --test262 ./test262 \
     --output test262-results.json
 ```
+
+The native `cmd/test262_runner` is authoritative. `scripts/test262-runner.py`
+(the `*-py` Make targets, e.g. `make test262-py`) is the transitional Python
+fallback and accepts the same flags.
 
 ## Filtering Tests
 
@@ -70,11 +73,11 @@ make test262-quick
 # Run a specific category
 make test262-filter FILTER=language/expressions
 
-# Use the runner directly with a filter
-python3 scripts/test262-runner.py --filter "built-ins/Promise" --summary
+# Use the native runner directly with a filter
+./_build/native/debug/build/cmd/test262_runner/test262_runner.exe --filter "built-ins/Promise" --summary
 
 # Multiple patterns work too
-python3 scripts/test262-runner.py --filter "built-ins/TypedArray" --verbose
+./_build/native/debug/build/cmd/test262_runner/test262_runner.exe --filter "built-ins/TypedArray" --verbose
 ```
 
 ## Sharded and Resumable Local Runs
@@ -84,16 +87,22 @@ selection happens **after** strict/non-strict mode expansion, so use
 `--mode strict` or `--mode non-strict` when you want per-mode shards that match
 CI jobs.
 
+The examples below use the native runner binary. Define a shorthand (the
+transitional Python fallback `python3 scripts/test262-runner.py` accepts the
+same flags):
+
 ```bash
+RUNNER=./_build/native/debug/build/cmd/test262_runner/test262_runner.exe
+
 # Run an explicit file list. Relative entries are resolved under test262/test/.
-python3 scripts/test262-runner.py \
+$RUNNER \
     --test262 ./test262 \
     --tests-file /tmp/test262-list.txt \
     --mode non-strict \
     --summary
 
 # Run one balanced shard of the expanded task list.
-python3 scripts/test262-runner.py \
+$RUNNER \
     --test262 ./test262 \
     --mode non-strict \
     --shard 2/8 \
@@ -103,7 +112,7 @@ python3 scripts/test262-runner.py \
     --summary
 
 # Resume the same shard by skipping (path, mode) records already in the JSON.
-python3 scripts/test262-runner.py \
+$RUNNER \
     --test262 ./test262 \
     --mode non-strict \
     --shard 2/8 \
@@ -112,7 +121,7 @@ python3 scripts/test262-runner.py \
     --summary
 
 # Use an explicit 0-based task slice instead of --shard.
-python3 scripts/test262-runner.py \
+$RUNNER \
     --test262 ./test262 \
     --mode strict \
     --start 10000 \
@@ -125,7 +134,7 @@ completed task as JSON Lines and is overwritten for each invocation.
 `--merged-log` appends fail/timeout/error records as JSON Lines, which is handy
 when collecting failures across several shard runs. These task-selection flags
 do not change the main `--output` JSON schema, which remains compatible with
-`scripts/report-test262.py` and `scripts/classify-by-edition.py`.
+the report (`make test262-report`) and classify-by-edition tooling.
 
 ## Opt-in Modified Harness Helpers
 
@@ -174,13 +183,19 @@ so their numbers are not confused with official CI results.
 
 ## Alternative Engine Commands
 
+The native runner auto-detects the engine. Pass `--engine` to override (the
+transitional Python fallback `python3 scripts/test262-runner.py` accepts the
+same flag):
+
 ```bash
+RUNNER=./_build/native/debug/build/cmd/test262_runner/test262_runner.exe
+
 # Use the WASM-GC backend (slower, ~3 tests/sec)
-python3 scripts/test262-runner.py --engine "moon run cmd/main --" --test262 ./test262
+$RUNNER --engine "moon run cmd/main --" --test262 ./test262
 
 # Use the JS backend via node (faster, ~60 tests/sec)
 moon build --target js
-python3 scripts/test262-runner.py --test262 ./test262
+$RUNNER --test262 ./test262
 ```
 
 ## Understanding Results
@@ -218,7 +233,7 @@ Results are saved as JSON with:
 
 ## Skipped Features
 
-Tests requiring these unimplemented features are automatically skipped (excluded from the Passed / Executed ratio). Rough groupings — see `SKIP_FEATURES` in `scripts/test262_skip_metadata.py` for the shared skip metadata applied by the runner:
+Tests requiring these unimplemented features are automatically skipped (excluded from the Passed / Executed ratio). Rough groupings — see the shared skip metadata in `scripts/test262_skip_metadata.json` (applied by the runner):
 
 - **Async iteration / top-level await**: `async-iteration`, `top-level-await` (note: plain `async-functions` is implemented and no longer skipped)
 - **Class private members**: `class-fields-private`, `class-methods-private`, `class-static-fields-private`, `class-static-methods-private`, `class-static-block` (public class fields are implemented)
@@ -237,8 +252,9 @@ For a rough metadata census without building or running the engine:
 make test262-analyze
 ```
 
-This runs `scripts/test262-analyze.py`, which uses shared skip metadata from
-`scripts/test262_skip_metadata.py` and classifies files as `applicable`,
+This runs the native `cmd/test262_analyze` (authoritative; `scripts/test262-analyze.py`
+is retained as a cross-check shadow), which uses shared skip metadata from
+`scripts/test262_skip_metadata.json` and classifies files as `applicable`,
 `skip_feature`, `skip_flag`, or `skip_fixture`. It generates
 `test262-analysis.json`.
 
@@ -256,9 +272,10 @@ suffixes present in the checked-out Test262 suite:
 make test262-validate-skips
 ```
 
-This runs `scripts/validate-test262-skip-metadata.py`. It only reports dead or
-unknown skip metadata entries; it does not run tests or produce conformance
-numbers.
+This runs the native `cmd/test262_validate_skips` (authoritative;
+`make test262-validate-skips-py` is the transitional Python fallback). It only
+reports dead or unknown skip metadata entries; it does not run tests or produce
+conformance numbers.
 
 ## CI Integration
 

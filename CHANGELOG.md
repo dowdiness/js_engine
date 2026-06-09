@@ -9,23 +9,197 @@ For changes before this file existed, see `git log`.
 
 ## [Unreleased]
 
-### Changed (breaking, `interpreter/stdlib` package consumers)
+## [0.3.0] — 2026-06-09
 
-- Stage 2c migration of the WeakMap/WeakSet prototype caches into `RealmState`
-  changed three public stdlib signatures:
-  - `setup_weakmap_set_builtins(env, well_known_symbols)` →
-    `setup_weakmap_set_builtins(env, well_known_symbols, realm_state)`.
-  - `get_weakmap_method(data, prop)` → `get_weakmap_method(prop, realm_state)`.
-    Dropped the previously-unused `ObjectData` receiver param; the helper is
-    a pure prototype-chain lookup against `realm_state.weakmap_prototype`
-    (not a JS `[[Get]]` implementation — does NOT consult own properties).
-  - `get_weakset_method(data, prop)` → `get_weakset_method(prop, realm_state)`,
-    same shape as `get_weakmap_method`.
+188 commits since v0.2.3. Themes summarised below; full list via
+`git log v0.2.3..v0.3.0`. The `@js_engine` root facade API is unchanged
+(additive only); the one breaking change is confined to the
+`interpreter/stdlib` sub-package (see Breaking changes).
 
-  In-tree, only `interpreter/stdlib/builtins.mbt` calls
-  `setup_weakmap_set_builtins`; the two helper functions had no other callers
-  before this change. Direct downstream consumers of `interpreter/stdlib`
-  must update call sites.
+### Conformance
+
+test262 (each file run in both strict and non-strict modes,
+reported separately — summing would double-count files):
+
+- **Passed / Executed**: 94.2% strict (25,136 / 26,675),
+  92.9% non-strict (26,797 / 28,840). Excludes ~40% of
+  discovered files skipped for unimplemented features.
+- **Passed / Discovered**: 55.9% strict, 56.2%
+  non-strict. Counts skipped files as un-passed.
+
+Measured on CI run [27203832547] (tip `028fde7`, 2026-06-09).
+Regression baseline: +2,686 strict / +3,277 non-strict vs
+`test262-baseline.json` (min 22,450 strict / 23,520 non-strict).
+
+Versus v0.2.3's recorded per-mode Passed / Executed (89.4% strict,
+87.8% non-strict): **+1,338 strict / +1,553 non-strict** passing,
+driven by the Array iteration model, TypedArray, RegExp `Symbol.*`,
+Map/Set, and ES2015 coercion sweeps below.
+
+Unit tests: **2055 passing** (was 1227 at v0.2.3).
+
+[27203832547]: https://github.com/dowdiness/js_engine/actions/runs/27203832547
+
+### Major capabilities added
+
+- **Opt-in bytecode/VM execution prototype.** A compact bytecode prototype
+  (#157) is the chosen direction for execution-speed work, reached through
+  the experimental `run_compiled` entry point and the `--closure-conversion`
+  CLI flag. It is **not** the default execution path — the tree-walking
+  interpreter remains canonical. Coverage broadened to short-circuit
+  operators (#158), comma expressions (#159), constructor/object/control-flow
+  nodes (#164), and arguments-object elision (#172). Design rationale and
+  the explicit decision *not* to grow it into a second full interpreter are
+  recorded in `docs/closure-conversion-and-bytecode.md`.
+- **RegExp `Symbol.*` protocol methods.** `Symbol.replace` (#196),
+  `Symbol.match` (#197), `Symbol.split` (#198), and `Symbol.matchAll` (#200)
+  now follow their spec algorithms, with the `exec`/`search` `lastIndex`
+  protocol (#199), prototype accessors (#194), Annex B `compile` validation
+  (#201), and group-alternative backtracking with captures (#202).
+- **ES module graph live bindings** (#227): live bindings and namespace
+  object semantics across the import graph.
+
+### Spec-correctness sweeps
+
+- **Array iteration model** (#122): a central index-lookup result plus
+  Phase 1/3 hole lifecycle, fixing iteration over sparse arrays; mutator
+  hole maintenance (#191); and fast-path delegation through the prototype
+  for non-mutating, iterator, push/pop, shift/unshift, and copy methods
+  (#265/#267/#271/#274/#275/#279).
+- **TypedArray**: `ValidateTypedArray` enforced at every prototype method
+  (§22.2.3.5.1, #120), `SpeciesConstructor` + `TypedArraySpeciesCreate`
+  (#121), integer-index internal methods (#219), constructor `from`/`of`
+  residuals (#218), and prototype-method residuals (#220).
+- **Map/Set**: iterator receiver/exhaustion semantics (#222),
+  `getOrInsertComputed` callback and zero-key handling (#223),
+  `forEach` residuals (#224), and `groupBy` iterator-protocol traversal
+  (#225).
+- **ES2015 coercion contexts**: the interpreter is threaded through coercive
+  built-ins (#215) to fix coercion-context residuals (#210/#216), subclass
+  built-in constructor residuals (#214), class/super/generator residuals
+  (#213), iterator and for-of head residuals (#212), and the arguments
+  object's live ArrayIterator length/value (#221).
+- **ArrayBuffer / DataView residuals** (#217).
+- **Function `length` / `name`**: async function `length` with default
+  params (#116), all six function factories (#118), and async-generator
+  `length`/`name` (#162).
+- **Early errors / strict mode**: Annex B §B.3.3.3 extension skipped on
+  lexical/var conflict (#119), sloppy `arguments` formal binding (#160),
+  double `super()` initialization rejected (#161), and trailing comma after
+  rest parameters rejected.
+- **Lexer**: correct raw slices after supplementary-plane Unicode (#226).
+
+### Architecture — Stage 2c realm hermeticity
+
+Completed migration of ambient/global mutable interpreter state into an
+explicit `RealmState` threaded through the interpreter (#128–#153):
+well-known symbols, iterator caches, primitive-wrapper / object / function /
+Map / Set / Promise / RegExp / WeakMap / WeakSet prototype references,
+ArrayBuffer storage, and per-call construction state. The
+ambient-interpreter-context fallback was removed (#153, follow-up to the
+migration), closing the last implicit global-state path and preventing
+cross-realm leakage of prototypes and caches.
+
+### Performance
+
+- **Benchmark infrastructure**: JS startup benchmark staging (#154),
+  startup phase-breakdown and decomposition benchmarks (#183/#184), a
+  focused repeat runner (#187), a startup Hyperfine workflow (#178),
+  PR base-vs-head benchmark reporting (#173), and a redesigned gh-pages
+  dashboard (#174/#175/#176).
+- **Startup**: builtin realm-stamping optimization, audit, and root probes
+  (#188/#192/#195).
+- **Execution**: closure-converted block-body optimization (#156); bytecode
+  environment-lookup (#182) and dispatch-stack (#185) reductions; shared and
+  plain-object property-helper hot-path optimizations (#177/#186).
+
+Timing figures are intentionally omitted — per
+`docs/closure-conversion-and-bytecode.md`, they vary by backend, hardware,
+and local noise; run `make bench` for fresh numbers.
+
+### Tooling — Python → MoonBit migration
+
+Test262 tooling is now native MoonBit and authoritative. Native
+`cmd/test262_runner` executes the suite; native metadata tools, subprocess
+helpers, the architecture-state audit, and the analyzer / validator /
+reporter became the authoritative path in the Makefile, CI, and docs
+(#247–#286, promotion in #255/#286). Python scripts are retained as
+clearly-marked transitional `-py` fallbacks pending a later removal phase.
+The runner also gained task lists, slicing, sharding, resume, and per-task
+logs (#246), and shares its skip metadata with the tooling (#266).
+
+### Breaking changes (pre-1.0, intentional)
+
+All breaking changes are confined to the **interpreter-internal layers**
+(`interpreter/runtime`, `interpreter/stdlib`, `parser`, `ast`). The supported
+`@js_engine` facade is **additive only** (it gains `run_compiled`; nothing was
+removed or changed). These internal packages are importable but are not the
+supported public surface — direct importers must update.
+
+The Stage 2c realm-hermeticity migration (#128–#153) drove the bulk of the
+churn by replacing module-global ambient state with explicit `RealmState` /
+`WellKnownSymbols` threading. Across `interpreter/runtime` and
+`interpreter/stdlib` this:
+
+- **Removed** the module-global prototype `Ref` bindings (e.g.
+  `object_prototype_ref`, `function_prototype_ref`, `number_prototype_ref`,
+  …), the 13 `get_*_symbol` well-known-symbol accessor functions, the
+  `get_*_proto` zero-argument prototype accessors, and the
+  `regexp_prototype_ref` stdlib global — all superseded by `RealmState` fields
+  and methods.
+- **Changed signatures** to thread `RealmState` / `WellKnownSymbols`:
+  `setup_builtins` now returns `RealmState` (was `Unit`); `Interpreter::new`'s
+  `setup_builtins` callback and every `StdlibHooks` function field take
+  `RealmState`; `setup_weakmap_set_builtins`, `get_weakmap_method`,
+  `get_weakset_method`, `get_array_prototype`, `collect_target_own_keys`,
+  `has_array_like_element`, `get_tostringtag_value`,
+  `validate_typedarray_buffer`, and the `make_*_object` constructors gained
+  `RealmState`/`Interpreter` parameters (and `make_typedarray_object` /
+  `make_arraybuffer_object` now `raise`).
+- **Added variants** to the `Callable` enum (`NativeCallableWithContext`,
+  `InterpreterCallableWithContext`) — breaking for downstream exhaustive
+  matches on `Callable`.
+- **Added fields** to `pub(all)` structs (`Interpreter`, `Environment`,
+  `GeneratorObject`, `MapData`, `SetData`, `ObjectData`, `PromiseData`,
+  `SymbolState`, `parser.Parser`, `ast.Param`) — breaking for positional /
+  structural construction of those types.
+
+(Full machine-checkable detail: `git diff v0.2.3..v0.3.0 -- '*.mbti'`.)
+
+### Migration from 0.2.3
+
+- **Facade consumers** (`@js_engine` root package): no changes required — the
+  public API is additive only.
+- **Direct importers of `interpreter/runtime` / `interpreter/stdlib`**: thread
+  the `RealmState` produced by `setup_builtins` (now its return value) through
+  the changed signatures above, replace removed module-global refs and
+  `get_*_symbol` / `get_*_proto` calls with the corresponding `RealmState`
+  fields/methods, and add wildcard arms for the new `Callable` variants.
+  Construct the changed structs through their constructors rather than
+  positional literals.
+
+### Known limitations at 0.3.0
+
+- The bytecode/VM path is an experimental opt-in prototype, not the default
+  execution path.
+- ES2018+ async iteration, BigInt, class-private fields, and the RegExp `v`
+  flag remain unimplemented; ES2018/2020/2022/2024 still skip 80–90% of
+  discovered tests for these features.
+- Stage 3 proposals (Temporal, decorators, ShadowRealm) are intentionally
+  unimplemented.
+- Module self-imports and cyclic imports remain partial.
+
+### Internal
+
+- `inspect` → `json_inspect` / `debug_inspect` snapshot migration across the
+  lexer, parser, interpreter, and runtime test suites (#113/#114 and the
+  `gnhf` series).
+- Stdlib builtin method-descriptor helper refactors (#247/#248/#256–#264).
+- `noraise` annotations on error/token helpers (#125); comprehensive
+  whitebox tests for `is_truthy` / `to_number` / `to_js_string` (#124).
+- Stage 0 architecture guardrails and a CI architecture-state audit
+  (#126/#127).
+- Shared skeleton extracted for logical-assignment operators (#108).
 
 ## [0.2.3] — 2026-05-11
 

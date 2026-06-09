@@ -12,8 +12,9 @@ make test262-report
 make test262-report ARGS="--with-editions"
 ```
 
-The tables below are dated snapshots. If you refresh one, regenerate it from
-`scripts/report-test262.py` and keep strict and non-strict modes separate.
+The tables below are dated snapshots. If you refresh one, regenerate it with
+`make test262-report` (native `cmd/report_test262`; `make test262-report-py` is
+the transitional Python fallback) and keep strict and non-strict modes separate.
 
 ---
 
@@ -74,7 +75,7 @@ Tests classified by the ECMAScript edition in which each feature reached Stage 4
 - **ES2024** at 37% *Passed / Executed* is the worst partial-implementation — mostly `regexp-v-flag` and `array-grouping` tests failing.
 - **Stage 3** is near-0% as expected (Temporal, decorators, ShadowRealm, etc. are intentionally unimplemented).
 
-To refresh the tables above: `python3 scripts/report-test262.py --with-editions` (pulls the latest successful main run and prints both the headline block and these per-edition tables, paste-ready). Pass `--run <id>` to target a specific run.
+To refresh the tables above: `make test262-report ARGS="--with-editions"` (pulls the latest successful main run and prints both the headline block and these per-edition tables, paste-ready). Pass `ARGS="--run <id>"` to target a specific run. (`make test262-report-py` is the transitional Python fallback.)
 
 ---
 
