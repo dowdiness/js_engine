@@ -1,4 +1,19 @@
 ///|
+fn normalize_process_output(source : String) -> String {
+  source.replace_all(old="\r\n", new="\n").replace_all(old="\r", new="\n")
+}
+
+///|
+fn has_embedded_nul(args : ArrayView[String]) -> Bool {
+  for arg in args {
+    if arg.contains_char('\u0000') {
+      return true
+    }
+  }
+  false
+}
+
+///|
 async fn collect_output_hard(
   cmd : String,
   args : ArrayView[String],
@@ -25,8 +40,8 @@ async fn collect_output_hard(
     })
     {
       code: exit_code.wait(),
-      stdout: stdout.wait().text(),
-      stderr: stderr.wait().text(),
+      stdout: normalize_process_output(stdout.wait().text()),
+      stderr: normalize_process_output(stderr.wait().text()),
     }
   }
 }
@@ -235,6 +250,14 @@ async fn run_single_test(
       path=test_path,
       status="error",
       reason="empty engine command",
+      mode~,
+    )
+  }
+  if has_embedded_nul(cmd) {
+    return TestResult(
+      path=test_path,
+      status="error",
+      reason="embedded null byte",
       mode~,
     )
   }

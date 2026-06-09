@@ -181,14 +181,19 @@ test "harness helpers and module fixture resolution are shadow-compatible" {
 
   let test_dir = join_path(root, "test/language/module")
   let main = join_path(test_dir, "main.js")
-  let dep = join_path(test_dir, "dep.js")
-  let nested = join_path(test_dir, "nested.js")
-  write_text(main, "import './dep.js';\nimport './main.js';\n")
-  write_text(dep, "import './nested.js';\n")
-  write_text(nested, "export const value = 1;\n")
+  let from_fixture = join_path(test_dir, "from_FIXTURE.js")
+  let import_fixture = join_path(test_dir, "import_FIXTURE.js")
+  let nested = join_path(test_dir, "nested_FIXTURE.js")
+  write_text(
+    main, "import {value} from './from_FIXTURE.js';\nimport './import_FIXTURE.js';\n",
+  )
+  write_text(from_fixture, "import './nested_FIXTURE.js';\n")
+  write_text(import_fixture, "export const value = 1;\n")
+  write_text(nested, "export const nested = 2;\n")
   json_inspect(resolve_fixtures(main, @fs.read_file_to_string(main)), content=[
-    ("./nested.js", "export const value = 1;\n"),
-    ("./dep.js", "import './nested.js';\n"),
+    ("./nested_FIXTURE.js", "export const nested = 2;\n"),
+    ("./from_FIXTURE.js", "import './nested_FIXTURE.js';\n"),
+    ("./import_FIXTURE.js", "export const value = 1;\n"),
   ])
 }
 
@@ -210,6 +215,7 @@ async test "run_single_test preserves external subprocess status semantics" {
       #|case "$last" in
       #|  *BODY_ASYNC_COMPLETE*) echo 'Test262:AsyncTestComplete'; exit 0 ;;
       #|  *BODY_ASYNC_FAIL*) echo 'Test262:AsyncTestFailure:bad async'; exit 0 ;;
+      #|  *BODY_CRLF_ERROR*) printf 'TypeError: boom\r\n' 1>&2; exit 1 ;;
       #|  *THROW_TYPE*) echo 'TypeError: boom'; exit 1 ;;
       #|  *FAIL_ENGINE*) echo 'Error: boom'; exit 1 ;;
       #|  *) exit 0 ;;
@@ -222,6 +228,8 @@ async test "run_single_test preserves external subprocess status semantics" {
   let negative_test = join_path(test_dir, "negative.js")
   let async_pass_test = join_path(test_dir, "async-pass.js")
   let async_fail_test = join_path(test_dir, "async-fail.js")
+  let crlf_error_test = join_path(test_dir, "crlf-error.js")
+  let null_test = join_path(test_dir, "null-byte.js")
   write_test_file(pass_test, body="PASS_ENGINE")
   write_test_file(fail_test, body="FAIL_ENGINE")
   write_test_file(
@@ -243,6 +251,12 @@ async test "run_single_test preserves external subprocess status semantics" {
     frontmatter="flags: [async]",
     body="BODY_ASYNC_FAIL",
   )
+  write_test_file(crlf_error_test, body="BODY_CRLF_ERROR")
+  let null_source = StringBuilder()
+  null_source.write_string("const payload = \"")
+  null_source.write_char(Int::unsafe_to_char(0))
+  null_source.write_string("\";\n")
+  write_text(null_test, null_source.to_string())
   let metadata = @metadata.load_skip_metadata(root=".")
   let engine_cmd = ["sh", engine]
   let pass_result = run_single_test(
@@ -280,6 +294,20 @@ async test "run_single_test preserves external subprocess status semantics" {
     2,
     skip_metadata=metadata,
   )
+  let crlf_error_result = run_single_test(
+    engine_cmd,
+    root,
+    crlf_error_test,
+    2,
+    skip_metadata=metadata,
+  )
+  let null_result = run_single_test(
+    engine_cmd,
+    root,
+    null_test,
+    2,
+    skip_metadata=metadata,
+  )
   json_inspect(
     [
       pass_result.status,
@@ -287,10 +315,14 @@ async test "run_single_test preserves external subprocess status semantics" {
       negative_result.status,
       async_pass_result.status,
       async_fail_result.status,
+      crlf_error_result.status,
+      null_result.status,
     ],
-    content=["pass", "fail", "pass", "pass", "fail"],
+    content=["pass", "fail", "pass", "pass", "fail", "fail", "error"],
   )
   inspect(async_fail_result.reason, content="bad async")
+  inspect(crlf_error_result.reason, content="TypeError: boom")
+  inspect(null_result.reason, content="embedded null byte")
 
   let progress_log = join_path(TEST_ROOT, "execute/progress.jsonl")
   let merged_log = join_path(TEST_ROOT, "execute/merged.jsonl")
