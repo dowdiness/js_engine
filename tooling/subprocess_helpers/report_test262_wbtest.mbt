@@ -83,6 +83,19 @@ test "report renderer keeps GitHub run ids above Int32 range" {
 }
 
 ///|
+test "run_info_from_json decodes a numeric gh databaseId above Int32 range" {
+  // `gh run view --json databaseId` emits the id as a JSON number, not a
+  // quoted string. `Int64::from_json` only accepts strings, so the prior
+  // `@json.from_json` path failed with "expected number in string
+  // representation"; json_int64_field now decodes the number directly.
+  let raw =
+    #|{"databaseId":27203832547,"headSha":"abcdef123456","createdAt":"2026-06-09T12:34:56Z","url":"https://example.invalid/runs/27203832547"}
+  let run = run_info_from_json(@json.parse(raw))
+  assert_eq(run.id, 27203832547L)
+  assert_eq(run.sha, "abcdef123456")
+}
+
+///|
 test "changelog renderer includes baseline deltas without table output" {
   let baseline = Some({
     strict_min: 790,

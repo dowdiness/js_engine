@@ -22,25 +22,25 @@ interpreter-internal layers (`interpreter/runtime`, `interpreter/stdlib`,
 test262 (each file run in both strict and non-strict modes,
 reported separately — summing would double-count files):
 
-- **Passed / Executed**: 94.2% strict (25,136 / 26,675),
-  92.9% non-strict (26,797 / 28,840). Excludes ~40% of
+- **Passed / Executed**: 94.2% strict (25,141 / 26,680),
+  92.9% non-strict (26,795 / 28,838). Excludes ~40% of
   discovered files skipped for unimplemented features.
-- **Passed / Discovered**: 55.9% strict (25,136 / 44,986),
-  56.2% non-strict (26,797 / 47,692). Counts skipped files
+- **Passed / Discovered**: 55.9% strict (25,141 / 44,986),
+  56.2% non-strict (26,795 / 47,692). Counts skipped files
   (18,270 strict / 18,811 non-strict) as un-passed.
 
-Measured on CI run [27203832547] (tip `028fde7`, 2026-06-09).
-Regression baseline: +2,686 strict / +3,277 non-strict vs
+Measured on CI run [27216729343] (tip `232df3d`, 2026-06-09).
+Regression baseline: +2,691 strict / +3,275 non-strict vs
 `test262-baseline.json` (min 22,450 strict / 23,520 non-strict).
 
 Versus v0.2.3's recorded per-mode Passed / Executed (89.4% strict,
-87.8% non-strict): **+1,338 strict / +1,553 non-strict** passing,
+87.8% non-strict): **+1,343 strict / +1,551 non-strict** passing,
 driven by the Array iteration model, TypedArray, RegExp `Symbol.*`,
 Map/Set, and ES2015 coercion sweeps below.
 
 Unit tests: **2055 passing** (was 1227 at v0.2.3).
 
-[27203832547]: https://github.com/dowdiness/js_engine/actions/runs/27203832547
+[27216729343]: https://github.com/dowdiness/js_engine/actions/runs/27216729343
 
 ### Major capabilities added
 
