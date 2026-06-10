@@ -167,11 +167,16 @@ async test "find_results merges shard artifacts when canonical files are absent"
         mode +
         "-shard-" +
         i.to_string() +
-        "-results"
+        "of2-results"
       @afs.mkdir(dir, recursive=true)
       let content = if i == 1 { s1 } else { s2 }
       @afs.write_file(
-        dir + "/test262-" + mode + "-shard-" + i.to_string() + "-results.json",
+        dir +
+        "/test262-" +
+        mode +
+        "-shard-" +
+        i.to_string() +
+        "of2-results.json",
         content,
         create_mode=CreateOrTruncate,
       )
@@ -191,4 +196,24 @@ async test "find_results merges shard artifacts when canonical files are absent"
   )
   assert_eq(json_int_field(summary, "passed", "strict summary"), 150)
   assert_eq(json_int_field(summary, "failed", "strict summary"), 30)
+}
+
+///|
+async test "panic find_results rejects an incomplete shard set" {
+  let root = "_build/report-test262-mbt-incomplete-shard-test"
+  @afs.rmdir(root, recursive=true) catch {
+    _ => ()
+  }
+  let shard_json = "{\"engine\":\"test\",\"date\":\"1970-01-01T00:00:00Z\",\"summary\":{\"total\":90,\"passed\":80,\"failed\":10,\"skipped\":0,\"timeout\":0,\"error\":0},\"categories\":{},\"results\":[]}"
+  // Only shard 1of2 present; shard 2of2 absent — validate_shard_completeness must abort
+  for mode in ["strict", "non-strict"] {
+    let dir = root + "/test262-" + mode + "-shard-1of2-results"
+    @afs.mkdir(dir, recursive=true)
+    @afs.write_file(
+      dir + "/test262-" + mode + "-shard-1of2-results.json",
+      shard_json,
+      create_mode=CreateOrTruncate,
+    )
+  }
+  find_results(root) |> ignore
 }

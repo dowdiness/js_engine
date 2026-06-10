@@ -255,18 +255,18 @@ jobs:
             --shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} \
             --threads 4 \
             --timeout 5 \
-            --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json \
+            --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \
             --summary
           rc=$?
           classify_rc=0
           # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
           # traceback on a truncated/empty JSON if the runner crashed early.
-          if [ -s "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json" ]; then
+          if [ -s "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json" ]; then
             echo
             echo "──────── Per-edition breakdown (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }}) ────────"
             ./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe --markdown \
               --test262-root ./test262 \
-              "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json" \
+              "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json" \
               | tee -a "$GITHUB_STEP_SUMMARY"
             # PIPESTATUS[0] = classifier (tee always succeeds with -a).
             classify_rc=${PIPESTATUS[0]}
@@ -287,8 +287,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results
-          path: test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json
+          name: test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results
+          path: test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json
           if-no-files-found: warn
           retention-days: 90
 
@@ -331,7 +331,7 @@ jobs:
           rows = []  # (mode, p, fa, to, rate, mode_min, delta) for step summary
 
           for mode in ["non-strict", "strict"]:
-              shard_files = sorted(glob.glob(f"test262-{mode}-shard-*-results.json"))
+              shard_files = sorted(glob.glob(f"test262-{mode}-shard-*of{SHARD_TOTAL}-results.json"))
               if not shard_files:
                   print(f"{mode}: MISSING (no shard result files found)")
                   missing.append(mode)

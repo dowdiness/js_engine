@@ -585,6 +585,99 @@ fn find_file_rec(dir : String, filename : String) -> String? raise {
 }
 
 ///|
+fn basename(path : String) -> String {
+  let chars = path.to_array()
+  let mut last = -1
+  for i in 0..<chars.length() {
+    if chars[i] == '/' {
+      last = i
+    }
+  }
+  path.substring(start=last + 1)
+}
+
+///|
+fn parse_uint(s : String, context : String) -> Int raise {
+  guard s.length() > 0 else {
+    fail("expected positive integer, got empty string (in '" + context + "')")
+  }
+  let mut n = 0
+  for ch in s {
+    let d = ch.to_int() - 48 // '0' = 48
+    guard d >= 0 && d <= 9 else {
+      fail(
+        "non-digit '" + ch.to_string() + "' in '" + s + "' (in " + context + ")",
+      )
+    }
+    n = n * 10 + d
+  }
+  guard n > 0 else {
+    fail("expected positive integer in '" + s + "' (in " + context + "')")
+  }
+  n
+}
+
+///|
+// Parses "NofM" from the inner part of a shard filename, e.g. "2of4" → (2, 4).
+fn parse_shard_of_total(inner : String, context : String) -> (Int, Int) raise {
+  let chars = inner.to_array()
+  let len = chars.length()
+  let mut of_pos = -1
+  for i in 0..<len {
+    if i + 1 < len && chars[i] == 'o' && chars[i + 1] == 'f' {
+      of_pos = i
+      break
+    }
+  }
+  guard of_pos > 0 else {
+    fail(
+      "shard file '" + context + "': expected NofM format, got '" + inner + "'",
+    )
+  }
+  (
+    parse_uint(inner.substring(end=of_pos), context),
+    parse_uint(inner.substring(start=of_pos + 2), context),
+  )
+}
+
+///|
+// Validates that paths form a complete, contiguous NofM shard set.
+// Fails if any shard is missing or filenames disagree on the total.
+fn validate_shard_completeness(
+  paths : Array[String],
+  prefix : String,
+  suffix : String,
+  mode : String,
+) -> Unit raise {
+  let mut expected_total = 0
+  for path in paths {
+    let name = basename(path)
+    let inner = name.substring(
+      start=prefix.length(),
+      end=name.length() - suffix.length(),
+    )
+    let (_, t) = parse_shard_of_total(inner, name)
+    guard expected_total == 0 || expected_total == t else {
+      fail(mode + " shards have inconsistent totals in filenames")
+    }
+    expected_total = t
+  }
+  let found = paths.length()
+  guard found == expected_total else {
+    fail(
+      mode +
+      ": found " +
+      found.to_string() +
+      "/" +
+      expected_total.to_string() +
+      " shards — " +
+      (expected_total - found).to_string() +
+      " missing. Rerun make test262-report against a complete CI run.",
+    )
+  }
+}
+
+///|
 fn collect_files_matching(
   dir : String,
   prefix : String,
@@ -689,6 +782,12 @@ fn find_results(artifact_dir : String) -> (String, String) raise {
       ". Did both CI jobs succeed?",
     )
   }
+  validate_shard_completeness(
+    strict_shards, "test262-strict-shard-", "-results.json", "strict",
+  )
+  validate_shard_completeness(
+    nonstrict_shards, "test262-non-strict-shard-", "-results.json", "non-strict",
+  )
   let strict_path = join_path(artifact_dir, "test262-strict-results.json")
   let nonstrict_path = join_path(
     artifact_dir, "test262-non-strict-results.json",
