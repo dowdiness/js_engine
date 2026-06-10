@@ -151,9 +151,10 @@ classify-by-edition-mbt: test262-classify-by-edition-mbt
 # Pass ARGS="..." to forward flags, e.g. make test262-report ARGS="--run 24730849102"
 test262-report-test: subprocess-helpers-mbt-test
 
-# MoonBit native is authoritative.
+# MoonBit native is authoritative. Builds classify_by_edition for --with-editions.
 test262-report: subprocess-helpers-mbt-test
 	moon build --target native cmd/report_test262
+	moon build --target native cmd/classify_by_edition
 	./_build/native/debug/build/cmd/report_test262/report_test262.exe --with-editions $(ARGS)
 
 test262-report-mbt: subprocess-helpers-mbt-test

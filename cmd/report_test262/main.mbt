@@ -82,7 +82,7 @@ async fn main {
     flags=[
       @argparse.FlagArg(
         "with-editions",
-        about="also run scripts/classify-by-edition.py and print per-edition tables below the headline (table format only)",
+        about="also run cmd/classify_by_edition and print per-edition tables below the headline (table format only)",
       ),
       @argparse.FlagArg(
         "no-baseline",
