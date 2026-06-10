@@ -34,7 +34,7 @@ Do not hand-edit the generated numbers. If they look wrong, fix the upstream (ru
 
 ## 4. Bump version and tag
 
-1. Update the version string in `moon.mod.json`.
+1. Update the version string in `moon.mod`.
 2. Commit with message `release: vX.Y.Z`.
 3. Annotate the tag with a summary of headline facts:
 
@@ -65,12 +65,37 @@ make test262-report ARGS="--format=changelog --run <run-id>"
 
 If any number in the CHANGELOG differs from this output, amend the CHANGELOG in a follow-up commit (do **not** retag; the tag annotation is allowed to be one point stale, but the CHANGELOG file is not).
 
-## 6. Publish
+## 6. Publish to mooncakes
 
-Mooncakes or wherever else the artifact goes. That step is outside the scope of this file.
+The GitHub release is **not** the publish — mooncakes is a separate step, and it is the one that's easy to forget (v0.3.0 shipped on GitHub on 2026-06-09 while mooncakes sat at 0.2.3 until the next day). A mooncakes version is permanently immutable once published: no re-publish, only yank-and-bump.
+
+1. Check out the release tag so the published bundle matches it exactly:
+
+   ```bash
+   git checkout vX.Y.Z
+   ```
+
+   Never publish from a tip that has moved past the tag. The registry records a checksum per version forever; a bundle that doesn't match the tag cannot be fixed retroactively.
+
+2. Dry-run and inspect the bundle:
+
+   ```bash
+   moon publish --dry-run
+   ```
+
+   Trust the `Server status: 2xx` line, not the shell exit code — the dry-run can exit 255 even on success.
+
+3. Publish, then verify the registry picked it up:
+
+   ```bash
+   moon publish
+   curl -s https://mooncakes.io/api/v0/modules/dowdiness/js_engine | head -c 400
+   ```
+
+   `latest_version` must show the new version. Return your checkout to `main` afterwards.
 
 ## Anti-drift rules
 
-- **Conformance numbers come from `scripts/report-test262.py`, never from another doc.** See `AGENTS.md` "Test262 Reporting Convention" for why.
+- **Conformance numbers come from `make test262-report` (native `cmd/report_test262`), never from another doc.** See `AGENTS.md` "Test262 Reporting Convention" for why. `make test262-report-py` is the transitional Python fallback, not the authority.
 - **Always per-mode, always both denominators.** The `--format=changelog` template already enforces this; do not edit the bullets to omit one denominator.
 - **If a release annotation and the CHANGELOG disagree on a number, trust the CHANGELOG.** The tag is frozen at creation; the file is the living record.
