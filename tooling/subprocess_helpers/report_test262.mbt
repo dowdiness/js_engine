@@ -585,18 +585,117 @@ fn find_file_rec(dir : String, filename : String) -> String? raise {
 }
 
 ///|
-fn find_results(artifact_dir : String) -> (String, String) raise {
-  let strict = find_file_rec(artifact_dir, "test262-strict-results.json")
-  let nonstrict = find_file_rec(artifact_dir, "test262-non-strict-results.json")
-  match (strict, nonstrict) {
-    (Some(s), Some(n)) => (s, n)
-    _ =>
-      fail(
-        "Missing strict or non-strict results under " +
-        artifact_dir +
-        ". Did both CI jobs succeed?",
-      )
+fn collect_files_matching(
+  dir : String,
+  prefix : String,
+  suffix : String,
+) -> Array[String] raise {
+  let files : Array[String] = []
+  guard @fs.path_exists(dir) && @fs.is_dir(dir) else { return files }
+  let entries = @fs.read_dir(dir)
+  entries.sort()
+  for entry in entries {
+    let path = join_path(dir, entry)
+    if @fs.is_dir(path) {
+      let sub = collect_files_matching(path, prefix, suffix)
+      for f in sub {
+        files.push(f)
+      }
+    } else if @fs.is_file(path) &&
+      entry.has_prefix(prefix) &&
+      entry.has_suffix(suffix) {
+      files.push(path)
+    }
   }
+  files
+}
+
+///|
+fn merge_shards_to_file(
+  shard_paths : Array[String],
+  out_path : String,
+) -> Unit raise {
+  let mut m_total = 0
+  let mut m_passed = 0
+  let mut m_failed = 0
+  let mut m_skipped = 0
+  let mut m_timeout = 0
+  let mut m_error = 0
+  let all_results : Array[Json] = []
+  for path in shard_paths {
+    let root = json_object(
+      @json.parse(@fs.read_file_to_string(path)),
+      "shard result",
+    )
+    let s = summary_from_json(required_field(root, "summary", "shard summary"))
+    m_total += s.total
+    m_passed += s.passed
+    m_failed += s.failed
+    m_skipped += s.skipped
+    m_timeout += s.timeout
+    m_error += s.error
+    match root.get("results") {
+      Some(Array(items)) =>
+        for item in items {
+          all_results.push(item)
+        }
+      _ => ()
+    }
+  }
+  let summary_fields : Map[String, Json] = {
+    "total": Json::number(m_total.to_double(), repr=m_total.to_string()),
+    "passed": Json::number(m_passed.to_double(), repr=m_passed.to_string()),
+    "failed": Json::number(m_failed.to_double(), repr=m_failed.to_string()),
+    "skipped": Json::number(m_skipped.to_double(), repr=m_skipped.to_string()),
+    "timeout": Json::number(m_timeout.to_double(), repr=m_timeout.to_string()),
+    "error": Json::number(m_error.to_double(), repr=m_error.to_string()),
+  }
+  let empty_cats : Map[String, Json] = {}
+  let merged_fields : Map[String, Json] = {
+    "engine": Json::string("MoonBit JS Engine"),
+    "date": Json::string("1970-01-01T00:00:00Z"),
+    "summary": Json::object(summary_fields),
+    "categories": Json::object(empty_cats),
+    "results": Json::array(all_results),
+  }
+  @fs.write_string_to_file(
+    out_path,
+    Json::object(merged_fields).stringify(indent=2) + "\n",
+  )
+}
+
+///|
+fn find_results(artifact_dir : String) -> (String, String) raise {
+  // Try canonical single-file names first (backward compat with pre-sharding runs)
+  let strict_single = find_file_rec(artifact_dir, "test262-strict-results.json")
+  let nonstrict_single = find_file_rec(
+    artifact_dir, "test262-non-strict-results.json",
+  )
+  match (strict_single, nonstrict_single) {
+    (Some(s), Some(n)) => return (s, n)
+    _ => ()
+  }
+  // Sharded run: locate shard files, merge into canonical names, return paths
+  let strict_shards = collect_files_matching(
+    artifact_dir, "test262-strict-shard-", "-results.json",
+  )
+  let nonstrict_shards = collect_files_matching(
+    artifact_dir, "test262-non-strict-shard-", "-results.json",
+  )
+  guard strict_shards.length() > 0 && nonstrict_shards.length() > 0 else {
+    fail(
+      "Missing strict or non-strict results under " +
+      artifact_dir +
+      ". Did both CI jobs succeed?",
+    )
+  }
+  let strict_path = join_path(artifact_dir, "test262-strict-results.json")
+  let nonstrict_path = join_path(
+    artifact_dir, "test262-non-strict-results.json",
+  )
+  merge_shards_to_file(strict_shards, strict_path)
+  merge_shards_to_file(nonstrict_shards, nonstrict_path)
+  (strict_path, nonstrict_path)
 }
 
 ///|
@@ -647,12 +746,17 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
         None => current_dir_or_dot()
       }
       let classifier = join_path(
-        repo_root,
-        "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
+        repo_root, "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
       )
       let capture = collect_process_args(
         classifier,
-        ["--markdown", "--test262-root", join_path(repo_root, "test262"), strict_path, nonstrict_path],
+        [
+          "--markdown",
+          "--test262-root",
+          join_path(repo_root, "test262"),
+          strict_path,
+          nonstrict_path,
+        ],
         REPORT_CLASSIFIER_TIMEOUT_MS,
       )
       stdout += capture.stdout

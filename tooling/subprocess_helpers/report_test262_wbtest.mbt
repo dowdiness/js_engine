@@ -150,3 +150,45 @@ async test "find_results locates downloaded strict and non-strict artifacts recu
     root + "/nested/non-strict/test262-non-strict-results.json",
   )
 }
+
+///|
+async test "find_results merges shard artifacts when canonical files are absent" {
+  let root = "_build/report-test262-mbt-shard-test"
+  @afs.rmdir(root, recursive=true) catch {
+    _ => ()
+  }
+  // Two shards per mode: shard 1 has 80 passed/10 failed, shard 2 has 70/20
+  let s1 = "{\"engine\":\"test\",\"date\":\"1970-01-01T00:00:00Z\",\"summary\":{\"total\":90,\"passed\":80,\"failed\":10,\"skipped\":0,\"timeout\":0,\"error\":0},\"categories\":{},\"results\":[]}"
+  let s2 = "{\"engine\":\"test\",\"date\":\"1970-01-01T00:00:00Z\",\"summary\":{\"total\":90,\"passed\":70,\"failed\":20,\"skipped\":0,\"timeout\":0,\"error\":0},\"categories\":{},\"results\":[]}"
+  for mode in ["strict", "non-strict"] {
+    for i in 1..<3 {
+      let dir = root +
+        "/test262-" +
+        mode +
+        "-shard-" +
+        i.to_string() +
+        "-results"
+      @afs.mkdir(dir, recursive=true)
+      let content = if i == 1 { s1 } else { s2 }
+      @afs.write_file(
+        dir + "/test262-" + mode + "-shard-" + i.to_string() + "-results.json",
+        content,
+        create_mode=CreateOrTruncate,
+      )
+    }
+  }
+  let (strict_path, nonstrict_path) = find_results(root)
+  assert_eq(strict_path, root + "/test262-strict-results.json")
+  assert_eq(nonstrict_path, root + "/test262-non-strict-results.json")
+  // Verify merged summary sums across shards (80+70=150 passed, 10+20=30 failed)
+  let strict_root = json_object(
+    @json.parse(@fs.read_file_to_string(strict_path)),
+    "merged strict",
+  )
+  let summary = json_object(
+    required_field(strict_root, "summary", "merged strict"),
+    "strict summary",
+  )
+  assert_eq(json_int_field(summary, "passed", "strict summary"), 150)
+  assert_eq(json_int_field(summary, "failed", "strict summary"), 30)
+}
