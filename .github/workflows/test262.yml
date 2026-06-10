@@ -258,6 +258,27 @@ jobs:
             --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \
             --summary
           rc=$?
+          # Write per-shard header and pass rates to this job's step summary page.
+          python3 << 'PYEOF'
+          import json, os
+          result_file = "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json"
+          sp = os.environ.get("GITHUB_STEP_SUMMARY")
+          if sp and os.path.exists(result_file) and os.path.getsize(result_file) > 0:
+              try:
+                  s = json.load(open(result_file))["summary"]
+                  p, fa = s["passed"], s["failed"]
+                  ex = p + fa
+                  disc = s["total"]
+                  pe = f"{p/ex*100:.1f}%" if ex > 0 else "n/a"
+                  pd = f"{p/disc*100:.1f}%" if disc > 0 else "n/a"
+                  with open(sp, "a") as out:
+                      out.write("## Test262 — ${{ matrix.mode }} mode, Shard ${{ matrix.shard }} of ${{ env.SHARD_TOTAL }}\n\n")
+                      out.write(f"- **Passed / Executed:** {pe} ({p:,} / {ex:,})\n")
+                      out.write(f"- **Passed / Discovered:** {pd} ({p:,} / {disc:,})\n\n")
+                      out.write("---\n\n")
+              except Exception:
+                  pass
+          PYEOF
           classify_rc=0
           # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
           # traceback on a truncated/empty JSON if the runner crashed early.
@@ -314,7 +335,7 @@ jobs:
       - name: Check for regressions
         run: |
           python3 << 'PYEOF'
-          import glob, json, os, sys
+          import glob, json, os, re, sys
 
           SHARD_TOTAL = ${{ env.SHARD_TOTAL }}
 
@@ -328,7 +349,8 @@ jobs:
           total_timeouts = 0
           missing = []
           regressions = []
-          rows = []  # (mode, p, fa, to, rate, mode_min, delta) for step summary
+          rows = []        # (mode, p, fa, to, rate, mode_min, delta) — per mode
+          shard_rows = []  # (mode, idx, total, passed, failed, timeouts, rate) — per shard
 
           for mode in ["non-strict", "strict"]:
               shard_files = sorted(glob.glob(f"test262-{mode}-shard-*of{SHARD_TOTAL}-results.json"))
@@ -345,10 +367,20 @@ jobs:
                   with open(sf) as fh:
                       data = json.load(fh)
                   s = data["summary"]
-                  p += s["passed"]
-                  fa += s["failed"]
-                  sk += s.get("skipped", 0)
-                  to += s.get("timeout", 0)
+                  s_pass = s["passed"]
+                  s_fail = s["failed"]
+                  s_skip = s.get("skipped", 0)
+                  s_time = s.get("timeout", 0)
+                  p += s_pass; fa += s_fail; sk += s_skip; to += s_time
+                  s_ex = s_pass + s_fail
+                  s_rate = s_pass / s_ex * 100 if s_ex > 0 else 0
+                  sh_m = re.search(r"-shard-(\d+)of(\d+)-", sf)
+                  shard_rows.append((
+                      mode,
+                      int(sh_m.group(1)) if sh_m else 0,
+                      int(sh_m.group(2)) if sh_m else 0,
+                      s_pass, s_fail, s_time, s_rate,
+                  ))
               total_passed += p
               total_failed += fa
               total_skipped += sk
@@ -395,6 +427,12 @@ jobs:
                   if combined_exec > 0:
                       csign = "+" if combined_delta >= 0 else ""
                       f.write(f"| **combined** | **{total_passed:,}** | **{total_failed:,}** | **{total_timeouts:,}** | **{combined_rate:.1f}%** | {combined_min:,} | {csign}{combined_delta:,} |\n")
+                  if shard_rows:
+                      f.write("\n### Per-shard breakdown\n\n")
+                      f.write("| Mode | Shard | Passed | Failed | Timeouts | P/E |\n")
+                      f.write("|---|---|---:|---:|---:|---:|\n")
+                      for (m, sidx, stot, s_p, s_f, s_t, s_r) in shard_rows:
+                          f.write(f"| {m} | {sidx}/{stot} | {s_p:,} | {s_f:,} | {s_t:,} | {s_r:.1f}% |\n")
                   if regressions:
                       f.write("\n### Regressions\n\n")
                       for r in regressions:
