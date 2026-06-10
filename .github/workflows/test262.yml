@@ -41,6 +41,8 @@ concurrency:
 
 env:
   TEST262_COMMIT: "2b2ecead6e82"
+  # Bump this string to force a toolchain cache bust (e.g. after a MoonBit release).
+  MOONBIT_CACHE_VERSION: "2026-06"
 
 jobs:
   unit-test:
@@ -53,10 +55,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Set up MoonBit
-        run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Get MoonBit version
         id: moonbit-version
@@ -114,10 +125,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Set up MoonBit
-        run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Get MoonBit version
         id: moonbit-version
