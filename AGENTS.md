@@ -37,14 +37,14 @@ When citing a test262 figure — in docs, commit messages, PR descriptions, rele
 
 See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-these-rates) for the reader-facing version, and [docs/RELEASING.md](docs/RELEASING.md) for the release checklist that enforces these rules at version-cut time.
 
-**Tooling.** `make test262-report` (native `cmd/report_test262`; `make test262-report-py` is the transitional Python fallback) pulls numbers directly from a CI run's artifacts and emits a paste-ready block. Use `ARGS="--format=table"` for ROADMAP/README (default) or `ARGS="--format=changelog"` for CHANGELOG entries. Never hand-edit the generated numbers; if they look wrong, fix the upstream.
+**Tooling.** `make test262-report` (native `cmd/report_test262`) pulls numbers directly from a CI run's artifacts and emits a paste-ready block. Use `ARGS="--format=table"` for ROADMAP/README (default) or `ARGS="--format=changelog"` for CHANGELOG entries. Never hand-edit the generated numbers; if they look wrong, fix the upstream.
 
 ## Test262 Tool Boundaries
 
-- The native MoonBit runner `cmd/test262_runner` (invoked by `make test262` / `test262-quick` / `test262-filter` and by CI) is authoritative for Test262 execution and applying skip decisions. `scripts/test262-runner.py` is kept as a transitional, non-authoritative fallback (the `*-py` Make targets) until the migration's Python-removal phase; do not treat its output as authoritative.
-- `scripts/test262_skip_metadata.json` is the single edit point for shared skip metadata used by runner/analyzer tooling (`scripts/test262_skip_metadata.py` alongside it is a shared reader/classifier, not the data).
-- `test262-analyze` (native `cmd/test262_analyze`, authoritative, with `scripts/test262-analyze.py` retained as a cross-check via `make test262-analyze`) is a non-authoritative metadata helper. It uses shared skip metadata but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
-- After editing shared skip metadata, run `make test262-validate-skips` (native; `make test262-validate-skips-py` is the transitional fallback). It detects dead or unknown metadata entries only; it does not run Test262 or produce conformance numbers.
+- The native MoonBit runner `cmd/test262_runner` (invoked by `make test262` / `test262-quick` / `test262-filter` and by CI) is authoritative for Test262 execution and applying skip decisions.
+- `scripts/test262_skip_metadata.json` is the single edit point for shared skip metadata used by runner/analyzer tooling.
+- `test262-analyze` (native `cmd/test262_analyze`, authoritative) is a non-authoritative metadata helper. It uses shared skip metadata but does not execute the engine, expand per-mode tasks, resolve fixtures, or observe runtime failures. Do not use its output as conformance data or as the skip-list source of truth.
+- After editing shared skip metadata, run `make test262-validate-skips`. It detects dead or unknown metadata entries only; it does not run Test262 or produce conformance numbers.
 - `make test262-report` (native `cmd/report_test262`) plus CI artifacts are authoritative for current conformance numbers.
 
 ## Snapshot Assertions
@@ -70,7 +70,7 @@ Docs rules:
 - Verify changed claims against source code, tests, package config, scripts, or CI config before editing docs
 - Mark unverifiable claims as "unverified" or remove them; do not invent support status, APIs, or design goals
 - Keep `README.mbt.md` user-facing; put maintainer workflow in `docs/development.md` and agent-only workflow in `AGENTS.md`
-- Do not hand-edit generated or frequently changing Test262 numbers; use `make test262-report` (or the transitional fallback `make test262-report-py`)
+- Do not hand-edit generated or frequently changing Test262 numbers; use `make test262-report`
 - Do not edit `pkg.generated.mbti` files manually; regenerate them with `moon info`
 - Completed/superseded material belongs under `docs/archive/`
 

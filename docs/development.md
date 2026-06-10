@@ -50,10 +50,8 @@ and `@js_engine/interpreter/runtime`.
 The authoritative full-suite workflow is `.github/workflows/test262.yml`.
 It builds the JS target with `moon build --target js --release` and runs the
 native MoonBit runner (`cmd/test262_runner`) once per mode (`strict`,
-`non-strict`) with 4 threads and a 5-second per-test timeout. The demoted
-Python runner (`scripts/test262-runner.py`) runs alongside as a transitional,
-non-authoritative shadow. The GitHub Actions job timeout is set in the workflow
-file.
+`non-strict`) with 4 threads and a 5-second per-test timeout. The GitHub
+Actions job timeout is set in the workflow file.
 
 Generate release-grade conformance text from CI artifacts:
 
@@ -64,22 +62,19 @@ make test262-report ARGS="--with-editions"
 ```
 
 Do not hand-copy headline conformance numbers between docs. If a table needs
-refreshing, regenerate it with `make test262-report` (native; `make
-test262-report-py` is the transitional Python fallback) or state clearly that
-it is a dated snapshot.
+refreshing, regenerate it with `make test262-report` (native) or state clearly
+that it is a dated snapshot.
 
 For local focused runs:
 
 ```bash
 make test262-quick
 make test262-filter FILTER=language/expressions
-# transitional Python fallback for an ad-hoc filtered run:
-python3 scripts/test262-runner.py --test262 ./test262 --filter built-ins/Promise --summary
+make test262-filter FILTER=built-ins/Promise
 ```
 
 The native MoonBit runner (`cmd/test262_runner`) is authoritative for execution
-and skip decisions; `scripts/test262-runner.py` is kept as a transitional,
-non-authoritative fallback. Shared skip metadata lives in
+and skip decisions. Shared skip metadata lives in
 `scripts/test262_skip_metadata.json` (the `.py` alongside it is a shared
 reader/classifier, not the data) to keep runner and analyzer classifications
 from drifting. The static analyzer is still only a
@@ -146,8 +141,7 @@ make bench-focus ARGS="--runs 5"
 make bench-focus ARGS="--runs 3 --rows isolate/bytecode/property_get,pipeline/bytecode/evaluate"
 ```
 
-(`make bench-focus` runs the native `cmd/bench_focus`; `make bench-focus-py` is
-the transitional Python fallback.)
+(`make bench-focus` runs the native `cmd/bench_focus`.)
 
 The helper saves each raw CSV under `_build/bench-focus/<timestamp>/` and
 reports median/mean/range across runs plus the median in-run CV. Use this for

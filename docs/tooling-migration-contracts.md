@@ -118,8 +118,7 @@ A completed result log may contain all five statuses. Merged logs contain only
 
 ## Exit-code contract
 
-The Test262 runner (native `cmd/test262_runner`, authoritative;
-`scripts/test262-runner.py` matches it as the transitional fallback) follows
+The Test262 runner (native `cmd/test262_runner`, authoritative) follows
 this exit-code contract:
 
 - invalid CLI arguments exit non-zero through argparse;
@@ -140,8 +139,7 @@ object with these fields:
 - `skip_flags`: array of unsupported Test262 `flags` strings;
 - `skip_path_suffixes`: object mapping Test262 path suffixes to skip reasons.
 
-`make test262-metadata-test` runs the Python metadata tests and the MoonBit
-shadow reader tests against shared parity fixtures. `make test262-validate-skips`
+`make test262-metadata-test` runs the MoonBit metadata tests against shared parity fixtures. `make test262-validate-skips`
 checks that the metadata entries still exist in the checked-out Test262 suite; it
 does not run tests or produce conformance numbers.
 
@@ -150,22 +148,14 @@ mode)` values for fixture cases and for the checked-out Test262 tree.
 
 ## Shared Test262 utility contract
 
-`scripts/test262_utils.py` remains the authoritative implementation for YAML
-frontmatter extraction and `as_list` coercion. `make test262-utils-test` runs the
-Python utility test and the native-only MoonBit shadow package against
-`scripts/test262_utils_parity_cases.json`.
+The MoonBit `tooling/test262_utils` package is the authoritative implementation
+for YAML frontmatter extraction and `as_list` coercion. `make test262-utils-test`
+runs the MoonBit utility tests against `scripts/test262_utils_parity_cases.json`.
 
-The shared fixtures pin the lightweight fallback YAML subset used when PyYAML is
-unavailable: scalar coercion, inline lists and dictionaries, indented lists and
-dictionaries, block scalars, inline comment stripping, missing frontmatter, and
-`as_list` null/scalar/list coercion. `make test262-utils-corpus-test` also checks
-that same fallback mode explicitly over the checked-out `test262/test/**/*.js`
-corpus by comparing deterministic Python-authoritative and MoonBit-shadow JSON
-records for parsed frontmatter plus `as_list`-coerced `features`, `flags`, and
-`includes`. This corpus check is shadow-only, does not run the engine, and is
-not Test262 conformance data. The MoonBit package must not change Test262 runner
-behavior until a later promotion issue explicitly replaces the Python call
-sites.
+The shared fixtures pin the lightweight fallback YAML subset: scalar coercion,
+inline lists and dictionaries, indented lists and dictionaries, block scalars,
+inline comment stripping, missing frontmatter, and `as_list` null/scalar/list
+coercion.
 
 ## Parity comparison rules
 
@@ -197,30 +187,30 @@ A migrated MoonBit tool can replace its Python target only when:
 
 ## Promotion status
 
-Issue #255 promoted the following tools from shadow to authoritative, keeping the
-Python implementations as clearly-marked transitional fallbacks (the `*-py` Make
-targets; not deleted):
+**Phase 4 (Python dependency removal) — complete as of 2026-06-10.** All 26
+transitional Python scripts have been deleted. The `*-py` Make targets have been
+removed. CI no longer installs Python dependencies or runs the Python shadow.
+The Python transitional phase is closed.
+
+Issue #255 promoted the following tools from shadow to authoritative (Phase 3,
+completed 2026-06-09):
 
 - **Test262 runner** (`cmd/test262_runner`): authoritative in CI
   (`.github/workflows/test262.yml`) and in `make test262` / `test262-quick` /
-  `test262-filter`. The demoted Python runner runs in CI as a non-authoritative
-  shadow uploading `test262-${mode}-python-shadow-results.json` — a name that
-  deliberately does not match the `test262-*-results` glob the `regression-check`
-  job consumes, so regression detection reads the native artifacts.
+  `test262-filter`.
 - **Tier 1 utilities**: `make bench-focus`, `test262-analyze`,
   `test262-validate-skips`, `test262-report`, `unicode-tables`, and the
   per-edition classifier (`cmd/classify_by_edition`, used for the CI per-edition
   table).
 
 **Gate #5 (full-artifact parity) — met.** The native runner's strict and
-non-strict CI artifacts match the Python runner except for non-deterministic
+non-strict CI artifacts matched the Python runner except for non-deterministic
 `timeout`/`pass` flips at the `--timeout 5` boundary on a small set of heavy
 tests (`built-ins/encodeURI/S15.1.3.3_A2.3_T1.js`,
 `built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js`,
 `annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js`). These flips were
 observed in opposite directions across CI runs `026b2c9` and `0fd7d3a`, sit well
-within the regression baseline's `passed_min` margin, and are exhibited by the
+within the regression baseline's `passed_min` margin, and were exhibited by the
 Python runner too. They are an **approved difference** — wall-clock timeout
 flakiness, not a runner divergence. The earlier CRLF/CR reason, embedded-NUL
-status, and module source-order differences were fixed in PR #285 and are no
-longer present.
+status, and module source-order differences were fixed in PR #285.

@@ -221,7 +221,7 @@ These are major missing language features. Each unlocks a large batch of current
 
 ### Root Cause Clustering of Remaining Failures (snapshot 2026-04-16, stale)
 
-> **Stale warning.** The per-category numbers in this table are from a 2026-04-16 run that pre-dates PRs #64-#75 and the fixture-resolver fix. They are kept here for shape (which categories dominate failures) but **do not match** the current CI run (24885185424, tip `b225cda`, 2026-04-24). Re-run `python3 scripts/test262-runner.py --filter <category> --summary` before citing any specific number.
+> **Stale warning.** The per-category numbers in this table are from a 2026-04-16 run that pre-dates PRs #64-#75 and the fixture-resolver fix. They are kept here for shape (which categories dominate failures) but **do not match** the current CI run (24885185424, tip `b225cda`, 2026-04-24). Re-run `./_build/native/debug/build/cmd/test262_runner/test262_runner.exe --engine "moon run cmd/main --" --test262 ./test262 --filter <category> --summary` before citing any specific number.
 
 Failures are now widely distributed. No single fix unlocks 300+ tests. Progress requires many small, targeted fixes.
 

@@ -13,8 +13,8 @@ make test262-report ARGS="--with-editions"
 ```
 
 The tables below are dated snapshots. If you refresh one, regenerate it with
-`make test262-report` (native `cmd/report_test262`; `make test262-report-py` is
-the transitional Python fallback) and keep strict and non-strict modes separate.
+`make test262-report` (native `cmd/report_test262`) and keep strict and
+non-strict modes separate.
 
 ---
 
@@ -75,7 +75,7 @@ Tests classified by the ECMAScript edition in which each feature reached Stage 4
 - **ES2024** at 37% *Passed / Executed* is the worst partial-implementation — mostly `regexp-v-flag` and `array-grouping` tests failing.
 - **Stage 3** is near-0% as expected (Temporal, decorators, ShadowRealm, etc. are intentionally unimplemented).
 
-To refresh the tables above: `make test262-report ARGS="--with-editions"` (pulls the latest successful main run and prints both the headline block and these per-edition tables, paste-ready). Pass `ARGS="--run <id>"` to target a specific run. (`make test262-report-py` is the transitional Python fallback.)
+To refresh the tables above: `make test262-report ARGS="--with-editions"` (pulls the latest successful main run and prints both the headline block and these per-edition tables, paste-ready). Pass `ARGS="--run <id>"` to target a specific run.
 
 ---
 
@@ -193,8 +193,8 @@ moon run cmd/main -- --annex-b 'console.log("x".bold())'
 ```
 
 - **CLI**: `--annex-b` flag parsed in `cmd/main/main.mbt`, passed to interpreter as `self.annex_b : Bool`
-- **Test262 runner**: `scripts/test262-runner.py` passes `--annex-b` for tests in `annexB/` directories
-- **Metadata parsing**: `scripts/test262-runner.py` and `scripts/test262-analyze.py` share `scripts/test262_utils.py` and run with or without PyYAML installed. Shared skip metadata lives in `scripts/test262_skip_metadata.json` (the `.py` alongside it is a shared reader/classifier, not the data) to prevent drift. The analyzer is a non-authoritative metadata helper; the native runner (`cmd/test262_runner`) is authoritative for results, with `scripts/test262-runner.py` kept as the transitional fallback.
+- **Test262 runner**: the native `cmd/test262_runner` passes `--annex-b` for tests in `annexB/` directories
+- **Metadata parsing**: shared skip metadata lives in `scripts/test262_skip_metadata.json` to prevent drift. The analyzer (`cmd/test262_analyze`) is a non-authoritative metadata helper; the native runner (`cmd/test262_runner`) is authoritative for results.
 
 ### Legacy feature status
 
@@ -221,9 +221,8 @@ Low. These features are not required for modern JavaScript usage. Implement only
 ## Skipped Features
 
 Shared skip metadata lives in `scripts/test262_skip_metadata.json` and is applied
-by the Test262 runner (native `cmd/test262_runner`, authoritative; the Python
-runner is the transitional fallback); runner results remain authoritative for
-actual execution. The table below is a dated snapshot from CI run 24885185424
+by the Test262 runner (native `cmd/test262_runner`, authoritative); runner results
+remain authoritative for actual execution. The table below is a dated snapshot from CI run 24885185424
 (2026-04-24, tip `b225cda`), kept as orientation rather than a current source
 of truth.
 

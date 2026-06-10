@@ -469,8 +469,7 @@ Completed:
 
 Current audit inventory:
 
-`python3 scripts/architecture-state-audit.py --list` reports 2 classified
-bindings: `current_interpreter` and `is_constructing`.
+`make architecture-state-audit` reports 2 classified bindings: `current_interpreter` and `is_constructing`.
 
 Remaining:
 

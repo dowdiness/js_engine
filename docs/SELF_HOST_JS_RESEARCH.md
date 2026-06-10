@@ -135,7 +135,8 @@ Update the Makefile to support a JS-target test runner:
 
 ```makefile
 test262-js: build-js test262-download
-	python3 scripts/test262-runner.py \
+	moon build --target native cmd/test262_runner
+	./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
 		--engine "node target/js/release/build/cmd/main/main.mjs" \
 		--test262 ./test262 \
 		--output test262-results-js.json

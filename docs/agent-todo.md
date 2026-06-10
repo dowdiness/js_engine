@@ -166,8 +166,7 @@ reports 0 classified bindings.
 
 **Verification:** Commit `968c092` passed local `rtk moon test`, `rtk moon test
 --target js`, `rtk moon info`, `rtk moon check --deny-warn`, `rtk make
-architecture-state-audit`, `rtk python3 scripts/architecture-state-audit.py
---list`, and `git diff --check`. CI passed `Benchmarks` and `Test262
+architecture-state-audit`, and `git diff --check`. CI passed `Benchmarks` and `Test262
 Conformance` (unit-test plus strict and non-strict Test262 jobs).
 
 ---
@@ -403,7 +402,7 @@ receiver/map-function validation and WeakMap/WeakSet constructor adder checks.
 
 23 strict + 23 non-strict failures sharing reason `Test262Error: Expected a Test262Error but got a TypeError`. Likely one shared coercion or property-access helper throws `TypeError` in a path where the spec expects normal completion or a different error.
 
-- Find the failing tests: `python3 scripts/test262-runner.py --filter ... --output /tmp/x.json` then grep results JSON for the reason.
+- Find the failing tests: `make test262-filter FILTER=<filter>` then grep results JSON for the reason.
 - Inspect 5 of them, locate the common throw site.
 - Single fix; expect ~46 tests recovered.
 
@@ -512,8 +511,8 @@ moon run cmd/main -- 'print(/foo.bar/s.test("foo\nbar")); print(/x/s.dotAll); pr
 # Expected: true / true / s
 ```
 
-**Action**: In `scripts/test262_skip_metadata.py`, remove `"regexp-dotall"` from shared skip metadata if it is still present.
-Run `python3 scripts/test262-runner.py --filter "built-ins/RegExp" --summary` to confirm pass rate improves.
+**Action**: In `scripts/test262_skip_metadata.json`, remove `"regexp-dotall"` from shared skip metadata if it is still present.
+Run `make test262-filter FILTER=built-ins/RegExp` to confirm pass rate improves.
 
 ---
 
@@ -537,7 +536,7 @@ Promise.withResolvers = function() {
 Look at how `Promise.resolve` and `Promise.reject` are implemented in `builtins_promise.mbt` for the pattern.
 
 After implementing: remove `"promise-with-resolvers"` from shared skip metadata and run
-`python3 scripts/test262-runner.py --filter "built-ins/Promise" --summary`.
+`make test262-filter FILTER=built-ins/Promise`.
 
 ---
 
@@ -578,9 +577,9 @@ Same file and pattern as `withResolvers`. After implementing: remove `"promise-t
 **Investigation steps**:
 1. Run the async-functions subset:
    ```bash
-   python3 scripts/test262-runner.py --filter "language/statements/async-function" --summary
-   python3 scripts/test262-runner.py --filter "language/expressions/async-arrow-function" --summary
-   python3 scripts/test262-runner.py --filter "built-ins/AsyncFunction" --summary
+   make test262-filter FILTER=language/statements/async-function
+   make test262-filter FILTER=language/expressions/async-arrow-function
+   make test262-filter FILTER=built-ins/AsyncFunction
    ```
    Do this BEFORE removing the flag — re-enable temporarily in test code or run with `--include-skipped` if supported.
 
@@ -1122,7 +1121,7 @@ representation). Staged:
   operations correctly throw via `get_proxy_trap` → `get_proxy_handler`
   returning `None`. The ~8 tests likely cover adjacent behaviour (e.g. that
   `typeof` does **not** throw while `obj.x`, `delete`, `in` etc. do).
-  **Action**: run `scripts/test262-runner.py --filter "built-ins/Proxy/revocable"` to
+  **Action**: run `make test262-filter FILTER=built-ins/Proxy/revocable` to
   confirm pass rate; if failures remain, check what operation they exercise.
 
 Post-B.3 language follow-up:
@@ -1419,7 +1418,7 @@ Consolidated three separate copies of the 15-entry ECMAScript WhiteSpace+LineTer
 
 **Hypotheses to investigate** (in rough order of likelihood):
 
-1. **Skip-list churn** — the 777 executed in Phase 17 and the 777 executed today may not be the same 777 files. The skip list has been edited many times since 2026-02-15 (PRs #49–#84). Diff `scripts/test262-runner.py` skip directives between `~Phase 19` and tip; map files in/out.
+1. **Skip-list churn** — the 777 executed in Phase 17 and the 777 executed today may not be the same 777 files. The skip list has been edited many times since 2026-02-15 (PRs #49–#84). Diff `scripts/test262_skip_metadata.json` entries between `~Phase 19` and tip using git history; map files in/out.
 2. **Per-mode strict failures distinct from non-strict** — Phase 17's single-mode counted a file passing if it passed in *whatever* mode the runner ran. If many TypedArray tests pass non-strict but fail strict (or vice versa), per-mode counts both as failures while single-mode counted them as one pass.
 3. **Genuine regression** — some PR between Phase 19 and `c6a20dd` regressed TypedArray semantics. Bisect candidates: Stage A (PR #49), Stage B.1 (#69), Stage B.2 (#72), Stage C (2026-04-23), Stage B.3 (2026-04-23), the v0.2.2 TypedArray fixes themselves (`1a29705`, `a807e9f`, `c033837`).
 

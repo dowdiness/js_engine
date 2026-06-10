@@ -96,6 +96,6 @@ The GitHub release is **not** the publish — mooncakes is a separate step, and 
 
 ## Anti-drift rules
 
-- **Conformance numbers come from `make test262-report` (native `cmd/report_test262`), never from another doc.** See `AGENTS.md` "Test262 Reporting Convention" for why. `make test262-report-py` is the transitional Python fallback, not the authority.
+- **Conformance numbers come from `make test262-report` (native `cmd/report_test262`), never from another doc.** See `AGENTS.md` "Test262 Reporting Convention" for why.
 - **Always per-mode, always both denominators.** The `--format=changelog` template already enforces this; do not edit the bullets to omit one denominator.
 - **If a release annotation and the CHANGELOG disagree on a number, trust the CHANGELOG.** The tag is frozen at creation; the file is the living record.
