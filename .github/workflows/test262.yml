@@ -162,7 +162,6 @@ jobs:
           fi
 
       - name: Build native tools
-        if: steps.build-cache.outputs.cache-hit != 'true'
         run: |
           moon build --target native cmd/test262_runner
           moon build --target native cmd/classify_by_edition
