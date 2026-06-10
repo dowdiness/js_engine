@@ -43,6 +43,7 @@ env:
   TEST262_COMMIT: "2b2ecead6e82"
   # Bump this string to force a toolchain cache bust (e.g. after a MoonBit release).
   MOONBIT_CACHE_VERSION: "2026-06"
+  SHARD_TOTAL: 4
 
 jobs:
   unit-test:
@@ -162,7 +163,7 @@ jobs:
 
   test262:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 40
     permissions:
       contents: read
 
@@ -170,6 +171,7 @@ jobs:
       fail-fast: false
       matrix:
         mode: [strict, non-strict]
+        shard: [1, 2, 3, 4]
 
     steps:
       - name: Checkout code
@@ -236,7 +238,7 @@ jobs:
           moon build --target native cmd/test262_runner
           moon build --target native cmd/classify_by_edition
 
-      - name: Run Test262 (${{ matrix.mode }})
+      - name: Run Test262 (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }})
         # MoonBit cmd/test262_runner is authoritative (issue #255 promotion).
         # `shell: bash` enables `-eo pipefail`. We disable
         # errexit locally so a non-zero runner status doesn't skip the
@@ -250,20 +252,21 @@ jobs:
           ./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
             --test262 ./test262 \
             --mode ${{ matrix.mode }} \
+            --shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} \
             --threads 4 \
             --timeout 5 \
-            --output test262-${{ matrix.mode }}-results.json \
+            --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json \
             --summary
           rc=$?
           classify_rc=0
           # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
           # traceback on a truncated/empty JSON if the runner crashed early.
-          if [ -s "test262-${{ matrix.mode }}-results.json" ]; then
+          if [ -s "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json" ]; then
             echo
-            echo "──────── Per-edition breakdown (${{ matrix.mode }}) ────────"
+            echo "──────── Per-edition breakdown (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }}) ────────"
             ./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe --markdown \
               --test262-root ./test262 \
-              "test262-${{ matrix.mode }}-results.json" \
+              "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json" \
               | tee -a "$GITHUB_STEP_SUMMARY"
             # PIPESTATUS[0] = classifier (tee always succeeds with -a).
             classify_rc=${PIPESTATUS[0]}
@@ -284,8 +287,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: test262-${{ matrix.mode }}-results
-          path: test262-${{ matrix.mode }}-results.json
+          name: test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results
+          path: test262-${{ matrix.mode }}-shard-${{ matrix.shard }}-results.json
+          if-no-files-found: warn
           retention-days: 90
 
   regression-check:
@@ -310,7 +314,9 @@ jobs:
       - name: Check for regressions
         run: |
           python3 << 'PYEOF'
-          import json, os, sys
+          import glob, json, os, sys
+
+          SHARD_TOTAL = ${{ env.SHARD_TOTAL }}
 
           # Load baseline
           with open("test262-baseline.json") as f:
@@ -324,16 +330,24 @@ jobs:
           regressions = []
 
           for mode in ["non-strict", "strict"]:
-              f = f"test262-{mode}-results.json"
-              if not os.path.isfile(f):
-                  print(f"{mode}: MISSING (job may have failed)")
+              shard_files = sorted(glob.glob(f"test262-{mode}-shard-*-results.json"))
+              if not shard_files:
+                  print(f"{mode}: MISSING (no shard result files found)")
                   missing.append(mode)
                   continue
-              with open(f) as fh:
-                  data = json.load(fh)
-              s = data["summary"]
-              p, fa, sk = s["passed"], s["failed"], s["skipped"]
-              to = s.get("timeout", 0)
+              if len(shard_files) != SHARD_TOTAL:
+                  print(f"{mode}: INCOMPLETE ({len(shard_files)}/{SHARD_TOTAL} shards found)")
+                  missing.append(mode)
+                  continue
+              p, fa, sk, to = 0, 0, 0, 0
+              for sf in shard_files:
+                  with open(sf) as fh:
+                      data = json.load(fh)
+                  s = data["summary"]
+                  p += s["passed"]
+                  fa += s["failed"]
+                  sk += s.get("skipped", 0)
+                  to += s.get("timeout", 0)
               total_passed += p
               total_failed += fa
               total_skipped += sk
