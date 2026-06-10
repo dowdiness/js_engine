@@ -119,7 +119,27 @@ fn json_int64_field(
   key : String,
   context : String,
 ) -> Int64 raise {
-  @json.from_json(required_field(fields, key, context))
+  // `gh` emits numeric ids (e.g. `databaseId`) as JSON numbers, but
+  // `Int64::from_json` expects a quoted string, so decode the number here.
+  // Prefer the lossless source `repr` when present.
+  match required_field(fields, key, context) {
+    Number(value, repr~) =>
+      match repr {
+        Some(text) =>
+          @string.parse_int64(text) catch {
+            _ => fail(context + " field " + key + " is not an integer")
+          }
+        // `@json.parse` always populates `repr` for parsed numbers, so this
+        // arm is only reached for programmatically built `Json`; ids fit in
+        // an integral double, where `to_int64` is exact.
+        None => value.to_int64()
+      }
+    String(text) =>
+      @string.parse_int64(text) catch {
+        _ => fail(context + " field " + key + " is not an integer")
+      }
+    _ => fail(context + " field " + key + " must be a number or numeric string")
+  }
 }
 
 ///|
