@@ -652,7 +652,7 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
       )
       let capture = collect_process_args(
         classifier,
-        ["--markdown", strict_path, nonstrict_path],
+        ["--markdown", "--test262-root", join_path(repo_root, "test262"), strict_path, nonstrict_path],
         REPORT_CLASSIFIER_TIMEOUT_MS,
       )
       stdout += capture.stdout
