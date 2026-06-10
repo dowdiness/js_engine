@@ -102,13 +102,63 @@ jobs:
       - name: Test262 utils parity
         run: make test262-utils-test
 
-      - name: Test262 runner shadow unit parity
-        run: make test262-runner-test
-
       - name: Check and test
         run: |
           moon check
           moon test
+
+  unit-test-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Cache build artifacts
+        id: build-cache
+        uses: actions/cache@v5
+        with:
+          path: ./_build
+          key: build-unit-runner-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('**/*.mbt', 'moon.mod', '**/moon.pkg.json') }}
+          restore-keys: build-unit-runner-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install MoonBit dependencies
+        run: moon update
+
+      - name: Cache test262 suite (read-only)
+        # Read-only restore: unit-test-runner is not the authoritative writer for
+        # the test262 suite cache — the test262 matrix jobs own that. Using
+        # cache/restore avoids concurrent-write races on the shared key.
+        uses: actions/cache/restore@v5
+        with:
+          path: test262
+          key: test262-${{ env.TEST262_COMMIT }}
+
+      - name: Test262 runner shadow unit parity
+        # make test262-runner-test includes a test262-download guard that skips
+        # if test262/test already exists (from the cache restore above).
+        run: make test262-runner-test
 
   test262:
     runs-on: ubuntu-latest
