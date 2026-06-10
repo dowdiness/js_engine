@@ -328,6 +328,7 @@ jobs:
           total_timeouts = 0
           missing = []
           regressions = []
+          rows = []  # (mode, p, fa, to, rate, mode_min, delta) for step summary
 
           for mode in ["non-strict", "strict"]:
               shard_files = sorted(glob.glob(f"test262-{mode}-shard-*-results.json"))
@@ -364,19 +365,40 @@ jobs:
 
               if p < mode_min:
                   regressions.append(f"{mode}: {p} passed < {mode_min} baseline ({mode_min - p} regressed)")
+              rows.append((mode, p, fa, to, rate, mode_min, delta))
 
           # Combined
           combined_min = baseline.get("combined", {}).get("passed_min", 0)
           combined_exec = total_passed + total_failed
+          combined_rate = (total_passed / combined_exec * 100) if combined_exec > 0 else 0
+          combined_delta = total_passed - combined_min
           if combined_exec > 0:
-              combined_rate = total_passed / combined_exec * 100
-              delta = total_passed - combined_min
-              sign = "+" if delta >= 0 else ""
+              sign = "+" if combined_delta >= 0 else ""
               print()
-              print(f"    combined: {combined_rate:5.1f}%  ({total_passed} passed, {total_failed} failed)  [{sign}{delta} vs {combined_min} min]")
+              print(f"    combined: {combined_rate:5.1f}%  ({total_passed} passed, {total_failed} failed)  [{sign}{combined_delta} vs {combined_min} min]")
 
           if total_passed < combined_min:
               regressions.append(f"combined: {total_passed} passed < {combined_min} baseline")
+
+          # Write step summary
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path and rows:
+              badge = "🔴" if regressions else ("⚠️" if missing else "🟢")
+              verdict = "REGRESSION" if regressions else ("INCOMPLETE" if missing else "All baselines met")
+              with open(summary_path, "a") as f:
+                  f.write(f"## Test262 Conformance {badge} {verdict}\n\n")
+                  f.write("| Mode | Passed | Failed | Timeouts | P/E | Baseline | Delta |\n")
+                  f.write("|---|---:|---:|---:|---:|---:|---:|\n")
+                  for (m, p, fa, to, rate, mode_min, delta) in rows:
+                      dsign = "+" if delta >= 0 else ""
+                      f.write(f"| {m} | {p:,} | {fa:,} | {to:,} | **{rate:.1f}%** | {mode_min:,} | {dsign}{delta:,} |\n")
+                  if combined_exec > 0:
+                      csign = "+" if combined_delta >= 0 else ""
+                      f.write(f"| **combined** | **{total_passed:,}** | **{total_failed:,}** | **{total_timeouts:,}** | **{combined_rate:.1f}%** | {combined_min:,} | {csign}{combined_delta:,} |\n")
+                  if regressions:
+                      f.write("\n### Regressions\n\n")
+                      for r in regressions:
+                          f.write(f"- {r}\n")
 
           # Verdict
           failed = False
