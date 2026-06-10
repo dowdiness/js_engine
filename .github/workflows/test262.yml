@@ -129,7 +129,7 @@ jobs:
           path: |
             ~/.moon/registry
             .mooncakes
-          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod.json') }}
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
           restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
 
       - name: Cache build artifacts
