@@ -7,10 +7,9 @@ on:
       # Docs and markdown never affect the engine or the runner.
       - 'docs/**'
       - '*.md'
-      # NOTE: scripts/** is intentionally NOT ignored. The authoritative native
-      # MoonBit tooling reads shared data under scripts/ (e.g.
-      # test262_skip_metadata.json) and the transitional Python shadow still runs
-      # scripts/test262-runner.py, so changes there must re-trigger CI.
+      # NOTE: scripts/** is intentionally NOT ignored because the authoritative
+      # native MoonBit tooling reads shared data under scripts/ (e.g.
+      # test262_skip_metadata.json), so changes there must re-trigger CI.
       - '.gitignore'
       - 'LICENSE'
       - '.github/ISSUE_TEMPLATE/**'
@@ -70,9 +69,6 @@ jobs:
 
       - name: Test262 utils parity
         run: make test262-utils-test
-
-      - name: Test262 utils corpus parity
-        run: make test262-utils-corpus-test
 
       - name: Test262 runner shadow unit parity
         run: make test262-runner-test
@@ -134,13 +130,9 @@ jobs:
             tar -xzf /tmp/test262.tar.gz -C test262 --strip-components=1
           fi
 
-      - name: Install Python dependencies
-        run: pip install pyyaml
-
       - name: Run Test262 (${{ matrix.mode }})
-        # MoonBit cmd/test262_runner is authoritative (issue #255 promotion);
-        # the demoted Python runner runs below as a non-authoritative
-        # transitional shadow. `shell: bash` enables `-eo pipefail`. We disable
+        # MoonBit cmd/test262_runner is authoritative (issue #255 promotion).
+        # `shell: bash` enables `-eo pipefail`. We disable
         # errexit locally so a non-zero runner status doesn't skip the
         # per-edition table — it's the more useful signal in CI logs than the
         # runner's one-row summary. The runner's exit code is preserved at the
@@ -198,35 +190,6 @@ jobs:
         with:
           name: test262-${{ matrix.mode }}-results
           path: test262-${{ matrix.mode }}-results.json
-          retention-days: 90
-
-      - name: Run Python Test262 shadow (${{ matrix.mode }})
-        # Non-authoritative transitional shadow (issue #255). The MoonBit
-        # artifacts above remain the regression/report input. This step may fail
-        # (ordinary Test262 failures or shadow infrastructure) without changing
-        # the authoritative MoonBit outcome. The artifact name intentionally does
-        # NOT match the `test262-*-results` glob the regression-check job downloads.
-        shell: bash
-        run: |
-          set +e
-          python3 scripts/test262-runner.py \
-            --test262 ./test262 \
-            --mode ${{ matrix.mode }} \
-            --threads 4 \
-            --timeout 5 \
-            --output test262-${{ matrix.mode }}-python-shadow-results.json \
-            --summary
-          shadow_rc=$?
-          exit "$shadow_rc"
-        continue-on-error: true
-
-      - name: Upload Python shadow results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: test262-${{ matrix.mode }}-python-shadow
-          path: test262-${{ matrix.mode }}-python-shadow-results.json
-          if-no-files-found: warn
           retention-days: 90
 
   regression-check:

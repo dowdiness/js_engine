@@ -952,10 +952,9 @@ fn append_section(
 }
 
 ///|
-/// Shadow implementation of `scripts/classify-by-edition.py`.
+/// Classify existing Test262 result artifacts by ECMAScript edition.
 ///
-/// This reads existing result artifacts only. It does not run the engine and
-/// remains non-authoritative while Python owns published reporting.
+/// This reads existing result artifacts only. It does not run the engine.
 pub fn run_classify_by_edition(
   result_paths : Array[String],
   test262_root? : String = ".",

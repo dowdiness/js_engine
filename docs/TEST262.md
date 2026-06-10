@@ -6,7 +6,6 @@ Test262 is the official ECMAScript conformance test suite maintained by TC39. Th
 
 - **MoonBit toolchain** (`moon` CLI) — install from [moonbitlang.com](https://www.moonbitlang.com/)
 - **Node.js** — required to run the JS-compiled engine
-- **Python 3** — required by the test runner
 
 ## Quick Start
 
@@ -58,9 +57,7 @@ make test262
     --output test262-results.json
 ```
 
-The native `cmd/test262_runner` is authoritative. `scripts/test262-runner.py`
-(the `*-py` Make targets, e.g. `make test262-py`) is the transitional Python
-fallback and accepts the same flags.
+The native `cmd/test262_runner` is authoritative.
 
 ## Filtering Tests
 
@@ -87,9 +84,7 @@ selection happens **after** strict/non-strict mode expansion, so use
 `--mode strict` or `--mode non-strict` when you want per-mode shards that match
 CI jobs.
 
-The examples below use the native runner binary. Define a shorthand (the
-transitional Python fallback `python3 scripts/test262-runner.py` accepts the
-same flags):
+The examples below use the native runner binary. Define a shorthand:
 
 ```bash
 RUNNER=./_build/native/debug/build/cmd/test262_runner/test262_runner.exe
@@ -142,7 +137,7 @@ Official CI and default local runs do not enable modified harness helpers. For
 local investigations, the runner can opt into explicitly labeled helpers:
 
 ```bash
-python3 scripts/test262-runner.py \
+./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
     --test262 ./test262 \
     --filter "built-ins/RegExp" \
     --harness-helper codePointRange \
@@ -183,9 +178,7 @@ so their numbers are not confused with official CI results.
 
 ## Alternative Engine Commands
 
-The native runner auto-detects the engine. Pass `--engine` to override (the
-transitional Python fallback `python3 scripts/test262-runner.py` accepts the
-same flag):
+The native runner auto-detects the engine. Pass `--engine` to override:
 
 ```bash
 RUNNER=./_build/native/debug/build/cmd/test262_runner/test262_runner.exe
@@ -252,8 +245,7 @@ For a rough metadata census without building or running the engine:
 make test262-analyze
 ```
 
-This runs the native `cmd/test262_analyze` (authoritative; `scripts/test262-analyze.py`
-is retained as a cross-check shadow), which uses shared skip metadata from
+This runs the native `cmd/test262_analyze`, which uses shared skip metadata from
 `scripts/test262_skip_metadata.json` and classifies files as `applicable`,
 `skip_feature`, `skip_flag`, or `skip_fixture`. It generates
 `test262-analysis.json`.
@@ -272,10 +264,9 @@ suffixes present in the checked-out Test262 suite:
 make test262-validate-skips
 ```
 
-This runs the native `cmd/test262_validate_skips` (authoritative;
-`make test262-validate-skips-py` is the transitional Python fallback). It only
-reports dead or unknown skip metadata entries; it does not run tests or produce
-conformance numbers.
+This runs the native `cmd/test262_validate_skips`. It only reports dead or
+unknown skip metadata entries; it does not run tests or produce conformance
+numbers.
 
 ## CI Integration
 

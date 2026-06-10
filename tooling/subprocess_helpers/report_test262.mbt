@@ -642,16 +642,17 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
     }
     if config.format == "table" && config.with_editions {
       stdout += "\n"
+      let repo_root = match config.repo_root {
+        Some(root) => root
+        None => current_dir_or_dot()
+      }
       let classifier = join_path(
-        match config.repo_root {
-          Some(root) => root
-          None => current_dir_or_dot()
-        },
-        "scripts/classify-by-edition.py",
+        repo_root,
+        "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
       )
       let capture = collect_process_args(
-        "python3",
-        [classifier, "--markdown", strict_path, nonstrict_path],
+        classifier,
+        ["--markdown", "--test262-root", join_path(repo_root, "test262"), strict_path, nonstrict_path],
         REPORT_CLASSIFIER_TIMEOUT_MS,
       )
       stdout += capture.stdout
