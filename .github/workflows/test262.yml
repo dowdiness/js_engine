@@ -58,6 +58,27 @@ jobs:
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Cache build artifacts
+        id: build-cache
+        uses: actions/cache@v5
+        with:
+          path: ./_build
+          key: build-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('**/*.mbt', 'moon.mod', '**/moon.pkg.json') }}
+          restore-keys: build-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
       - name: Install MoonBit dependencies
         run: moon update
 
@@ -108,13 +129,23 @@ jobs:
           path: |
             ~/.moon/registry
             .mooncakes
-          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod.json') }}
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
           restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
 
-      - name: Install and build
-        run: |
-          moon update
-          moon build --target js --release
+      - name: Cache build artifacts
+        id: build-cache
+        uses: actions/cache@v5
+        with:
+          path: ./_build
+          key: build-test262-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('**/*.mbt', 'moon.mod', '**/moon.pkg.json') }}
+          restore-keys: build-test262-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install MoonBit dependencies
+        run: moon update
+
+      - name: Build JS engine
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        run: moon build --target js --release
 
       - name: Cache test262 suite
         uses: actions/cache@v5
@@ -130,6 +161,11 @@ jobs:
             tar -xzf /tmp/test262.tar.gz -C test262 --strip-components=1
           fi
 
+      - name: Build native tools
+        run: |
+          moon build --target native cmd/test262_runner
+          moon build --target native cmd/classify_by_edition
+
       - name: Run Test262 (${{ matrix.mode }})
         # MoonBit cmd/test262_runner is authoritative (issue #255 promotion).
         # `shell: bash` enables `-eo pipefail`. We disable
@@ -141,16 +177,6 @@ jobs:
         shell: bash
         run: |
           set +e
-          moon build --target native cmd/test262_runner
-          build_rc=$?
-          if [ "$build_rc" -ne 0 ]; then
-            exit "$build_rc"
-          fi
-          moon build --target native cmd/classify_by_edition
-          build_rc=$?
-          if [ "$build_rc" -ne 0 ]; then
-            exit "$build_rc"
-          fi
           ./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
             --test262 ./test262 \
             --mode ${{ matrix.mode }} \
