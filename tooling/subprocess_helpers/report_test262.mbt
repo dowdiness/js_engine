@@ -650,17 +650,19 @@ fn validate_shard_completeness(
   mode : String,
 ) -> Unit raise {
   let mut expected_total = 0
+  let seen_indices : Array[Int] = []
   for path in paths {
     let name = basename(path)
     let inner = name.substring(
       start=prefix.length(),
       end=name.length() - suffix.length(),
     )
-    let (_, t) = parse_shard_of_total(inner, name)
+    let (n, t) = parse_shard_of_total(inner, name)
     guard expected_total == 0 || expected_total == t else {
       fail(mode + " shards have inconsistent totals in filenames")
     }
     expected_total = t
+    seen_indices.push(n)
   }
   let found = paths.length()
   guard found == expected_total else {
@@ -674,6 +676,20 @@ fn validate_shard_completeness(
       (expected_total - found).to_string() +
       " missing. Rerun make test262-report against a complete CI run.",
     )
+  }
+  // Verify indices are exactly {1..expected_total} — catches duplicates and gaps
+  // that the count check misses (e.g. [1,1,3,4] has count 4 but is not {1,2,3,4}).
+  seen_indices.sort()
+  for i, idx in seen_indices {
+    guard idx == i + 1 else {
+      fail(
+        mode +
+        ": shard indices are not contiguous {1.." +
+        expected_total.to_string() +
+        "} — got " +
+        seen_indices.map(fn(x) { x.to_string() }).join(","),
+      )
+    }
   }
 }
 
