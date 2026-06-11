@@ -234,18 +234,14 @@ jobs:
           fi
 
       - name: Build native tools
-        run: |
-          moon build --target native cmd/test262_runner
-          moon build --target native cmd/classify_by_edition
+        run: moon build --target native cmd/test262_runner
 
       - name: Run Test262 (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }})
         # MoonBit cmd/test262_runner is authoritative (issue #255 promotion).
         # The runner exits 0 whenever it completes and writes results JSON —
         # conformance failures are data, judged by regression-check. A
         # non-zero status here is a real runner/infra failure and fails the
-        # job (artifact upload still runs via `if: always()`). `shell: bash`
-        # enables `-eo pipefail`; errexit is disabled locally so the
-        # per-edition log table still prints before a failure propagates.
+        # job (artifact upload still runs via `if: always()`).
         shell: bash
         run: |
           set +e
@@ -267,29 +263,10 @@ jobs:
             echo
             echo "See the \`regression-check\` summary for the aggregate verdict."
           } >> "$GITHUB_STEP_SUMMARY"
-          classify_rc=0
-          # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
-          # traceback on a truncated/empty JSON if the runner crashed early.
-          # Log-only: each shard covers 1/N of the tests, so its per-edition
-          # table is partial — useful for log digging, noise in the summary.
-          if [ -s "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json" ]; then
-            echo
-            echo "──────── Per-edition breakdown (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }}) ────────"
-            ./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe --markdown \
-              --test262-root ./test262 \
-              "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json"
-            classify_rc=$?
-            if [ "$classify_rc" -ne 0 ]; then
-              echo "::warning title=Test262 report incomplete::classify_by_edition exited $classify_rc — per-edition table may be incomplete" >&2
-            fi
-          fi
-          # Runner failure dominates; otherwise propagate classifier failure
-          # so a silently-broken report path fails this step.
           if [ "$rc" -ne 0 ]; then
             echo "::error title=Test262 runner failed::runner exited $rc without usable results JSON (mode ${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }})" >&2
-            exit "$rc"
           fi
-          exit "$classify_rc"
+          exit "$rc"
 
       - name: Upload results
         if: always()
@@ -304,14 +281,14 @@ jobs:
     needs: test262
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout baseline
+      # Full checkout (not sparse): the per-edition aggregate runs
+      # cmd/classify_by_edition here, once, against the merged canonical
+      # results — that needs the MoonBit sources and the test262 checkout.
+      - name: Checkout code
         uses: actions/checkout@v5
-        with:
-          sparse-checkout: test262-baseline.json
-          sparse-checkout-cone-mode: false
 
       - name: Download all results
         uses: actions/download-artifact@v8
@@ -319,12 +296,111 @@ jobs:
           pattern: test262-*-results
           merge-multiple: true
 
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Cache build artifacts
+        id: build-cache
+        uses: actions/cache@v5
+        with:
+          path: ./_build
+          key: build-regression-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('**/*.mbt', 'moon.mod', '**/moon.pkg.json') }}
+          restore-keys: build-regression-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install MoonBit dependencies
+        run: moon update
+
+      - name: Build edition classifier
+        run: moon build --target native cmd/classify_by_edition
+
+      - name: Cache test262 suite (read-only)
+        # Read-only restore: the test262 matrix jobs own this cache key;
+        # cache/restore avoids concurrent-write races on the shared key.
+        uses: actions/cache/restore@v5
+        with:
+          path: test262
+          key: test262-${{ env.TEST262_COMMIT }}
+
+      - name: Download Test262 if needed
+        run: |
+          if [ ! -d "test262/test" ]; then
+            curl -fsSL -L "https://api.github.com/repos/tc39/test262/tarball/${{ env.TEST262_COMMIT }}" -o /tmp/test262.tar.gz
+            mkdir -p test262
+            tar -xzf /tmp/test262.tar.gz -C test262 --strip-components=1
+          fi
+
       - name: Check for regressions
         run: |
           python3 << 'PYEOF'
-          import glob, json, os, re, sys
+          import glob, json, os, re, subprocess, sys
 
           SHARD_TOTAL = ${{ env.SHARD_TOTAL }}
+          MODE_ORDER = ["strict", "non-strict"]
+
+          def empty_breakdown_counts():
+              return {
+                  "total": 0,
+                  "passed": 0,
+                  "failed": 0,
+                  "skipped": 0,
+                  "timeouts": 0,
+                  "errors": 0,
+              }
+
+          def add_breakdown_counts(dst, src):
+              # Category objects in the current runner schema guarantee
+              # total/passed/failed/skipped/pass_rate. timeout/error may be absent.
+              dst["total"] += int(src.get("total", 0))
+              dst["passed"] += int(src.get("passed", 0))
+              dst["failed"] += int(src.get("failed", 0))
+              dst["skipped"] += int(src.get("skipped", 0))
+              dst["timeouts"] += int(src.get("timeouts", src.get("timeout", 0)))
+              dst["errors"] += int(src.get("errors", src.get("error", 0)))
+
+          def finalize_breakdown_counts(counts):
+              total = int(counts["total"])
+              skipped = int(counts["skipped"])
+              # For category data, the most stable denominator is total - skipped.
+              # This avoids depending on whether timeout/error are broken out in
+              # category-level objects.
+              executed = max(0, total - skipped)
+              rate = counts["passed"] / executed * 100 if executed > 0 else 0.0
+              discovered_rate = counts["passed"] / total * 100 if total > 0 else 0.0
+              return {
+                  "total": total,
+                  "executed": executed,
+                  "passed": int(counts["passed"]),
+                  "failed": int(counts["failed"]),
+                  "skipped": skipped,
+                  "timeouts": int(counts["timeouts"]),
+                  "errors": int(counts["errors"]),
+                  "rate": float(rate),
+                  "discovered_rate": float(discovered_rate),
+              }
 
           # Load baseline
           with open("test262-baseline.json") as f:
@@ -339,6 +415,7 @@ jobs:
           rows = []        # (mode, p, fa, to, rate, mode_min, delta) — per mode
           shard_rows = []  # (mode, idx, total, passed, failed, timeouts, rate) — per shard
           mode_shards = {}  # mode -> [parsed shard json, ...] for complete sets
+          category_acc = {mode: {} for mode in MODE_ORDER}
 
           for mode in ["non-strict", "strict"]:
               shard_files = sorted(glob.glob(f"test262-{mode}-shard-*of{SHARD_TOTAL}-results.json"))
@@ -356,6 +433,9 @@ jobs:
                   with open(sf) as fh:
                       data = json.load(fh)
                   mode_shards[mode].append(data)
+                  for category, counts in data.get("categories", {}).items():
+                      acc = category_acc[mode].setdefault(category, empty_breakdown_counts())
+                      add_breakdown_counts(acc, counts)
                   s = data["summary"]
                   s_pass = s["passed"]
                   s_fail = s["failed"]
@@ -405,6 +485,68 @@ jobs:
           if not missing and total_passed < combined_min:
               regressions.append(f"combined: {total_passed} passed < {combined_min} baseline")
 
+          # Merge each complete shard set into the canonical per-mode results
+          # file (pre-sharding name; `make test262-report` finds these first).
+          # Same shape as merge_shards_to_file in tooling/subprocess_helpers:
+          # summed summary, concatenated results.
+          for mode, shards in mode_shards.items():
+              merged_summary = {k: 0 for k in ["total", "passed", "failed", "skipped", "timeout", "error"]}
+              merged_results = []
+              for data in shards:
+                  for k in merged_summary:
+                      merged_summary[k] += data["summary"].get(k, 0)
+                  merged_results.extend(data.get("results", []))
+              merged = {
+                  "engine": shards[0].get("engine", "MoonBit JS Engine"),
+                  "date": shards[0].get("date", "1970-01-01T00:00:00Z"),
+                  "summary": merged_summary,
+                  "categories": {},
+                  "results": merged_results,
+              }
+              with open(f"test262-{mode}-results.json", "w") as f:
+                  json.dump(merged, f, indent=2)
+
+          # Per-category aggregate (summed counts, rates recomputed — never
+          # average shard pass rates).
+          categories_payload = {
+              mode: {
+                  category: finalize_breakdown_counts(counts)
+                  for category, counts in sorted(category_acc.get(mode, {}).items())
+              }
+              for mode in MODE_ORDER
+          }
+
+          # Per-edition aggregate: run classify_by_edition once against the
+          # merged canonical files. Edition mapping needs test metadata, so
+          # this stays in the classifier rather than being re-derived here.
+          edition_md = ""
+          edition_report_error = None
+          editions_payload = {}
+          edition_paths = [
+              p for p in ["test262-strict-results.json", "test262-non-strict-results.json"]
+              if os.path.exists(p)
+          ]
+          classifier = "./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe"
+          if edition_paths and os.path.exists(classifier) and os.path.isdir("test262/test"):
+              completed = subprocess.run(
+                  [classifier, "--markdown", "--test262-root", "./test262",
+                   "--json-output", "test262-editions.json", *edition_paths],
+                  text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+              )
+              if completed.returncode == 0:
+                  edition_md = completed.stdout.strip()
+                  with open("test262-editions.md", "w") as f:
+                      f.write(edition_md)
+                      f.write("\n")
+                  with open("test262-editions.json") as f:
+                      editions_payload = json.load(f).get("editions", {})
+              else:
+                  edition_report_error = completed.stderr.strip() or f"classify_by_edition exited {completed.returncode}"
+          else:
+              edition_report_error = "edition classifier unavailable; skipped per-edition aggregate"
+          if edition_report_error:
+              print(f"::warning title=Test262 report incomplete::{edition_report_error}")
+
           # Build the summary markdown once; it feeds both the step summary
           # and the test262-summary.md artifact.
           # INCOMPLETE dominates REGRESSION: a regression verdict is only
@@ -431,6 +573,48 @@ jobs:
               lines.append("\n### Regressions\n")
               for r in regressions:
                   lines.append(f"- {r}")
+
+          def format_breakdown_cell(stats):
+              if not stats:
+                  return "—"
+              pe = "—" if stats["executed"] == 0 else f"{stats['rate']:.1f}%"
+              pd = "—" if stats["total"] == 0 else f"{stats['discovered_rate']:.1f}%"
+              return f"{stats['passed']:,}/{stats['failed']:,}/{stats['skipped']:,} ({pe}, {pd})"
+
+          all_categories = sorted(
+              {c for by_mode in categories_payload.values() for c in by_mode},
+              key=lambda c: (
+                  -max(categories_payload.get(m, {}).get(c, {}).get("failed", 0) for m in MODE_ORDER),
+                  c,
+              ),
+          )
+          if all_categories:
+              TOP_CATEGORIES = 25
+              def category_table(categories):
+                  out = ["| Category | strict | non-strict |", "|---|---:|---:|"]
+                  for c in categories:
+                      out.append("| {c} | {s} | {n} |".format(
+                          c=c,
+                          s=format_breakdown_cell(categories_payload.get("strict", {}).get(c)),
+                          n=format_breakdown_cell(categories_payload.get("non-strict", {}).get(c)),
+                      ))
+                  return out
+              lines.append("\n### Per-category breakdown (top %d by failures)\n" % min(TOP_CATEGORIES, len(all_categories)))
+              lines.append("Each cell is `passed/failed/skipped (Passed / Executed, Passed / Discovered)`.\n")
+              lines.extend(category_table(all_categories[:TOP_CATEGORIES]))
+              if len(all_categories) > TOP_CATEGORIES:
+                  lines.append("\n<details>")
+                  lines.append("<summary>All %d categories</summary>\n" % len(all_categories))
+                  lines.extend(category_table(all_categories))
+                  lines.append("\n</details>")
+
+          if edition_md:
+              lines.append("\n### Per-edition breakdown\n")
+              lines.append(edition_md)
+          elif edition_report_error:
+              lines.append("\n### Per-edition breakdown\n")
+              lines.append(f"Skipped: {edition_report_error}")
+
           if shard_rows:
               lines.append("\n### Per-shard breakdown\n")
               lines.append("| Mode | Shard | Passed | Failed | Timeouts | P/E |")
@@ -445,27 +629,6 @@ jobs:
                   f.write(md)
           with open("test262-summary.md", "w") as f:
               f.write(md)
-
-          # Merge each complete shard set into the canonical per-mode results
-          # file (pre-sharding name; `make test262-report` finds these first).
-          # Same shape as merge_shards_to_file in tooling/subprocess_helpers:
-          # summed summary, concatenated results.
-          for mode, shards in mode_shards.items():
-              merged_summary = {k: 0 for k in ["total", "passed", "failed", "skipped", "timeout", "error"]}
-              merged_results = []
-              for data in shards:
-                  for k in merged_summary:
-                      merged_summary[k] += data["summary"].get(k, 0)
-                  merged_results.extend(data.get("results", []))
-              merged = {
-                  "engine": shards[0].get("engine", "MoonBit JS Engine"),
-                  "date": shards[0].get("date", "1970-01-01T00:00:00Z"),
-                  "summary": merged_summary,
-                  "categories": {},
-                  "results": merged_results,
-              }
-              with open(f"test262-{mode}-results.json", "w") as f:
-                  json.dump(merged, f, indent=2)
 
           # Machine-readable summary for dashboards and report tooling.
           #
@@ -516,6 +679,8 @@ jobs:
               },
               "modes": modes_payload,
               "shards": shards_payload,
+              "categories": categories_payload,
+              "editions": editions_payload,
               "missing": list(missing),
               "regressions": list(regressions),
           }
@@ -548,6 +713,8 @@ jobs:
           path: |
             test262-summary.md
             test262-summary.json
+            test262-editions.md
+            test262-editions.json
             test262-non-strict-results.json
             test262-strict-results.json
           if-no-files-found: warn
