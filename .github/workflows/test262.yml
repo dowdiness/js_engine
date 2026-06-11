@@ -338,6 +338,7 @@ jobs:
           regressions = []
           rows = []        # (mode, p, fa, to, rate, mode_min, delta) — per mode
           shard_rows = []  # (mode, idx, total, passed, failed, timeouts, rate) — per shard
+          mode_shards = {}  # mode -> [parsed shard json, ...] for complete sets
 
           for mode in ["non-strict", "strict"]:
               shard_files = sorted(glob.glob(f"test262-{mode}-shard-*of{SHARD_TOTAL}-results.json"))
@@ -350,9 +351,11 @@ jobs:
                   missing.append(mode)
                   continue
               p, fa, sk, to = 0, 0, 0, 0
+              mode_shards[mode] = []
               for sf in shard_files:
                   with open(sf) as fh:
                       data = json.load(fh)
+                  mode_shards[mode].append(data)
                   s = data["summary"]
                   s_pass = s["passed"]
                   s_fail = s["failed"]
@@ -396,43 +399,139 @@ jobs:
               print()
               print(f"    combined: {combined_rate:5.1f}%  ({total_passed} passed, {total_failed} failed)  [{sign}{combined_delta} vs {combined_min} min]")
 
-          if total_passed < combined_min:
+          # The combined baseline only means something when every mode is
+          # complete — with a shard missing, a low combined total is an
+          # artifact of the gap, not a regression.
+          if not missing and total_passed < combined_min:
               regressions.append(f"combined: {total_passed} passed < {combined_min} baseline")
 
-          # Write step summary
+          # Build the summary markdown once; it feeds both the step summary
+          # and the test262-summary.md artifact.
+          # INCOMPLETE dominates REGRESSION: a regression verdict is only
+          # trustworthy when computed from a complete shard set.
+          badge = "⚠️" if missing else ("🔴" if regressions else "🟢")
+          verdict = "INCOMPLETE" if missing else ("REGRESSION" if regressions else "PASS")
+          verdict_label = {"PASS": "All baselines met", "REGRESSION": "REGRESSION", "INCOMPLETE": "INCOMPLETE"}[verdict]
+          lines = []
+          lines.append(f"## Test262 Conformance {badge} {verdict_label}\n")
+          if rows:
+              lines.append("| Mode | Passed | Failed | Timeouts | P/E | Baseline | Delta |")
+              lines.append("|---|---:|---:|---:|---:|---:|---:|")
+              for (m, p, fa, to, rate, mode_min, delta) in rows:
+                  dsign = "+" if delta >= 0 else ""
+                  lines.append(f"| {m} | {p:,} | {fa:,} | {to:,} | **{rate:.1f}%** | {mode_min:,} | {dsign}{delta:,} |")
+              if combined_exec > 0:
+                  csign = "+" if combined_delta >= 0 else ""
+                  lines.append(f"| **combined** | **{total_passed:,}** | **{total_failed:,}** | **{total_timeouts:,}** | **{combined_rate:.1f}%** | {combined_min:,} | {csign}{combined_delta:,} |")
+          if missing:
+              lines.append("\n### Missing modes\n")
+              for m in missing:
+                  lines.append(f"- {m}: shard results missing or incomplete")
+          if regressions:
+              lines.append("\n### Regressions\n")
+              for r in regressions:
+                  lines.append(f"- {r}")
+          if shard_rows:
+              lines.append("\n### Per-shard breakdown\n")
+              lines.append("| Mode | Shard | Passed | Failed | Timeouts | P/E |")
+              lines.append("|---|---|---:|---:|---:|---:|")
+              for (m, sidx, stot, s_p, s_f, s_t, s_r) in shard_rows:
+                  lines.append(f"| {m} | {sidx}/{stot} | {s_p:,} | {s_f:,} | {s_t:,} | {s_r:.1f}% |")
+          md = "\n".join(lines) + "\n"
+
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary_path and rows:
-              badge = "🔴" if regressions else ("⚠️" if missing else "🟢")
-              verdict = "REGRESSION" if regressions else ("INCOMPLETE" if missing else "All baselines met")
+          if summary_path:
               with open(summary_path, "a") as f:
-                  f.write(f"## Test262 Conformance {badge} {verdict}\n\n")
-                  f.write("| Mode | Passed | Failed | Timeouts | P/E | Baseline | Delta |\n")
-                  f.write("|---|---:|---:|---:|---:|---:|---:|\n")
-                  for (m, p, fa, to, rate, mode_min, delta) in rows:
-                      dsign = "+" if delta >= 0 else ""
-                      f.write(f"| {m} | {p:,} | {fa:,} | {to:,} | **{rate:.1f}%** | {mode_min:,} | {dsign}{delta:,} |\n")
-                  if combined_exec > 0:
-                      csign = "+" if combined_delta >= 0 else ""
-                      f.write(f"| **combined** | **{total_passed:,}** | **{total_failed:,}** | **{total_timeouts:,}** | **{combined_rate:.1f}%** | {combined_min:,} | {csign}{combined_delta:,} |\n")
-                  if shard_rows:
-                      f.write("\n### Per-shard breakdown\n\n")
-                      f.write("| Mode | Shard | Passed | Failed | Timeouts | P/E |\n")
-                      f.write("|---|---|---:|---:|---:|---:|\n")
-                      for (m, sidx, stot, s_p, s_f, s_t, s_r) in shard_rows:
-                          f.write(f"| {m} | {sidx}/{stot} | {s_p:,} | {s_f:,} | {s_t:,} | {s_r:.1f}% |\n")
-                  if regressions:
-                      f.write("\n### Regressions\n\n")
-                      for r in regressions:
-                          f.write(f"- {r}\n")
+                  f.write(md)
+          with open("test262-summary.md", "w") as f:
+              f.write(md)
+
+          # Merge each complete shard set into the canonical per-mode results
+          # file (pre-sharding name; `make test262-report` finds these first).
+          # Same shape as merge_shards_to_file in tooling/subprocess_helpers:
+          # summed summary, concatenated results.
+          for mode, shards in mode_shards.items():
+              merged_summary = {k: 0 for k in ["total", "passed", "failed", "skipped", "timeout", "error"]}
+              merged_results = []
+              for data in shards:
+                  for k in merged_summary:
+                      merged_summary[k] += data["summary"].get(k, 0)
+                  merged_results.extend(data.get("results", []))
+              merged = {
+                  "engine": shards[0].get("engine", "MoonBit JS Engine"),
+                  "date": shards[0].get("date", "1970-01-01T00:00:00Z"),
+                  "summary": merged_summary,
+                  "categories": {},
+                  "results": merged_results,
+              }
+              with open(f"test262-{mode}-results.json", "w") as f:
+                  json.dump(merged, f, indent=2)
+
+          # Machine-readable summary for dashboards and report tooling.
+          #
+          # Schema notes:
+          # - `verdict` is the top-level decision: PASS / REGRESSION / INCOMPLETE.
+          # - `rate` is a numeric percentage, not a formatted string.
+          # - `baseline` is the minimum expected passed count for that scope.
+          # - `delta` is passed - baseline.
+          # - Missing modes are reported in `missing`; they are not synthesized as
+          #   zero-valued mode entries because that would blur "not measured" vs "0 pass".
+          modes_payload = {}
+          for (mode, passed, failed_count, timeouts, rate, baseline_min, delta) in rows:
+              modes_payload[mode] = {
+                  "passed": int(passed),
+                  "failed": int(failed_count),
+                  "timeouts": int(timeouts),
+                  "executed": int(passed + failed_count),
+                  "rate": float(rate),
+                  "baseline": int(baseline_min),
+                  "delta": int(delta),
+              }
+
+          shards_payload = []
+          for (mode, shard_index, shard_total, passed, failed_count, timeouts, rate) in shard_rows:
+              shards_payload.append({
+                  "mode": mode,
+                  "shard_index": int(shard_index),
+                  "shard_total": int(shard_total),
+                  "passed": int(passed),
+                  "failed": int(failed_count),
+                  "timeouts": int(timeouts),
+                  "executed": int(passed + failed_count),
+                  "rate": float(rate),
+              })
+
+          summary_payload = {
+              "schema_version": 1,
+              "verdict": verdict,
+              "shard_total": int(SHARD_TOTAL),
+              "combined": {
+                  "passed": int(total_passed),
+                  "failed": int(total_failed),
+                  "timeouts": int(total_timeouts),
+                  "executed": int(total_passed + total_failed),
+                  "rate": float(combined_rate),
+                  "baseline": int(combined_min),
+                  "delta": int(combined_delta),
+              },
+              "modes": modes_payload,
+              "shards": shards_payload,
+              "missing": list(missing),
+              "regressions": list(regressions),
+          }
+
+          with open("test262-summary.json", "w") as f:
+              json.dump(summary_payload, f, indent=2, sort_keys=True)
+              f.write("\n")
 
           # Verdict
           failed = False
           if missing:
-              print(f"\nERROR: Missing results for: {', '.join(missing)}", file=sys.stderr)
+              print(f"::error title=Test262 results incomplete::missing shard results for: {', '.join(missing)}")
               failed = True
           if regressions:
               for r in regressions:
-                  print(f"\nREGRESSION: {r}", file=sys.stderr)
+                  print(f"::error title=Test262 regression::{r}")
               failed = True
           elif not missing:
               print(f"\nAll baselines met.")
@@ -440,3 +539,16 @@ jobs:
           if failed:
               sys.exit(1)
           PYEOF
+
+      - name: Upload combined report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test262-combined-report
+          path: |
+            test262-summary.md
+            test262-summary.json
+            test262-non-strict-results.json
+            test262-strict-results.json
+          if-no-files-found: warn
+          retention-days: 90
