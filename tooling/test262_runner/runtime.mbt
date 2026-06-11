@@ -141,10 +141,11 @@ async fn run_test_tasks(
   harness_options : HarnessOptions,
   progress_log : String,
   merged_log : String,
-  on_progress : async (Int, Int) -> Unit,
+  on_progress : async (Int, Int, Double) -> Unit,
 ) -> (Array[TestResult], Double) {
   let done_count = Ref(0)
   let total = test_tasks.length()
+  let start_time = @async.now()
   let jobs : Array[async () -> TestResult] = []
   for task in test_tasks {
     let test_path = task.0
@@ -161,11 +162,11 @@ async fn run_test_tasks(
       )
       write_result_logs(progress_log, merged_log, result)
       done_count.val += 1
-      on_progress(done_count.val, total)
+      let elapsed_s = (@async.now() - start_time).to_double() / 1000.0
+      on_progress(done_count.val, total, elapsed_s)
       result
     })
   }
-  let start_time = @async.now()
   let results = @async.all(jobs, max_concurrent=threads)
   (results, (@async.now() - start_time).to_double() / 1000.0)
 }
@@ -195,6 +196,17 @@ fn render_progress_bar(done : Int, total : Int) -> String {
   " (" +
   pct.to_string() +
   "%)"
+}
+
+///|
+fn format_eta(elapsed_s : Double, done : Int, total : Int) -> String {
+  guard done > 0 && done < total else { return "" }
+  let eta_s = (elapsed_s / done.to_double() * (total - done).to_double()).to_int()
+  if eta_s < 60 {
+    " ETA: \{eta_s}s"
+  } else {
+    " ETA: \{eta_s / 60}m\{eta_s % 60}s"
+  }
 }
 
 ///|
@@ -320,9 +332,11 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   }
   let interactive = is_interactive()
   let last_pct_bucket = Ref(-1)
-  let on_progress : async (Int, Int) -> Unit = (done, total) => {
+  let on_progress : async (Int, Int, Double) -> Unit = (done, total, elapsed_s) => {
     if interactive {
-      @stdio.stderr.write("\r" + render_progress_bar(done, total)) catch {
+      let line = render_progress_bar(done, total) +
+        format_eta(elapsed_s, done, total)
+      @stdio.stderr.write("\r" + line) catch {
         _ => ()
       }
     } else {
@@ -330,6 +344,7 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
       if bucket > last_pct_bucket.val {
         last_pct_bucket.val = bucket
         let pct = if total == 0 { 100 } else { done * 100 / total }
+        let eta = format_eta(elapsed_s, done, total)
         @stdio.stderr.write(
           "[" +
           done.to_string() +
@@ -337,7 +352,9 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
           total.to_string() +
           "] " +
           pct.to_string() +
-          "%\n",
+          "%" +
+          eta +
+          "\n",
         ) catch {
           _ => ()
         }
