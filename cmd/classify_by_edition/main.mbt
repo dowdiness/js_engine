@@ -85,6 +85,11 @@ fn main {
         default_values=["15"],
         about="Number of entries shown per failure breakdown section (default 15)",
       ),
+      @argparse.OptionArg(
+        "json-output",
+        default_values=[""],
+        about="Also write per-mode, per-edition counts as JSON to this path",
+      ),
     ],
     positionals=[
       @argparse.PositionArg(
@@ -113,6 +118,7 @@ fn main {
     list_failures=flag_value(matches.flags, "list-failures"),
     edition_filter=optional_value(matches.values, "edition"),
     top=parse_top(first_value(matches.values, "top", "15")),
+    json_output=first_value(matches.values, "json-output", ""),
   ) catch {
     err => {
       eprintln("Error: \{err}")
