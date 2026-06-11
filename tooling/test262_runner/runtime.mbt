@@ -141,7 +141,10 @@ async fn run_test_tasks(
   harness_options : HarnessOptions,
   progress_log : String,
   merged_log : String,
+  on_progress : async (Int, Int) -> Unit,
 ) -> (Array[TestResult], Double) {
+  let done_count = Ref(0)
+  let total = test_tasks.length()
   let jobs : Array[async () -> TestResult] = []
   for task in test_tasks {
     let test_path = task.0
@@ -157,12 +160,41 @@ async fn run_test_tasks(
         harness_options~,
       )
       write_result_logs(progress_log, merged_log, result)
+      done_count.val += 1
+      on_progress(done_count.val, total)
       result
     })
   }
   let start_time = @async.now()
   let results = @async.all(jobs, max_concurrent=threads)
   (results, (@async.now() - start_time).to_double() / 1000.0)
+}
+
+///|
+fn is_interactive() -> Bool {
+  @env.get_env_var("CI").unwrap_or("") == "" &&
+  @env.get_env_var("TERM").unwrap_or("") != "dumb"
+}
+
+///|
+fn render_progress_bar(done : Int, total : Int) -> String {
+  let pct = if total == 0 { 100 } else { done * 100 / total }
+  let width = 30
+  let filled = if total == 0 { width } else { done * width / total }
+  let bar = if filled >= width {
+    String::make(width, '=')
+  } else {
+    String::make(filled, '=') + ">" + String::make(width - filled - 1, ' ')
+  }
+  "[" +
+  bar +
+  "] " +
+  done.to_string() +
+  "/" +
+  total.to_string() +
+  " (" +
+  pct.to_string() +
+  "%)"
 }
 
 ///|
@@ -286,6 +318,32 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   initialize_result_logs(config.log, config.merged_log) catch {
     err => fail("failed to open result log: \{err}")
   }
+  let interactive = is_interactive()
+  let last_pct_bucket = Ref(-1)
+  let on_progress : async (Int, Int) -> Unit = (done, total) => {
+    if interactive {
+      @stdio.stderr.write("\r" + render_progress_bar(done, total)) catch {
+        _ => ()
+      }
+    } else {
+      let bucket = if total == 0 { 10 } else { done * 10 / total }
+      if bucket > last_pct_bucket.val {
+        last_pct_bucket.val = bucket
+        let pct = if total == 0 { 100 } else { done * 100 / total }
+        @stdio.stderr.write(
+          "[" +
+          done.to_string() +
+          "/" +
+          total.to_string() +
+          "] " +
+          pct.to_string() +
+          "%\n",
+        ) catch {
+          _ => ()
+        }
+      }
+    }
+  }
   let (results, total_time) = run_test_tasks(
     engine_cmd,
     test262_dir,
@@ -296,7 +354,13 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
     config.harness_options,
     config.log,
     config.merged_log,
+    on_progress,
   )
+  if interactive {
+    @stdio.stderr.write("\n") catch {
+      _ => ()
+    }
+  }
   if config.verbose {
     write_verbose_marks(out, results)
   }
