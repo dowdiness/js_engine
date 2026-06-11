@@ -282,6 +282,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
 
     steps:
       # Full checkout (not sparse): the per-edition aggregate runs
@@ -506,6 +509,24 @@ jobs:
               with open(f"test262-{mode}-results.json", "w") as f:
                   json.dump(merged, f, indent=2)
 
+          # Compact known-failures list for future diff reporting.
+          # Only written when all shards are present — partial data would produce
+          # a misleading "recovered" signal on the next run that downloads it.
+          if not missing:
+              kf = []
+              for mode in MODE_ORDER:
+                  rp = f"test262-{mode}-results.json"
+                  if os.path.exists(rp):
+                      with open(rp) as fh:
+                          data = json.load(fh)
+                      for r in data.get("results", []):
+                          if r.get("status") not in ("pass", "skip"):
+                              kf.append({"path": r["path"], "mode": mode})
+              kf.sort(key=lambda r: (r["path"], r["mode"]))
+              with open("test262-known-failures.json", "w") as f:
+                  json.dump(kf, f)
+                  f.write("\n")
+
           # Per-category aggregate (summed counts, rates recomputed — never
           # average shard pass rates).
           categories_payload = {
@@ -717,5 +738,81 @@ jobs:
             test262-editions.json
             test262-non-strict-results.json
             test262-strict-results.json
+            test262-known-failures.json
           if-no-files-found: warn
           retention-days: 90
+
+      - name: Report newly-failed tests
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 << 'PYEOF'
+          import json, os, subprocess, sys, tempfile
+
+          current_path = "test262-known-failures.json"
+          if not os.path.exists(current_path):
+              print("Skipping diff: no known-failures from current run (incomplete or error).")
+              sys.exit(0)
+          with open(current_path) as f:
+              current_failures = {(r["path"], r["mode"]) for r in json.load(f)}
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          current_run_id = os.environ["CURRENT_RUN_ID"]
+
+          # Find the most recent successful regression-check run on main (excluding current)
+          out = subprocess.run(
+              ["gh", "api",
+               f"repos/{repo}/actions/workflows/test262.yml/runs",
+               "-f", "branch=main", "-f", "status=success", "-f", "per_page=5",
+               "--jq",
+               f"[.workflow_runs[] | select(.id | tostring != \"{current_run_id}\")][0].id"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if out.returncode != 0:
+              print(f"gh api lookup failed (skipping diff): {out.stderr.strip()[:200]}")
+              sys.exit(0)
+          prior_run_id = out.stdout.strip()
+          if not prior_run_id or prior_run_id == "null":
+              print("No prior successful main run found; skipping diff.")
+              sys.exit(0)
+
+          # Download the combined-report artifact from that run
+          with tempfile.TemporaryDirectory() as tmpdir:
+              dl = subprocess.run(
+                  ["gh", "run", "download", prior_run_id,
+                   "-n", "test262-combined-report", "-D", tmpdir],
+                  capture_output=True, text=True, timeout=120,
+              )
+              if dl.returncode != 0:
+                  print(f"Could not download prior artifact (run {prior_run_id}, skipping diff): {dl.stderr.strip()[:200]}")
+                  sys.exit(0)
+              prior_path = os.path.join(tmpdir, "test262-known-failures.json")
+              if not os.path.exists(prior_path):
+                  print(f"Prior run {prior_run_id} artifact has no known-failures; skipping diff.")
+                  sys.exit(0)
+              with open(prior_path) as f:
+                  prior_failures = {(r["path"], r["mode"]) for r in json.load(f)}
+
+          newly_failed = sorted(current_failures - prior_failures)
+          recovered = sorted(prior_failures - current_failures)
+
+          if not newly_failed and not recovered:
+              print(f"No change in failing tests vs prior main run {prior_run_id}.")
+          else:
+              print(f"Diff vs prior main run {prior_run_id}:")
+              if newly_failed:
+                  print(f"\n  Newly failing ({len(newly_failed)}):")
+                  for path, mode in newly_failed[:50]:
+                      print(f"    [{mode}] {path}")
+                  if len(newly_failed) > 50:
+                      print(f"    ... and {len(newly_failed) - 50} more")
+              if recovered:
+                  print(f"\n  Recovered ({len(recovered)}):")
+                  for path, mode in recovered[:20]:
+                      print(f"    [{mode}] {path}")
+                  if len(recovered) > 20:
+                      print(f"    ... and {len(recovered) - 20} more")
+          PYEOF
