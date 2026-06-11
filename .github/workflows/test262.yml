@@ -764,7 +764,7 @@ jobs:
 
           # Find the most recent successful regression-check run on main (excluding current)
           out = subprocess.run(
-              ["gh", "api",
+              ["gh", "api", "--method", "GET",
                f"repos/{repo}/actions/workflows/test262.yml/runs",
                "-f", "branch=main", "-f", "status=success", "-f", "per_page=5",
                "--jq",
