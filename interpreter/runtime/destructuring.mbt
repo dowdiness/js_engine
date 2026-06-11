@@ -74,10 +74,6 @@ fn Interpreter::bind_pattern(
           message=value.to_string() + " is not iterable (cannot destructure)",
         )
       }
-      // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
-      if elements.length() == 0 && rest is None {
-        return
-      }
       // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
       let loc_dstr = @token.Loc::default()
       let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
@@ -102,7 +98,14 @@ fn Interpreter::bind_pattern(
             message=value.to_string() + " is not iterable (cannot destructure)",
           )
       }
+      // Per spec §7.4.1 GetIterator: next method lookup is part of iterator record
+      // construction; its getter is observable even for empty patterns.
       let next_method = self.get_iterator_next_method(iterator, loc_dstr)
+      // Per spec: ArrayBindingPattern : [ ] still requires GetIterator + IteratorClose
+      if elements.length() == 0 && rest is None {
+        self.iterator_close(iterator, loc_dstr)
+        return
+      }
       // Lazily consume iterator values per spec — one next() call per element
       let mut iter_done = false
       for i = 0; i < elements.length(); i = i + 1 {
@@ -323,11 +326,7 @@ fn Interpreter::assign_pattern(
           message=value.to_string() + " is not iterable (cannot destructure)",
         )
       }
-      // Per spec: ArrayBindingPattern : [ ] → no iteration occurs
-      if elements.length() == 0 && rest is None {
-        return
-      }
-      // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
+      // Always use iterator protocol per spec (ArrayAssignmentPattern uses GetIterator)
       let loc_dstr = @token.Loc::default()
       let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
       let iterator_method_dstr = self.get_computed_property(
@@ -351,34 +350,115 @@ fn Interpreter::assign_pattern(
             message=value.to_string() + " is not iterable (cannot destructure)",
           )
       }
+      // Per spec §7.4.1 GetIterator: next method lookup is part of iterator record
+      // construction; its getter is observable even for empty patterns.
       let next_method_a = self.get_iterator_next_method(iterator_a, loc_dstr)
-      // Lazily consume iterator values per spec — one next() call per element
+      // Per spec: ArrayAssignmentPattern : [ ] still requires GetIterator + IteratorClose
+      if elements.length() == 0 && rest is None {
+        self.iterator_close(iterator_a, loc_dstr)
+        return
+      }
+      // Lazily consume iterator values per spec — one next() call per element.
+      // For AssignTarget elements, lref is evaluated BEFORE the iterator step
+      // per spec §13.1 (lref-before-IteratorStepValue ordering).
       let mut iter_done_a = false
       for i = 0; i < elements.length(); i = i + 1 {
         // Advance iterator one step for this element position. Elisions only
         // perform IteratorStep; they must not perform IteratorValue.
         match elements[i] {
           Some(pat) => {
-            let val : Value = if iter_done_a {
-              Undefined
-            } else {
-              match
-                self.iterator_step_result(iterator_a, next_method_a, loc_dstr) {
-                None => {
-                  iter_done_a = true
-                  Undefined
-                }
-                Some(result) => self.iterator_result_value(result, loc_dstr)
-              }
+            // For AssignTarget patterns, pre-evaluate the lref before consuming
+            // from the iterator so that lref errors fire before next() is called.
+            let assign_expr : @ast.Expr? = match pat {
+              AssignTarget(expr) => Some(expr)
+              DefaultPat(AssignTarget(expr), _) => Some(expr)
+              _ => None
             }
-            self.assign_pattern(ctx, pat, val, env) catch {
-              e => {
-                if !iter_done_a {
-                  self.iterator_close(iterator_a, loc_dstr) catch {
-                    _ => ()
+            match assign_expr {
+              Some(expr) => {
+                // Phase 1: evaluate lref (may throw before any iterator call)
+                let lref = self.eval_lref_of_expr(ctx, expr, env) catch {
+                  e => {
+                    if !iter_done_a {
+                      self.iterator_close(iterator_a, loc_dstr) catch {
+                        _ => ()
+                      }
+                    }
+                    raise e
                   }
                 }
-                raise e
+                // Phase 2: consume one value from iterator
+                let val : Value = if iter_done_a {
+                  Undefined
+                } else {
+                  match
+                    self.iterator_step_result(
+                      iterator_a, next_method_a, loc_dstr,
+                    ) {
+                    None => {
+                      iter_done_a = true
+                      Undefined
+                    }
+                    Some(result) => self.iterator_result_value(result, loc_dstr)
+                  }
+                }
+                // Phase 3: apply default initializer if element is undefined
+                let final_val : Value = match pat {
+                  DefaultPat(_, default_expr) =>
+                    if val is Undefined {
+                      self.eval_expr(ctx, default_expr, env) catch {
+                        e => {
+                          if !iter_done_a {
+                            self.iterator_close(iterator_a, loc_dstr) catch {
+                              _ => ()
+                            }
+                          }
+                          raise e
+                        }
+                      }
+                    } else {
+                      val
+                    }
+                  _ => val
+                }
+                // Phase 4: assign via the pre-evaluated lref
+                self.put_lref(ctx, lref, final_val, env) catch {
+                  e => {
+                    if !iter_done_a {
+                      self.iterator_close(iterator_a, loc_dstr) catch {
+                        _ => ()
+                      }
+                    }
+                    raise e
+                  }
+                }
+              }
+              None => {
+                // Non-AssignTarget: consume from iterator, then bind pattern
+                let val : Value = if iter_done_a {
+                  Undefined
+                } else {
+                  match
+                    self.iterator_step_result(
+                      iterator_a, next_method_a, loc_dstr,
+                    ) {
+                    None => {
+                      iter_done_a = true
+                      Undefined
+                    }
+                    Some(result) => self.iterator_result_value(result, loc_dstr)
+                  }
+                }
+                self.assign_pattern(ctx, pat, val, env) catch {
+                  e => {
+                    if !iter_done_a {
+                      self.iterator_close(iterator_a, loc_dstr) catch {
+                        _ => ()
+                      }
+                    }
+                    raise e
+                  }
+                }
               }
             }
           }
@@ -392,8 +472,33 @@ fn Interpreter::assign_pattern(
             }
         }
       }
-      // Handle rest pattern: collect remaining iterator values
+      // Handle rest pattern: collect remaining iterator values.
+      // For AssignTarget rest, lref is evaluated BEFORE consuming rest values.
       match rest {
+        Some(AssignTarget(expr)) => {
+          // Pre-evaluate lref before consuming rest values from iterator
+          let lref = self.eval_lref_of_expr(ctx, expr, env) catch {
+            e => {
+              if !iter_done_a {
+                self.iterator_close(iterator_a, loc_dstr) catch {
+                  _ => ()
+                }
+              }
+              raise e
+            }
+          }
+          let rest_elements : Array[Value] = []
+          if !iter_done_a {
+            while true {
+              match
+                self.iterator_step_value(iterator_a, next_method_a, loc_dstr) {
+                None => break
+                Some(v) => rest_elements.push(v)
+              }
+            }
+          }
+          self.put_lref(ctx, lref, make_array(rest_elements), env)
+        }
         Some(rest_pat) => {
           let rest_elements : Array[Value] = []
           if iter_done_a {
@@ -567,5 +672,78 @@ fn Interpreter::assign_to_expr(
       raise @errors.ReferenceError(
         message="Invalid left-hand side in for-in/for-of",
       )
+  }
+}
+
+// A pre-evaluated assignment reference: the LHS components are resolved eagerly
+// before consuming from the iterator, so that lref errors fire before any next() call.
+
+///|
+priv enum EvalLRef {
+  IdentLRef(String)
+  MemberLRef(Value, String, @token.Loc)
+  ComputedLRef(Value, Value, @token.Loc)
+}
+
+///|
+// Evaluate the left-hand side of an assignment target expression without assigning.
+// Used to implement spec §13.1 lref-before-IteratorStep ordering in destructuring.
+fn Interpreter::eval_lref_of_expr(
+  self : Interpreter,
+  ctx : ExecContext,
+  expr : @ast.Expr,
+  env : Environment,
+) -> EvalLRef raise Error {
+  match expr {
+    Ident(name, _) => IdentLRef(name)
+    Member(obj_expr, prop, loc) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      MemberLRef(obj, prop, loc)
+    }
+    ComputedMember(obj_expr, key_expr, loc) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let key = self.eval_expr(ctx, key_expr, env)
+      ComputedLRef(obj, key, loc)
+    }
+    _ =>
+      raise @errors.ReferenceError(
+        message="Invalid left-hand side in destructuring assignment",
+      )
+  }
+}
+
+///|
+// Assign a value to a pre-evaluated assignment reference.
+fn Interpreter::put_lref(
+  self : Interpreter,
+  ctx : ExecContext,
+  lref : EvalLRef,
+  value : Value,
+  env : Environment,
+) -> Unit raise Error {
+  match lref {
+    IdentLRef(name) =>
+      env.assign(name, value) catch {
+        @errors.ReferenceError(_) =>
+          if !ctx.strict {
+            self.global.def(name, value, VarBinding)
+            self.mirror_to_global(name, value, configurable=true)
+          } else {
+            raise @errors.ReferenceError(message="\{name} is not defined")
+          }
+        e => raise e
+      }
+    MemberLRef(obj, prop, loc) => {
+      let _ = self.set_property(obj, prop, value, loc, strict=ctx.strict)
+    }
+    ComputedLRef(obj, key, loc) => {
+      let _ = self.set_computed_property(
+        obj,
+        key,
+        value,
+        loc,
+        strict=ctx.strict,
+      )
+    }
   }
 }
