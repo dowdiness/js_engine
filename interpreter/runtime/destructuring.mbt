@@ -98,12 +98,14 @@ fn Interpreter::bind_pattern(
             message=value.to_string() + " is not iterable (cannot destructure)",
           )
       }
+      // Per spec §7.4.1 GetIterator: next method lookup is part of iterator record
+      // construction; its getter is observable even for empty patterns.
+      let next_method = self.get_iterator_next_method(iterator, loc_dstr)
       // Per spec: ArrayBindingPattern : [ ] still requires GetIterator + IteratorClose
       if elements.length() == 0 && rest is None {
         self.iterator_close(iterator, loc_dstr)
         return
       }
-      let next_method = self.get_iterator_next_method(iterator, loc_dstr)
       // Lazily consume iterator values per spec — one next() call per element
       let mut iter_done = false
       for i = 0; i < elements.length(); i = i + 1 {
@@ -348,12 +350,14 @@ fn Interpreter::assign_pattern(
             message=value.to_string() + " is not iterable (cannot destructure)",
           )
       }
+      // Per spec §7.4.1 GetIterator: next method lookup is part of iterator record
+      // construction; its getter is observable even for empty patterns.
+      let next_method_a = self.get_iterator_next_method(iterator_a, loc_dstr)
       // Per spec: ArrayAssignmentPattern : [ ] still requires GetIterator + IteratorClose
       if elements.length() == 0 && rest is None {
         self.iterator_close(iterator_a, loc_dstr)
         return
       }
-      let next_method_a = self.get_iterator_next_method(iterator_a, loc_dstr)
       // Lazily consume iterator values per spec — one next() call per element.
       // For AssignTarget elements, lref is evaluated BEFORE the iterator step
       // per spec §13.1 (lref-before-IteratorStepValue ordering).
