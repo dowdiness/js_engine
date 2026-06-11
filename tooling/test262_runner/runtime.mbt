@@ -322,6 +322,9 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
     harness_options=config.harness_options,
   )
   out.write_string("  Results saved to: \{output_file}\n")
-  let code = if agg.overall.failed > 0 { 1 } else { 0 }
-  { stdout: out.to_string(), stderr: err.to_string(), code }
+  // Conformance failures are result data (recorded in the JSON), not a
+  // process failure. Exit codes signal runner health only: 0 = completed
+  // and wrote results; 1 = runtime/internal error (raised before this
+  // point, including a failed save_results); 2 = CLI usage error.
+  { stdout: out.to_string(), stderr: err.to_string(), code: 0 }
 }

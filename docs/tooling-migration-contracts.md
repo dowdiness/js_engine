@@ -121,13 +121,14 @@ A completed result log may contain all five statuses. Merged logs contain only
 The Test262 runner (native `cmd/test262_runner`, authoritative) follows
 this exit-code contract:
 
-- invalid CLI arguments exit non-zero through argparse;
-- missing Test262 directory, unreadable tests file, missing engine command, or
-  unreadable resume/log files exit non-zero;
-- after a completed run, any failed tests cause a non-zero exit;
-- skips, timeouts, and runner errors are represented in JSON counts. Promotion
-  work must decide explicitly whether timeout/error counts should also force a
-  non-zero exit before changing behavior.
+- invalid CLI arguments exit 2 through argparse;
+- missing Test262 directory, unreadable tests file, missing engine command,
+  unreadable resume/log files, or a failure to write the results JSON exit 1;
+- a completed run that wrote its results JSON exits 0 regardless of how many
+  tests failed — conformance failures (including skips, timeouts, and runner
+  errors) are result data, recorded in the JSON counts, not a process failure.
+  CI decides acceptability downstream (the `regression-check` job compares
+  against `test262-baseline.json`).
 
 ## Shared Test262 metadata contract
 
