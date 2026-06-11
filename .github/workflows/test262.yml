@@ -240,12 +240,12 @@ jobs:
 
       - name: Run Test262 (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }})
         # MoonBit cmd/test262_runner is authoritative (issue #255 promotion).
-        # `shell: bash` enables `-eo pipefail`. We disable
-        # errexit locally so a non-zero runner status doesn't skip the
-        # per-edition table — it's the more useful signal in CI logs than the
-        # runner's one-row summary. The runner's exit code is preserved at the
-        # end via `exit $rc`, and `continue-on-error: true` lets the workflow
-        # proceed to upload.
+        # The runner exits 0 whenever it completes and writes results JSON —
+        # conformance failures are data, judged by regression-check. A
+        # non-zero status here is a real runner/infra failure and fails the
+        # job (artifact upload still runs via `if: always()`). `shell: bash`
+        # enables `-eo pipefail`; errexit is disabled locally so the
+        # per-edition log table still prints before a failure propagates.
         shell: bash
         run: |
           set +e
@@ -258,51 +258,38 @@ jobs:
             --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \
             --summary
           rc=$?
-          # Write per-shard header and pass rates to this job's step summary page.
-          python3 << 'PYEOF'
-          import json, os
-          result_file = "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json"
-          sp = os.environ.get("GITHUB_STEP_SUMMARY")
-          if sp and os.path.exists(result_file) and os.path.getsize(result_file) > 0:
-              try:
-                  s = json.load(open(result_file))["summary"]
-                  p, fa = s["passed"], s["failed"]
-                  ex = p + fa
-                  disc = s["total"]
-                  pe = f"{p/ex*100:.1f}%" if ex > 0 else "n/a"
-                  pd = f"{p/disc*100:.1f}%" if disc > 0 else "n/a"
-                  with open(sp, "a") as out:
-                      out.write("## Test262 — ${{ matrix.mode }} mode, Shard ${{ matrix.shard }} of ${{ env.SHARD_TOTAL }}\n\n")
-                      out.write(f"- **Passed / Executed:** {pe} ({p:,} / {ex:,})\n")
-                      out.write(f"- **Passed / Discovered:** {pd} ({p:,} / {disc:,})\n\n")
-                      out.write("---\n\n")
-              except Exception:
-                  pass
-          PYEOF
+          # Keep this job's summary page minimal; the regression-check job
+          # owns the aggregate verdict and all detail tables.
+          {
+            echo "## Test262 shard collected"
+            echo
+            echo "Mode: ${{ matrix.mode }} — Shard: ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} — runner exit: $rc"
+            echo
+            echo "See the \`regression-check\` summary for the aggregate verdict."
+          } >> "$GITHUB_STEP_SUMMARY"
           classify_rc=0
           # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
           # traceback on a truncated/empty JSON if the runner crashed early.
+          # Log-only: each shard covers 1/N of the tests, so its per-edition
+          # table is partial — useful for log digging, noise in the summary.
           if [ -s "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json" ]; then
             echo
             echo "──────── Per-edition breakdown (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }}) ────────"
             ./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe --markdown \
               --test262-root ./test262 \
-              "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-            # PIPESTATUS[0] = classifier (tee always succeeds with -a).
-            classify_rc=${PIPESTATUS[0]}
+              "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json"
+            classify_rc=$?
             if [ "$classify_rc" -ne 0 ]; then
-              echo "::warning::classify_by_edition exited $classify_rc — per-edition table may be incomplete" >&2
+              echo "::warning title=Test262 report incomplete::classify_by_edition exited $classify_rc — per-edition table may be incomplete" >&2
             fi
           fi
           # Runner failure dominates; otherwise propagate classifier failure
-          # so a silently-broken report path fails this step (visible under
-          # continue-on-error as a marked failure, not green-with-warning).
+          # so a silently-broken report path fails this step.
           if [ "$rc" -ne 0 ]; then
+            echo "::error title=Test262 runner failed::runner exited $rc without usable results JSON (mode ${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }})" >&2
             exit "$rc"
           fi
           exit "$classify_rc"
-        continue-on-error: true
 
       - name: Upload results
         if: always()
