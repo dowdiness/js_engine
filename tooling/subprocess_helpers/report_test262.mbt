@@ -585,18 +585,216 @@ fn find_file_rec(dir : String, filename : String) -> String? raise {
 }
 
 ///|
-fn find_results(artifact_dir : String) -> (String, String) raise {
-  let strict = find_file_rec(artifact_dir, "test262-strict-results.json")
-  let nonstrict = find_file_rec(artifact_dir, "test262-non-strict-results.json")
-  match (strict, nonstrict) {
-    (Some(s), Some(n)) => (s, n)
-    _ =>
-      fail(
-        "Missing strict or non-strict results under " +
-        artifact_dir +
-        ". Did both CI jobs succeed?",
-      )
+fn basename(path : String) -> String {
+  let chars = path.to_array()
+  let mut last = -1
+  for i in 0..<chars.length() {
+    if chars[i] == '/' {
+      last = i
+    }
   }
+  path.substring(start=last + 1)
+}
+
+///|
+fn parse_uint(s : String, context : String) -> Int raise {
+  guard s.length() > 0 else {
+    fail("expected positive integer, got empty string (in '" + context + "')")
+  }
+  let mut n = 0
+  for ch in s {
+    let d = ch.to_int() - 48 // '0' = 48
+    guard d >= 0 && d <= 9 else {
+      fail(
+        "non-digit '" + ch.to_string() + "' in '" + s + "' (in " + context + ")",
+      )
+    }
+    n = n * 10 + d
+  }
+  guard n > 0 else {
+    fail("expected positive integer in '" + s + "' (in " + context + "')")
+  }
+  n
+}
+
+///|
+// Parses "NofM" from the inner part of a shard filename, e.g. "2of4" → (2, 4).
+fn parse_shard_of_total(inner : String, context : String) -> (Int, Int) raise {
+  let chars = inner.to_array()
+  let len = chars.length()
+  let mut of_pos = -1
+  for i in 0..<len {
+    if i + 1 < len && chars[i] == 'o' && chars[i + 1] == 'f' {
+      of_pos = i
+      break
+    }
+  }
+  guard of_pos > 0 else {
+    fail(
+      "shard file '" + context + "': expected NofM format, got '" + inner + "'",
+    )
+  }
+  (
+    parse_uint(inner.substring(end=of_pos), context),
+    parse_uint(inner.substring(start=of_pos + 2), context),
+  )
+}
+
+///|
+// Validates that paths form a complete, contiguous NofM shard set.
+// Fails if any shard is missing or filenames disagree on the total.
+fn validate_shard_completeness(
+  paths : Array[String],
+  prefix : String,
+  suffix : String,
+  mode : String,
+) -> Unit raise {
+  let mut expected_total = 0
+  for path in paths {
+    let name = basename(path)
+    let inner = name.substring(
+      start=prefix.length(),
+      end=name.length() - suffix.length(),
+    )
+    let (_, t) = parse_shard_of_total(inner, name)
+    guard expected_total == 0 || expected_total == t else {
+      fail(mode + " shards have inconsistent totals in filenames")
+    }
+    expected_total = t
+  }
+  let found = paths.length()
+  guard found == expected_total else {
+    fail(
+      mode +
+      ": found " +
+      found.to_string() +
+      "/" +
+      expected_total.to_string() +
+      " shards — " +
+      (expected_total - found).to_string() +
+      " missing. Rerun make test262-report against a complete CI run.",
+    )
+  }
+}
+
+///|
+fn collect_files_matching(
+  dir : String,
+  prefix : String,
+  suffix : String,
+) -> Array[String] raise {
+  let files : Array[String] = []
+  guard @fs.path_exists(dir) && @fs.is_dir(dir) else { return files }
+  let entries = @fs.read_dir(dir)
+  entries.sort()
+  for entry in entries {
+    let path = join_path(dir, entry)
+    if @fs.is_dir(path) {
+      let sub = collect_files_matching(path, prefix, suffix)
+      for f in sub {
+        files.push(f)
+      }
+    } else if @fs.is_file(path) &&
+      entry.has_prefix(prefix) &&
+      entry.has_suffix(suffix) {
+      files.push(path)
+    }
+  }
+  files
+}
+
+///|
+fn merge_shards_to_file(
+  shard_paths : Array[String],
+  out_path : String,
+) -> Unit raise {
+  let mut m_total = 0
+  let mut m_passed = 0
+  let mut m_failed = 0
+  let mut m_skipped = 0
+  let mut m_timeout = 0
+  let mut m_error = 0
+  let all_results : Array[Json] = []
+  for path in shard_paths {
+    let root = json_object(
+      @json.parse(@fs.read_file_to_string(path)),
+      "shard result",
+    )
+    let s = summary_from_json(required_field(root, "summary", "shard summary"))
+    m_total += s.total
+    m_passed += s.passed
+    m_failed += s.failed
+    m_skipped += s.skipped
+    m_timeout += s.timeout
+    m_error += s.error
+    match root.get("results") {
+      Some(Array(items)) =>
+        for item in items {
+          all_results.push(item)
+        }
+      _ => ()
+    }
+  }
+  let summary_fields : Map[String, Json] = {
+    "total": Json::number(m_total.to_double(), repr=m_total.to_string()),
+    "passed": Json::number(m_passed.to_double(), repr=m_passed.to_string()),
+    "failed": Json::number(m_failed.to_double(), repr=m_failed.to_string()),
+    "skipped": Json::number(m_skipped.to_double(), repr=m_skipped.to_string()),
+    "timeout": Json::number(m_timeout.to_double(), repr=m_timeout.to_string()),
+    "error": Json::number(m_error.to_double(), repr=m_error.to_string()),
+  }
+  let empty_cats : Map[String, Json] = {}
+  let merged_fields : Map[String, Json] = {
+    "engine": Json::string("MoonBit JS Engine"),
+    "date": Json::string("1970-01-01T00:00:00Z"),
+    "summary": Json::object(summary_fields),
+    "categories": Json::object(empty_cats),
+    "results": Json::array(all_results),
+  }
+  @fs.write_string_to_file(
+    out_path,
+    Json::object(merged_fields).stringify(indent=2) + "\n",
+  )
+}
+
+///|
+fn find_results(artifact_dir : String) -> (String, String) raise {
+  // Try canonical single-file names first (backward compat with pre-sharding runs)
+  let strict_single = find_file_rec(artifact_dir, "test262-strict-results.json")
+  let nonstrict_single = find_file_rec(
+    artifact_dir, "test262-non-strict-results.json",
+  )
+  match (strict_single, nonstrict_single) {
+    (Some(s), Some(n)) => return (s, n)
+    _ => ()
+  }
+  // Sharded run: locate shard files, merge into canonical names, return paths
+  let strict_shards = collect_files_matching(
+    artifact_dir, "test262-strict-shard-", "-results.json",
+  )
+  let nonstrict_shards = collect_files_matching(
+    artifact_dir, "test262-non-strict-shard-", "-results.json",
+  )
+  guard strict_shards.length() > 0 && nonstrict_shards.length() > 0 else {
+    fail(
+      "Missing strict or non-strict results under " +
+      artifact_dir +
+      ". Did both CI jobs succeed?",
+    )
+  }
+  validate_shard_completeness(
+    strict_shards, "test262-strict-shard-", "-results.json", "strict",
+  )
+  validate_shard_completeness(
+    nonstrict_shards, "test262-non-strict-shard-", "-results.json", "non-strict",
+  )
+  let strict_path = join_path(artifact_dir, "test262-strict-results.json")
+  let nonstrict_path = join_path(
+    artifact_dir, "test262-non-strict-results.json",
+  )
+  merge_shards_to_file(strict_shards, strict_path)
+  merge_shards_to_file(nonstrict_shards, nonstrict_path)
+  (strict_path, nonstrict_path)
 }
 
 ///|
@@ -647,12 +845,17 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
         None => current_dir_or_dot()
       }
       let classifier = join_path(
-        repo_root,
-        "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
+        repo_root, "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
       )
       let capture = collect_process_args(
         classifier,
-        ["--markdown", "--test262-root", join_path(repo_root, "test262"), strict_path, nonstrict_path],
+        [
+          "--markdown",
+          "--test262-root",
+          join_path(repo_root, "test262"),
+          strict_path,
+          nonstrict_path,
+        ],
         REPORT_CLASSIFIER_TIMEOUT_MS,
       )
       stdout += capture.stdout
