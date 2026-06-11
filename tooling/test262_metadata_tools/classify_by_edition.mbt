@@ -952,6 +952,50 @@ fn append_section(
 }
 
 ///|
+fn classify_json_int(value : Int) -> Json {
+  Json::number(value.to_double(), repr=value.to_string())
+}
+
+///|
+fn edition_bucket_json(bucket : EditionBucket) -> Json {
+  let executed = bucket_executed(bucket)
+  let rate = if executed > 0 {
+    bucket.passed.to_double() / executed.to_double() * 100.0
+  } else {
+    0.0
+  }
+  let discovered_rate = if bucket.total > 0 {
+    bucket.passed.to_double() / bucket.total.to_double() * 100.0
+  } else {
+    0.0
+  }
+  Json::object({
+    "total": classify_json_int(bucket.total),
+    "executed": classify_json_int(executed),
+    "passed": classify_json_int(bucket.passed),
+    "failed": classify_json_int(bucket.failed),
+    "skipped": classify_json_int(bucket.skipped),
+    "timeouts": classify_json_int(bucket.timeout),
+    "errors": classify_json_int(bucket.error),
+    "rate": Json::number(rate),
+    "discovered_rate": Json::number(discovered_rate),
+  })
+}
+
+///|
+fn editions_json(buckets : Map[String, EditionBucket]) -> Json {
+  let editions : Map[String, Json] = {}
+  for edition in sorted_edition_keys(buckets) {
+    let bucket = buckets[edition]
+    if bucket.total == 0 {
+      continue
+    }
+    editions[edition] = edition_bucket_json(bucket)
+  }
+  Json::object(editions)
+}
+
+///|
 /// Classify existing Test262 result artifacts by ECMAScript edition.
 ///
 /// This reads existing result artifacts only. It does not run the engine.
@@ -962,16 +1006,21 @@ pub fn run_classify_by_edition(
   list_failures? : Bool = false,
   edition_filter? : String? = None,
   top? : Int = 15,
+  json_output? : String = "",
 ) -> ToolRun raise {
   let all_unmapped : Map[String, Int] = {}
   let stdout_lines : Array[String] = []
   let failure_sections : Array[Array[String]] = []
+  let mode_editions : Map[String, Json] = {}
   for result_path in result_paths {
     let data = load_result_file(result_path)
     let (buckets, unmapped) = classify_result_records(
       data.results,
       test262_root,
     )
+    if json_output != "" {
+      mode_editions[data.mode] = editions_json(buckets)
+    }
     append_section(
       stdout_lines,
       render_classify_table(data.mode, buckets),
@@ -1006,6 +1055,15 @@ pub fn run_classify_by_edition(
         " tests",
       )
     }
+  }
+  if json_output != "" {
+    let payload : Map[String, Json] = {
+      "editions": Json::object(mode_editions),
+    }
+    @fs.write_string_to_file(
+      json_output,
+      Json::object(payload).stringify(indent=2) + "\n",
+    )
   }
   { stdout_lines, stderr_lines: [], code: 0 }
 }

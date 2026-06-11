@@ -234,18 +234,14 @@ jobs:
           fi
 
       - name: Build native tools
-        run: |
-          moon build --target native cmd/test262_runner
-          moon build --target native cmd/classify_by_edition
+        run: moon build --target native cmd/test262_runner
 
       - name: Run Test262 (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }})
         # MoonBit cmd/test262_runner is authoritative (issue #255 promotion).
-        # `shell: bash` enables `-eo pipefail`. We disable
-        # errexit locally so a non-zero runner status doesn't skip the
-        # per-edition table — it's the more useful signal in CI logs than the
-        # runner's one-row summary. The runner's exit code is preserved at the
-        # end via `exit $rc`, and `continue-on-error: true` lets the workflow
-        # proceed to upload.
+        # The runner exits 0 whenever it completes and writes results JSON —
+        # conformance failures are data, judged by regression-check. A
+        # non-zero status here is a real runner/infra failure and fails the
+        # job (artifact upload still runs via `if: always()`).
         shell: bash
         run: |
           set +e
@@ -258,51 +254,19 @@ jobs:
             --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \
             --summary
           rc=$?
-          # Write per-shard header and pass rates to this job's step summary page.
-          python3 << 'PYEOF'
-          import json, os
-          result_file = "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json"
-          sp = os.environ.get("GITHUB_STEP_SUMMARY")
-          if sp and os.path.exists(result_file) and os.path.getsize(result_file) > 0:
-              try:
-                  s = json.load(open(result_file))["summary"]
-                  p, fa = s["passed"], s["failed"]
-                  ex = p + fa
-                  disc = s["total"]
-                  pe = f"{p/ex*100:.1f}%" if ex > 0 else "n/a"
-                  pd = f"{p/disc*100:.1f}%" if disc > 0 else "n/a"
-                  with open(sp, "a") as out:
-                      out.write("## Test262 — ${{ matrix.mode }} mode, Shard ${{ matrix.shard }} of ${{ env.SHARD_TOTAL }}\n\n")
-                      out.write(f"- **Passed / Executed:** {pe} ({p:,} / {ex:,})\n")
-                      out.write(f"- **Passed / Discovered:** {pd} ({p:,} / {disc:,})\n\n")
-                      out.write("---\n\n")
-              except Exception:
-                  pass
-          PYEOF
-          classify_rc=0
-          # Use `-s` (non-empty) instead of `-f` so the classifier doesn't
-          # traceback on a truncated/empty JSON if the runner crashed early.
-          if [ -s "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json" ]; then
+          # Keep this job's summary page minimal; the regression-check job
+          # owns the aggregate verdict and all detail tables.
+          {
+            echo "## Test262 shard collected"
             echo
-            echo "──────── Per-edition breakdown (${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }}) ────────"
-            ./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe --markdown \
-              --test262-root ./test262 \
-              "test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json" \
-              | tee -a "$GITHUB_STEP_SUMMARY"
-            # PIPESTATUS[0] = classifier (tee always succeeds with -a).
-            classify_rc=${PIPESTATUS[0]}
-            if [ "$classify_rc" -ne 0 ]; then
-              echo "::warning::classify_by_edition exited $classify_rc — per-edition table may be incomplete" >&2
-            fi
-          fi
-          # Runner failure dominates; otherwise propagate classifier failure
-          # so a silently-broken report path fails this step (visible under
-          # continue-on-error as a marked failure, not green-with-warning).
+            echo "Mode: ${{ matrix.mode }} — Shard: ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} — runner exit: $rc"
+            echo
+            echo "See the \`regression-check\` summary for the aggregate verdict."
+          } >> "$GITHUB_STEP_SUMMARY"
           if [ "$rc" -ne 0 ]; then
-            exit "$rc"
+            echo "::error title=Test262 runner failed::runner exited $rc without usable results JSON (mode ${{ matrix.mode }}, shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }})" >&2
           fi
-          exit "$classify_rc"
-        continue-on-error: true
+          exit "$rc"
 
       - name: Upload results
         if: always()
@@ -317,14 +281,14 @@ jobs:
     needs: test262
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
 
     steps:
-      - name: Checkout baseline
+      # Full checkout (not sparse): the per-edition aggregate runs
+      # cmd/classify_by_edition here, once, against the merged canonical
+      # results — that needs the MoonBit sources and the test262 checkout.
+      - name: Checkout code
         uses: actions/checkout@v5
-        with:
-          sparse-checkout: test262-baseline.json
-          sparse-checkout-cone-mode: false
 
       - name: Download all results
         uses: actions/download-artifact@v8
@@ -332,12 +296,111 @@ jobs:
           pattern: test262-*-results
           merge-multiple: true
 
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Cache build artifacts
+        id: build-cache
+        uses: actions/cache@v5
+        with:
+          path: ./_build
+          key: build-regression-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('**/*.mbt', 'moon.mod', '**/moon.pkg.json') }}
+          restore-keys: build-regression-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install MoonBit dependencies
+        run: moon update
+
+      - name: Build edition classifier
+        run: moon build --target native cmd/classify_by_edition
+
+      - name: Cache test262 suite (read-only)
+        # Read-only restore: the test262 matrix jobs own this cache key;
+        # cache/restore avoids concurrent-write races on the shared key.
+        uses: actions/cache/restore@v5
+        with:
+          path: test262
+          key: test262-${{ env.TEST262_COMMIT }}
+
+      - name: Download Test262 if needed
+        run: |
+          if [ ! -d "test262/test" ]; then
+            curl -fsSL -L "https://api.github.com/repos/tc39/test262/tarball/${{ env.TEST262_COMMIT }}" -o /tmp/test262.tar.gz
+            mkdir -p test262
+            tar -xzf /tmp/test262.tar.gz -C test262 --strip-components=1
+          fi
+
       - name: Check for regressions
         run: |
           python3 << 'PYEOF'
-          import glob, json, os, re, sys
+          import glob, json, os, re, subprocess, sys
 
           SHARD_TOTAL = ${{ env.SHARD_TOTAL }}
+          MODE_ORDER = ["strict", "non-strict"]
+
+          def empty_breakdown_counts():
+              return {
+                  "total": 0,
+                  "passed": 0,
+                  "failed": 0,
+                  "skipped": 0,
+                  "timeouts": 0,
+                  "errors": 0,
+              }
+
+          def add_breakdown_counts(dst, src):
+              # Category objects in the current runner schema guarantee
+              # total/passed/failed/skipped/pass_rate. timeout/error may be absent.
+              dst["total"] += int(src.get("total", 0))
+              dst["passed"] += int(src.get("passed", 0))
+              dst["failed"] += int(src.get("failed", 0))
+              dst["skipped"] += int(src.get("skipped", 0))
+              dst["timeouts"] += int(src.get("timeouts", src.get("timeout", 0)))
+              dst["errors"] += int(src.get("errors", src.get("error", 0)))
+
+          def finalize_breakdown_counts(counts):
+              total = int(counts["total"])
+              skipped = int(counts["skipped"])
+              # For category data, the most stable denominator is total - skipped.
+              # This avoids depending on whether timeout/error are broken out in
+              # category-level objects.
+              executed = max(0, total - skipped)
+              rate = counts["passed"] / executed * 100 if executed > 0 else 0.0
+              discovered_rate = counts["passed"] / total * 100 if total > 0 else 0.0
+              return {
+                  "total": total,
+                  "executed": executed,
+                  "passed": int(counts["passed"]),
+                  "failed": int(counts["failed"]),
+                  "skipped": skipped,
+                  "timeouts": int(counts["timeouts"]),
+                  "errors": int(counts["errors"]),
+                  "rate": float(rate),
+                  "discovered_rate": float(discovered_rate),
+              }
 
           # Load baseline
           with open("test262-baseline.json") as f:
@@ -351,6 +414,8 @@ jobs:
           regressions = []
           rows = []        # (mode, p, fa, to, rate, mode_min, delta) — per mode
           shard_rows = []  # (mode, idx, total, passed, failed, timeouts, rate) — per shard
+          mode_shards = {}  # mode -> [parsed shard json, ...] for complete sets
+          category_acc = {mode: {} for mode in MODE_ORDER}
 
           for mode in ["non-strict", "strict"]:
               shard_files = sorted(glob.glob(f"test262-{mode}-shard-*of{SHARD_TOTAL}-results.json"))
@@ -363,9 +428,14 @@ jobs:
                   missing.append(mode)
                   continue
               p, fa, sk, to = 0, 0, 0, 0
+              mode_shards[mode] = []
               for sf in shard_files:
                   with open(sf) as fh:
                       data = json.load(fh)
+                  mode_shards[mode].append(data)
+                  for category, counts in data.get("categories", {}).items():
+                      acc = category_acc[mode].setdefault(category, empty_breakdown_counts())
+                      add_breakdown_counts(acc, counts)
                   s = data["summary"]
                   s_pass = s["passed"]
                   s_fail = s["failed"]
@@ -409,43 +479,224 @@ jobs:
               print()
               print(f"    combined: {combined_rate:5.1f}%  ({total_passed} passed, {total_failed} failed)  [{sign}{combined_delta} vs {combined_min} min]")
 
-          if total_passed < combined_min:
+          # The combined baseline only means something when every mode is
+          # complete — with a shard missing, a low combined total is an
+          # artifact of the gap, not a regression.
+          if not missing and total_passed < combined_min:
               regressions.append(f"combined: {total_passed} passed < {combined_min} baseline")
 
-          # Write step summary
+          # Merge each complete shard set into the canonical per-mode results
+          # file (pre-sharding name; `make test262-report` finds these first).
+          # Same shape as merge_shards_to_file in tooling/subprocess_helpers:
+          # summed summary, concatenated results.
+          for mode, shards in mode_shards.items():
+              merged_summary = {k: 0 for k in ["total", "passed", "failed", "skipped", "timeout", "error"]}
+              merged_results = []
+              for data in shards:
+                  for k in merged_summary:
+                      merged_summary[k] += data["summary"].get(k, 0)
+                  merged_results.extend(data.get("results", []))
+              merged = {
+                  "engine": shards[0].get("engine", "MoonBit JS Engine"),
+                  "date": shards[0].get("date", "1970-01-01T00:00:00Z"),
+                  "summary": merged_summary,
+                  "categories": {},
+                  "results": merged_results,
+              }
+              with open(f"test262-{mode}-results.json", "w") as f:
+                  json.dump(merged, f, indent=2)
+
+          # Per-category aggregate (summed counts, rates recomputed — never
+          # average shard pass rates).
+          categories_payload = {
+              mode: {
+                  category: finalize_breakdown_counts(counts)
+                  for category, counts in sorted(category_acc.get(mode, {}).items())
+              }
+              for mode in MODE_ORDER
+          }
+
+          # Per-edition aggregate: run classify_by_edition once against the
+          # merged canonical files. Edition mapping needs test metadata, so
+          # this stays in the classifier rather than being re-derived here.
+          edition_md = ""
+          edition_report_error = None
+          editions_payload = {}
+          edition_paths = [
+              p for p in ["test262-strict-results.json", "test262-non-strict-results.json"]
+              if os.path.exists(p)
+          ]
+          classifier = "./_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe"
+          if edition_paths and os.path.exists(classifier) and os.path.isdir("test262/test"):
+              completed = subprocess.run(
+                  [classifier, "--markdown", "--test262-root", "./test262",
+                   "--json-output", "test262-editions.json", *edition_paths],
+                  text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+              )
+              if completed.returncode == 0:
+                  edition_md = completed.stdout.strip()
+                  with open("test262-editions.md", "w") as f:
+                      f.write(edition_md)
+                      f.write("\n")
+                  with open("test262-editions.json") as f:
+                      editions_payload = json.load(f).get("editions", {})
+              else:
+                  edition_report_error = completed.stderr.strip() or f"classify_by_edition exited {completed.returncode}"
+          else:
+              edition_report_error = "edition classifier unavailable; skipped per-edition aggregate"
+          if edition_report_error:
+              print(f"::warning title=Test262 report incomplete::{edition_report_error}")
+
+          # Build the summary markdown once; it feeds both the step summary
+          # and the test262-summary.md artifact.
+          # INCOMPLETE dominates REGRESSION: a regression verdict is only
+          # trustworthy when computed from a complete shard set.
+          badge = "⚠️" if missing else ("🔴" if regressions else "🟢")
+          verdict = "INCOMPLETE" if missing else ("REGRESSION" if regressions else "PASS")
+          verdict_label = {"PASS": "All baselines met", "REGRESSION": "REGRESSION", "INCOMPLETE": "INCOMPLETE"}[verdict]
+          lines = []
+          lines.append(f"## Test262 Conformance {badge} {verdict_label}\n")
+          if rows:
+              lines.append("| Mode | Passed | Failed | Timeouts | P/E | Baseline | Delta |")
+              lines.append("|---|---:|---:|---:|---:|---:|---:|")
+              for (m, p, fa, to, rate, mode_min, delta) in rows:
+                  dsign = "+" if delta >= 0 else ""
+                  lines.append(f"| {m} | {p:,} | {fa:,} | {to:,} | **{rate:.1f}%** | {mode_min:,} | {dsign}{delta:,} |")
+              if combined_exec > 0:
+                  csign = "+" if combined_delta >= 0 else ""
+                  lines.append(f"| **combined** | **{total_passed:,}** | **{total_failed:,}** | **{total_timeouts:,}** | **{combined_rate:.1f}%** | {combined_min:,} | {csign}{combined_delta:,} |")
+          if missing:
+              lines.append("\n### Missing modes\n")
+              for m in missing:
+                  lines.append(f"- {m}: shard results missing or incomplete")
+          if regressions:
+              lines.append("\n### Regressions\n")
+              for r in regressions:
+                  lines.append(f"- {r}")
+
+          def format_breakdown_cell(stats):
+              if not stats:
+                  return "—"
+              pe = "—" if stats["executed"] == 0 else f"{stats['rate']:.1f}%"
+              pd = "—" if stats["total"] == 0 else f"{stats['discovered_rate']:.1f}%"
+              return f"{stats['passed']:,}/{stats['failed']:,}/{stats['skipped']:,} ({pe}, {pd})"
+
+          all_categories = sorted(
+              {c for by_mode in categories_payload.values() for c in by_mode},
+              key=lambda c: (
+                  -max(categories_payload.get(m, {}).get(c, {}).get("failed", 0) for m in MODE_ORDER),
+                  c,
+              ),
+          )
+          if all_categories:
+              TOP_CATEGORIES = 25
+              def category_table(categories):
+                  out = ["| Category | strict | non-strict |", "|---|---:|---:|"]
+                  for c in categories:
+                      out.append("| {c} | {s} | {n} |".format(
+                          c=c,
+                          s=format_breakdown_cell(categories_payload.get("strict", {}).get(c)),
+                          n=format_breakdown_cell(categories_payload.get("non-strict", {}).get(c)),
+                      ))
+                  return out
+              lines.append("\n### Per-category breakdown (top %d by failures)\n" % min(TOP_CATEGORIES, len(all_categories)))
+              lines.append("Each cell is `passed/failed/skipped (Passed / Executed, Passed / Discovered)`.\n")
+              lines.extend(category_table(all_categories[:TOP_CATEGORIES]))
+              if len(all_categories) > TOP_CATEGORIES:
+                  lines.append("\n<details>")
+                  lines.append("<summary>All %d categories</summary>\n" % len(all_categories))
+                  lines.extend(category_table(all_categories))
+                  lines.append("\n</details>")
+
+          if edition_md:
+              lines.append("\n### Per-edition breakdown\n")
+              lines.append(edition_md)
+          elif edition_report_error:
+              lines.append("\n### Per-edition breakdown\n")
+              lines.append(f"Skipped: {edition_report_error}")
+
+          if shard_rows:
+              lines.append("\n### Per-shard breakdown\n")
+              lines.append("| Mode | Shard | Passed | Failed | Timeouts | P/E |")
+              lines.append("|---|---|---:|---:|---:|---:|")
+              for (m, sidx, stot, s_p, s_f, s_t, s_r) in shard_rows:
+                  lines.append(f"| {m} | {sidx}/{stot} | {s_p:,} | {s_f:,} | {s_t:,} | {s_r:.1f}% |")
+          md = "\n".join(lines) + "\n"
+
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-          if summary_path and rows:
-              badge = "🔴" if regressions else ("⚠️" if missing else "🟢")
-              verdict = "REGRESSION" if regressions else ("INCOMPLETE" if missing else "All baselines met")
+          if summary_path:
               with open(summary_path, "a") as f:
-                  f.write(f"## Test262 Conformance {badge} {verdict}\n\n")
-                  f.write("| Mode | Passed | Failed | Timeouts | P/E | Baseline | Delta |\n")
-                  f.write("|---|---:|---:|---:|---:|---:|---:|\n")
-                  for (m, p, fa, to, rate, mode_min, delta) in rows:
-                      dsign = "+" if delta >= 0 else ""
-                      f.write(f"| {m} | {p:,} | {fa:,} | {to:,} | **{rate:.1f}%** | {mode_min:,} | {dsign}{delta:,} |\n")
-                  if combined_exec > 0:
-                      csign = "+" if combined_delta >= 0 else ""
-                      f.write(f"| **combined** | **{total_passed:,}** | **{total_failed:,}** | **{total_timeouts:,}** | **{combined_rate:.1f}%** | {combined_min:,} | {csign}{combined_delta:,} |\n")
-                  if shard_rows:
-                      f.write("\n### Per-shard breakdown\n\n")
-                      f.write("| Mode | Shard | Passed | Failed | Timeouts | P/E |\n")
-                      f.write("|---|---|---:|---:|---:|---:|\n")
-                      for (m, sidx, stot, s_p, s_f, s_t, s_r) in shard_rows:
-                          f.write(f"| {m} | {sidx}/{stot} | {s_p:,} | {s_f:,} | {s_t:,} | {s_r:.1f}% |\n")
-                  if regressions:
-                      f.write("\n### Regressions\n\n")
-                      for r in regressions:
-                          f.write(f"- {r}\n")
+                  f.write(md)
+          with open("test262-summary.md", "w") as f:
+              f.write(md)
+
+          # Machine-readable summary for dashboards and report tooling.
+          #
+          # Schema notes:
+          # - `verdict` is the top-level decision: PASS / REGRESSION / INCOMPLETE.
+          # - `rate` is a numeric percentage, not a formatted string.
+          # - `baseline` is the minimum expected passed count for that scope.
+          # - `delta` is passed - baseline.
+          # - Missing modes are reported in `missing`; they are not synthesized as
+          #   zero-valued mode entries because that would blur "not measured" vs "0 pass".
+          modes_payload = {}
+          for (mode, passed, failed_count, timeouts, rate, baseline_min, delta) in rows:
+              modes_payload[mode] = {
+                  "passed": int(passed),
+                  "failed": int(failed_count),
+                  "timeouts": int(timeouts),
+                  "executed": int(passed + failed_count),
+                  "rate": float(rate),
+                  "baseline": int(baseline_min),
+                  "delta": int(delta),
+              }
+
+          shards_payload = []
+          for (mode, shard_index, shard_total, passed, failed_count, timeouts, rate) in shard_rows:
+              shards_payload.append({
+                  "mode": mode,
+                  "shard_index": int(shard_index),
+                  "shard_total": int(shard_total),
+                  "passed": int(passed),
+                  "failed": int(failed_count),
+                  "timeouts": int(timeouts),
+                  "executed": int(passed + failed_count),
+                  "rate": float(rate),
+              })
+
+          summary_payload = {
+              "schema_version": 1,
+              "verdict": verdict,
+              "shard_total": int(SHARD_TOTAL),
+              "combined": {
+                  "passed": int(total_passed),
+                  "failed": int(total_failed),
+                  "timeouts": int(total_timeouts),
+                  "executed": int(total_passed + total_failed),
+                  "rate": float(combined_rate),
+                  "baseline": int(combined_min),
+                  "delta": int(combined_delta),
+              },
+              "modes": modes_payload,
+              "shards": shards_payload,
+              "categories": categories_payload,
+              "editions": editions_payload,
+              "missing": list(missing),
+              "regressions": list(regressions),
+          }
+
+          with open("test262-summary.json", "w") as f:
+              json.dump(summary_payload, f, indent=2, sort_keys=True)
+              f.write("\n")
 
           # Verdict
           failed = False
           if missing:
-              print(f"\nERROR: Missing results for: {', '.join(missing)}", file=sys.stderr)
+              print(f"::error title=Test262 results incomplete::missing shard results for: {', '.join(missing)}")
               failed = True
           if regressions:
               for r in regressions:
-                  print(f"\nREGRESSION: {r}", file=sys.stderr)
+                  print(f"::error title=Test262 regression::{r}")
               failed = True
           elif not missing:
               print(f"\nAll baselines met.")
@@ -453,3 +704,18 @@ jobs:
           if failed:
               sys.exit(1)
           PYEOF
+
+      - name: Upload combined report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test262-combined-report
+          path: |
+            test262-summary.md
+            test262-summary.json
+            test262-editions.md
+            test262-editions.json
+            test262-non-strict-results.json
+            test262-strict-results.json
+          if-no-files-found: warn
+          retention-days: 90
