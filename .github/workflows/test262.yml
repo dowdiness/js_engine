@@ -363,6 +363,16 @@ jobs:
 
           SHARD_TOTAL = ${{ env.SHARD_TOTAL }}
           MODE_ORDER = ["strict", "non-strict"]
+          EXIT_PASS, EXIT_REGRESSION, EXIT_INCOMPLETE, EXIT_REPORT_ERROR = 0, 1, 2, 3
+
+
+          def _excepthook(exc_type, exc_val, _tb):
+              import traceback
+              print(f"::error title=Test262 report error::{exc_val}")
+              traceback.print_exception(exc_type, exc_val, _tb)
+              sys.exit(EXIT_REPORT_ERROR)
+          sys.excepthook = _excepthook
+
 
           def empty_breakdown_counts():
               return {
@@ -661,6 +671,7 @@ jobs:
           #
           # Schema notes:
           # - `verdict` is the top-level decision: PASS / REGRESSION / INCOMPLETE.
+          #   REPORT_ERROR (exit 3) means the script aborted before this JSON was written.
           # - `rate` is a numeric percentage, not a formatted string.
           # - `baseline` is the minimum expected passed count for that scope.
           # - `delta` is passed - baseline.
@@ -691,8 +702,10 @@ jobs:
                   "rate": float(rate),
               })
 
+          exit_code = EXIT_INCOMPLETE if missing else (EXIT_REGRESSION if regressions else EXIT_PASS)
           summary_payload = {
               "schema_version": 1,
+              "exit_code": exit_code,
               "verdict": verdict,
               "shard_total": int(SHARD_TOTAL),
               "combined": {
@@ -716,20 +729,15 @@ jobs:
               json.dump(summary_payload, f, indent=2, sort_keys=True)
               f.write("\n")
 
-          # Verdict
-          failed = False
+          # Verdict — exit codes: PASS=0, REGRESSION=1, INCOMPLETE=2, REPORT_ERROR=3
           if missing:
               print(f"::error title=Test262 results incomplete::missing shard results for: {', '.join(missing)}")
-              failed = True
           if regressions:
               for r in regressions:
                   print(f"::error title=Test262 regression::{r}")
-              failed = True
-          elif not missing:
+          if not missing and not regressions:
               print(f"\nAll baselines met.")
-
-          if failed:
-              sys.exit(1)
+          sys.exit(exit_code)
           PYEOF
 
       - name: Upload combined report
