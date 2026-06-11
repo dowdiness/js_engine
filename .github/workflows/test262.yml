@@ -427,6 +427,12 @@ jobs:
                   print(f"{mode}: INCOMPLETE ({len(shard_files)}/{SHARD_TOTAL} shards found)")
                   missing.append(mode)
                   continue
+              shard_index_matches = [re.search(r"-shard-(\d+)of\d+-", sf) for sf in shard_files]
+              shard_indices = sorted(int(m.group(1)) for m in shard_index_matches if m)
+              if shard_indices != list(range(1, SHARD_TOTAL + 1)):
+                  print(f"{mode}: INCOMPLETE (shard indices not contiguous: {shard_indices!r})")
+                  missing.append(mode)
+                  continue
               p, fa, sk, to = 0, 0, 0, 0
               mode_shards[mode] = []
               for sf in shard_files:

@@ -217,3 +217,31 @@ async test "panic find_results rejects an incomplete shard set" {
   }
   find_results(root) |> ignore
 }
+
+///|
+async test "panic find_results rejects duplicate shard indices" {
+  let root = "_build/report-test262-mbt-duplicate-shard-test"
+  @afs.rmdir(root, recursive=true) catch {
+    _ => ()
+  }
+  let shard_json = "{\"engine\":\"test\",\"date\":\"1970-01-01T00:00:00Z\",\"summary\":{\"total\":90,\"passed\":80,\"failed\":10,\"skipped\":0,\"timeout\":0,\"error\":0},\"categories\":{},\"results\":[]}"
+  // Two strict artifacts both claiming shard 1of2 — count matches but indices are not {1,2}
+  for dir_suffix in ["results", "results-dup"] {
+    let dir = root + "/test262-strict-shard-1of2-" + dir_suffix
+    @afs.mkdir(dir, recursive=true)
+    @afs.write_file(
+      dir + "/test262-strict-shard-1of2-results.json",
+      shard_json,
+      create_mode=CreateOrTruncate,
+    )
+  }
+  // Non-strict needs at least one file to pass the guard before strict is validated
+  let ns_dir = root + "/test262-non-strict-shard-1of2-results"
+  @afs.mkdir(ns_dir, recursive=true)
+  @afs.write_file(
+    ns_dir + "/test262-non-strict-shard-1of2-results.json",
+    shard_json,
+    create_mode=CreateOrTruncate,
+  )
+  find_results(root) |> ignore
+}
