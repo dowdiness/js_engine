@@ -1,0 +1,14 @@
+import {
+  "dowdiness/js_engine/tooling/architecture_boundary_audit" @audit,
+  "moonbitlang/core/argparse",
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x/sys",
+}
+
+supported_targets = "+native"
+
+options(
+  "is-main": true,
+  "native-stub": [ "stderr.c" ],
+)

@@ -177,15 +177,18 @@ Preparation products should answer these questions:
 - Which facts can bytecode lowering reuse without repeating AST walks?
 - Which constructs are unsupported by bytecode and why?
 
-Required products:
+Required responsibilities:
 
-```text
-ScriptPreparation      facts for top-level script execution
-ModulePreparation      facts for module execution
-EvalPreparation        facts for direct/indirect eval execution
-FunctionPreparation    facts for Function-family constructors and function bodies
-BytecodePreparation    lowering facts and explicit unsupported reasons
-```
+- prepare top-level scripts for execution;
+- prepare modules for execution;
+- prepare direct and indirect eval execution;
+- prepare Function-family constructors and function bodies;
+- prepare bytecode lowering inputs with reusable facts and explicit unsupported
+  reasons.
+
+These responsibilities may be implemented as one product or several products.
+The architecture contract is the separation of responsibilities, not the names
+or shapes of future API surfaces.
 
 Preparation inputs must be explicit. At minimum each preparation request needs:
 
