@@ -11,7 +11,7 @@ fn setup_json_builtins(
     length=2,
     fn(interp, args) raise {
       let str = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         ""
       }

@@ -338,7 +338,7 @@ pub fn setup_object_builtins(
         raise @errors.TypeError(message="getter must be a function")
       }
       let prop = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         ""
       }
@@ -388,7 +388,7 @@ pub fn setup_object_builtins(
         raise @errors.TypeError(message="setter must be a function")
       }
       let prop = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         ""
       }
@@ -432,7 +432,7 @@ pub fn setup_object_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let prop = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         ""
       }
@@ -461,7 +461,7 @@ pub fn setup_object_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let prop = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         ""
       }

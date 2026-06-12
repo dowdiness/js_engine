@@ -75,7 +75,7 @@ fn array_sort_values(
             return 0
           }
         }
-        let cmp = @runtime.to_number(result) catch {
+        let cmp = interp.to_number(result) catch {
           e => {
             caught_error = Some(e)
             return 0

@@ -42,6 +42,34 @@ fn char_to_digit(c : Char, radix : Int) -> Int {
 }
 
 ///|
+fn number_this_value(
+  this_val : Value,
+  method_name : String,
+) -> Double raise Error {
+  match this_val {
+    Value::Number(v) => v
+    Object(data) =>
+      if data.class_name == "Number" {
+        match data.bag.properties.get("[[NumberData]]") {
+          Some(Value::Number(v)) => v
+          _ =>
+            raise @errors.TypeError(
+              message="Number.prototype.\{method_name} requires that 'this' be a Number",
+            )
+        }
+      } else {
+        raise @errors.TypeError(
+          message="Number.prototype.\{method_name} requires that 'this' be a Number",
+        )
+      }
+    _ =>
+      raise @errors.TypeError(
+        message="Number.prototype.\{method_name} requires that 'this' be a Number",
+      )
+  }
+}
+
+///|
 fn setup_number_builtins(
   env : Environment,
   realm_state : @runtime.RealmState,
@@ -55,34 +83,14 @@ fn setup_number_builtins(
     is_accessor: false,
   }
   let number_proto_props : Map[String, Value] = {}
-  number_proto_props["toFixed"] = @runtime.make_method_func(
+  number_proto_props["toFixed"] = @runtime.make_interp_method_func(
     realm_state=Some(realm_state),
     name="toFixed",
     length=1,
-    fn(this_val, args) raise {
-      let n : Double = match this_val {
-        Value::Number(v) => v
-        Object(data) =>
-          if data.class_name == "Number" {
-            match data.bag.properties.get("[[NumberData]]") {
-              Some(Value::Number(v)) => v
-              _ =>
-                raise @errors.TypeError(
-                  message="Number.prototype.toFixed requires that 'this' be a Number",
-                )
-            }
-          } else {
-            raise @errors.TypeError(
-              message="Number.prototype.toFixed requires that 'this' be a Number",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Number.prototype.toFixed requires that 'this' be a Number",
-          )
-      }
+    fn(interp, this_val, args) raise {
+      let n = number_this_value(this_val, "toFixed")
       let digits = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
@@ -131,35 +139,14 @@ fn setup_number_builtins(
       Value::String_(buf.to_string())
     },
   )
-  number_proto_props["toString"] = @runtime.make_method_func(
+  number_proto_props["toString"] = @runtime.make_interp_method_func(
     realm_state=Some(realm_state),
     name="toString",
     length=1,
-    fn(this_val, args) raise {
-      // Validate this is a number
-      let n : Double = match this_val {
-        Value::Number(v) => v
-        Object(data) =>
-          if data.class_name == "Number" {
-            match data.bag.properties.get("[[NumberData]]") {
-              Some(Value::Number(v)) => v
-              _ =>
-                raise @errors.TypeError(
-                  message="Number.prototype.toString requires that 'this' be a Number",
-                )
-            }
-          } else {
-            raise @errors.TypeError(
-              message="Number.prototype.toString requires that 'this' be a Number",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Number.prototype.toString requires that 'this' be a Number",
-          )
-      }
+    fn(interp, this_val, args) raise {
+      let n = number_this_value(this_val, "toString")
       let radix = if args.length() > 0 && !(args[0] is Undefined) {
-        let r = @runtime.to_number(args[0]).to_int()
+        let r = interp.to_number(args[0]).to_int()
         if r < 2 || r > 36 {
           raise @errors.RangeError(
             message="toString() radix must be between 2 and 36",
@@ -208,35 +195,35 @@ fn setup_number_builtins(
     name="valueOf",
     length=0,
     fn(this_val, _args) raise {
-      match this_val {
-        Value::Number(_) => this_val
+      Value::Number(number_this_value(this_val, "valueOf"))
+    },
+  )
+  number_proto_props["toPrecision"] = @runtime.make_interp_method_func(
+    realm_state=Some(realm_state),
+    name="toPrecision",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let n : Double = match this_val {
+        Value::Number(v) => v
         Object(data) =>
           if data.class_name == "Number" {
             match data.bag.properties.get("[[NumberData]]") {
-              Some(Value::Number(v)) => Value::Number(v)
+              Some(Value::Number(v)) => v
               _ =>
                 raise @errors.TypeError(
-                  message="Number.prototype.valueOf requires that 'this' be a Number",
+                  message="Number.prototype.toPrecision requires that 'this' be a Number",
                 )
             }
           } else {
             raise @errors.TypeError(
-              message="Number.prototype.valueOf requires that 'this' be a Number",
+              message="Number.prototype.toPrecision requires that 'this' be a Number",
             )
           }
         _ =>
           raise @errors.TypeError(
-            message="Number.prototype.valueOf requires that 'this' be a Number",
+            message="Number.prototype.toPrecision requires that 'this' be a Number",
           )
       }
-    },
-  )
-  number_proto_props["toPrecision"] = @runtime.make_method_func(
-    realm_state=Some(realm_state),
-    name="toPrecision",
-    length=1,
-    fn(this_val, args) raise {
-      let n = @runtime.to_number(this_val)
       // If no argument or undefined, just return toString result
       if args.length() == 0 {
         return Value::String_(n.to_string())
@@ -245,7 +232,7 @@ fn setup_number_builtins(
         Undefined => return Value::String_(n.to_string())
         _ => ()
       }
-      let precision = @runtime.to_number(args[0]).to_int()
+      let precision = interp.to_number(args[0]).to_int()
       if precision < 1 || precision > 100 {
         raise @errors.RangeError(
           message="toPrecision() argument must be between 1 and 100",
@@ -346,12 +333,12 @@ fn setup_number_builtins(
       Value::String_(buf.to_string())
     },
   )
-  number_proto_props["toExponential"] = @runtime.make_method_func(
+  number_proto_props["toExponential"] = @runtime.make_interp_method_func(
     realm_state=Some(realm_state),
     name="toExponential",
     length=1,
-    fn(this_val, args) raise {
-      let n = @runtime.to_number(this_val)
+    fn(interp, this_val, args) raise {
+      let n = number_this_value(this_val, "toExponential")
       if n.is_nan() {
         return Value::String_("NaN")
       }
@@ -371,7 +358,7 @@ fn setup_number_builtins(
           match args[0] {
             Undefined => ()
             _ => {
-              let frac_digits = @runtime.to_number(args[0]).to_int()
+              let frac_digits = interp.to_number(args[0]).to_int()
               if frac_digits < 0 || frac_digits > 100 {
                 raise @errors.RangeError(
                   message="toExponential() argument must be between 0 and 100",
@@ -402,7 +389,7 @@ fn setup_number_builtins(
         match args[0] {
           Undefined => buf.write_string(mantissa.to_string())
           _ => {
-            let frac_digits = @runtime.to_number(args[0]).to_int()
+            let frac_digits = interp.to_number(args[0]).to_int()
             if frac_digits < 0 || frac_digits > 100 {
               raise @errors.RangeError(
                 message="toExponential() argument must be between 0 and 100",
@@ -616,10 +603,15 @@ fn setup_number_builtins(
       },
       prototype: Null,
       callable: Some(
-        NativeCallableWithContext("Number", fn(context, args) raise {
+        InterpreterCallableWithContext("Number", fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
           // Per spec: Value::Number() with no args returns +0, not NaN
           let n = if args.length() > 0 {
-            @runtime.to_number(args[0])
+            interp.to_number(args[0])
           } else {
             0.0
           }
@@ -670,20 +662,20 @@ fn setup_number_builtins(
 
 ///|
 pub fn get_number_method(
-  num_val : Value,
+  _num_val : Value,
   prop : String,
   realm_state : @runtime.RealmState,
 ) -> Value {
   match prop {
     "toFixed" =>
-      @runtime.make_method_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toFixed",
         length=1,
-        fn(this_val, args) raise {
-          let n = @runtime.to_number(this_val)
+        fn(interp, this_val, args) raise {
+          let n = number_this_value(this_val, "toFixed")
           let digits = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
@@ -737,14 +729,14 @@ pub fn get_number_method(
         },
       )
     "toString" =>
-      @runtime.make_method_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toString",
         length=1,
-        fn(this_val, args) raise {
-          let n = @runtime.to_number(this_val)
+        fn(interp, this_val, args) raise {
+          let n = number_this_value(this_val, "toString")
           let radix = if args.length() > 0 && !(args[0] is Undefined) {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             10
           }
@@ -766,7 +758,7 @@ pub fn get_number_method(
             )
           }
           if radix == 10 {
-            return Value::String_(num_val.to_string())
+            return Value::String_(n.to_string())
           }
           let is_neg = n < 0.0
           let mut val = n.abs().floor()
@@ -798,16 +790,36 @@ pub fn get_number_method(
         name="valueOf",
         length=0,
         fn(this_val, _args) raise {
-          Value::Number(@runtime.to_number(this_val))
+          Value::Number(number_this_value(this_val, "valueOf"))
         },
       )
     "toPrecision" =>
-      @runtime.make_method_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toPrecision",
         length=1,
-        fn(this_val, args) raise {
-          let n = @runtime.to_number(this_val)
+        fn(interp, this_val, args) raise {
+          let n : Double = match this_val {
+            Value::Number(v) => v
+            Object(data) =>
+              if data.class_name == "Number" {
+                match data.bag.properties.get("[[NumberData]]") {
+                  Some(Value::Number(v)) => v
+                  _ =>
+                    raise @errors.TypeError(
+                      message="Number.prototype.toPrecision requires that 'this' be a Number",
+                    )
+                }
+              } else {
+                raise @errors.TypeError(
+                  message="Number.prototype.toPrecision requires that 'this' be a Number",
+                )
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="Number.prototype.toPrecision requires that 'this' be a Number",
+              )
+          }
           if args.length() == 0 {
             return Value::String_(n.to_string())
           }
@@ -815,7 +827,7 @@ pub fn get_number_method(
             Undefined => return Value::String_(n.to_string())
             _ => ()
           }
-          let precision = @runtime.to_number(args[0]).to_int()
+          let precision = interp.to_number(args[0]).to_int()
           if precision < 1 || precision > 100 {
             raise @errors.RangeError(
               message="toPrecision() argument must be between 1 and 100",
@@ -916,12 +928,12 @@ pub fn get_number_method(
         },
       )
     "toExponential" =>
-      @runtime.make_method_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="toExponential",
         length=1,
-        fn(this_val, args) raise {
-          let n = @runtime.to_number(this_val)
+        fn(interp, this_val, args) raise {
+          let n = number_this_value(this_val, "toExponential")
           if n.is_nan() {
             return Value::String_("NaN")
           }
@@ -946,7 +958,7 @@ pub fn get_number_method(
               match args[0] {
                 Undefined => ()
                 _ => {
-                  let frac_digits = @runtime.to_number(args[0]).to_int()
+                  let frac_digits = interp.to_number(args[0]).to_int()
                   if frac_digits < 0 || frac_digits > 100 {
                     raise @errors.RangeError(
                       message="toExponential() argument must be between 0 and 100",
@@ -975,7 +987,7 @@ pub fn get_number_method(
             match args[0] {
               Undefined => buf.write_string(mantissa.to_string())
               _ => {
-                let frac_digits = @runtime.to_number(args[0]).to_int()
+                let frac_digits = interp.to_number(args[0]).to_int()
                 if frac_digits < 0 || frac_digits > 100 {
                   raise @errors.RangeError(
                     message="toExponential() argument must be between 0 and 100",

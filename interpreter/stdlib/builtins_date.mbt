@@ -1031,32 +1031,24 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setTime(time)
-  date_proto_props["setTime"] = @runtime.make_method_func(
+  date_proto_props["setTime"] = @runtime.make_interp_method_func(
     name="setTime",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let _ = get_date_value(this_val) // validate this is Date
-      let v = if args.length() > 0 {
-        time_clip(@runtime.to_number(args[0]))
-      } else {
-        0.0 / 0.0
-      }
+      let v = time_clip(arg_to_number_or(interp, args, 0, 0.0 / 0.0))
       set_date_value(this_val, v)
       Value::Number(v)
     },
   )
 
   // Date.prototype.setMilliseconds(ms)
-  date_proto_props["setMilliseconds"] = @runtime.make_method_func(
+  date_proto_props["setMilliseconds"] = @runtime.make_interp_method_func(
     name="setMilliseconds",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let ms = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
+      let ms = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1073,16 +1065,12 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setUTCMilliseconds(ms)
-  date_proto_props["setUTCMilliseconds"] = @runtime.make_method_func(
+  date_proto_props["setUTCMilliseconds"] = @runtime.make_interp_method_func(
     name="setUTCMilliseconds",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let ms = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
+      let ms = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1099,21 +1087,18 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setSeconds(sec [, ms])
-  date_proto_props["setSeconds"] = @runtime.make_method_func(
+  date_proto_props["setSeconds"] = @runtime.make_interp_method_func(
     name="setSeconds",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let sec = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let ms = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        millis_from_time(t).to_double()
-      }
+      let sec = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let ms = arg_to_number_or(
+        interp,
+        args,
+        1,
+        millis_from_time(t).to_double(),
+      )
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1130,21 +1115,18 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setUTCSeconds(sec [, ms])
-  date_proto_props["setUTCSeconds"] = @runtime.make_method_func(
+  date_proto_props["setUTCSeconds"] = @runtime.make_interp_method_func(
     name="setUTCSeconds",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let sec = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let ms = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        millis_from_time(t).to_double()
-      }
+      let sec = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let ms = arg_to_number_or(
+        interp,
+        args,
+        1,
+        millis_from_time(t).to_double(),
+      )
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1161,26 +1143,24 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setMinutes(min [, sec [, ms]])
-  date_proto_props["setMinutes"] = @runtime.make_method_func(
+  date_proto_props["setMinutes"] = @runtime.make_interp_method_func(
     name="setMinutes",
     length=3,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let min = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let sec = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        seconds_from_time(t).to_double()
-      }
-      let ms = if args.length() > 2 {
-        @runtime.to_number(args[2])
-      } else {
-        millis_from_time(t).to_double()
-      }
+      let min = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let sec = arg_to_number_or(
+        interp,
+        args,
+        1,
+        seconds_from_time(t).to_double(),
+      )
+      let ms = arg_to_number_or(
+        interp,
+        args,
+        2,
+        millis_from_time(t).to_double(),
+      )
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1192,26 +1172,24 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setUTCMinutes(min [, sec [, ms]])
-  date_proto_props["setUTCMinutes"] = @runtime.make_method_func(
+  date_proto_props["setUTCMinutes"] = @runtime.make_interp_method_func(
     name="setUTCMinutes",
     length=3,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let min = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let sec = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        seconds_from_time(t).to_double()
-      }
-      let ms = if args.length() > 2 {
-        @runtime.to_number(args[2])
-      } else {
-        millis_from_time(t).to_double()
-      }
+      let min = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let sec = arg_to_number_or(
+        interp,
+        args,
+        1,
+        seconds_from_time(t).to_double(),
+      )
+      let ms = arg_to_number_or(
+        interp,
+        args,
+        2,
+        millis_from_time(t).to_double(),
+      )
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1223,31 +1201,30 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setHours(hour [, min [, sec [, ms]]])
-  date_proto_props["setHours"] = @runtime.make_method_func(
+  date_proto_props["setHours"] = @runtime.make_interp_method_func(
     name="setHours",
     length=4,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let hour = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let min = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        minutes_from_time(t).to_double()
-      }
-      let sec = if args.length() > 2 {
-        @runtime.to_number(args[2])
-      } else {
-        seconds_from_time(t).to_double()
-      }
-      let ms = if args.length() > 3 {
-        @runtime.to_number(args[3])
-      } else {
-        millis_from_time(t).to_double()
-      }
+      let hour = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let min = arg_to_number_or(
+        interp,
+        args,
+        1,
+        minutes_from_time(t).to_double(),
+      )
+      let sec = arg_to_number_or(
+        interp,
+        args,
+        2,
+        seconds_from_time(t).to_double(),
+      )
+      let ms = arg_to_number_or(
+        interp,
+        args,
+        3,
+        millis_from_time(t).to_double(),
+      )
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1259,31 +1236,30 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setUTCHours(hour [, min [, sec [, ms]]])
-  date_proto_props["setUTCHours"] = @runtime.make_method_func(
+  date_proto_props["setUTCHours"] = @runtime.make_interp_method_func(
     name="setUTCHours",
     length=4,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let hour = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let min = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        minutes_from_time(t).to_double()
-      }
-      let sec = if args.length() > 2 {
-        @runtime.to_number(args[2])
-      } else {
-        seconds_from_time(t).to_double()
-      }
-      let ms = if args.length() > 3 {
-        @runtime.to_number(args[3])
-      } else {
-        millis_from_time(t).to_double()
-      }
+      let hour = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let min = arg_to_number_or(
+        interp,
+        args,
+        1,
+        minutes_from_time(t).to_double(),
+      )
+      let sec = arg_to_number_or(
+        interp,
+        args,
+        2,
+        seconds_from_time(t).to_double(),
+      )
+      let ms = arg_to_number_or(
+        interp,
+        args,
+        3,
+        millis_from_time(t).to_double(),
+      )
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1295,16 +1271,12 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setDate(date)
-  date_proto_props["setDate"] = @runtime.make_method_func(
+  date_proto_props["setDate"] = @runtime.make_interp_method_func(
     name="setDate",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let dt = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
+      let dt = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1320,16 +1292,12 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setUTCDate(date)
-  date_proto_props["setUTCDate"] = @runtime.make_method_func(
+  date_proto_props["setUTCDate"] = @runtime.make_interp_method_func(
     name="setUTCDate",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let dt = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
+      let dt = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1345,21 +1313,13 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setMonth(month [, date])
-  date_proto_props["setMonth"] = @runtime.make_method_func(
+  date_proto_props["setMonth"] = @runtime.make_interp_method_func(
     name="setMonth",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let month = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let dt = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        date_from_time(t).to_double()
-      }
+      let month = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let dt = arg_to_number_or(interp, args, 1, date_from_time(t).to_double())
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1371,21 +1331,13 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setUTCMonth(month [, date])
-  date_proto_props["setUTCMonth"] = @runtime.make_method_func(
+  date_proto_props["setUTCMonth"] = @runtime.make_interp_method_func(
     name="setUTCMonth",
     length=2,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let t = get_date_value(this_val)
-      let month = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let dt = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        date_from_time(t).to_double()
-      }
+      let month = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let dt = arg_to_number_or(interp, args, 1, date_from_time(t).to_double())
       if t.is_nan() {
         return Value::Number(0.0 / 0.0)
       }
@@ -1397,29 +1349,22 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setFullYear(year [, month [, date]])
-  date_proto_props["setFullYear"] = @runtime.make_method_func(
+  date_proto_props["setFullYear"] = @runtime.make_interp_method_func(
     name="setFullYear",
     length=3,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let mut t = get_date_value(this_val)
       if t.is_nan() {
         t = 0.0 // Use +0 if current value is NaN per spec
       }
-      let year = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let month = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        month_from_time(t).to_double()
-      }
-      let dt = if args.length() > 2 {
-        @runtime.to_number(args[2])
-      } else {
-        date_from_time(t).to_double()
-      }
+      let year = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let month = arg_to_number_or(
+        interp,
+        args,
+        1,
+        month_from_time(t).to_double(),
+      )
+      let dt = arg_to_number_or(interp, args, 2, date_from_time(t).to_double())
       let new_day = make_day(year, month, dt)
       let v = time_clip(make_date_value(new_day, time_within_day(t)))
       set_date_value(this_val, v)
@@ -1428,29 +1373,22 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setUTCFullYear(year [, month [, date]])
-  date_proto_props["setUTCFullYear"] = @runtime.make_method_func(
+  date_proto_props["setUTCFullYear"] = @runtime.make_interp_method_func(
     name="setUTCFullYear",
     length=3,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let mut t = get_date_value(this_val)
       if t.is_nan() {
         t = 0.0
       }
-      let year = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
-      let month = if args.length() > 1 {
-        @runtime.to_number(args[1])
-      } else {
-        month_from_time(t).to_double()
-      }
-      let dt = if args.length() > 2 {
-        @runtime.to_number(args[2])
-      } else {
-        date_from_time(t).to_double()
-      }
+      let year = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
+      let month = arg_to_number_or(
+        interp,
+        args,
+        1,
+        month_from_time(t).to_double(),
+      )
+      let dt = arg_to_number_or(interp, args, 2, date_from_time(t).to_double())
       let new_day = make_day(year, month, dt)
       let v = time_clip(make_date_value(new_day, time_within_day(t)))
       set_date_value(this_val, v)
@@ -1459,19 +1397,15 @@ pub fn setup_date_builtins(
   )
 
   // Date.prototype.setYear(year) - deprecated Annex B
-  date_proto_props["setYear"] = @runtime.make_method_func(
+  date_proto_props["setYear"] = @runtime.make_interp_method_func(
     name="setYear",
     length=1,
-    fn(this_val, args) raise {
+    fn(interp, this_val, args) raise {
       let mut t = get_date_value(this_val)
       if t.is_nan() {
         t = 0.0
       }
-      let year_arg = if args.length() > 0 {
-        @runtime.to_number(args[0])
-      } else {
-        0.0 / 0.0
-      }
+      let year_arg = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
       if year_arg.is_nan() {
         set_date_value(this_val, 0.0 / 0.0)
         return Value::Number(0.0 / 0.0)
@@ -1838,22 +1772,25 @@ pub fn setup_date_builtins(
   })
 
   // Date.parse(string)
-  date_props["parse"] = @runtime.make_native_func(name="parse", length=1, fn(
-    args,
-  ) {
-    let s = if args.length() > 0 { args[0].to_string() } else { "" }
-    Value::Number(parse_date_string(s))
-  })
+  date_props["parse"] = @runtime.make_interp_static_func(
+    name="parse",
+    length=1,
+    fn(interp, args) raise {
+      let s = if args.length() > 0 {
+        interp.to_js_string(args[0])
+      } else {
+        "undefined"
+      }
+      Value::Number(parse_date_string(s))
+    },
+  )
 
   // Date.UTC(year, month [, date [, hours [, minutes [, seconds [, ms]]]]])
-  date_props["UTC"] = @runtime.make_native_func(name="UTC", length=7, fn(
+  date_props["UTC"] = @runtime.make_interp_static_func(name="UTC", length=7, fn(
+    interp,
     args,
   ) raise {
-    let year_arg = if args.length() > 0 {
-      @runtime.to_number(args[0])
-    } else {
-      0.0 / 0.0
-    }
+    let year_arg = arg_to_number_or(interp, args, 0, 0.0 / 0.0)
     if year_arg.is_nan() {
       return Value::Number(0.0 / 0.0)
     }
@@ -1863,20 +1800,12 @@ pub fn setup_date_builtins(
     } else {
       year_arg
     }
-    let month = if args.length() > 1 {
-      @runtime.to_number(args[1])
-    } else {
-      0.0
-    }
-    let date_arg = if args.length() > 2 {
-      @runtime.to_number(args[2])
-    } else {
-      1.0
-    }
-    let hour = if args.length() > 3 { @runtime.to_number(args[3]) } else { 0.0 }
-    let min = if args.length() > 4 { @runtime.to_number(args[4]) } else { 0.0 }
-    let sec = if args.length() > 5 { @runtime.to_number(args[5]) } else { 0.0 }
-    let ms = if args.length() > 6 { @runtime.to_number(args[6]) } else { 0.0 }
+    let month = arg_to_number_or(interp, args, 1, 0.0)
+    let date_arg = arg_to_number_or(interp, args, 2, 1.0)
+    let hour = arg_to_number_or(interp, args, 3, 0.0)
+    let min = arg_to_number_or(interp, args, 4, 0.0)
+    let sec = arg_to_number_or(interp, args, 5, 0.0)
+    let ms = arg_to_number_or(interp, args, 6, 0.0)
     let d = make_day(year, month, date_arg)
     let t = make_time(hour, min, sec, ms)
     Value::Number(time_clip(make_date_value(d, t)))

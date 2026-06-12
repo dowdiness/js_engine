@@ -295,11 +295,18 @@ fn array_direct_reverse(arr : ArrayData) -> Value {
 }
 
 ///|
-fn array_direct_fill(arr : ArrayData, args : Array[Value]) -> Value raise Error {
+fn array_direct_fill(
+  arr : ArrayData,
+  args : Array[Value],
+  interp? : Interpreter? = None,
+) -> Value raise Error {
   let fill_value = if args.length() > 0 { args[0] } else { Undefined }
   let len = arr.elements.length()
   let start = if args.length() > 1 {
-    array_mutator_relative_index(@runtime.to_number(args[1]).to_int(), len)
+    array_mutator_relative_index(
+      @runtime.to_number(args[1], interp~).to_int(),
+      len,
+    )
   } else {
     0
   }
@@ -307,7 +314,10 @@ fn array_direct_fill(arr : ArrayData, args : Array[Value]) -> Value raise Error 
     match args[2] {
       Undefined => len
       _ =>
-        array_mutator_relative_index(@runtime.to_number(args[2]).to_int(), len)
+        array_mutator_relative_index(
+          @runtime.to_number(args[2], interp~).to_int(),
+          len,
+        )
     }
   } else {
     len
@@ -323,15 +333,22 @@ fn array_direct_fill(arr : ArrayData, args : Array[Value]) -> Value raise Error 
 fn array_direct_copy_within(
   arr : ArrayData,
   args : Array[Value],
+  interp? : Interpreter? = None,
 ) -> Value raise Error {
   let len = arr.elements.length()
   let mut target = if args.length() > 0 {
-    array_mutator_relative_index(@runtime.to_number(args[0]).to_int(), len)
+    array_mutator_relative_index(
+      @runtime.to_number(args[0], interp~).to_int(),
+      len,
+    )
   } else {
     0
   }
   let mut start = if args.length() > 1 {
-    array_mutator_relative_index(@runtime.to_number(args[1]).to_int(), len)
+    array_mutator_relative_index(
+      @runtime.to_number(args[1], interp~).to_int(),
+      len,
+    )
   } else {
     0
   }
@@ -339,7 +356,10 @@ fn array_direct_copy_within(
     match args[2] {
       Undefined => len
       _ =>
-        array_mutator_relative_index(@runtime.to_number(args[2]).to_int(), len)
+        array_mutator_relative_index(
+          @runtime.to_number(args[2], interp~).to_int(),
+          len,
+        )
     }
   } else {
     len
@@ -445,20 +465,19 @@ fn array_copy_within_indexed_properties(
   // delete the target instead of materializing undefined.
   let len = @runtime.to_array_like_length_interp(o, interp)
   let mut to = if args.length() > 0 {
-    array_mutator_relative_index(@runtime.to_number(args[0]).to_int(), len)
+    array_mutator_relative_index(interp.to_number(args[0]).to_int(), len)
   } else {
     0
   }
   let mut from = if args.length() > 1 {
-    array_mutator_relative_index(@runtime.to_number(args[1]).to_int(), len)
+    array_mutator_relative_index(interp.to_number(args[1]).to_int(), len)
   } else {
     0
   }
   let final_index = if args.length() > 2 {
     match args[2] {
       Undefined => len
-      _ =>
-        array_mutator_relative_index(@runtime.to_number(args[2]).to_int(), len)
+      _ => array_mutator_relative_index(interp.to_number(args[2]).to_int(), len)
     }
   } else {
     len
@@ -502,15 +521,14 @@ fn array_fill_indexed_properties(
   let fill_value = if args.length() > 0 { args[0] } else { Undefined }
   let len = @runtime.to_array_like_length_interp(o, interp)
   let start = if args.length() > 1 {
-    array_mutator_relative_index(@runtime.to_number(args[1]).to_int(), len)
+    array_mutator_relative_index(interp.to_number(args[1]).to_int(), len)
   } else {
     0
   }
   let final_index = if args.length() > 2 {
     match args[2] {
       Undefined => len
-      _ =>
-        array_mutator_relative_index(@runtime.to_number(args[2]).to_int(), len)
+      _ => array_mutator_relative_index(interp.to_number(args[2]).to_int(), len)
     }
   } else {
     len
@@ -725,7 +743,7 @@ fn array_splice_indexed_properties(
 ) -> Value raise Error {
   let alen = @runtime.to_array_like_length_interp(o, interp)
   let mut start = if args.length() > 0 {
-    @runtime.to_number(args[0]).to_int()
+    interp.to_number(args[0]).to_int()
   } else {
     0
   }
@@ -739,7 +757,7 @@ fn array_splice_indexed_properties(
     start = alen
   }
   let del_count = if args.length() > 1 {
-    let d_num = @runtime.to_number(args[1])
+    let d_num = interp.to_number(args[1])
     if d_num.is_inf() || d_num >= (alen - start).to_double() {
       alen - start
     } else {

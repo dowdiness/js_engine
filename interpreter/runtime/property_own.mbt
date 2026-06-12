@@ -1221,7 +1221,7 @@ pub fn Interpreter::array_set_length(
   // set_property "length" path (§7.1.6 ToUint32 + integer-valued check):
   // n must be a non-NaN integer in [0, 2^32-1]. Int32 narrowing would
   // incorrectly reject valid uint32 values > 2^31-1.
-  let n = to_number(new_len_value)
+  let n = self.to_number(new_len_value)
   if n.is_nan() || n < 0.0 || n > 4294967295.0 || n != @math.floor(n) {
     raise @errors.RangeError(message="Invalid array length")
   }

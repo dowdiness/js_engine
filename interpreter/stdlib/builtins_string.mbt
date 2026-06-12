@@ -102,13 +102,13 @@ pub fn get_string_method(
   let chars = s.to_array()
   match prop {
     "charAt" =>
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="charAt",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let idx = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
@@ -122,13 +122,13 @@ pub fn get_string_method(
         },
       )
     "charCodeAt" =>
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="charCodeAt",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let idx = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
@@ -142,14 +142,14 @@ pub fn get_string_method(
         },
       )
     "at" =>
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="at",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           // String.prototype.at() - access character at index (supports negative)
           let idx = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
@@ -165,14 +165,14 @@ pub fn get_string_method(
         },
       )
     "codePointAt" =>
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="codePointAt",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           // String.prototype.codePointAt() - get code point at index
           let idx = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
@@ -196,15 +196,15 @@ pub fn get_string_method(
       )
     "concat" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="concat",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let buf = StringBuilder::new()
           buf.write_string(str)
           for arg in args {
-            buf.write_string(@runtime.to_js_string(arg))
+            buf.write_string(interp.to_js_string(arg))
           }
           Value::String_(buf.to_string())
         },
@@ -306,11 +306,11 @@ pub fn get_string_method(
     }
     "includes" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="includes",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           // Per spec: throw TypeError if searchString is a RegExp
           if args.length() > 0 {
             match args[0] {
@@ -324,12 +324,12 @@ pub fn get_string_method(
             }
           }
           let search = if args.length() > 0 {
-            @runtime.to_js_string(args[0])
+            interp.to_js_string(args[0])
           } else {
             "undefined"
           }
           let from_idx = if args.length() > 1 {
-            @runtime.to_number(args[1]).to_int()
+            interp.to_number(args[1]).to_int()
           } else {
             0
           }
@@ -359,21 +359,21 @@ pub fn get_string_method(
     }
     "slice" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="slice",
         length=2,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let slen = str.length()
           let mut start = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
           let mut end = if args.length() > 1 {
             match args[1] {
               Undefined => slen
-              _ => @runtime.to_number(args[1]).to_int()
+              _ => interp.to_number(args[1]).to_int()
             }
           } else {
             slen
@@ -407,21 +407,21 @@ pub fn get_string_method(
     }
     "substring" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="substring",
         length=2,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let slen = str.length()
           let mut start = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
           let mut end = if args.length() > 1 {
             match args[1] {
               Undefined => slen
-              _ => @runtime.to_number(args[1]).to_int()
+              _ => interp.to_number(args[1]).to_int()
             }
           } else {
             slen
@@ -455,14 +455,14 @@ pub fn get_string_method(
     "substr" => {
       // Annex B: String.prototype.substr(start, length)
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="substr",
         length=2,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let slen = str.length()
           let mut start = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
@@ -470,7 +470,7 @@ pub fn get_string_method(
             match args[1] {
               Undefined => slen
               _ => {
-                let n = @runtime.to_number(args[1])
+                let n = interp.to_number(args[1])
                 if n.is_inf() && n > 0.0 {
                   slen
                 } else if n.is_nan() {
@@ -1049,11 +1049,11 @@ pub fn get_string_method(
     }
     "startsWith" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="startsWith",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           // Per spec: throw TypeError if searchString is a RegExp
           if args.length() > 0 {
             match args[0] {
@@ -1067,12 +1067,12 @@ pub fn get_string_method(
             }
           }
           let search = if args.length() > 0 {
-            @runtime.to_js_string(args[0])
+            interp.to_js_string(args[0])
           } else {
             "undefined"
           }
           let raw_pos = if args.length() > 1 {
-            @runtime.to_number(args[1]).to_int()
+            interp.to_number(args[1]).to_int()
           } else {
             0
           }
@@ -1100,11 +1100,11 @@ pub fn get_string_method(
     }
     "endsWith" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="endsWith",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           // Per spec: throw TypeError if searchString is a RegExp
           if args.length() > 0 {
             match args[0] {
@@ -1118,13 +1118,13 @@ pub fn get_string_method(
             }
           }
           let search = if args.length() > 0 {
-            @runtime.to_js_string(args[0])
+            interp.to_js_string(args[0])
           } else {
             "undefined"
           }
           let slen = str.length()
           let raw_end = if args.length() > 1 {
-            @runtime.to_number(args[1]).to_int()
+            interp.to_number(args[1]).to_int()
           } else {
             slen
           }
@@ -1153,13 +1153,13 @@ pub fn get_string_method(
     }
     "repeat" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="repeat",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let count_num = if args.length() > 0 {
-            @runtime.to_number(args[0])
+            interp.to_number(args[0])
           } else {
             0.0
           }
@@ -1181,23 +1181,29 @@ pub fn get_string_method(
     }
     "padStart" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="padStart",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let target_len = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
+          let slen = str.length()
+          if slen >= target_len {
+            return Value::String_(str)
+          }
           let pad_str = if args.length() > 1 {
-            @runtime.to_js_string(args[1])
+            match args[1] {
+              Undefined => " "
+              _ => interp.to_js_string(args[1])
+            }
           } else {
             " "
           }
-          let slen = str.length()
-          if slen >= target_len || pad_str.length() == 0 {
+          if pad_str.length() == 0 {
             return Value::String_(str)
           }
           let buf = StringBuilder::new()
@@ -1215,23 +1221,29 @@ pub fn get_string_method(
     }
     "padEnd" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="padEnd",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let target_len = if args.length() > 0 {
-            @runtime.to_number(args[0]).to_int()
+            interp.to_number(args[0]).to_int()
           } else {
             0
           }
+          let slen = str.length()
+          if slen >= target_len {
+            return Value::String_(str)
+          }
           let pad_str = if args.length() > 1 {
-            @runtime.to_js_string(args[1])
+            match args[1] {
+              Undefined => " "
+              _ => interp.to_js_string(args[1])
+            }
           } else {
             " "
           }
-          let slen = str.length()
-          if slen >= target_len || pad_str.length() == 0 {
+          if pad_str.length() == 0 {
             return Value::String_(str)
           }
           let buf = StringBuilder::new()
@@ -1257,11 +1269,11 @@ pub fn get_string_method(
     }
     "replaceAll" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="replaceAll",
         length=2,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           if args.length() == 0 {
             return Value::String_(str)
           }
@@ -1289,15 +1301,18 @@ pub fn get_string_method(
                 args[0],
                 data,
                 replace_sym.id,
+                interp=Some(interp),
               )
               match replace_fn {
                 Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
                 Some(fn_val) => {
                   let rep = if args.length() > 1 { args[1] } else { Undefined }
-                  let result = @runtime.call_callable_direct(fn_val, args[0], [
-                    Value::String_(str),
-                    rep,
-                  ])
+                  let result = @runtime.call_callable_direct(
+                    fn_val,
+                    args[0],
+                    [Value::String_(str), rep],
+                    interp=Some(interp),
+                  )
                   return result
                 }
                 _ => ()
@@ -1318,7 +1333,7 @@ pub fn get_string_method(
                   _ => ""
                 }
                 let replacement = if args.length() > 1 {
-                  @runtime.to_js_string(args[1])
+                  interp.to_js_string(args[1])
                 } else {
                   "undefined"
                 }
@@ -1326,9 +1341,14 @@ pub fn get_string_method(
               }
             _ => ()
           }
-          let search = @runtime.to_js_string(args[0])
+          let search = interp.to_js_string(args[0])
           let replace_val = if args.length() > 1 { args[1] } else { Undefined }
           let is_func = @runtime.is_callable(replace_val)
+          let replacement = if is_func {
+            ""
+          } else {
+            interp.to_js_string(replace_val)
+          }
           let slen = str.length()
           let search_len = search.length()
           if search_len == 0 {
@@ -1345,10 +1365,11 @@ pub fn get_string_method(
                     Value::Number(i.to_double()),
                     Value::String_(str),
                   ],
+                  interp=Some(interp),
                 )
-                @runtime.to_js_string(result)
+                interp.to_js_string(result)
               } else {
-                get_substitution(@runtime.to_js_string(replace_val), "", str, i)
+                get_substitution(replacement, "", str, i)
               }
               buf.write_string(rep)
               buf.write_char(c)
@@ -1362,15 +1383,11 @@ pub fn get_string_method(
                   Value::Number(s_chars.length().to_double()),
                   Value::String_(str),
                 ],
+                interp=Some(interp),
               )
-              @runtime.to_js_string(result)
+              interp.to_js_string(result)
             } else {
-              get_substitution(
-                @runtime.to_js_string(replace_val),
-                "",
-                str,
-                s_chars.length(),
-              )
+              get_substitution(replacement, "", str, s_chars.length())
             }
             buf.write_string(rep_end)
             return Value::String_(buf.to_string())
@@ -1398,15 +1415,11 @@ pub fn get_string_method(
                       Value::Number(i.to_double()),
                       Value::String_(str),
                     ],
+                    interp=Some(interp),
                   )
-                  @runtime.to_js_string(result)
+                  interp.to_js_string(result)
                 } else {
-                  get_substitution(
-                    @runtime.to_js_string(replace_val),
-                    search,
-                    str,
-                    i,
-                  )
+                  get_substitution(replacement, search, str, i)
                 }
                 buf.write_string(rep)
                 i = i + search_len
@@ -1422,14 +1435,14 @@ pub fn get_string_method(
     }
     "localeCompare" => {
       let str = s
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         realm_state=Some(realm_state),
         name="localeCompare",
         length=1,
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           // Basic lexicographic comparison (no locale support)
           let other = if args.length() > 0 {
-            @runtime.to_js_string(args[0])
+            interp.to_js_string(args[0])
           } else {
             "undefined"
           }
@@ -1546,13 +1559,13 @@ pub fn get_string_method(
       } else {
         match prop {
           "anchor" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="anchor",
               length=1,
-              fn(args) raise {
+              fn(interp, _this_val, args) raise {
                 let name = if args.length() > 0 {
-                  @runtime.to_js_string(args[0])
+                  interp.to_js_string(args[0])
                 } else {
                   "undefined"
                 }
@@ -1586,13 +1599,13 @@ pub fn get_string_method(
               fn(_args) { Value::String_("<tt>" + s + "</tt>") },
             )
           "fontcolor" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="fontcolor",
               length=1,
-              fn(args) raise {
+              fn(interp, _this_val, args) raise {
                 let color = if args.length() > 0 {
-                  @runtime.to_js_string(args[0])
+                  interp.to_js_string(args[0])
                 } else {
                   "undefined"
                 }
@@ -1606,13 +1619,13 @@ pub fn get_string_method(
               },
             )
           "fontsize" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="fontsize",
               length=1,
-              fn(args) raise {
+              fn(interp, _this_val, args) raise {
                 let size = if args.length() > 0 {
-                  @runtime.to_js_string(args[0])
+                  interp.to_js_string(args[0])
                 } else {
                   "undefined"
                 }
@@ -1632,13 +1645,13 @@ pub fn get_string_method(
               fn(_args) { Value::String_("<i>" + s + "</i>") },
             )
           "link" =>
-            @runtime.make_native_func(
+            @runtime.make_interp_method_func(
               realm_state=Some(realm_state),
               name="link",
               length=1,
-              fn(args) raise {
+              fn(interp, _this_val, args) raise {
                 let url = if args.length() > 0 {
-                  @runtime.to_js_string(args[0])
+                  interp.to_js_string(args[0])
                 } else {
                   "undefined"
                 }
