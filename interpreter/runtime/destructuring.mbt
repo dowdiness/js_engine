@@ -290,13 +290,14 @@ fn Interpreter::assign_pattern(
   match pattern {
     IdentPat(name) =>
       env.assign(name, value) catch {
-        @errors.ReferenceError(_) =>
-          if !ctx.strict {
-            // Sloppy mode: implicit global creation
+        @errors.ReferenceError(message~) =>
+          if !ctx.strict && message == "\{name} is not defined" {
+            // Sloppy mode: implicit global creation for unbound names only.
+            // TDZ errors ("Cannot access before initialization") must propagate.
             self.global.def(name, value, VarBinding)
             self.mirror_to_global(name, value, configurable=true)
           } else {
-            raise @errors.ReferenceError(message="\{name} is not defined")
+            raise @errors.ReferenceError(message~)
           }
         other => raise other
       }
@@ -501,7 +502,9 @@ fn Interpreter::assign_pattern(
                 iterator_a, next_method_a, loc_dstr,
               ) catch {
                 e => {
-                  self.iterator_close(iterator_a, loc_dstr) catch { _ => () }
+                  self.iterator_close(iterator_a, loc_dstr) catch {
+                    _ => ()
+                  }
                   raise e
                 }
               }
@@ -517,7 +520,9 @@ fn Interpreter::assign_pattern(
           self.put_lref(ctx, lref, make_array(rest_elements), env) catch {
             e => {
               if !iter_done_a {
-                self.iterator_close(iterator_a, loc_dstr) catch { _ => () }
+                self.iterator_close(iterator_a, loc_dstr) catch {
+                  _ => ()
+                }
               }
               raise e
             }
@@ -667,13 +672,14 @@ fn Interpreter::assign_to_expr(
   match expr {
     Ident(name, _) =>
       env.assign(name, value) catch {
-        @errors.ReferenceError(_) =>
-          if !ctx.strict {
-            // Implicit global creation in sloppy mode
+        @errors.ReferenceError(message~) =>
+          if !ctx.strict && message == "\{name} is not defined" {
+            // Sloppy mode: implicit global creation for unbound names only.
+            // TDZ errors must propagate as ReferenceError.
             self.global.def(name, value, VarBinding)
             self.mirror_to_global(name, value, configurable=true)
           } else {
-            raise @errors.ReferenceError(message="\{name} is not defined")
+            raise @errors.ReferenceError(message~)
           }
         e => raise e
       }

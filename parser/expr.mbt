@@ -1855,6 +1855,11 @@ fn expr_to_pattern(expr : @ast.Expr) -> @ast.Pattern raise Error {
       DefaultPat(pat, default_expr)
     // Member expression targets for destructuring assignment: [obj.x] = [1]
     Member(_, _, _) | ComputedMember(_, _, _) => AssignTarget(expr)
+    // Member with default: [{...}.y = 42] = arr  (ES2015 §12.14.5)
+    MemberAssign(base, prop, default_expr, loc) =>
+      DefaultPat(AssignTarget(Member(base, prop, loc)), default_expr)
+    ComputedAssign(base, key, default_expr, loc) =>
+      DefaultPat(AssignTarget(ComputedMember(base, key, loc)), default_expr)
     _ => raise @errors.SyntaxError(message="Invalid destructuring pattern")
   }
 }
