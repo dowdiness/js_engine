@@ -203,27 +203,7 @@ fn setup_number_builtins(
     name="toPrecision",
     length=1,
     fn(interp, this_val, args) raise {
-      let n : Double = match this_val {
-        Value::Number(v) => v
-        Object(data) =>
-          if data.class_name == "Number" {
-            match data.bag.properties.get("[[NumberData]]") {
-              Some(Value::Number(v)) => v
-              _ =>
-                raise @errors.TypeError(
-                  message="Number.prototype.toPrecision requires that 'this' be a Number",
-                )
-            }
-          } else {
-            raise @errors.TypeError(
-              message="Number.prototype.toPrecision requires that 'this' be a Number",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Number.prototype.toPrecision requires that 'this' be a Number",
-          )
-      }
+      let n = number_this_value(this_val, "toPrecision")
       // If no argument or undefined, just return toString result
       if args.length() == 0 {
         return Value::String_(n.to_string())
@@ -426,28 +406,7 @@ fn setup_number_builtins(
     name="toLocaleString",
     length=0,
     fn(this_val, _args) raise {
-      // Extract numeric value (same pattern as toFixed/toString)
-      let n : Double = match this_val {
-        Value::Number(v) => v
-        Object(data) =>
-          if data.class_name == "Number" {
-            match data.bag.properties.get("[[NumberData]]") {
-              Some(Value::Number(v)) => v
-              _ =>
-                raise @errors.TypeError(
-                  message="Number.prototype.toLocaleString requires that 'this' be a Number",
-                )
-            }
-          } else {
-            raise @errors.TypeError(
-              message="Number.prototype.toLocaleString requires that 'this' be a Number",
-            )
-          }
-        _ =>
-          raise @errors.TypeError(
-            message="Number.prototype.toLocaleString requires that 'this' be a Number",
-          )
-      }
+      let n = number_this_value(this_val, "toLocaleString")
       // Simple implementation: delegate to toString()
       // Full locale support would require Intl.NumberFormat (out of scope)
       Value::String_(n.to_string())
@@ -799,27 +758,7 @@ pub fn get_number_method(
         name="toPrecision",
         length=1,
         fn(interp, this_val, args) raise {
-          let n : Double = match this_val {
-            Value::Number(v) => v
-            Object(data) =>
-              if data.class_name == "Number" {
-                match data.bag.properties.get("[[NumberData]]") {
-                  Some(Value::Number(v)) => v
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Number.prototype.toPrecision requires that 'this' be a Number",
-                    )
-                }
-              } else {
-                raise @errors.TypeError(
-                  message="Number.prototype.toPrecision requires that 'this' be a Number",
-                )
-              }
-            _ =>
-              raise @errors.TypeError(
-                message="Number.prototype.toPrecision requires that 'this' be a Number",
-              )
-          }
+          let n = number_this_value(this_val, "toPrecision")
           if args.length() == 0 {
             return Value::String_(n.to_string())
           }
