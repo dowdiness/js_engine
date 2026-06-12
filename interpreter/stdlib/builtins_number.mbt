@@ -70,6 +70,11 @@ fn number_this_value(
 }
 
 ///|
+fn number_to_string(n : Double) -> String raise Error {
+  @runtime.to_js_string(Value::Number(n))
+}
+
+///|
 fn setup_number_builtins(
   env : Environment,
   realm_state : @runtime.RealmState,
@@ -163,7 +168,7 @@ fn setup_number_builtins(
         return Value::String_(if n > 0.0 { "Infinity" } else { "-Infinity" })
       }
       if radix == 10 {
-        return Value::String_(n.to_string())
+        return Value::String_(number_to_string(n))
       }
       // Integer to string in given radix
       let is_neg = n < 0.0
@@ -206,10 +211,10 @@ fn setup_number_builtins(
       let n = number_this_value(this_val, "toPrecision")
       // If no argument or undefined, just return toString result
       if args.length() == 0 {
-        return Value::String_(n.to_string())
+        return Value::String_(number_to_string(n))
       }
       match args[0] {
-        Undefined => return Value::String_(n.to_string())
+        Undefined => return Value::String_(number_to_string(n))
         _ => ()
       }
       let precision = interp.to_number(args[0]).to_int()
@@ -409,7 +414,7 @@ fn setup_number_builtins(
       let n = number_this_value(this_val, "toLocaleString")
       // Simple implementation: delegate to toString()
       // Full locale support would require Intl.NumberFormat (out of scope)
-      Value::String_(n.to_string())
+      Value::String_(number_to_string(n))
     },
   )
   // Per ES spec, Number.prototype has [[NumberData]] internal slot with value +0
@@ -717,7 +722,7 @@ pub fn get_number_method(
             )
           }
           if radix == 10 {
-            return Value::String_(n.to_string())
+            return Value::String_(number_to_string(n))
           }
           let is_neg = n < 0.0
           let mut val = n.abs().floor()
@@ -760,10 +765,10 @@ pub fn get_number_method(
         fn(interp, this_val, args) raise {
           let n = number_this_value(this_val, "toPrecision")
           if args.length() == 0 {
-            return Value::String_(n.to_string())
+            return Value::String_(number_to_string(n))
           }
           match args[0] {
-            Undefined => return Value::String_(n.to_string())
+            Undefined => return Value::String_(number_to_string(n))
             _ => ()
           }
           let precision = interp.to_number(args[0]).to_int()

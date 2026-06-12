@@ -3643,6 +3643,16 @@ test "number toString radix" {
 }
 
 ///|
+test "number toString formats negative zero as zero" {
+  let src =
+    #|console.log((-0).toString());
+    #|console.log(new Number(-0).toString());
+    #|console.log(Number.prototype.toString.call(-0));
+  let output = run_output(src)
+  json_inspect(output, content=["0", "0", "0"])
+}
+
+///|
 test "Number.parseInt parseFloat" {
   let src =
     #|console.log(Number.parseInt("42"));
