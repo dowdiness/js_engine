@@ -1,4 +1,4 @@
-.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt unicode-tables unicode-tables-mbt clean
+.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 
@@ -36,6 +36,19 @@ architecture-state-audit-mbt: architecture-state-audit-mbt-test
 
 architecture-state-audit-mbt-test:
 	moon test --target native tooling/architecture_state_audit
+
+# Runs the Stage 0 architecture guardrails.
+architecture-audit: architecture-state-audit architecture-boundary-audit
+
+# Runs the MoonBit architecture import-boundary audit.
+architecture-boundary-audit: architecture-boundary-audit-mbt
+
+architecture-boundary-audit-mbt: architecture-boundary-audit-mbt-test
+	moon build --target native cmd/architecture_boundary_audit
+	./_build/native/debug/build/cmd/architecture_boundary_audit/architecture_boundary_audit.exe --root .
+
+architecture-boundary-audit-mbt-test:
+	moon test --target native tooling/architecture_boundary_audit
 
 # Download the Test262 test suite
 test262-download:

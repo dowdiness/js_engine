@@ -1,0 +1,245 @@
+{
+  "version": 1,
+  "package_groups": [
+    {
+      "name": "frontend-core",
+      "packages": ["token", "errors", "ast", "lexer", "parser"]
+    },
+    {
+      "name": "runtime",
+      "packages": ["interpreter/runtime"]
+    },
+    {
+      "name": "stdlib",
+      "packages": ["interpreter/stdlib"]
+    },
+    {
+      "name": "wiring",
+      "packages": ["interpreter"]
+    },
+    {
+      "name": "compiler",
+      "packages": ["compiler"]
+    },
+    {
+      "name": "facade",
+      "packages": ["."]
+    },
+    {
+      "name": "commands",
+      "packages": ["cmd/*"]
+    },
+    {
+      "name": "tooling",
+      "packages": ["tooling/*"]
+    },
+    {
+      "name": "benchmarks",
+      "packages": ["benchmarks"]
+    },
+    {
+      "name": "external",
+      "packages": ["moonbitlang/*"]
+    }
+  ],
+  "allowed_imports": [
+    {
+      "from": ".",
+      "to": "parser",
+      "scope": "prod",
+      "reason": "root facade parses source through the frontend"
+    },
+    {
+      "from": ".",
+      "to": "interpreter",
+      "scope": "prod",
+      "reason": "root facade exposes the tree-walking interpreter"
+    },
+    {
+      "from": ".",
+      "to": "compiler",
+      "scope": "prod",
+      "reason": "root facade exposes experimental compiler entry points"
+    },
+    {
+      "from": ".",
+      "to": "interpreter/runtime",
+      "scope": "test",
+      "reason": "root facade tests assert runtime-level details"
+    },
+    {
+      "from": "ast",
+      "to": "token",
+      "scope": "prod",
+      "reason": "AST nodes reference token/operator definitions"
+    },
+    {
+      "from": "lexer",
+      "to": "token",
+      "scope": "prod",
+      "reason": "lexer emits tokens"
+    },
+    {
+      "from": "lexer",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "lexer reports shared JavaScript parse errors"
+    },
+    {
+      "from": "parser",
+      "to": "token",
+      "scope": "prod",
+      "reason": "parser consumes token definitions"
+    },
+    {
+      "from": "parser",
+      "to": "ast",
+      "scope": "prod",
+      "reason": "parser builds AST nodes"
+    },
+    {
+      "from": "parser",
+      "to": "lexer",
+      "scope": "prod",
+      "reason": "parser facade parses source through lexer"
+    },
+    {
+      "from": "parser",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "parser reports shared JavaScript parse errors"
+    },
+    {
+      "from": "interpreter/runtime",
+      "to": "ast",
+      "scope": "prod",
+      "reason": "tree-walking runtime evaluates parsed AST nodes"
+    },
+    {
+      "from": "interpreter/runtime",
+      "to": "token",
+      "scope": "prod",
+      "reason": "runtime evaluates token-classified operators"
+    },
+    {
+      "from": "interpreter/runtime",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "runtime raises shared JavaScript errors"
+    },
+    {
+      "from": "interpreter/stdlib",
+      "to": "interpreter/runtime",
+      "scope": "prod",
+      "reason": "stdlib is implemented on runtime semantic APIs"
+    },
+    {
+      "from": "interpreter/stdlib",
+      "to": "ast",
+      "scope": "prod",
+      "reason": "current builtin implementation shares AST-facing helpers before preparation split"
+    },
+    {
+      "from": "interpreter/stdlib",
+      "to": "token",
+      "scope": "prod",
+      "reason": "current builtin implementation shares token-facing helpers"
+    },
+    {
+      "from": "interpreter/stdlib",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "stdlib raises shared JavaScript errors"
+    },
+    {
+      "from": "interpreter",
+      "to": "interpreter/runtime",
+      "scope": "prod",
+      "reason": "wiring layer composes runtime with stdlib"
+    },
+    {
+      "from": "interpreter",
+      "to": "interpreter/stdlib",
+      "scope": "prod",
+      "reason": "wiring layer installs stdlib into runtime realms"
+    },
+    {
+      "from": "interpreter",
+      "to": "errors",
+      "scope": "test",
+      "reason": "interpreter tests inspect shared error values"
+    },
+    {
+      "from": "interpreter",
+      "to": "parser",
+      "scope": "test",
+      "reason": "interpreter tests parse fixture source"
+    },
+    {
+      "from": "interpreter",
+      "to": "token",
+      "scope": "test",
+      "reason": "interpreter tests inspect token-classified behavior"
+    },
+    {
+      "from": "compiler",
+      "to": "ast",
+      "scope": "prod",
+      "reason": "compiler lowers AST into experimental execution forms"
+    },
+    {
+      "from": "compiler",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "compiler reports shared JavaScript errors"
+    },
+    {
+      "from": "compiler",
+      "to": "interpreter/runtime",
+      "scope": "prod",
+      "reason": "bytecode and closure experiments delegate JavaScript semantics to runtime operations"
+    },
+    {
+      "from": "compiler",
+      "to": "token",
+      "scope": "prod",
+      "reason": "compiler lowers token-classified operators"
+    },
+    {
+      "from": "compiler",
+      "to": "interpreter",
+      "scope": "test",
+      "reason": "compiler tests compare against the tree-walking interpreter"
+    },
+    {
+      "from": "compiler",
+      "to": "parser",
+      "scope": "test",
+      "reason": "compiler tests parse source fixtures"
+    },
+    {
+      "from": "compiler",
+      "to": "parser",
+      "scope": "wbtest",
+      "reason": "compiler white-box tests parse source fixtures"
+    }
+  ],
+  "allowlisted_import_debt": [
+    {
+      "from": "interpreter/runtime",
+      "to": "parser",
+      "scope": "prod",
+      "owner": "static-semantics extraction",
+      "retire_by_stage": "Stage 4-6",
+      "reason": "eval/function/module paths still parse source inside runtime before the preparation boundary exists"
+    },
+    {
+      "from": "interpreter/stdlib",
+      "to": "parser",
+      "scope": "prod",
+      "owner": "static-semantics extraction",
+      "retire_by_stage": "Stage 4-6",
+      "reason": "Function-family builtin paths still parse source before the preparation boundary exists"
+    }
+  ]
+}
