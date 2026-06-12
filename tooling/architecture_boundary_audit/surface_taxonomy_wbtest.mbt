@@ -78,12 +78,39 @@ test "extract_mbti_symbol extracts const names" {
 }
 
 ///|
-test "extract_mbti_symbol skips impl and using lines" {
+test "extract_mbti_symbol skips impl lines" {
   assert_true(extract_mbti_symbol("pub impl Show for LexForm") == None)
-  assert_true(
-    extract_mbti_symbol("pub using @runtime {type Environment}") == None,
-  )
   assert_true(extract_mbti_symbol("pub(all) impl Show for Token") == None)
+}
+
+///|
+test "extract_mbti_symbol extracts re-exported type names" {
+  assert_true(
+    extract_mbti_symbol("pub using @runtime {type Value}") == Some("Value"),
+  )
+  assert_true(
+    extract_mbti_symbol("pub using @runtime {type Environment}") ==
+    Some("Environment"),
+  )
+  // aliased re-exports: exported name is the alias
+  assert_true(
+    extract_mbti_symbol("pub using @cond_var {type Cond as CondVar}") ==
+    Some("CondVar"),
+  )
+  // non-type re-exports (functions, traits) are not yet classified
+  assert_true(extract_mbti_symbol("pub using @pkg {is_finite}") == None)
+}
+
+///|
+test "extract_mbti_symbol strips tuple-struct payload from name" {
+  assert_true(
+    extract_mbti_symbol(
+      "pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)",
+    ) ==
+    Some("ModuleLoader"),
+  )
+  // regular (record) struct still works
+  assert_true(extract_mbti_symbol("pub(all) struct Token {") == Some("Token"))
 }
 
 ///|

@@ -113,9 +113,36 @@ fn extract_mbti_symbol(line : String) -> String? {
     return None
   }
   let content = stripped.to_owned()
-  // Skip trait implementations and re-exports
-  if content.has_prefix("impl ") || content.has_prefix("using ") {
+  if content.has_prefix("impl ") {
     return None
+  }
+  // Re-exports: pub using @pkg {type Name} or {type Old as Alias}
+  if content.has_prefix("using ") {
+    return match content.split_once("{") {
+      None => None
+      Some((_, after_brace)) => {
+        let inner = after_brace.to_owned().trim().to_owned()
+        if !inner.has_prefix("type ") {
+          None
+        } else {
+          let type_name_part = inner[5:].to_owned()
+          let name_part = match type_name_part.split_once("}") {
+            Some((before, _)) => before.trim().to_owned()
+            None => type_name_part.trim().to_owned()
+          }
+          // "type Old as Alias" — the exported name is the alias
+          let name = match name_part.split_once(" as ") {
+            Some((_, exported)) => exported.trim().to_owned()
+            None => name_part
+          }
+          if name == "" {
+            None
+          } else {
+            Some(name)
+          }
+        }
+      }
+    }
   }
   // Functions: pub fn name(...) or pub fn[T] Type::method(...)
   if content.has_prefix("fn ") || content.has_prefix("fn[") {
@@ -137,12 +164,16 @@ fn extract_mbti_symbol(line : String) -> String? {
       None => None
       Some((_, after_kw)) => {
         let after_kw = after_kw.to_owned()
-        let name = match after_kw.split_once(" ") {
+        let name = match after_kw.split_once("(") {
           Some((before, _)) => before.trim().to_owned()
           None =>
-            match after_kw.split_once("{") {
+            match after_kw.split_once(" ") {
               Some((before, _)) => before.trim().to_owned()
-              None => after_kw.trim().to_owned()
+              None =>
+                match after_kw.split_once("{") {
+                  Some((before, _)) => before.trim().to_owned()
+                  None => after_kw.trim().to_owned()
+                }
             }
         }
         if name == "" {
