@@ -660,11 +660,33 @@ fn render_import_report(
 }
 
 ///|
+fn append_lines(target : Array[String], source : Array[String]) -> Unit {
+  for line in source {
+    target.push(line)
+  }
+}
+
+///|
 pub fn run(
   root~ : String,
   list_imports~ : Bool,
+  list_representation? : Bool = false,
 ) -> (Array[String], Array[String], Int) raise {
-  let rules = load_rules(root)
-  let edges = discover_import_edges(root)
-  render_import_report(edges, rules, list_imports~)
+  let stdout_lines : Array[String] = []
+  let stderr_lines : Array[String] = []
+  let (import_stdout, import_stderr, import_code) = run_import_boundary(
+    root~,
+    list_imports~,
+  )
+  append_lines(stdout_lines, import_stdout)
+  append_lines(stderr_lines, import_stderr)
+
+  let (rep_stdout, rep_stderr, representation_code) = run_representation_access(
+    root~,
+    list_representation~,
+  )
+  append_lines(stdout_lines, rep_stdout)
+  append_lines(stderr_lines, rep_stderr)
+  let code = if import_code != 0 || representation_code != 0 { 1 } else { 0 }
+  (stdout_lines, stderr_lines, code)
 }

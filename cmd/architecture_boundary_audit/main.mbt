@@ -30,6 +30,10 @@ fn main {
         "list-imports",
         about="Print classified package import edges.",
       ),
+      @argparse.FlagArg(
+        "list-representation",
+        about="Print classified compiler and stdlib representation access.",
+      ),
     ],
     options=[
       @argparse.OptionArg(
@@ -38,7 +42,7 @@ fn main {
         about="Repository root to scan (default: current directory)",
       ),
     ],
-    about="Check Stage 0 architecture import boundaries against the allowlist inventory.",
+    about="Check Stage 0 architecture import boundaries and representation access against allowlist inventories.",
   )
   let matches = cmd.parse(argv=program_args(@env.args()), env={}) catch {
     err => {
@@ -55,7 +59,15 @@ fn main {
     Some(true) => true
     _ => false
   }
-  let (stdout_lines, stderr_lines, code) = @audit.run(root~, list_imports~) catch {
+  let list_representation = match matches.flags.get("list-representation") {
+    Some(true) => true
+    _ => false
+  }
+  let (stdout_lines, stderr_lines, code) = @audit.run(
+    root~,
+    list_imports~,
+    list_representation~,
+  ) catch {
     err => {
       eprintln("Error: \{err}")
       exit_with_error()
