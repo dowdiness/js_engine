@@ -824,15 +824,16 @@ fn Interpreter::eval_expr(
         return value
       }
       env.assign(name, value) catch {
-        @errors.ReferenceError(_) =>
+        @errors.ReferenceError(message~) =>
           // In non-strict mode, assigning to an undeclared variable creates
-          // a global property (sloppy mode implicit global).
-          if !ctx.strict {
+          // a global property (sloppy mode implicit global). TDZ errors
+          // ("Cannot access before initialization") must propagate as-is.
+          if !ctx.strict && message == "\{name} is not defined" {
             self.global.def(name, value, VarBinding)
             // Also mirror onto globalThis as a configurable, enumerable property
             self.mirror_to_global(name, value, configurable=true)
           } else {
-            raise @errors.ReferenceError(message="\{name} is not defined")
+            raise @errors.ReferenceError(message~)
           }
         e => raise e
       }
