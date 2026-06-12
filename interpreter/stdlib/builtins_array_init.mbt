@@ -80,7 +80,7 @@ fn setup_array_builtins(
       }
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let from_idx = if args.length() > 1 {
-        interp.to_number(args[1]).to_int()
+        interp.to_number(args[1]).floor().to_int()
       } else {
         0
       }
@@ -118,7 +118,7 @@ fn setup_array_builtins(
       }
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let start = if args.length() > 1 {
-        interp.to_number(args[1]).to_int()
+        interp.to_number(args[1]).floor().to_int()
       } else {
         len - 1
       }
@@ -151,7 +151,7 @@ fn setup_array_builtins(
       // §22.1.3.11 step 3: ToInteger(fromIndex) is NOT called when len is 0.
       guard len != 0 else { return Value::Bool(false) }
       let (search, from_idx) = match args {
-        [s, fi, ..] => (s, interp.to_number(fi).to_int())
+        [s, fi, ..] => (s, interp.to_number(fi).floor().to_int())
         [s] => (s, 0)
         [] => (Undefined, 0)
       }

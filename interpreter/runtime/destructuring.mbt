@@ -391,10 +391,17 @@ fn Interpreter::assign_pattern(
                 let val : Value = if iter_done_a {
                   Undefined
                 } else {
-                  match
-                    self.iterator_step_result(
-                      iterator_a, next_method_a, loc_dstr,
-                    ) {
+                  let step = self.iterator_step_result(
+                    iterator_a, next_method_a, loc_dstr,
+                  ) catch {
+                    e => {
+                      self.iterator_close(iterator_a, loc_dstr) catch {
+                        _ => ()
+                      }
+                      raise e
+                    }
+                  }
+                  match step {
                     None => {
                       iter_done_a = true
                       Undefined
@@ -490,14 +497,26 @@ fn Interpreter::assign_pattern(
           let rest_elements : Array[Value] = []
           if !iter_done_a {
             while true {
-              match
-                self.iterator_step_value(iterator_a, next_method_a, loc_dstr) {
+              let step = self.iterator_step_value(
+                iterator_a, next_method_a, loc_dstr,
+              ) catch {
+                e => {
+                  self.iterator_close(iterator_a, loc_dstr) catch { _ => () }
+                  raise e
+                }
+              }
+              match step {
                 None => break
                 Some(v) => rest_elements.push(v)
               }
             }
           }
-          self.put_lref(ctx, lref, make_array(rest_elements), env)
+          self.put_lref(ctx, lref, make_array(rest_elements), env) catch {
+            e => {
+              self.iterator_close(iterator_a, loc_dstr) catch { _ => () }
+              raise e
+            }
+          }
         }
         Some(rest_pat) => {
           let rest_elements : Array[Value] = []

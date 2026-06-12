@@ -2596,6 +2596,21 @@ test "array includes fromIndex valueOf coercion with interpreter context" {
 }
 
 ///|
+test "array includes indexOf lastIndexOf use floor not truncation for negative fractional fromIndex" {
+  // ToIntegerOrInfinity uses Math.floor, not truncation.
+  // -2.5 floors to -3, so len+(-3)=0 starts search from index 0.
+  // With truncation it would be -2, len+(-2)=1, missing the element at index 0.
+  let src =
+    #|var a = [1, 2, 3];
+    #|console.log(a.includes(1, -2.5));
+    #|console.log(a.indexOf(1, -2.5));
+    #|// lastIndexOf: -1.5 floors to -2, k=0; truncation gives -1, k=1 (returns 1 instead of 0)
+    #|console.log([1, 1].lastIndexOf(1, -1.5));
+  let output = run_output(src)
+  json_inspect(output, content=["true", "0", "0"])
+}
+
+///|
 test "unary plus and minus call valueOf with interpreter context" {
   let src =
     #|var v = { valueOf: function() { return 3; } };
