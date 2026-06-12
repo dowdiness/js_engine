@@ -50,5 +50,22 @@
     "CanBlockIsFalse",
     "CanBlockIsTrue"
   ],
-  "skip_path_suffixes": {}
+  "skip_path_suffixes": {
+    "built-ins/Array/prototype/includes/length-boundaries.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/reverse/length-exceeding-integer-limit-with-object.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/reverse/length-exceeding-integer-limit-with-proxy.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/slice/length-exceeding-integer-limit-proxied-array.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/slice/length-exceeding-integer-limit.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/splice/clamps-length-to-integer-limit.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/splice/create-species-length-exceeding-integer-limit.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/splice/length-and-deleteCount-exceeding-integer-limit.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/splice/length-exceeding-integer-limit-shrink-array.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/splice/length-near-integer-limit-grow-array.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/splice/throws-if-integer-limit-exceeded.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/toReversed/length-exceeding-array-length-limit.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/toSorted/length-exceeding-array-length-limit.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/toSpliced/length-clamped-to-2pow53minus1.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/toSpliced/length-exceeding-array-length-limit.js": "int64-array-index (#307)",
+    "built-ins/Array/prototype/with/length-exceeding-array-length-limit.js": "int64-array-index (#307)"
+  }
 }
