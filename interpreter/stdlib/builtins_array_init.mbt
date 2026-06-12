@@ -149,14 +149,11 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       // §22.1.3.11 step 3: ToInteger(fromIndex) is NOT called when len is 0.
-      if len == 0 {
-        return Value::Bool(false)
-      }
-      let search = if args.length() > 0 { args[0] } else { Undefined }
-      let from_idx = if args.length() > 1 {
-        interp.to_number(args[1]).to_int()
-      } else {
-        0
+      guard len != 0 else { return Value::Bool(false) }
+      let (search, from_idx) = match args {
+        [s, fi, ..] => (s, interp.to_number(fi).to_int())
+        [s] => (s, 0)
+        [] => (Undefined, 0)
       }
       let start = if from_idx < 0 {
         let s = len + from_idx
@@ -168,7 +165,7 @@ fn setup_array_builtins(
       } else {
         from_idx
       }
-      for i = start; i < len; i = i + 1 {
+      for i in start..<len {
         if same_value_zero(
             @runtime.get_array_like_element_interp(interp, o, i),
             search,
