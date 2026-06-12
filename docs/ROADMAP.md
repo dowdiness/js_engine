@@ -17,9 +17,9 @@ ARGS="--format=changelog"`.
 | strict | 44,986 | 18,270 | 26,680 | 25,141 | 1,539 | 36 | **94.2%** | 55.9% |
 | non-strict | 47,692 | 18,811 | 28,840 | 26,797 | 2,043 | 41 | **92.9%** | 56.2% |
 
-ES2015 specifically: strict **95.4%** P/E (9,667 / 10,134), non-strict **95.1%** P/E (10,105 / 10,623) — roadmap 95% target achieved.
+ES2015 specifically: strict **95.4%** P/E (9,667 / 10,134; 33 tail-call-optimization tests skipped), non-strict **95.1%** P/E (10,105 / 10,623; 33 tail-call-optimization tests skipped) — roadmap 95% target achieved.
 
-Delta vs v0.3.0 tip `028fde7` (run 24730849102): the current tip reflects
+Delta vs v0.3.0 tip `232df3d` (CI run [27216729343](https://github.com/dowdiness/js_engine/actions/runs/27216729343)): the current tip reflects
 PRs through #302 on the CI run above, plus PR #303 (dstr iterator protocol)
 on main. Key recent batches:
 

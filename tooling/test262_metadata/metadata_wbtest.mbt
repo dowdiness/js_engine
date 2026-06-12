@@ -80,7 +80,11 @@ test "loads strict shared skip metadata JSON" {
   assert_true(metadata.features.contains("class-fields-private"))
   assert_true(metadata.flags.contains("CanBlockIsFalse"))
   assert_true(metadata.flags.contains("CanBlockIsTrue"))
-  assert_eq(metadata.path_suffixes.length(), 0)
+  assert_true(
+    metadata.path_suffixes.contains(
+      "built-ins/Array/prototype/includes/length-boundaries.js",
+    ),
+  )
 }
 
 ///|
