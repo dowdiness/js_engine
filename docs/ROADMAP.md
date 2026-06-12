@@ -2,8 +2,8 @@
 
 ## Current Status
 
-**Test262** — CI run [25631308977](https://github.com/dowdiness/js_engine/actions/runs/25631308977)
-on PR head `cff0d37`, merged as squash `5d49cea` on main, 2026-05-11.
+**Test262** — CI run [27376184116](https://github.com/dowdiness/js_engine/actions/runs/27376184116)
+on tip `5d8e8ee` (main, 2026-06-11).
 Each test file runs twice, once in strict mode and once in non-strict mode. The
 two modes are reported separately because summing them would double-count
 files.
@@ -14,38 +14,34 @@ ARGS="--format=changelog"`.
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| strict | 44,986 | 18,270 | 26,602 | 23,798 | 2,804 | 113 | **89.5%** | 52.9% |
-| non-strict | 47,692 | 18,811 | 28,765 | 25,244 | 3,521 | 115 | **87.8%** | 52.9% |
+| strict | 44,986 | 18,270 | 26,680 | 25,141 | 1,539 | 36 | **94.2%** | 55.9% |
+| non-strict | 47,692 | 18,811 | 28,840 | 26,797 | 2,043 | 41 | **92.9%** | 56.2% |
 
-This row is the post-PR #103 baseline. The recent batch includes:
+ES2015 specifically: strict **95.4%** P/E (9,667 / 10,134; 33 tail-call-optimization tests skipped), non-strict **95.1%** P/E (10,105 / 10,623; 33 tail-call-optimization tests skipped) — roadmap 95% target achieved.
 
-- #99: lexer leading-zero `01.2` / `01e2` rejection and
-  `NonOctalDecimal` `lex_form` retention, +0.7pp.
-- #100: PerformEval §19.2.1.1 early-error checks for `super`,
-  `new.target`, and `arguments`, +0.26pp.
-- #101: property descriptor refactor.
-- #102: eval-contains `ArrayHole` merge-skew hotfix.
-- #103: parser trailing comma in non-arrow params, +44 strict / +39
-  non-strict.
+Delta vs v0.3.0 tip `232df3d` (CI run [27216729343](https://github.com/dowdiness/js_engine/actions/runs/27216729343)): the current tip reflects
+PRs through #302 on the CI run above, plus PR #303 (dstr iterator protocol)
+on main. Key recent batches:
 
-Delta vs v0.2.0 tip `f89898a`, run 24730849102: **+744 strict / +777
-non-strict** at this baseline. That delta reflects:
-
-- PRs #70-#71: pre-Stage-C TypeError bundle.
-- Stage C: `ArrayData.bag`.
-- Stage B.3: `[[HasProperty]]` dispatcher.
-- Strict-reserved early errors.
-- PR #74: IteratorClose §7.4.10 and construct `newTarget` threading.
-- PR #75: TypedArray wide-catch and `"-0"` canonical-invalid guard.
-- PR #82: ToPrimitive cluster.
-- PR #99: lexer leading-zero fractional/exponent handling.
-- PR #100: eval early errors.
-- PR #101: descriptors.
-- PR #103: trailing comma handling.
+- PRs #116/#118: async/generator function `.length` conformance.
+- PR #119: Annex B §B.3.3.3 eval-code conflict skip.
+- PRs #120/#121: TypedArray ValidateTypedArray rollout.
+- PR #122: Array iteration model (`array_index_lookup_result`).
+- PR #123/#191: Array sort/reverse/copyWithin/fill hole lifecycle.
+- PR #133–#152: Stage 2c RealmState ambient-state migration.
+- PRs #157–#186: opt-in bytecode/IR prototype.
+- PRs #194–#202: RegExp prototype triage (accessors, Symbol.replace/match/split/matchAll).
+- PR #246: test262 runner ergonomics (task lists, slicing, sharding, resume).
+- PRs #247–#263: stdlib builtin helper pilot and method-descriptor rollout.
+- PRs #286/#290: MoonBit tooling promotion (Phase 3/4).
+- PRs #291–#293: CI opts sharding 2×45min → 8×11min.
+- PRs #298–#302: CI UX (progress bar, ETA, exit-code vocabulary, diff-only failures).
+- PRs #217–#227: module graph live bindings and namespace semantics.
+- PR #303: dstr iterator protocol (empty-pattern GetIterator, lref-before-next ordering).
 
 CI regression baseline: `test262-baseline.json`. Minimums are 23,520
 non-strict passed and 22,450 strict passed, updated 2026-04-12. The current
-baseline is +1,724 / +1,348 above those minimums.
+baseline is +3,277 / +2,691 above those minimums.
 
 **Unit tests**: 1227 / 1227 passing. This is the post-PR #103 count and
 includes 6 new parser trailing-comma tests.

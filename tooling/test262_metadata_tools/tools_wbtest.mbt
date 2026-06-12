@@ -50,14 +50,13 @@ test "classify_path_by_edition uses path overrides and newest mapped feature" {
 test "validate_skip_metadata accepts live shared metadata entries" {
   let metadata = @metadata.load_skip_metadata(root=".")
   let features : Map[String, Bool] = {}
+  metadata.skip_feature_names().each(fn(f) { features[f] = true })
   let flags : Map[String, Bool] = {}
-  for feature in metadata.skip_feature_names() {
-    features[feature] = true
-  }
-  for flag in metadata.skip_flag_names() {
-    flags[flag] = true
-  }
-  let suite = { files_scanned: 1, features, flags, paths: [] }
+  metadata.skip_flag_names().each(fn(f) { flags[f] = true })
+  // Populate paths from path suffix entries so each suffix finds a match.
+  // The real filesystem check runs in make test262-validate-skips.
+  let paths = metadata.skip_path_suffix_entries().map(fn(e) { e.0 })
+  let suite = { files_scanned: 1, features, flags, paths }
   assert_eq(validate_skip_metadata(suite, metadata).length(), 0)
 }
 

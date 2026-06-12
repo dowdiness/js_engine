@@ -2573,6 +2573,55 @@ test "array includes and at observe inherited indexed properties" {
 }
 
 ///|
+test "array includes fromIndex valueOf not called when length is zero" {
+  let src =
+    #|var calls = 0;
+    #|var fi = { valueOf: function() { calls++; } };
+    #|var r = [].includes(0, fi);
+    #|console.log(r);
+    #|console.log(calls);
+  let output = run_output(src)
+  json_inspect(output, content=["false", "0"])
+}
+
+///|
+test "array includes fromIndex valueOf coercion with interpreter context" {
+  let src =
+    #|var obj = { valueOf: function() { return 1; } };
+    #|var arr = [42, 43];
+    #|console.log(arr.includes(42, obj));
+    #|console.log(arr.includes(43, obj));
+  let output = run_output(src)
+  json_inspect(output, content=["false", "true"])
+}
+
+///|
+test "array includes indexOf lastIndexOf use truncation toward zero for negative fractional fromIndex" {
+  // ToIntegerOrInfinity = sign(n) * floor(abs(n)), which truncates toward zero.
+  // -0.1 truncates to 0, not -1 (floor); so search starts at index max(len+0,0)=0.
+  // With Math.floor, -0.1 → -1, k=len-1=1, and 'a' at index 0 would be missed.
+  let src =
+    #|var a = ['a', 'b'];
+    #|console.log(a.indexOf('a', -0.1));
+    #|console.log(a.indexOf('a', -0.9));
+    #|console.log(a.includes('a', -0.1));
+    #|// -1.5 truncates to -1, k=len+(-1)=1; lastIndexOf from index 1 finds at 1, not 0
+    #|console.log([1, 1].lastIndexOf(1, -1.5));
+  let output = run_output(src)
+  json_inspect(output, content=["0", "0", "true", "1"])
+}
+
+///|
+test "unary plus and minus call valueOf with interpreter context" {
+  let src =
+    #|var v = { valueOf: function() { return 3; } };
+    #|console.log(+v);
+    #|console.log(-v);
+  let output = run_output(src)
+  json_inspect(output, content=["3", "-3"])
+}
+
+///|
 test "array copy methods observe prototype overrides" {
   let src =
     #|var saved = {

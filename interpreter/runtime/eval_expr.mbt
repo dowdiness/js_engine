@@ -2388,7 +2388,7 @@ fn Interpreter::eval_unary(
       }
     _ => {
       let val = self.eval_expr(ctx, operand, env)
-      eval_unary_value_op(op, val, loc)
+      eval_unary_value_op(op, val, loc, interp=Some(self))
     }
   }
 }
