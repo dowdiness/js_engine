@@ -374,7 +374,7 @@ fn make_group_by_func() -> Value {
         [kvalue, Value::Number(k.to_double())],
         loc,
       )
-      let property_key = @runtime.to_js_string(key)
+      let property_key = interp.to_js_string(key)
       match group_arrays.get(property_key) {
         Some(arr) => arr.push(kvalue)
         None => {

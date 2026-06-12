@@ -183,14 +183,14 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let alen = @runtime.to_array_like_length_interp(o, interp)
       let mut start = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
       let mut end = if args.length() > 1 {
         match args[1] {
           Undefined => alen
-          _ => @runtime.to_number(args[1]).to_int()
+          _ => interp.to_number(args[1]).to_int()
         }
       } else {
         alen
@@ -350,7 +350,7 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       let idx = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
@@ -382,7 +382,7 @@ fn setup_array_builtins(
             )
             if @runtime.is_callable(tls) {
               let result = interp.call_value(tls, v, [], @token.Loc::default())
-              parts.push(@runtime.to_js_string(result))
+              parts.push(interp.to_js_string(result))
             } else {
               parts.push(v.to_string())
             }
@@ -802,7 +802,7 @@ fn setup_array_builtins(
       let depth = if args.length() > 0 {
         match args[0] {
           Undefined => 1
-          _ => @runtime.to_number(args[0]).to_int()
+          _ => interp.to_number(args[0]).to_int()
         }
       } else {
         1
@@ -964,7 +964,7 @@ fn setup_array_builtins(
                   return 0
                 }
               }
-              let cmp = @runtime.to_number(cmp_result) catch {
+              let cmp = interp.to_number(cmp_result) catch {
                 e => {
                   caught_error = Some(e)
                   return 0
@@ -1018,7 +1018,7 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       let mut start = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }
@@ -1032,7 +1032,7 @@ fn setup_array_builtins(
         start = len
       }
       let del_count = if args.length() > 1 {
-        let d = @runtime.to_number(args[1]).to_int()
+        let d = interp.to_number(args[1]).to_int()
         if d < 0 {
           0
         } else if d > len - start {
@@ -1062,7 +1062,7 @@ fn setup_array_builtins(
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let idx = if args.length() > 0 {
-        @runtime.to_number(args[0]).to_int()
+        interp.to_number(args[0]).to_int()
       } else {
         0
       }

@@ -39,7 +39,7 @@ pub fn Interpreter::eval_update_property(
   loc : @token.Loc,
 ) -> Value raise Error {
   let current = self.get_property(obj, prop, member_loc)
-  let num = to_number(current)
+  let num = self.to_number(current)
   let new_val : Value = match op {
     Increment => Number(num + 1.0)
     Decrement => Number(num - 1.0)
@@ -65,7 +65,7 @@ pub fn Interpreter::eval_update_computed_property(
 ) -> Value raise Error {
   let prop_key = to_property_key(key, interp=Some(self))
   let current = self.get_computed_property(obj, prop_key, member_loc)
-  let num = to_number(current)
+  let num = self.to_number(current)
   let new_val : Value = match op {
     Increment => Number(num + 1.0)
     Decrement => Number(num - 1.0)
@@ -97,7 +97,7 @@ fn Interpreter::eval_update(
   match operand {
     Ident(name, _) => {
       let current = get_assignment_name_value(ctx, env, name)
-      let num = to_number(current)
+      let num = self.to_number(current)
       let new_val : Value = match op {
         Increment => Number(num + 1.0)
         Decrement => Number(num - 1.0)

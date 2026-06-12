@@ -489,11 +489,15 @@ fn make_get_own_property_descriptor_func() -> Value {
     match obj {
       Value::String_(s) => {
         // String primitive has no own symbol properties — return undefined
-        // before to_js_string (which would throw on Symbol keys).
-        if prop_key is Symbol(_) {
+        // before ToString (which would throw on Symbol keys).
+        let string_prop_key = @runtime.to_property_key(
+          prop_key,
+          interp=Some(interp),
+        )
+        if string_prop_key is Symbol(_) {
           return Undefined
         }
-        let prop_name = @runtime.to_js_string(prop_key)
+        let prop_name = interp.to_js_string(string_prop_key)
         if prop_name == "length" {
           return make_data_desc_obj(
             Value::Number(s.length().to_double()),

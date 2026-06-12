@@ -31,13 +31,13 @@ pub fn get_array_method(
     "indexOf" | "lastIndexOf" => Undefined // Delegated to Array.prototype (hole handling)
     "includes" => {
       let arr = data
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         name="includes",
         realm_state=Some(realm_state),
-        fn(args) raise {
+        fn(interp, _this_val, args) raise {
           let search = if args.length() > 0 { args[0] } else { Undefined }
           let from_idx = if args.length() > 1 {
-            @runtime.to_number(args[1]).to_int()
+            interp.to_number(args[1]).to_int()
           } else {
             0
           }
@@ -72,11 +72,13 @@ pub fn get_array_method(
     }
     "fill" => {
       let arr = data
-      @runtime.make_native_func(name="fill", realm_state=Some(realm_state), fn(
-        args,
-      ) raise {
-        array_direct_fill(arr, args)
-      })
+      @runtime.make_interp_method_func(
+        name="fill",
+        realm_state=Some(realm_state),
+        fn(interp, _this_val, args) raise {
+          array_direct_fill(arr, args, interp=Some(interp))
+        },
+      )
     }
     "toString" => {
       let arr = data
@@ -96,30 +98,34 @@ pub fn get_array_method(
     }
     "at" => {
       let arr = data
-      @runtime.make_native_func(name="at", realm_state=Some(realm_state), fn(
-        args,
-      ) raise {
-        // Array.prototype.at() - access element at index (supports negative)
-        let idx = if args.length() > 0 {
-          @runtime.to_number(args[0]).to_int()
-        } else {
-          0
-        }
-        let len = arr.elements.length()
-        let actual_idx = if idx < 0 { len + idx } else { idx }
-        if actual_idx >= 0 && actual_idx < len {
-          arr.elements[actual_idx]
-        } else {
-          Undefined
-        }
-      })
+      @runtime.make_interp_method_func(
+        name="at",
+        realm_state=Some(realm_state),
+        fn(interp, _this_val, args) raise {
+          // Array.prototype.at() - access element at index (supports negative)
+          let idx = if args.length() > 0 {
+            interp.to_number(args[0]).to_int()
+          } else {
+            0
+          }
+          let len = arr.elements.length()
+          let actual_idx = if idx < 0 { len + idx } else { idx }
+          if actual_idx >= 0 && actual_idx < len {
+            arr.elements[actual_idx]
+          } else {
+            Undefined
+          }
+        },
+      )
     }
     "copyWithin" => {
       let arr = data
-      @runtime.make_native_func(
+      @runtime.make_interp_method_func(
         name="copyWithin",
         realm_state=Some(realm_state),
-        fn(args) raise { array_direct_copy_within(arr, args) },
+        fn(interp, _this_val, args) raise {
+          array_direct_copy_within(arr, args, interp=Some(interp))
+        },
       )
     }
     "entries" | "keys" | "values" => Undefined // Delegated to Array.prototype (iterator method overrides)

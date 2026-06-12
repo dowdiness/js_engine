@@ -283,9 +283,12 @@ fn setup_builtins_with_realm_state_active(
   // parseInt(string, radix?)
   env.def_builtin(
     "parseInt",
-    @runtime.make_native_func(name="parseInt", length=2, fn(args) raise {
+    @runtime.make_interp_static_func(name="parseInt", length=2, fn(
+      interp,
+      args,
+    ) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
-      let s = @runtime.to_js_string(str_val)
+      let s = interp.to_js_string(str_val)
       let trimmed = trim_start(s)
       if trimmed.length() == 0 {
         return Value::Number(0.0 / 0.0)
@@ -300,7 +303,7 @@ fn setup_builtins_with_realm_state_active(
         pos = pos + 1
       }
       let radix_arg = if args.length() > 1 {
-        @runtime.to_int32(@runtime.to_number(args[1]))
+        @runtime.to_int32(interp.to_number(args[1]))
       } else {
         0
       }
@@ -343,9 +346,12 @@ fn setup_builtins_with_realm_state_active(
   // parseFloat(string)
   env.def_builtin(
     "parseFloat",
-    @runtime.make_native_func(name="parseFloat", length=1, fn(args) raise {
+    @runtime.make_interp_static_func(name="parseFloat", length=1, fn(
+      interp,
+      args,
+    ) raise {
       let str_val = if args.length() > 0 { args[0] } else { Undefined }
-      let s = @runtime.to_js_string(str_val)
+      let s = interp.to_js_string(str_val)
       let trimmed = trim_start(s)
       if trimmed.length() == 0 {
         return Value::Number(0.0 / 0.0)
@@ -424,11 +430,12 @@ fn setup_builtins_with_realm_state_active(
   // encodeURIComponent(string)
   env.def_builtin(
     "encodeURIComponent",
-    @runtime.make_native_func(name="encodeURIComponent", length=1, fn(
+    @runtime.make_interp_static_func(name="encodeURIComponent", length=1, fn(
+      interp,
       args,
     ) raise {
       let str = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -439,11 +446,12 @@ fn setup_builtins_with_realm_state_active(
   // decodeURIComponent(string) - decodes everything
   env.def_builtin(
     "decodeURIComponent",
-    @runtime.make_native_func(name="decodeURIComponent", length=1, fn(
+    @runtime.make_interp_static_func(name="decodeURIComponent", length=1, fn(
+      interp,
       args,
     ) raise {
       let str = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -454,9 +462,12 @@ fn setup_builtins_with_realm_state_active(
   // encodeURI(string)
   env.def_builtin(
     "encodeURI",
-    @runtime.make_native_func(name="encodeURI", length=1, fn(args) raise {
+    @runtime.make_interp_static_func(name="encodeURI", length=1, fn(
+      interp,
+      args,
+    ) raise {
       let str = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -467,9 +478,12 @@ fn setup_builtins_with_realm_state_active(
   // decodeURI(string) - preserves reserved characters (; , / ? : @ & = + $ #)
   env.def_builtin(
     "decodeURI",
-    @runtime.make_native_func(name="decodeURI", length=1, fn(args) raise {
+    @runtime.make_interp_static_func(name="decodeURI", length=1, fn(
+      interp,
+      args,
+    ) raise {
       let str = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -480,9 +494,12 @@ fn setup_builtins_with_realm_state_active(
   // escape(string) — Annex B
   env.def_builtin(
     "escape",
-    @runtime.make_native_func(name="escape", length=1, fn(args) raise {
+    @runtime.make_interp_static_func(name="escape", length=1, fn(
+      interp,
+      args,
+    ) raise {
       let str = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -493,9 +510,12 @@ fn setup_builtins_with_realm_state_active(
   // unescape(string) — Annex B
   env.def_builtin(
     "unescape",
-    @runtime.make_native_func(name="unescape", length=1, fn(args) raise {
+    @runtime.make_interp_static_func(name="unescape", length=1, fn(
+      interp,
+      args,
+    ) raise {
       let str = if args.length() > 0 {
-        @runtime.to_js_string(args[0])
+        interp.to_js_string(args[0])
       } else {
         "undefined"
       }
@@ -539,13 +559,13 @@ fn setup_builtins_with_realm_state_active(
           "prototype": string_proto,
           "name": Value::String_("String"),
           "length": Value::Number(1.0),
-          "fromCharCode": @runtime.make_native_func(
+          "fromCharCode": @runtime.make_interp_static_func(
             name="fromCharCode",
             length=1,
-            fn(args) raise {
+            fn(interp, args) raise {
               let buf = StringBuilder::new()
               for arg in args {
-                let code = @runtime.to_number(arg).to_int()
+                let code = interp.to_number(arg).to_int()
                 // fromCharCode uses UTF-16 code units, modulo 2^16
                 let code_unit = code & 0xFFFF
                 buf.write_char(code_unit.unsafe_to_char())
