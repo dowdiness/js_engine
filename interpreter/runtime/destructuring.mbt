@@ -506,14 +506,19 @@ fn Interpreter::assign_pattern(
                 }
               }
               match step {
-                None => break
+                None => {
+                  iter_done_a = true
+                  break
+                }
                 Some(v) => rest_elements.push(v)
               }
             }
           }
           self.put_lref(ctx, lref, make_array(rest_elements), env) catch {
             e => {
-              self.iterator_close(iterator_a, loc_dstr) catch { _ => () }
+              if !iter_done_a {
+                self.iterator_close(iterator_a, loc_dstr) catch { _ => () }
+              }
               raise e
             }
           }
