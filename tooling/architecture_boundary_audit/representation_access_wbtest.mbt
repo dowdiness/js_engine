@@ -165,6 +165,41 @@ test "new compiler representation access fails" {
 }
 
 ///|
+test "inline block comment does not hide new representation access" {
+  let root = "_build/architecture-representation-audit-inline-comment-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|fn sample(data : Value) -> Unit {
+    #|  let v = /* TODO */ Object(data)
+    #|  ignore(v)
+    #|}
+    #|
+  write_file(root, "compiler/bytecode.mbt", source)
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(""),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => line == "unclassified representation access:"),
+  )
+  assert_true(
+    stderr_lines.any(line => {
+      line ==
+      "- compiler/bytecode.mbt:2 [compiler] runtime-object-constructor: Object("
+    }),
+  )
+}
+
+///|
 test "allowlisted representation count does not hide new access" {
   let root = "_build/architecture-representation-audit-count-test-\{@env.now()}"
   ensure_dir("_build")

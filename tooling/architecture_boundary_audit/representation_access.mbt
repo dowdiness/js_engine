@@ -278,22 +278,27 @@ fn is_multiline_string_content_line(line : String) -> Bool {
 }
 
 ///|
-fn representation_signature_line(line : String) -> String {
-  if is_multiline_string_content_line(line) {
-    ""
-  } else {
-    strip_comment_suffix(line).trim().to_owned()
+fn find_block_comment_close(line : String, start : Int) -> Int? {
+  let len = line.length()
+  let mut index = start
+  while index + 1 < len {
+    if line[index] == '*' && line[index + 1] == '/' {
+      return Some(index)
+    }
+    index += 1
   }
+  None
 }
 
 ///|
-fn count_token_in_code_line(line : String, token : String) -> Int {
+fn code_without_comments(line : String) -> String {
   if is_multiline_string_content_line(line) {
-    return 0
+    return ""
   }
   let len = line.length()
+  let parts : Array[String] = []
+  let mut segment_start = 0
   let mut index = 0
-  let mut count = 0
   let mut in_string = false
   let mut escaped = false
   while index < len {
@@ -309,12 +314,54 @@ fn count_token_in_code_line(line : String, token : String) -> Int {
     } else if line[index] == '"' {
       in_string = true
       index += 1
-    } else if line[index] == '/' &&
-      index + 1 < len &&
-      (line[index + 1] == '/' || line[index + 1] == '*') {
-      return count
-    } else if starts_with_at(line, token, index) &&
-      token_match_has_boundaries(line, token, index) {
+    } else if line[index] == '/' && index + 1 < len && line[index + 1] == '/' {
+      parts.push(line[segment_start:index].to_owned())
+      return parts.join("")
+    } else if line[index] == '/' && index + 1 < len && line[index + 1] == '*' {
+      parts.push(line[segment_start:index].to_owned())
+      match find_block_comment_close(line, index + 2) {
+        Some(close) => {
+          index = close + 2
+          segment_start = index
+        }
+        None => return parts.join("")
+      }
+    } else {
+      index += 1
+    }
+  }
+  parts.push(line[segment_start:].to_owned())
+  parts.join("")
+}
+
+///|
+fn representation_signature_line(line : String) -> String {
+  code_without_comments(line).trim().to_owned()
+}
+
+///|
+fn count_token_in_code_line(line : String, token : String) -> Int {
+  let code = code_without_comments(line)
+  let len = code.length()
+  let mut index = 0
+  let mut count = 0
+  let mut in_string = false
+  let mut escaped = false
+  while index < len {
+    if in_string {
+      if escaped {
+        escaped = false
+      } else if code[index] == '\\' {
+        escaped = true
+      } else if code[index] == '"' {
+        in_string = false
+      }
+      index += 1
+    } else if code[index] == '"' {
+      in_string = true
+      index += 1
+    } else if starts_with_at(code, token, index) &&
+      token_match_has_boundaries(code, token, index) {
       count += 1
       index += token.length()
     } else {
