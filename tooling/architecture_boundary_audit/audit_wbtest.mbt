@@ -134,7 +134,10 @@ test "current import debt is allowlisted and listable" {
     base_rules_json(parser_token_allowed_json(), runtime_parser_debt_json()),
   )
 
-  let (stdout_lines, stderr_lines, code) = run(root~, list_imports=true)
+  let (stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=true,
+  )
   assert_eq(code, 0)
   assert_eq(stderr_lines.length(), 0)
   assert_true(
@@ -174,7 +177,10 @@ test "forbidden production import fails" {
     base_rules_json("", ""),
   )
 
-  let (_stdout_lines, stderr_lines, code) = run(root~, list_imports=false)
+  let (_stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=false,
+  )
   assert_eq(code, 1)
   assert_true(stderr_lines.any(line => line == "unclassified imports:"))
   assert_true(
@@ -202,7 +208,10 @@ test "classified external imports are ignored" {
     base_rules_json("", ""),
   )
 
-  let (stdout_lines, stderr_lines, code) = run(root~, list_imports=true)
+  let (stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=true,
+  )
   assert_eq(code, 0)
   assert_eq(stderr_lines.length(), 0)
   assert_true(
@@ -231,7 +240,10 @@ test "unclassified external imports fail" {
     base_rules_json("", ""),
   )
 
-  let (_stdout_lines, stderr_lines, code) = run(root~, list_imports=false)
+  let (_stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=false,
+  )
   assert_eq(code, 1)
   assert_true(stderr_lines.any(line => line == "unclassified imports:"))
   assert_true(
@@ -260,7 +272,10 @@ test "runtime to stdlib production import fails" {
     base_rules_json("", ""),
   )
 
-  let (_stdout_lines, stderr_lines, code) = run(root~, list_imports=false)
+  let (_stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=false,
+  )
   assert_eq(code, 1)
   assert_true(stderr_lines.any(line => line == "unclassified imports:"))
   assert_true(
@@ -290,7 +305,10 @@ test "commented-out imports do not satisfy allowlisted debt" {
     base_rules_json("", runtime_parser_debt_json()),
   )
 
-  let (_stdout_lines, stderr_lines, code) = run(root~, list_imports=false)
+  let (_stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=false,
+  )
   assert_eq(code, 1)
   assert_true(stderr_lines.any(line => line == "stale allowlist entries:"))
   assert_true(
@@ -317,7 +335,10 @@ test "commented-out forbidden imports are ignored" {
     base_rules_json("", ""),
   )
 
-  let (_stdout_lines, stderr_lines, code) = run(root~, list_imports=false)
+  let (_stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=false,
+  )
   assert_eq(code, 0)
   assert_eq(stderr_lines.length(), 0)
 }
@@ -335,7 +356,10 @@ test "stale allowlisted import debt fails" {
     base_rules_json("", runtime_parser_debt_json()),
   )
 
-  let (_stdout_lines, stderr_lines, code) = run(root~, list_imports=false)
+  let (_stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=false,
+  )
   assert_eq(code, 1)
   assert_true(stderr_lines.any(line => line == "stale allowlist entries:"))
   assert_true(
@@ -360,7 +384,10 @@ test "trailing comments do not reclassify production import scope" {
     base_rules_json(compiler_parser_test_allowed_json(), ""),
   )
 
-  let (stdout_lines, stderr_lines, code) = run(root~, list_imports=true)
+  let (stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=true,
+  )
   assert_eq(code, 1)
   assert_true(
     stdout_lines.any(line => line == "compiler -> parser [prod] -- UNCLASSIFIED"),
@@ -386,7 +413,10 @@ test "nested generated directories are skipped" {
     base_rules_json("", ""),
   )
 
-  let (_stdout_lines, stderr_lines, code) = run(root~, list_imports=false)
+  let (_stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=false,
+  )
   assert_eq(code, 0)
   assert_eq(stderr_lines.length(), 0)
 }
@@ -410,7 +440,10 @@ test "test-only allow rule does not mask production import" {
     base_rules_json(compiler_parser_test_allowed_json(), ""),
   )
 
-  let (stdout_lines, stderr_lines, code) = run(root~, list_imports=true)
+  let (stdout_lines, stderr_lines, code) = run_import_boundary(
+    root~,
+    list_imports=true,
+  )
   assert_eq(code, 1)
   assert_true(
     stdout_lines.any(line => {

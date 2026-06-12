@@ -40,7 +40,7 @@ architecture-state-audit-mbt-test:
 # Runs the Stage 0 architecture guardrails.
 architecture-audit: architecture-state-audit architecture-boundary-audit
 
-# Runs the MoonBit architecture import-boundary audit.
+# Runs the MoonBit architecture import-boundary and representation-access audit.
 architecture-boundary-audit: architecture-boundary-audit-mbt
 
 architecture-boundary-audit-mbt: architecture-boundary-audit-mbt-test
