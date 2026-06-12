@@ -396,6 +396,8 @@ End state:
 
 ### Stage 0 — Architecture guardrails and inventories
 
+Implementation spec: [architecture-stage0-implementation-spec-2026-06-12.md](architecture-stage0-implementation-spec-2026-06-12.md).
+
 Goal: make boundary drift visible before moving code.
 
 Work items:
@@ -882,7 +884,8 @@ Stop conditions:
 
 ## 10. First PR Sequence
 
-Recommended first ten PR-sized slices:
+Recommended first ten PR-sized slices. The first three are specified in
+[architecture-stage0-implementation-spec-2026-06-12.md](architecture-stage0-implementation-spec-2026-06-12.md):
 
 1. **Boundary audit skeleton.** Import-direction scan plus allowlist.
 2. **Representation-access inventory.** Detect compiler/stdlib direct
