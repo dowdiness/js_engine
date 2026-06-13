@@ -47,12 +47,10 @@ fn sealed_descriptor(existing : PropDescriptor?) -> PropDescriptor {
 ///|
 fn freeze_string_properties(bag : PropertyBag) -> Unit {
   // Own string keys plus accessor/descriptor-only keys not in `properties`.
-  let keys = [ for k, _ in bag.properties => k ]
-  for k, _ in bag.descriptors {
-    if !bag.properties.contains(k) {
-      keys.push(k)
-    }
-  }
+  let keys : Array[String] = [
+    ..bag.properties.keys(),
+    ..bag.descriptors.keys().filter(fn(k) { !bag.properties.contains(k) }),
+  ]
   for key in keys {
     bag.descriptors[key] = frozen_descriptor(bag.descriptors.get(key))
   }
@@ -60,7 +58,7 @@ fn freeze_string_properties(bag : PropertyBag) -> Unit {
 
 ///|
 fn freeze_symbol_properties(bag : PropertyBag) -> Unit {
-  let sym_ids = [ for id, _ in bag.symbol_properties => id ]
+  let sym_ids : Array[Int] = [..bag.symbol_properties.keys()]
   for id in sym_ids {
     bag.symbol_descriptors[id] = frozen_descriptor(
       bag.symbol_descriptors.get(id),
@@ -120,14 +118,14 @@ pub fn set_integrity_sealed(obj : Value) -> Value {
       // Seal string properties. Unlike freeze, seal iterates own *properties*
       // only — descriptor-only keys are intentionally left as-is (preserved
       // pre-existing behavior).
-      let keys = [ for key, _ in data.bag.properties => key ]
+      let keys : Array[String] = [..data.bag.properties.keys()]
       for key in keys {
         data.bag.descriptors[key] = sealed_descriptor(
           data.bag.descriptors.get(key),
         )
       }
       // Seal symbol properties
-      let sym_ids = [ for id, _ in data.bag.symbol_properties => id ]
+      let sym_ids : Array[Int] = [..data.bag.symbol_properties.keys()]
       for id in sym_ids {
         data.bag.symbol_descriptors[id] = sealed_descriptor(
           data.bag.symbol_descriptors.get(id),
