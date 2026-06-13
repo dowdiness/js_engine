@@ -67,6 +67,16 @@ test "extract_mbti_symbol extracts type names" {
   assert_true(
     extract_mbti_symbol("pub(all) suberror JsError {") == Some("JsError"),
   )
+  assert_true(extract_mbti_symbol("pub trait ToValue {") == Some("ToValue"))
+  assert_true(
+    extract_mbti_symbol("pub(all) trait Comparable {") == Some("Comparable"),
+  )
+}
+
+///|
+test "extract_mbti_symbol recognizes pub(open) visibility" {
+  assert_true(extract_mbti_symbol("pub(open) enum Foo {") == Some("Foo"))
+  assert_true(extract_mbti_symbol("pub(open) struct Bar {") == Some("Bar"))
 }
 
 ///|

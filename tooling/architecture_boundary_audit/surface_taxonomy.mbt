@@ -104,49 +104,96 @@ fn extract_fn_name_from(after_fn : String) -> String? {
 }
 
 ///|
-fn extract_mbti_symbol(line : String) -> String? {
-  let stripped = if line.has_prefix("pub(all) ") {
-    line[9:]
+fn strip_visibility_prefix(line : String) -> String? {
+  if line.has_prefix("pub(all) ") {
+    Some(line[9:].to_owned())
+  } else if line.has_prefix("pub(open) ") {
+    Some(line[10:].to_owned())
   } else if line.has_prefix("pub ") {
-    line[4:]
+    Some(line[4:].to_owned())
   } else {
-    return None
+    None
   }
-  let content = stripped.to_owned()
+}
+
+///|
+fn extract_reexport_name(content : String) -> String? {
+  let after_brace = match content.split_once("{") {
+    None => return None
+    Some((_, after)) => after.to_owned()
+  }
+  let inner = after_brace.trim().to_owned()
+  guard inner.has_prefix("type ") else { return None }
+  let type_name_part = inner[5:].to_owned()
+  let name_part = match type_name_part.split_once("}") {
+    Some((before, _)) => before.trim().to_owned()
+    None => type_name_part.trim().to_owned()
+  }
+  // "type Old as Alias" — the exported name is the alias
+  let name = match name_part.split_once(" as ") {
+    Some((_, exported)) => exported.trim().to_owned()
+    None => name_part
+  }
+  if name == "" {
+    None
+  } else {
+    Some(name)
+  }
+}
+
+///|
+fn extract_type_name(content : String) -> String? {
+  let after_kw = match content.split_once(" ") {
+    None => return None
+    Some((_, after)) => after.to_owned()
+  }
+  let name = match after_kw.split_once("(") {
+    Some((before, _)) => before.trim().to_owned()
+    None =>
+      match after_kw.split_once(" ") {
+        Some((before, _)) => before.trim().to_owned()
+        None =>
+          match after_kw.split_once("{") {
+            Some((before, _)) => before.trim().to_owned()
+            None => after_kw.trim().to_owned()
+          }
+      }
+  }
+  if name == "" {
+    None
+  } else {
+    Some(name)
+  }
+}
+
+///|
+fn extract_const_name(content : String) -> String? {
+  let after_kw = content[6:].to_owned()
+  let name = match after_kw.split_once(" ") {
+    Some((before, _)) => before.trim().to_owned()
+    None => after_kw.trim().to_owned()
+  }
+  if name == "" {
+    None
+  } else {
+    Some(name)
+  }
+}
+
+///|
+fn extract_mbti_symbol(line : String) -> String? {
+  let content = match strip_visibility_prefix(line) {
+    None => return None
+    Some(c) => c
+  }
   if content.has_prefix("impl ") {
     return None
   }
-  // Re-exports: pub using @pkg {type Name} or {type Old as Alias}
   if content.has_prefix("using ") {
-    return match content.split_once("{") {
-      None => None
-      Some((_, after_brace)) => {
-        let inner = after_brace.to_owned().trim().to_owned()
-        if !inner.has_prefix("type ") {
-          None
-        } else {
-          let type_name_part = inner[5:].to_owned()
-          let name_part = match type_name_part.split_once("}") {
-            Some((before, _)) => before.trim().to_owned()
-            None => type_name_part.trim().to_owned()
-          }
-          // "type Old as Alias" — the exported name is the alias
-          let name = match name_part.split_once(" as ") {
-            Some((_, exported)) => exported.trim().to_owned()
-            None => name_part
-          }
-          if name == "" {
-            None
-          } else {
-            Some(name)
-          }
-        }
-      }
-    }
+    return extract_reexport_name(content)
   }
-  // Functions: pub fn name(...) or pub fn[T] Type::method(...)
   if content.has_prefix("fn ") || content.has_prefix("fn[") {
-    if content.has_prefix("fn[") {
+    return if content.has_prefix("fn[") {
       match content.split_once("]") {
         Some((_, rest)) =>
           extract_fn_name_from(rest.to_owned().trim().to_owned())
@@ -155,49 +202,18 @@ fn extract_mbti_symbol(line : String) -> String? {
     } else {
       extract_fn_name_from(content[3:].to_owned())
     }
-    // Named types: enum, struct, suberror, typealias
-  } else if content.has_prefix("enum ") ||
+  }
+  if content.has_prefix("enum ") ||
     content.has_prefix("struct ") ||
     content.has_prefix("suberror ") ||
-    content.has_prefix("typealias ") {
-    match content.split_once(" ") {
-      None => None
-      Some((_, after_kw)) => {
-        let after_kw = after_kw.to_owned()
-        let name = match after_kw.split_once("(") {
-          Some((before, _)) => before.trim().to_owned()
-          None =>
-            match after_kw.split_once(" ") {
-              Some((before, _)) => before.trim().to_owned()
-              None =>
-                match after_kw.split_once("{") {
-                  Some((before, _)) => before.trim().to_owned()
-                  None => after_kw.trim().to_owned()
-                }
-            }
-        }
-        if name == "" {
-          None
-        } else {
-          Some(name)
-        }
-      }
-    }
-    // Constants: pub const NAME : Type = ...
-  } else if content.has_prefix("const ") {
-    let after_kw = content[6:].to_owned()
-    let name = match after_kw.split_once(" ") {
-      Some((before, _)) => before.trim().to_owned()
-      None => after_kw.trim().to_owned()
-    }
-    if name == "" {
-      None
-    } else {
-      Some(name)
-    }
-  } else {
-    None
+    content.has_prefix("typealias ") ||
+    content.has_prefix("trait ") {
+    return extract_type_name(content)
   }
+  if content.has_prefix("const ") {
+    return extract_const_name(content)
+  }
+  None
 }
 
 ///|
