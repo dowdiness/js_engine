@@ -65,25 +65,9 @@ fn sort_visible_own_string_keys(
   source : Value,
   bag : PropertyBag,
 ) -> Array[String] {
-  let int_keys : Array[String] = []
-  let str_keys : Array[String] = []
-  bag.properties.each(fn(k, _v) {
-    if is_hidden_internal_property_key(source, k) {
-      return
-    }
-    let idx = @string.parse_int(k) catch { _ => -1 }
-    if idx >= 0 && idx.to_string() == k {
-      int_keys.push(k)
-    } else {
-      str_keys.push(k)
-    }
+  sort_property_keys_filtered(bag.properties, fn(k) {
+    is_hidden_internal_property_key(source, k)
   })
-  int_keys.sort_by(fn(a, b) {
-    let na = @string.parse_int(a) catch { _ => 0 }
-    let nb = @string.parse_int(b) catch { _ => 0 }
-    na - nb
-  })
-  [..int_keys, ..str_keys]
 }
 
 ///|
@@ -114,11 +98,10 @@ fn append_array_own_keys(
   }
   keys.push(Value::String_("length"))
   for prop_name in sort_visible_own_string_keys(source, data.bag) {
-    let idx = @string.parse_int(prop_name) catch { _ => -1 }
-    if idx >= 0 && idx.to_string() == prop_name && idx < element_len {
-      continue
+    match array_index_of_key(prop_name) {
+      Some(idx) if idx < element_len => continue
+      _ => keys.push(Value::String_(prop_name))
     }
-    keys.push(Value::String_(prop_name))
   }
   append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
 }
