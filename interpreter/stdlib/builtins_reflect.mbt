@@ -302,49 +302,10 @@ fn setup_reflect_builtins(
       let value = if args.length() > 2 { args[2] } else { Undefined }
       // 4th argument is the Receiver; defaults to the target per spec.
       let receiver = if args.length() >= 4 { args[3] } else { target }
-      // Pre-flight own-descriptor blockers (spec-safe): own accessor getter-
-      // only or own non-writable DATA → return false. The former `!extensible
-      // && !has(P)` short-circuits were wrong because an inherited setter can
-      // still run successfully on a non-extensible target (Codex Q6).
-      //
-      // The non-writable check requires `setter is None` alongside
-      // `getter is None` — accessor descriptors default `writable=false`, so a
-      // setter-only accessor (getter=None, setter=Some(_), writable=false)
-      // would otherwise be preemptively rejected instead of invoking the
-      // setter through the dispatcher.
-      match target {
-        Object(data) =>
-          match prop_key {
-            Symbol(sym) =>
-              match data.bag.symbol_descriptors.get(sym.id) {
-                Some(desc) => {
-                  if desc.getter is Some(_) && desc.setter is None {
-                    return Value::Bool(false)
-                  }
-                  if desc.getter is None &&
-                    desc.setter is None &&
-                    !desc.writable {
-                    return Value::Bool(false)
-                  }
-                }
-                None => ()
-              }
-            _ =>
-              match data.bag.descriptors.get(key_str) {
-                Some(desc) => {
-                  if desc.getter is Some(_) && desc.setter is None {
-                    return Value::Bool(false)
-                  }
-                  if desc.getter is None &&
-                    desc.setter is None &&
-                    !desc.writable {
-                    return Value::Bool(false)
-                  }
-                }
-                None => ()
-              }
-          }
-        _ => ()
+      // Pre-flight target-side own-descriptor blockers run before delegating to
+      // set_property; see @runtime.reflect_set_preflight_blocks.
+      if @runtime.reflect_set_preflight_blocks(target, prop_key, key_str) {
+        return Value::Bool(false)
       }
       let loc = @token.Loc::default()
       try {

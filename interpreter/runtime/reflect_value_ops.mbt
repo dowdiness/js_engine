@@ -7,9 +7,9 @@
 /// redesign Stage 8, following #335 own-property-keys, #338 integrity, #339
 /// keys/values/entries, #340 prototype ops, #341 Proxy revoke).
 ///
-/// This reproduces the existing Reflect.get behavior verbatim. It is the VALUE
-/// path and is intentionally distinct from #340's `prototype_ops.mbt` (the
-/// prototype path); do not unify them.
+/// These reproduce the existing Reflect.get / Reflect.set behavior verbatim.
+/// They are the VALUE path and are intentionally distinct from #340's
+/// `prototype_ops.mbt` (the prototype path); do not unify them.
 ///
 /// Preserved-as-is (NOT "fixed" here):
 /// - `reflect_get_with_receiver` reimplements receiver-aware `[[Get]]` rather
@@ -19,6 +19,15 @@
 ///   custom (3rd-argument) receiver. Aligning this with the internal
 ///   receiver-preserving walk (`get_property_from_prototype`) is a separate
 ///   behavior-preserving refactor, not this move.
+/// - `reflect_set_preflight_blocks` is a TARGET-side own-descriptor check
+///   (OrdinarySet §10.1.9.2 steps 1 / 3.a / 4) that Reflect.set performs before
+///   delegating to `Interpreter::set_property`. It is deliberately distinct from
+///   `set_property`'s internal RECEIVER-side blocker (`existing_receiver_desc_blocks`,
+///   step 3.e), which uses a different predicate (any-accessor vs getter-only).
+///   That Reflect.set patches `[[Set]]` externally with a target-side check
+///   `set_property` does not perform internally is a latent design smell; moving
+///   the check into `set_property` is behavior-changing for direct assignment and
+///   is tracked as a follow-up, NOT done here.
 
 ///|
 /// target receiver-aware `[[Get]]` backing for Reflect.get (§28.1.7). Argument
@@ -113,4 +122,64 @@ pub fn reflect_get_with_receiver(
       }
     }
   }
+}
+
+///|
+/// target-side own-descriptor pre-flight blocker for Reflect.set (§28.1.13 →
+/// OrdinarySet §10.1.9.2 steps 1 / 3.a / 4). Returns `true` when Reflect.set
+/// must short-circuit to `false` without delegating to
+/// `Interpreter::set_property` (own getter-only accessor, or own non-writable
+/// DATA property); `false` to proceed.
+///
+/// Pre-flight own-descriptor blockers (spec-safe): own accessor getter-
+/// only or own non-writable DATA → return false. The former `!extensible
+/// && !has(P)` short-circuits were wrong because an inherited setter can
+/// still run successfully on a non-extensible target (Codex Q6).
+///
+/// The non-writable check requires `setter is None` alongside
+/// `getter is None` — accessor descriptors default `writable=false`, so a
+/// setter-only accessor (getter=None, setter=Some(_), writable=false)
+/// would otherwise be preemptively rejected instead of invoking the
+/// setter through the dispatcher.
+///
+/// Move-fixup vs the relocated source: the method's inline
+/// `return Value::Bool(false)` becomes `return true` here (the op returns the
+/// block decision, not the method's Value), and the implicit fall-through
+/// becomes a trailing `false`. The descriptor logic is otherwise byte-identical.
+pub fn reflect_set_preflight_blocks(
+  target : Value,
+  prop_key : Value,
+  key_str : String,
+) -> Bool {
+  match target {
+    Object(data) =>
+      match prop_key {
+        Symbol(sym) =>
+          match data.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) => {
+              if desc.getter is Some(_) && desc.setter is None {
+                return true
+              }
+              if desc.getter is None && desc.setter is None && !desc.writable {
+                return true
+              }
+            }
+            None => ()
+          }
+        _ =>
+          match data.bag.descriptors.get(key_str) {
+            Some(desc) => {
+              if desc.getter is Some(_) && desc.setter is None {
+                return true
+              }
+              if desc.getter is None && desc.setter is None && !desc.writable {
+                return true
+              }
+            }
+            None => ()
+          }
+      }
+    _ => ()
+  }
+  false
 }
