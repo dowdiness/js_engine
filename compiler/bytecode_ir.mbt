@@ -441,4 +441,3 @@ fn BytecodeBuilder::patch_loop_jumps(
     self.patch(jump, Jump(target))
   }
 }
-

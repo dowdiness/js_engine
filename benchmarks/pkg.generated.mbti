@@ -66,9 +66,9 @@ pub fn bench_bytecode_local_access() -> BenchResult raise
 
 pub fn bench_bytecode_runtime_helpers() -> BenchResult raise
 
-pub fn bench_closure_conversion_closure_factory() -> BenchResult raise
-
 pub fn bench_closure_factory() -> BenchResult raise
+
+pub fn bench_closure_legacy_closure_factory() -> BenchResult raise
 
 pub fn bench_fibonacci() -> BenchResult raise
 
@@ -84,7 +84,7 @@ pub fn bench_pipeline_bytecode_compile() -> BenchResult raise
 
 pub fn bench_pipeline_bytecode_evaluate() -> BenchResult raise
 
-pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise
+pub fn bench_pipeline_closure_legacy_evaluate() -> BenchResult raise
 
 pub fn bench_pipeline_exec_evaluate() -> BenchResult raise
 
