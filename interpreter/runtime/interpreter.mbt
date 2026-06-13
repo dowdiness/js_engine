@@ -246,62 +246,6 @@ pub fn Interpreter::new(
 }
 
 ///|
-/// Check if a name is a strict-mode reserved word (ES5 §7.6.1.2).
-/// These identifiers cannot be used as variable names, function names,
-/// or parameter names in strict mode code.
-fn is_strict_reserved_word(name : String) -> Bool {
-  match name {
-    "implements"
-    | "interface"
-    | "let"
-    | "package"
-    | "private"
-    | "protected"
-    | "public"
-    | "static"
-    | "yield" => true
-    _ => false
-  }
-}
-
-///|
-/// Validate that a binding name is legal in strict mode.
-/// Raises SyntaxError if name is "eval", "arguments", or a strict reserved word.
-fn validate_strict_binding_name(name : String) -> Unit raise Error {
-  if name == "eval" || name == "arguments" {
-    raise @errors.SyntaxError(
-      message="Unexpected eval or arguments in strict mode",
-    )
-  }
-  if is_strict_reserved_word(name) {
-    raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
-  }
-}
-
-///|
-fn validate_strict_identifier_reference(
-  strict : Bool,
-  name : String,
-) -> Unit raise Error {
-  if strict && is_strict_reserved_word(name) {
-    raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
-  }
-}
-
-///|
-fn validate_strict_assignment_target_name(
-  strict : Bool,
-  name : String,
-) -> Unit raise Error {
-  validate_strict_identifier_reference(strict, name)
-  if strict && (name == "eval" || name == "arguments") {
-    raise @errors.SyntaxError(
-      message="Unexpected eval or arguments in strict mode",
-    )
-  }
-}
-
-///|
 /// Check for duplicate parameter names. Raises SyntaxError in strict mode.
 fn check_duplicate_params(params : Array[String]) -> Unit raise Error {
   let seen : Map[String, Bool] = {}
@@ -458,7 +402,7 @@ fn validate_strict_pattern_binding_names(
   pattern : @ast.Pattern,
 ) -> Unit raise Error {
   match pattern {
-    IdentPat(name) => validate_strict_binding_name(name)
+    IdentPat(name) => @static_semantics.validate_strict_binding_name(name)
     DefaultPat(inner, _) => validate_strict_pattern_binding_names(inner)
     AssignTarget(_) => ()
     ArrayPat(elements, rest) => {
@@ -494,11 +438,14 @@ fn validate_strict_param_binding_names_ext(
   for p in params {
     match p.pattern {
       Some(pat) => validate_strict_pattern_binding_names(pat)
-      None => validate_strict_binding_name(p.name)
+      None => @static_semantics.validate_strict_binding_name(p.name)
     }
   }
   match rest_param {
-    Some(rn) => if !has_rest_pattern { validate_strict_binding_name(rn) }
+    Some(rn) =>
+      if !has_rest_pattern {
+        @static_semantics.validate_strict_binding_name(rn)
+      }
     None => ()
   }
 }
@@ -550,10 +497,10 @@ pub fn validate_function_constructor_params(
   }
   if body_strict {
     for p in param_names {
-      validate_strict_binding_name(p)
+      @static_semantics.validate_strict_binding_name(p)
     }
     match rest_name {
-      Some(n) => validate_strict_binding_name(n)
+      Some(n) => @static_semantics.validate_strict_binding_name(n)
       None => ()
     }
   }
@@ -657,12 +604,12 @@ pub fn validate_function_signature(
 ) -> Unit raise Error {
   if is_function_strict(enclosing_strict, body) {
     match name {
-      Some(n) => validate_strict_binding_name(n)
+      Some(n) => @static_semantics.validate_strict_binding_name(n)
       None => ()
     }
     check_duplicate_params(params)
     for p in params {
-      validate_strict_binding_name(p)
+      @static_semantics.validate_strict_binding_name(p)
     }
   }
 }
@@ -677,7 +624,7 @@ pub fn validate_function_signature_ext(
 ) -> Unit raise Error {
   if is_function_strict(enclosing_strict, body) {
     match name {
-      Some(n) => validate_strict_binding_name(n)
+      Some(n) => @static_semantics.validate_strict_binding_name(n)
       None => ()
     }
     check_duplicate_params_ext(params, rest_param)

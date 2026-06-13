@@ -503,10 +503,12 @@ fn validate_pattern_early_errors(
     IdentPat(name) =>
       if binding {
         if strict_context {
-          validate_strict_binding_name(name)
+          @static_semantics.validate_strict_binding_name(name)
         }
       } else {
-        validate_strict_assignment_target_name(strict_context, name)
+        @static_semantics.validate_strict_assignment_target_name(
+          strict_context, name,
+        )
       }
     DefaultPat(inner_pat, default_expr) => {
       validate_pattern_early_errors(inner_pat, strict_context, binding)
@@ -515,7 +517,9 @@ fn validate_pattern_early_errors(
     AssignTarget(expr) =>
       match expr {
         Ident(name, _) =>
-          validate_strict_assignment_target_name(strict_context, name)
+          @static_semantics.validate_strict_assignment_target_name(
+            strict_context, name,
+          )
         _ => validate_block_early_errors_expr(expr, strict_context)
       }
     ArrayPat(elements, rest) => {
@@ -588,7 +592,10 @@ fn validate_block_early_errors_expr(
   strict_context : Bool,
 ) -> Unit raise Error {
   match expr {
-    Ident(name, _) => validate_strict_identifier_reference(strict_context, name)
+    Ident(name, _) =>
+      @static_semantics.validate_strict_identifier_reference(
+        strict_context, name,
+      )
     StringLit(_, _, lex_form, loc) =>
       validate_strict_lex_form(lex_form, loc, strict_context)
     NumberLit(_, lex_form, loc) =>
@@ -702,7 +709,9 @@ fn validate_block_early_errors_expr(
     }
     Unary(_, e, _) => validate_block_early_errors_expr(e, strict_context)
     Assign(name, e, _) => {
-      validate_strict_assignment_target_name(strict_context, name)
+      @static_semantics.validate_strict_assignment_target_name(
+        strict_context, name,
+      )
       validate_block_early_errors_expr(e, strict_context)
     }
     Call(callee, args, _) => {
@@ -750,13 +759,17 @@ fn validate_block_early_errors_expr(
     UpdateExpr(_, target, _, _) =>
       match target {
         Ident(name, _) =>
-          validate_strict_assignment_target_name(strict_context, name)
+          @static_semantics.validate_strict_assignment_target_name(
+            strict_context, name,
+          )
         _ => validate_block_early_errors_expr(target, strict_context)
       }
     CompoundAssign(_, lhs, rhs, _) => {
       match lhs {
         Ident(name, _) =>
-          validate_strict_assignment_target_name(strict_context, name)
+          @static_semantics.validate_strict_assignment_target_name(
+            strict_context, name,
+          )
         _ => validate_block_early_errors_expr(lhs, strict_context)
       }
       validate_block_early_errors_expr(rhs, strict_context)
@@ -830,7 +843,7 @@ fn validate_block_early_errors_stmt(
     ExprStmt(expr, _) => validate_block_early_errors_expr(expr, strict_context)
     VarDecl(_, name, init, _) => {
       if strict_context {
-        validate_strict_binding_name(name)
+        @static_semantics.validate_strict_binding_name(name)
       }
       match init {
         Some(expr) => validate_block_early_errors_expr(expr, strict_context)
@@ -875,16 +888,28 @@ fn validate_block_early_errors_stmt(
     }
     ForInStmt(kind, name, obj_expr, body, _) => {
       match kind {
-        Some(_) => if strict_context { validate_strict_binding_name(name) }
-        None => validate_strict_assignment_target_name(strict_context, name)
+        Some(_) =>
+          if strict_context {
+            @static_semantics.validate_strict_binding_name(name)
+          }
+        None =>
+          @static_semantics.validate_strict_assignment_target_name(
+            strict_context, name,
+          )
       }
       validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
     ForOfStmt(kind, name, iterable_expr, body, _) => {
       match kind {
-        Some(_) => if strict_context { validate_strict_binding_name(name) }
-        None => validate_strict_assignment_target_name(strict_context, name)
+        Some(_) =>
+          if strict_context {
+            @static_semantics.validate_strict_binding_name(name)
+          }
+        None =>
+          @static_semantics.validate_strict_assignment_target_name(
+            strict_context, name,
+          )
       }
       validate_block_early_errors_expr(iterable_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
@@ -902,7 +927,9 @@ fn validate_block_early_errors_stmt(
     ForInExpr(lhs, obj_expr, body, _) => {
       match lhs {
         Ident(name, _) =>
-          validate_strict_assignment_target_name(strict_context, name)
+          @static_semantics.validate_strict_assignment_target_name(
+            strict_context, name,
+          )
         _ => validate_block_early_errors_expr(lhs, strict_context)
       }
       validate_block_early_errors_expr(obj_expr, strict_context)
@@ -911,7 +938,9 @@ fn validate_block_early_errors_stmt(
     ForOfExpr(lhs, iterable_expr, body, _) => {
       match lhs {
         Ident(name, _) =>
-          validate_strict_assignment_target_name(strict_context, name)
+          @static_semantics.validate_strict_assignment_target_name(
+            strict_context, name,
+          )
         _ => validate_block_early_errors_expr(lhs, strict_context)
       }
       validate_block_early_errors_expr(iterable_expr, strict_context)

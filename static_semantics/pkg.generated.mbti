@@ -11,6 +11,12 @@ pub fn body_is_strict(Array[@ast.Stmt], Bool) -> Bool
 
 pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
 
+pub fn validate_strict_assignment_target_name(Bool, String) -> Unit raise
+
+pub fn validate_strict_binding_name(String) -> Unit raise
+
+pub fn validate_strict_identifier_reference(Bool, String) -> Unit raise
+
 // Errors
 
 // Types and methods

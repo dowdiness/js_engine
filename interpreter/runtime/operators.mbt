@@ -23,7 +23,7 @@ pub fn get_assignment_name_value(
   env : Environment,
   name : String,
 ) -> Value raise Error {
-  validate_strict_assignment_target_name(ctx.strict, name)
+  @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
   env.get(name)
 }
 

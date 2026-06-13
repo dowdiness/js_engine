@@ -778,7 +778,7 @@ fn Interpreter::eval_expr(
     UndefinedLit(_) => Undefined
     ArrayHole(_) => Undefined
     Ident(name, _) => {
-      validate_strict_identifier_reference(ctx.strict, name)
+      @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
       env.get(name) catch {
         @errors.ReferenceError(message~) =>
           if message == "\{name} is not defined" {
@@ -806,7 +806,7 @@ fn Interpreter::eval_expr(
       self.eval_binary(ctx, op, left, right, env, loc)
     Unary(op, operand, loc) => self.eval_unary(ctx, op, operand, env, loc)
     Assign(name, value_expr, _) => {
-      validate_strict_assignment_target_name(ctx.strict, name)
+      @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
       let value = self.eval_expr(ctx, value_expr, env)
       // SetFunctionName for assignments: x = function() {} gives name "x"
       if is_anonymous_function_definition(value_expr) {
@@ -2352,7 +2352,10 @@ fn Interpreter::eval_unary(
     Typeof =>
       match operand {
         Ident(name, _) => {
-          validate_strict_identifier_reference(ctx.strict, name)
+          @static_semantics.validate_strict_identifier_reference(
+            ctx.strict,
+            name,
+          )
           if env.has(name) {
             String_(type_of(env.get(name)))
           } else {
