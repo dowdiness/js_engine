@@ -1682,15 +1682,6 @@
     },
     {
       "path": "interpreter/stdlib/builtins_proxy.mbt",
-      "pattern_id": "representation-proxy-fields",
-      "allowed_count": 2,
-      "fingerprint": "2:66:86480:894730",
-      "owner": "stdlib runtime operation migration",
-      "retire_by_stage": "Stage 7-12",
-      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
-    },
-    {
-      "path": "interpreter/stdlib/builtins_proxy.mbt",
       "pattern_id": "runtime-array-constructor",
       "allowed_count": 4,
       "fingerprint": "4:300:715194:478239",

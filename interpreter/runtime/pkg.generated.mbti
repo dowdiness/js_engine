@@ -243,6 +243,8 @@ pub fn raise_js_exception(Value) -> Unit raise
 
 pub fn reject_promise(Interpreter, PromiseData, Value) -> Unit
 
+pub fn revoke_proxy(ProxyData) -> Unit
+
 pub fn set_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSymbols, Value?, Value?) -> Unit
 
 pub fn set_array_length_override(ArrayData, Int64) -> Unit

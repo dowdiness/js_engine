@@ -64,6 +64,15 @@ pub fn get_proxy_handler(proxy_data : ProxyData) -> Value raise Error {
 }
 
 ///|
+/// Revoke a proxy by nullifying its target and handler slots. The cached
+/// is_callable flag is intentionally left untouched: a revoked proxy still
+/// reports as callable, matching the pre-revocation classification.
+pub fn revoke_proxy(proxy_data : ProxyData) -> Unit {
+  proxy_data.target = None
+  proxy_data.handler = None
+}
+
+///|
 fn typedarray_declared_length(data : ObjectData) -> Int {
   guard is_typedarray_class(data.class_name) else { return 0 }
   match data.bag.properties.get("[[ArrayLength]]") {
