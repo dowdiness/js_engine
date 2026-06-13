@@ -23,7 +23,6 @@ fn promise_instance_prototype(
 ///|
 pub fn setup_object_builtins(
   env : Environment,
-  sym_state : SymbolState,
   realm_state : @runtime.RealmState,
 ) -> Unit {
   let well_known_symbols = realm_state.well_known_symbols
@@ -682,7 +681,7 @@ pub fn setup_object_builtins(
                 }
                 let sorted = @runtime.sort_property_keys(data.bag.properties)
                 for k in sorted {
-                  if is_internal_array_bag_key(k) {
+                  if @runtime.is_internal_array_bag_key(k) {
                     continue
                   }
                   let enumerable = match data.bag.descriptors.get(k) {
@@ -764,7 +763,7 @@ pub fn setup_object_builtins(
                 }
                 let sorted = @runtime.sort_property_keys(data.bag.properties)
                 for k in sorted {
-                  if is_internal_array_bag_key(k) {
+                  if @runtime.is_internal_array_bag_key(k) {
                     continue
                   }
                   let enumerable = match data.bag.descriptors.get(k) {
@@ -870,7 +869,7 @@ pub fn setup_object_builtins(
                   }
                   let sorted = @runtime.sort_property_keys(data.bag.properties)
                   for k in sorted {
-                    if is_internal_array_bag_key(k) {
+                    if @runtime.is_internal_array_bag_key(k) {
                       continue
                     }
                     let enumerable = match data.bag.descriptors.get(k) {
@@ -930,7 +929,6 @@ pub fn setup_object_builtins(
                     interp,
                     obj,
                     descs,
-                    sym_state,
                     @token.Loc::default(),
                   )
               }
@@ -1325,10 +1323,8 @@ pub fn setup_object_builtins(
             },
           ),
           "getOwnPropertyNames": make_get_own_property_names_func(),
-          "getOwnPropertySymbols": make_get_own_property_symbols_func(sym_state),
-          "getOwnPropertyDescriptors": make_get_own_property_descriptors_func(
-            sym_state,
-          ),
+          "getOwnPropertySymbols": make_get_own_property_symbols_func(),
+          "getOwnPropertyDescriptors": make_get_own_property_descriptors_func(),
           "defineProperty": make_define_property_func(),
           "getOwnPropertyDescriptor": make_get_own_property_descriptor_func(),
           "freeze": make_freeze_func(),
@@ -1398,7 +1394,7 @@ pub fn setup_object_builtins(
               obj
             },
           ),
-          "defineProperties": make_define_properties_func(sym_state),
+          "defineProperties": make_define_properties_func(),
         },
         symbol_properties: {},
         descriptors: {

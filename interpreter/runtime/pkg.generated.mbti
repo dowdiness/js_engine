@@ -139,6 +139,8 @@ pub fn is_es_whitespace_cp(Int) -> Bool
 
 pub fn is_function_value(Value) -> Bool
 
+pub fn is_internal_array_bag_key(String) -> Bool
+
 pub fn is_js_catchable_error(Error) -> Bool
 
 pub fn is_object_value(Value) -> Bool
@@ -187,9 +189,15 @@ pub fn mark_as_method(Value) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
+pub fn object_own_property_keys_snapshot(Interpreter, Value) -> Array[Value] raise
+
 pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
 
 pub fn ordinary_get_own_value_for_descriptor(Value, Value) -> Value raise
+
+pub fn own_string_property_names(Interpreter, Value) -> Value raise
+
+pub fn own_symbol_properties(Interpreter, Value) -> Value raise
 
 pub fn proxy_define_property(Interpreter, ProxyData, Value, PartialDescriptor) -> Bool raise
 

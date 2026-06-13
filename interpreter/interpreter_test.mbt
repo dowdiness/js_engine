@@ -17673,3 +17673,45 @@ test "tagged template objects are cached and frozen" {
     "a,a,true", "false,false", "true", "true", "a,a,true", "false,false",
   ])
 }
+
+// ====== Stage 8: [[OwnPropertyKeys]] runtime-op migration equivalence ======
+// These lock the CURRENT enumeration behavior preserved by routing
+// Object.getOwnProperty{Names,Symbols,Descriptors} / defineProperties through
+// the @runtime own-property-keys ops (own_property_keys.mbt).
+
+///|
+test "stage8 ownkeys: integer keys sort ascending before string keys" {
+  let src =
+    #|var o = {};
+    #|o[2] = "a"; o["x"] = "b"; o[0] = "c"; o[1] = "d"; o["y"] = "e";
+    #|console.log(Object.getOwnPropertyNames(o).join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["0,1,2,x,y"])
+}
+
+///|
+test "stage8 ownkeys: getOwnPropertySymbols returns only symbol keys" {
+  let src =
+    #|var s1 = Symbol("s1"); var s2 = Symbol("s2");
+    #|var o = { a: 1 }; o[s1] = 2; o["b"] = 3; o[s2] = 4;
+    #|var syms = Object.getOwnPropertySymbols(o);
+    #|console.log(syms.length);
+    #|console.log(syms.map(function(s) { return s.toString(); }).join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["2", "Symbol(s1),Symbol(s2)"])
+}
+
+///|
+test "stage8 ownkeys: sparse array names vs descriptors hole handling" {
+  let src =
+    #|var a = [1, , 3];
+    #|console.log(Object.getOwnPropertyNames(a).join(","));
+    #|console.log(Object.keys(Object.getOwnPropertyDescriptors(a)).join(","));
+  let output = run_output(src)
+  // Sparse array `[1, , 3]` has a hole at index 1. The two enumeration paths
+  // diverge on it (a preserved pre-existing quirk): getOwnPropertyNames walks
+  // `data.elements` by raw length and emits the hole index "1", while the
+  // descriptor snapshot guards each index with `!data.holes.contains(i)` and
+  // omits it. Spec says both should omit holes; fixing that is a follow-up.
+  json_inspect(output, content=["0,1,2,length", "0,2,length"])
+}

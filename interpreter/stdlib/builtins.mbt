@@ -209,7 +209,6 @@ fn setup_builtins_with_realm_state_active(
   profile? : BuiltinSetupProfiler,
 ) -> Unit {
   let _ = output
-  let symbols = realm_state.symbols
   let well_known_symbols = realm_state.well_known_symbols
   // Global constants
   env.def_builtin("NaN", Value::Number(0.0 / 0.0))
@@ -1005,7 +1004,7 @@ fn setup_builtins_with_realm_state_active(
   mark_builtin_setup_phase(profile, "errors")
 
   // Object, Array constructors and built-in methods
-  setup_object_builtins(env, symbols, realm_state)
+  setup_object_builtins(env, realm_state)
 
   // Now that Object.prototype and Function.prototype exist, patch built-in
   // prototype chains.  Boolean.prototype, String.prototype, Number.prototype
