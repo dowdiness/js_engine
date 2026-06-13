@@ -1384,6 +1384,18 @@ fn compile_bytecode_function(
   for stmt in body {
     builder.compile_stmt(stmt)
   }
+  // Precompute the env-hoist name set once, now that builder.local_names is
+  // final (compile_stmt above may have added locals). The VM used to derive
+  // this on every call (issue #325); store it on the IR instead. It must
+  // reproduce the old per-call result byte-for-byte: every var-declared name
+  // that is NOT a local slot, in source order, with duplicates preserved.
+  // Filter against the final builder.local_names (== func_def.local_names the
+  // VM read), so the agreement holds for every branch — local, env slot,
+  // arguments, eval, and rest-param.
+  let env_var_hoist_names = @static_semantics.collect_var_declared_names(body).filter(name => {
+      local_index_from_names(builder.local_names, name) is None
+    },
+  )
   {
     name,
     params,
@@ -1395,6 +1407,7 @@ fn compile_bytecode_function(
     bytecode_body_references_eval(body),
     local_names: builder.local_names,
     env_slot_names: builder.env_slot_names,
+    env_var_hoist_names,
     template_cache_key_prefix,
     code: builder.code,
     children: builder.children,

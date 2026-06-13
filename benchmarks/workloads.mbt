@@ -641,3 +641,51 @@ pub const PARSER_HEAVY_SRC : String =
   #|var r8 = g5(r7, r6, r5) + g6(r4, r3, r2) - g7(r1, r0, r7);
   #|var r9 = f6(r8, r7) - f7(r6, r5) + f8(r4, r3) * f9(r2, r1);
   #|r9;
+
+// ---------------------------------------------------------------------------
+// Var-hoist scan workloads (collect_var_declared_names — never executed)
+//
+// These are *function-body-shaped* statement lists. collect_var_declared_names
+// walks them identically whether they sit at top level or inside a function,
+// so a plain script string is a faithful stand-in for the body the bytecode VM
+// re-walks on every call in BytecodeFrame::hoist_env_var_bindings (issue #325).
+// ---------------------------------------------------------------------------
+
+///|
+/// Small hot-path body: two flat `var` declarations, the common case for a
+/// recursive helper (cf. fib). Represents the body re-walked on each of the
+/// millions of calls such a function receives.
+pub const VARHOIST_SMALL_BODY : String =
+  #|var a = n - 1;
+  #|var b = n - 2;
+
+///|
+/// Nesting-heavy body: var declarations scattered across for / if-else / while
+/// / try-catch, forcing the recursive descent through every nested scope to
+/// collect the function-scoped var-declared names.
+pub const VARHOIST_NESTED_BODY : String =
+  #|var total = 0;
+  #|var i = 0;
+  #|for (i = 0; i < 10; i = i + 1) {
+  #|  var step = i * 2;
+  #|  if (step > 5) {
+  #|    var flag = step;
+  #|    total = total + flag;
+  #|  } else {
+  #|    var alt = step - 1;
+  #|    total = total + alt;
+  #|  }
+  #|}
+  #|while (total > 100) {
+  #|  var dec = total / 2;
+  #|  total = total - dec;
+  #|}
+  #|try {
+  #|  var attempt = total + 1;
+  #|  total = attempt;
+  #|} catch (e) {
+  #|  var fallback = 0;
+  #|  total = fallback;
+  #|}
+  #|var result = total;
+  #|result;

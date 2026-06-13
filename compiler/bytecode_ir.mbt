@@ -116,6 +116,12 @@ priv struct BytecodeFunction {
   needs_arguments_object : Bool
   local_names : Array[String]
   env_slot_names : Array[String]
+  // Var-declared names that are NOT local slots, in source order with duplicates
+  // preserved — precomputed at lowering so the VM hoists them without re-walking
+  // source_body on every call (issue #325). Equals, by construction,
+  // collect_var_declared_names(source_body) filtered to names absent from
+  // local_names; the VM's old runtime filter agreed with this exactly.
+  env_var_hoist_names : Array[String]
   template_cache_key_prefix : String
   code : Array[BytecodeInstr]
   children : Array[BytecodeFunction]
