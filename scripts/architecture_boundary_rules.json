@@ -38,6 +38,10 @@
       "packages": ["benchmarks"]
     },
     {
+      "name": "static-semantics",
+      "packages": ["static_semantics"]
+    },
+    {
       "name": "external",
       "packages": ["moonbitlang/*"]
     }
@@ -108,6 +112,42 @@
       "to": "errors",
       "scope": "prod",
       "reason": "parser reports shared JavaScript parse errors"
+    },
+    {
+      "from": "static_semantics",
+      "to": "ast",
+      "scope": "prod",
+      "reason": "static semantics analysis operates on parsed AST nodes"
+    },
+    {
+      "from": "static_semantics",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "static semantics raises shared JavaScript SyntaxErrors"
+    },
+    {
+      "from": "static_semantics",
+      "to": "parser",
+      "scope": "test",
+      "reason": "static semantics tests parse source fixtures to construct AST inputs"
+    },
+    {
+      "from": "interpreter/runtime",
+      "to": "static_semantics",
+      "scope": "prod",
+      "reason": "runtime delegates pure AST analyses to the static semantics package"
+    },
+    {
+      "from": "interpreter/stdlib",
+      "to": "static_semantics",
+      "scope": "prod",
+      "reason": "stdlib delegates pure AST analyses to the static semantics package"
+    },
+    {
+      "from": "compiler",
+      "to": "static_semantics",
+      "scope": "prod",
+      "reason": "compiler delegates pure AST analyses to the static semantics package"
     },
     {
       "from": "interpreter/runtime",

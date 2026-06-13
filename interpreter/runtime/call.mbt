@@ -749,7 +749,7 @@ fn Interpreter::call_value_impl(
               check_duplicate_params(data.params)
               // Strict mode: validate parameter names
               for p in data.params {
-                validate_strict_binding_name(p)
+                @static_semantics.validate_strict_binding_name(p)
               }
             }
             let effective_this = if func_strict {

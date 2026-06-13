@@ -805,7 +805,7 @@ fn Interpreter::construct_value_impl(
             // Strict mode: check for duplicate parameters and reserved names
             check_duplicate_params(data.params)
             for p in data.params {
-              validate_strict_binding_name(p)
+              @static_semantics.validate_strict_binding_name(p)
             }
           }
           let proto = match proto_override {

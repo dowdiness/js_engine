@@ -252,7 +252,8 @@ fn module_name(root : String) -> String raise {
 ///|
 fn is_skipped_dir_segment(segment : String) -> Bool {
   match segment {
-    ".git" | ".mooncakes" | "_build" | "test262" | "graphify-out" => true
+    ".git" | ".mooncakes" | "_build" | "target" | "test262" | "graphify-out" =>
+      true
     _ => false
   }
 }

@@ -1,5 +1,6 @@
 import {
   "dowdiness/js_engine/ast",
+  "dowdiness/js_engine/errors",
 }
 
 import {

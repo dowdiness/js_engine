@@ -163,7 +163,7 @@ fn Interpreter::exec_stmt(
     VarDecl(kind, name, init, _) => {
       // Strict mode: cannot use eval/arguments as variable name
       if ctx.strict {
-        validate_strict_binding_name(name)
+        @static_semantics.validate_strict_binding_name(name)
       }
       let bk : BindingKind = match kind {
         LetKind => LetBinding
