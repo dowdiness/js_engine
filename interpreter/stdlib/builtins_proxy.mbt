@@ -94,8 +94,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
       // Create revoke function that nullifies both slots
       let revoke_func : Value = {
         let func = @runtime.make_native_func(name="", length=0, fn(_args) {
-          proxy_data.target = None
-          proxy_data.handler = None
+          @runtime.revoke_proxy(proxy_data)
           Value::Undefined
         })
         let func_proto = env.get("[[FunctionPrototype]]") catch { _ => Null }
