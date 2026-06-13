@@ -169,7 +169,7 @@
   ],
   "allowlisted_access": [
     {
-      "path": "compiler/bytecode.mbt",
+      "path": "compiler/bytecode_vm.mbt",
       "pattern_id": "representation-array-fields",
       "allowed_count": 5,
       "fingerprint": "5:233:463750:166741",
@@ -178,7 +178,7 @@
       "reason": "bytecode still uses runtime representation before semantic operation families replace direct access"
     },
     {
-      "path": "compiler/bytecode.mbt",
+      "path": "compiler/bytecode_vm.mbt",
       "pattern_id": "representation-bag-field",
       "allowed_count": 1,
       "fingerprint": "1:53:854058:654386",
@@ -187,7 +187,7 @@
       "reason": "bytecode still uses runtime representation before semantic operation families replace direct access"
     },
     {
-      "path": "compiler/bytecode.mbt",
+      "path": "compiler/bytecode_vm.mbt",
       "pattern_id": "runtime-array-constructor",
       "allowed_count": 3,
       "fingerprint": "3:91:353818:222691",
@@ -196,7 +196,7 @@
       "reason": "bytecode still uses runtime representation before semantic operation families replace direct access"
     },
     {
-      "path": "compiler/bytecode.mbt",
+      "path": "compiler/bytecode_vm.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 1,
       "fingerprint": "1:56:574936:91183",
