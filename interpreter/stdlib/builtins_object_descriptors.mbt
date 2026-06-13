@@ -3,11 +3,11 @@
 ///
 /// Each function returns a Value (a JS function object) for use as a static
 /// method on the Object constructor.
-
-///|
-fn is_internal_array_bag_key(key : String) -> Bool {
-  key.has_prefix("[[")
-}
+///
+/// `[[OwnPropertyKeys]]`-class enumeration (getOwnPropertyNames /
+/// getOwnPropertySymbols / the getOwnPropertyDescriptors+defineProperties key
+/// snapshot) is owned by `@runtime` ops in `own_property_keys.mbt`; these
+/// factories only call those ops rather than walking PropertyBag / ArrayData.
 
 ///|
 fn make_get_own_property_names_func() -> Value {
@@ -16,115 +16,18 @@ fn make_get_own_property_names_func() -> Value {
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Null | Undefined =>
-        raise @errors.TypeError(
-          message="Cannot convert undefined or null to object",
-        )
-      Value::Proxy(proxy_data) => {
-        let all_keys = @runtime.proxy_own_property_keys(interp, proxy_data)
-        let result : Array[Value] = []
-        match all_keys {
-          Value::Array(arr) =>
-            for key in arr.elements {
-              match key {
-                Value::String_(_) => result.push(key)
-                _ => () // getOwnPropertyNames only returns strings
-              }
-            }
-          _ => ()
-        }
-        @runtime.make_array(result)
-      }
-      Object(data) => {
-        let keys : Array[Value] = []
-        let sorted = if data.class_name == "Module" {
-          stdlib_module_namespace_own_string_keys(data)
-        } else {
-          @runtime.sort_property_keys(data.bag.properties)
-        }
-        for k in sorted {
-          keys.push(Value::String_(k))
-        }
-        @runtime.make_array(keys)
-      }
-      Value::Array(data) => {
-        let keys : Array[Value] = []
-        for i = 0; i < data.elements.length(); i = i + 1 {
-          keys.push(Value::String_(i.to_string()))
-        }
-        keys.push(Value::String_("length"))
-        let sorted = @runtime.sort_property_keys(data.bag.properties)
-        for k in sorted {
-          if !is_internal_array_bag_key(k) {
-            keys.push(Value::String_(k))
-          }
-        }
-        @runtime.make_array(keys)
-      }
-      Value::String_(s) => {
-        let keys : Array[Value] = []
-        let chars = s.to_array()
-        for i = 0; i < chars.length(); i = i + 1 {
-          keys.push(Value::String_(i.to_string()))
-        }
-        keys.push(Value::String_("length"))
-        @runtime.make_array(keys)
-      }
-      _ => @runtime.make_array([])
-    }
+    @runtime.own_string_property_names(interp, obj)
   })
 }
 
 ///|
-fn make_get_own_property_symbols_func(sym_state : SymbolState) -> Value {
+fn make_get_own_property_symbols_func() -> Value {
   @runtime.make_interp_static_func(name="getOwnPropertySymbols", length=1, fn(
     interp,
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Null | Undefined =>
-        raise @errors.TypeError(
-          message="Cannot convert undefined or null to object",
-        )
-      Value::Proxy(proxy_data) => {
-        let all_keys = @runtime.proxy_own_property_keys(interp, proxy_data)
-        let result : Array[Value] = []
-        match all_keys {
-          Value::Array(arr) =>
-            for key in arr.elements {
-              match key {
-                Value::Symbol(_) => result.push(key)
-                _ => () // getOwnPropertySymbols only returns symbols
-              }
-            }
-          _ => ()
-        }
-        @runtime.make_array(result)
-      }
-      Object(data) => {
-        let symbols : Array[Value] = []
-        data.bag.symbol_properties.each(fn(sym_id, _val) {
-          match sym_state.get_symbol_by_id(sym_id) {
-            Some(sym_data) => symbols.push(Symbol(sym_data))
-            None => ()
-          }
-        })
-        @runtime.make_array(symbols)
-      }
-      Value::Array(data) => {
-        let symbols : Array[Value] = []
-        data.bag.symbol_properties.each(fn(sym_id, _val) {
-          match sym_state.get_symbol_by_id(sym_id) {
-            Some(sym_data) => symbols.push(Symbol(sym_data))
-            None => ()
-          }
-        })
-        @runtime.make_array(symbols)
-      }
-      _ => @runtime.make_array([])
-    }
+    @runtime.own_symbol_properties(interp, obj)
   })
 }
 
@@ -146,153 +49,6 @@ fn append_own_property_descriptor_result(
     }
     None => ()
   }
-}
-
-///|
-fn is_hidden_internal_property_key(source : Value, key : String) -> Bool {
-  let known_internal = key == "[[StringData]]" ||
-    key == "[[NumberData]]" ||
-    key == "[[BooleanData]]" ||
-    key == "[[SymbolData]]" ||
-    key == "[[PrimitiveValue]]" ||
-    key == "[[ArrayLengthOverride]]" ||
-    key == "[[TypedArrayName]]" ||
-    key == "[[ViewedArrayBuffer]]" ||
-    key == "[[ArrayBufferID]]" ||
-    key == "[[ByteOffset]]" ||
-    key == "[[ByteLength]]" ||
-    key == "[[ArrayLength]]" ||
-    key == "[[DateValue]]" ||
-    key == "[[ArrayBufferByteLength]]" ||
-    key == "[[RegExpStringIterator]]" ||
-    key == "[[EvalFunctionReconcile]]"
-  if !known_internal {
-    return false
-  }
-  match source {
-    Object(data) => data.class_name != "Object"
-    Array(_) => key == "[[ArrayLengthOverride]]"
-    _ => false
-  }
-}
-
-///|
-fn sort_visible_own_string_keys(
-  source : Value,
-  bag : @runtime.PropertyBag,
-) -> Array[String] {
-  let int_keys : Array[String] = []
-  let str_keys : Array[String] = []
-  bag.properties.each(fn(k, _v) {
-    if is_hidden_internal_property_key(source, k) {
-      return
-    }
-    let idx = @string.parse_int(k) catch { _ => -1 }
-    if idx >= 0 && idx.to_string() == k {
-      int_keys.push(k)
-    } else {
-      str_keys.push(k)
-    }
-  })
-  int_keys.sort_by(fn(a, b) {
-    let na = @string.parse_int(a) catch { _ => 0 }
-    let nb = @string.parse_int(b) catch { _ => 0 }
-    na - nb
-  })
-  let result : Array[String] = []
-  for k in int_keys {
-    result.push(k)
-  }
-  for k in str_keys {
-    result.push(k)
-  }
-  result
-}
-
-///|
-fn append_bag_own_keys(
-  keys : Array[Value],
-  source : Value,
-  bag : @runtime.PropertyBag,
-  sym_state : SymbolState,
-) -> Unit {
-  for prop_name in sort_visible_own_string_keys(source, bag) {
-    keys.push(Value::String_(prop_name))
-  }
-  bag.symbol_properties.each(fn(sym_id, _raw) {
-    match sym_state.get_symbol_by_id(sym_id) {
-      Some(sym) => keys.push(Value::Symbol(sym))
-      None => ()
-    }
-  })
-}
-
-///|
-fn append_array_own_keys(
-  keys : Array[Value],
-  data : @runtime.ArrayData,
-  sym_state : SymbolState,
-) -> Unit {
-  let source = Value::Array(data)
-  let element_len = data.elements.length()
-  for i = 0; i < element_len; i = i + 1 {
-    if !data.holes.contains(i) {
-      keys.push(Value::String_(i.to_string()))
-    }
-  }
-  keys.push(Value::String_("length"))
-  for prop_name in sort_visible_own_string_keys(source, data.bag) {
-    let idx = @string.parse_int(prop_name) catch { _ => -1 }
-    if idx >= 0 && idx.to_string() == prop_name && idx < element_len {
-      continue
-    }
-    keys.push(Value::String_(prop_name))
-  }
-  data.bag.symbol_properties.each(fn(sym_id, _raw) {
-    match sym_state.get_symbol_by_id(sym_id) {
-      Some(sym) => keys.push(Value::Symbol(sym))
-      None => ()
-    }
-  })
-}
-
-///|
-fn own_property_keys_snapshot(
-  interp : Interpreter,
-  source : Value,
-  sym_state : SymbolState,
-) -> Array[Value] raise Error {
-  let keys : Array[Value] = []
-  match source {
-    Object(data) =>
-      if data.class_name == "Module" {
-        for prop_name in stdlib_module_namespace_own_string_keys(data) {
-          keys.push(Value::String_(prop_name))
-        }
-        data.bag.symbol_properties.each(fn(sym_id, _raw) {
-          match sym_state.get_symbol_by_id(sym_id) {
-            Some(sym) => keys.push(Value::Symbol(sym))
-            None => ()
-          }
-        })
-      } else {
-        append_bag_own_keys(keys, source, data.bag, sym_state)
-      }
-    Array(data) => append_array_own_keys(keys, data, sym_state)
-    Map(data) => append_bag_own_keys(keys, source, data.bag, sym_state)
-    Set(data) => append_bag_own_keys(keys, source, data.bag, sym_state)
-    Promise(data) => append_bag_own_keys(keys, source, data.bag, sym_state)
-    Proxy(proxy_data) =>
-      match @runtime.proxy_own_property_keys(interp, proxy_data) {
-        Value::Array(proxy_keys) =>
-          for key in proxy_keys.elements {
-            keys.push(key)
-          }
-        _ => ()
-      }
-    _ => ()
-  }
-  keys
 }
 
 ///|
@@ -362,7 +118,6 @@ fn define_properties_from_value(
   interp : Interpreter,
   obj : Value,
   descs : Value,
-  sym_state : SymbolState,
   loc : @token.Loc,
 ) -> Unit raise Error {
   // §19.1.2.3 step 2: ToObject(Properties) — null/undefined throws.
@@ -379,7 +134,7 @@ fn define_properties_from_value(
   }
   // §19.1.2.3 steps 3-5: snapshot OwnPropertyKeys before running descriptor
   // getters. Keys added during ToPropertyDescriptor conversion are ignored.
-  let keys = own_property_keys_snapshot(interp, props, sym_state)
+  let keys = @runtime.object_own_property_keys_snapshot(interp, props)
   let pairs = collect_define_properties_pairs_from_keys(
     interp, props, keys, loc,
   )
@@ -388,7 +143,7 @@ fn define_properties_from_value(
 }
 
 ///|
-fn make_get_own_property_descriptors_func(sym_state : SymbolState) -> Value {
+fn make_get_own_property_descriptors_func() -> Value {
   @runtime.make_interp_static_func(name="getOwnPropertyDescriptors", length=1, fn(
     interp,
     args,
@@ -407,7 +162,7 @@ fn make_get_own_property_descriptors_func(sym_state : SymbolState) -> Value {
     }
     let descriptors_props : Map[String, Value] = {}
     let symbol_descriptors_props : Map[Int, Value] = {}
-    let keys = own_property_keys_snapshot(interp, obj, sym_state)
+    let keys = @runtime.object_own_property_keys_snapshot(interp, obj)
     append_own_property_descriptors_from_keys(
       interp, obj, keys, descriptors_props, symbol_descriptors_props,
     )
@@ -541,7 +296,7 @@ fn make_get_own_property_descriptor_func() -> Value {
 }
 
 ///|
-fn make_define_properties_func(sym_state : SymbolState) -> Value {
+fn make_define_properties_func() -> Value {
   @runtime.make_interp_static_func(name="defineProperties", length=2, fn(
     interp,
     args,
@@ -555,7 +310,7 @@ fn make_define_properties_func(sym_state : SymbolState) -> Value {
       )
     }
     let loc = @token.Loc::default()
-    define_properties_from_value(interp, obj, descs, sym_state, loc)
+    define_properties_from_value(interp, obj, descs, loc)
     obj
   })
 }

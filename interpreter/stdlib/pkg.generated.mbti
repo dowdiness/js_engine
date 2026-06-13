@@ -80,7 +80,7 @@ pub fn setup_harness_builtins(@runtime.Environment, Array[String], @runtime.Valu
 
 pub fn setup_map_set_builtins(@runtime.Environment, @runtime.RealmState) -> Unit
 
-pub fn setup_object_builtins(@runtime.Environment, @runtime.SymbolState, @runtime.RealmState) -> Unit
+pub fn setup_object_builtins(@runtime.Environment, @runtime.RealmState) -> Unit
 
 pub fn setup_promise(@runtime.Environment, @runtime.RealmState) -> Unit
 
