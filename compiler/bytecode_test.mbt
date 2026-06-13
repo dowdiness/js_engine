@@ -121,6 +121,53 @@ fn bytecode_compare_with_output(src : String) -> String {
 }
 
 ///|
+/// Returns the bytecode unsupported-construct kind when compilation raises
+/// "bytecode prototype unsupported: <kind>". If the outcome is not an unsupported
+/// rejection, returns a diagnostic prefixed "expected unsupported, got: ".
+///
+/// Two patterns cover all new bytecode tests:
+///
+/// 1. Equivalence mode — tree-walker and bytecode must agree:
+///      inspect(bytecode_compare(src), content="value:42")
+///
+/// 2. Unsupported mode — bytecode rejects by construct kind:
+///      inspect(bytecode_unsupported_kind(src), content="for-of statement")
+///
+/// The kind strings match the labels in the `bytecode_unsupported` call sites
+/// in compiler/bytecode_lower.mbt.
+fn bytecode_unsupported_kind(src : String) -> String {
+  let result = bytecode_outcome(src)
+  match result.view() {
+    [.. "error:InternalError: bytecode prototype unsupported: ", .. rest] =>
+      "\{rest}"
+    _ => "expected unsupported, got: " + result
+  }
+}
+
+///|
+test "equivalence harness: compare mode (supported-construct pattern)" {
+  inspect(bytecode_compare("1 + 2"), content="value:3")
+  inspect(bytecode_compare("var x = 10; x;"), content="value:10")
+  inspect(
+    bytecode_compare("function f() { return 42; } f();"),
+    content="value:42",
+  )
+}
+
+///|
+test "equivalence harness: unsupported mode (rejection-assertion pattern)" {
+  inspect(
+    bytecode_unsupported_kind("for (var x of [1, 2]) {}"),
+    content="for-of statement",
+  )
+  inspect(
+    bytecode_unsupported_kind("try {} catch (e) {}"),
+    content="try/catch statement",
+  )
+  inspect(bytecode_unsupported_kind("class C {}"), content="class declaration")
+}
+
+///|
 test "bytecode constants locals and binary ops" {
   let src =
     #|var x = 1;
