@@ -224,12 +224,16 @@ fn validate_block_statement_list_early_errors(
       allow_duplicate_block_functions~,
     )
   }
-  let var_names = @static_semantics.collect_var_declared_names(
-    stmts,
-    include_funcs=include_function_decls_in_var_names,
-  )
+  let var_name_set : Map[String, Bool] = {}
+  for
+    name in @static_semantics.collect_var_declared_names(
+      stmts,
+      include_funcs=include_function_decls_in_var_names,
+    ) {
+    var_name_set[name] = true
+  }
   for name, _ in lexical_names {
-    if var_names.contains(name) {
+    if var_name_set.contains(name) {
       raise @errors.SyntaxError(
         message="Identifier '\{name}' has already been declared",
       )
