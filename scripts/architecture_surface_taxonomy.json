@@ -42,6 +42,11 @@
       "reason": "built-in helpers are implementation details"
     },
     {
+      "package": "dowdiness/js_engine/static_semantics",
+      "category": "internal_api",
+      "reason": "static semantics helpers are consumed by the runtime and compiler; not a stable user-facing API"
+    },
+    {
       "package": "dowdiness/js_engine/compiler",
       "category": "experimental_public",
       "reason": "compiler entry points are opt-in experiments until a supported execution mode is declared"
