@@ -13,6 +13,17 @@
 /// integer-index-first `[[OwnPropertyKeys]]` ordering of `sort_property_keys`).
 
 ///|
+/// Whether an own string key is enumerable, defaulting to `true` when no
+/// descriptor is recorded (the ordinary-object convention for data properties
+/// created without an explicit descriptor).
+fn bag_key_enumerable(bag : PropertyBag, key : String) -> Bool {
+  match bag.descriptors.get(key) {
+    Some(d) => d.enumerable
+    None => true
+  }
+}
+
+///|
 pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
   match obj {
     Null | Undefined =>
@@ -49,10 +60,7 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
             None => false
           }
         } else {
-          match data.bag.descriptors.get(k) {
-            Some(d) => d.enumerable
-            None => true
-          }
+          bag_key_enumerable(data.bag, k)
         }
         if enumerable {
           keys.push(Value::String_(k))
@@ -60,46 +68,28 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       }
       make_array(keys)
     }
-    Value::String_(s) => {
+    Value::String_(s) =>
       // String objects have enumerable indexed properties
-      let keys : Array[Value] = []
-      for i in 0..<s.length() {
-        keys.push(Value::String_(i.to_string()))
-      }
-      make_array(keys)
-    }
-    Value::Array(data) => {
+      make_array([ for i in 0..<s.length() => Value::String_(i.to_string()) ])
+    Value::Array(data) =>
       // Array objects have enumerable indexed properties followed by
       // enumerable own named properties in their embedded bag.
-      let keys : Array[Value] = []
-      for i in 0..<data.elements.length() {
-        if data.holes.contains(i) {
-          continue
-        }
-        let key = i.to_string()
-        let enumerable = match data.bag.descriptors.get(key) {
-          Some(d) => d.enumerable
-          None => true
-        }
-        if enumerable {
-          keys.push(Value::String_(key))
-        }
-      }
-      let sorted = sort_property_keys(data.bag.properties)
-      for k in sorted {
-        if is_internal_array_bag_key(k) {
-          continue
-        }
-        let enumerable = match data.bag.descriptors.get(k) {
-          Some(d) => d.enumerable
-          None => true
-        }
-        if enumerable {
-          keys.push(Value::String_(k))
-        }
-      }
-      make_array(keys)
-    }
+      make_array(
+        [
+          ..[
+            for i in 0..<data.elements.length() if !data.holes.contains(i) &&
+            bag_key_enumerable(data.bag, i.to_string()) => {
+              Value::String_(i.to_string())
+            }
+          ],
+          ..[
+            for k in sort_property_keys(data.bag.properties) if !is_internal_array_bag_key(
+              k,
+            ) &&
+            bag_key_enumerable(data.bag, k) => Value::String_(k)
+          ],
+        ],
+      )
     _ => make_array([])
   }
 }
@@ -124,30 +114,18 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
             Some((desc, value)) if desc.enumerable => vals.push(value)
             _ => ()
           }
-        } else {
-          let enumerable = match data.bag.descriptors.get(k) {
-            Some(d) => d.enumerable
-            None => true
-          }
-          if enumerable {
-            match data.bag.properties.get(k) {
-              Some(v) => vals.push(v)
-              None => ()
-            }
+        } else if bag_key_enumerable(data.bag, k) {
+          match data.bag.properties.get(k) {
+            Some(v) => vals.push(v)
+            None => ()
           }
         }
       }
       make_array(vals)
     }
-    Value::String_(s) => {
+    Value::String_(s) =>
       // String objects have enumerable indexed properties
-      let vals : Array[Value] = []
-      let chars = s.to_array()
-      for ch in chars {
-        vals.push(Value::String_(ch.to_string()))
-      }
-      make_array(vals)
-    }
+      make_array([ for ch in s.to_array() => Value::String_(ch.to_string()) ])
     Value::Array(data) => {
       // Array objects - return array elements, then enumerable own
       // named properties from the embedded bag.
@@ -170,11 +148,7 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
         if is_internal_array_bag_key(k) {
           continue
         }
-        let enumerable = match data.bag.descriptors.get(k) {
-          Some(d) => d.enumerable
-          None => true
-        }
-        if enumerable {
+        if bag_key_enumerable(data.bag, k) {
           match data.bag.properties.get(k) {
             Some(v) => vals.push(v)
             None => ()
@@ -208,35 +182,27 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
               entries.push(make_array([Value::String_(k), value]))
             _ => ()
           }
-        } else {
-          let enumerable = match data.bag.descriptors.get(k) {
-            Some(d) => d.enumerable
-            None => true
-          }
-          if enumerable {
-            match data.bag.properties.get(k) {
-              Some(v) => entries.push(make_array([Value::String_(k), v]))
-              None => ()
-            }
+        } else if bag_key_enumerable(data.bag, k) {
+          match data.bag.properties.get(k) {
+            Some(v) => entries.push(make_array([Value::String_(k), v]))
+            None => ()
           }
         }
       }
       make_array(entries)
     }
-    Value::String_(s) => {
+    Value::String_(s) =>
       // String objects have enumerable indexed properties
-      let entries : Array[Value] = []
-      let chars = s.to_array()
-      for i in 0..<chars.length() {
-        entries.push(
-          make_array([
-            Value::String_(i.to_string()),
-            Value::String_(chars[i].to_string()),
-          ]),
-        )
-      }
-      make_array(entries)
-    }
+      make_array(
+        [
+          for i, ch in s.to_array() => {
+            make_array([
+              Value::String_(i.to_string()),
+              Value::String_(ch.to_string()),
+            ])
+          }
+        ],
+      )
     Value::Array(data) => {
       // Array objects - keys must be strings per spec.
       let loc = @token.Loc::default()
@@ -263,11 +229,7 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
         if is_internal_array_bag_key(k) {
           continue
         }
-        let enumerable = match data.bag.descriptors.get(k) {
-          Some(d) => d.enumerable
-          None => true
-        }
-        if enumerable {
+        if bag_key_enumerable(data.bag, k) {
           match data.bag.properties.get(k) {
             Some(v) => entries.push(make_array([Value::String_(k), v]))
             None => ()
