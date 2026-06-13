@@ -35,21 +35,15 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
           make_array(arr.elements.filter(fn(key) { key is Value::String_(_) }))
         _ => make_array([])
       }
-    Object(data) => {
+    // Module namespaces resolve enumerability via the exotic [[Get]]
+    // (`interp.get_own_property`, which raises), so they keep an imperative
+    // loop; ordinary objects read the bag and reduce to a pipeline.
+    Object(data) if data.class_name == "Module" => {
       let keys : Array[Value] = []
-      let sorted = if data.class_name == "Module" {
-        module_namespace_own_string_keys(data)
-      } else {
-        sort_property_keys(data.bag.properties)
-      }
-      for k in sorted {
-        let enumerable = if data.class_name == "Module" {
-          match interp.get_own_property(obj, String_(k)) {
-            Some((desc, _)) => desc.enumerable
-            None => false
-          }
-        } else {
-          bag_key_enumerable(data.bag, k)
+      for k in module_namespace_own_string_keys(data) {
+        let enumerable = match interp.get_own_property(obj, String_(k)) {
+          Some((desc, _)) => desc.enumerable
+          None => false
         }
         if enumerable {
           keys.push(Value::String_(k))
@@ -57,6 +51,14 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       }
       make_array(keys)
     }
+    Object(data) =>
+      make_array(
+        sort_property_keys(data.bag.properties)
+        .iter()
+        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
+        .map(fn(k) { Value::String_(k) })
+        .to_array(),
+      )
     Value::String_(s) =>
       // String objects have enumerable indexed properties
       make_array(
@@ -92,28 +94,24 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Object(data) => {
+    Object(data) if data.class_name == "Module" => {
       let vals : Array[Value] = []
-      let sorted = if data.class_name == "Module" {
-        module_namespace_own_string_keys(data)
-      } else {
-        sort_property_keys(data.bag.properties)
-      }
-      for k in sorted {
-        if data.class_name == "Module" {
-          match interp.get_own_property(obj, String_(k)) {
-            Some((desc, value)) if desc.enumerable => vals.push(value)
-            _ => ()
-          }
-        } else if bag_key_enumerable(data.bag, k) {
-          match data.bag.properties.get(k) {
-            Some(v) => vals.push(v)
-            None => ()
-          }
+      for k in module_namespace_own_string_keys(data) {
+        match interp.get_own_property(obj, String_(k)) {
+          Some((desc, value)) if desc.enumerable => vals.push(value)
+          _ => ()
         }
       }
       make_array(vals)
     }
+    Object(data) =>
+      make_array(
+        sort_property_keys(data.bag.properties)
+        .iter()
+        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
+        .filter_map(fn(k) { data.bag.properties.get(k) })
+        .to_array(),
+      )
     Value::String_(s) =>
       // String objects have enumerable indexed properties
       make_array(s.to_array().map(fn(ch) { Value::String_(ch.to_string()) }))
@@ -134,18 +132,13 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
           _ => vals.push(data.elements[i])
         }
       }
-      let sorted = sort_property_keys(data.bag.properties)
-      for k in sorted {
-        if is_internal_array_bag_key(k) {
-          continue
-        }
-        if bag_key_enumerable(data.bag, k) {
-          match data.bag.properties.get(k) {
-            Some(v) => vals.push(v)
-            None => ()
-          }
-        }
-      }
+      sort_property_keys(data.bag.properties)
+      .iter()
+      .filter(fn(k) {
+        !is_internal_array_bag_key(k) && bag_key_enumerable(data.bag, k)
+      })
+      .filter_map(fn(k) { data.bag.properties.get(k) })
+      .each(fn(v) { vals.push(v) })
       make_array(vals)
     }
     _ => make_array([])
@@ -159,29 +152,29 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Object(data) => {
+    Object(data) if data.class_name == "Module" => {
       let entries : Array[Value] = []
-      let sorted = if data.class_name == "Module" {
-        module_namespace_own_string_keys(data)
-      } else {
-        sort_property_keys(data.bag.properties)
-      }
-      for k in sorted {
-        if data.class_name == "Module" {
-          match interp.get_own_property(obj, String_(k)) {
-            Some((desc, value)) if desc.enumerable =>
-              entries.push(make_array([Value::String_(k), value]))
-            _ => ()
-          }
-        } else if bag_key_enumerable(data.bag, k) {
-          match data.bag.properties.get(k) {
-            Some(v) => entries.push(make_array([Value::String_(k), v]))
-            None => ()
-          }
+      for k in module_namespace_own_string_keys(data) {
+        match interp.get_own_property(obj, String_(k)) {
+          Some((desc, value)) if desc.enumerable =>
+            entries.push(make_array([Value::String_(k), value]))
+          _ => ()
         }
       }
       make_array(entries)
     }
+    Object(data) =>
+      make_array(
+        sort_property_keys(data.bag.properties)
+        .iter()
+        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
+        .filter_map(fn(k) {
+          data.bag.properties
+          .get(k)
+          .map(fn(v) { make_array([Value::String_(k), v]) })
+        })
+        .to_array(),
+      )
     Value::String_(s) =>
       // String objects have enumerable indexed properties
       make_array(
@@ -215,18 +208,17 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
           _ => entries.push(make_array([Value::String_(key), data.elements[i]]))
         }
       }
-      let sorted = sort_property_keys(data.bag.properties)
-      for k in sorted {
-        if is_internal_array_bag_key(k) {
-          continue
-        }
-        if bag_key_enumerable(data.bag, k) {
-          match data.bag.properties.get(k) {
-            Some(v) => entries.push(make_array([Value::String_(k), v]))
-            None => ()
-          }
-        }
-      }
+      sort_property_keys(data.bag.properties)
+      .iter()
+      .filter(fn(k) {
+        !is_internal_array_bag_key(k) && bag_key_enumerable(data.bag, k)
+      })
+      .filter_map(fn(k) {
+        data.bag.properties
+        .get(k)
+        .map(fn(v) { make_array([Value::String_(k), v]) })
+      })
+      .each(fn(e) { entries.push(e) })
       make_array(entries)
     }
     _ => make_array([])
