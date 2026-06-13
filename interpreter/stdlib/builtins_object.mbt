@@ -1102,7 +1102,7 @@ pub fn setup_object_builtins(
                 }
                 Object(data) =>
                   match
-                    stdlib_module_namespace_set_prototype_result(data, proto) {
+                    @runtime.module_namespace_set_prototype_result(data, proto) {
                     Some(true) => ()
                     Some(false) =>
                       raise @errors.TypeError(
