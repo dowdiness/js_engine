@@ -46,49 +46,24 @@ pub fn reflect_get_with_receiver(
     Symbol(_) => ""
     _ => key.to_string()
   }
-  // Helper to find accessor descriptor and call with receiver
+  // Find an own accessor getter and call it with `receiver`; otherwise fall
+  // back to the own data slot. An own descriptor whose getter is None and a
+  // missing descriptor both fall through to the stored property value.
   fn try_get_with_receiver(obj : Value) -> Value? raise {
-    match obj {
-      Object(data) =>
-        match key {
-          Value::Symbol(sym) =>
-            match data.bag.symbol_descriptors.get(sym.id) {
-              Some(desc) =>
-                match desc.getter {
-                  Some(getter) =>
-                    Some(interp.call_value(getter, receiver, [], loc))
-                  None =>
-                    match data.bag.symbol_properties.get(sym.id) {
-                      Some(v) => Some(v)
-                      None => None
-                    }
-                }
-              None =>
-                match data.bag.symbol_properties.get(sym.id) {
-                  Some(v) => Some(v)
-                  None => None
-                }
-            }
-          _ =>
-            match data.bag.descriptors.get(key_str) {
-              Some(desc) =>
-                match desc.getter {
-                  Some(getter) =>
-                    Some(interp.call_value(getter, receiver, [], loc))
-                  None =>
-                    match data.bag.properties.get(key_str) {
-                      Some(v) => Some(v)
-                      None => None
-                    }
-                }
-              None =>
-                match data.bag.properties.get(key_str) {
-                  Some(v) => Some(v)
-                  None => None
-                }
-            }
+    guard obj is Object(data) else { return None }
+    match key {
+      Value::Symbol(sym) =>
+        match data.bag.symbol_descriptors.get(sym.id) {
+          Some({ getter: Some(getter), .. }) =>
+            Some(interp.call_value(getter, receiver, [], loc))
+          _ => data.bag.symbol_properties.get(sym.id)
         }
-      _ => None
+      _ =>
+        match data.bag.descriptors.get(key_str) {
+          Some({ getter: Some(getter), .. }) =>
+            Some(interp.call_value(getter, receiver, [], loc))
+          _ => data.bag.properties.get(key_str)
+        }
     }
   }
 
@@ -101,15 +76,10 @@ pub fn reflect_get_with_receiver(
         Object(data) => data.prototype
         _ => Null
       }
-      while true {
-        match current {
-          Object(data) =>
-            match try_get_with_receiver(current) {
-              Some(v) => return v
-              None => current = data.prototype
-            }
-          Null => break
-          _ => break
+      while current is Object(data) {
+        match try_get_with_receiver(current) {
+          Some(v) => return v
+          None => current = data.prototype
         }
       }
       // Fall back to regular property access unconditionally.
@@ -142,44 +112,26 @@ pub fn reflect_get_with_receiver(
 /// would otherwise be preemptively rejected instead of invoking the
 /// setter through the dispatcher.
 ///
-/// Move-fixup vs the relocated source: the method's inline
-/// `return Value::Bool(false)` becomes `return true` here (the op returns the
-/// block decision, not the method's Value), and the implicit fall-through
-/// becomes a trailing `false`. The descriptor logic is otherwise byte-identical.
+/// Relationship to the relocated source: the stdlib method's inline
+/// `return Value::Bool(false)` early-returns are consolidated here into a single
+/// boolean predicate over the own descriptor (the op returns the block decision,
+/// not the method's Value); the stdlib call site re-expresses the short-circuit
+/// as `if reflect_set_preflight_blocks(...) { return Value::Bool(false) }`.
 pub fn reflect_set_preflight_blocks(
   target : Value,
   prop_key : Value,
   key_str : String,
 ) -> Bool {
-  match target {
-    Object(data) =>
-      match prop_key {
-        Symbol(sym) =>
-          match data.bag.symbol_descriptors.get(sym.id) {
-            Some(desc) => {
-              if desc.getter is Some(_) && desc.setter is None {
-                return true
-              }
-              if desc.getter is None && desc.setter is None && !desc.writable {
-                return true
-              }
-            }
-            None => ()
-          }
-        _ =>
-          match data.bag.descriptors.get(key_str) {
-            Some(desc) => {
-              if desc.getter is Some(_) && desc.setter is None {
-                return true
-              }
-              if desc.getter is None && desc.setter is None && !desc.writable {
-                return true
-              }
-            }
-            None => ()
-          }
-      }
-    _ => ()
+  guard target is Object(data) else { return false }
+  let own_desc = match prop_key {
+    Symbol(sym) => data.bag.symbol_descriptors.get(sym.id)
+    _ => data.bag.descriptors.get(key_str)
   }
-  false
+  match own_desc {
+    // Own getter-only accessor, or own non-writable data descriptor → block.
+    Some(desc) =>
+      (desc.getter is Some(_) && desc.setter is None) ||
+      (desc.getter is None && desc.setter is None && !desc.writable)
+    None => false
+  }
 }
