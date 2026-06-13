@@ -727,39 +727,14 @@ fn run_bytecode_function(
       StartArray => stack.push(@runtime.make_array([]))
       ArrayPushValue => {
         let value = frame.pop()
-        match frame.peek() {
-          Array(data) => data.elements.push(value)
-          _ =>
-            raise @errors.InternalError(
-              message="bytecode array accumulator was not an array",
-            )
-        }
+        @runtime.apply_array_literal_element(frame.peek(), value)
       }
       ArrayPushSpread(loc) => {
         let value = frame.pop()
         let spread_values = interp.spread_iterable(value, loc)
-        match frame.peek() {
-          Array(data) =>
-            for spread_value in spread_values {
-              data.elements.push(spread_value)
-            }
-          _ =>
-            raise @errors.InternalError(
-              message="bytecode array accumulator was not an array",
-            )
-        }
+        @runtime.apply_array_literal_spread(frame.peek(), spread_values)
       }
-      ArrayPushHole =>
-        match frame.peek() {
-          Array(data) => {
-            data.holes[data.elements.length()] = ()
-            data.elements.push(Value::Undefined)
-          }
-          _ =>
-            raise @errors.InternalError(
-              message="bytecode array accumulator was not an array",
-            )
-        }
+      ArrayPushHole => @runtime.apply_array_literal_hole(frame.peek())
       StartArgs => frame.arg_lists.push([])
       ArgPushValue => {
         let value = frame.pop()
@@ -797,13 +772,11 @@ fn run_bytecode_function(
       }
       ObjectSetStatic(key) => {
         let value = frame.pop()
-        match frame.peek() {
-          Object(data) => data.bag.properties[key] = value
-          _ =>
-            raise @errors.InternalError(
-              message="bytecode object accumulator was not an object",
-            )
-        }
+        @runtime.apply_object_literal_static_data_property(
+          frame.peek(),
+          key,
+          value,
+        )
       }
       ObjectSetStaticGetter(key) => {
         let getter = frame.pop()
