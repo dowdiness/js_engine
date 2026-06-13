@@ -215,9 +215,7 @@ test "baseline/closure_legacy/closure_factory" (b : @bench.T) {
   let got = compiled(precheck_interp) catch {
     _ => abort("compiled program raised")
   }
-  expect_value_string(
-    "baseline/closure_legacy/closure_factory", got, "500500",
-  )
+  expect_value_string("baseline/closure_legacy/closure_factory", got, "500500")
   b.bench(fn() {
     let interp = @interpreter.new_interpreter()
     let result = compiled(interp) catch {

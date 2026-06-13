@@ -9,6 +9,8 @@ import {
 // Values
 pub fn body_is_strict(Array[@ast.Stmt], Bool) -> Bool
 
+pub fn collect_var_declared_names(Array[@ast.Stmt], include_funcs? : Bool, in_block? : Bool) -> Array[String]
+
 pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
 
 pub fn validate_strict_assignment_target_name(Bool, String) -> Unit raise

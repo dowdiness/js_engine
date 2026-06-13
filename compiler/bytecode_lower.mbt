@@ -208,93 +208,6 @@ fn add_env_slot_candidate(
 }
 
 ///|
-fn collect_current_var_names_from_stmts(
-  stmts : Array[@ast.Stmt],
-  out : Array[String],
-) -> Unit {
-  for stmt in stmts {
-    collect_current_var_names_from_stmt(stmt, out)
-  }
-}
-
-///|
-fn collect_current_var_names_from_stmt(
-  stmt : @ast.Stmt,
-  out : Array[String],
-) -> Unit {
-  match stmt {
-    VarDecl(VarKind, name, _, _)
-    | FuncDecl(name, _, _, _)
-    | FuncDeclExt(name, _, _, _, _) => out.push(name)
-    DestructureDecl(VarKind, pattern, _, _) =>
-      collect_current_var_names_from_pattern(pattern, out)
-    StmtList(stmts, _) | Block(stmts, _) =>
-      collect_current_var_names_from_stmts(stmts, out)
-    IfStmt(_, then_branch, else_branch, _) => {
-      collect_current_var_names_from_stmt(then_branch, out)
-      match else_branch {
-        Some(stmt) => collect_current_var_names_from_stmt(stmt, out)
-        None => ()
-      }
-    }
-    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
-      collect_current_var_names_from_stmt(body, out)
-    ForStmt(init, _, _, body, _) => {
-      match init {
-        Some(stmt) => collect_current_var_names_from_stmt(stmt, out)
-        None => ()
-      }
-      collect_current_var_names_from_stmt(body, out)
-    }
-    ForInStmt(Some(VarKind), name, _, body, _) => {
-      out.push(name)
-      collect_current_var_names_from_stmt(body, out)
-    }
-    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
-      collect_current_var_names_from_stmt(body, out)
-    SwitchStmt(_, cases, _) =>
-      for case in cases {
-        collect_current_var_names_from_stmts(case.body, out)
-      }
-    LabeledStmt(_, body, _) => collect_current_var_names_from_stmt(body, out)
-    _ => ()
-  }
-}
-
-///|
-fn collect_current_var_names_from_pattern(
-  pattern : @ast.Pattern,
-  out : Array[String],
-) -> Unit {
-  match pattern {
-    IdentPat(name) => out.push(name)
-    ArrayPat(elements, rest) => {
-      for element in elements {
-        match element {
-          Some(pat) => collect_current_var_names_from_pattern(pat, out)
-          None => ()
-        }
-      }
-      match rest {
-        Some(pat) => collect_current_var_names_from_pattern(pat, out)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        collect_current_var_names_from_pattern(prop.value, out)
-      }
-      match rest {
-        Some(pat) => collect_current_var_names_from_pattern(pat, out)
-        None => ()
-      }
-    }
-    DefaultPat(inner, _) => collect_current_var_names_from_pattern(inner, out)
-    AssignTarget(_) => ()
-  }
-}
-
-///|
 fn collect_nested_function_refs_from_stmts(
   stmts : Array[@ast.Stmt],
   refs : Map[String, Bool],
@@ -1433,8 +1346,7 @@ fn plan_bytecode_locals(
         add_env_slot_candidate(env_names, env_indices, indices, param)
       }
     }
-    let vars : Array[String] = []
-    collect_current_var_names_from_stmts(body, vars)
+    let vars = @static_semantics.collect_var_declared_names(body)
     for name in vars {
       if param_names.contains(name) {
         if !refs_arguments && !captured.contains(name) {

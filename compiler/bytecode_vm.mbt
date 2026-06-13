@@ -160,8 +160,9 @@ fn BytecodeFrame::hoist_env_var_bindings(
   self : BytecodeFrame,
   interp : Interpreter,
 ) -> Unit raise Error {
-  let names : Array[String] = []
-  collect_current_var_names_from_stmts(self.func_def.source_body, names)
+  let names = @static_semantics.collect_var_declared_names(
+    self.func_def.source_body,
+  )
   for name in names {
     if local_index_from_names(self.func_def.local_names, name) is None {
       interp.define_compiled_binding(
