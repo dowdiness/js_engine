@@ -269,16 +269,7 @@ fn setup_reflect_builtins(
           message="Reflect.getPrototypeOf requires 1 argument",
         )
       }
-      match args[0] {
-        Object(data) => data.prototype
-        Array(data) => @runtime.get_array_prototype(interp.realm_state, data)
-        Value::Proxy(proxy_data) =>
-          @runtime.proxy_get_prototype_of(interp, proxy_data)
-        _ =>
-          raise @errors.TypeError(
-            message="Reflect.getPrototypeOf called on non-object",
-          )
-      }
+      @runtime.object_get_prototype_of(interp, args[0])
     },
   )
 
@@ -475,39 +466,7 @@ fn setup_reflect_builtins(
           message="Reflect.setPrototypeOf requires 2 arguments",
         )
       }
-      let target = args[0]
-      let proto = args[1]
-      match proto {
-        Object(_) | Proxy(_) | Null => ()
-        _ =>
-          raise @errors.TypeError(
-            message="Object prototype may only be an Object or null",
-          )
-      }
-      match target {
-        Value::Proxy(proxy_data) =>
-          Bool(@runtime.proxy_set_prototype_of(interp, proxy_data, proto))
-        Object(data) =>
-          match stdlib_module_namespace_set_prototype_result(data, proto) {
-            Some(result) => Value::Bool(result)
-            None => {
-              if !data.extensible &&
-                !@runtime.strict_equal(proto, data.prototype) {
-                return Value::Bool(false)
-              }
-              data.prototype = proto
-              Value::Bool(true)
-            }
-          }
-        Array(data) => {
-          @runtime.set_array_prototype_override(data, proto)
-          Value::Bool(true)
-        }
-        _ =>
-          raise @errors.TypeError(
-            message="Reflect.setPrototypeOf called on non-object",
-          )
-      }
+      @runtime.object_set_prototype_of(interp, args[0], args[1])
     },
   )
 
