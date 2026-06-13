@@ -26,13 +26,10 @@ pub fn module_namespace_set_prototype_result(
   data : ObjectData,
   proto : Value,
 ) -> Bool? {
-  if data.class_name != "Module" {
-    return None
-  }
-  match proto {
-    Null => Some(true)
-    _ => Some(false)
-  }
+  guard data.class_name == "Module" else { return None }
+  // A module namespace exotic object accepts [[SetPrototypeOf]] only when the
+  // new prototype is null (§10.4.6.2); any other proto fails.
+  Some(proto is Null)
 }
 
 ///|
@@ -65,12 +62,10 @@ pub fn object_set_prototype_of(
   target : Value,
   proto : Value,
 ) -> Value raise Error {
-  match proto {
-    Object(_) | Proxy(_) | Null => ()
-    _ =>
-      raise @errors.TypeError(
-        message="Object prototype may only be an Object or null",
-      )
+  guard proto is (Object(_) | Proxy(_) | Null) else {
+    raise @errors.TypeError(
+      message="Object prototype may only be an Object or null",
+    )
   }
   match target {
     Value::Proxy(proxy_data) =>
