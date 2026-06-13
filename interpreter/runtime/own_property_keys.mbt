@@ -17,6 +17,22 @@ pub fn is_internal_array_bag_key(key : String) -> Bool {
 }
 
 ///|
+/// Append the own symbol keys of a property bag (resolved id -> SymbolData) to
+/// `out`, in insertion order. Unresolvable ids are skipped.
+fn append_resolved_symbol_keys(
+  out : Array[Value],
+  symbol_props : Map[Int, Value],
+  sym_state : SymbolState,
+) -> Unit {
+  symbol_props.each(fn(sym_id, _raw) {
+    match sym_state.get_symbol_by_id(sym_id) {
+      Some(sym) => out.push(Value::Symbol(sym))
+      None => ()
+    }
+  })
+}
+
+///|
 fn is_hidden_internal_property_key(source : Value, key : String) -> Bool {
   let known_internal = key == "[[StringData]]" ||
     key == "[[NumberData]]" ||
@@ -67,14 +83,7 @@ fn sort_visible_own_string_keys(
     let nb = @string.parse_int(b) catch { _ => 0 }
     na - nb
   })
-  let result : Array[String] = []
-  for k in int_keys {
-    result.push(k)
-  }
-  for k in str_keys {
-    result.push(k)
-  }
-  result
+  [..int_keys, ..str_keys]
 }
 
 ///|
@@ -87,12 +96,7 @@ fn append_bag_own_keys(
   for prop_name in sort_visible_own_string_keys(source, bag) {
     keys.push(Value::String_(prop_name))
   }
-  bag.symbol_properties.each(fn(sym_id, _raw) {
-    match sym_state.get_symbol_by_id(sym_id) {
-      Some(sym) => keys.push(Value::Symbol(sym))
-      None => ()
-    }
-  })
+  append_resolved_symbol_keys(keys, bag.symbol_properties, sym_state)
 }
 
 ///|
@@ -103,7 +107,7 @@ fn append_array_own_keys(
 ) -> Unit {
   let source = Value::Array(data)
   let element_len = data.elements.length()
-  for i = 0; i < element_len; i = i + 1 {
+  for i in 0..<element_len {
     if !data.holes.contains(i) {
       keys.push(Value::String_(i.to_string()))
     }
@@ -116,12 +120,7 @@ fn append_array_own_keys(
     }
     keys.push(Value::String_(prop_name))
   }
-  data.bag.symbol_properties.each(fn(sym_id, _raw) {
-    match sym_state.get_symbol_by_id(sym_id) {
-      Some(sym) => keys.push(Value::Symbol(sym))
-      None => ()
-    }
-  })
+  append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
 }
 
 ///|
@@ -142,12 +141,7 @@ pub fn object_own_property_keys_snapshot(
         for prop_name in module_namespace_own_string_keys(data) {
           keys.push(Value::String_(prop_name))
         }
-        data.bag.symbol_properties.each(fn(sym_id, _raw) {
-          match sym_state.get_symbol_by_id(sym_id) {
-            Some(sym) => keys.push(Value::Symbol(sym))
-            None => ()
-          }
-        })
+        append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
       } else {
         append_bag_own_keys(keys, source, data.bag, sym_state)
       }
@@ -211,7 +205,7 @@ pub fn own_string_property_names(
     }
     Value::Array(data) => {
       let keys : Array[Value] = []
-      for i = 0; i < data.elements.length(); i = i + 1 {
+      for i in 0..<data.elements.length() {
         keys.push(Value::String_(i.to_string()))
       }
       keys.push(Value::String_("length"))
@@ -226,7 +220,7 @@ pub fn own_string_property_names(
     Value::String_(s) => {
       let keys : Array[Value] = []
       let chars = s.to_array()
-      for i = 0; i < chars.length(); i = i + 1 {
+      for i in 0..<chars.length() {
         keys.push(Value::String_(i.to_string()))
       }
       keys.push(Value::String_("length"))
@@ -265,22 +259,20 @@ pub fn own_symbol_properties(
     }
     Object(data) => {
       let symbols : Array[Value] = []
-      data.bag.symbol_properties.each(fn(sym_id, _val) {
-        match sym_state.get_symbol_by_id(sym_id) {
-          Some(sym_data) => symbols.push(Symbol(sym_data))
-          None => ()
-        }
-      })
+      append_resolved_symbol_keys(
+        symbols,
+        data.bag.symbol_properties,
+        sym_state,
+      )
       make_array(symbols)
     }
     Value::Array(data) => {
       let symbols : Array[Value] = []
-      data.bag.symbol_properties.each(fn(sym_id, _val) {
-        match sym_state.get_symbol_by_id(sym_id) {
-          Some(sym_data) => symbols.push(Symbol(sym_data))
-          None => ()
-        }
-      })
+      append_resolved_symbol_keys(
+        symbols,
+        data.bag.symbol_properties,
+        sym_state,
+      )
       make_array(symbols)
     }
     _ => make_array([])
