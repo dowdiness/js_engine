@@ -189,7 +189,11 @@ pub fn mark_as_method(Value) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
+pub fn object_is_extensible(Interpreter, Value) -> Value raise
+
 pub fn object_own_property_keys_snapshot(Interpreter, Value) -> Array[Value] raise
+
+pub fn object_prevent_extensions(Interpreter, Value) -> Value raise
 
 pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
 
@@ -243,6 +247,10 @@ pub fn set_array_symbol_prop(ArrayData, Int, Value) -> Unit
 
 pub fn set_function_name(Value, String) -> Unit
 
+pub fn set_integrity_frozen(Value) -> Value raise
+
+pub fn set_integrity_sealed(Value) -> Value
+
 pub fn setup_async_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
 
 pub fn setup_generator_function_constructor(Environment, Value, well_known_symbols~ : WellKnownSymbols) -> Unit
@@ -258,6 +266,10 @@ pub fn strict_equal(Value, Value) -> Bool
 pub fn string_to_utf16(String) -> Array[Int]
 
 pub fn strip_self_name_binding(Value) -> Value
+
+pub fn test_integrity_frozen(Value) -> Value
+
+pub fn test_integrity_sealed(Value) -> Value
 
 pub fn to_array_like_elements(Value) -> Array[Value] raise
 

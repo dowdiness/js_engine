@@ -7,96 +7,10 @@
 /// lambda parameters and package-level helpers.
 
 ///|
-fn frozen_descriptor(existing : PropDescriptor?) -> PropDescriptor {
-  {
-    writable: false,
-    enumerable: match existing {
-      Some(d) => d.enumerable
-      None => true
-    },
-    configurable: false,
-    getter: match existing {
-      Some(d) => d.getter
-      None => None
-    },
-    setter: match existing {
-      Some(d) => d.setter
-      None => None
-    },
-    is_accessor: match existing {
-      Some(d) => d.is_accessor
-      None => false
-    },
-  }
-}
-
-///|
-fn freeze_string_properties(bag : @runtime.PropertyBag) -> Unit {
-  let keys : Array[String] = []
-  bag.properties.each(fn(k, _v) { keys.push(k) })
-  bag.descriptors.each(fn(k, _desc) {
-    if !bag.properties.contains(k) {
-      keys.push(k)
-    }
-  })
-  for key in keys {
-    bag.descriptors[key] = frozen_descriptor(bag.descriptors.get(key))
-  }
-}
-
-///|
-fn freeze_symbol_properties(bag : @runtime.PropertyBag) -> Unit {
-  let sym_ids : Array[Int] = []
-  bag.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
-  for id in sym_ids {
-    bag.symbol_descriptors[id] = frozen_descriptor(
-      bag.symbol_descriptors.get(id),
-    )
-  }
-}
-
-///|
-fn freeze_array_index_properties(data : ArrayData) -> Unit {
-  for i in 0..<data.elements.length() {
-    if !data.holes.contains(i) {
-      let key = i.to_string()
-      data.bag.descriptors[key] = frozen_descriptor(
-        data.bag.descriptors.get(key),
-      )
-    }
-  }
-}
-
-///|
 fn make_freeze_func() -> Value {
   @runtime.make_native_func(name="freeze", length=1, fn(args) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Object(data) => {
-        if data.class_name == "Module" {
-          let mut has_string_export = false
-          data.bag.properties.each(fn(_, _) { has_string_export = true })
-          if has_string_export {
-            raise @errors.TypeError(
-              message="Cannot freeze module namespace object",
-            )
-          }
-        }
-        data.extensible = false
-        freeze_string_properties(data.bag)
-        freeze_symbol_properties(data.bag)
-        obj
-      }
-      Array(data) => {
-        data.extensible = false
-        data.length_writable = false
-        freeze_array_index_properties(data)
-        freeze_string_properties(data.bag)
-        freeze_symbol_properties(data.bag)
-        obj
-      }
-      _ => obj
-    }
+    @runtime.set_integrity_frozen(obj)
   })
 }
 
@@ -104,71 +18,7 @@ fn make_freeze_func() -> Value {
 fn make_seal_func() -> Value {
   @runtime.make_native_func(name="seal", length=1, fn(args) {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Object(data) => {
-        data.extensible = false
-        // Seal string properties
-        let keys : Array[String] = []
-        data.bag.properties.each(fn(k, _v) { keys.push(k) })
-        for key in keys {
-          let existing = data.bag.descriptors.get(key)
-          data.bag.descriptors[key] = {
-            writable: match existing {
-              Some(d) => d.writable
-              None => true
-            },
-            enumerable: match existing {
-              Some(d) => d.enumerable
-              None => true
-            },
-            configurable: false,
-            getter: match existing {
-              Some(d) => d.getter
-              None => None
-            },
-            setter: match existing {
-              Some(d) => d.setter
-              None => None
-            },
-            is_accessor: match existing {
-              Some(d) => d.is_accessor
-              None => false
-            },
-          }
-        }
-        // Seal symbol properties
-        let sym_ids : Array[Int] = []
-        data.bag.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
-        for id in sym_ids {
-          let existing = data.bag.symbol_descriptors.get(id)
-          data.bag.symbol_descriptors[id] = {
-            writable: match existing {
-              Some(d) => d.writable
-              None => true
-            },
-            enumerable: match existing {
-              Some(d) => d.enumerable
-              None => true
-            },
-            configurable: false,
-            getter: match existing {
-              Some(d) => d.getter
-              None => None
-            },
-            setter: match existing {
-              Some(d) => d.setter
-              None => None
-            },
-            is_accessor: match existing {
-              Some(d) => d.is_accessor
-              None => false
-            },
-          }
-        }
-        obj
-      }
-      _ => obj
-    }
+    @runtime.set_integrity_sealed(obj)
   })
 }
 
@@ -179,21 +29,7 @@ fn make_prevent_extensions_func() -> Value {
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Value::Proxy(proxy_data) => {
-        let _ = @runtime.proxy_prevent_extensions(interp, proxy_data)
-        obj
-      }
-      Object(data) => {
-        data.extensible = false
-        obj
-      }
-      Array(data) => {
-        data.extensible = false
-        obj
-      }
-      _ => obj
-    }
+    @runtime.object_prevent_extensions(interp, obj)
   })
 }
 
@@ -201,29 +37,7 @@ fn make_prevent_extensions_func() -> Value {
 fn make_is_frozen_func() -> Value {
   @runtime.make_native_func(name="isFrozen", length=1, fn(args) {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Object(data) => {
-        if data.extensible {
-          return Value::Bool(false)
-        }
-        if data.class_name == "Module" {
-          let mut has_string_export = false
-          data.bag.properties.each(fn(_, _) { has_string_export = true })
-          if has_string_export {
-            return Value::Bool(false)
-          }
-        }
-        let mut frozen = true
-        data.bag.properties.each(fn(k, _v) {
-          match data.bag.descriptors.get(k) {
-            Some(d) => if d.writable || d.configurable { frozen = false }
-            None => frozen = false // No descriptor = writable+configurable
-          }
-        })
-        Bool(frozen)
-      }
-      _ => Value::Bool(true) // Non-objects are vacuously frozen
-    }
+    @runtime.test_integrity_frozen(obj)
   })
 }
 
@@ -231,22 +45,7 @@ fn make_is_frozen_func() -> Value {
 fn make_is_sealed_func() -> Value {
   @runtime.make_native_func(name="isSealed", length=1, fn(args) {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Object(data) => {
-        if data.extensible {
-          return Value::Bool(false)
-        }
-        let mut is_sealed = true
-        data.bag.properties.each(fn(k, _v) {
-          match data.bag.descriptors.get(k) {
-            Some(d) => if d.configurable { is_sealed = false }
-            None => is_sealed = false
-          }
-        })
-        Bool(is_sealed)
-      }
-      _ => Value::Bool(true)
-    }
+    @runtime.test_integrity_sealed(obj)
   })
 }
 
@@ -257,13 +56,7 @@ fn make_is_extensible_func() -> Value {
     args,
   ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    match obj {
-      Object(data) => Bool(data.extensible)
-      Array(data) => Bool(data.extensible)
-      Value::Proxy(proxy_data) =>
-        Bool(@runtime.proxy_is_extensible(interp, proxy_data))
-      _ => Value::Bool(false)
-    }
+    @runtime.object_is_extensible(interp, obj)
   })
 }
 
