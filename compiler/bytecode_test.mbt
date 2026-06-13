@@ -168,6 +168,51 @@ test "equivalence harness: unsupported mode (rejection-assertion pattern)" {
 }
 
 ///|
+/// Pins bytecode-vs-tree-walker agreement on `var` hoisting across every branch
+/// of plan_bytecode_locals (issue #325). Each body reads a `var` *before* its
+/// declaration, so the value is `undefined` only if the env/local hoist defined
+/// the binding first; a broken hoist would throw a ReferenceError and diverge
+/// from the tree-walker oracle. Lands before the Stage-7 precompute so the IR
+/// change is guarded: the precomputed env-hoist set must reproduce these.
+test "bytecode equivalence: var hoisting across local-plan branches (#325)" {
+  // (a) plain var -> local slot (fast path: not captured, no arguments).
+  let src_local =
+    #|function f() { var before = x; var x = 5; return (before === undefined) ? ("local:" + x) : "BUG"; }
+    #|f();
+  inspect(bytecode_compare(src_local), content="value:local:5")
+  // (b) var captured by a nested closure AND read in the current function
+  //     -> env slot (captured && current_refs).
+  let src_captured =
+    #|function f() { var before = v; function g() { return v; } var v = 10; return (before === undefined) ? ("cap:" + g()) : "BUG"; }
+    #|f();
+  inspect(bytecode_compare(src_captured), content="value:cap:10")
+  // (c) body references `arguments` -> refs_arguments forces vars onto env slots.
+  let src_arguments =
+    #|function f() { var before = w; var w = arguments[0]; return (before === undefined) ? ("arg:" + w) : "BUG"; }
+    #|f(7);
+  inspect(bytecode_compare(src_arguments), content="value:arg:7")
+  // (d) direct eval present -> use_local_slots disabled -> local_names empty ->
+  //     all vars env-hoisted (same boundary as (e) but via the eval guard).
+  let src_eval =
+    #|function f() { var before = x; var x = 5; var r = (before === undefined) ? ("eval:" + x) : "BUG"; eval(""); return r; }
+    #|f();
+  inspect(bytecode_compare(src_eval), content="value:eval:5")
+  // (e) rest param -> use_local_slots disabled -> local_names empty ->
+  //     EVERY var-declared name is hoisted to the env (the boundary case the
+  //     precompute's filter must keep in full).
+  let src_rest =
+    #|function f(a, ...rest) { var before = x; var x = rest[0]; return (before === undefined) ? ("rest:" + x) : "BUG"; }
+    #|f(0, 9);
+  inspect(bytecode_compare(src_rest), content="value:rest:9")
+  // Duplicate var names must not change the result (precompute keeps order and
+  // duplicates rather than deduping).
+  let src_dup =
+    #|function f() { var x; var x = 3; return x; }
+    #|f();
+  inspect(bytecode_compare(src_dup), content="value:3")
+}
+
+///|
 test "bytecode constants locals and binary ops" {
   let src =
     #|var x = 1;

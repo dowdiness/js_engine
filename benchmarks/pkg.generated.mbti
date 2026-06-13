@@ -48,6 +48,10 @@ pub const STARTUP_TINY_SRC : String = "1 + 1"
 
 pub const STRING_OPS_SRC : String = "var result = \"\";\nfor (var i = 0; i < 100; i++) {\n  result = result + \"hello\".toUpperCase() + \" \";\n}\nresult.length;"
 
+pub const VARHOIST_NESTED_BODY : String = "var total = 0;\nvar i = 0;\nfor (i = 0; i < 10; i = i + 1) {\n  var step = i * 2;\n  if (step > 5) {\n    var flag = step;\n    total = total + flag;\n  } else {\n    var alt = step - 1;\n    total = total + alt;\n  }\n}\nwhile (total > 100) {\n  var dec = total / 2;\n  total = total - dec;\n}\ntry {\n  var attempt = total + 1;\n  total = attempt;\n} catch (e) {\n  var fallback = 0;\n  total = fallback;\n}\nvar result = total;\nresult;"
+
+pub const VARHOIST_SMALL_BODY : String = "var a = n - 1;\nvar b = n - 2;"
+
 pub fn all_bench_names() -> Array[(String, String, String)]
 
 pub fn bench_array_map_filter() -> BenchResult raise

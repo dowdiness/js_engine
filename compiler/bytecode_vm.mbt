@@ -160,19 +160,17 @@ fn BytecodeFrame::hoist_env_var_bindings(
   self : BytecodeFrame,
   interp : Interpreter,
 ) -> Unit raise Error {
-  let names = @static_semantics.collect_var_declared_names(
-    self.func_def.source_body,
-  )
-  for name in names {
-    if local_index_from_names(self.func_def.local_names, name) is None {
-      interp.define_compiled_binding(
-        self.env,
-        VarKind,
-        name,
-        Value::Undefined,
-        false,
-      )
-    }
+  // The env-hoist set (var-declared names that did not become local slots) is
+  // precomputed at lowering on the IR (issue #325); iterate it instead of
+  // re-walking source_body and re-filtering on every call.
+  for name in self.func_def.env_var_hoist_names {
+    interp.define_compiled_binding(
+      self.env,
+      VarKind,
+      name,
+      Value::Undefined,
+      false,
+    )
   }
 }
 
