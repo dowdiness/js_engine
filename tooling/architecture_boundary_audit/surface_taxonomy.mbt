@@ -118,11 +118,8 @@ fn strip_visibility_prefix(line : String) -> String? {
 
 ///|
 fn extract_reexport_name(content : String) -> String? {
-  let after_brace = match content.split_once("{") {
-    None => return None
-    Some((_, after)) => after.to_owned()
-  }
-  let inner = after_brace.trim().to_owned()
+  guard content.split_once("{") is Some((_, after_brace)) else { return None }
+  let inner = after_brace.to_owned().trim().to_owned()
   guard inner.has_prefix("type ") else { return None }
   let type_name_part = inner[5:].to_owned()
   let name_part = match type_name_part.split_once("}") {
@@ -143,10 +140,8 @@ fn extract_reexport_name(content : String) -> String? {
 
 ///|
 fn extract_type_name(content : String) -> String? {
-  let after_kw = match content.split_once(" ") {
-    None => return None
-    Some((_, after)) => after.to_owned()
-  }
+  guard content.split_once(" ") is Some((_, after_kw_view)) else { return None }
+  let after_kw = after_kw_view.to_owned()
   let name = match after_kw.split_once("(") {
     Some((before, _)) => before.trim().to_owned()
     None =>
@@ -182,10 +177,7 @@ fn extract_const_name(content : String) -> String? {
 
 ///|
 fn extract_mbti_symbol(line : String) -> String? {
-  let content = match strip_visibility_prefix(line) {
-    None => return None
-    Some(c) => c
-  }
+  guard strip_visibility_prefix(line) is Some(content) else { return None }
   if content.has_prefix("impl ") {
     return None
   }
