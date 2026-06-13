@@ -35,7 +35,7 @@ pub fn Interpreter::typeof_compiled_name(
   env : Environment,
   name : String,
 ) -> Value raise Error {
-  validate_strict_identifier_reference(ctx.strict, name)
+  @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
   if env.has(name) {
     String_(type_of(env.get(name)))
   } else {
@@ -60,7 +60,7 @@ pub fn Interpreter::assign_compiled_name(
   name : String,
   value : Value,
 ) -> Value raise Error {
-  validate_strict_assignment_target_name(ctx.strict, name)
+  @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
   if self.is_immutable_global(name) {
     if ctx.strict {
       raise @errors.TypeError(
@@ -94,7 +94,7 @@ pub fn Interpreter::update_compiled_name(
   prefix : Bool,
   _loc : @token.Loc,
 ) -> Value raise Error {
-  validate_strict_assignment_target_name(ctx.strict, name)
+  @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
   let old_value = env.get(name)
   let old_number = to_number(old_value, interp=Some(self))
   let next_value = match op {
