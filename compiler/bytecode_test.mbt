@@ -1392,6 +1392,48 @@ test "bytecode array spread captures outer bindings" {
   inspect(bytecode_compare(src), content="value:2")
 }
 
+// Stage 7 runtime literal-accumulator operations: the spread-bearing array
+// literal path routes ArrayPushValue/ArrayPushSpread/ArrayPushHole through
+// @runtime, and the incremental object path routes ObjectSetStatic through
+// @runtime. These cases exercise all four migrated ops against the tree-walker
+// oracle (issue #330 equivalence-coverage obligation).
+
+///|
+test "bytecode array literal accumulator mixes value, hole, and spread ops" {
+  let src =
+    #|var xs = [1, , ...[2, 3], 4];
+    #|xs.length + ":" + xs[0] + "," + (1 in xs) + "," + xs[2] + "," + xs[3] + "," + xs[4];
+  inspect(bytecode_compare(src), content="value:5:1,false,2,3,4")
+}
+
+///|
+test "bytecode array accumulator hole still falls through to prototype with spread present" {
+  let src =
+    #|Array.prototype[1] = "proto";
+    #|var xs = [0, , ...[2]];
+    #|xs[1] + "," + (1 in xs) + ":" + xs.length;
+  inspect(bytecode_compare(src), content="value:proto,true:3")
+}
+
+///|
+test "bytecode object accumulator sets static data props alongside a computed key" {
+  let src =
+    #|var k = "c";
+    #|var o = { a: 1, [k]: 2, b: 3 };
+    #|o.a + "," + o.b + "," + o.c;
+  inspect(bytecode_compare(src), content="value:1,3,2")
+}
+
+///|
+test "bytecode object accumulator static data props keep evaluation order in incremental path" {
+  let src =
+    #|var log = "";
+    #|function side(x) { log = log + x; return x; }
+    #|var o = { a: side("a"), m() { return this.a; }, b: side("b") };
+    #|log + ":" + o.a + o.b + ":" + o.m();
+  inspect(bytecode_compare(src), content="value:ab:ab:a")
+}
+
 ///|
 test "bytecode spread call arguments expand arrays and strings" {
   let src =

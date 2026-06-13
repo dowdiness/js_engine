@@ -606,6 +606,78 @@ pub fn apply_object_literal_data_property(
 }
 
 ///|
+/// Set a static (compile-time string keyed) data property on an object literal
+/// accumulator. Unlike `apply_object_literal_data_property`, this performs no
+/// function-name inference: the bytecode lowering emits a separate
+/// `SetFunctionName` instruction for static keys, so naming is already handled
+/// upstream and must not be re-applied here.
+pub fn apply_object_literal_static_data_property(
+  target : Value,
+  key : String,
+  value : Value,
+) -> Unit raise Error {
+  match target {
+    Object(data) => data.bag.properties[key] = value
+    _ =>
+      raise @errors.InternalError(
+        message="object literal static data property target was not an object",
+      )
+  }
+}
+
+///|
+/// Append one evaluated element to an array literal accumulator.
+pub fn apply_array_literal_element(
+  target : Value,
+  value : Value,
+) -> Unit raise Error {
+  match target {
+    Array(data) => data.elements.push(value)
+    _ =>
+      raise @errors.InternalError(
+        message="array literal element target was not an array",
+      )
+  }
+}
+
+///|
+/// Append already-spread iterable values to an array literal accumulator. The
+/// caller is responsible for running the iterator protocol (interpreter
+/// semantics); this operation only lands the resulting values into storage.
+pub fn apply_array_literal_spread(
+  target : Value,
+  values : Array[Value],
+) -> Unit raise Error {
+  match target {
+    Array(data) =>
+      for value in values {
+        data.elements.push(value)
+      }
+    _ =>
+      raise @errors.InternalError(
+        message="array literal spread target was not an array",
+      )
+  }
+}
+
+///|
+/// Append a single elision (hole) to an array literal accumulator: the index is
+/// recorded as a hole and the slot is filled with `undefined` so that `length`
+/// advances while `in`/iteration treat the index as absent.
+pub fn apply_array_literal_hole(target : Value) -> Unit raise Error {
+  match target {
+    Array(data) => {
+      data.holes[data.elements.length()] = ()
+      data.elements.push(Value::Undefined)
+    }
+    _ =>
+      raise @errors.InternalError(
+        message="array literal hole target was not an array",
+      )
+  }
+}
+
+///|
 fn force_object_literal_accessor_name(accessor : Value, name : String) -> Unit {
   match accessor {
     Object(data) if data.callable is Some(_) =>

@@ -9,11 +9,19 @@ import {
 }
 
 // Values
+pub fn apply_array_literal_element(Value, Value) -> Unit raise
+
+pub fn apply_array_literal_hole(Value) -> Unit raise
+
+pub fn apply_array_literal_spread(Value, Array[Value]) -> Unit raise
+
 pub fn apply_object_literal_accessor_property(Value, Value, Value, Bool) -> Unit raise
 
 pub fn apply_object_literal_data_property(Value, Value, Value) -> Unit raise
 
 pub fn apply_object_literal_proto_property(Value, Value) -> Unit raise
+
+pub fn apply_object_literal_static_data_property(Value, String, Value) -> Unit raise
 
 pub fn array_species_create(Interpreter, Value, Int) -> Value raise
 
