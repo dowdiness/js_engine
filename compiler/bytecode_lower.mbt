@@ -1477,7 +1477,7 @@ fn compile_bytecode_function(
     params,
     rest_param,
     source_body: body,
-    body_has_use_strict: @runtime.has_use_strict(body),
+    body_has_use_strict: @static_semantics.has_use_strict(body),
     call_self_name,
     needs_arguments_object: bytecode_body_references_outer_arguments(body) ||
     bytecode_body_references_eval(body),

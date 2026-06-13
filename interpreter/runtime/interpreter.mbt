@@ -246,24 +246,6 @@ pub fn Interpreter::new(
 }
 
 ///|
-pub fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
-  // Scan the directive prologue: the longest sequence of ExpressionStatements
-  // consisting entirely of StringLiterals at the beginning of the body.
-  // Only the literal string "use strict" WITHOUT escape sequences activates strict mode.
-  for i = 0; i < stmts.length(); i = i + 1 {
-    match stmts[i] {
-      ExprStmt(StringLit(s, has_escape, _, _), _) =>
-        if s == "use strict" && !has_escape {
-          return true
-        }
-      // Continue scanning — other string directives are part of the prologue
-      _ => break // Non-string ExprStmt or other statement ends the prologue
-    }
-  }
-  false
-}
-
-///|
 /// Check if a name is a strict-mode reserved word (ES5 §7.6.1.2).
 /// These identifiers cannot be used as variable names, function names,
 /// or parameter names in strict mode code.
@@ -539,7 +521,7 @@ pub fn validate_function_constructor_params(
   rest_name : String?,
   body : Array[@ast.Stmt],
 ) -> Unit raise Error {
-  let body_has_use_strict = has_use_strict(body)
+  let body_has_use_strict = @static_semantics.has_use_strict(body)
   if !is_simple && body_has_use_strict {
     raise @errors.SyntaxError(
       message="Illegal 'use strict' directive in function with non-simple parameter list",
@@ -583,7 +565,7 @@ pub fn validate_function_constructor_params_ext(
   rest_param : String?,
   body : Array[@ast.Stmt],
 ) -> Unit raise Error {
-  if has_use_strict(body) {
+  if @static_semantics.has_use_strict(body) {
     raise @errors.SyntaxError(
       message="Illegal 'use strict' directive in function with non-simple parameter list",
     )
@@ -596,7 +578,7 @@ const EVAL_FUNCTION_RECONCILE_MARKER = "[[EvalFunctionReconcile]]"
 
 ///|
 fn is_function_strict(enclosing_strict : Bool, body : Array[@ast.Stmt]) -> Bool {
-  enclosing_strict || has_use_strict(body)
+  @static_semantics.body_is_strict(body, enclosing_strict)
 }
 
 ///|
@@ -752,7 +734,7 @@ pub fn Interpreter::run(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Value raise Error {
-  let strict = has_use_strict(stmts)
+  let strict = @static_semantics.has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
   try {
     let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {

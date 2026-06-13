@@ -726,7 +726,7 @@ pub fn setup_async_function_constructor(
         match prog.stmts[0] {
           AsyncFuncDecl(_, params, body, _) => {
             // Validate static early errors against the function's strict context.
-            let body_strict = has_use_strict(body)
+            let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params(true, params, None, body)
             interp.validate_block_early_errors(body, body_strict)
             return interp.make_async_function(
@@ -740,7 +740,7 @@ pub fn setup_async_function_constructor(
           }
           AsyncFuncDeclExt(_, params, rest_param, body, _) => {
             // Validate static early errors against the function's strict context.
-            let body_strict = has_use_strict(body)
+            let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params_ext(params, rest_param, body)
             interp.validate_block_early_errors(body, body_strict)
             return interp.make_async_function_ext(

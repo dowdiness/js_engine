@@ -1,5 +1,6 @@
 import {
   "dowdiness/js_engine/interpreter/runtime",
+  "dowdiness/js_engine/static_semantics",
   "dowdiness/js_engine/ast",
   "dowdiness/js_engine/token",
   "dowdiness/js_engine/errors",

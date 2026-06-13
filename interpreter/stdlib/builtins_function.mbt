@@ -380,7 +380,7 @@ fn setup_function_builtins(
               fn_props["length"] = Value::Number(params.length().to_double())
               fn_props["name"] = Value::String_("anonymous")
               // Validate static early errors against the function's strict context.
-              let body_strict = @runtime.has_use_strict(body)
+              let body_strict = @static_semantics.has_use_strict(body)
               @runtime.validate_function_constructor_params(
                 true,
                 params,
@@ -422,7 +422,7 @@ fn setup_function_builtins(
               fn_props["length"] = Value::Number(fn_length.to_double())
               fn_props["name"] = Value::String_("anonymous")
               // Validate static early errors against the function's strict context.
-              let body_strict = @runtime.has_use_strict(body)
+              let body_strict = @static_semantics.has_use_strict(body)
               @runtime.validate_function_constructor_params_ext(
                 params, rest_param, body,
               )

@@ -383,9 +383,9 @@ pub fn Interpreter::perform_eval(
   // Indirect eval is strict ONLY if the eval code itself has "use strict" — it does
   // NOT inherit the caller's strict mode (it runs as a fresh global script).
   let eval_strict = if direct {
-    caller_strict || has_use_strict(stmts)
+    caller_strict || @static_semantics.has_use_strict(stmts)
   } else {
-    has_use_strict(stmts)
+    @static_semantics.has_use_strict(stmts)
   }
   // Apply static block-scoped redeclaration checks before declaration instantiation.
   self.validate_block_early_errors(stmts, eval_strict)

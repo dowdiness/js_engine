@@ -121,8 +121,6 @@ pub fn has_parameter_expressions(Array[@ast.Param]) -> Bool
 
 pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
 
-pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
-
 pub fn instanceof_prototype_chain(Value, Value, Interpreter) -> Value raise
 
 pub fn is_callable(Value) -> Bool

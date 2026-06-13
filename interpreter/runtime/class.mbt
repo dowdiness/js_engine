@@ -2,7 +2,7 @@
 /// Ensure a function body starts with "use strict" directive.
 /// Returns the body unchanged if it already has one, or prepends the directive.
 fn ensure_strict_body(body : Array[@ast.Stmt]) -> Array[@ast.Stmt] {
-  if has_use_strict(body) {
+  if @static_semantics.has_use_strict(body) {
     body
   } else {
     let strict_body : Array[@ast.Stmt] = [
