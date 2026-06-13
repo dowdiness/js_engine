@@ -53,11 +53,13 @@ fn is_js_whitespace(c : Char) -> Bool {
   cp == 0x09 ||
   cp == 0x0B ||
   cp == 0x0C ||
-  is_unicode_space_cp(cp)
+  is_unicode_non_ascii_space_cp(cp)
 }
 
 ///|
-fn is_unicode_space_cp(cp : Int) -> Bool {
+/// Unicode Zs (Space Separator) codepoints excluding ASCII U+0020, which
+/// `is_js_whitespace` adds separately. The name makes the exclusion explicit.
+fn is_unicode_non_ascii_space_cp(cp : Int) -> Bool {
   cp == 0x00A0 || // No-Break Space
   cp == 0xFEFF || // Zero Width No-Break Space (BOM)
   cp == 0x1680 || // OGHAM SPACE MARK
