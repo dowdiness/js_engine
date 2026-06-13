@@ -17,10 +17,7 @@
 /// descriptor is recorded (the ordinary-object convention for data properties
 /// created without an explicit descriptor).
 fn bag_key_enumerable(bag : PropertyBag, key : String) -> Bool {
-  match bag.descriptors.get(key) {
-    Some(d) => d.enumerable
-    None => true
-  }
+  bag.descriptors.get(key).map(fn(d) { d.enumerable }).unwrap_or(true)
 }
 
 ///|
@@ -30,22 +27,14 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Value::Proxy(proxy_data) => {
-      // Call [[OwnPropertyKeys]] via proxy trap, then filter to enumerable strings
-      let all_keys = proxy_own_property_keys(interp, proxy_data)
-      let result : Array[Value] = []
-      match all_keys {
+    Value::Proxy(proxy_data) =>
+      // Call [[OwnPropertyKeys]] via proxy trap, then keep only the string keys
+      // (Object.keys only returns strings).
+      match proxy_own_property_keys(interp, proxy_data) {
         Value::Array(arr) =>
-          for key in arr.elements {
-            match key {
-              Value::String_(_) => result.push(key)
-              _ => () // Object.keys only returns strings
-            }
-          }
-        _ => ()
+          make_array(arr.elements.filter(fn(key) { key is Value::String_(_) }))
+        _ => make_array([])
       }
-      make_array(result)
-    }
     Object(data) => {
       let keys : Array[Value] = []
       let sorted = if data.class_name == "Module" {
@@ -70,7 +59,9 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
     }
     Value::String_(s) =>
       // String objects have enumerable indexed properties
-      make_array([ for i in 0..<s.length() => Value::String_(i.to_string()) ])
+      make_array(
+        Array::makei(s.length(), fn(i) { Value::String_(i.to_string()) }),
+      )
     Value::Array(data) =>
       // Array objects have enumerable indexed properties followed by
       // enumerable own named properties in their embedded bag.
@@ -125,7 +116,7 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
     }
     Value::String_(s) =>
       // String objects have enumerable indexed properties
-      make_array([ for ch in s.to_array() => Value::String_(ch.to_string()) ])
+      make_array(s.to_array().map(fn(ch) { Value::String_(ch.to_string()) }))
     Value::Array(data) => {
       // Array objects - return array elements, then enumerable own
       // named properties from the embedded bag.
@@ -194,14 +185,14 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
     Value::String_(s) =>
       // String objects have enumerable indexed properties
       make_array(
-        [
-          for i, ch in s.to_array() => {
-            make_array([
-              Value::String_(i.to_string()),
-              Value::String_(ch.to_string()),
-            ])
-          }
-        ],
+        s
+        .to_array()
+        .mapi(fn(i, ch) {
+          make_array([
+            Value::String_(i.to_string()),
+            Value::String_(ch.to_string()),
+          ])
+        }),
       )
     Value::Array(data) => {
       // Array objects - keys must be strings per spec.
