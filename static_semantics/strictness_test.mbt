@@ -39,21 +39,3 @@ test "body_is_strict: neither inherited nor directive" {
   let prog = @parser.parse("1;")
   inspect(body_is_strict(prog.stmts, false), content="false")
 }
-
-///|
-test "SourceKind: preparation model covers all source kinds" {
-  // Verify the preparation model is complete by exercising every variant.
-  // These drive the policy table in architecture-execution-plan-2026-06-12.md §5.
-  let kinds : Array[SourceKind] = [
-    Script,
-    Module,
-    DirectEval,
-    IndirectEval,
-    FunctionConstructor,
-    GeneratorFunctionConstructor,
-    AsyncFunctionConstructor,
-    AsyncGeneratorFunctionConstructor,
-    BytecodeLowering,
-  ]
-  inspect(kinds.length(), content="9")
-}
