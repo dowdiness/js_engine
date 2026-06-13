@@ -3549,19 +3549,3 @@ fn simple_ext_param_names_with_rest(
   }
   (names, rest_param)
 }
-
-///|
-fn local_index_from_names(xs : Array[String], name : String) -> Int? {
-  for i, x in xs {
-    if x == name {
-      return Some(i)
-    }
-  }
-  None
-}
-
-///|
-fn string_array_contains(xs : Array[String], name : String) -> Bool {
-  local_index_from_names(xs, name) is Some(_)
-}
-
