@@ -252,7 +252,8 @@ fn module_name(root : String) -> String raise {
 ///|
 fn is_skipped_dir_segment(segment : String) -> Bool {
   match segment {
-    ".git" | ".mooncakes" | "_build" | "test262" | "graphify-out" => true
+    ".git" | ".mooncakes" | "_build" | "target" | "test262" | "graphify-out" =>
+      true
     _ => false
   }
 }
@@ -671,6 +672,7 @@ pub fn run(
   root~ : String,
   list_imports~ : Bool,
   list_representation? : Bool = false,
+  list_surfaces? : Bool = false,
 ) -> (Array[String], Array[String], Int) raise {
   let stdout_lines : Array[String] = []
   let stderr_lines : Array[String] = []
@@ -687,6 +689,20 @@ pub fn run(
   )
   append_lines(stdout_lines, rep_stdout)
   append_lines(stderr_lines, rep_stderr)
-  let code = if import_code != 0 || representation_code != 0 { 1 } else { 0 }
+
+  let (surf_stdout, surf_stderr, surface_code) = run_surface_taxonomy(
+    root~,
+    list_surfaces~,
+  )
+  append_lines(stdout_lines, surf_stdout)
+  append_lines(stderr_lines, surf_stderr)
+
+  let code = if import_code != 0 ||
+    representation_code != 0 ||
+    surface_code != 0 {
+    1
+  } else {
+    0
+  }
   (stdout_lines, stderr_lines, code)
 }
