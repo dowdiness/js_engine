@@ -34,6 +34,10 @@ fn main {
         "list-representation",
         about="Print classified compiler and stdlib representation access.",
       ),
+      @argparse.FlagArg(
+        "list-surfaces",
+        about="Print classified public package surfaces.",
+      ),
     ],
     options=[
       @argparse.OptionArg(
@@ -63,10 +67,15 @@ fn main {
     Some(true) => true
     _ => false
   }
+  let list_surfaces = match matches.flags.get("list-surfaces") {
+    Some(true) => true
+    _ => false
+  }
   let (stdout_lines, stderr_lines, code) = @audit.run(
     root~,
     list_imports~,
     list_representation~,
+    list_surfaces~,
   ) catch {
     err => {
       eprintln("Error: \{err}")

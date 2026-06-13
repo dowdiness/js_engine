@@ -1,3 +1,6 @@
+// Tests for the legacy closure-conversion path. See closure_conversion.mbt for
+// the policy note: do not add new syntax coverage or semantic special cases here.
+
 ///|
 using @runtime {type BindingKind, type Value}
 

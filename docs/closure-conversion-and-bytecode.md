@@ -1,12 +1,19 @@
 # Closure Conversion and Bytecode Direction
 
+> **Status: legacy experimental.** Closure conversion is a retained benchmark
+> and research artifact, not the long-term optimization architecture. See §8 of
+> [architecture-execution-plan-2026-06-12.md](architecture-execution-plan-2026-06-12.md)
+> for the retirement criteria and the list of allowed and forbidden work. The
+> `closure_legacy/` label in benchmark names reflects this status.
+
 This note records the current optimization decision for the interpreter
 execution path.
 
 ## Decision
 
-Closure conversion stays as an experimental, opt-in benchmark path. Do not keep
-expanding it into a second complete JavaScript interpreter.
+Closure conversion is a legacy experimental path. It stays as an opt-in
+benchmark comparison path only. Do not expand it into a second complete
+JavaScript interpreter.
 
 Execution-speed work now has an initial compact, opt-in bytecode prototype.
 Future broadening should continue in that direction. Closure analysis remains
@@ -24,9 +31,9 @@ comparison workloads.
 Primary metrics:
 
 - `pipeline/exec/evaluate`
-- `pipeline/closure_conversion/evaluate`
+- `pipeline/closure_legacy/evaluate`
 - `baseline/exec/closure_factory`
-- `baseline/closure_conversion/closure_factory`
+- `baseline/closure_legacy/closure_factory`
 
 Use fresh benchmark output for numbers. Do not copy timing figures from this
 document into release notes or planning docs; timings vary by backend,

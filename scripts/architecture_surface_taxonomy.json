@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "package_defaults": [
+    {
+      "package": "dowdiness/js_engine/token",
+      "category": "internal_api",
+      "reason": "lexer token types are implementation details of the frontend layer"
+    },
+    {
+      "package": "dowdiness/js_engine/errors",
+      "category": "internal_api",
+      "reason": "JS error types surface through the root facade; direct package access is not the stable contract"
+    },
+    {
+      "package": "dowdiness/js_engine/ast",
+      "category": "internal_api",
+      "reason": "AST types are implementation details of the parse stage"
+    },
+    {
+      "package": "dowdiness/js_engine/lexer",
+      "category": "internal_api",
+      "reason": "tokenize is an implementation detail; users call the root facade"
+    },
+    {
+      "package": "dowdiness/js_engine/parser",
+      "category": "internal_api",
+      "reason": "parser types and functions are implementation details"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter",
+      "category": "internal_api",
+      "reason": "interpreter wiring layer; stable types re-exported via root facade"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/runtime",
+      "category": "internal_api",
+      "reason": "runtime representation and interpreter state are not a stable user facade"
+    },
+    {
+      "package": "dowdiness/js_engine/interpreter/stdlib",
+      "category": "internal_api",
+      "reason": "built-in helpers are implementation details"
+    },
+    {
+      "package": "dowdiness/js_engine/compiler",
+      "category": "experimental_public",
+      "reason": "compiler entry points are opt-in experiments until a supported execution mode is declared"
+    },
+    {
+      "package": "dowdiness/js_engine/benchmarks",
+      "category": "benchmark_tooling_hook",
+      "reason": "benchmark source strings and runner infrastructure are not library APIs"
+    },
+    {
+      "package": "dowdiness/js_engine/cmd/*",
+      "category": "benchmark_tooling_hook",
+      "reason": "command entry points are not library APIs"
+    }
+  ],
+  "symbol_overrides": [
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "run",
+      "category": "stable_user_facade",
+      "reason": "documented library entry point for script execution"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "run_module",
+      "category": "stable_user_facade",
+      "reason": "documented library entry point for module execution"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "run_modules",
+      "category": "stable_user_facade",
+      "reason": "documented library entry point for multi-module execution"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "run_with_event_loop",
+      "category": "stable_user_facade",
+      "reason": "documented library entry point that exposes the event loop handle"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "run_microtask_checkpoint",
+      "category": "stable_user_facade",
+      "reason": "event loop microtask drain hook for callers managing their own loop"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "run_timer_checkpoint",
+      "category": "stable_user_facade",
+      "reason": "event loop timer drain hook for callers managing their own loop"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "has_pending_microtasks",
+      "category": "stable_user_facade",
+      "reason": "event loop state query for callers managing their own loop"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "has_pending_timers",
+      "category": "stable_user_facade",
+      "reason": "event loop state query for callers managing their own loop"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "run_compiled",
+      "category": "experimental_public",
+      "reason": "closure-conversion entry point; may be removed when closure legacy retires"
+    }
+  ]
+}
