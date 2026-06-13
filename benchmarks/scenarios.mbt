@@ -212,7 +212,7 @@ pub fn bench_closure_factory() -> BenchResult raise {
 }
 
 ///|
-pub fn bench_closure_conversion_closure_factory() -> BenchResult raise {
+pub fn bench_closure_legacy_closure_factory() -> BenchResult raise {
   verify(CLOSURE_FACTORY_SRC, "500500")
   let prog = @parser.parse(CLOSURE_FACTORY_SRC)
   let compiled = @compiler.compile_script_to_closure(prog.stmts)
@@ -224,7 +224,7 @@ pub fn bench_closure_conversion_closure_factory() -> BenchResult raise {
     )
   }
   run_bench(
-    "baseline/closure_conversion/closure_factory",
+    "baseline/closure_legacy/closure_factory",
     Component,
     { warmup: 3, iterations: 20, group_size: 3 },
     fn() raise {
@@ -455,7 +455,7 @@ pub fn bench_pipeline_exec_evaluate() -> BenchResult raise {
 }
 
 ///|
-pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise {
+pub fn bench_pipeline_closure_legacy_evaluate() -> BenchResult raise {
   verify(PIPELINE_EXEC_SRC, PIPELINE_EXEC_EXPECTED)
   let prog = @parser.parse(PIPELINE_EXEC_SRC)
   let compiled = @compiler.compile_script_to_closure(prog.stmts)
@@ -468,7 +468,7 @@ pub fn bench_pipeline_closure_conversion_evaluate() -> BenchResult raise {
   }
   let interp = @interpreter.new_interpreter()
   run_bench(
-    "pipeline/closure_conversion/evaluate",
+    "pipeline/closure_legacy/evaluate",
     Workflow,
     { warmup: 3, iterations: 20, group_size: 5 },
     fn() raise { let _ = compiled(interp) },
@@ -572,7 +572,7 @@ pub fn run_component() -> Array[BenchResult] raise {
     bench_startup_result_stringify_output(),
     bench_array_map_filter(),
     bench_closure_factory(),
-    bench_closure_conversion_closure_factory(),
+    bench_closure_legacy_closure_factory(),
     bench_bytecode_closure_factory(),
     bench_bytecode_dispatch_stack(),
     bench_bytecode_local_access(),
@@ -597,7 +597,7 @@ pub fn run_workflow() -> Array[BenchResult] raise {
     bench_pipeline_exec_lex(),
     bench_pipeline_exec_parse(),
     bench_pipeline_exec_evaluate(),
-    bench_pipeline_closure_conversion_evaluate(),
+    bench_pipeline_closure_legacy_evaluate(),
     bench_pipeline_bytecode_compile(),
     bench_pipeline_bytecode_evaluate(),
     bench_parse_heavy(),
@@ -636,7 +636,7 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("startup/phase/result_stringify_output", "component", "execution"),
     ("exec/array_map_filter", "component", "execution"),
     ("exec/closure_factory", "component", "execution"),
-    ("baseline/closure_conversion/closure_factory", "component", "execution"),
+    ("baseline/closure_legacy/closure_factory", "component", "execution"),
     ("baseline/bytecode/closure_factory", "component", "execution"),
     ("isolate/bytecode/dispatch_stack", "component", "execution"),
     ("isolate/bytecode/local_access", "component", "execution"),
@@ -655,7 +655,7 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("pipeline/exec/lex", "workflow", "frontend"),
     ("pipeline/exec/parse", "workflow", "frontend"),
     ("pipeline/exec/evaluate", "workflow", "execution"),
-    ("pipeline/closure_conversion/evaluate", "workflow", "execution"),
+    ("pipeline/closure_legacy/evaluate", "workflow", "execution"),
     ("pipeline/bytecode/compile", "workflow", "frontend"),
     ("pipeline/bytecode/evaluate", "workflow", "execution"),
     ("pipeline/parse_heavy", "workflow", "frontend"),

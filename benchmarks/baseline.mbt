@@ -182,12 +182,12 @@ test "baseline/exec/closure_factory" (b : @bench.T) {
 /// whole-program statement compilation into `pipeline/exec/evaluate`.
 /// What it excludes: JavaScript-level arrays, for-loops, function declarations,
 /// and member/computed calls, which still require statement compilation work.
-test "baseline/closure_conversion/compiled_counter_factory" (b : @bench.T) {
+test "baseline/closure_legacy/compiled_counter_factory" (b : @bench.T) {
   let precheck = run_compiled_counter_factory() catch {
     _ => abort("compiled counter factory precheck raised")
   }
   expect_value_string(
-    "baseline/closure_conversion/compiled_counter_factory", precheck, "500500",
+    "baseline/closure_legacy/compiled_counter_factory", precheck, "500500",
   )
   b.bench(fn() {
     let result = run_compiled_counter_factory() catch {
@@ -206,7 +206,7 @@ test "baseline/closure_conversion/compiled_counter_factory" (b : @bench.T) {
 /// What it answers: whether whole-program closure conversion can move the
 /// primary closure_factory target, excluding frontend parse/compile cost.
 /// What it excludes: lexer/parser cost and closure-conversion compilation cost.
-test "baseline/closure_conversion/closure_factory" (b : @bench.T) {
+test "baseline/closure_legacy/closure_factory" (b : @bench.T) {
   let prog = @parser.parse(CLOSURE_FACTORY_SRC) catch {
     _ => abort("parse raised")
   }
@@ -216,7 +216,7 @@ test "baseline/closure_conversion/closure_factory" (b : @bench.T) {
     _ => abort("compiled program raised")
   }
   expect_value_string(
-    "baseline/closure_conversion/closure_factory", got, "500500",
+    "baseline/closure_legacy/closure_factory", got, "500500",
   )
   b.bench(fn() {
     let interp = @interpreter.new_interpreter()
@@ -290,7 +290,7 @@ test "baseline/exec/arithmetic_loop" (b : @bench.T) {
 /// The braced body has no `let`, `const`, class, or function declaration, so a
 /// gap here points at avoidable block Environment allocation in the compiled
 /// statement path rather than JavaScript work performed by the loop body.
-test "isolate/closure_conversion/block_body_env" (b : @bench.T) {
+test "isolate/closure_legacy/block_body_env" (b : @bench.T) {
   let block_prog = @parser.parse(COMPILED_BLOCK_BODY_LOOP_SRC) catch {
     _ => abort("block-body loop parse raised")
   }
@@ -306,10 +306,10 @@ test "isolate/closure_conversion/block_body_env" (b : @bench.T) {
     _ => abort("bare-body loop precheck raised")
   }
   expect_value_string(
-    "isolate/closure_conversion/block_body_env block", block_precheck, "199990000",
+    "isolate/closure_legacy/block_body_env block", block_precheck, "199990000",
   )
   expect_value_string(
-    "isolate/closure_conversion/block_body_env bare", bare_precheck, "199990000",
+    "isolate/closure_legacy/block_body_env bare", bare_precheck, "199990000",
   )
   b.bench(name="braced body", fn() {
     let result = block_compiled(@interpreter.new_interpreter()) catch {
