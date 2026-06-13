@@ -63,8 +63,7 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
     Value::String_(s) => {
       // String objects have enumerable indexed properties
       let keys : Array[Value] = []
-      let len = s.length()
-      for i = 0; i < len; i = i + 1 {
+      for i in 0..<s.length() {
         keys.push(Value::String_(i.to_string()))
       }
       make_array(keys)
@@ -73,7 +72,7 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       // Array objects have enumerable indexed properties followed by
       // enumerable own named properties in their embedded bag.
       let keys : Array[Value] = []
-      for i = 0; i < data.elements.length(); i = i + 1 {
+      for i in 0..<data.elements.length() {
         if data.holes.contains(i) {
           continue
         }
@@ -154,7 +153,7 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
       // named properties from the embedded bag.
       let loc = @token.Loc::default()
       let vals : Array[Value] = []
-      for i = 0; i < data.elements.length(); i = i + 1 {
+      for i in 0..<data.elements.length() {
         if data.holes.contains(i) {
           continue
         }
@@ -228,7 +227,7 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
       // String objects have enumerable indexed properties
       let entries : Array[Value] = []
       let chars = s.to_array()
-      for i = 0; i < chars.length(); i = i + 1 {
+      for i in 0..<chars.length() {
         entries.push(
           make_array([
             Value::String_(i.to_string()),
@@ -242,7 +241,7 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
       // Array objects - keys must be strings per spec.
       let loc = @token.Loc::default()
       let entries : Array[Value] = []
-      for i = 0; i < data.elements.length(); i = i + 1 {
+      for i in 0..<data.elements.length() {
         if data.holes.contains(i) {
           continue
         }
