@@ -189,11 +189,17 @@ pub fn mark_as_method(Value) -> Value
 
 pub fn new_promise_data() -> PromiseData
 
+pub fn object_entries(Interpreter, Value) -> Value raise
+
 pub fn object_is_extensible(Interpreter, Value) -> Value raise
+
+pub fn object_keys(Interpreter, Value) -> Value raise
 
 pub fn object_own_property_keys_snapshot(Interpreter, Value) -> Array[Value] raise
 
 pub fn object_prevent_extensions(Interpreter, Value) -> Value raise
+
+pub fn object_values(Interpreter, Value) -> Value raise
 
 pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
 

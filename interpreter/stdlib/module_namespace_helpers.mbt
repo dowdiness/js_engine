@@ -1,12 +1,4 @@
 ///|
-fn stdlib_module_namespace_own_string_keys(data : ObjectData) -> Array[String] {
-  let keys : Array[String] = []
-  data.bag.properties.each(fn(k, _) { keys.push(k) })
-  keys.sort_by(fn(a, b) { a.lexical_compare(b) })
-  keys
-}
-
-///|
 fn stdlib_module_namespace_set_prototype_result(
   data : ObjectData,
   proto : Value,
