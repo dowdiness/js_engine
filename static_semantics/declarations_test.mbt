@@ -45,8 +45,10 @@ test "collect_var_declared_names: var inside try-catch" {
 test "collect_var_declared_names: function decl inside if is block-scoped (§B.3.4)" {
   let prog = @parser.parse("if (true) function f() {}")
   let names = collect_var_declared_names(prog.stmts)
-  // TODO(human): inspect the result — should f be in names?
-  // §B.3.4 says if (...) function f() {} parses as if (...) { function f() {} },
-  // making f a lexical binding of the implicit block, not a var-declared name.
-  ignore(names)
+  // §B.3.4: if (...) function f() {} treats f as a lexical binding of the
+  // implicit block around the then-branch, not a var-declared name. The
+  // IfStmt arm in collect_var_declared_names forces in_block=true, which
+  // makes count_funcs false regardless of include_funcs.
+  inspect(names.contains("f"), content="false")
+  inspect(names.length(), content="0")
 }
