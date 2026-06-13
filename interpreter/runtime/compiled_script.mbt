@@ -165,7 +165,7 @@ pub fn Interpreter::run_compiled_script(
   stmts : Array[@ast.Stmt],
   eval : (ExecContext, Environment) -> Value raise Error,
 ) -> Value raise Error {
-  let strict = has_use_strict(stmts)
+  let strict = @static_semantics.has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
   try {
     let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {

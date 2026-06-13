@@ -897,7 +897,7 @@ fn compile_func_expr_with_constructable(
       name,
       params,
       env,
-      ctx.strict || @runtime.has_use_strict(body),
+      ctx.strict || @static_semantics.has_use_strict(body),
       compiled_body,
       constructable~,
     )
@@ -925,7 +925,7 @@ fn compile_func_expr_ext(
       rest_param,
       body,
       closure: env,
-      strict: ctx.strict || @runtime.has_use_strict(body),
+      strict: ctx.strict || @static_semantics.has_use_strict(body),
       has_name_binding: name is Some(_),
       is_method: false,
     }
@@ -944,7 +944,7 @@ fn compile_arrow_func(
     make_compiled_arrow_func(
       params,
       env,
-      ctx.strict || @runtime.has_use_strict(body),
+      ctx.strict || @static_semantics.has_use_strict(body),
       compiled_body,
     )
   }
@@ -970,7 +970,7 @@ fn compile_arrow_func_ext(
       rest_param,
       body,
       closure: env,
-      strict: ctx.strict || @runtime.has_use_strict(body),
+      strict: ctx.strict || @static_semantics.has_use_strict(body),
       has_name_binding: false,
       is_method: false,
     }
@@ -1192,7 +1192,7 @@ fn compile_stmt(
           Some(name),
           params,
           env,
-          ctx.strict || @runtime.has_use_strict(body),
+          ctx.strict || @static_semantics.has_use_strict(body),
           compiled_body,
         )
         if env.bindings.contains(name) || env.has_var(name) {

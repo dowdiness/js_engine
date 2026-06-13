@@ -1,0 +1,32 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/static_semantics"
+
+import {
+  "dowdiness/js_engine/ast",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn body_is_strict(Array[@ast.Stmt], Bool) -> Bool
+
+pub fn has_use_strict(Array[@ast.Stmt]) -> Bool
+
+// Errors
+
+// Types and methods
+pub(all) enum SourceKind {
+  Script
+  Module
+  DirectEval
+  IndirectEval
+  FunctionConstructor
+  GeneratorFunctionConstructor
+  AsyncFunctionConstructor
+  AsyncGeneratorFunctionConstructor
+  BytecodeLowering
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits
+

@@ -3,6 +3,7 @@ import {
   "dowdiness/js_engine/token",
   "dowdiness/js_engine/errors",
   "dowdiness/js_engine/parser",
+  "dowdiness/js_engine/static_semantics",
   "moonbitlang/core/string",
   "moonbitlang/core/math",
   "moonbitlang/core/env",
