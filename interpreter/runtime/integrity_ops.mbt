@@ -13,27 +13,35 @@
 /// array index slots. Preserving that behavior verbatim is intentional.
 
 ///|
+/// Default descriptor for a key with no own descriptor: a plain
+/// writable+enumerable+configurable data property.
+fn default_descriptor() -> PropDescriptor {
+  {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+/// SetIntegrityLevel(frozen): force a data property non-writable and
+/// non-configurable while preserving every other slot.
 fn frozen_descriptor(existing : PropDescriptor?) -> PropDescriptor {
   {
+    ..existing.unwrap_or(default_descriptor()),
     writable: false,
-    enumerable: match existing {
-      Some(d) => d.enumerable
-      None => true
-    },
     configurable: false,
-    getter: match existing {
-      Some(d) => d.getter
-      None => None
-    },
-    setter: match existing {
-      Some(d) => d.setter
-      None => None
-    },
-    is_accessor: match existing {
-      Some(d) => d.is_accessor
-      None => false
-    },
   }
+}
+
+///|
+/// SetIntegrityLevel(sealed): force a property non-configurable while
+/// preserving writability and every other slot.
+fn sealed_descriptor(existing : PropDescriptor?) -> PropDescriptor {
+  { ..existing.unwrap_or(default_descriptor()), configurable: false }
 }
 
 ///|
@@ -110,63 +118,23 @@ pub fn set_integrity_sealed(obj : Value) -> Value {
   match obj {
     Object(data) => {
       data.extensible = false
-      // Seal string properties
+      // Seal string properties. Unlike freeze, seal iterates own *properties*
+      // only — descriptor-only keys are intentionally left as-is (preserved
+      // pre-existing behavior).
       let keys : Array[String] = []
       data.bag.properties.each(fn(k, _v) { keys.push(k) })
       for key in keys {
-        let existing = data.bag.descriptors.get(key)
-        data.bag.descriptors[key] = {
-          writable: match existing {
-            Some(d) => d.writable
-            None => true
-          },
-          enumerable: match existing {
-            Some(d) => d.enumerable
-            None => true
-          },
-          configurable: false,
-          getter: match existing {
-            Some(d) => d.getter
-            None => None
-          },
-          setter: match existing {
-            Some(d) => d.setter
-            None => None
-          },
-          is_accessor: match existing {
-            Some(d) => d.is_accessor
-            None => false
-          },
-        }
+        data.bag.descriptors[key] = sealed_descriptor(
+          data.bag.descriptors.get(key),
+        )
       }
       // Seal symbol properties
       let sym_ids : Array[Int] = []
       data.bag.symbol_properties.each(fn(id, _v) { sym_ids.push(id) })
       for id in sym_ids {
-        let existing = data.bag.symbol_descriptors.get(id)
-        data.bag.symbol_descriptors[id] = {
-          writable: match existing {
-            Some(d) => d.writable
-            None => true
-          },
-          enumerable: match existing {
-            Some(d) => d.enumerable
-            None => true
-          },
-          configurable: false,
-          getter: match existing {
-            Some(d) => d.getter
-            None => None
-          },
-          setter: match existing {
-            Some(d) => d.setter
-            None => None
-          },
-          is_accessor: match existing {
-            Some(d) => d.is_accessor
-            None => false
-          },
-        }
+        data.bag.symbol_descriptors[id] = sealed_descriptor(
+          data.bag.symbol_descriptors.get(id),
+        )
       }
       obj
     }
