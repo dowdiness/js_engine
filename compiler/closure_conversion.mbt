@@ -1,3 +1,15 @@
+// Closure-conversion execution path — legacy experimental.
+//
+// This file implements an opt-in closure-conversion prototype. It is retained
+// as a benchmark comparison path and research artifact, not as the long-term
+// optimization architecture. See docs/architecture-execution-plan-2026-06-12.md
+// §8 (Closure-Conversion Policy) for the retirement criteria and the list of
+// allowed and forbidden work.
+//
+// Do not add new syntax coverage or new semantic special cases here unless the
+// change is required to keep existing benchmark comparisons meaningful or to
+// retire this path.
+
 ///|
 using @runtime {
   type BindingKind,
