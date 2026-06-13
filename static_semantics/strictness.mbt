@@ -23,17 +23,16 @@ pub(all) enum SourceKind {
 /// StringLiteral at the start of a function body or script. Only the exact
 /// string "use strict" without escape sequences activates strict mode.
 pub fn has_use_strict(stmts : Array[@ast.Stmt]) -> Bool {
-  // Scan the directive prologue: the longest sequence of ExpressionStatements
-  // consisting entirely of StringLiterals at the beginning of the body.
-  // Only the literal string "use strict" WITHOUT escape sequences activates strict mode.
-  for i = 0; i < stmts.length(); i = i + 1 {
-    match stmts[i] {
+  for stmt in stmts {
+    match stmt {
+      // String-literal directive: check if it is "use strict"; keep scanning
+      // otherwise (other string directives are part of the prologue).
       ExprStmt(StringLit(s, has_escape, _, _), _) =>
         if s == "use strict" && !has_escape {
           return true
         }
-      // Continue scanning — other string directives are part of the prologue
-      _ => break // Non-string ExprStmt or other statement ends the prologue
+      // Non-string ExprStmt or any other statement ends the directive prologue.
+      _ => break
     }
   }
   false
