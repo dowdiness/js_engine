@@ -355,14 +355,7 @@ fn setup_reflect_builtins(
   let tostringtag_sym = well_known_symbols.to_string_tag
   let reflect_sym_props : Map[Int, Value] = {}
   reflect_sym_props[tostringtag_sym.id] = Value::String_("Reflect")
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = @runtime.builtin_method_desc()
   let reflect_descs : Map[String, PropDescriptor] = {}
   reflect_descs["apply"] = method_desc
   reflect_descs["construct"] = method_desc

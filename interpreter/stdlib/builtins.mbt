@@ -1465,21 +1465,10 @@ fn setup_builtins_with_realm_state_active(
   match env.bindings.get("[[FunctionPrototype]]") {
     Some(binding) =>
       match binding.value {
-        Object(fp_data) => {
-          // Raw write: descriptor is frozen (writable:false, configurable:false).
-          // install_builtin_symbol_method uses builtin_method_desc which gives
-          // writable:true/configurable:true — wrong for @@hasInstance (ES §20.2.3.3).
-          // No install_builtin_symbol_frozen_data helper exists; tracked as Stage 9.
-          fp_data.bag.symbol_properties[has_instance_sym.id] = has_instance_fn
-          fp_data.bag.symbol_descriptors[has_instance_sym.id] = {
-            writable: false,
-            enumerable: false,
-            configurable: false,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          }
-        }
+        Object(fp_data) =>
+          @runtime.install_builtin_symbol_frozen_data(
+            fp_data, has_instance_sym.id, has_instance_fn,
+          )
         _ => ()
       }
     None => ()

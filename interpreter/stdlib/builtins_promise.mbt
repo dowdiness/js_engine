@@ -583,30 +583,10 @@ pub fn setup_promise(
     },
   )
   let promise_proto_descs : Map[String, PropDescriptor] = {}
-  promise_proto_descs["then"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  promise_proto_descs["catch"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  promise_proto_descs["finally"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let pd_method_desc = @runtime.builtin_method_desc()
+  promise_proto_descs["then"] = pd_method_desc
+  promise_proto_descs["catch"] = pd_method_desc
+  promise_proto_descs["finally"] = pd_method_desc
   let promise_proto = Value::Object({
     bag: {
       properties: promise_proto_props,
@@ -1254,70 +1234,14 @@ pub fn setup_promise(
           setter: None,
           is_accessor: false,
         },
-        "resolve": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "reject": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "all": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "race": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "allSettled": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "any": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "withResolvers": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "try": {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
+        "resolve": @runtime.builtin_method_desc(),
+        "reject": @runtime.builtin_method_desc(),
+        "all": @runtime.builtin_method_desc(),
+        "race": @runtime.builtin_method_desc(),
+        "allSettled": @runtime.builtin_method_desc(),
+        "any": @runtime.builtin_method_desc(),
+        "withResolvers": @runtime.builtin_method_desc(),
+        "try": @runtime.builtin_method_desc(),
       },
       symbol_descriptors: {},
     },

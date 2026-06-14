@@ -469,14 +469,7 @@ fn setup_weakmap_builtins(
 
   // Create descriptor map for WeakMap prototype methods
   let wm_proto_descs : Map[String, PropDescriptor] = {}
-  let method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let method_desc = @runtime.builtin_method_desc()
   wm_proto_descs["get"] = method_desc
   wm_proto_descs["set"] = method_desc
   wm_proto_descs["has"] = method_desc
@@ -766,14 +759,7 @@ fn setup_weakset_builtins(
 
   // Create descriptor map for WeakSet prototype methods
   let ws_proto_descs : Map[String, PropDescriptor] = {}
-  let ws_method_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let ws_method_desc = @runtime.builtin_method_desc()
   ws_proto_descs["add"] = ws_method_desc
   ws_proto_descs["has"] = ws_method_desc
   ws_proto_descs["delete"] = ws_method_desc

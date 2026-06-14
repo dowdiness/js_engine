@@ -165,6 +165,8 @@ pub fn install_builtin_non_writable(ObjectData, String, Value) -> Unit
 
 pub fn install_builtin_symbol_accessor(ObjectData, Int, Value) -> Unit
 
+pub fn install_builtin_symbol_frozen_data(ObjectData, Int, Value) -> Unit
+
 pub fn install_builtin_symbol_method(ObjectData, Int, Value) -> Unit
 
 pub fn install_builtin_symbol_string(ObjectData, Int, String) -> Unit

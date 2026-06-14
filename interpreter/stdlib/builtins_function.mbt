@@ -260,38 +260,11 @@ fn setup_function_builtins(
     setter: Some(throw_type_error),
     is_accessor: true,
   }
-  func_proto_descs["toString"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  func_proto_descs["call"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  func_proto_descs["apply"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  func_proto_descs["bind"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let fp_method_desc = @runtime.builtin_method_desc()
+  func_proto_descs["toString"] = fp_method_desc
+  func_proto_descs["call"] = fp_method_desc
+  func_proto_descs["apply"] = fp_method_desc
+  func_proto_descs["bind"] = fp_method_desc
 
   // Function.prototype is callable per spec (returns undefined when called)
   // and has name="" and length=0 own properties

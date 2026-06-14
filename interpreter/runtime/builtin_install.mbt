@@ -105,6 +105,17 @@ pub fn install_builtin_symbol_method(
 }
 
 ///|
+/// Install a built-in symbol-keyed non-writable non-configurable data property.
+pub fn install_builtin_symbol_frozen_data(
+  data : ObjectData,
+  sym_id : Int,
+  value : Value,
+) -> Unit {
+  data.bag.symbol_properties[sym_id] = value
+  data.bag.symbol_descriptors[sym_id] = builtin_frozen_data_desc()
+}
+
+///|
 /// Install a built-in symbol-keyed accessor property with no setter.
 pub fn install_builtin_symbol_accessor(
   data : ObjectData,
