@@ -325,18 +325,14 @@ fn setup_symbol_builtins(
   realm_state.symbol_prototype.val = Some(symbol_proto)
   // Set Symbol.prototype.constructor = Symbol
   match symbol_proto {
-    Object(data) => {
-      let ctor = env.get("Symbol") catch { _ => Undefined }
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(
+        data,
+        "constructor",
+        env.get("Symbol") catch {
+          _ => Undefined
+        },
+      )
     _ => ()
   }
 }

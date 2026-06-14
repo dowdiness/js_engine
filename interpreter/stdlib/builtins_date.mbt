@@ -1943,18 +1943,14 @@ pub fn setup_date_builtins(
 
   // Set Date.prototype.constructor = Date
   match date_proto {
-    Object(data) => {
-      let ctor = env.get("Date") catch { _ => Undefined }
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(
+        data,
+        "constructor",
+        env.get("Date") catch {
+          _ => Undefined
+        },
+      )
     _ => ()
   }
 }

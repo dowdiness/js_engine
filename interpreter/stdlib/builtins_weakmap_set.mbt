@@ -602,34 +602,16 @@ fn setup_weakmap_builtins(
   )
   // Add prototype property to WeakMap constructor
   match wm_ctor {
-    Object(data) => {
-      data.bag.properties["prototype"] = wm_proto
-      data.bag.descriptors["prototype"] = {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_frozen_data(data, "prototype", wm_proto)
     _ => ()
   }
   env.def_builtin("WeakMap", wm_ctor)
 
   // Set WeakMap.prototype.constructor = WeakMap
   match wm_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = wm_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", wm_ctor)
     _ => ()
   }
 }
@@ -878,34 +860,16 @@ fn setup_weakset_builtins(
   )
   // Add prototype property to WeakSet constructor
   match ws_ctor {
-    Object(data) => {
-      data.bag.properties["prototype"] = ws_proto
-      data.bag.descriptors["prototype"] = {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_frozen_data(data, "prototype", ws_proto)
     _ => ()
   }
   env.def_builtin("WeakSet", ws_ctor)
 
   // Set WeakSet.prototype.constructor = WeakSet
   match ws_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = ws_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", ws_ctor)
     _ => ()
   }
 }

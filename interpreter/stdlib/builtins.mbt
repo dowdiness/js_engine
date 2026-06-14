@@ -1467,7 +1467,9 @@ fn setup_builtins_with_realm_state_active(
       match binding.value {
         Object(fp_data) =>
           @runtime.install_builtin_symbol_frozen_data(
-            fp_data, has_instance_sym.id, has_instance_fn,
+            fp_data,
+            has_instance_sym.id,
+            has_instance_fn,
           )
         _ => ()
       }

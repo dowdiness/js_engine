@@ -1031,17 +1031,8 @@ pub fn setup_dataview_builtins(
 
   // Link constructor
   match dv_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = dv_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", dv_ctor)
     _ => ()
   }
 
