@@ -180,15 +180,7 @@ fn register_error_ctor(
   match proto_obj {
     Object(data) => {
       let ctor = env.get(name) catch { _ => Undefined }
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      @runtime.install_builtin_method(data, "constructor", ctor)
     }
     _ => ()
   }
@@ -374,15 +366,7 @@ fn register_aggregate_error_ctor(
   match proto_obj {
     Object(data) => {
       let ctor = env.get(name) catch { _ => Undefined }
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      @runtime.install_builtin_method(data, "constructor", ctor)
     }
     _ => ()
   }
