@@ -444,12 +444,12 @@ fn make_arguments_object(
   let mapped_indices : Map[Int, Bool] = {}
   match mapped_env {
     Some(_) => {
-      let mapped_set : Map[String, Bool] = {}
+      let mapped_set = @set.Set::default()
       let mut idx = map_count - 1
       while idx >= 0 {
         let pname = mapped_names[idx]
         if !mapped_set.contains(pname) {
-          mapped_set[pname] = true
+          mapped_set.add(pname)
           mapped_indices[idx] = true
         }
         idx = idx - 1

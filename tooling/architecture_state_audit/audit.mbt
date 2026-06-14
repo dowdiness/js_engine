@@ -262,9 +262,9 @@ fn render_report(
     !binding.is_unannotated &&
     classified_reason(classified, binding.key) is None
   })
-  let found : Map[String, Bool] = {}
+  let found = @set.Set::default()
   for binding in bindings {
-    found[binding.key] = true
+    found.add(binding.key)
   }
   let stale : Array[String] = []
   for key, _reason in classified {

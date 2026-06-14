@@ -1647,7 +1647,7 @@ pub fn collect_for_in_keys(
   interp : Interpreter,
 ) -> Array[String] raise Error {
   let keys : Array[String] = []
-  let seen : Map[String, Bool] = {}
+  let seen = @set.Set::default()
   let mut current = obj
   while true {
     match current {
@@ -1672,7 +1672,7 @@ pub fn collect_for_in_keys(
                 )
                 match desc_opt {
                   Some((d, _)) => {
-                    seen[s] = true
+                    seen.add(s)
                     if d.enumerable {
                       keys.push(s)
                     }
@@ -1706,7 +1706,7 @@ pub fn collect_for_in_keys(
                 i,
                 interp.realm_state,
               ) {
-              seen[k] = true
+              seen.add(k)
               keys.push(k)
             }
           }
@@ -1724,7 +1724,7 @@ pub fn collect_for_in_keys(
             if data.class_name != "Module" && k.has_prefix("[[") {
               continue
             }
-            seen[k] = true
+            seen.add(k)
             let enumerable = if data.class_name == "Module" {
               match interp.get_own_property(Object(data), String_(k)) {
                 Some((d, _)) => d.enumerable
@@ -1754,7 +1754,7 @@ pub fn collect_for_in_keys(
               Some(d) => d.enumerable
               None => true
             }
-            seen[k] = true
+            seen.add(k)
             if enumerable {
               keys.push(k)
             }
@@ -1770,7 +1770,7 @@ pub fn collect_for_in_keys(
               Some(d) => d.enumerable
               None => true
             }
-            seen[k] = true
+            seen.add(k)
             if enumerable {
               keys.push(k)
             }

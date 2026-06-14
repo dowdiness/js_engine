@@ -2,6 +2,7 @@ import {
   "moonbitlang/x/fs",
   "moonbitlang/core/json",
   "moonbitlang/core/string",
+  "moonbitlang/core/set",
 }
 
 import {
