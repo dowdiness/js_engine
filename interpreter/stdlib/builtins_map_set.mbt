@@ -176,9 +176,12 @@ fn map_iterator_next(this_val : Value) -> Value raise Error {
       }
       let (current, iterated_map, kind) = match
         (
-          data.bag.symbol_properties.get(MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID),
-          data.bag.symbol_properties.get(MAP_ITERATOR_TARGET_SYMBOL_ID),
-          data.bag.symbol_properties.get(MAP_ITERATOR_KIND_SYMBOL_ID),
+          @runtime.get_map_iterator_next_index(
+            data,
+            MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID,
+          ),
+          @runtime.get_map_iterator_target(data, MAP_ITERATOR_TARGET_SYMBOL_ID),
+          @runtime.get_map_iterator_kind(data, MAP_ITERATOR_KIND_SYMBOL_ID),
         ) {
         (Some(Number(index)), Some(target), Some(Number(kind))) =>
           (index.to_int(), target, kind.to_int())
@@ -188,12 +191,17 @@ fn map_iterator_next(this_val : Value) -> Value raise Error {
         Undefined => @runtime.create_iter_result(Undefined, true)
         Map(map_data) => {
           guard current < map_data.entries.length() else {
-            data.bag.symbol_properties[MAP_ITERATOR_TARGET_SYMBOL_ID] = Undefined
+            @runtime.detach_map_iterator_target(
+              data,
+              MAP_ITERATOR_TARGET_SYMBOL_ID,
+            )
             return @runtime.create_iter_result(Undefined, true)
           }
           let (key, value) = map_data.entries[current]
-          data.bag.symbol_properties[MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
-            (current + 1).to_double(),
+          @runtime.set_map_iterator_next_index(
+            data,
+            MAP_ITERATOR_NEXT_INDEX_SYMBOL_ID,
+            Number((current + 1).to_double()),
           )
           let result_value = map_iterator_result_value(kind, key, value)
           @runtime.create_iter_result(result_value, false)
@@ -597,19 +605,13 @@ fn setup_map_builtins(
   // Add Map.prototype[Symbol.iterator] = Map.prototype.entries
   match map_proto {
     Object(data) => {
-      data.bag.symbol_properties[iterator_sym.id] = map_proto_props["entries"]
-      data.bag.symbol_descriptors[iterator_sym.id] = method_desc
-      // Add Symbol.toStringTag = "Map"
+      @runtime.install_builtin_symbol_method(
+        data,
+        iterator_sym.id,
+        map_proto_props["entries"],
+      )
       let tostringtag_sym = well_known_symbols.to_string_tag
-      data.bag.symbol_properties[tostringtag_sym.id] = Value::String_("Map")
-      data.bag.symbol_descriptors[tostringtag_sym.id] = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      @runtime.install_builtin_symbol_string(data, tostringtag_sym.id, "Map")
     }
     _ => ()
   }
@@ -725,17 +727,8 @@ fn setup_map_builtins(
   )
   // Add prototype property to Map constructor
   match map_ctor {
-    Object(data) => {
-      data.bag.properties["prototype"] = map_proto
-      data.bag.descriptors["prototype"] = {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_frozen_data(data, "prototype", map_proto)
     _ => ()
   }
   // Add Map.groupBy static method
@@ -836,17 +829,8 @@ fn setup_map_builtins(
   env.def_builtin("Map", map_ctor)
   // Set Map.prototype.constructor = Map
   match map_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = map_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", map_ctor)
     _ => ()
   }
 }
@@ -1088,19 +1072,13 @@ fn setup_set_builtins(
   // Add Set.prototype[Symbol.iterator] = Set.prototype.values
   match set_proto {
     Object(data) => {
-      data.bag.symbol_properties[iterator_sym.id] = set_proto_props["values"]
-      data.bag.symbol_descriptors[iterator_sym.id] = method_desc
-      // Add Symbol.toStringTag = "Set"
+      @runtime.install_builtin_symbol_method(
+        data,
+        iterator_sym.id,
+        set_proto_props["values"],
+      )
       let tostringtag_sym = well_known_symbols.to_string_tag
-      data.bag.symbol_properties[tostringtag_sym.id] = Value::String_("Set")
-      data.bag.symbol_descriptors[tostringtag_sym.id] = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      @runtime.install_builtin_symbol_string(data, tostringtag_sym.id, "Set")
     }
     _ => ()
   }
@@ -1182,33 +1160,15 @@ fn setup_set_builtins(
   )
   // Add prototype property to Set constructor
   match set_ctor {
-    Object(data) => {
-      data.bag.properties["prototype"] = set_proto
-      data.bag.descriptors["prototype"] = {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_frozen_data(data, "prototype", set_proto)
     _ => ()
   }
   env.def_builtin("Set", set_ctor)
   // Set Set.prototype.constructor = Set
   match set_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = set_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", set_ctor)
     _ => ()
   }
 }

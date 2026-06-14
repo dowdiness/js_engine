@@ -1089,8 +1089,8 @@
     {
       "path": "interpreter/stdlib/builtins_map_set.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 24,
-      "fingerprint": "24:1433:489234:996181",
+      "allowed_count": 3,
+      "fingerprint": "3:169:921546:190124",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
