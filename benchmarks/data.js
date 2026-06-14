@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1781326028490,
+  "lastUpdate": 1781419681305,
   "repoUrl": "https://github.com/dowdiness/js_engine",
   "entries": {
     "Benchmark": [
@@ -1590,6 +1590,238 @@ window.BENCHMARK_DATA = {
             "value": 0.47170434266670297,
             "unit": "ms",
             "extra": "category=workflow, cv=5.4%, noisy=false"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "Ishimoto Koji",
+            "username": "dowdiness",
+            "email": "koji.ishimoto@gmail.com"
+          },
+          "committer": {
+            "name": "GitHub",
+            "username": "web-flow",
+            "email": "noreply@github.com"
+          },
+          "id": "539fc411d42876c7abf562c0f7e7bceb688d1bda",
+          "message": "arch(stage8): static-attach helpers and typed internal-slot accessors (#345)\n\n* Add runtime static attach helpers\n\nIntroduce builtin_install.mbt (install_builtin_method/accessor/non_writable/frozen_data\nand their symbol-keyed counterparts) and internal_slots.mbt (typed-read/write helpers for\ninternal slot properties stored in PropertyBag). These form the static-attach API surface\nthat downstream tasks will migrate stdlib callers onto.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Remove stdlib builtin install helper\n\nDelete builtin_install_helpers.mbt and replace all builtin_method_desc()\ncalls across stdlib with inline PropDescriptor literals. Migrate the one\ninstall_builtin_method() call in builtins_string.mbt to @runtime.install_builtin_method.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Migrate error constructor static attach\n\nReplace raw bag.properties/bag.descriptors double-writes for the\nErrorType.prototype.constructor back-link in register_error_ctor and\nregister_aggregate_error_ctor with @runtime.install_builtin_method.\n\nAlso sync architecture_representation_access.json: update stale\nfingerprints/counts from earlier branch tasks, remove deleted\nbuiltin_install_helpers.mbt entries, and add missing\nbuiltins_iterator.mbt:runtime-prop-descriptor-type entry.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* arch(stage8): migrate ArrayBuffer static-attach to runtime install helpers\n\nReplace raw bag.properties/bag.descriptors writes for:\n- ArrayBuffer.prototype.constructor link → install_builtin_method\n- ArrayBuffer[@@species] accessor → install_builtin_symbol_accessor\n\nReduces representation-bag-field allowlist count from 9 → 5 in\nscripts/architecture_representation_access.json.\n\nSymmetric-diff proof: ArrayBuffer test262 failing sets identical before/after\n(172/172 passed in both runs).\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Fix stale audit fingerprint for builtins_arraybuffer after constructor migration\n\n* arch(stage8): migrate Map and Set static-attach to runtime install helpers\n\nReplace direct .bag.symbol_properties/descriptors writes in map_iterator_next\nwith @runtime.get/set_map_iterator_* ops, and replace Map/Set prototype symbol\ninstalls (Symbol.iterator, Symbol.toStringTag), constructor.prototype links, and\nprototype.constructor back-links with @runtime.install_builtin_* helpers.\n\nAllowlist updated: representation-bag-field builtins_map_set.mbt 24 -> 3.\n\n* Fix stale audit fingerprint for builtins_map_set after iterator migration\n\n* arch(stage8): migrate core builtin static-attach to runtime install helpers\n\nReplace raw bag-field writes in builtins.mbt with @runtime helper calls:\n- Boolean.prototype.toString/.valueOf: bag.properties.get(\"[[BooleanData]]\")\n  → @runtime.get_boolean_data(data)\n- String.prototype.constructor / Boolean.prototype.constructor: raw\n  bag.properties + bag.descriptors writes → @runtime.install_builtin_method\n- Error.isError: extract func into named let, attach via install_builtin_method\n- RegExp.prototype on constructor: bag writes → install_builtin_frozen_data\n- Symbol.species on Array/RegExp/Map/Set: raw symbol_properties/descriptors\n  writes → install_builtin_symbol_accessor; drop now-unused species_desc variable\n\nNote: Function.prototype[Symbol.hasInstance] intentionally left as raw bag\nwrite — its descriptor is non-writable/non-configurable (frozen symbol data)\nand no install_builtin_symbol_frozen_data helper exists. No behavior change.\n\nRepresentation-bag-field count: 29 → 17 (-12 accesses)\nArchitecture audit: passes clean after fingerprint update.\nSymmetric-diff proof: Boolean/Function/RegExp/Error all identical.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Fix stale audit fingerprint for builtins after core builtin migration\n\n* Migrate TypedArray static attach\n\nReplace all raw bag.properties.get(\"[[...]]\") internal-slot reads in\nbuiltins_typedarray.mbt with @runtime helper calls:\n- get_typedarray_array_length / get_typedarray_buffer_id\n- get_typedarray_byte_offset / get_typedarray_byte_length\n- get_typedarray_viewed_buffer\n- get_arraybuffer_byte_length / get_arraybuffer_id\n\nReplace raw bag write-backs for constructor back-links with\ninstall_builtin_method, and @@species symbol write with\ninstall_builtin_symbol_accessor.\n\nSymmetric-diff proof: TypedArray failing set identical before/after.\nArchitecture audit: representation-bag-field 66→3 (3 non-slot reads remain).\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Fix stale audit fingerprint for builtins_typedarray after slot migration\n\n* Complete Stage 8 static attach migration\n\nUpdate ROADMAP.md with latest test262 baseline from CI run 27483688641\n(tip 1f727c9, 2026-06-14): strict 95.3% / non-strict 94.0% P/E. Update\nunit test count to 2092, regression baseline delta to +3,567/+2,966, and\nadd Stage 8 PRs #335–#343 and architecture audit PRs #312/#314 to the\ndelta section.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* Document intentional raw write for Function.prototype @@hasInstance\n\n* refactor: promote builtin_method_desc to pub and remove inline descriptor literals\n\nThe Stage 8 migration deleted builtin_install_helpers.mbt, which had\nbuiltin_method_desc() as a stdlib-private helper. Subagents replaced its 8\ncall sites with repeated 7-line inline PropDescriptor literals rather than\npromoting the function. This commit restores the named abstraction:\n\n- Make builtin_method_desc() pub in interpreter/runtime/builtin_install.mbt\n- Replace 8 inline literals across builtins.mbt and builtins_map_set.mbt\n  with @runtime.builtin_method_desc()\n\nThe install helpers (install_builtin_method etc.) handle one-at-a-time\npost-construction installs. The batch-init pattern (Map[String,PropDescriptor]\npassed into ObjectData struct literals) genuinely needs the raw descriptor\nvalue — both call sites coexist by design.\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n* refactor(stdlib): replace inline PropDescriptor literals with builtin_method_desc()\n\nStage 8 migration deleted builtin_install_helpers.mbt but left ~30 call sites\nwith repeated 6-line PropDescriptor struct literals. This change:\n\n- Promotes builtin_method_desc() to pub in interpreter/runtime so stdlib can\n  call it directly for batch-init patterns (where install_builtin_method is\n  unavailable because the ObjectData struct doesn't exist yet)\n- Adds install_builtin_symbol_frozen_data() helper for frozen symbol-keyed\n  properties; uses it for Function.prototype[@@hasInstance] (ES §20.2.3.3\n  requires writable:false configurable:false, not the standard method desc)\n- Replaces all 30 remaining inline literals across 8 stdlib files with\n  @runtime.builtin_method_desc() or a shared local binding\n\nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\n\n---------\n\nCo-authored-by: Claude Sonnet 4.6 <noreply@anthropic.com>",
+          "timestamp": "2026-06-14T05:32:43Z",
+          "url": "https://github.com/dowdiness/js_engine/commit/539fc411d42876c7abf562c0f7e7bceb688d1bda"
+        },
+        "date": 1781419680771,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "startup/startup/tiny_program",
+            "value": 1.1797696643999998,
+            "unit": "ms",
+            "extra": "category=regression, cv=5.0%, noisy=false"
+          },
+          {
+            "name": "frontend/lexer/small",
+            "value": 0.03167613599999959,
+            "unit": "ms",
+            "extra": "category=regression, cv=26.6%, noisy=true"
+          },
+          {
+            "name": "frontend/lexer/large",
+            "value": 0.2652478248,
+            "unit": "ms",
+            "extra": "category=regression, cv=3.4%, noisy=false"
+          },
+          {
+            "name": "execution/exec/fibonacci_30",
+            "value": 13254.200273400002,
+            "unit": "ms",
+            "extra": "category=regression, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/exec/property_chain",
+            "value": 16.195887375000893,
+            "unit": "ms",
+            "extra": "category=regression, cv=27.1%, noisy=true"
+          },
+          {
+            "name": "frontend/startup/phase/parse_tiny",
+            "value": 0.0018141987119998661,
+            "unit": "ms",
+            "extra": "category=component, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "startup/startup/phase/new_interpreter",
+            "value": 1.1661992840000022,
+            "unit": "ms",
+            "extra": "category=component, cv=12.7%, noisy=false"
+          },
+          {
+            "name": "execution/startup/phase/execute_preparsed_tiny",
+            "value": 0.0005681413919999758,
+            "unit": "ms",
+            "extra": "category=component, cv=0.8%, noisy=false"
+          },
+          {
+            "name": "startup/startup/phase/event_loop_drain_empty",
+            "value": 0.0001619948423999711,
+            "unit": "ms",
+            "extra": "category=component, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "execution/startup/phase/result_stringify_output",
+            "value": 0.000026108849999999803,
+            "unit": "ms",
+            "extra": "category=component, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/exec/array_map_filter",
+            "value": 19.475222100000245,
+            "unit": "ms",
+            "extra": "category=component, cv=25.4%, noisy=true"
+          },
+          {
+            "name": "execution/exec/closure_factory",
+            "value": 27.13049436666649,
+            "unit": "ms",
+            "extra": "category=component, cv=6.9%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/closure_legacy/closure_factory",
+            "value": 25.974495033333362,
+            "unit": "ms",
+            "extra": "category=component, cv=8.7%, noisy=false"
+          },
+          {
+            "name": "execution/baseline/bytecode/closure_factory",
+            "value": 14.393648049999802,
+            "unit": "ms",
+            "extra": "category=component, cv=5.2%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/dispatch_stack",
+            "value": 22.559347977778337,
+            "unit": "ms",
+            "extra": "category=component, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/local_access",
+            "value": 34.893509888889895,
+            "unit": "ms",
+            "extra": "category=component, cv=0.6%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/env_access",
+            "value": 35.04326284444413,
+            "unit": "ms",
+            "extra": "category=component, cv=0.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/captured_access",
+            "value": 38.10423862222232,
+            "unit": "ms",
+            "extra": "category=component, cv=1.4%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/call_frame",
+            "value": 15.68908513333267,
+            "unit": "ms",
+            "extra": "category=component, cv=1.1%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/runtime_helpers",
+            "value": 20.411537977776927,
+            "unit": "ms",
+            "extra": "category=component, cv=5.6%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/property_get",
+            "value": 42.45865886666709,
+            "unit": "ms",
+            "extra": "category=component, cv=1.6%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/property_set",
+            "value": 41.59683202222222,
+            "unit": "ms",
+            "extra": "category=component, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/method_call",
+            "value": 17.28476544444436,
+            "unit": "ms",
+            "extra": "category=component, cv=0.8%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/object_literal",
+            "value": 13.06622495555461,
+            "unit": "ms",
+            "extra": "category=component, cv=0.9%, noisy=false"
+          },
+          {
+            "name": "execution/isolate/bytecode/array_literal",
+            "value": 13.47516637777832,
+            "unit": "ms",
+            "extra": "category=component, cv=0.7%, noisy=false"
+          },
+          {
+            "name": "execution/exec/arithmetic_loop",
+            "value": 978.9243826249949,
+            "unit": "ms",
+            "extra": "category=component, cv=0.3%, noisy=false"
+          },
+          {
+            "name": "execution/exec/object_construction",
+            "value": 7.048582599999402,
+            "unit": "ms",
+            "extra": "category=component, cv=8.4%, noisy=false"
+          },
+          {
+            "name": "execution/exec/string_ops",
+            "value": 1.8039588300013567,
+            "unit": "ms",
+            "extra": "category=component, cv=14.4%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/exec/lex",
+            "value": 0.027125098666669026,
+            "unit": "ms",
+            "extra": "category=workflow, cv=0.5%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/exec/parse",
+            "value": 0.02642986196249985,
+            "unit": "ms",
+            "extra": "category=workflow, cv=2.7%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/exec/evaluate",
+            "value": 25.174390999999012,
+            "unit": "ms",
+            "extra": "category=workflow, cv=12.1%, noisy=false"
+          },
+          {
+            "name": "execution/pipeline/closure_legacy/evaluate",
+            "value": 22.81061899000022,
+            "unit": "ms",
+            "extra": "category=workflow, cv=4.3%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/bytecode/compile",
+            "value": 0.02229539866667377,
+            "unit": "ms",
+            "extra": "category=workflow, cv=31.3%, noisy=true"
+          },
+          {
+            "name": "execution/pipeline/bytecode/evaluate",
+            "value": 9.410773369999953,
+            "unit": "ms",
+            "extra": "category=workflow, cv=1.9%, noisy=false"
+          },
+          {
+            "name": "frontend/pipeline/parse_heavy",
+            "value": 0.4786830380000175,
+            "unit": "ms",
+            "extra": "category=workflow, cv=5.1%, noisy=false"
           }
         ]
       }
