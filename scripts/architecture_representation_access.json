@@ -2044,7 +2044,7 @@
       "path": "interpreter/stdlib/builtins_typedarray.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 44,
-      "fingerprint": "44:1422:422514:85840",
+      "fingerprint": "44:1416:73563:911853",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
