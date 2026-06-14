@@ -241,6 +241,10 @@ pub fn proxy_set_prototype_of(Interpreter, ProxyData, Value) -> Bool raise
 
 pub fn raise_js_exception(Value) -> Unit raise
 
+pub fn reflect_get_with_receiver(Interpreter, Value, Value, Value, @token.Loc) -> Value raise
+
+pub fn reflect_set_preflight_blocks(Value, Value, String) -> Bool
+
 pub fn reject_promise(Interpreter, PromiseData, Value) -> Unit
 
 pub fn revoke_proxy(ProxyData) -> Unit

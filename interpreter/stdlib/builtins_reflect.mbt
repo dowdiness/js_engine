@@ -150,87 +150,7 @@ fn setup_reflect_builtins(
       let key = args[1]
       let receiver = if args.length() > 2 { args[2] } else { target }
       let loc = @token.Loc::default()
-      // For receiver support, we need to check for accessor descriptors
-      // and call getters with the receiver as this
-      let key_str = match key {
-        Symbol(_) => ""
-        _ => key.to_string()
-      }
-      // Helper to find accessor descriptor and call with receiver
-      fn try_get_with_receiver(obj : Value) -> Value? raise {
-        match obj {
-          Object(data) =>
-            match key {
-              Value::Symbol(sym) =>
-                match data.bag.symbol_descriptors.get(sym.id) {
-                  Some(desc) =>
-                    match desc.getter {
-                      Some(getter) =>
-                        Some(interp.call_value(getter, receiver, [], loc))
-                      None =>
-                        match data.bag.symbol_properties.get(sym.id) {
-                          Some(v) => Some(v)
-                          None => None
-                        }
-                    }
-                  None =>
-                    match data.bag.symbol_properties.get(sym.id) {
-                      Some(v) => Some(v)
-                      None => None
-                    }
-                }
-              _ =>
-                match data.bag.descriptors.get(key_str) {
-                  Some(desc) =>
-                    match desc.getter {
-                      Some(getter) =>
-                        Some(interp.call_value(getter, receiver, [], loc))
-                      None =>
-                        match data.bag.properties.get(key_str) {
-                          Some(v) => Some(v)
-                          None => None
-                        }
-                    }
-                  None =>
-                    match data.bag.properties.get(key_str) {
-                      Some(v) => Some(v)
-                      None => None
-                    }
-                }
-            }
-          _ => None
-        }
-      }
-      // Check target first
-      match try_get_with_receiver(target) {
-        Some(v) => v
-        None => {
-          // Walk prototype chain
-          let mut current = match target {
-            Object(data) => data.prototype
-            _ => Null
-          }
-          while true {
-            match current {
-              Object(data) =>
-                match try_get_with_receiver(current) {
-                  Some(v) => return v
-                  None => current = data.prototype
-                }
-              Null => break
-              _ => break
-            }
-          }
-          // Fall back to regular property access unconditionally.
-          // Accessor getters with receiver were already handled in
-          // try_get_with_receiver above; remaining cases are data reads
-          // or absent properties, neither of which depends on receiver equality.
-          match key {
-            Symbol(_) => interp.get_computed_property(target, key, loc)
-            _ => interp.get_property(target, key_str, loc)
-          }
-        }
-      }
+      @runtime.reflect_get_with_receiver(interp, target, key, receiver, loc)
     },
   )
 
@@ -382,49 +302,10 @@ fn setup_reflect_builtins(
       let value = if args.length() > 2 { args[2] } else { Undefined }
       // 4th argument is the Receiver; defaults to the target per spec.
       let receiver = if args.length() >= 4 { args[3] } else { target }
-      // Pre-flight own-descriptor blockers (spec-safe): own accessor getter-
-      // only or own non-writable DATA → return false. The former `!extensible
-      // && !has(P)` short-circuits were wrong because an inherited setter can
-      // still run successfully on a non-extensible target (Codex Q6).
-      //
-      // The non-writable check requires `setter is None` alongside
-      // `getter is None` — accessor descriptors default `writable=false`, so a
-      // setter-only accessor (getter=None, setter=Some(_), writable=false)
-      // would otherwise be preemptively rejected instead of invoking the
-      // setter through the dispatcher.
-      match target {
-        Object(data) =>
-          match prop_key {
-            Symbol(sym) =>
-              match data.bag.symbol_descriptors.get(sym.id) {
-                Some(desc) => {
-                  if desc.getter is Some(_) && desc.setter is None {
-                    return Value::Bool(false)
-                  }
-                  if desc.getter is None &&
-                    desc.setter is None &&
-                    !desc.writable {
-                    return Value::Bool(false)
-                  }
-                }
-                None => ()
-              }
-            _ =>
-              match data.bag.descriptors.get(key_str) {
-                Some(desc) => {
-                  if desc.getter is Some(_) && desc.setter is None {
-                    return Value::Bool(false)
-                  }
-                  if desc.getter is None &&
-                    desc.setter is None &&
-                    !desc.writable {
-                    return Value::Bool(false)
-                  }
-                }
-                None => ()
-              }
-          }
-        _ => ()
+      // Pre-flight target-side own-descriptor blockers run before delegating to
+      // set_property; see @runtime.reflect_set_preflight_blocks.
+      if @runtime.reflect_set_preflight_blocks(target, prop_key, key_str) {
+        return Value::Bool(false)
       }
       let loc = @token.Loc::default()
       try {
