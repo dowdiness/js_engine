@@ -156,20 +156,19 @@ fn collect_param_default_eval_var_conflicts(
   params : Array[@ast.Param],
   rest_param : String?,
   implicit_arguments? : Bool = false,
-) -> Map[String, Bool] raise Error {
-  let conflicts : Map[String, Bool] = {}
+) -> @set.Set[String] raise Error {
+  let conflicts = @set.Set::default()
   if implicit_arguments {
-    conflicts["arguments"] = true
+    conflicts.add("arguments")
   }
   for param in params {
     match param.pattern {
-      Some(pattern) =>
-        walk_pattern_idents(pattern, name => conflicts[name] = true)
-      None => if !param.is_rest_pattern { conflicts[param.name] = true }
+      Some(pattern) => walk_pattern_idents(pattern, name => conflicts.add(name))
+      None => if !param.is_rest_pattern { conflicts.add(param.name) }
     }
   }
   match rest_param {
-    Some(name) => conflicts[name] = true
+    Some(name) => conflicts.add(name)
     None => ()
   }
   conflicts

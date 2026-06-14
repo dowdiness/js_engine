@@ -240,7 +240,7 @@ fn Interpreter::instantiate_indirect_exports_from_stmt(
             source,
             spec.local_name,
             records_by_specifier,
-            {},
+            @set.Set::default(),
           ) {
           Resolved(v) => v
           Ambiguous =>
@@ -275,9 +275,20 @@ fn Interpreter::instantiate_module_star_exports(
   record : ModuleRunRecord,
   records_by_specifier : Map[String, ModuleRunRecord],
 ) -> Unit raise Error {
-  for name in self.module_get_exported_names(record, records_by_specifier, {}) {
+  for
+    name in self.module_get_exported_names(
+      record,
+      records_by_specifier,
+      @set.Set::default(),
+    ) {
     if name != "default" {
-      match self.resolve_module_export(record, name, records_by_specifier, {}) {
+      match
+        self.resolve_module_export(
+          record,
+          name,
+          records_by_specifier,
+          @set.Set::default(),
+        ) {
         Resolved(value) => self.module_exports[name] = value
         NotFound | Ambiguous => ()
       }
@@ -387,11 +398,11 @@ fn module_export_resolution_same(
 ///|
 fn add_module_export_name(
   names : Array[String],
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
   name : String,
 ) -> Unit {
   if !seen.contains(name) {
-    seen[name] = true
+    seen.add(name)
     names.push(name)
   }
 }
@@ -459,7 +470,7 @@ fn decl_exports_name(decl : @ast.Stmt, export_name : String) -> Bool {
 fn collect_decl_export_names(
   decl : @ast.Stmt,
   names : Array[String],
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
 ) -> Unit {
   match decl {
     VarDecl(_, name, _, _)
@@ -486,7 +497,7 @@ fn collect_decl_export_names(
 fn collect_pattern_export_names(
   pattern : @ast.Pattern,
   names : Array[String],
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
 ) -> Unit {
   match pattern {
     IdentPat(name) => add_module_export_name(names, seen, name)
@@ -573,7 +584,7 @@ fn module_record_has_direct_export_name(
 fn collect_module_direct_export_names_from_stmt(
   stmt : @ast.Stmt,
   names : Array[String],
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
 ) -> Unit {
   match stmt {
     ExportNamedDecl(Some(decl), _, _, _, _) =>
@@ -635,7 +646,7 @@ fn Interpreter::module_get_exported_names_from_source(
   self : Interpreter,
   source : String,
   records_by_specifier : Map[String, ModuleRunRecord],
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
 ) -> Array[String] raise Error {
   match records_by_specifier.get(source) {
     Some(record) =>
@@ -652,14 +663,14 @@ fn Interpreter::module_get_exported_names(
   self : Interpreter,
   record : ModuleRunRecord,
   records_by_specifier : Map[String, ModuleRunRecord],
-  seen_modules : Map[String, Bool],
+  seen_modules : @set.Set[String],
 ) -> Array[String] raise Error {
   if seen_modules.contains(record.specifier) {
     return []
   }
-  seen_modules[record.specifier] = true
+  seen_modules.add(record.specifier)
   let names : Array[String] = []
-  let seen_names : Map[String, Bool] = {}
+  let seen_names = @set.Set::default()
   for stmt in record.stmts {
     collect_module_direct_export_names_from_stmt(stmt, names, seen_names)
   }
@@ -682,7 +693,7 @@ fn Interpreter::resolve_module_export_from_source(
   source : String,
   export_name : String,
   records_by_specifier : Map[String, ModuleRunRecord],
-  resolve_set : Map[String, Bool],
+  resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
   match records_by_specifier.get(source) {
     Some(record) =>
@@ -707,7 +718,7 @@ fn Interpreter::resolve_explicit_indirect_export_from_stmt(
   stmt : @ast.Stmt,
   export_name : String,
   records_by_specifier : Map[String, ModuleRunRecord],
-  resolve_set : Map[String, Bool],
+  resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
   match stmt {
     ExportNamedDecl(None, specifiers, Some(source), _, _) =>
@@ -742,13 +753,13 @@ fn Interpreter::resolve_module_export(
   record : ModuleRunRecord,
   export_name : String,
   records_by_specifier : Map[String, ModuleRunRecord],
-  resolve_set : Map[String, Bool],
+  resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
   let resolve_key = record.specifier + "\u0000" + export_name
   if resolve_set.contains(resolve_key) {
     return NotFound
   }
-  resolve_set[resolve_key] = true
+  resolve_set.add(resolve_key)
   if module_record_has_direct_export_name(record, export_name) {
     return match module_export_map_get_public(record.exports, export_name) {
       Some(value) => Resolved(value)
@@ -797,7 +808,7 @@ fn module_dependency_path_exists(
   start : String,
   target : String,
   records_by_specifier : Map[String, ModuleRunRecord],
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
 ) -> Bool {
   if start == target {
     return true
@@ -805,7 +816,7 @@ fn module_dependency_path_exists(
   if seen.contains(start) {
     return false
   }
-  seen[start] = true
+  seen.add(start)
   match records_by_specifier.get(start) {
     Some(record) =>
       for dependency in record.dependencies() {
@@ -832,7 +843,7 @@ fn should_skip_weak_module_back_edge(
     dependency,
     record.specifier,
     records_by_specifier,
-    {},
+    @set.Set::default(),
   )
 }
 

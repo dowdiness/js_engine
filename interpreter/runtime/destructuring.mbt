@@ -17,11 +17,11 @@ fn Interpreter::destructuring_property_key(
 ///|
 fn destructuring_mark_used_key(
   key : Value,
-  string_keys : Map[String, Bool],
+  string_keys : @set.Set[String],
   symbol_keys : Map[Int, Bool],
 ) -> Unit {
   match key {
-    String_(s) => string_keys[s] = true
+    String_(s) => string_keys.add(s)
     Symbol(sym) => symbol_keys[sym.id] = true
     _ => ()
   }
@@ -174,7 +174,7 @@ fn Interpreter::bind_pattern(
           message="Cannot destructure " + value.to_string() + " value",
         )
       }
-      let used_string_keys : Map[String, Bool] = {}
+      let used_string_keys = @set.Set::default()
       let used_symbol_keys : Map[Int, Bool] = {}
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)
@@ -225,10 +225,10 @@ fn Interpreter::bind_pattern(
             Object(data) => {
               // CopyDataProperties: copy own enumerable properties, invoking getters
               // First collect all own enumerable string keys (from properties and descriptors)
-              let all_keys : Map[String, Bool] = {}
-              data.bag.properties.each(fn(k, _v) { all_keys[k] = true })
-              data.bag.descriptors.each(fn(k, _v) { all_keys[k] = true })
-              all_keys.each(fn(k, _) raise {
+              let all_keys = @set.Set::default()
+              data.bag.properties.each(fn(k, _v) { all_keys.add(k) })
+              data.bag.descriptors.each(fn(k, _v) { all_keys.add(k) })
+              all_keys.each(fn(k) raise {
                 if !used_string_keys.contains(k) {
                   let is_enumerable = match data.bag.descriptors.get(k) {
                     Some(desc) => desc.enumerable
@@ -557,7 +557,7 @@ fn Interpreter::assign_pattern(
           message="Cannot destructure " + value.to_string() + " value",
         )
       }
-      let used_string_keys : Map[String, Bool] = {}
+      let used_string_keys = @set.Set::default()
       let used_symbol_keys : Map[Int, Bool] = {}
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)
@@ -597,10 +597,10 @@ fn Interpreter::assign_pattern(
           match value {
             Object(data) => {
               // CopyDataProperties: copy own enumerable properties, invoking getters
-              let all_keys_a : Map[String, Bool] = {}
-              data.bag.properties.each(fn(k, _v) { all_keys_a[k] = true })
-              data.bag.descriptors.each(fn(k, _v) { all_keys_a[k] = true })
-              all_keys_a.each(fn(k, _) raise {
+              let all_keys_a = @set.Set::default()
+              data.bag.properties.each(fn(k, _v) { all_keys_a.add(k) })
+              data.bag.descriptors.each(fn(k, _v) { all_keys_a.add(k) })
+              all_keys_a.each(fn(k) raise {
                 if !used_string_keys.contains(k) {
                   let is_enumerable = match data.bag.descriptors.get(k) {
                     Some(desc) => desc.enumerable

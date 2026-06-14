@@ -108,7 +108,7 @@ pub(all) struct Interpreter {
   // so nested IIFEs / arrows / recursive calls don't inherit the outer frame's
   // default-eval state.
   mut in_nonarrow_param_default_eval : Bool
-  mut param_default_eval_var_conflicts : Map[String, Bool]?
+  mut param_default_eval_var_conflicts : @set.Set[String]?
 }
 
 ///|
@@ -248,14 +248,14 @@ pub fn Interpreter::new(
 ///|
 /// Check for duplicate parameter names. Raises SyntaxError in strict mode.
 fn check_duplicate_params(params : Array[String]) -> Unit raise Error {
-  let seen : Map[String, Bool] = {}
+  let seen = @set.Set::default()
   for p in params {
     if seen.contains(p) {
       raise @errors.SyntaxError(
         message="Duplicate parameter name not allowed in this context",
       )
     }
-    seen[p] = true
+    seen.add(p)
   }
 }
 
@@ -272,7 +272,7 @@ fn params_have_rest_pattern(params : Array[@ast.Param]) -> Bool {
 
 ///|
 fn check_duplicate_binding_name(
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
   name : String,
 ) -> Unit raise Error {
   if seen.contains(name) {
@@ -280,13 +280,13 @@ fn check_duplicate_binding_name(
       message="Duplicate parameter name not allowed in this context",
     )
   }
-  seen[name] = true
+  seen.add(name)
 }
 
 ///|
 fn check_duplicate_pattern_binding_names(
   pattern : @ast.Pattern,
-  seen : Map[String, Bool],
+  seen : @set.Set[String],
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) => check_duplicate_binding_name(seen, name)
@@ -321,7 +321,7 @@ fn check_duplicate_params_ext(
   params : Array[@ast.Param],
   rest_param : String?,
 ) -> Unit raise Error {
-  let seen : Map[String, Bool] = {}
+  let seen = @set.Set::default()
   let has_rest_pattern = params_have_rest_pattern(params)
   for p in params {
     match p.pattern {
@@ -476,14 +476,14 @@ pub fn validate_function_constructor_params(
   }
   let body_strict = body_has_use_strict
   if !is_simple || body_strict {
-    let seen : Map[String, Bool] = {}
+    let seen = @set.Set::default()
     for p in param_names {
       if seen.contains(p) {
         raise @errors.SyntaxError(
           message="Duplicate parameter name not allowed in this context",
         )
       }
-      seen[p] = true
+      seen.add(p)
     }
     match rest_name {
       Some(n) =>
