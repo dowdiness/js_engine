@@ -2,8 +2,8 @@
 
 ## Current Status
 
-**Test262** — CI run [27376184116](https://github.com/dowdiness/js_engine/actions/runs/27376184116)
-on tip `5d8e8ee` (main, 2026-06-11).
+**Test262** — CI run [27483688641](https://github.com/dowdiness/js_engine/actions/runs/27483688641)
+on tip `1f727c9` (main, 2026-06-14).
 Each test file runs twice, once in strict mode and once in non-strict mode. The
 two modes are reported separately because summing them would double-count
 files.
@@ -14,14 +14,13 @@ ARGS="--format=changelog"`.
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| strict | 44,986 | 18,270 | 26,680 | 25,141 | 1,539 | 36 | **94.2%** | 55.9% |
-| non-strict | 47,692 | 18,811 | 28,840 | 26,797 | 2,043 | 41 | **92.9%** | 56.2% |
+| strict | 44,986 | 18,286 | 26,670 | 25,416 | 1,254 | 29 | **95.3%** | 56.5% |
+| non-strict | 47,692 | 18,827 | 28,830 | 27,087 | 1,743 | 34 | **94.0%** | 56.8% |
 
-ES2015 specifically: strict **95.4%** P/E (9,667 / 10,134; 33 tail-call-optimization tests skipped), non-strict **95.1%** P/E (10,105 / 10,623; 33 tail-call-optimization tests skipped) — roadmap 95% target achieved.
+ES2015 specifically: strict **95.9%** P/E (9,717 / 10,134; 33 tail-call-optimization tests skipped), non-strict **95.7%** P/E (10,166 / 10,623; 33 tail-call-optimization tests skipped) — roadmap 95% target achieved.
 
 Delta vs v0.3.0 tip `232df3d` (CI run [27216729343](https://github.com/dowdiness/js_engine/actions/runs/27216729343)): the current tip reflects
-PRs through #302 on the CI run above, plus PR #303 (dstr iterator protocol)
-on main. Key recent batches:
+PRs through #314 on the CI run above. Key recent batches:
 
 - PRs #116/#118: async/generator function `.length` conformance.
 - PR #119: Annex B §B.3.3.3 eval-code conflict skip.
@@ -38,13 +37,17 @@ on main. Key recent batches:
 - PRs #298–#302: CI UX (progress bar, ETA, exit-code vocabulary, diff-only failures).
 - PRs #217–#227: module graph live bindings and namespace semantics.
 - PR #303: dstr iterator protocol (empty-pattern GetIterator, lref-before-next ordering).
+- PR #306: ES2016 fixes (Array.prototype.includes, exponentiation operator).
+- PR #308: TDZ sloppy-mode SyntaxError and cover-grammar member target.
+- PR #313: interpreter-context coercions in built-ins.
+- PRs #335–#343: Stage 8 architecture — runtime ops for representation access.
+- PRs #312/#314: architecture audit tooling (import boundary + representation access).
 
 CI regression baseline: `test262-baseline.json`. Minimums are 23,520
 non-strict passed and 22,450 strict passed, updated 2026-04-12. The current
-baseline is +3,277 / +2,691 above those minimums.
+baseline is +3,567 / +2,966 above those minimums.
 
-**Unit tests**: 1227 / 1227 passing. This is the post-PR #103 count and
-includes 6 new parser trailing-comma tests.
+**Unit tests**: 2092 / 2092 passing.
 
 ### How to read these rates
 

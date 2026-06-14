@@ -694,9 +694,9 @@ fn setup_builtins_with_realm_state_active(
             setter: None,
             is_accessor: false,
           },
-          "fromCharCode": builtin_method_desc(),
-          "fromCodePoint": builtin_method_desc(),
-          "raw": builtin_method_desc(),
+          "fromCharCode": @runtime.builtin_method_desc(),
+          "fromCodePoint": @runtime.builtin_method_desc(),
+          "raw": @runtime.builtin_method_desc(),
         },
         symbol_descriptors: {},
       },
@@ -786,15 +786,7 @@ fn setup_builtins_with_realm_state_active(
   match string_proto {
     Object(data) => {
       let ctor = env.get("String") catch { _ => Undefined }
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      @runtime.install_builtin_method(data, "constructor", ctor)
     }
     _ => ()
   }
@@ -815,7 +807,7 @@ fn setup_builtins_with_realm_state_active(
         Value::Bool(b) => Value::String_(b.to_string())
         Object(data) =>
           if data.class_name == "Boolean" {
-            match data.bag.properties.get("[[BooleanData]]") {
+            match @runtime.get_boolean_data(data) {
               Some(Value::Bool(b)) => Value::String_(b.to_string())
               _ =>
                 raise @errors.TypeError(
@@ -842,7 +834,7 @@ fn setup_builtins_with_realm_state_active(
         Value::Bool(b) => Value::Bool(b)
         Object(data) =>
           if data.class_name == "Boolean" {
-            match data.bag.properties.get("[[BooleanData]]") {
+            match @runtime.get_boolean_data(data) {
               Some(Value::Bool(b)) => Value::Bool(b)
               _ =>
                 raise @errors.TypeError(
@@ -863,7 +855,7 @@ fn setup_builtins_with_realm_state_active(
   )
   // Boolean.prototype has [[BooleanData]] internal slot with value false
   boolean_proto_props["[[BooleanData]]"] = Value::Bool(false)
-  let method_desc = builtin_method_desc()
+  let method_desc = @runtime.builtin_method_desc()
   let boolean_proto_descs : Map[String, PropDescriptor] = {}
   boolean_proto_descs["toString"] = method_desc
   boolean_proto_descs["valueOf"] = method_desc
@@ -942,15 +934,7 @@ fn setup_builtins_with_realm_state_active(
   match boolean_proto {
     Object(data) => {
       let ctor = env.get("Boolean") catch { _ => Undefined }
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      @runtime.install_builtin_method(data, "constructor", ctor)
     }
     _ => ()
   }
@@ -980,23 +964,21 @@ fn setup_builtins_with_realm_state_active(
   let error_ctor = env.get("Error") catch { _ => Undefined }
   match error_ctor {
     Object(error_data) => {
-      error_data.bag.properties["isError"] = @runtime.make_native_func(
-        name="isError",
-        length=1,
-        fn(args) {
-          let arg = if args.length() > 0 { args[0] } else { Undefined }
-          match arg {
-            Object(data) =>
-              // ES §21.5.2.1: return true iff arg has [[ErrorData]] slot.
-              // The registry is populated at constructor registration time,
-              // so new error types are automatically recognised without
-              // requiring any change here.
-              Bool(env.error_class_names.contains(data.class_name))
-            _ => Value::Bool(false)
-          }
-        },
-      )
-      error_data.bag.descriptors["isError"] = builtin_method_desc()
+      let is_error = @runtime.make_native_func(name="isError", length=1, fn(
+        args,
+      ) {
+        let arg = if args.length() > 0 { args[0] } else { Undefined }
+        match arg {
+          Object(data) =>
+            // ES §21.5.2.1: return true iff arg has [[ErrorData]] slot.
+            // The registry is populated at constructor registration time,
+            // so new error types are automatically recognised without
+            // requiring any change here.
+            Bool(env.error_class_names.contains(data.class_name))
+          _ => Value::Bool(false)
+        }
+      })
+      @runtime.install_builtin_method(error_data, "isError", is_error)
     }
     _ => ()
   }
@@ -1196,7 +1178,7 @@ fn setup_builtins_with_realm_state_active(
       install_regexp_prototype_accessors(
         regexp_proto_props, regexp_proto_descs, realm_state,
       )
-      let re_method_desc2 = builtin_method_desc()
+      let re_method_desc2 = @runtime.builtin_method_desc()
       regexp_proto_descs["constructor"] = re_method_desc2
       regexp_proto_descs["exec"] = re_method_desc2
       regexp_proto_descs["test"] = re_method_desc2
@@ -1205,7 +1187,7 @@ fn setup_builtins_with_realm_state_active(
       // Install well-known symbol methods on RegExp.prototype (not on instances)
       let regexp_sym_props : Map[Int, Value] = {}
       let regexp_sym_descs : Map[Int, PropDescriptor] = {}
-      let sym_method_desc = builtin_method_desc()
+      let sym_method_desc = @runtime.builtin_method_desc()
       match regexp_proto_props.get("constructor") {
         Some(ctor) =>
           set_regexp_intrinsic_constructor_slot(
@@ -1299,17 +1281,10 @@ fn setup_builtins_with_realm_state_active(
       match env.bindings.get("RegExp") {
         Some(b) =>
           match b.value {
-            Object(ctor_data) => {
-              ctor_data.bag.properties["prototype"] = regexp_proto
-              ctor_data.bag.descriptors["prototype"] = {
-                writable: false,
-                enumerable: false,
-                configurable: false,
-                getter: None,
-                setter: None,
-                is_accessor: false,
-              }
-            }
+            Object(ctor_data) =>
+              @runtime.install_builtin_frozen_data(
+                ctor_data, "prototype", regexp_proto,
+              )
             _ => ()
           }
         None => ()
@@ -1424,22 +1399,17 @@ fn setup_builtins_with_realm_state_active(
     length=0,
     fn(this_val, _args) { this_val },
   )
-  let species_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: Some(species_getter),
-    setter: None,
-    is_accessor: true,
-  }
   let ctors_to_add_species = ["Array", "RegExp", "Map", "Set"]
   for ctor_name in ctors_to_add_species {
     let ctor_val = env.get(ctor_name) catch { _ => Undefined }
     match ctor_val {
       Object(ctor_data) => {
         let sp_sym = well_known_symbols.species
-        ctor_data.bag.symbol_properties[sp_sym.id] = Undefined
-        ctor_data.bag.symbol_descriptors[sp_sym.id] = species_desc
+        @runtime.install_builtin_symbol_accessor(
+          ctor_data,
+          sp_sym.id,
+          species_getter,
+        )
       }
       _ => ()
     }
@@ -1495,17 +1465,10 @@ fn setup_builtins_with_realm_state_active(
   match env.bindings.get("[[FunctionPrototype]]") {
     Some(binding) =>
       match binding.value {
-        Object(fp_data) => {
-          fp_data.bag.symbol_properties[has_instance_sym.id] = has_instance_fn
-          fp_data.bag.symbol_descriptors[has_instance_sym.id] = {
-            writable: false,
-            enumerable: false,
-            configurable: false,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          }
-        }
+        Object(fp_data) =>
+          @runtime.install_builtin_symbol_frozen_data(
+            fp_data, has_instance_sym.id, has_instance_fn,
+          )
         _ => ()
       }
     None => ()

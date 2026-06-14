@@ -432,7 +432,14 @@ pub fn setup_arraybuffer_builtins(
     },
   )
 
-  ab_proto_descs["slice"] = builtin_method_desc()
+  ab_proto_descs["slice"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   ab_proto_descs["constructor"] = {
     writable: true,
     enumerable: false,
@@ -512,7 +519,14 @@ pub fn setup_arraybuffer_builtins(
   }
   ab_ctor_descs["name"] = nf_desc
   ab_ctor_descs["length"] = nf_desc
-  ab_ctor_descs["isView"] = builtin_method_desc()
+  ab_ctor_descs["isView"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
 
   let ab_ctor : Value = Value::Object({
     bag: {
@@ -561,17 +575,8 @@ pub fn setup_arraybuffer_builtins(
 
   // Link constructor
   match ab_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = ab_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", ab_ctor)
     _ => ()
   }
 
@@ -584,17 +589,12 @@ pub fn setup_arraybuffer_builtins(
   )
   let species_symbol_val = well_known_symbols.species
   match ab_ctor {
-    Object(ab_ctor_data) => {
-      ab_ctor_data.bag.symbol_properties[species_symbol_val.id] = Undefined
-      ab_ctor_data.bag.symbol_descriptors[species_symbol_val.id] = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: Some(species_getter),
-        setter: None,
-        is_accessor: true,
-      }
-    }
+    Object(ab_ctor_data) =>
+      @runtime.install_builtin_symbol_accessor(
+        ab_ctor_data,
+        species_symbol_val.id,
+        species_getter,
+      )
     _ => ()
   }
 

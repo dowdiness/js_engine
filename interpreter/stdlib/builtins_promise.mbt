@@ -583,9 +583,10 @@ pub fn setup_promise(
     },
   )
   let promise_proto_descs : Map[String, PropDescriptor] = {}
-  promise_proto_descs["then"] = builtin_method_desc()
-  promise_proto_descs["catch"] = builtin_method_desc()
-  promise_proto_descs["finally"] = builtin_method_desc()
+  let pd_method_desc = @runtime.builtin_method_desc()
+  promise_proto_descs["then"] = pd_method_desc
+  promise_proto_descs["catch"] = pd_method_desc
+  promise_proto_descs["finally"] = pd_method_desc
   let promise_proto = Value::Object({
     bag: {
       properties: promise_proto_props,
@@ -1233,14 +1234,14 @@ pub fn setup_promise(
           setter: None,
           is_accessor: false,
         },
-        "resolve": builtin_method_desc(),
-        "reject": builtin_method_desc(),
-        "all": builtin_method_desc(),
-        "race": builtin_method_desc(),
-        "allSettled": builtin_method_desc(),
-        "any": builtin_method_desc(),
-        "withResolvers": builtin_method_desc(),
-        "try": builtin_method_desc(),
+        "resolve": @runtime.builtin_method_desc(),
+        "reject": @runtime.builtin_method_desc(),
+        "all": @runtime.builtin_method_desc(),
+        "race": @runtime.builtin_method_desc(),
+        "allSettled": @runtime.builtin_method_desc(),
+        "any": @runtime.builtin_method_desc(),
+        "withResolvers": @runtime.builtin_method_desc(),
+        "try": @runtime.builtin_method_desc(),
       },
       symbol_descriptors: {},
     },

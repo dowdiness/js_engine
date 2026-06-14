@@ -419,7 +419,7 @@ fn setup_number_builtins(
   )
   // Per ES spec, Number.prototype has [[NumberData]] internal slot with value +0
   number_proto_props["[[NumberData]]"] = Value::Number(0.0)
-  let num_method_desc = builtin_method_desc()
+  let num_method_desc = @runtime.builtin_method_desc()
   let number_proto_descs : Map[String, PropDescriptor] = {}
   number_proto_descs["toString"] = num_method_desc
   number_proto_descs["toLocaleString"] = num_method_desc
@@ -549,7 +549,7 @@ fn setup_number_builtins(
     setter: None,
     is_accessor: false,
   }
-  let num_method_desc = builtin_method_desc()
+  let num_method_desc = @runtime.builtin_method_desc()
   number_descs["isNaN"] = num_method_desc
   number_descs["isFinite"] = num_method_desc
   number_descs["isInteger"] = num_method_desc

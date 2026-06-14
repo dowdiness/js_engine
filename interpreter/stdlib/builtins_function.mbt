@@ -260,10 +260,11 @@ fn setup_function_builtins(
     setter: Some(throw_type_error),
     is_accessor: true,
   }
-  func_proto_descs["toString"] = builtin_method_desc()
-  func_proto_descs["call"] = builtin_method_desc()
-  func_proto_descs["apply"] = builtin_method_desc()
-  func_proto_descs["bind"] = builtin_method_desc()
+  let fp_method_desc = @runtime.builtin_method_desc()
+  func_proto_descs["toString"] = fp_method_desc
+  func_proto_descs["call"] = fp_method_desc
+  func_proto_descs["apply"] = fp_method_desc
+  func_proto_descs["bind"] = fp_method_desc
 
   // Function.prototype is callable per spec (returns undefined when called)
   // and has name="" and length=0 own properties

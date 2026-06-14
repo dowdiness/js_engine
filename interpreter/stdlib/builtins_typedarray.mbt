@@ -443,13 +443,8 @@ fn install_shape_only_bigint_typedarray_constructor(
     arraybuffer_state: None,
   })
   match per_proto {
-    Object(proto_data) => {
-      proto_data.bag.properties["constructor"] = ctor
-      proto_data.bag.descriptors["constructor"] = typedarray_data_desc(
-        writable=true,
-        configurable=true,
-      )
-    }
+    Object(proto_data) =>
+      @runtime.install_builtin_method(proto_data, "constructor", ctor)
     _ => ()
   }
   env.def_builtin(type_name, ctor)
@@ -544,7 +539,7 @@ fn typedarray_arraybuffer_state(
   match data.arraybuffer_state {
     Some(state) => state
     None =>
-      match data.bag.properties.get("[[ViewedArrayBuffer]]") {
+      match @runtime.get_typedarray_viewed_buffer(data) {
         Some(buffer) =>
           arraybuffer_state_from_value(
             buffer,
@@ -566,14 +561,14 @@ pub fn typedarray_is_valid_index(
   index : Int,
   realm_state : @runtime.RealmState,
 ) -> Bool {
-  let length = match data.bag.properties.get("[[ArrayLength]]") {
+  let length = match @runtime.get_typedarray_array_length(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
   if index < 0 || index >= length {
     return false
   }
-  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match @runtime.get_typedarray_buffer_id(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => return false
   }
@@ -616,7 +611,7 @@ pub fn validate_typed_array(
   realm_state : @runtime.RealmState,
 ) -> (ObjectData, Int) raise Error {
   let data = require_typed_array_object(this_val, method_name)
-  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match @runtime.get_typedarray_buffer_id(data) {
     Some(Value::Number(n)) => n.to_int()
     _ =>
       raise @errors.TypeError(message="\{method_name} called on non-TypedArray")
@@ -632,7 +627,7 @@ pub fn validate_typed_array(
 
 ///|
 fn typedarray_length(data : ObjectData) -> Int {
-  match data.bag.properties.get("[[ArrayLength]]") {
+  match @runtime.get_typedarray_array_length(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -780,14 +775,14 @@ pub fn typedarray_get_index(
   index : Int,
   realm_state : @runtime.RealmState,
 ) -> Value {
-  let length = match data.bag.properties.get("[[ArrayLength]]") {
+  let length = match @runtime.get_typedarray_array_length(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
   if index < 0 || index >= length {
     return Undefined
   }
-  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match @runtime.get_typedarray_buffer_id(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => return Undefined
   }
@@ -795,7 +790,7 @@ pub fn typedarray_get_index(
   if is_arraybuffer_state_detached(storage_state, buf_id) {
     return Undefined
   }
-  let byte_offset = match data.bag.properties.get("[[ByteOffset]]") {
+  let byte_offset = match @runtime.get_typedarray_byte_offset(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -825,14 +820,14 @@ pub fn typedarray_set_index(
   value : Double,
   realm_state : @runtime.RealmState,
 ) -> Unit {
-  let length = match data.bag.properties.get("[[ArrayLength]]") {
+  let length = match @runtime.get_typedarray_array_length(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
   if index < 0 || index >= length {
     return
   }
-  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match @runtime.get_typedarray_buffer_id(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => return
   }
@@ -840,7 +835,7 @@ pub fn typedarray_set_index(
   if is_arraybuffer_state_detached(storage_state, buf_id) {
     return
   }
-  let byte_offset = match data.bag.properties.get("[[ByteOffset]]") {
+  let byte_offset = match @runtime.get_typedarray_byte_offset(data) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -858,7 +853,7 @@ fn typedarray_is_detached(
   data : ObjectData,
   realm_state : @runtime.RealmState,
 ) -> Bool {
-  match data.bag.properties.get("[[ArrayBufferID]]") {
+  match @runtime.get_typedarray_buffer_id(data) {
     Some(Value::Number(n)) => {
       let storage_state = typedarray_arraybuffer_state(data, realm_state)
       is_arraybuffer_state_detached(storage_state, n.to_int())
@@ -876,7 +871,13 @@ fn typedarray_get_view_slot(
   if typedarray_is_detached(data, realm_state) {
     Value::Number(0.0)
   } else {
-    match data.bag.properties.get(internal_slot) {
+    let value = match internal_slot {
+      "[[ArrayLength]]" => @runtime.get_typedarray_array_length(data)
+      "[[ByteLength]]" => @runtime.get_typedarray_byte_length(data)
+      "[[ByteOffset]]" => @runtime.get_typedarray_byte_offset(data)
+      _ => None
+    }
+    match value {
       Some(n) => n
       None => Value::Number(0.0)
     }
@@ -897,7 +898,7 @@ pub fn get_typedarray_prop(
     "byteOffset" =>
       typedarray_get_view_slot(data, "[[ByteOffset]]", realm_state)
     "buffer" =>
-      match data.bag.properties.get("[[ViewedArrayBuffer]]") {
+      match @runtime.get_typedarray_viewed_buffer(data) {
         Some(buf) => buf
         None => Undefined
       }
@@ -1003,7 +1004,7 @@ pub fn setup_typedarray_builtins(
         match this_val {
           Object(data) =>
             if is_typedarray_class(data.class_name) {
-              match data.bag.properties.get("[[ViewedArrayBuffer]]") {
+              match @runtime.get_typedarray_viewed_buffer(data) {
                 Some(buf) => buf
                 None => Undefined
               }
@@ -1048,7 +1049,7 @@ pub fn setup_typedarray_builtins(
           message="Cannot perform TypedArray.prototype.set on a detached ArrayBuffer",
         )
       }
-      let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+      let ta_length = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1060,7 +1061,7 @@ pub fn setup_typedarray_builtins(
               message="Cannot perform TypedArray.prototype.set on a detached ArrayBuffer",
             )
           }
-          let src_len = match src_data.bag.properties.get("[[ArrayLength]]") {
+          let src_len = match @runtime.get_typedarray_array_length(src_data) {
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
@@ -1104,7 +1105,7 @@ pub fn setup_typedarray_builtins(
     length=2,
     fn(interp, this_val, args) raise {
       let data = require_typed_array_object(this_val, "subarray")
-      let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+      let ta_length = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1150,11 +1151,11 @@ pub fn setup_typedarray_builtins(
       } else {
         0
       }
-      let buffer = match data.bag.properties.get("[[ViewedArrayBuffer]]") {
+      let buffer = match @runtime.get_typedarray_viewed_buffer(data) {
         Some(buf) => buf
         None => raise @errors.TypeError(message="TypedArray has no buffer")
       }
-      let cur_offset = match data.bag.properties.get("[[ByteOffset]]") {
+      let cur_offset = match @runtime.get_typedarray_byte_offset(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1178,7 +1179,7 @@ pub fn setup_typedarray_builtins(
     length=2,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "slice", realm_state)
-      let ta_length = match data.bag.properties.get("[[ArrayLength]]") {
+      let ta_length = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1260,7 +1261,7 @@ pub fn setup_typedarray_builtins(
     length=2,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "copyWithin", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1354,7 +1355,7 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "fill", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1416,7 +1417,7 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "indexOf", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1457,7 +1458,7 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "lastIndexOf", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1495,7 +1496,7 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "includes", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1534,7 +1535,7 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "join", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1569,7 +1570,7 @@ pub fn setup_typedarray_builtins(
         _args,
       ) raise {
         let (data, _) = validate_typed_array(this_val, "toString", realm_state)
-        let len = match data.bag.properties.get("[[ArrayLength]]") {
+        let len = match @runtime.get_typedarray_array_length(data) {
           Some(Value::Number(n)) => n.to_int()
           _ => 0
         }
@@ -1593,7 +1594,7 @@ pub fn setup_typedarray_builtins(
       let (data, _) = validate_typed_array(
         this_val, "toLocaleString", realm_state,
       )
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1625,7 +1626,7 @@ pub fn setup_typedarray_builtins(
     length=0,
     fn(this_val, _args) raise {
       let (data, _) = validate_typed_array(this_val, "reverse", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1657,7 +1658,7 @@ pub fn setup_typedarray_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let (data, _) = validate_typed_array(this_val, "sort", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1764,7 +1765,7 @@ pub fn setup_typedarray_builtins(
     args,
   ) raise {
     let (data, _) = validate_typed_array(this_val, "at", realm_state)
-    let len = match data.bag.properties.get("[[ArrayLength]]") {
+    let len = match @runtime.get_typedarray_array_length(data) {
       Some(Value::Number(n)) => n.to_int()
       _ => 0
     }
@@ -1790,7 +1791,7 @@ pub fn setup_typedarray_builtins(
       let index_ref : Ref[Int] = { val: 0 }
       let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
         // Re-check detachment and length on each next() call per spec
-        let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+        let buf_id = match @runtime.get_typedarray_buffer_id(data) {
           Some(Value::Number(n)) => n.to_int()
           _ => -1
         }
@@ -1803,7 +1804,7 @@ pub fn setup_typedarray_builtins(
             message="Cannot iterate over a detached ArrayBuffer",
           )
         }
-        let len = match data.bag.properties.get("[[ArrayLength]]") {
+        let len = match @runtime.get_typedarray_array_length(data) {
           Some(Value::Number(n)) => n.to_int()
           _ => 0
         }
@@ -1877,7 +1878,7 @@ pub fn setup_typedarray_builtins(
     let index_ref : Ref[Int] = { val: 0 }
     let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
       // Re-check detachment and length on each next() call per spec
-      let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+      let buf_id = match @runtime.get_typedarray_buffer_id(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => -1
       }
@@ -1890,7 +1891,7 @@ pub fn setup_typedarray_builtins(
           message="Cannot iterate over a detached ArrayBuffer",
         )
       }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -1961,7 +1962,7 @@ pub fn setup_typedarray_builtins(
     let index_ref : Ref[Int] = { val: 0 }
     let next_method = @runtime.make_native_func(name="next", fn(_a) raise {
       // Re-check detachment and length on each next() call per spec
-      let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+      let buf_id = match @runtime.get_typedarray_buffer_id(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => -1
       }
@@ -1974,7 +1975,7 @@ pub fn setup_typedarray_builtins(
           message="Cannot iterate over a detached ArrayBuffer",
         )
       }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2049,7 +2050,7 @@ pub fn setup_typedarray_builtins(
       }
       let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2081,7 +2082,7 @@ pub fn setup_typedarray_builtins(
         raise @errors.TypeError(message="map callback is not callable")
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2128,7 +2129,7 @@ pub fn setup_typedarray_builtins(
         raise @errors.TypeError(message="filter callback is not callable")
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2179,7 +2180,7 @@ pub fn setup_typedarray_builtins(
       if !@runtime.is_callable(callback) {
         raise @errors.TypeError(message="reduce callback is not callable")
       }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2220,7 +2221,7 @@ pub fn setup_typedarray_builtins(
       if !@runtime.is_callable(callback) {
         raise @errors.TypeError(message="reduceRight callback is not callable")
       }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2262,7 +2263,7 @@ pub fn setup_typedarray_builtins(
       }
       let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2294,7 +2295,7 @@ pub fn setup_typedarray_builtins(
       }
       let callback = args[0]
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2326,7 +2327,7 @@ pub fn setup_typedarray_builtins(
         raise @errors.TypeError(message="find callback is not callable")
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2358,7 +2359,7 @@ pub fn setup_typedarray_builtins(
         raise @errors.TypeError(message="findIndex callback is not callable")
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2390,7 +2391,7 @@ pub fn setup_typedarray_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2425,7 +2426,7 @@ pub fn setup_typedarray_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2450,7 +2451,7 @@ pub fn setup_typedarray_builtins(
     length=0,
     fn(this_val, _args) raise {
       let (data, _) = validate_typed_array(this_val, "toReversed", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2492,7 +2493,7 @@ pub fn setup_typedarray_builtins(
         None
       }
       let (data, _) = validate_typed_array(this_val, "toSorted", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2600,7 +2601,7 @@ pub fn setup_typedarray_builtins(
       let index_val = if args.length() > 0 { args[0] } else { Undefined }
       let value_val = if args.length() > 1 { args[1] } else { Undefined }
       let (data, _) = validate_typed_array(this_val, "with", realm_state)
-      let len = match data.bag.properties.get("[[ArrayLength]]") {
+      let len = match @runtime.get_typedarray_array_length(data) {
         Some(Value::Number(n)) => n.to_int()
         _ => 0
       }
@@ -2635,7 +2636,14 @@ pub fn setup_typedarray_builtins(
   )
 
   // Mark all prototype methods as non-enumerable (per spec)
-  let method_desc = builtin_method_desc()
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   ta_proto_descs["set"] = method_desc
   ta_proto_descs["subarray"] = method_desc
   ta_proto_descs["slice"] = method_desc
@@ -2902,17 +2910,8 @@ pub fn setup_typedarray_builtins(
   })
   // Set ta_proto.constructor = %TypedArray%
   match ta_proto {
-    Object(proto_data) => {
-      proto_data.bag.properties["constructor"] = ta_ctor
-      proto_data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(proto_data) =>
+      @runtime.install_builtin_method(proto_data, "constructor", ta_ctor)
     _ => ()
   }
   // §22.2.5.4 %TypedArray%[@@species]: getter returning `this`. Each concrete
@@ -2924,19 +2923,14 @@ pub fn setup_typedarray_builtins(
     length=0,
     fn(this_val, _args) { this_val },
   )
-  let ta_species_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: Some(ta_species_getter),
-    setter: None,
-    is_accessor: true,
-  }
   match ta_ctor {
     Object(ctor_data) => {
       let sp_sym = well_known_symbols.species
-      ctor_data.bag.symbol_properties[sp_sym.id] = Undefined
-      ctor_data.bag.symbol_descriptors[sp_sym.id] = ta_species_desc
+      @runtime.install_builtin_symbol_accessor(
+        ctor_data,
+        sp_sym.id,
+        ta_species_getter,
+      )
     }
     _ => ()
   }
@@ -3086,7 +3080,7 @@ pub fn setup_typedarray_builtins(
             // From another TypedArray
             Object(src_data) if is_typedarray_class(src_data.class_name) => {
               let src_len = match
-                src_data.bag.properties.get("[[ArrayLength]]") {
+                @runtime.get_typedarray_array_length(src_data) {
                 Some(Value::Number(ln)) => ln.to_int()
                 _ => 0
               }
@@ -3113,7 +3107,7 @@ pub fn setup_typedarray_builtins(
             // From ArrayBuffer
             Object(buf_data) if buf_data.class_name == "ArrayBuffer" => {
               let buf_byte_length = match
-                buf_data.bag.properties.get("[[ArrayBufferByteLength]]") {
+                @runtime.get_arraybuffer_byte_length(buf_data) {
                 Some(Value::Number(n)) => n.to_int()
                 _ => 0
               }
@@ -3170,8 +3164,7 @@ pub fn setup_typedarray_builtins(
                   message="Invalid typed array length: \{length}",
                 )
               }
-              let check_buf_id = match
-                buf_data.bag.properties.get("[[ArrayBufferID]]") {
+              let check_buf_id = match @runtime.get_arraybuffer_id(buf_data) {
                 Some(Value::Number(n)) => n.to_int()
                 _ => -1
               }
@@ -3336,17 +3329,8 @@ pub fn setup_typedarray_builtins(
 
     // Link constructor
     match per_proto {
-      Object(proto_data) => {
-        proto_data.bag.properties["constructor"] = ctor
-        proto_data.bag.descriptors["constructor"] = {
-          writable: true,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        }
-      }
+      Object(proto_data) =>
+        @runtime.install_builtin_method(proto_data, "constructor", ctor)
       _ => ()
     }
 

@@ -1954,7 +1954,7 @@ pub fn setup_string_prototype(
             }
           _ => 0
         }
-        install_builtin_method(
+        @runtime.install_builtin_method(
           data,
           mname,
           @runtime.make_interp_method_func(
