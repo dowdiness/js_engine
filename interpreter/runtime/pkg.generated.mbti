@@ -25,6 +25,8 @@ pub fn apply_object_literal_static_data_property(Value, String, Value) -> Unit r
 
 pub fn array_species_create(Interpreter, Value, Int) -> Value raise
 
+pub fn builtin_method_desc() -> PropDescriptor
+
 pub fn call_callable_direct(Value, Value, Array[Value], interp? : Interpreter?) -> Value raise
 
 pub fn check_proxy_set_trap_invariants(Value, Value, Value) -> Unit raise

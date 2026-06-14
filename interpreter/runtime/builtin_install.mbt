@@ -1,7 +1,7 @@
 ///|
 /// Standard descriptor metadata for built-in prototype methods installed as
 /// ordinary data properties.
-fn builtin_method_desc() -> PropDescriptor {
+pub fn builtin_method_desc() -> PropDescriptor {
   {
     writable: true,
     enumerable: false,
