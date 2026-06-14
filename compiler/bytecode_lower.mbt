@@ -1873,7 +1873,8 @@ fn BytecodeBuilder::compile_stmt(
     }
     ForOfStmt(_, _, _, _, _)
     | ForOfStmtPat(_, _, _, _, _)
-    | ForOfExpr(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_FOR_OF_STATEMENT)
+    | ForOfExpr(_, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_FOR_OF_STATEMENT)
     ForInStmt(var_kind, name, obj_expr, body, _) =>
       self.compile_for_in_identifier(var_kind, name, obj_expr, body)
     ForInStmtPat(var_kind, pattern, obj_expr, body, _) =>
@@ -1915,7 +1916,8 @@ fn BytecodeBuilder::compile_stmt(
       self.compile_expr(expr)
       let _ = self.emit(Throw)
     }
-    TryCatchStmt(_, _, _, _, _) => bytecode_unsupported(UNSUPPORTED_TRY_CATCH_STATEMENT)
+    TryCatchStmt(_, _, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_TRY_CATCH_STATEMENT)
     LabeledStmt(label, body, _) => {
       if stmt_has_function_decl(body) {
         bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
@@ -1952,10 +1954,12 @@ fn BytecodeBuilder::compile_stmt(
       bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_DECLARATION)
     ClassDecl(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_CLASS_DECLARATION)
     WithStmt(_, _, _) => bytecode_unsupported(UNSUPPORTED_WITH_STATEMENT)
-    ImportDecl(_, _, _, _, _, _) => bytecode_unsupported(UNSUPPORTED_IMPORT_DECLARATION)
+    ImportDecl(_, _, _, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_IMPORT_DECLARATION)
     ExportNamedDecl(_, _, _, _, _)
     | ExportDefaultDecl(_, _)
-    | ExportAllDecl(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_EXPORT_DECLARATION)
+    | ExportAllDecl(_, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_EXPORT_DECLARATION)
   }
 }
 
@@ -2809,7 +2813,9 @@ fn BytecodeBuilder::compile_object_method(
       0
     }
     AsyncGeneratorExpr(_, _, _, _) | AsyncGeneratorExprExt(_, _, _, _, _) => {
-      bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_ASYNC_GENERATOR_METHOD_PROPERTY)
+      bytecode_unsupported(
+        UNSUPPORTED_OBJECT_LITERAL_ASYNC_GENERATOR_METHOD_PROPERTY,
+      )
       0
     }
     _ => {
@@ -2927,7 +2933,9 @@ fn BytecodeBuilder::compile_object_lit(
     for prop in props {
       match prop.kind {
         Get | Set =>
-          bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_COMPUTED_ACCESSOR_PROPERTY)
+          bytecode_unsupported(
+            UNSUPPORTED_OBJECT_LITERAL_COMPUTED_ACCESSOR_PROPERTY,
+          )
         _ => ()
       }
       if prop.computed {
@@ -2973,11 +2981,13 @@ fn bytecode_validate_destructure_assignment_pattern(
     ObjectPat(props, rest) => {
       for prop in props {
         match prop.default_val {
-          Some(_) => bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
+          Some(_) =>
+            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
           None => ()
         }
         match prop.computed_key {
-          Some(_) => bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_COMPUTED_KEY)
+          Some(_) =>
+            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_COMPUTED_KEY)
           None => ()
         }
         bytecode_validate_destructure_assignment_pattern(prop.value)
@@ -2987,7 +2997,8 @@ fn bytecode_validate_destructure_assignment_pattern(
         None => ()
       }
     }
-    DefaultPat(_, _) => bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
+    DefaultPat(_, _) =>
+      bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
     AssignTarget(_) =>
       bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_MEMBER_TARGET)
   }
@@ -3101,7 +3112,8 @@ fn BytecodeBuilder::compile_expr(
           let _ = self.emit(DeleteName(name))
         }
       }
-    Unary(Delete, _, _) => bytecode_unsupported(UNSUPPORTED_DELETE_NON_PROPERTY_OPERATOR)
+    Unary(Delete, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_DELETE_NON_PROPERTY_OPERATOR)
     Unary(Typeof, Ident(name, _), loc) =>
       match (self.local_slot(name), self.env_slot(name)) {
         (Some(slot), _) => {
