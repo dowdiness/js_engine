@@ -83,18 +83,11 @@ fn main {
       return
     }
   }
-  let is_module = match matches.flags.get("module") {
-    Some(true) => true
-    _ => false
-  }
-  let annex_b = match matches.flags.get("annex-b") {
-    Some(true) => true
-    _ => false
-  }
-  let use_closure_conversion = match matches.flags.get("closure-conversion") {
-    Some(true) => true
-    _ => false
-  }
+  let is_module = matches.flags.get_or_default("module", false)
+  let annex_b = matches.flags.get_or_default("annex-b", false)
+  let use_closure_conversion = matches.flags.get_or_default(
+    "closure-conversion", false,
+  )
   let source : String? = match matches.values.get("source") {
     Some(arr) if arr.length() > 0 => Some(arr[0])
     _ => None
