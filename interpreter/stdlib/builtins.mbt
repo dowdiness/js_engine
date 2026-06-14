@@ -694,9 +694,30 @@ fn setup_builtins_with_realm_state_active(
             setter: None,
             is_accessor: false,
           },
-          "fromCharCode": builtin_method_desc(),
-          "fromCodePoint": builtin_method_desc(),
-          "raw": builtin_method_desc(),
+          "fromCharCode": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+            is_accessor: false,
+          },
+          "fromCodePoint": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+            is_accessor: false,
+          },
+          "raw": {
+            writable: true,
+            enumerable: false,
+            configurable: true,
+            getter: None,
+            setter: None,
+            is_accessor: false,
+          },
         },
         symbol_descriptors: {},
       },
@@ -863,7 +884,14 @@ fn setup_builtins_with_realm_state_active(
   )
   // Boolean.prototype has [[BooleanData]] internal slot with value false
   boolean_proto_props["[[BooleanData]]"] = Value::Bool(false)
-  let method_desc = builtin_method_desc()
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   let boolean_proto_descs : Map[String, PropDescriptor] = {}
   boolean_proto_descs["toString"] = method_desc
   boolean_proto_descs["valueOf"] = method_desc
@@ -996,7 +1024,14 @@ fn setup_builtins_with_realm_state_active(
           }
         },
       )
-      error_data.bag.descriptors["isError"] = builtin_method_desc()
+      error_data.bag.descriptors["isError"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
     }
     _ => ()
   }
@@ -1196,7 +1231,14 @@ fn setup_builtins_with_realm_state_active(
       install_regexp_prototype_accessors(
         regexp_proto_props, regexp_proto_descs, realm_state,
       )
-      let re_method_desc2 = builtin_method_desc()
+      let re_method_desc2 : PropDescriptor = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
       regexp_proto_descs["constructor"] = re_method_desc2
       regexp_proto_descs["exec"] = re_method_desc2
       regexp_proto_descs["test"] = re_method_desc2
@@ -1205,7 +1247,14 @@ fn setup_builtins_with_realm_state_active(
       // Install well-known symbol methods on RegExp.prototype (not on instances)
       let regexp_sym_props : Map[Int, Value] = {}
       let regexp_sym_descs : Map[Int, PropDescriptor] = {}
-      let sym_method_desc = builtin_method_desc()
+      let sym_method_desc : PropDescriptor = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
       match regexp_proto_props.get("constructor") {
         Some(ctor) =>
           set_regexp_intrinsic_constructor_slot(

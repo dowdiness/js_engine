@@ -4153,7 +4153,14 @@ pub fn get_regexp_string_iterator_proto(
         },
       )
       let proto_descs : Map[String, PropDescriptor] = {}
-      proto_descs["next"] = builtin_method_desc()
+      proto_descs["next"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
       let proto : Value = Value::Object({
         bag: {
           properties: proto_props,

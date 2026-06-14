@@ -535,7 +535,14 @@ fn setup_map_builtins(
   )
 
   // Non-enumerable descriptors for Map.prototype methods
-  let method_desc = builtin_method_desc()
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   let map_proto_descs : Map[String, PropDescriptor] = {}
   map_proto_descs["get"] = method_desc
   map_proto_descs["set"] = method_desc
@@ -1022,7 +1029,14 @@ fn setup_set_builtins(
   )
 
   // Non-enumerable descriptors for Set.prototype methods
-  let method_desc = builtin_method_desc()
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   let set_proto_descs : Map[String, PropDescriptor] = {}
   set_proto_descs["add"] = method_desc
   set_proto_descs["has"] = method_desc

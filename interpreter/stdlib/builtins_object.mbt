@@ -557,7 +557,14 @@ pub fn setup_object_builtins(
     },
   )
   let obj_proto_descs : Map[String, PropDescriptor] = {}
-  let obj_method_desc = builtin_method_desc()
+  let obj_method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   obj_proto_descs["toString"] = obj_method_desc
   obj_proto_descs["valueOf"] = obj_method_desc
   obj_proto_descs["hasOwnProperty"] = obj_method_desc

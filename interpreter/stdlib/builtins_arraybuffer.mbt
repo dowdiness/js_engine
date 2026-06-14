@@ -432,7 +432,14 @@ pub fn setup_arraybuffer_builtins(
     },
   )
 
-  ab_proto_descs["slice"] = builtin_method_desc()
+  ab_proto_descs["slice"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   ab_proto_descs["constructor"] = {
     writable: true,
     enumerable: false,
@@ -512,7 +519,14 @@ pub fn setup_arraybuffer_builtins(
   }
   ab_ctor_descs["name"] = nf_desc
   ab_ctor_descs["length"] = nf_desc
-  ab_ctor_descs["isView"] = builtin_method_desc()
+  ab_ctor_descs["isView"] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
 
   let ab_ctor : Value = Value::Object({
     bag: {
