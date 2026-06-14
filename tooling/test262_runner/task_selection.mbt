@@ -212,17 +212,11 @@ fn task_key(task : (String, String), test262_dir : String) -> (String, String) {
 fn load_completed_task_keys(
   results_file : String,
   test262_dir? : String = "",
-) -> Map[String, Bool] raise {
+) -> @set.Set[String] raise {
   let raw = @json.parse(@fs.read_file_to_string(results_file))
   let root : Map[String, Json] = @json.from_json(raw) catch { _ => {} }
-  let completed : Map[String, Bool] = {}
-  let finished : Map[String, Bool] = {
-    "pass": true,
-    "fail": true,
-    "skip": true,
-    "timeout": true,
-    "error": true,
-  }
+  let completed = @set.Set::default()
+  let finished = @set.Set(["pass", "fail", "skip", "timeout", "error"])
   let records : Array[Json] = match root.get("results") {
     Some(Json::Array(items)) => items
     _ => []
@@ -238,7 +232,9 @@ fn load_completed_task_keys(
           Some(value) => json_to_string(value)
           None => "non-strict"
         }
-        completed[normalize_test262_path(path, test262_dir~) + "\u0000" + mode] = true
+        completed.add(
+          normalize_test262_path(path, test262_dir~) + "\u0000" + mode,
+        )
       }
       _ => ()
     }
@@ -249,7 +245,7 @@ fn load_completed_task_keys(
 ///|
 fn filter_completed_tasks(
   tasks : Array[(String, String)],
-  completed_keys : Map[String, Bool],
+  completed_keys : @set.Set[String],
   test262_dir? : String = "",
 ) -> Array[(String, String)] {
   let out : Array[(String, String)] = []

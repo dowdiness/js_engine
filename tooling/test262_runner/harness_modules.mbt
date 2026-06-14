@@ -107,7 +107,7 @@ fn visit_fixture(
   importer_dir : String,
   test_abs : String,
   visited : Map[String, (String, String)],
-  stack : Map[String, Bool],
+  stack : @set.Set[String],
   order : Array[String],
 ) -> Unit raise {
   let abs_path = normalize_path(join_path(importer_dir, spec))
@@ -122,7 +122,7 @@ fn visit_fixture(
   let fixture_src = @fs.read_file_to_string(abs_path) catch {
     err => fail("Failed to read fixture \{abs_path}: \{@debug.to_string(err)}")
   }
-  stack[abs_path] = true
+  stack.add(abs_path)
   for nested_spec in import_relative_specifiers(fixture_src) {
     visit_fixture(
       nested_spec,
@@ -146,7 +146,7 @@ fn resolve_fixtures(
   let test_abs = absolute_path(test_path)
   let test_dir = dirname(test_abs)
   let visited : Map[String, (String, String)] = {}
-  let stack : Map[String, Bool] = {}
+  let stack = @set.Set::default()
   let order : Array[String] = []
   for spec in import_relative_specifiers(source) {
     visit_fixture(spec, test_dir, test_abs, visited, stack, order)
