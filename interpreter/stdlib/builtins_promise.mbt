@@ -1335,17 +1335,8 @@ pub fn setup_promise(
   env.def_builtin("Promise", promise_ctor)
   // Set Promise.prototype.constructor = Promise
   match promise_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = promise_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", promise_ctor)
     _ => ()
   }
 

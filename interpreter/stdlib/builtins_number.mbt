@@ -606,18 +606,14 @@ fn setup_number_builtins(
   )
   // Set Number.prototype.constructor = Number
   match number_proto {
-    Object(data) => {
-      let ctor = env.get("Number") catch { _ => Undefined }
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(
+        data,
+        "constructor",
+        env.get("Number") catch {
+          _ => Undefined
+        },
+      )
     _ => ()
   }
 }

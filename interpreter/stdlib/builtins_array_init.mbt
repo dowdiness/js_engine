@@ -1435,18 +1435,14 @@ fn setup_array_builtins(
   )
   // Set Array.prototype.constructor = Array
   match array_proto {
-    Object(data) => {
-      let arr_ctor = env.get("Array") catch { _ => Undefined }
-      data.bag.properties["constructor"] = arr_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(
+        data,
+        "constructor",
+        env.get("Array") catch {
+          _ => Undefined
+        },
+      )
     _ => ()
   }
 }

@@ -488,17 +488,8 @@ fn setup_function_builtins(
 
   // Add constructor back-reference to prototype (same object as global Function)
   match func_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = func_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(data, "constructor", func_ctor)
     _ => ()
   }
 

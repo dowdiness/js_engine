@@ -1292,18 +1292,14 @@ pub fn setup_object_builtins(
 
   // Set Object.prototype.constructor = Object
   match obj_proto {
-    Object(data) => {
-      let obj_ctor = env.get("Object") catch { _ => Undefined }
-      data.bag.properties["constructor"] = obj_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
+    Object(data) =>
+      @runtime.install_builtin_method(
+        data,
+        "constructor",
+        env.get("Object") catch {
+          _ => Undefined
+        },
+      )
     _ => ()
   }
 
