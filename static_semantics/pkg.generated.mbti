@@ -3,7 +3,6 @@ package "dowdiness/js_engine/static_semantics"
 
 import {
   "dowdiness/js_engine/ast",
-  "moonbitlang/core/debug",
 }
 
 // Values
@@ -22,17 +21,6 @@ pub fn validate_strict_identifier_reference(Bool, String) -> Unit raise
 // Errors
 
 // Types and methods
-pub(all) enum SourceKind {
-  Script
-  Module
-  DirectEval
-  IndirectEval
-  FunctionConstructor
-  GeneratorFunctionConstructor
-  AsyncFunctionConstructor
-  AsyncGeneratorFunctionConstructor
-  BytecodeLowering
-} derive(Eq, @debug.Debug)
 
 // Type aliases
 
