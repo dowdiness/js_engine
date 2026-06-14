@@ -45,10 +45,7 @@ fn optional_value(values : Map[String, Array[String]], key : String) -> String? 
 
 ///|
 fn flag_value(flags : Map[String, Bool], key : String) -> Bool {
-  match flags.get(key) {
-    Some(value) => value
-    None => false
-  }
+  flags.get_or_default(key, false)
 }
 
 ///|

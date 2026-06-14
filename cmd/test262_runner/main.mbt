@@ -31,18 +31,12 @@ fn all_values(
   values : Map[String, Array[String]],
   key : String,
 ) -> Array[String] {
-  match values.get(key) {
-    Some(items) => items
-    None => []
-  }
+  values.get_or_default(key, [])
 }
 
 ///|
 fn flag_value(flags : Map[String, Bool], key : String) -> Bool {
-  match flags.get(key) {
-    Some(value) => value
-    None => false
-  }
+  flags.get_or_default(key, false)
 }
 
 ///|
