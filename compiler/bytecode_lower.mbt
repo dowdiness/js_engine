@@ -1487,13 +1487,13 @@ fn BytecodeBuilder::compile_switch(
   cases : Array[@ast.SwitchCase],
 ) -> Unit raise Error {
   if switch_cases_have_lexical_decl(cases) {
-    bytecode_unsupported("switch lexical declaration")
+    bytecode_unsupported(UNSUPPORTED_SWITCH_LEXICAL_DECLARATION)
   }
   if switch_cases_have_function_decl(cases) {
-    bytecode_unsupported("control-flow function declaration")
+    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
   }
   if switch_cases_have_destructure_decl(cases) {
-    bytecode_unsupported("destructuring declaration context")
+    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
   }
   self.emit_undefined_completion()
   self.compile_expr(discriminant)
@@ -1547,16 +1547,16 @@ fn BytecodeBuilder::compile_for_in_identifier(
   body : @ast.Stmt,
 ) -> Unit raise Error {
   match var_kind {
-    Some(VarKind) => bytecode_unsupported("for-in var declaration")
+    Some(VarKind) => bytecode_unsupported(UNSUPPORTED_FOR_IN_VAR_DECLARATION)
     Some(LetKind) | Some(ConstKind) =>
-      bytecode_unsupported("for-in lexical declaration")
+      bytecode_unsupported(UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION)
     None => ()
   }
   if stmt_has_function_decl(body) {
-    bytecode_unsupported("control-flow function declaration")
+    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
   }
   if stmt_has_destructure_decl(body) {
-    bytecode_unsupported("destructuring declaration context")
+    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
   }
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
@@ -1589,17 +1589,17 @@ fn BytecodeBuilder::compile_for_in_pattern(
   body : @ast.Stmt,
 ) -> Unit raise Error {
   match var_kind {
-    Some(VarKind) => bytecode_unsupported("for-in var declaration")
+    Some(VarKind) => bytecode_unsupported(UNSUPPORTED_FOR_IN_VAR_DECLARATION)
     Some(LetKind) | Some(ConstKind) =>
-      bytecode_unsupported("for-in lexical declaration")
+      bytecode_unsupported(UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION)
     None => ()
   }
   bytecode_validate_destructure_assignment_pattern(pattern)
   if stmt_has_function_decl(body) {
-    bytecode_unsupported("control-flow function declaration")
+    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
   }
   if stmt_has_destructure_decl(body) {
-    bytecode_unsupported("destructuring declaration context")
+    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
   }
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
@@ -1638,7 +1638,7 @@ fn BytecodeBuilder::compile_for_in_expr_target_store(
       self.compile_expr(key)
       let _ = self.emit(SetForInComputed(loc))
     }
-    _ => bytecode_unsupported("for-in assignment target")
+    _ => bytecode_unsupported(UNSUPPORTED_FOR_IN_ASSIGNMENT_TARGET)
   }
 }
 
@@ -1650,10 +1650,10 @@ fn BytecodeBuilder::compile_for_in_expr(
   body : @ast.Stmt,
 ) -> Unit raise Error {
   if stmt_has_function_decl(body) {
-    bytecode_unsupported("control-flow function declaration")
+    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
   }
   if stmt_has_destructure_decl(body) {
-    bytecode_unsupported("destructuring declaration context")
+    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
   }
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
@@ -1722,10 +1722,10 @@ fn BytecodeBuilder::compile_stmt(
       }
     }
     DestructureDecl(_, _, _, _) =>
-      bytecode_unsupported("destructuring declaration kind")
+      bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_KIND)
     StmtList(stmts, _) => {
       if stmts_have_destructure_decl(stmts) {
-        bytecode_unsupported("destructuring declaration context")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
       }
       self.emit_undefined_completion()
       for child in stmts {
@@ -1734,13 +1734,13 @@ fn BytecodeBuilder::compile_stmt(
     }
     Block(stmts, _) => {
       if stmts_have_lexical_decl(stmts) {
-        bytecode_unsupported("block lexical declaration")
+        bytecode_unsupported(UNSUPPORTED_BLOCK_LEXICAL_DECLARATION)
       }
       if stmts_have_function_decl(stmts) {
-        bytecode_unsupported("block function declaration")
+        bytecode_unsupported(UNSUPPORTED_BLOCK_FUNCTION_DECLARATION)
       }
       if stmts_have_destructure_decl(stmts) {
-        bytecode_unsupported("destructuring declaration context")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
       }
       self.emit_undefined_completion()
       for child in stmts {
@@ -1749,22 +1749,22 @@ fn BytecodeBuilder::compile_stmt(
     }
     IfStmt(cond, then_branch, else_branch, _) => {
       if stmt_has_function_decl(then_branch) {
-        bytecode_unsupported("control-flow function declaration")
+        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
       }
       match else_branch {
         Some(stmt) =>
           if stmt_has_function_decl(stmt) {
-            bytecode_unsupported("control-flow function declaration")
+            bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
           }
         None => ()
       }
       if stmt_has_destructure_decl(then_branch) {
-        bytecode_unsupported("destructuring declaration context")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
       }
       match else_branch {
         Some(stmt) =>
           if stmt_has_destructure_decl(stmt) {
-            bytecode_unsupported("destructuring declaration context")
+            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
           }
         None => ()
       }
@@ -1781,10 +1781,10 @@ fn BytecodeBuilder::compile_stmt(
     }
     WhileStmt(cond, body, _) => {
       if stmt_has_function_decl(body) {
-        bytecode_unsupported("control-flow function declaration")
+        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
       }
       if stmt_has_destructure_decl(body) {
-        bytecode_unsupported("destructuring declaration context")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
       }
       self.emit_undefined_completion()
       let cond_pos = self.code.length()
@@ -1803,10 +1803,10 @@ fn BytecodeBuilder::compile_stmt(
     }
     DoWhileStmt(body, cond, _) => {
       if stmt_has_function_decl(body) {
-        bytecode_unsupported("control-flow function declaration")
+        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
       }
       if stmt_has_destructure_decl(body) {
-        bytecode_unsupported("destructuring declaration context")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
       }
       self.emit_undefined_completion()
       let body_pos = self.code.length()
@@ -1826,18 +1826,18 @@ fn BytecodeBuilder::compile_stmt(
     }
     ForStmt(init, cond, update, body, _) => {
       if stmt_has_function_decl(body) {
-        bytecode_unsupported("control-flow function declaration")
+        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
       }
       if stmt_has_destructure_decl(body) {
-        bytecode_unsupported("destructuring declaration context")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
       }
       match init {
         Some(stmt) => {
           if stmt_has_lexical_decl(stmt) {
-            bytecode_unsupported("for lexical initializer")
+            bytecode_unsupported(UNSUPPORTED_FOR_LEXICAL_INITIALIZER)
           }
           if stmt_has_destructure_decl(stmt) {
-            bytecode_unsupported("destructuring declaration context")
+            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
           }
           self.compile_for_init(stmt)
         }
@@ -1873,7 +1873,8 @@ fn BytecodeBuilder::compile_stmt(
     }
     ForOfStmt(_, _, _, _, _)
     | ForOfStmtPat(_, _, _, _, _)
-    | ForOfExpr(_, _, _, _) => bytecode_unsupported("for-of statement")
+    | ForOfExpr(_, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_FOR_OF_STATEMENT)
     ForInStmt(var_kind, name, obj_expr, body, _) =>
       self.compile_for_in_identifier(var_kind, name, obj_expr, body)
     ForInStmtPat(var_kind, pattern, obj_expr, body, _) =>
@@ -1915,13 +1916,14 @@ fn BytecodeBuilder::compile_stmt(
       self.compile_expr(expr)
       let _ = self.emit(Throw)
     }
-    TryCatchStmt(_, _, _, _, _) => bytecode_unsupported("try/catch statement")
+    TryCatchStmt(_, _, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_TRY_CATCH_STATEMENT)
     LabeledStmt(label, body, _) => {
       if stmt_has_function_decl(body) {
-        bytecode_unsupported("control-flow function declaration")
+        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
       }
       if stmt_has_destructure_decl(body) {
-        bytecode_unsupported("destructuring declaration context")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
       }
       if stmt_is_iteration_label_target(body) {
         self.pending_loop_labels.push(label)
@@ -1937,7 +1939,7 @@ fn BytecodeBuilder::compile_stmt(
         let label_ctx = match self.label_contexts.pop() {
           Some(ctx) => ctx
           None => {
-            bytecode_unsupported("label context")
+            bytecode_unsupported(UNSUPPORTED_LABEL_CONTEXT)
             { label, break_jumps: [], loop_depth: self.loop_contexts.length() }
           }
         }
@@ -1945,17 +1947,19 @@ fn BytecodeBuilder::compile_stmt(
       }
     }
     GeneratorDecl(_, _, _, _) | GeneratorDeclExt(_, _, _, _, _) =>
-      bytecode_unsupported("generator declaration")
+      bytecode_unsupported(UNSUPPORTED_GENERATOR_DECLARATION)
     AsyncFuncDecl(_, _, _, _) | AsyncFuncDeclExt(_, _, _, _, _) =>
-      bytecode_unsupported("async function declaration")
+      bytecode_unsupported(UNSUPPORTED_ASYNC_FUNCTION_DECLARATION)
     AsyncGeneratorDecl(_, _, _, _) | AsyncGeneratorDeclExt(_, _, _, _, _) =>
-      bytecode_unsupported("async generator declaration")
-    ClassDecl(_, _, _, _) => bytecode_unsupported("class declaration")
-    WithStmt(_, _, _) => bytecode_unsupported("with statement")
-    ImportDecl(_, _, _, _, _, _) => bytecode_unsupported("import declaration")
+      bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_DECLARATION)
+    ClassDecl(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_CLASS_DECLARATION)
+    WithStmt(_, _, _) => bytecode_unsupported(UNSUPPORTED_WITH_STATEMENT)
+    ImportDecl(_, _, _, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_IMPORT_DECLARATION)
     ExportNamedDecl(_, _, _, _, _)
     | ExportDefaultDecl(_, _)
-    | ExportAllDecl(_, _, _, _) => bytecode_unsupported("export declaration")
+    | ExportAllDecl(_, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_EXPORT_DECLARATION)
   }
 }
 
@@ -1970,7 +1974,7 @@ fn BytecodeBuilder::compile_for_init(
       let _ = self.emit(Pop)
     }
     VarDecl(_, _, _, _) | StmtList(_, _) => self.compile_stmt(stmt)
-    _ => bytecode_unsupported("for initializer")
+    _ => bytecode_unsupported(UNSUPPORTED_FOR_INITIALIZER)
   }
 }
 
@@ -2307,7 +2311,7 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
     NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
     _ => {
-      bytecode_unsupported("logical assignment operator")
+      bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
       -1
     }
   }
@@ -2342,7 +2346,7 @@ fn BytecodeBuilder::compile_property_logical_assign(
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
     NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
     _ => {
-      bytecode_unsupported("logical assignment operator")
+      bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
       -1
     }
   }
@@ -2381,7 +2385,7 @@ fn BytecodeBuilder::compile_computed_logical_assign(
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
     NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
     _ => {
-      bytecode_unsupported("logical assignment operator")
+      bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
       -1
     }
   }
@@ -2417,7 +2421,7 @@ fn BytecodeBuilder::compile_identifier_compound_assign(
       let bin_op = match @runtime.compound_assign_binary_op(op) {
         Some(bin_op) => bin_op
         None => {
-          bytecode_unsupported("logical assignment operator")
+          bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
           Add
         }
       }
@@ -2449,7 +2453,7 @@ fn BytecodeBuilder::compile_property_compound_assign(
   let bin_op = match @runtime.compound_assign_binary_op(op) {
     Some(bin_op) => bin_op
     None => {
-      bytecode_unsupported("compound assignment target")
+      bytecode_unsupported(UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET)
       Add
     }
   }
@@ -2480,7 +2484,7 @@ fn BytecodeBuilder::compile_computed_compound_assign(
   let bin_op = match @runtime.compound_assign_binary_op(op) {
     Some(bin_op) => bin_op
     None => {
-      bytecode_unsupported("compound assignment target")
+      bytecode_unsupported(UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET)
       Add
     }
   }
@@ -2773,7 +2777,7 @@ fn bytecode_reject_object_data_property_super(
   value : @ast.Expr,
 ) -> Unit raise Error {
   if bytecode_expr_contains_super(value) {
-    bytecode_unsupported("object literal data property super")
+    bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_DATA_PROPERTY_SUPER)
   }
 }
 
@@ -2801,19 +2805,21 @@ fn BytecodeBuilder::compile_object_method(
       self.add_function(None, simple_params, body, simple_rest)
     }
     GeneratorExpr(_, _, _, _) | GeneratorExprExt(_, _, _, _, _) => {
-      bytecode_unsupported("object literal generator method property")
+      bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_GENERATOR_METHOD_PROPERTY)
       0
     }
     AsyncFuncExpr(_, _, _, _) | AsyncFuncExprExt(_, _, _, _, _) => {
-      bytecode_unsupported("object literal async method property")
+      bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_ASYNC_METHOD_PROPERTY)
       0
     }
     AsyncGeneratorExpr(_, _, _, _) | AsyncGeneratorExprExt(_, _, _, _, _) => {
-      bytecode_unsupported("object literal async generator method property")
+      bytecode_unsupported(
+        UNSUPPORTED_OBJECT_LITERAL_ASYNC_GENERATOR_METHOD_PROPERTY,
+      )
       0
     }
     _ => {
-      bytecode_unsupported("object literal method property")
+      bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_METHOD_PROPERTY)
       0
     }
   }
@@ -2859,7 +2865,7 @@ fn BytecodeBuilder::compile_object_lit(
           let key = match bytecode_static_object_key(prop.key) {
             Some(key) => key
             None => {
-              bytecode_unsupported("object literal property key")
+              bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
               ""
             }
           }
@@ -2887,12 +2893,12 @@ fn BytecodeBuilder::compile_object_lit(
         let key = match bytecode_static_object_key(prop.key) {
           Some(key) => key
           None => {
-            bytecode_unsupported("object literal property key")
+            bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
             ""
           }
         }
         if key == "__proto__" {
-          bytecode_unsupported("object literal __proto__ method property")
+          bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROTO_METHOD_PROPERTY)
         }
         self.compile_object_method(prop)
         let _ = self.emit(ObjectSetStatic(key))
@@ -2909,7 +2915,7 @@ fn BytecodeBuilder::compile_object_lit(
       let key = match bytecode_static_object_key(prop.key) {
         Some(key) => key
         None => {
-          bytecode_unsupported("object literal property key")
+          bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
           ""
         }
       }
@@ -2927,19 +2933,21 @@ fn BytecodeBuilder::compile_object_lit(
     for prop in props {
       match prop.kind {
         Get | Set =>
-          bytecode_unsupported("object literal computed accessor property")
+          bytecode_unsupported(
+            UNSUPPORTED_OBJECT_LITERAL_COMPUTED_ACCESSOR_PROPERTY,
+          )
         _ => ()
       }
       if prop.computed {
-        bytecode_unsupported("object literal computed property")
+        bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_COMPUTED_PROPERTY)
       }
       if prop.is_method {
-        bytecode_unsupported("object literal method property")
+        bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_METHOD_PROPERTY)
       }
       let key = match bytecode_static_object_key(prop.key) {
         Some(key) => key
         None => {
-          bytecode_unsupported("object literal property key")
+          bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
           ""
         }
       }
@@ -2973,11 +2981,13 @@ fn bytecode_validate_destructure_assignment_pattern(
     ObjectPat(props, rest) => {
       for prop in props {
         match prop.default_val {
-          Some(_) => bytecode_unsupported("destructuring pattern default")
+          Some(_) =>
+            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
           None => ()
         }
         match prop.computed_key {
-          Some(_) => bytecode_unsupported("destructuring pattern computed key")
+          Some(_) =>
+            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_COMPUTED_KEY)
           None => ()
         }
         bytecode_validate_destructure_assignment_pattern(prop.value)
@@ -2987,9 +2997,10 @@ fn bytecode_validate_destructure_assignment_pattern(
         None => ()
       }
     }
-    DefaultPat(_, _) => bytecode_unsupported("destructuring pattern default")
+    DefaultPat(_, _) =>
+      bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
     AssignTarget(_) =>
-      bytecode_unsupported("destructuring pattern member target")
+      bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_MEMBER_TARGET)
   }
 }
 
@@ -3063,14 +3074,14 @@ fn BytecodeBuilder::compile_expr(
     UndefinedLit(_) => {
       let _ = self.emit(LoadUndefined)
     }
-    ArrayHole(_) => bytecode_unsupported("array hole expression")
+    ArrayHole(_) => bytecode_unsupported(UNSUPPORTED_ARRAY_HOLE)
     ThisExpr(_) => {
       let _ = self.emit(LoadThis)
     }
     NewTargetExpr(_) => {
       let _ = self.emit(LoadNewTarget)
     }
-    SuperCall(_, _) => bytecode_unsupported("super call")
+    SuperCall(_, _) => bytecode_unsupported(UNSUPPORTED_SUPER_CALL)
     SuperMember(prop, loc) => {
       let _ = self.emit(LoadSuperProperty(prop, loc))
     }
@@ -3101,7 +3112,8 @@ fn BytecodeBuilder::compile_expr(
           let _ = self.emit(DeleteName(name))
         }
       }
-    Unary(Delete, _, _) => bytecode_unsupported("delete non-property operator")
+    Unary(Delete, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_DELETE_NON_PROPERTY_OPERATOR)
     Unary(Typeof, Ident(name, _), loc) =>
       match (self.local_slot(name), self.env_slot(name)) {
         (Some(slot), _) => {
@@ -3219,7 +3231,7 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(UpdateComputed(op, prefix, member_loc, loc))
     }
-    UpdateExpr(_, _, _, _) => bytecode_unsupported("update target")
+    UpdateExpr(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_UPDATE_TARGET)
     CompoundAssign(op, Ident(name, _), value, loc) =>
       self.compile_identifier_compound_assign(op, name, value, loc)
     CompoundAssign(op, Member(obj, prop, member_loc), value, loc) =>
@@ -3231,7 +3243,7 @@ fn BytecodeBuilder::compile_expr(
         op, obj, key, value, member_loc, loc,
       )
     CompoundAssign(_, _, _, _) =>
-      bytecode_unsupported("compound assignment target")
+      bytecode_unsupported(UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET)
     FuncExpr(Some(name), params, body, _) => {
       let fn_idx = self.add_function(Some(name), params, body, None)
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
@@ -3443,18 +3455,18 @@ fn BytecodeBuilder::compile_expr(
         self.compile_expr(callee)
         self.emit_call(args, loc)
       }
-    SpreadExpr(_, _) => bytecode_unsupported("spread expression")
+    SpreadExpr(_, _) => bytecode_unsupported(UNSUPPORTED_SPREAD_EXPRESSION)
     GeneratorExpr(_, _, _, _) | GeneratorExprExt(_, _, _, _, _) =>
-      bytecode_unsupported("generator expression")
-    YieldExpr(_, _, _) => bytecode_unsupported("yield expression")
+      bytecode_unsupported(UNSUPPORTED_GENERATOR_EXPRESSION)
+    YieldExpr(_, _, _) => bytecode_unsupported(UNSUPPORTED_YIELD_EXPRESSION)
     AsyncFuncExpr(_, _, _, _) | AsyncFuncExprExt(_, _, _, _, _) =>
-      bytecode_unsupported("async function expression")
+      bytecode_unsupported(UNSUPPORTED_ASYNC_FUNCTION_EXPRESSION)
     AsyncArrowFunc(_, _, _) | AsyncArrowFuncExt(_, _, _, _) =>
-      bytecode_unsupported("async arrow function")
+      bytecode_unsupported(UNSUPPORTED_ASYNC_ARROW_FUNCTION)
     AsyncGeneratorExpr(_, _, _, _) | AsyncGeneratorExprExt(_, _, _, _, _) =>
-      bytecode_unsupported("async generator expression")
-    AwaitExpr(_, _) => bytecode_unsupported("await expression")
-    ClassExpr(_, _, _, _) => bytecode_unsupported("class expression")
+      bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_EXPRESSION)
+    AwaitExpr(_, _) => bytecode_unsupported(UNSUPPORTED_AWAIT_EXPRESSION)
+    ClassExpr(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
   }
 }
 
@@ -3467,9 +3479,9 @@ fn simple_ext_param_names_with_rest(
   for param in params {
     match (param.default_val, param.pattern, param.is_rest_pattern) {
       (None, None, false) => names.push(param.name)
-      (Some(_), _, _) => bytecode_unsupported("default parameter")
+      (Some(_), _, _) => bytecode_unsupported(UNSUPPORTED_DEFAULT_PARAMETER)
       (_, Some(_), _) | (_, _, true) =>
-        bytecode_unsupported("destructuring parameter")
+        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PARAMETER)
     }
   }
   (names, rest_param)

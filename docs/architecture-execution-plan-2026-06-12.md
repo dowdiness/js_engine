@@ -928,6 +928,7 @@ For every architecture PR, reviewers should ask:
 - Does closure conversion grow rather than shrink?
 - Is the tree-walker still the correctness oracle?
 - Are unsupported bytecode cases explicit?
+- Do unsupported-kind test assertions reference `UNSUPPORTED_*` constants from `bytecode_ir.mbt`, not inline string literals?
 - Does the equivalence harness cover the touched bytecode behavior?
 - Does the interface diff reflect an intentional ideal design change?
 - Are tests inspecting the new boundary rather than only incidental behavior?

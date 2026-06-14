@@ -5,6 +5,171 @@ using @runtime {type Binding}
 let empty_bytecode_env_slots : Array[Binding] = []
 
 ///|
+pub const UNSUPPORTED_ARRAY_HOLE : String = "array hole expression"
+
+///|
+pub const UNSUPPORTED_ASYNC_ARROW_FUNCTION : String = "async arrow function"
+
+///|
+pub const UNSUPPORTED_ASYNC_FUNCTION_DECLARATION : String = "async function declaration"
+
+///|
+pub const UNSUPPORTED_ASYNC_FUNCTION_EXPRESSION : String = "async function expression"
+
+///|
+pub const UNSUPPORTED_ASYNC_GENERATOR_DECLARATION : String = "async generator declaration"
+
+///|
+pub const UNSUPPORTED_ASYNC_GENERATOR_EXPRESSION : String = "async generator expression"
+
+///|
+pub const UNSUPPORTED_AWAIT_EXPRESSION : String = "await expression"
+
+///|
+pub const UNSUPPORTED_BLOCK_FUNCTION_DECLARATION : String = "block function declaration"
+
+///|
+pub const UNSUPPORTED_BLOCK_LEXICAL_DECLARATION : String = "block lexical declaration"
+
+///|
+pub const UNSUPPORTED_BREAK_STATEMENT : String = "break statement"
+
+///|
+pub const UNSUPPORTED_CLASS_DECLARATION : String = "class declaration"
+
+///|
+pub const UNSUPPORTED_CLASS_EXPRESSION : String = "class expression"
+
+///|
+pub const UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET : String = "compound assignment target"
+
+///|
+pub const UNSUPPORTED_CONTINUE_STATEMENT : String = "continue statement"
+
+///|
+pub const UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION : String = "control-flow function declaration"
+
+///|
+pub const UNSUPPORTED_DEFAULT_PARAMETER : String = "default parameter"
+
+///|
+pub const UNSUPPORTED_DELETE_NON_PROPERTY_OPERATOR : String = "delete non-property operator"
+
+///|
+pub const UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT : String = "destructuring declaration context"
+
+///|
+pub const UNSUPPORTED_DESTRUCTURING_DECLARATION_KIND : String = "destructuring declaration kind"
+
+///|
+pub const UNSUPPORTED_DESTRUCTURING_PARAMETER : String = "destructuring parameter"
+
+///|
+pub const UNSUPPORTED_DESTRUCTURING_PATTERN_COMPUTED_KEY : String = "destructuring pattern computed key"
+
+///|
+pub const UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT : String = "destructuring pattern default"
+
+///|
+pub const UNSUPPORTED_DESTRUCTURING_PATTERN_MEMBER_TARGET : String = "destructuring pattern member target"
+
+///|
+pub const UNSUPPORTED_EXPORT_DECLARATION : String = "export declaration"
+
+///|
+pub const UNSUPPORTED_FOR_INITIALIZER : String = "for initializer"
+
+///|
+pub const UNSUPPORTED_FOR_IN_ASSIGNMENT_TARGET : String = "for-in assignment target"
+
+///|
+pub const UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION : String = "for-in lexical declaration"
+
+///|
+pub const UNSUPPORTED_FOR_IN_VAR_DECLARATION : String = "for-in var declaration"
+
+///|
+pub const UNSUPPORTED_FOR_LEXICAL_INITIALIZER : String = "for lexical initializer"
+
+///|
+pub const UNSUPPORTED_FOR_OF_STATEMENT : String = "for-of statement"
+
+///|
+pub const UNSUPPORTED_GENERATOR_DECLARATION : String = "generator declaration"
+
+///|
+pub const UNSUPPORTED_GENERATOR_EXPRESSION : String = "generator expression"
+
+///|
+pub const UNSUPPORTED_IMPORT_DECLARATION : String = "import declaration"
+
+///|
+pub const UNSUPPORTED_LABEL_CONTEXT : String = "label context"
+
+///|
+pub const UNSUPPORTED_LABELED_BREAK_STATEMENT : String = "labeled break statement"
+
+///|
+pub const UNSUPPORTED_LABELED_CONTINUE_STATEMENT : String = "labeled continue statement"
+
+///|
+pub const UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR : String = "logical assignment operator"
+
+///|
+pub const UNSUPPORTED_LOOP_CONTEXT : String = "loop context"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_ASYNC_GENERATOR_METHOD_PROPERTY : String = "object literal async generator method property"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_ASYNC_METHOD_PROPERTY : String = "object literal async method property"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_COMPUTED_ACCESSOR_PROPERTY : String = "object literal computed accessor property"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_COMPUTED_PROPERTY : String = "object literal computed property"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_DATA_PROPERTY_SUPER : String = "object literal data property super"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_GENERATOR_METHOD_PROPERTY : String = "object literal generator method property"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_METHOD_PROPERTY : String = "object literal method property"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY : String = "object literal property key"
+
+///|
+pub const UNSUPPORTED_OBJECT_LITERAL_PROTO_METHOD_PROPERTY : String = "object literal __proto__ method property"
+
+///|
+pub const UNSUPPORTED_SPREAD_EXPRESSION : String = "spread expression"
+
+///|
+pub const UNSUPPORTED_SUPER_CALL : String = "super call"
+
+///|
+pub const UNSUPPORTED_SWITCH_CONTEXT : String = "switch context"
+
+///|
+pub const UNSUPPORTED_SWITCH_LEXICAL_DECLARATION : String = "switch lexical declaration"
+
+///|
+pub const UNSUPPORTED_TRY_CATCH_STATEMENT : String = "try/catch statement"
+
+///|
+pub const UNSUPPORTED_UPDATE_TARGET : String = "update target"
+
+///|
+pub const UNSUPPORTED_WITH_STATEMENT : String = "with statement"
+
+///|
+pub const UNSUPPORTED_YIELD_EXPRESSION : String = "yield expression"
+
+///|
 priv enum BytecodeInstr {
   LoadConst(Value)
   LoadUndefined
@@ -287,11 +452,11 @@ fn BytecodeBuilder::pop_loop_context(
   match (self.loop_contexts.pop(), break_ctx) {
     (Some(ctx), Some(LoopBreakContext(_))) => ctx
     (Some(ctx), _) => {
-      bytecode_unsupported("loop context")
+      bytecode_unsupported(UNSUPPORTED_LOOP_CONTEXT)
       ctx
     }
     (None, _) => {
-      bytecode_unsupported("loop context")
+      bytecode_unsupported(UNSUPPORTED_LOOP_CONTEXT)
       { labels: [], break_jumps: [], continue_jumps: [], cleanup_for_in: false }
     }
   }
@@ -309,7 +474,7 @@ fn BytecodeBuilder::pop_switch_context(
   match self.break_contexts.pop() {
     Some(SwitchBreakContext(ctx)) => ctx
     _ => {
-      bytecode_unsupported("switch context")
+      bytecode_unsupported(UNSUPPORTED_SWITCH_CONTEXT)
       { break_jumps: [] }
     }
   }
@@ -400,12 +565,12 @@ fn BytecodeBuilder::emit_loop_break(
           let jump = self.emit(Jump(-1))
           ctx.break_jumps.push(jump)
         }
-        None => bytecode_unsupported("labeled break statement")
+        None => bytecode_unsupported(UNSUPPORTED_LABELED_BREAK_STATEMENT)
       }
     }
     None => {
       let jump = self.emit(Jump(-1))
-      match self.current_break_context("break statement") {
+      match self.current_break_context(UNSUPPORTED_BREAK_STATEMENT) {
         LoopBreakContext(ctx) => ctx.break_jumps.push(jump)
         SwitchBreakContext(ctx) => ctx.break_jumps.push(jump)
       }
@@ -427,10 +592,10 @@ fn BytecodeBuilder::emit_loop_continue(
           let jump = self.emit(Jump(-1))
           ctx.continue_jumps.push(jump)
         }
-        None => bytecode_unsupported("labeled continue statement")
+        None => bytecode_unsupported(UNSUPPORTED_LABELED_CONTINUE_STATEMENT)
       }
     None => {
-      let ctx = self.current_loop_context("continue statement")
+      let ctx = self.current_loop_context(UNSUPPORTED_CONTINUE_STATEMENT)
       let jump = self.emit(Jump(-1))
       ctx.continue_jumps.push(jump)
     }

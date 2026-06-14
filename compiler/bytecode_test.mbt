@@ -131,10 +131,9 @@ fn bytecode_compare_with_output(src : String) -> String {
 ///      inspect(bytecode_compare(src), content="value:42")
 ///
 /// 2. Unsupported mode — bytecode rejects by construct kind:
-///      inspect(bytecode_unsupported_kind(src), content="for-of statement")
+///      assert_eq!(bytecode_unsupported_kind(src), UNSUPPORTED_FOR_OF_STATEMENT)
 ///
-/// The kind strings match the labels in the `bytecode_unsupported` call sites
-/// in compiler/bytecode_lower.mbt.
+/// The kind strings are `UNSUPPORTED_*` constants from compiler/bytecode_ir.mbt, shared with the call sites in bytecode_lower.mbt and bytecode_ir.mbt for compile-time safety.
 fn bytecode_unsupported_kind(src : String) -> String {
   let result = bytecode_outcome(src)
   match result.view() {
@@ -156,15 +155,18 @@ test "equivalence harness: compare mode (supported-construct pattern)" {
 
 ///|
 test "equivalence harness: unsupported mode (rejection-assertion pattern)" {
-  inspect(
+  assert_eq(
     bytecode_unsupported_kind("for (var x of [1, 2]) {}"),
-    content="for-of statement",
+    UNSUPPORTED_FOR_OF_STATEMENT,
   )
-  inspect(
+  assert_eq(
     bytecode_unsupported_kind("try {} catch (e) {}"),
-    content="try/catch statement",
+    UNSUPPORTED_TRY_CATCH_STATEMENT,
   )
-  inspect(bytecode_unsupported_kind("class C {}"), content="class declaration")
+  assert_eq(
+    bytecode_unsupported_kind("class C {}"),
+    UNSUPPORTED_CLASS_DECLARATION,
+  )
 }
 
 ///|
@@ -635,9 +637,9 @@ test "bytecode rejects non-identifier non-property delete until reference semant
   let src =
     #|var x = 1;
     #|delete (x = 2);
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: delete non-property operator",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_DELETE_NON_PROPERTY_OPERATOR,
   )
 }
 
@@ -840,13 +842,15 @@ test "bytecode switch var declarations can be captured" {
 
 ///|
 test "bytecode rejects switch lexical and function declarations explicitly" {
-  inspect(
-    bytecode_outcome("switch (1) { case 1: let x = 1; }"),
-    content="error:InternalError: bytecode prototype unsupported: switch lexical declaration",
+  assert_eq(
+    bytecode_unsupported_kind("switch (1) { case 1: let x = 1; }"),
+    UNSUPPORTED_SWITCH_LEXICAL_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("switch (1) { case 1: function f() { return 1; } }"),
-    content="error:InternalError: bytecode prototype unsupported: control-flow function declaration",
+  assert_eq(
+    bytecode_unsupported_kind(
+      "switch (1) { case 1: function f() { return 1; } }",
+    ),
+    UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION,
   )
 }
 
@@ -1031,13 +1035,13 @@ test "bytecode labeled break unwinds nested for-in iterators" {
 
 ///|
 test "bytecode rejects unresolved labeled breaks and non-loop labeled continues" {
-  inspect(
-    bytecode_outcome("while (true) { break label; }"),
-    content="error:InternalError: bytecode prototype unsupported: labeled break statement",
+  assert_eq(
+    bytecode_unsupported_kind("while (true) { break label; }"),
+    UNSUPPORTED_LABELED_BREAK_STATEMENT,
   )
-  inspect(
-    bytecode_outcome("label: { continue label; }"),
-    content="error:InternalError: bytecode prototype unsupported: labeled continue statement",
+  assert_eq(
+    bytecode_unsupported_kind("label: { continue label; }"),
+    UNSUPPORTED_LABELED_CONTINUE_STATEMENT,
   )
 }
 
@@ -1047,9 +1051,9 @@ test "bytecode rejects labeled function declarations until label semantics are i
     #|label: {
     #|  function f() { return 1; }
     #|}
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: control-flow function declaration",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION,
   )
 }
 
@@ -1351,9 +1355,9 @@ test "bytecode rejects invalid compound assignment targets" {
     #|var x = 1;
     #|var y = 2;
     #|(x + y) += 1;
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: compound assignment target",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET,
   )
 }
 
@@ -1995,10 +1999,7 @@ test "bytecode super property outside methods shares runtime errors" {
 
 ///|
 test "bytecode rejects super calls explicitly" {
-  inspect(
-    bytecode_outcome("super();"),
-    content="error:InternalError: bytecode prototype unsupported: super call",
-  )
+  assert_eq(bytecode_unsupported_kind("super();"), UNSUPPORTED_SUPER_CALL)
 }
 
 ///|
@@ -2008,17 +2009,17 @@ test "bytecode rejects super inside object literal data property values explicit
     #|  __proto__: { m: function() { return 1; } },
     #|  m: function() { return super.m(); }
     #|}).m();
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: object literal data property super",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_OBJECT_LITERAL_DATA_PROPERTY_SUPER,
   )
 }
 
 ///|
 test "bytecode rejects __proto__ methods until object method semantics are settled" {
-  inspect(
-    bytecode_outcome("({ __proto__() { return 7; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal __proto__ method property",
+  assert_eq(
+    bytecode_unsupported_kind("({ __proto__() { return 7; } });"),
+    UNSUPPORTED_OBJECT_LITERAL_PROTO_METHOD_PROPERTY,
   )
 }
 
@@ -2149,17 +2150,17 @@ test "bytecode object literal computed properties capture outer keys" {
 
 ///|
 test "bytecode rejects unsupported object literal method forms explicitly" {
-  inspect(
-    bytecode_outcome("({ *m() { yield 1; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal generator method property",
+  assert_eq(
+    bytecode_unsupported_kind("({ *m() { yield 1; } });"),
+    UNSUPPORTED_OBJECT_LITERAL_GENERATOR_METHOD_PROPERTY,
   )
-  inspect(
-    bytecode_outcome("({ async m() { return 1; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal async method property",
+  assert_eq(
+    bytecode_unsupported_kind("({ async m() { return 1; } });"),
+    UNSUPPORTED_OBJECT_LITERAL_ASYNC_METHOD_PROPERTY,
   )
-  inspect(
-    bytecode_outcome("({ async *m() { yield 1; } });"),
-    content="error:InternalError: bytecode prototype unsupported: object literal async generator method property",
+  assert_eq(
+    bytecode_unsupported_kind("({ async *m() { yield 1; } });"),
+    UNSUPPORTED_OBJECT_LITERAL_ASYNC_GENERATOR_METHOD_PROPERTY,
   )
 }
 
@@ -2409,13 +2410,13 @@ test "bytecode rest arrow functions capture rest bindings" {
 
 ///|
 test "bytecode rejects unsupported arrow parameter forms explicitly" {
-  inspect(
-    bytecode_outcome("((x = 1) => x)();"),
-    content="error:InternalError: bytecode prototype unsupported: default parameter",
+  assert_eq(
+    bytecode_unsupported_kind("((x = 1) => x)();"),
+    UNSUPPORTED_DEFAULT_PARAMETER,
   )
-  inspect(
-    bytecode_outcome("(({ x }) => x)({ x: 1 });"),
-    content="error:InternalError: bytecode prototype unsupported: destructuring parameter",
+  assert_eq(
+    bytecode_unsupported_kind("(({ x }) => x)({ x: 1 });"),
+    UNSUPPORTED_DESTRUCTURING_PARAMETER,
   )
 }
 
@@ -2668,24 +2669,24 @@ test "bytecode rejects unsupported destructuring assignment patterns explicitly"
     #|var x = 0;
     #|[x = 1] = [undefined];
     #|x;
-  inspect(
-    bytecode_outcome(default_src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring pattern default",
+  assert_eq(
+    bytecode_unsupported_kind(default_src),
+    UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT,
   )
   let computed_src =
     #|var key = "x";
     #|var x = 0;
     #|({ [key]: x } = { x: 1 });
-  inspect(
-    bytecode_outcome(computed_src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring pattern computed key",
+  assert_eq(
+    bytecode_unsupported_kind(computed_src),
+    UNSUPPORTED_DESTRUCTURING_PATTERN_COMPUTED_KEY,
   )
   let member_target_src =
     #|var obj = {};
     #|[obj.x] = [1];
-  inspect(
-    bytecode_outcome(member_target_src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring pattern member target",
+  assert_eq(
+    bytecode_unsupported_kind(member_target_src),
+    UNSUPPORTED_DESTRUCTURING_PATTERN_MEMBER_TARGET,
   )
 }
 
@@ -2725,16 +2726,16 @@ test "bytecode rejects for initializer var destructuring until loop binding sema
   let direct =
     #|for (var [i] = [0]; i < 1; i = i + 1) {
     #|}
-  inspect(
-    bytecode_outcome(direct),
-    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  assert_eq(
+    bytecode_unsupported_kind(direct),
+    UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT,
   )
   let comma_decl =
     #|for (var i = 0, [x] = [1]; i < 1; i = i + 1) {
     #|}
-  inspect(
-    bytecode_outcome(comma_decl),
-    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  assert_eq(
+    bytecode_unsupported_kind(comma_decl),
+    UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT,
   )
 }
 
@@ -2744,21 +2745,21 @@ test "bytecode rejects unsupported destructuring declaration contexts and kinds"
     #|if (true) {
     #|  var [x] = [1];
     #|}
-  inspect(
-    bytecode_outcome(control_flow),
-    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  assert_eq(
+    bytecode_unsupported_kind(control_flow),
+    UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT,
   )
   let for_body =
     #|for (var i = 0; i < 1; i = i + 1) {
     #|  var [x] = [1];
     #|}
-  inspect(
-    bytecode_outcome(for_body),
-    content="error:InternalError: bytecode prototype unsupported: destructuring declaration context",
+  assert_eq(
+    bytecode_unsupported_kind(for_body),
+    UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT,
   )
-  inspect(
-    bytecode_outcome("let [x] = [1];"),
-    content="error:InternalError: bytecode prototype unsupported: destructuring declaration kind",
+  assert_eq(
+    bytecode_unsupported_kind("let [x] = [1];"),
+    UNSUPPORTED_DESTRUCTURING_DECLARATION_KIND,
   )
 }
 
@@ -2767,9 +2768,9 @@ test "bytecode rejects var destructuring declaration defaults until pattern expr
   let src =
     #|var [x = 1] = [undefined];
     #|x;
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring pattern default",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT,
   )
 }
 
@@ -2989,9 +2990,9 @@ test "bytecode rejects block lexical declarations until block envs are implement
     #|  let x = 2;
     #|}
     #|x;
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: block lexical declaration",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_BLOCK_LEXICAL_DECLARATION,
   )
 }
 
@@ -3001,10 +3002,7 @@ test "bytecode rejects for lexical initializers until loop scoping is implemente
     #|for (let i = 0; i < 1; i = i + 1) {
     #|}
     #|i;
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: for lexical initializer",
-  )
+  assert_eq(bytecode_unsupported_kind(src), UNSUPPORTED_FOR_LEXICAL_INITIALIZER)
 }
 
 ///|
@@ -3063,9 +3061,9 @@ test "bytecode rejects control-flow function declarations until block semantics 
     #|  function f() { return 1; }
     #|}
     #|f();
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: control-flow function declaration",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION,
   )
 }
 
@@ -3210,113 +3208,113 @@ test "bytecode rejects unsupported for-in destructuring assignment patterns" {
     #|var x = 0;
     #|for ([x = 1] in { a: 1 }) {
     #|}
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: destructuring pattern default",
+  assert_eq(
+    bytecode_unsupported_kind(src),
+    UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT,
   )
 }
 
 ///|
 test "bytecode rejects for-in declarations until loop binding semantics are shared" {
-  inspect(
-    bytecode_outcome("for (var k in { a: 1 }) {}"),
-    content="error:InternalError: bytecode prototype unsupported: for-in var declaration",
+  assert_eq(
+    bytecode_unsupported_kind("for (var k in { a: 1 }) {}"),
+    UNSUPPORTED_FOR_IN_VAR_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("for (var [k] in { a: 1 }) {}"),
-    content="error:InternalError: bytecode prototype unsupported: for-in var declaration",
+  assert_eq(
+    bytecode_unsupported_kind("for (var [k] in { a: 1 }) {}"),
+    UNSUPPORTED_FOR_IN_VAR_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("for (let k in { a: 1 }) {}"),
-    content="error:InternalError: bytecode prototype unsupported: for-in lexical declaration",
+  assert_eq(
+    bytecode_unsupported_kind("for (let k in { a: 1 }) {}"),
+    UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("for (let [k] in { a: 1 }) {}"),
-    content="error:InternalError: bytecode prototype unsupported: for-in lexical declaration",
+  assert_eq(
+    bytecode_unsupported_kind("for (let [k] in { a: 1 }) {}"),
+    UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION,
   )
 }
 
 ///|
 test "bytecode rejects for-of loops until iterator-close semantics are shared" {
-  inspect(
-    bytecode_outcome("var x; for (x of [1]) {}"),
-    content="error:InternalError: bytecode prototype unsupported: for-of statement",
+  assert_eq(
+    bytecode_unsupported_kind("var x; for (x of [1]) {}"),
+    UNSUPPORTED_FOR_OF_STATEMENT,
   )
-  inspect(
-    bytecode_outcome("for (var x of [1]) {}"),
-    content="error:InternalError: bytecode prototype unsupported: for-of statement",
+  assert_eq(
+    bytecode_unsupported_kind("for (var x of [1]) {}"),
+    UNSUPPORTED_FOR_OF_STATEMENT,
   )
-  inspect(
-    bytecode_outcome("var target = {}; for (target.x of [1]) {}"),
-    content="error:InternalError: bytecode prototype unsupported: for-of statement",
+  assert_eq(
+    bytecode_unsupported_kind("var target = {}; for (target.x of [1]) {}"),
+    UNSUPPORTED_FOR_OF_STATEMENT,
   )
 }
 
 ///|
 test "bytecode rejects class declarations and expressions explicitly" {
-  inspect(
-    bytecode_outcome("class C {}"),
-    content="error:InternalError: bytecode prototype unsupported: class declaration",
+  assert_eq(
+    bytecode_unsupported_kind("class C {}"),
+    UNSUPPORTED_CLASS_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("var C = class { method() { return 1; } };"),
-    content="error:InternalError: bytecode prototype unsupported: class expression",
+  assert_eq(
+    bytecode_unsupported_kind("var C = class { method() { return 1; } };"),
+    UNSUPPORTED_CLASS_EXPRESSION,
   )
 }
 
 ///|
 test "bytecode rejects generator forms explicitly" {
-  inspect(
-    bytecode_outcome("function* g() { yield 1; }"),
-    content="error:InternalError: bytecode prototype unsupported: generator declaration",
+  assert_eq(
+    bytecode_unsupported_kind("function* g() { yield 1; }"),
+    UNSUPPORTED_GENERATOR_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("var g = function*() { yield 1; };"),
-    content="error:InternalError: bytecode prototype unsupported: generator expression",
+  assert_eq(
+    bytecode_unsupported_kind("var g = function*() { yield 1; };"),
+    UNSUPPORTED_GENERATOR_EXPRESSION,
   )
 }
 
 ///|
 test "bytecode rejects async function forms explicitly" {
-  inspect(
-    bytecode_outcome("async function f() { return 1; }"),
-    content="error:InternalError: bytecode prototype unsupported: async function declaration",
+  assert_eq(
+    bytecode_unsupported_kind("async function f() { return 1; }"),
+    UNSUPPORTED_ASYNC_FUNCTION_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("var f = async function() { return 1; };"),
-    content="error:InternalError: bytecode prototype unsupported: async function expression",
+  assert_eq(
+    bytecode_unsupported_kind("var f = async function() { return 1; };"),
+    UNSUPPORTED_ASYNC_FUNCTION_EXPRESSION,
   )
-  inspect(
-    bytecode_outcome("var f = async () => 1;"),
-    content="error:InternalError: bytecode prototype unsupported: async arrow function",
+  assert_eq(
+    bytecode_unsupported_kind("var f = async () => 1;"),
+    UNSUPPORTED_ASYNC_ARROW_FUNCTION,
   )
-  inspect(
-    bytecode_outcome("async function* g() { yield 1; }"),
-    content="error:InternalError: bytecode prototype unsupported: async generator declaration",
+  assert_eq(
+    bytecode_unsupported_kind("async function* g() { yield 1; }"),
+    UNSUPPORTED_ASYNC_GENERATOR_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("var g = async function*() { yield 1; };"),
-    content="error:InternalError: bytecode prototype unsupported: async generator expression",
+  assert_eq(
+    bytecode_unsupported_kind("var g = async function*() { yield 1; };"),
+    UNSUPPORTED_ASYNC_GENERATOR_EXPRESSION,
   )
 }
 
 ///|
 test "bytecode rejects module declarations explicitly" {
-  inspect(
-    bytecode_outcome("import 'dep';"),
-    content="error:InternalError: bytecode prototype unsupported: import declaration",
+  assert_eq(
+    bytecode_unsupported_kind("import 'dep';"),
+    UNSUPPORTED_IMPORT_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("export { x };"),
-    content="error:InternalError: bytecode prototype unsupported: export declaration",
+  assert_eq(
+    bytecode_unsupported_kind("export { x };"),
+    UNSUPPORTED_EXPORT_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("export default 1;"),
-    content="error:InternalError: bytecode prototype unsupported: export declaration",
+  assert_eq(
+    bytecode_unsupported_kind("export default 1;"),
+    UNSUPPORTED_EXPORT_DECLARATION,
   )
-  inspect(
-    bytecode_outcome("export * from 'dep';"),
-    content="error:InternalError: bytecode prototype unsupported: export declaration",
+  assert_eq(
+    bytecode_unsupported_kind("export * from 'dep';"),
+    UNSUPPORTED_EXPORT_DECLARATION,
   )
 }
 
@@ -3327,21 +3325,18 @@ test "bytecode rejects with statements explicitly" {
     #|with (obj) {
     #|  x;
     #|}
-  inspect(
-    bytecode_outcome(src),
-    content="error:InternalError: bytecode prototype unsupported: with statement",
-  )
+  assert_eq(bytecode_unsupported_kind(src), UNSUPPORTED_WITH_STATEMENT)
 }
 
 ///|
 test "bytecode rejects try catch and finally statements explicitly" {
-  inspect(
-    bytecode_outcome("try { throw 1; } catch (e) { e; }"),
-    content="error:InternalError: bytecode prototype unsupported: try/catch statement",
+  assert_eq(
+    bytecode_unsupported_kind("try { throw 1; } catch (e) { e; }"),
+    UNSUPPORTED_TRY_CATCH_STATEMENT,
   )
-  inspect(
-    bytecode_outcome("try { 1; } finally { 2; }"),
-    content="error:InternalError: bytecode prototype unsupported: try/catch statement",
+  assert_eq(
+    bytecode_unsupported_kind("try { 1; } finally { 2; }"),
+    UNSUPPORTED_TRY_CATCH_STATEMENT,
   )
 }
 
