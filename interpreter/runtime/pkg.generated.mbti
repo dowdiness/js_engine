@@ -51,6 +51,8 @@ pub fn delete_array_like_element(Value, Int) -> Unit
 
 pub fn descriptor_to_value(PropDescriptor, Value, realm_state? : RealmState?) -> Value
 
+pub fn detach_map_iterator_target(ObjectData, Int) -> Unit
+
 pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
 
 pub fn eval_binary_op(@ast.BinOp, Value, Value, @token.Loc, interp? : Interpreter?) -> Value raise
@@ -89,7 +91,13 @@ pub fn get_array_prototype_override(ArrayData) -> Value?
 
 pub fn get_array_symbol_prop(ArrayData, Int) -> Value?
 
+pub fn get_arraybuffer_byte_length(ObjectData) -> Value?
+
+pub fn get_arraybuffer_id(ObjectData) -> Value?
+
 pub fn get_assignment_name_value(ExecContext, Environment, String) -> Value raise
+
+pub fn get_boolean_data(ObjectData) -> Value?
 
 pub fn get_boolean_proto(realm_state? : RealmState?) -> Value
 
@@ -100,6 +108,12 @@ pub fn get_func_length(Callable) -> Int
 pub fn get_func_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_function_length(Value) -> Int
+
+pub fn get_map_iterator_kind(ObjectData, Int) -> Value?
+
+pub fn get_map_iterator_next_index(ObjectData, Int) -> Value?
+
+pub fn get_map_iterator_target(ObjectData, Int) -> Value?
 
 pub fn get_map_proto(realm_state? : RealmState?) -> Value
 
@@ -123,11 +137,35 @@ pub fn get_symbol_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_tostringtag_value(ObjectData, WellKnownSymbols) -> String? raise
 
+pub fn get_typedarray_array_length(ObjectData) -> Value?
+
+pub fn get_typedarray_buffer_id(ObjectData) -> Value?
+
+pub fn get_typedarray_byte_length(ObjectData) -> Value?
+
+pub fn get_typedarray_byte_offset(ObjectData) -> Value?
+
+pub fn get_typedarray_viewed_buffer(ObjectData) -> Value?
+
 pub fn has_array_like_element(Interpreter, Value, Int) -> Bool
 
 pub fn has_parameter_expressions(Array[@ast.Param]) -> Bool
 
 pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
+
+pub fn install_builtin_accessor(ObjectData, String, Value, Value?) -> Unit
+
+pub fn install_builtin_frozen_data(ObjectData, String, Value) -> Unit
+
+pub fn install_builtin_method(ObjectData, String, Value) -> Unit
+
+pub fn install_builtin_non_writable(ObjectData, String, Value) -> Unit
+
+pub fn install_builtin_symbol_accessor(ObjectData, Int, Value) -> Unit
+
+pub fn install_builtin_symbol_method(ObjectData, Int, Value) -> Unit
+
+pub fn install_builtin_symbol_string(ObjectData, Int, String) -> Unit
 
 pub fn instanceof_prototype_chain(Value, Value, Interpreter) -> Value raise
 
@@ -268,6 +306,8 @@ pub fn set_function_name(Value, String) -> Unit
 pub fn set_integrity_frozen(Value) -> Value raise
 
 pub fn set_integrity_sealed(Value) -> Value
+
+pub fn set_map_iterator_next_index(ObjectData, Int, Value) -> Unit
 
 pub fn setup_async_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
 
