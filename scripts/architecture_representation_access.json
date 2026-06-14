@@ -1998,8 +1998,8 @@
     {
       "path": "interpreter/stdlib/builtins_typedarray.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 66,
-      "fingerprint": "66:4231:834782:760422",
+      "allowed_count": 3,
+      "fingerprint": "3:171:441158:370366",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -2070,8 +2070,8 @@
     {
       "path": "interpreter/stdlib/builtins_typedarray.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 12,
-      "fingerprint": "12:730:729429:277179",
+      "allowed_count": 11,
+      "fingerprint": "11:675:112969:823007",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
