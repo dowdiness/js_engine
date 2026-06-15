@@ -21,10 +21,9 @@ fn is_valid_weak_key(val : Value) -> Bool {
 ///|
 /// Get the WeakMap ID from the per-realm side table (non-forgeable)
 fn get_weakmap_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
-  match realm_state.weakmap_id_table.search_by(entry => physical_equal(entry.0, data)) {
-    Some(i) => Some(realm_state.weakmap_id_table[i].1)
-    None => None
-  }
+  realm_state.weakmap_id_table
+    .search_by(entry => physical_equal(entry.0, data))
+    .map(i => realm_state.weakmap_id_table[i].1)
 }
 
 ///|
@@ -40,10 +39,9 @@ fn set_weakmap_id(
 ///|
 /// Get the WeakSet ID from the per-realm side table (non-forgeable)
 fn get_weakset_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
-  match realm_state.weakset_id_table.search_by(entry => physical_equal(entry.0, data)) {
-    Some(i) => Some(realm_state.weakset_id_table[i].1)
-    None => None
-  }
+  realm_state.weakset_id_table
+    .search_by(entry => physical_equal(entry.0, data))
+    .map(i => realm_state.weakset_id_table[i].1)
 }
 
 ///|
