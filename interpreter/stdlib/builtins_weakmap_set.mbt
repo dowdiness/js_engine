@@ -21,10 +21,7 @@ fn is_valid_weak_key(val : Value) -> Bool {
 ///|
 /// Get the WeakMap ID from the per-realm side table (non-forgeable)
 fn get_weakmap_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
-  match
-    realm_state.weakmap_id_table.search_by(fn(entry) {
-      physical_equal(entry.0, data)
-    }) {
+  match realm_state.weakmap_id_table.search_by(entry => physical_equal(entry.0, data)) {
     Some(i) => Some(realm_state.weakmap_id_table[i].1)
     None => None
   }
@@ -43,10 +40,7 @@ fn set_weakmap_id(
 ///|
 /// Get the WeakSet ID from the per-realm side table (non-forgeable)
 fn get_weakset_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
-  match
-    realm_state.weakset_id_table.search_by(fn(entry) {
-      physical_equal(entry.0, data)
-    }) {
+  match realm_state.weakset_id_table.search_by(entry => physical_equal(entry.0, data)) {
     Some(i) => Some(realm_state.weakset_id_table[i].1)
     None => None
   }
@@ -181,7 +175,7 @@ fn setup_weakmap_builtins(
             match realm_state.weakmap_storage.get(id) {
               Some(entries) =>
                 match
-                  entries.search_by(fn(entry) { weak_key_equal(entry.0, key) }) {
+                  entries.search_by(entry => weak_key_equal(entry.0, key)) {
                   Some(i) => entries[i].1
                   None => Undefined
                 }
@@ -219,7 +213,7 @@ fn setup_weakmap_builtins(
             match realm_state.weakmap_storage.get(id) {
               Some(entries) => {
                 match
-                  entries.search_by(fn(entry) { weak_key_equal(entry.0, key) }) {
+                  entries.search_by(entry => weak_key_equal(entry.0, key)) {
                   Some(i) => {
                     entries[i] = (key, value)
                     return this_val
@@ -261,7 +255,7 @@ fn setup_weakmap_builtins(
             match realm_state.weakmap_storage.get(id) {
               Some(entries) =>
                 Value::Bool(
-                  entries.search_by(fn(entry) { weak_key_equal(entry.0, key) })
+                  entries.search_by(entry => weak_key_equal(entry.0, key))
                   is Some(_),
                 )
               None => Value::Bool(false)
@@ -292,7 +286,7 @@ fn setup_weakmap_builtins(
               match realm_state.weakmap_storage.get(id) {
                 Some(entries) =>
                   match
-                    entries.search_by(fn(entry) { weak_key_equal(entry.0, key) }) {
+                    entries.search_by(entry => weak_key_equal(entry.0, key)) {
                     Some(i) => {
                       let _ = entries.remove(i)
                       Value::Bool(true)
@@ -335,7 +329,7 @@ fn setup_weakmap_builtins(
                 Some(entries) => {
                   // If key exists, return existing value
                   match
-                    entries.search_by(fn(entry) { weak_key_equal(entry.0, key) }) {
+                    entries.search_by(entry => weak_key_equal(entry.0, key)) {
                     Some(i) => return entries[i].1
                     None => ()
                   }
@@ -394,7 +388,7 @@ fn setup_weakmap_builtins(
                 Some(entries) => {
                   // If key exists, return existing value without calling callback
                   match
-                    entries.search_by(fn(entry) { weak_key_equal(entry.0, key) }) {
+                    entries.search_by(entry => weak_key_equal(entry.0, key)) {
                     Some(i) => return entries[i].1
                     None => ()
                   }
@@ -408,7 +402,7 @@ fn setup_weakmap_builtins(
                   )
                   // Re-check if key was added by callback (mutation during callback)
                   match
-                    entries.search_by(fn(entry) { weak_key_equal(entry.0, key) }) {
+                    entries.search_by(entry => weak_key_equal(entry.0, key)) {
                     Some(i) => {
                       // Overwrite with computed value per spec
                       entries[i] = (key, value)
@@ -431,10 +425,7 @@ fn setup_weakmap_builtins(
                   match realm_state.weakmap_storage.get(id) {
                     Some(entries) => {
                       // Check if key was already added by callback
-                      match
-                        entries.search_by(fn(entry) {
-                          weak_key_equal(entry.0, key)
-                        }) {
+                      match entries.search_by(entry => weak_key_equal(entry.0, key)) {
                         Some(i) => {
                           entries[i] = (key, value)
                           return value
@@ -638,7 +629,7 @@ fn setup_weakset_builtins(
             }
             match realm_state.weakset_storage.get(id) {
               Some(values) => {
-                if values.search_by(fn(v) { weak_key_equal(v, value) })
+                if values.search_by(v => weak_key_equal(v, value))
                   is Some(_) {
                   return this_val
                 }
@@ -676,7 +667,7 @@ fn setup_weakset_builtins(
             match realm_state.weakset_storage.get(id) {
               Some(values) =>
                 Value::Bool(
-                  values.search_by(fn(v) { weak_key_equal(v, value) })
+                  values.search_by(v => weak_key_equal(v, value))
                   is Some(_),
                 )
               None => Value::Bool(false)
@@ -706,7 +697,7 @@ fn setup_weakset_builtins(
               let value = if args.length() > 0 { args[0] } else { Undefined }
               match realm_state.weakset_storage.get(id) {
                 Some(values) =>
-                  match values.search_by(fn(v) { weak_key_equal(v, value) }) {
+                  match values.search_by(v => weak_key_equal(v, value)) {
                     Some(i) => {
                       let _ = values.remove(i)
                       Value::Bool(true)
