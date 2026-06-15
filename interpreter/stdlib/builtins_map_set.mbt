@@ -79,9 +79,11 @@ fn get_set_record(
     )
   }
   let int_size = num_size.floor()
-  if int_size < 0.0 {
+  // floor(+Infinity) = +Infinity, which is not < 0.0 and would pass through.
+  // §7.4.2 step 6b: if intSize is not finite, throw a RangeError.
+  if int_size.is_inf() || int_size < 0.0 {
     raise @errors.RangeError(
-      message="Set method argument's size property is negative",
+      message="Set method argument's size property is not a valid non-negative integer",
     )
   }
   let has_val = interp.get_property(obj, "has", loc)
@@ -959,8 +961,13 @@ fn setup_set_builtins(
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
-          // Iterate over values
-          for value in data.values {
+          // Iterate over values. Use manual index loop: the callback may mutate
+          // data.values (e.g. set.delete inside forEach), and MoonBit's
+          // `for x in arr` snapshots the initial length, causing out-of-bounds
+          // reads if the array shrinks.
+          let mut i = 0
+          while i < data.values.length() {
+            let value = data.values[i]
             // Call callback(value, value, set) - note: Set forEach passes value twice
             let _ = interp.call_value(
               callback,
@@ -968,6 +975,7 @@ fn setup_set_builtins(
               [value, value, this_val],
               loc,
             )
+            i = i + 1
           }
           Undefined
         }
