@@ -775,7 +775,7 @@ fn setup_map_builtins(
             }
             let key = canonicalize_keyed_collection_key(raw_key)
             // Find existing group
-            match group_keys.search_by(fn(k) { same_value(k, key) }) {
+            match group_keys.search_by(fn(gk) { same_value(gk, key) }) {
               Some(found_idx) => group_arrays[found_idx].push(kvalue)
               None => {
                 group_keys.push(key)
@@ -786,8 +786,8 @@ fn setup_map_builtins(
           }
           // Build result Map
           let entries : Array[(Value, Value)] = []
-          for i = 0; i < group_keys.length(); i = i + 1 {
-            entries.push((group_keys[i], @runtime.make_array(group_arrays[i])))
+          for i, key in group_keys {
+            entries.push((key, @runtime.make_array(group_arrays[i])))
           }
           Value::Map(@runtime.MapData(entries, prototype=map_proto))
         },
@@ -920,8 +920,7 @@ fn setup_set_builtins(
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
           // Iterate over values
-          for i = 0; i < data.values.length(); i = i + 1 {
-            let value = data.values[i]
+          for value in data.values {
             // Call callback(value, value, set) - note: Set forEach passes value twice
             let _ = interp.call_value(
               callback,
