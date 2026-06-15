@@ -113,24 +113,13 @@ fn decode_string_map(
 }
 
 ///|
-fn string_membership(values : Array[String]) -> @set.Set[String] {
-  let out = @set.Set::default()
-  for value in values {
-    out.add(value)
-  }
-  out
-}
-
-///|
 fn load_skip_metadata_file(path : String) -> SkipMetadata raise {
   let data = decode_object(@json.parse(@fs.read_file_to_string(path)), path)
   validate_schema_keys(data, path)
   decode_schema_version(data, path)
   {
-    features: string_membership(
-      decode_string_array(data, "skip_features", path),
-    ),
-    flags: string_membership(decode_string_array(data, "skip_flags", path)),
+    features: @set.Set(decode_string_array(data, "skip_features", path)),
+    flags: @set.Set(decode_string_array(data, "skip_flags", path)),
     path_suffixes: decode_string_map(data, "skip_path_suffixes", path),
   }
 }

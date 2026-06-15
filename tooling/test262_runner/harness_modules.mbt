@@ -111,14 +111,12 @@ fn visit_fixture(
   order : Array[String],
 ) -> Unit raise {
   let abs_path = normalize_path(join_path(importer_dir, spec))
-  if abs_path == test_abs ||
-    visited.contains(abs_path) ||
-    stack.contains(abs_path) {
+  guard abs_path != test_abs &&
+    !visited.contains(abs_path) &&
+    !stack.contains(abs_path) else {
     return
   }
-  if !is_readable_file(abs_path) {
-    return
-  }
+  guard is_readable_file(abs_path) else { return }
   let fixture_src = @fs.read_file_to_string(abs_path) catch {
     err => fail("Failed to read fixture \{abs_path}: \{@debug.to_string(err)}")
   }
@@ -151,11 +149,7 @@ fn resolve_fixtures(
   for spec in import_relative_specifiers(source) {
     visit_fixture(spec, test_dir, test_abs, visited, stack, order)
   }
-  let fixtures : Array[(String, String)] = []
-  for path in order {
-    fixtures.push(visited[path])
-  }
-  fixtures
+  order.map(path => visited[path])
 }
 
 ///|
