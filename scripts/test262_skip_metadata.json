@@ -40,7 +40,6 @@
     "regexp-unicode-property-escapes",
     "regexp-v-flag",
     "resizable-arraybuffer",
-    "set-methods",
     "source-phase-imports",
     "source-phase-imports-module-source",
     "tail-call-optimization",
