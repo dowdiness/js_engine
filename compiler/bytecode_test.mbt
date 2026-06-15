@@ -3415,3 +3415,22 @@ test "bytecode pipeline evaluate workload" {
     content="value:500500",
   )
 }
+
+///|
+// Fast-path regression: sloppy-mode duplicate params use last-wins semantics.
+// The fast path iterates params forward so the second occurrence overwrites the
+// first in the locals array — matching the slow path's env.assign last-wins.
+test "bytecode call frame fast path duplicate param last wins" {
+  let src =
+    #|(function(a, a) { return a; })(1, 2);
+  inspect(bytecode_compare(src), content="value:2")
+}
+
+///|
+// Fast-path regression: params that are captured (env-slot) must still reach
+// the closure through the env; only uncaptured params go via direct array write.
+test "bytecode call frame fast path captured param via closure" {
+  let src =
+    #|(function(a) { return (function() { return a; })(); })(42);
+  inspect(bytecode_compare(src), content="value:42")
+}

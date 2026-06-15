@@ -23,12 +23,24 @@ fn BytecodeFrame::BytecodeFrame(
   func_def : BytecodeFunction,
   env : Environment,
   ctx : ExecContext,
+  direct_args? : Array[Value]? = None,
 ) -> BytecodeFrame raise Error {
   let locals = Array::make(func_def.local_names.length(), Value::Undefined)
-  for i, name in func_def.local_names {
-    if string_array_contains(func_def.params, name) && env.has(name) {
-      locals[i] = env.get(name)
-    }
+  match direct_args {
+    Some(args) =>
+      // Fast path: iterate params forward so last occurrence wins (duplicate params).
+      for j, param in func_def.params {
+        match func_def.local_indices.get(param) {
+          Some(slot) => locals[slot] = args.get(j).unwrap_or(Value::Undefined)
+          None => ()
+        }
+      }
+    None =>
+      for i, name in func_def.local_names {
+        if string_array_contains(func_def.params, name) && env.has(name) {
+          locals[i] = env.get(name)
+        }
+      }
   }
   let env_slots : Array[Binding] = if func_def.env_slot_names.length() == 0 {
     empty_bytecode_env_slots
@@ -263,14 +275,9 @@ fn make_bytecode_func(
     func_def.params,
     closure,
     strict,
-    CompiledBody(fn(interp, ctx, env) raise {
-      match run_bytecode_function(interp, ctx, env, func_def) {
-        BytecodeNormal(value) => Signal::Normal(value)
-        BytecodeReturn(value) => Signal::ReturnSignal(value)
-      }
-    }),
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
+    bytecode_func=Some(func_def),
   )
 }
 
@@ -319,16 +326,11 @@ fn make_bytecode_method_func(
     func_def.params,
     method_env,
     strict,
-    CompiledBody(fn(interp, ctx, env) raise {
-      match run_bytecode_function(interp, ctx, env, func_def) {
-        BytecodeNormal(value) => Signal::Normal(value)
-        BytecodeReturn(value) => Signal::ReturnSignal(value)
-      }
-    }),
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
     define_arguments_object=func_def.needs_arguments_object,
+    bytecode_func=Some(func_def),
   )
 }
 
@@ -456,8 +458,9 @@ fn run_bytecode_function(
   ctx : ExecContext,
   env : Environment,
   func_def : BytecodeFunction,
+  direct_args? : Array[Value]? = None,
 ) -> BytecodeRunResult raise Error {
-  let frame = BytecodeFrame(func_def, env, ctx)
+  let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
   frame.hoist_env_var_bindings(interp)
   frame.hoist_lexical_bindings()
   if frame.func_def.env_slot_names.length() > 0 {

@@ -1406,6 +1406,7 @@ fn compile_bytecode_function(
     needs_arguments_object: bytecode_body_references_outer_arguments(body) ||
     bytecode_body_references_eval(body),
     local_names: builder.local_names,
+    local_indices: builder.local_indices,
     env_slot_names: builder.env_slot_names,
     env_var_hoist_names,
     template_cache_key_prefix,
