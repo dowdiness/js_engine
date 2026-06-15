@@ -47,7 +47,7 @@ fn collect_pattern_var_names(
 
 ///|
 fn add_lexical_decl_name(
-  lexical_names : Map[String, Bool],
+  lexical_names : @set.Set[String],
   name : String,
 ) -> Unit raise Error {
   if lexical_names.contains(name) {
@@ -55,20 +55,20 @@ fn add_lexical_decl_name(
       message="Identifier '\{name}' has already been declared",
     )
   }
-  lexical_names[name] = true
+  lexical_names.add(name)
 }
 
 ///|
 fn collect_pattern_decl_names(
   pattern : @ast.Pattern,
-  names : Map[String, Bool],
+  names : @set.Set[String],
   lexical? : Bool = false,
 ) -> Unit raise Error {
   walk_pattern_idents(pattern, name => {
     if lexical {
       add_lexical_decl_name(names, name)
     } else {
-      names[name] = true
+      names.add(name)
     }
   })
 }
@@ -76,7 +76,7 @@ fn collect_pattern_decl_names(
 ///|
 fn collect_block_lexical_decl_names_from_stmt(
   stmt : @ast.Stmt,
-  lexical_names : Map[String, Bool],
+  lexical_names : @set.Set[String],
   block_function_kinds : Map[String, Int],
   include_block_functions? : Bool = false,
   allow_duplicate_block_functions? : Bool = false,
@@ -100,7 +100,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             )
           }
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 1
       }
@@ -114,7 +114,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             )
           }
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 1
       }
@@ -125,7 +125,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             message="Identifier '\{name}' has already been declared",
           )
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 2
       }
@@ -136,7 +136,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             message="Identifier '\{name}' has already been declared",
           )
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 2
       }
@@ -147,7 +147,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             message="Identifier '\{name}' has already been declared",
           )
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 2
       }
@@ -158,7 +158,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             message="Identifier '\{name}' has already been declared",
           )
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 2
       }
@@ -169,7 +169,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             message="Identifier '\{name}' has already been declared",
           )
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 2
       }
@@ -180,7 +180,7 @@ fn collect_block_lexical_decl_names_from_stmt(
             message="Identifier '\{name}' has already been declared",
           )
         } else {
-          lexical_names[name] = true
+          lexical_names.add(name)
         }
         block_function_kinds[name] = 2
       }
@@ -213,7 +213,7 @@ fn validate_block_statement_list_early_errors(
   allow_duplicate_block_functions? : Bool = false,
   include_function_decls_in_var_names? : Bool = false,
 ) -> Unit raise Error {
-  let lexical_names : Map[String, Bool] = {}
+  let lexical_names = @set.Set::default()
   let block_function_kinds : Map[String, Int] = {}
   for stmt in stmts {
     collect_block_lexical_decl_names_from_stmt(
@@ -224,15 +224,15 @@ fn validate_block_statement_list_early_errors(
       allow_duplicate_block_functions~,
     )
   }
-  let var_name_set : Map[String, Bool] = {}
+  let var_name_set = @set.Set::default()
   for
     name in @static_semantics.collect_var_declared_names(
       stmts,
       include_funcs=include_function_decls_in_var_names,
     ) {
-    var_name_set[name] = true
+    var_name_set.add(name)
   }
-  for name, _ in lexical_names {
+  for name in lexical_names {
     if var_name_set.contains(name) {
       raise @errors.SyntaxError(
         message="Identifier '\{name}' has already been declared",
@@ -1177,12 +1177,12 @@ fn tag_annex_b_hoisted(
 /// frame as the surrounding statements.
 fn add_stmt_lex_names(
   stmt : @ast.Stmt,
-  names : Map[String, Bool],
+  names : @set.Set[String],
 ) -> Unit raise Error {
   match stmt {
     VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) =>
-      names[name] = true
-    ClassDecl(name, _, _, _) => names[name] = true
+      names.add(name)
+    ClassDecl(name, _, _, _) => names.add(name)
     DestructureDecl(LetKind, pattern, _, _)
     | DestructureDecl(ConstKind, pattern, _, _) =>
       collect_pattern_lex_names(pattern, names)
@@ -1200,9 +1200,9 @@ fn add_stmt_lex_names(
 /// `let` / `const` destructuring declarations and for-loop heads.
 fn collect_pattern_lex_names(
   pattern : @ast.Pattern,
-  names : Map[String, Bool],
+  names : @set.Set[String],
 ) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => names[name] = true)
+  walk_pattern_idents(pattern, name => names.add(name))
 }
 
 ///|
@@ -1213,8 +1213,8 @@ fn collect_pattern_lex_names(
 /// check) and for per-block lex frames pushed onto the AST walk stack.
 fn collect_stmts_lex_names(
   stmts : Array[@ast.Stmt],
-) -> Map[String, Bool] raise Error {
-  let names : Map[String, Bool] = {}
+) -> @set.Set[String] raise Error {
+  let names = @set.Set::default()
   for stmt in stmts {
     add_stmt_lex_names(stmt, names)
   }
@@ -1240,9 +1240,9 @@ fn collect_stmts_lex_names(
 /// ignored — `with` pushes nothing.
 fn annex_b_candidate_conflicts(
   name : String,
-  top_lex : Map[String, Bool],
-  lex_stack : Array[Map[String, Bool]],
-  excluded? : Map[String, Bool] = {},
+  top_lex : @set.Set[String],
+  lex_stack : Array[@set.Set[String]],
+  excluded? : @set.Set[String] = @set.Set::default(),
 ) -> Bool {
   // §B.3.2.1 step ii parameter carve-out: when called from a function body,
   // `excluded` contains formal parameter names (plus "arguments" when the
@@ -1285,10 +1285,10 @@ fn hoist_eval_annex_b_candidates(
   interp : Interpreter,
   stmts : Array[@ast.Stmt],
   var_env : Environment,
-  top_lex : Map[String, Bool],
-  excluded? : Map[String, Bool] = {},
+  top_lex : @set.Set[String],
+  excluded? : @set.Set[String] = @set.Set::default(),
 ) -> Unit raise Error {
-  let stack : Array[Map[String, Bool]] = []
+  let stack : Array[@set.Set[String]] = []
   for stmt in stmts {
     walk_eval_annex_b_stmt(
       interp,
@@ -1310,10 +1310,10 @@ fn walk_eval_annex_b_stmt(
   interp : Interpreter,
   stmt : @ast.Stmt,
   var_env : Environment,
-  top_lex : Map[String, Bool],
-  stack : Array[Map[String, Bool]],
+  top_lex : @set.Set[String],
+  stack : Array[@set.Set[String]],
   in_block~ : Bool,
-  excluded~ : Map[String, Bool],
+  excluded~ : @set.Set[String],
 ) -> Unit raise Error {
   match stmt {
     FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
@@ -1404,9 +1404,9 @@ fn walk_eval_annex_b_stmt(
         excluded~,
       )
     ForInStmt(kind, name, _, body, _) => {
-      let frame : Map[String, Bool] = {}
+      let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
-        frame[name] = true
+        frame.add(name)
       }
       walk_enclosed_body(
         interp,
@@ -1419,9 +1419,9 @@ fn walk_eval_annex_b_stmt(
       )
     }
     ForOfStmt(kind, name, _, body, _) => {
-      let frame : Map[String, Bool] = {}
+      let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
-        frame[name] = true
+        frame.add(name)
       }
       walk_enclosed_body(
         interp,
@@ -1434,7 +1434,7 @@ fn walk_eval_annex_b_stmt(
       )
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
-      let frame : Map[String, Bool] = {}
+      let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
@@ -1449,7 +1449,7 @@ fn walk_eval_annex_b_stmt(
       )
     }
     ForOfStmtPat(kind, pattern, _, body, _) => {
-      let frame : Map[String, Bool] = {}
+      let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
@@ -1501,7 +1501,7 @@ fn walk_eval_annex_b_stmt(
     // candidate `function F` in one case must not self-conflict. Duplicate
     // lex declarations across cases are caught by the early-error validator.
     SwitchStmt(_, cases, _) => {
-      let frame : Map[String, Bool] = {}
+      let frame = @set.Set::default()
       for case_ in cases {
         for inner in case_.body {
           add_stmt_lex_names(inner, frame)
@@ -1544,11 +1544,10 @@ fn walk_eval_annex_b_stmt(
       )
       match catch_body {
         Some(cb) => {
-          let catch_frame : Map[String, Bool] = {}
+          let catch_frame = @set.Set::default()
           match catch_param {
             Some(IdentPat(_)) => () // §B.3.5 exemption: stay transparent
-            Some(pat) =>
-              walk_pattern_idents(pat, name => catch_frame[name] = true)
+            Some(pat) => walk_pattern_idents(pat, name => catch_frame.add(name))
             None => ()
           }
           stack.push(catch_frame)
@@ -1612,9 +1611,9 @@ fn walk_stmt_list_in_own_frame(
   interp : Interpreter,
   stmts : Array[@ast.Stmt],
   var_env : Environment,
-  top_lex : Map[String, Bool],
-  stack : Array[Map[String, Bool]],
-  excluded~ : Map[String, Bool],
+  top_lex : @set.Set[String],
+  stack : Array[@set.Set[String]],
+  excluded~ : @set.Set[String],
 ) -> Unit raise Error {
   stack.push(collect_stmts_lex_names(stmts))
   for inner in stmts {
@@ -1639,10 +1638,10 @@ fn walk_enclosed_body(
   interp : Interpreter,
   body : @ast.Stmt,
   var_env : Environment,
-  top_lex : Map[String, Bool],
-  stack : Array[Map[String, Bool]],
-  frame : Map[String, Bool],
-  excluded~ : Map[String, Bool],
+  top_lex : @set.Set[String],
+  stack : Array[@set.Set[String]],
+  frame : @set.Set[String],
+  excluded~ : @set.Set[String],
 ) -> Unit raise Error {
   stack.push(frame)
   walk_eval_annex_b_stmt(
@@ -1661,8 +1660,8 @@ fn walk_enclosed_body(
 /// Extract lex (let/const) names introduced by a for-loop init. An init of
 /// `StmtList(inner, _)` is the comma-separated `for (let a=1, b=2; …)` shape
 /// — unwrap it one level so each inner declaration contributes.
-fn for_init_lex_names(init : @ast.Stmt?) -> Map[String, Bool] raise Error {
-  let names : Map[String, Bool] = {}
+fn for_init_lex_names(init : @ast.Stmt?) -> @set.Set[String] raise Error {
+  let names = @set.Set::default()
   match init {
     Some(StmtList(inner, _)) =>
       for s in inner {
@@ -1963,7 +1962,7 @@ fn Interpreter::hoist_declarations(
     // `arguments` is installed as a VarBinding during function-call setup.
     // Script / module top-level envs have no such bindings, so `excluded`
     // stays empty and no names are skipped.
-    let excluded : Map[String, Bool] = {}
+    let excluded = @set.Set::default()
     // In the split (§10.2.11) case, param/"arguments" bindings live on
     // `param_source`, not `env` (= body_env). Fall back to `env` when no
     // split (scripts/modules/non-Ext single-env paths).
@@ -1973,11 +1972,11 @@ fn Interpreter::hoist_declarations(
     }
     for name, binding in scan_env.bindings {
       if binding.is_parameter {
-        excluded[name] = true
+        excluded.add(name)
       }
     }
     match scan_env.bindings.get("arguments") {
-      Some(b) => if b.kind == VarBinding { excluded["arguments"] = true }
+      Some(b) => if b.kind == VarBinding { excluded.add("arguments") }
       None => ()
     }
     hoist_eval_annex_b_candidates(_self, stmts, env, top_lex, excluded~)
