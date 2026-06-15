@@ -31,12 +31,7 @@ fn BytecodeFrame::BytecodeFrame(
       // Fast path: iterate params forward so last occurrence wins (duplicate params).
       for j, param in func_def.params {
         match local_index_from_names(func_def.local_names, param) {
-          Some(slot) =>
-            locals[slot] = if j < args.length() {
-              args[j]
-            } else {
-              Value::Undefined
-            }
+          Some(slot) => locals[slot] = args.get(j).unwrap_or(Value::Undefined)
           None => ()
         }
       }

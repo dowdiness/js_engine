@@ -1531,18 +1531,15 @@ fn call_compiled_func(
       new_target.unwrap_or(Value::Undefined),
       BindingKind::LetBinding,
     )
+    // Bind positional params: fast path skips env for params in local_names;
+    // slow path writes all params through the env HashMap.
     match bytecode_func {
-      Some(bf) => {
-        // Fast path: skip env round-trip for params in local_names.
-        // Only bind params NOT in local_names to env (env_slot_names and
-        // params in neither list still need env for bind_env_slots/LoadName).
+      Some(bf) =>
+        // Fast path: only bind params NOT in local_names to env (env_slot_names
+        // and params in neither list still need env for bind_env_slots/LoadName).
         for i, param in params {
           if !string_array_contains(bf.local_names, param) {
-            let value = if i < args.length() {
-              args[i]
-            } else {
-              Value::Undefined
-            }
+            let value = args.get(i).unwrap_or(Value::Undefined)
             if func_env.bindings.contains(param) {
               func_env.assign(param, value)
             } else {
@@ -1550,24 +1547,28 @@ fn call_compiled_func(
             }
           }
         }
-        bind_rest_param(func_env, params.length(), rest_param, args)
-        if define_arguments_object {
-          match rest_param {
-            Some(_) =>
-              if !compiled_params_include_arguments(params, rest_param) {
-                interp.define_unmapped_arguments_object(
-                  func_env, args, callee, strict,
-                )
-              }
-            None =>
-              interp.define_simple_arguments_object(
-                func_env, args, callee, strict, params,
-              )
+      None => bind_simple_params(func_env, params, args)
+    }
+    bind_rest_param(func_env, params.length(), rest_param, args)
+    if define_arguments_object {
+      match rest_param {
+        Some(_) =>
+          if !compiled_params_include_arguments(params, rest_param) {
+            interp.define_unmapped_arguments_object(
+              func_env, args, callee, strict,
+            )
           }
-        }
-        if call_self_name {
-          func_env.def_builtin("[[BytecodeCallee]]", callee)
-        }
+        None =>
+          interp.define_simple_arguments_object(
+            func_env, args, callee, strict, params,
+          )
+      }
+    }
+    if call_self_name {
+      func_env.def_builtin("[[BytecodeCallee]]", callee)
+    }
+    match bytecode_func {
+      Some(bf) =>
         match
           run_bytecode_function(
             interp,
@@ -1579,29 +1580,7 @@ fn call_compiled_func(
           BytecodeNormal(_) => Value::Undefined
           BytecodeReturn(value) => value
         }
-      }
-      None => {
-        bind_simple_params(func_env, params, args)
-        bind_rest_param(func_env, params.length(), rest_param, args)
-        if define_arguments_object {
-          match rest_param {
-            Some(_) =>
-              if !compiled_params_include_arguments(params, rest_param) {
-                interp.define_unmapped_arguments_object(
-                  func_env, args, callee, strict,
-                )
-              }
-            None =>
-              interp.define_simple_arguments_object(
-                func_env, args, callee, strict, params,
-              )
-          }
-        }
-        if call_self_name {
-          func_env.def_builtin("[[BytecodeCallee]]", callee)
-        }
-        reduce_body_signal((body.0)(interp, func_ctx, func_env))
-      }
+      None => reduce_body_signal((body.0)(interp, func_ctx, func_env))
     }
   } catch {
     err => {
