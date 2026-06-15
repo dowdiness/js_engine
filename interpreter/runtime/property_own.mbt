@@ -14,40 +14,24 @@ fn array_index_of_key(key : String) -> Int? {
 }
 
 ///|
-/// Ordered own string keys of a property bag per OrdinaryOwnPropertyKeys order:
-/// canonical integer indices ascending, then remaining string keys in insertion
-/// order. `skip` removes keys from the result entirely (e.g. engine-internal
-/// slots, or source-aware hidden slots).
-fn sort_property_keys_filtered(
-  props : Map[String, Value],
-  skip : (String) -> Bool,
-) -> Array[String] {
+/// Sort property keys per OrdinaryOwnPropertyKeys spec order:
+/// 1. Integer indices in ascending numeric order
+/// 2. Other string keys in insertion order
+pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
   let int_keys : Array[String] = []
   let str_keys : Array[String] = []
   props.each(fn(k, _v) {
-    if skip(k) {
-      return
-    }
     match array_index_of_key(k) {
       Some(_) => int_keys.push(k)
       None => str_keys.push(k)
     }
   })
-  // Sort integer keys by numeric value
   int_keys.sort_by(fn(a, b) {
     let na = @string.parse_int(a) catch { _ => 0 }
     let nb = @string.parse_int(b) catch { _ => 0 }
     na - nb
   })
   [..int_keys, ..str_keys]
-}
-
-///|
-/// Sort property keys per OrdinaryOwnPropertyKeys spec order:
-/// 1. Integer indices in ascending numeric order
-/// 2. Other string keys in insertion order
-pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
-  sort_property_keys_filtered(props, fn(_) { false })
 }
 
 ///|

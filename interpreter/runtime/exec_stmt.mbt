@@ -1716,12 +1716,6 @@ pub fn collect_for_in_keys(
         }
         for k in sorted {
           if !seen.contains(k) {
-            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]]).
-            // Module namespace properties are export names, and string-named
-            // exports may legally begin with `[[`.
-            if data.class_name != "Module" && k.has_prefix("[[") {
-              continue
-            }
             seen.add(k)
             let enumerable = if data.class_name == "Module" {
               match interp.get_own_property(Object(data), String_(k)) {
@@ -1760,9 +1754,6 @@ pub fn collect_for_in_keys(
         }
         let sorted = sort_property_keys(data.bag.properties)
         for k in sorted {
-          if k.has_prefix("[[") {
-            continue
-          }
           if !seen.contains(k) {
             let enumerable = match data.bag.descriptors.get(k) {
               Some(d) => d.enumerable
