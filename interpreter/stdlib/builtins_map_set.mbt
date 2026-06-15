@@ -966,21 +966,24 @@ fn setup_set_builtins(
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
-          // Iterate over values. Use manual index loop: the callback may mutate
-          // data.values (e.g. set.delete inside forEach), and MoonBit's
-          // `for x in arr` snapshots the initial length, causing out-of-bounds
-          // reads if the array shrinks.
+          // Iterate over values. Use manual index loop; the callback may mutate
+          // data.values via set.delete/set.add. `for x in arr` snapshots initial
+          // length and crashes if the array shrinks. We also must not skip the
+          // element that shifts into the deleted slot: only advance i when value
+          // is still at position i after the callback (§24.2.3.12 live iteration).
           let mut i = 0
           while i < data.values.length() {
             let value = data.values[i]
-            // Call callback(value, value, set) - note: Set forEach passes value twice
             let _ = interp.call_value(
               callback,
               this_arg,
               [value, value, this_val],
               loc,
             )
-            i = i + 1
+            if i < data.values.length() &&
+              same_value_zero(data.values[i], value) {
+              i = i + 1
+            }
           }
           Undefined
         }
@@ -1070,7 +1073,12 @@ fn setup_set_builtins(
           None => break
           Some(r) => r
         }
-        let next_val = interp.iterator_result_value(iter_result, loc)
+        let next_val = interp.iterator_result_value(iter_result, loc) catch {
+          e => {
+            interp.iterator_close(key_iter, loc)
+            raise e
+          }
+        }
         let next_val = canonicalize_keyed_collection_key(next_val)
         if result_values.search_by(v => same_value_zero(v, next_val)) is None {
           result_values.push(next_val)
@@ -1100,23 +1108,24 @@ fn setup_set_builtins(
       let result_values : Array[Value] = []
       let this_size = data.values.length().to_double()
       if this_size <= other_rec.size {
-        // has-path: snapshot thisData, then check each element against other.has.
-        // Snapshot: elements deleted by has() before we reach them are skipped
-        // via the guard; elements added by has() are not visited (not in snapshot).
-        // The spec appends v whenever inOther is true — no re-check of thisData.
-        let snapshot : Array[Value] = []
-        for v in data.values {
-          snapshot.push(v)
-        }
-        for v in snapshot {
-          if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
-            let has_result = interp.call_value(
-              other_rec.has,
-              other_rec.set_object,
-              [v],
-              loc,
-            )
-            if @runtime.is_truthy(has_result) {
+        // has-path: live index loop over thisData (§24.2.3.2 step 4 — spec iterates
+        // the live [[SetData]] List, so elements added by has() must be visited).
+        // Don't advance i if has() deleted the current element (it compacts the
+        // array, so the element at i+1 shifts to i and must not be skipped).
+        let mut i = 0
+        while i < data.values.length() {
+          let v = data.values[i]
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if i < data.values.length() && same_value_zero(data.values[i], v) {
+            i = i + 1
+          }
+          if @runtime.is_truthy(has_result) {
+            if result_values.search_by(e => same_value_zero(e, v)) is None {
               result_values.push(v)
             }
           }
@@ -1136,7 +1145,12 @@ fn setup_set_builtins(
             None => break
             Some(r) => r
           }
-          let next_val = interp.iterator_result_value(iter_result, loc)
+          let next_val = interp.iterator_result_value(iter_result, loc) catch {
+            e => {
+              interp.iterator_close(key_iter, loc)
+              raise e
+            }
+          }
           let next_val = canonicalize_keyed_collection_key(next_val)
           // §24.2.3.2 step 6.a.i: skip if already in result (dedup)
           if result_values.search_by(e => same_value_zero(e, next_val)) is None &&
@@ -1169,22 +1183,23 @@ fn setup_set_builtins(
       let result_values : Array[Value] = []
       let this_size = data.values.length().to_double()
       if this_size <= other_rec.size {
-        // has-path: snapshot thisData so has() mutations don't expand the set.
-        // Elements not in the original snapshot are never visited; elements
-        // deleted before we reach them (by earlier has() calls) are skipped.
-        let snapshot : Array[Value] = []
-        for v in data.values {
-          snapshot.push(v)
-        }
-        for v in snapshot {
-          if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
-            let has_result = interp.call_value(
-              other_rec.has,
-              other_rec.set_object,
-              [v],
-              loc,
-            )
-            if !@runtime.is_truthy(has_result) {
+        // has-path: live index loop (§24.2.3.3 step 5 iterates the live [[SetData]],
+        // so elements added by has() must be visited). Deletion-safe: don't advance
+        // i when has() deletes the current element and compacts the array.
+        let mut i = 0
+        while i < data.values.length() {
+          let v = data.values[i]
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if i < data.values.length() && same_value_zero(data.values[i], v) {
+            i = i + 1
+          }
+          if !@runtime.is_truthy(has_result) {
+            if result_values.search_by(e => same_value_zero(e, v)) is None {
               result_values.push(v)
             }
           }
@@ -1207,7 +1222,12 @@ fn setup_set_builtins(
             None => break
             Some(r) => r
           }
-          let next_val = interp.iterator_result_value(iter_result, loc)
+          let next_val = interp.iterator_result_value(iter_result, loc) catch {
+            e => {
+              interp.iterator_close(key_iter, loc)
+              raise e
+            }
+          }
           let next_val = canonicalize_keyed_collection_key(next_val)
           match result_values.search_by(v => same_value_zero(v, next_val)) {
             Some(i) => {
@@ -1257,7 +1277,12 @@ fn setup_set_builtins(
           None => break
           Some(r) => r
         }
-        let next_val = interp.iterator_result_value(iter_result, loc)
+        let next_val = interp.iterator_result_value(iter_result, loc) catch {
+          e => {
+            interp.iterator_close(key_iter, loc)
+            raise e
+          }
+        }
         let next_val = canonicalize_keyed_collection_key(next_val)
         match data.values.search_by(v => same_value_zero(v, next_val)) {
           Some(_) =>
@@ -1301,25 +1326,23 @@ fn setup_set_builtins(
       if this_size > other_rec.size {
         return Value::Bool(false)
       }
-      // Snapshot thisData: if has() deletes the current element, the array
-      // compacts and the next element shifts into the same index, causing an
-      // index-based loop to skip it. Iterating the snapshot avoids this; elements
-      // deleted before we reach them are skipped via the membership guard.
-      let snapshot : Array[Value] = []
-      for v in data.values {
-        snapshot.push(v)
-      }
-      for v in snapshot {
-        if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
-          let has_result = interp.call_value(
-            other_rec.has,
-            other_rec.set_object,
-            [v],
-            loc,
-          )
-          if !@runtime.is_truthy(has_result) {
-            return Value::Bool(false)
-          }
+      // Live index loop (§24.2.3.5 step 5 iterates the live [[SetData]], so
+      // elements added by has() must be checked — they may not be in other).
+      // Deletion-safe: don't advance i when has() deletes the current element.
+      let mut i = 0
+      while i < data.values.length() {
+        let v = data.values[i]
+        let has_result = interp.call_value(
+          other_rec.has,
+          other_rec.set_object,
+          [v],
+          loc,
+        )
+        if i < data.values.length() && same_value_zero(data.values[i], v) {
+          i = i + 1
+        }
+        if !@runtime.is_truthy(has_result) {
+          return Value::Bool(false)
         }
       }
       Value::Bool(true)
@@ -1358,7 +1381,12 @@ fn setup_set_builtins(
           None => break
           Some(r) => r
         }
-        let next_val = interp.iterator_result_value(iter_result, loc)
+        let next_val = interp.iterator_result_value(iter_result, loc) catch {
+          e => {
+            interp.iterator_close(key_iter, loc)
+            raise e
+          }
+        }
         let next_val = canonicalize_keyed_collection_key(next_val)
         if data.values.search_by(v => same_value_zero(v, next_val)) is None {
           interp.iterator_close(key_iter, loc)
@@ -1386,22 +1414,23 @@ fn setup_set_builtins(
       let other_rec = get_set_record(interp, other, loc)
       let this_size = data.values.length().to_double()
       if this_size <= other_rec.size {
-        // has-path: snapshot thisData; has() may mutate data.values.
-        let snapshot : Array[Value] = []
-        for v in data.values {
-          snapshot.push(v)
-        }
-        for v in snapshot {
-          if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
-            let has_result = interp.call_value(
-              other_rec.has,
-              other_rec.set_object,
-              [v],
-              loc,
-            )
-            if @runtime.is_truthy(has_result) {
-              return Value::Bool(false)
-            }
+        // has-path: live index loop (§24.2.3.7 step 3 iterates the live [[SetData]],
+        // so elements added by has() must be checked). Deletion-safe: don't advance
+        // i when has() deletes the current element and compacts the array.
+        let mut i = 0
+        while i < data.values.length() {
+          let v = data.values[i]
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if i < data.values.length() && same_value_zero(data.values[i], v) {
+            i = i + 1
+          }
+          if @runtime.is_truthy(has_result) {
+            return Value::Bool(false)
           }
         }
       } else {
@@ -1419,7 +1448,12 @@ fn setup_set_builtins(
             None => break
             Some(r) => r
           }
-          let next_val = interp.iterator_result_value(iter_result, loc)
+          let next_val = interp.iterator_result_value(iter_result, loc) catch {
+            e => {
+              interp.iterator_close(key_iter, loc)
+              raise e
+            }
+          }
           let next_val = canonicalize_keyed_collection_key(next_val)
           if data.values.search_by(v => same_value_zero(v, next_val)) is Some(_) {
             interp.iterator_close(key_iter, loc)
