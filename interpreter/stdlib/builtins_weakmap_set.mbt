@@ -22,8 +22,8 @@ fn is_valid_weak_key(val : Value) -> Bool {
 /// Get the WeakMap ID from the per-realm side table (non-forgeable)
 fn get_weakmap_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
   realm_state.weakmap_id_table
-    .search_by(entry => physical_equal(entry.0, data))
-    .map(i => realm_state.weakmap_id_table[i].1)
+  .search_by(entry => physical_equal(entry.0, data))
+  .map(i => realm_state.weakmap_id_table[i].1)
 }
 
 ///|
@@ -40,8 +40,8 @@ fn set_weakmap_id(
 /// Get the WeakSet ID from the per-realm side table (non-forgeable)
 fn get_weakset_id(realm_state : @runtime.RealmState, data : ObjectData) -> Int? {
   realm_state.weakset_id_table
-    .search_by(entry => physical_equal(entry.0, data))
-    .map(i => realm_state.weakset_id_table[i].1)
+  .search_by(entry => physical_equal(entry.0, data))
+  .map(i => realm_state.weakset_id_table[i].1)
 }
 
 ///|
@@ -172,8 +172,7 @@ fn setup_weakmap_builtins(
             let key = if args.length() > 0 { args[0] } else { Undefined }
             match realm_state.weakmap_storage.get(id) {
               Some(entries) =>
-                match
-                  entries.search_by(entry => weak_key_equal(entry.0, key)) {
+                match entries.search_by(entry => weak_key_equal(entry.0, key)) {
                   Some(i) => entries[i].1
                   None => Undefined
                 }
@@ -210,8 +209,7 @@ fn setup_weakmap_builtins(
             }
             match realm_state.weakmap_storage.get(id) {
               Some(entries) => {
-                match
-                  entries.search_by(entry => weak_key_equal(entry.0, key)) {
+                match entries.search_by(entry => weak_key_equal(entry.0, key)) {
                   Some(i) => {
                     entries[i] = (key, value)
                     return this_val
@@ -423,7 +421,8 @@ fn setup_weakmap_builtins(
                   match realm_state.weakmap_storage.get(id) {
                     Some(entries) => {
                       // Check if key was already added by callback
-                      match entries.search_by(entry => weak_key_equal(entry.0, key)) {
+                      match
+                        entries.search_by(entry => weak_key_equal(entry.0, key)) {
                         Some(i) => {
                           entries[i] = (key, value)
                           return value
@@ -627,8 +626,7 @@ fn setup_weakset_builtins(
             }
             match realm_state.weakset_storage.get(id) {
               Some(values) => {
-                if values.search_by(v => weak_key_equal(v, value))
-                  is Some(_) {
+                if values.search_by(v => weak_key_equal(v, value)) is Some(_) {
                   return this_val
                 }
                 values.push(value)
@@ -665,8 +663,7 @@ fn setup_weakset_builtins(
             match realm_state.weakset_storage.get(id) {
               Some(values) =>
                 Value::Bool(
-                  values.search_by(v => weak_key_equal(v, value))
-                  is Some(_),
+                  values.search_by(v => weak_key_equal(v, value)) is Some(_),
                 )
               None => Value::Bool(false)
             }

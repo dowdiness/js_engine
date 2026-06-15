@@ -54,6 +54,52 @@ fn canonicalize_keyed_collection_key(key : Value) -> Value {
 }
 
 ///|
+priv struct SetRecord {
+  set_object : Value
+  size : Double
+  has : Value
+  keys : Value
+}
+
+///|
+/// ES2024 §7.4.2 GetSetRecord(obj)
+fn get_set_record(
+  interp : @runtime.Interpreter,
+  obj : Value,
+  loc : @token.Loc,
+) -> SetRecord raise {
+  guard @runtime.is_object_value(obj) else {
+    raise @errors.TypeError(message="Set method argument is not an object")
+  }
+  let raw_size = interp.get_property(obj, "size", loc)
+  let num_size = interp.to_number(raw_size)
+  if num_size.is_nan() {
+    raise @errors.TypeError(
+      message="Set method argument's size property is not a number",
+    )
+  }
+  let int_size = num_size.floor()
+  if int_size < 0.0 {
+    raise @errors.RangeError(
+      message="Set method argument's size property is negative",
+    )
+  }
+  let has_val = interp.get_property(obj, "has", loc)
+  guard @runtime.is_callable(has_val) else {
+    raise @errors.TypeError(
+      message="Set method argument's has property is not callable",
+    )
+  }
+  let keys_val = interp.get_property(obj, "keys", loc)
+  guard @runtime.is_callable(keys_val) else {
+    raise @errors.TypeError(
+      message="Set method argument's keys property is not callable",
+    )
+  }
+  { set_object: obj, size: int_size, has: has_val, keys: keys_val }
+}
+
+///|
 fn MapData::append_entry(self : MapData, key : Value, value : Value) -> Unit {
   self.entries.push((key, value))
   self.entry_ids.push(self.next_entry_id)
@@ -265,8 +311,7 @@ fn setup_map_builtins(
       Value::Map(data) => {
         let key = if args.length() > 0 { args[0] } else { Undefined }
         // Find key using SameValueZero
-        match
-          data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+        match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
           Some(i) => data.entries[i].1
           None => Undefined
         }
@@ -288,8 +333,7 @@ fn setup_map_builtins(
         let key = if args.length() > 0 { args[0] } else { Undefined }
         let value = if args.length() > 1 { args[1] } else { Undefined }
         // Find existing key using SameValueZero
-        match
-          data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+        match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
           Some(i) => {
             // Update existing entry
             data.entries[i] = (key, value)
@@ -338,8 +382,7 @@ fn setup_map_builtins(
         Value::Map(data) => {
           let key = if args.length() > 0 { args[0] } else { Undefined }
           // Find and remove key using SameValueZero
-          match
-            data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
             Some(i) => {
               data.remove_entry_at(i)
               Value::Bool(true)
@@ -472,8 +515,7 @@ fn setup_map_builtins(
           let key = if args.length() > 0 { args[0] } else { Undefined }
           let value = if args.length() > 1 { args[1] } else { Undefined }
           // If key exists, return existing value
-          match
-            data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
             Some(i) => return data.entries[i].1
             None => ()
           }
@@ -503,8 +545,7 @@ fn setup_map_builtins(
           }
           let key = canonicalize_keyed_collection_key(raw_key)
           // If key exists, return existing value without calling callback
-          match
-            data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
             Some(i) => return data.entries[i].1
             None => ()
           }
@@ -512,8 +553,7 @@ fn setup_map_builtins(
           let loc = @token.Loc::default()
           let value = interp.call_value(callbackfn, Undefined, [key], loc)
           // Re-check if key was added by callback (mutation during callback)
-          match
-            data.entries.search_by(entry => same_value_zero(entry.0, key)) {
+          match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
             Some(i) => {
               // Overwrite with computed value per spec
               data.entries[i] = (key, value)
@@ -983,6 +1023,387 @@ fn setup_set_builtins(
     },
   )
 
+  // Set.prototype.union(other) - ES2024 §24.2.3.1
+  set_proto_props["union"] = @runtime.make_interp_method_func(
+    name="union",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let data = match this_val {
+        Value::Set(d) => d
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.union called on incompatible receiver",
+          )
+      }
+      let loc = @token.Loc::default()
+      let other = if args.length() > 0 { args[0] } else { Undefined }
+      let other_rec = get_set_record(interp, other, loc)
+      let result_values : Array[Value] = []
+      for v in data.values {
+        result_values.push(v)
+      }
+      let key_iter = interp.call_value(
+        other_rec.keys,
+        other_rec.set_object,
+        [],
+        loc,
+      )
+      let next_method = interp.get_iterator_next_method(key_iter, loc)
+      while true {
+        let iter_result = match
+          interp.iterator_step_result(key_iter, next_method, loc) {
+          None => break
+          Some(r) => r
+        }
+        let next_val = interp.iterator_result_value(iter_result, loc)
+        let next_val = canonicalize_keyed_collection_key(next_val)
+        if result_values.search_by(v => same_value_zero(v, next_val)) is None {
+          result_values.push(next_val)
+        }
+      }
+      Value::Set(
+        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+      )
+    },
+  )
+
+  // Set.prototype.intersection(other) - ES2024 §24.2.3.2
+  set_proto_props["intersection"] = @runtime.make_interp_method_func(
+    name="intersection",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let data = match this_val {
+        Value::Set(d) => d
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.intersection called on incompatible receiver",
+          )
+      }
+      let loc = @token.Loc::default()
+      let other = if args.length() > 0 { args[0] } else { Undefined }
+      let other_rec = get_set_record(interp, other, loc)
+      let result_values : Array[Value] = []
+      let this_size = data.values.length().to_double()
+      if this_size <= other_rec.size {
+        // has-path: iterate this, call other.has for each value
+        // Use manual index loop: has() may mutate data.values, and MoonBit's
+        // `for x in arr` iterates with a fixed length snapshot, causing out-of-bounds
+        // if the array shrinks. Checking length() each step gives live semantics.
+        let mut i = 0
+        while i < data.values.length() {
+          let v = data.values[i]
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if @runtime.is_truthy(has_result) {
+            // §24.2.3.2 step 5.a.ii.2: only add if e is still in thisData
+            if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
+              result_values.push(v)
+            }
+          }
+          i = i + 1
+        }
+      } else {
+        // keys-path: iterate other.keys(), include keys also in this
+        let key_iter = interp.call_value(
+          other_rec.keys,
+          other_rec.set_object,
+          [],
+          loc,
+        )
+        let next_method = interp.get_iterator_next_method(key_iter, loc)
+        while true {
+          let iter_result = match
+            interp.iterator_step_result(key_iter, next_method, loc) {
+            None => break
+            Some(r) => r
+          }
+          let next_val = interp.iterator_result_value(iter_result, loc)
+          let next_val = canonicalize_keyed_collection_key(next_val)
+          // §24.2.3.2 step 6.a.i: skip if already in result (dedup)
+          if result_values.search_by(e => same_value_zero(e, next_val)) is None &&
+            data.values.search_by(e => same_value_zero(e, next_val)) is Some(_) {
+            result_values.push(next_val)
+          }
+        }
+      }
+      Value::Set(
+        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+      )
+    },
+  )
+
+  // Set.prototype.difference(other) - ES2024 §24.2.3.3
+  set_proto_props["difference"] = @runtime.make_interp_method_func(
+    name="difference",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let data = match this_val {
+        Value::Set(d) => d
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.difference called on incompatible receiver",
+          )
+      }
+      let loc = @token.Loc::default()
+      let other = if args.length() > 0 { args[0] } else { Undefined }
+      let other_rec = get_set_record(interp, other, loc)
+      let result_values : Array[Value] = []
+      let this_size = data.values.length().to_double()
+      if this_size <= other_rec.size {
+        // has-path: iterate this, keep values NOT in other
+        let mut i = 0
+        while i < data.values.length() {
+          let v = data.values[i]
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if !@runtime.is_truthy(has_result) {
+            result_values.push(v)
+          }
+          i = i + 1
+        }
+      } else {
+        // keys-path: start with copy of this, remove keys found in other
+        for v in data.values {
+          result_values.push(v)
+        }
+        let key_iter = interp.call_value(
+          other_rec.keys,
+          other_rec.set_object,
+          [],
+          loc,
+        )
+        let next_method = interp.get_iterator_next_method(key_iter, loc)
+        while true {
+          let iter_result = match
+            interp.iterator_step_result(key_iter, next_method, loc) {
+            None => break
+            Some(r) => r
+          }
+          let next_val = interp.iterator_result_value(iter_result, loc)
+          let next_val = canonicalize_keyed_collection_key(next_val)
+          match result_values.search_by(v => same_value_zero(v, next_val)) {
+            Some(i) => {
+              let _ = result_values.remove(i)
+            }
+            None => ()
+          }
+        }
+      }
+      Value::Set(
+        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+      )
+    },
+  )
+
+  // Set.prototype.symmetricDifference(other) - ES2024 §24.2.3.4
+  set_proto_props["symmetricDifference"] = @runtime.make_interp_method_func(
+    name="symmetricDifference",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let data = match this_val {
+        Value::Set(d) => d
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.symmetricDifference called on incompatible receiver",
+          )
+      }
+      let loc = @token.Loc::default()
+      let other = if args.length() > 0 { args[0] } else { Undefined }
+      let other_rec = get_set_record(interp, other, loc)
+      // Start result as copy of this, then toggle membership based on other.keys()
+      let result_values : Array[Value] = []
+      for v in data.values {
+        result_values.push(v)
+      }
+      let key_iter = interp.call_value(
+        other_rec.keys,
+        other_rec.set_object,
+        [],
+        loc,
+      )
+      let next_method = interp.get_iterator_next_method(key_iter, loc)
+      while true {
+        let iter_result = match
+          interp.iterator_step_result(key_iter, next_method, loc) {
+          None => break
+          Some(r) => r
+        }
+        let next_val = interp.iterator_result_value(iter_result, loc)
+        let next_val = canonicalize_keyed_collection_key(next_val)
+        match data.values.search_by(v => same_value_zero(v, next_val)) {
+          Some(_) =>
+            // key is in this: remove from result
+            match result_values.search_by(v => same_value_zero(v, next_val)) {
+              Some(i) => {
+                let _ = result_values.remove(i)
+              }
+              None => ()
+            }
+          None =>
+            // key not in this: add to result if not already present
+            if result_values.search_by(v => same_value_zero(v, next_val))
+              is None {
+              result_values.push(next_val)
+            }
+        }
+      }
+      Value::Set(
+        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+      )
+    },
+  )
+
+  // Set.prototype.isSubsetOf(other) - ES2024 §24.2.3.5
+  set_proto_props["isSubsetOf"] = @runtime.make_interp_method_func(
+    name="isSubsetOf",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let data = match this_val {
+        Value::Set(d) => d
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.isSubsetOf called on incompatible receiver",
+          )
+      }
+      let loc = @token.Loc::default()
+      let other = if args.length() > 0 { args[0] } else { Undefined }
+      let other_rec = get_set_record(interp, other, loc)
+      let this_size = data.values.length().to_double()
+      if this_size > other_rec.size {
+        return Value::Bool(false)
+      }
+      let mut i = 0
+      while i < data.values.length() {
+        let v = data.values[i]
+        let has_result = interp.call_value(
+          other_rec.has,
+          other_rec.set_object,
+          [v],
+          loc,
+        )
+        if !@runtime.is_truthy(has_result) {
+          return Value::Bool(false)
+        }
+        i = i + 1
+      }
+      Value::Bool(true)
+    },
+  )
+
+  // Set.prototype.isSupersetOf(other) - ES2024 §24.2.3.6
+  set_proto_props["isSupersetOf"] = @runtime.make_interp_method_func(
+    name="isSupersetOf",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let data = match this_val {
+        Value::Set(d) => d
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.isSupersetOf called on incompatible receiver",
+          )
+      }
+      let loc = @token.Loc::default()
+      let other = if args.length() > 0 { args[0] } else { Undefined }
+      let other_rec = get_set_record(interp, other, loc)
+      let this_size = data.values.length().to_double()
+      if this_size < other_rec.size {
+        return Value::Bool(false)
+      }
+      let key_iter = interp.call_value(
+        other_rec.keys,
+        other_rec.set_object,
+        [],
+        loc,
+      )
+      let next_method = interp.get_iterator_next_method(key_iter, loc)
+      while true {
+        let iter_result = match
+          interp.iterator_step_result(key_iter, next_method, loc) {
+          None => break
+          Some(r) => r
+        }
+        let next_val = interp.iterator_result_value(iter_result, loc)
+        let next_val = canonicalize_keyed_collection_key(next_val)
+        if data.values.search_by(v => same_value_zero(v, next_val)) is None {
+          interp.iterator_close(key_iter, loc) catch {
+            _ => ()
+          }
+          return Value::Bool(false)
+        }
+      }
+      Value::Bool(true)
+    },
+  )
+
+  // Set.prototype.isDisjointFrom(other) - ES2024 §24.2.3.7
+  set_proto_props["isDisjointFrom"] = @runtime.make_interp_method_func(
+    name="isDisjointFrom",
+    length=1,
+    fn(interp, this_val, args) raise {
+      let data = match this_val {
+        Value::Set(d) => d
+        _ =>
+          raise @errors.TypeError(
+            message="Method Set.prototype.isDisjointFrom called on incompatible receiver",
+          )
+      }
+      let loc = @token.Loc::default()
+      let other = if args.length() > 0 { args[0] } else { Undefined }
+      let other_rec = get_set_record(interp, other, loc)
+      let this_size = data.values.length().to_double()
+      if this_size <= other_rec.size {
+        // has-path: iterate this, call other.has; return false on any match
+        let mut i = 0
+        while i < data.values.length() {
+          let v = data.values[i]
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if @runtime.is_truthy(has_result) {
+            return Value::Bool(false)
+          }
+          i = i + 1
+        }
+      } else {
+        // keys-path: iterate other.keys(); return false if any key is in this
+        let key_iter = interp.call_value(
+          other_rec.keys,
+          other_rec.set_object,
+          [],
+          loc,
+        )
+        let next_method = interp.get_iterator_next_method(key_iter, loc)
+        while true {
+          let iter_result = match
+            interp.iterator_step_result(key_iter, next_method, loc) {
+            None => break
+            Some(r) => r
+          }
+          let next_val = interp.iterator_result_value(iter_result, loc)
+          let next_val = canonicalize_keyed_collection_key(next_val)
+          if data.values.search_by(v => same_value_zero(v, next_val)) is Some(_) {
+            interp.iterator_close(key_iter, loc) catch {
+              _ => ()
+            }
+            return Value::Bool(false)
+          }
+        }
+      }
+      Value::Bool(true)
+    },
+  )
+
   // Non-enumerable descriptors for Set.prototype methods
   let method_desc = @runtime.builtin_method_desc()
   let set_proto_descs : Map[String, PropDescriptor] = {}
@@ -994,6 +1415,13 @@ fn setup_set_builtins(
   set_proto_descs["keys"] = method_desc
   set_proto_descs["values"] = method_desc
   set_proto_descs["entries"] = method_desc
+  set_proto_descs["union"] = method_desc
+  set_proto_descs["intersection"] = method_desc
+  set_proto_descs["difference"] = method_desc
+  set_proto_descs["symmetricDifference"] = method_desc
+  set_proto_descs["isSubsetOf"] = method_desc
+  set_proto_descs["isSupersetOf"] = method_desc
+  set_proto_descs["isDisjointFrom"] = method_desc
 
   // Create size getter for Set.prototype (per spec, size is an accessor property)
   let set_size_getter = @runtime.make_method_func(name="get size", length=0, fn(
