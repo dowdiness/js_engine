@@ -265,13 +265,11 @@ fn setup_map_builtins(
       Value::Map(data) => {
         let key = if args.length() > 0 { args[0] } else { Undefined }
         // Find key using SameValueZero
-        for i = 0; i < data.entries.length(); i = i + 1 {
-          let (k, v) = data.entries[i]
-          if same_value_zero(k, key) {
-            return v
-          }
+        match
+          data.entries.search_by(fn(entry) { same_value_zero(entry.0, key) }) {
+          Some(i) => data.entries[i].1
+          None => Undefined
         }
-        Undefined
       }
       _ =>
         raise @errors.TypeError(
@@ -290,13 +288,14 @@ fn setup_map_builtins(
         let key = if args.length() > 0 { args[0] } else { Undefined }
         let value = if args.length() > 1 { args[1] } else { Undefined }
         // Find existing key using SameValueZero
-        for i = 0; i < data.entries.length(); i = i + 1 {
-          let (k, _) = data.entries[i]
-          if same_value_zero(k, key) {
+        match
+          data.entries.search_by(fn(entry) { same_value_zero(entry.0, key) }) {
+          Some(i) => {
             // Update existing entry
             data.entries[i] = (key, value)
             return this_val
           }
+          None => ()
         }
         // Add new entry
         data.append_entry(key, value)
@@ -318,13 +317,10 @@ fn setup_map_builtins(
       Value::Map(data) => {
         let key = if args.length() > 0 { args[0] } else { Undefined }
         // Find key using SameValueZero
-        for i = 0; i < data.entries.length(); i = i + 1 {
-          let (k, _) = data.entries[i]
-          if same_value_zero(k, key) {
-            return Value::Bool(true)
-          }
-        }
-        Value::Bool(false)
+        Value::Bool(
+          data.entries.search_by(fn(entry) { same_value_zero(entry.0, key) })
+          is Some(_),
+        )
       }
       _ =>
         raise @errors.TypeError(
@@ -342,14 +338,14 @@ fn setup_map_builtins(
         Value::Map(data) => {
           let key = if args.length() > 0 { args[0] } else { Undefined }
           // Find and remove key using SameValueZero
-          for i = 0; i < data.entries.length(); i = i + 1 {
-            let (k, _) = data.entries[i]
-            if same_value_zero(k, key) {
+          match
+            data.entries.search_by(fn(entry) { same_value_zero(entry.0, key) }) {
+            Some(i) => {
               data.remove_entry_at(i)
-              return Value::Bool(true)
+              Value::Bool(true)
             }
+            None => Value::Bool(false)
           }
-          Value::Bool(false)
         }
         _ =>
           raise @errors.TypeError(
@@ -396,26 +392,21 @@ fn setup_map_builtins(
           // shift to lower indexes.
           let mut next_entry_id = 0
           while true {
-            let mut next_index = -1
-            for i = 0; i < data.entry_ids.length(); i = i + 1 {
-              if data.entry_ids[i] >= next_entry_id {
-                next_index = i
-                break
+            match data.entry_ids.search_by(fn(id) { id >= next_entry_id }) {
+              None => break
+              Some(i) => {
+                let entry_id = data.entry_ids[i]
+                let (key, value) = data.entries[i]
+                next_entry_id = entry_id + 1
+                // Call callback(value, key, map)
+                let _ = interp.call_value(
+                  callback,
+                  this_arg,
+                  [value, key, this_val],
+                  loc,
+                )
               }
             }
-            if next_index < 0 {
-              break
-            }
-            let entry_id = data.entry_ids[next_index]
-            let (key, value) = data.entries[next_index]
-            next_entry_id = entry_id + 1
-            // Call callback(value, key, map)
-            let _ = interp.call_value(
-              callback,
-              this_arg,
-              [value, key, this_val],
-              loc,
-            )
           }
           Undefined
         }
@@ -481,11 +472,10 @@ fn setup_map_builtins(
           let key = if args.length() > 0 { args[0] } else { Undefined }
           let value = if args.length() > 1 { args[1] } else { Undefined }
           // If key exists, return existing value
-          for i = 0; i < data.entries.length(); i = i + 1 {
-            let (k, v) = data.entries[i]
-            if same_value_zero(k, key) {
-              return v
-            }
+          match
+            data.entries.search_by(fn(entry) { same_value_zero(entry.0, key) }) {
+            Some(i) => return data.entries[i].1
+            None => ()
           }
           // Key not found, insert and return value
           data.append_entry(key, value)
@@ -513,23 +503,23 @@ fn setup_map_builtins(
           }
           let key = canonicalize_keyed_collection_key(raw_key)
           // If key exists, return existing value without calling callback
-          for i = 0; i < data.entries.length(); i = i + 1 {
-            let (k, v) = data.entries[i]
-            if same_value_zero(k, key) {
-              return v
-            }
+          match
+            data.entries.search_by(fn(entry) { same_value_zero(entry.0, key) }) {
+            Some(i) => return data.entries[i].1
+            None => ()
           }
           // Key not found, call callback to get value
           let loc = @token.Loc::default()
           let value = interp.call_value(callbackfn, Undefined, [key], loc)
           // Re-check if key was added by callback (mutation during callback)
-          for i = 0; i < data.entries.length(); i = i + 1 {
-            let (k, _) = data.entries[i]
-            if same_value_zero(k, key) {
+          match
+            data.entries.search_by(fn(entry) { same_value_zero(entry.0, key) }) {
+            Some(i) => {
               // Overwrite with computed value per spec
               data.entries[i] = (key, value)
               return value
             }
+            None => ()
           }
           data.append_entry(key, value)
           value
@@ -785,18 +775,12 @@ fn setup_map_builtins(
             }
             let key = canonicalize_keyed_collection_key(raw_key)
             // Find existing group
-            let mut found_idx = -1
-            for i = 0; i < group_keys.length(); i = i + 1 {
-              if same_value(group_keys[i], key) {
-                found_idx = i
-                break
+            match group_keys.search_by(fn(k) { same_value(k, key) }) {
+              Some(found_idx) => group_arrays[found_idx].push(kvalue)
+              None => {
+                group_keys.push(key)
+                group_arrays.push([kvalue])
               }
-            }
-            if found_idx >= 0 {
-              group_arrays[found_idx].push(kvalue)
-            } else {
-              group_keys.push(key)
-              group_arrays.push([kvalue])
             }
             k = k + 1
           }
@@ -849,10 +833,8 @@ fn setup_set_builtins(
       Value::Set(data) => {
         let value = if args.length() > 0 { args[0] } else { Undefined }
         // Check if value already exists using SameValueZero
-        for i = 0; i < data.values.length(); i = i + 1 {
-          if same_value_zero(data.values[i], value) {
-            return this_val
-          }
+        if data.values.search_by(fn(v) { same_value_zero(v, value) }) is Some(_) {
+          return this_val
         }
         // Add new value
         data.values.push(value)
@@ -874,12 +856,9 @@ fn setup_set_builtins(
       Value::Set(data) => {
         let value = if args.length() > 0 { args[0] } else { Undefined }
         // Find value using SameValueZero
-        for i = 0; i < data.values.length(); i = i + 1 {
-          if same_value_zero(data.values[i], value) {
-            return Value::Bool(true)
-          }
-        }
-        Value::Bool(false)
+        Value::Bool(
+          data.values.search_by(fn(v) { same_value_zero(v, value) }) is Some(_),
+        )
       }
       _ =>
         raise @errors.TypeError(
@@ -897,13 +876,13 @@ fn setup_set_builtins(
         Value::Set(data) => {
           let value = if args.length() > 0 { args[0] } else { Undefined }
           // Find and remove value using SameValueZero
-          for i = 0; i < data.values.length(); i = i + 1 {
-            if same_value_zero(data.values[i], value) {
+          match data.values.search_by(fn(v) { same_value_zero(v, value) }) {
+            Some(i) => {
               let _ = data.values.remove(i)
-              return Value::Bool(true)
+              Value::Bool(true)
             }
+            None => Value::Bool(false)
           }
-          Value::Bool(false)
         }
         _ =>
           raise @errors.TypeError(
