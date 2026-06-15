@@ -13,7 +13,6 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         _ => Null
       }
       let props : Map[String, Value] = {}
-      props["[[StringData]]"] = Value::String_(s)
       props["length"] = Value::Number(s.length().to_double())
       let chars = s.to_array()
       for i = 0; i < chars.length(); i = i + 1 {
@@ -46,6 +45,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           symbol_properties: {},
           descriptors: descs,
           symbol_descriptors: {},
+          internal_slots: { "[[StringData]]": Value::String_(s) },
         },
         prototype: string_proto,
         callable: None,
@@ -60,10 +60,11 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       }
       Value::Object({
         bag: {
-          properties: { "[[NumberData]]": Value::Number(n) },
+          properties: {},
           symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
+          internal_slots: { "[[NumberData]]": Value::Number(n) },
         },
         prototype: number_proto,
         callable: None,
@@ -78,10 +79,11 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       }
       Value::Object({
         bag: {
-          properties: { "[[BooleanData]]": Value::Bool(b) },
+          properties: {},
           symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
+          internal_slots: { "[[BooleanData]]": Value::Bool(b) },
         },
         prototype: boolean_proto,
         callable: None,
@@ -96,10 +98,11 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       }
       Value::Object({
         bag: {
-          properties: { "[[SymbolData]]": val },
+          properties: {},
           symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
+          internal_slots: { "[[SymbolData]]": val },
         },
         prototype: symbol_proto,
         callable: None,
@@ -131,6 +134,7 @@ pub fn make_data_desc_obj(
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,
@@ -160,6 +164,7 @@ pub fn make_accessor_desc_obj(
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,

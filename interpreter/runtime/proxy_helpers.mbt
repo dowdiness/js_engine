@@ -75,7 +75,7 @@ pub fn revoke_proxy(proxy_data : ProxyData) -> Unit {
 ///|
 fn typedarray_declared_length(data : ObjectData) -> Int {
   guard is_typedarray_class(data.class_name) else { return 0 }
-  match data.bag.properties.get("[[ArrayLength]]") {
+  match data.bag.internal_slots.get("[[ArrayLength]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -1104,6 +1104,7 @@ fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: Null,
     extensible: true,

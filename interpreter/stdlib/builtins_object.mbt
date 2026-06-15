@@ -582,6 +582,7 @@ pub fn setup_object_builtins(
       symbol_properties: {},
       descriptors: obj_proto_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: Null,
     callable: None,
@@ -681,10 +682,11 @@ pub fn setup_object_builtins(
               Value::Number(n) =>
                 Value::Object({
                   bag: {
-                    properties: { "[[NumberData]]": Value::Number(n) },
+                    properties: {},
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
+                    internal_slots: { "[[NumberData]]": Value::Number(n) },
                   },
                   prototype: realm_state.get_number_proto(),
                   callable: None,
@@ -695,10 +697,11 @@ pub fn setup_object_builtins(
               Value::Bool(b) =>
                 Value::Object({
                   bag: {
-                    properties: { "[[BooleanData]]": Value::Bool(b) },
+                    properties: {},
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
+                    internal_slots: { "[[BooleanData]]": Value::Bool(b) },
                   },
                   prototype: realm_state.get_boolean_proto(),
                   callable: None,
@@ -708,7 +711,6 @@ pub fn setup_object_builtins(
                 })
               Value::String_(s) => {
                 let props : Map[String, Value] = {}
-                props["[[StringData]]"] = Value::String_(s)
                 props["length"] = Value::Number(s.length().to_double())
                 let chars = s.to_array()
                 for i = 0; i < chars.length(); i = i + 1 {
@@ -741,6 +743,7 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: descs,
                     symbol_descriptors: {},
+                    internal_slots: { "[[StringData]]": Value::String_(s) },
                   },
                   prototype: realm_state.get_string_proto(),
                   callable: None,
@@ -752,10 +755,11 @@ pub fn setup_object_builtins(
               Symbol(_) =>
                 Value::Object({
                   bag: {
-                    properties: { "[[SymbolData]]": raw_target },
+                    properties: {},
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
+                    internal_slots: { "[[SymbolData]]": raw_target },
                   },
                   prototype: realm_state.get_symbol_proto(),
                   callable: None,
@@ -1163,6 +1167,7 @@ pub fn setup_object_builtins(
           "groupBy": obj_method_desc,
         },
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: Null,
       callable: Some(
@@ -1186,7 +1191,6 @@ pub fn setup_object_builtins(
                 _ => Null
               }
               let props : Map[String, Value] = {}
-              props["[[StringData]]"] = Value::String_(s)
               props["length"] = Value::Number(s.length().to_double())
               for i = 0; i < s.length(); i = i + 1 {
                 props[i.to_string()] = Value::String_(s[i:i + 1].to_owned())
@@ -1216,6 +1220,7 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: descs,
                   symbol_descriptors: {},
+                  internal_slots: { "[[StringData]]": Value::String_(s) },
                 },
                 prototype: string_proto,
                 callable: None,
@@ -1231,10 +1236,11 @@ pub fn setup_object_builtins(
               }
               Value::Object({
                 bag: {
-                  properties: { "[[NumberData]]": Value::Number(n) },
+                  properties: {},
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
+                  internal_slots: { "[[NumberData]]": Value::Number(n) },
                 },
                 prototype: number_proto,
                 callable: None,
@@ -1250,10 +1256,11 @@ pub fn setup_object_builtins(
               }
               Value::Object({
                 bag: {
-                  properties: { "[[BooleanData]]": Value::Bool(b) },
+                  properties: {},
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
+                  internal_slots: { "[[BooleanData]]": Value::Bool(b) },
                 },
                 prototype: boolean_proto,
                 callable: None,
@@ -1269,10 +1276,11 @@ pub fn setup_object_builtins(
               }
               Value::Object({
                 bag: {
-                  properties: { "[[SymbolData]]": val },
+                  properties: {},
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
+                  internal_slots: { "[[SymbolData]]": val },
                 },
                 prototype: symbol_proto,
                 callable: None,

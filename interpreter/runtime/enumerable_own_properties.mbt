@@ -102,10 +102,10 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
             }
           ],
           ..[
-            for k in sort_property_keys(data.bag.properties) if !is_internal_array_bag_key(
+            for k in sort_property_keys(data.bag.properties) if bag_key_enumerable(
+              data.bag,
               k,
-            ) &&
-            bag_key_enumerable(data.bag, k) => Value::String_(k)
+            ) => Value::String_(k)
           ],
         ],
       )
@@ -167,7 +167,7 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
         }
       }
       for k in sort_property_keys(data.bag.properties) {
-        if !is_internal_array_bag_key(k) && bag_key_enumerable(data.bag, k) {
+        if bag_key_enumerable(data.bag, k) {
           vals.push(interp.get_property(obj, k, loc))
         }
       }
@@ -246,7 +246,7 @@ pub fn object_entries(interp : Interpreter, obj : Value) -> Value raise Error {
         }
       }
       for k in sort_property_keys(data.bag.properties) {
-        if !is_internal_array_bag_key(k) && bag_key_enumerable(data.bag, k) {
+        if bag_key_enumerable(data.bag, k) {
           entries.push(
             make_array([Value::String_(k), interp.get_property(obj, k, loc)]),
           )

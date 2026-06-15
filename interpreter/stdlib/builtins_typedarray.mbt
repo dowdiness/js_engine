@@ -304,34 +304,20 @@ pub fn make_typedarray_object(
     Some(id) => id
     None => -1
   }
-  let props : Map[String, Value] = {}
-  props["[[TypedArrayName]]"] = Value::String_(type_name)
-  props["[[ViewedArrayBuffer]]"] = buffer
-  props["[[ArrayBufferID]]"] = Value::Number(buf_id.to_double())
-  props["[[ByteOffset]]"] = Value::Number(0.0)
-  props["[[ByteLength]]"] = Value::Number(byte_length.to_double())
-  props["[[ArrayLength]]"] = Value::Number(length.to_double())
-  let descs : Map[String, PropDescriptor] = {}
-  let internal_keys = [
-    "[[TypedArrayName]]", "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]", "[[ByteOffset]]",
-    "[[ByteLength]]", "[[ArrayLength]]",
-  ]
-  for k in internal_keys {
-    descs[k] = {
-      writable: false,
-      enumerable: false,
-      configurable: false,
-      getter: None,
-      setter: None,
-      is_accessor: false,
-    }
-  }
   Value::Object({
     bag: {
-      properties: props,
+      properties: {},
       symbol_properties: {},
-      descriptors: descs,
+      descriptors: {},
       symbol_descriptors: {},
+      internal_slots: {
+        "[[TypedArrayName]]": Value::String_(type_name),
+        "[[ViewedArrayBuffer]]": buffer,
+        "[[ArrayBufferID]]": Value::Number(buf_id.to_double()),
+        "[[ByteOffset]]": Value::Number(0.0),
+        "[[ByteLength]]": Value::Number(byte_length.to_double()),
+        "[[ArrayLength]]": Value::Number(length.to_double()),
+      },
     },
     prototype: proto,
     callable: None,
@@ -387,6 +373,7 @@ fn install_shape_only_bigint_typedarray_constructor(
       symbol_properties: {},
       descriptors: per_proto_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: ta_proto,
     callable: None,
@@ -416,6 +403,7 @@ fn install_shape_only_bigint_typedarray_constructor(
       symbol_properties: {},
       descriptors: ctor_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: func_proto,
     callable: Some(
@@ -471,34 +459,20 @@ fn make_typedarray_from_buffer(
   )
   let bpe = typed_array_bytes_per_element(type_name)
   let byte_length = length * bpe
-  let props : Map[String, Value] = {}
-  props["[[TypedArrayName]]"] = Value::String_(type_name)
-  props["[[ViewedArrayBuffer]]"] = buffer
-  props["[[ArrayBufferID]]"] = Value::Number(buf_id.to_double())
-  props["[[ByteOffset]]"] = Value::Number(byte_offset.to_double())
-  props["[[ByteLength]]"] = Value::Number(byte_length.to_double())
-  props["[[ArrayLength]]"] = Value::Number(length.to_double())
-  let descs : Map[String, PropDescriptor] = {}
-  let internal_keys = [
-    "[[TypedArrayName]]", "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]", "[[ByteOffset]]",
-    "[[ByteLength]]", "[[ArrayLength]]",
-  ]
-  for k in internal_keys {
-    descs[k] = {
-      writable: false,
-      enumerable: false,
-      configurable: false,
-      getter: None,
-      setter: None,
-      is_accessor: false,
-    }
-  }
   Value::Object({
     bag: {
-      properties: props,
+      properties: {},
       symbol_properties: {},
-      descriptors: descs,
+      descriptors: {},
       symbol_descriptors: {},
+      internal_slots: {
+        "[[TypedArrayName]]": Value::String_(type_name),
+        "[[ViewedArrayBuffer]]": buffer,
+        "[[ArrayBufferID]]": Value::Number(buf_id.to_double()),
+        "[[ByteOffset]]": Value::Number(byte_offset.to_double()),
+        "[[ByteLength]]": Value::Number(byte_length.to_double()),
+        "[[ArrayLength]]": Value::Number(length.to_double()),
+      },
     },
     prototype: proto,
     callable: None,
@@ -1822,6 +1796,7 @@ pub fn setup_typedarray_builtins(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
+              internal_slots: {},
             },
             prototype: Null,
             callable: None,
@@ -1839,6 +1814,7 @@ pub fn setup_typedarray_builtins(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
+              internal_slots: {},
             },
             prototype: Null,
             callable: None,
@@ -1859,6 +1835,7 @@ pub fn setup_typedarray_builtins(
           symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
+          internal_slots: {},
         },
         prototype: realm_state.get_array_iterator_proto(),
         callable: None,
@@ -1907,6 +1884,7 @@ pub fn setup_typedarray_builtins(
             symbol_properties: {},
             descriptors: {},
             symbol_descriptors: {},
+            internal_slots: {},
           },
           prototype: Null,
           callable: None,
@@ -1924,6 +1902,7 @@ pub fn setup_typedarray_builtins(
             symbol_properties: {},
             descriptors: {},
             symbol_descriptors: {},
+            internal_slots: {},
           },
           prototype: Null,
           callable: None,
@@ -1944,6 +1923,7 @@ pub fn setup_typedarray_builtins(
         symbol_properties: {},
         descriptors: {},
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: realm_state.get_array_iterator_proto(),
       callable: None,
@@ -1992,6 +1972,7 @@ pub fn setup_typedarray_builtins(
             symbol_properties: {},
             descriptors: {},
             symbol_descriptors: {},
+            internal_slots: {},
           },
           prototype: Null,
           callable: None,
@@ -2009,6 +1990,7 @@ pub fn setup_typedarray_builtins(
             symbol_properties: {},
             descriptors: {},
             symbol_descriptors: {},
+            internal_slots: {},
           },
           prototype: Null,
           callable: None,
@@ -2029,6 +2011,7 @@ pub fn setup_typedarray_builtins(
         symbol_properties: {},
         descriptors: {},
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: realm_state.get_array_iterator_proto(),
       callable: None,
@@ -2720,6 +2703,7 @@ pub fn setup_typedarray_builtins(
       symbol_properties: ta_proto_sym_props,
       descriptors: ta_proto_descs,
       symbol_descriptors: ta_proto_sym_descs,
+      internal_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -2895,6 +2879,7 @@ pub fn setup_typedarray_builtins(
       symbol_properties: {},
       descriptors: ta_ctor_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: func_proto,
     callable: Some(
@@ -2964,6 +2949,7 @@ pub fn setup_typedarray_builtins(
         symbol_properties: {},
         descriptors: per_proto_descs,
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: ta_proto,
       callable: None,
@@ -3019,6 +3005,7 @@ pub fn setup_typedarray_builtins(
         symbol_properties: {},
         descriptors: ctor_descs,
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: ta_ctor,
       callable: Some(

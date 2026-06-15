@@ -259,7 +259,7 @@ fn validate_dataview_access(
       message="Method called on incompatible receiver: not a DataView",
     )
   }
-  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match data.bag.internal_slots.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => raise @errors.TypeError(message="DataView access on invalid object")
   }
@@ -272,11 +272,11 @@ fn validate_dataview_access(
       message="Cannot perform DataView operation on a detached ArrayBuffer",
     )
   }
-  let dv_offset = match data.bag.properties.get("[[ByteOffset]]") {
+  let dv_offset = match data.bag.internal_slots.get("[[ByteOffset]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
-  let dv_byte_length = match data.bag.properties.get("[[ByteLength]]") {
+  let dv_byte_length = match data.bag.internal_slots.get("[[ByteLength]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -359,7 +359,7 @@ pub fn setup_dataview_builtins(
               if data.class_name == "DataView" {
                 if getter_name != "buffer" {
                   let buf_id = match
-                    data.bag.properties.get("[[ArrayBufferID]]") {
+                    data.bag.internal_slots.get("[[ArrayBufferID]]") {
                     Some(Value::Number(n)) => n.to_int()
                     _ =>
                       raise @errors.TypeError(
@@ -376,7 +376,7 @@ pub fn setup_dataview_builtins(
                     )
                   }
                 }
-                match data.bag.properties.get(internal_slot) {
+                match data.bag.internal_slots.get(internal_slot) {
                   Some(n) => n
                   None => Value::Number(0.0)
                 }
@@ -864,6 +864,7 @@ pub fn setup_dataview_builtins(
       symbol_properties: dv_proto_sym_props,
       descriptors: dv_proto_descs,
       symbol_descriptors: dv_proto_sym_descs,
+      internal_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -904,6 +905,7 @@ pub fn setup_dataview_builtins(
       symbol_properties: {},
       descriptors: dv_ctor_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -948,7 +950,7 @@ pub fn setup_dataview_builtins(
         }
         let buf_byte_length = match buffer {
           Object(buf_data) =>
-            match buf_data.bag.properties.get("[[ArrayBufferByteLength]]") {
+            match buf_data.bag.internal_slots.get("[[ArrayBufferByteLength]]") {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -990,31 +992,18 @@ pub fn setup_dataview_builtins(
             message="Cannot construct DataView with a detached ArrayBuffer",
           )
         }
-        let props : Map[String, Value] = {}
-        props["[[ViewedArrayBuffer]]"] = buffer
-        props["[[ArrayBufferID]]"] = Value::Number(buf_id.to_double())
-        props["[[ByteOffset]]"] = Value::Number(byte_offset.to_double())
-        props["[[ByteLength]]"] = Value::Number(byte_length.to_double())
-        let descs : Map[String, PropDescriptor] = {}
-        let internal_keys = [
-          "[[ViewedArrayBuffer]]", "[[ArrayBufferID]]", "[[ByteOffset]]", "[[ByteLength]]",
-        ]
-        for k in internal_keys {
-          descs[k] = {
-            writable: false,
-            enumerable: false,
-            configurable: false,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          }
-        }
         Value::Object({
           bag: {
-            properties: props,
+            properties: {},
             symbol_properties: {},
-            descriptors: descs,
+            descriptors: {},
             symbol_descriptors: {},
+            internal_slots: {
+              "[[ViewedArrayBuffer]]": buffer,
+              "[[ArrayBufferID]]": Value::Number(buf_id.to_double()),
+              "[[ByteOffset]]": Value::Number(byte_offset.to_double()),
+              "[[ByteLength]]": Value::Number(byte_length.to_double()),
+            },
           },
           prototype: proto,
           callable: None,

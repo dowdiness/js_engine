@@ -1566,7 +1566,6 @@ fn Interpreter::exec_stmt(
           let props : Map[String, Value] = {}
           let utf16_units = string_to_utf16(s)
           props["length"] = Number(utf16_units.length().to_double())
-          props["[[PrimitiveValue]]"] = String_(s)
           // Add character indices as properties (UTF-16 code units)
           for i = 0; i < utf16_units.length(); i = i + 1 {
             let unit = utf16_units[i]
@@ -1583,6 +1582,7 @@ fn Interpreter::exec_stmt(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
+              internal_slots: { "[[PrimitiveValue]]": String_(s) },
             },
             prototype: str_proto,
             callable: None,
@@ -1594,14 +1594,13 @@ fn Interpreter::exec_stmt(
         Number(n) => {
           // Box number primitive to Number wrapper object
           let num_proto = env.get("[[NumberPrototype]]") catch { _ => Null }
-          let props : Map[String, Value] = {}
-          props["[[PrimitiveValue]]"] = Number(n)
           Object({
             bag: {
-              properties: props,
+              properties: {},
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
+              internal_slots: { "[[PrimitiveValue]]": Number(n) },
             },
             prototype: num_proto,
             callable: None,
@@ -1613,14 +1612,13 @@ fn Interpreter::exec_stmt(
         Bool(b) => {
           // Box boolean primitive to Boolean wrapper object
           let bool_proto = env.get("[[BooleanPrototype]]") catch { _ => Null }
-          let props : Map[String, Value] = {}
-          props["[[PrimitiveValue]]"] = Bool(b)
           Object({
             bag: {
-              properties: props,
+              properties: {},
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
+              internal_slots: { "[[PrimitiveValue]]": Bool(b) },
             },
             prototype: bool_proto,
             callable: None,
@@ -1694,7 +1692,7 @@ pub fn collect_for_in_keys(
         // buffer makes every index invalid for [[GetOwnProperty]], so for-in
         // must skip them instead of yielding stale 0..length-1 keys.
         if is_typedarray_class(data.class_name) {
-          let ta_len = match data.bag.properties.get("[[ArrayLength]]") {
+          let ta_len = match data.bag.internal_slots.get("[[ArrayLength]]") {
             Some(Number(n)) => n.to_int()
             _ => 0
           }
@@ -1718,12 +1716,6 @@ pub fn collect_for_in_keys(
         }
         for k in sorted {
           if !seen.contains(k) {
-            // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]]).
-            // Module namespace properties are export names, and string-named
-            // exports may legally begin with `[[`.
-            if data.class_name != "Module" && k.has_prefix("[[") {
-              continue
-            }
             seen.add(k)
             let enumerable = if data.class_name == "Module" {
               match interp.get_own_property(Object(data), String_(k)) {
@@ -1762,9 +1754,6 @@ pub fn collect_for_in_keys(
         }
         let sorted = sort_property_keys(data.bag.properties)
         for k in sorted {
-          if k.has_prefix("[[") {
-            continue
-          }
           if !seen.contains(k) {
             let enumerable = match data.bag.descriptors.get(k) {
               Some(d) => d.enumerable

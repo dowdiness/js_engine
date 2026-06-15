@@ -1144,6 +1144,7 @@ fn setup_array_builtins(
       symbol_properties: {},
       descriptors: array_proto_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -1378,6 +1379,7 @@ fn setup_array_builtins(
           "of": obj_method_desc,
         },
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: Null,
       callable: Some(

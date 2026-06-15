@@ -499,6 +499,7 @@ fn setup_math_builtins(
         symbol_properties: math_symbol_props,
         descriptors: math_descs,
         symbol_descriptors: math_symbol_descs,
+        internal_slots: {},
       },
       prototype: match env.bindings.get("[[ObjectPrototype]]") {
         Some(binding) => binding.value

@@ -36,6 +36,7 @@ fn Interpreter::make_async_function(
         symbol_properties: {},
         descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: async_proto,
       callable: Some(
@@ -100,6 +101,7 @@ fn Interpreter::make_async_function_ext(
         symbol_properties: {},
         descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: async_proto,
       callable: Some(
@@ -504,6 +506,7 @@ fn make_async_gen_function_inner(
           },
         },
         symbol_descriptors: {},
+        internal_slots: {},
       },
       prototype: gen_func_proto,
       callable: Some(
@@ -593,6 +596,7 @@ fn init_async_generator_prototype(
       symbol_properties: sym_props,
       descriptors: descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: object_prototype,
     callable: None,
@@ -680,6 +684,7 @@ pub fn setup_async_function_constructor(
       symbol_properties: af_sym_props,
       descriptors: {},
       symbol_descriptors: af_sym_descs,
+      internal_slots: {},
     },
     prototype: func_proto,
     callable: None,

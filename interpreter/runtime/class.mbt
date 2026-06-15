@@ -420,6 +420,7 @@ fn Interpreter::create_class(
       symbol_properties: proto_symbol_props,
       descriptors: proto_descriptors,
       symbol_descriptors: proto_symbol_descriptors,
+      internal_slots: {},
     },
     prototype: super_proto,
     callable: None,
@@ -447,6 +448,7 @@ fn Interpreter::create_class(
         symbol_properties: static_symbol_props,
         descriptors: static_descriptors,
         symbol_descriptors: static_symbol_descriptors,
+        internal_slots: {},
       },
       prototype: class_proto,
       callable: Some(
