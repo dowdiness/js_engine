@@ -528,10 +528,7 @@ fn setup_builtins_with_realm_state_active(
   // String constructor with static methods
   let string_proto : Value = Value::Object({
     bag: {
-      properties: {
-        "[[StringData]]": Value::String_(""),
-        "length": Value::Number(0.0),
-      },
+      properties: { "length": Value::Number(0.0) },
       symbol_properties: {},
       descriptors: {
         "length": {
@@ -544,7 +541,7 @@ fn setup_builtins_with_realm_state_active(
         },
       },
       symbol_descriptors: {},
-      internal_slots: {},
+      internal_slots: { "[[StringData]]": Value::String_("") },
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -729,7 +726,6 @@ fn setup_builtins_with_realm_state_active(
           if context.is_constructing() {
             // new String(value) → boxed String object
             let props : Map[String, Value] = {}
-            props["[[StringData]]"] = Value::String_(str)
             props["length"] = Value::Number(str.length().to_double())
             // Add indexed character properties
             for i = 0; i < str.length(); i = i + 1 {
@@ -762,7 +758,7 @@ fn setup_builtins_with_realm_state_active(
                 symbol_properties: {},
                 descriptors: descs,
                 symbol_descriptors: {},
-                internal_slots: {},
+                internal_slots: { "[[StringData]]": Value::String_(str) },
               },
               prototype: string_proto,
               callable: None,
@@ -857,8 +853,6 @@ fn setup_builtins_with_realm_state_active(
       }
     },
   )
-  // Boolean.prototype has [[BooleanData]] internal slot with value false
-  boolean_proto_props["[[BooleanData]]"] = Value::Bool(false)
   let method_desc = @runtime.builtin_method_desc()
   let boolean_proto_descs : Map[String, PropDescriptor] = {}
   boolean_proto_descs["toString"] = method_desc
@@ -869,7 +863,7 @@ fn setup_builtins_with_realm_state_active(
       symbol_properties: {},
       descriptors: boolean_proto_descs,
       symbol_descriptors: {},
-      internal_slots: {},
+      internal_slots: { "[[BooleanData]]": Value::Bool(false) },
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -914,11 +908,11 @@ fn setup_builtins_with_realm_state_active(
             // new Boolean(value) → boxed Boolean object
             Value::Object({
               bag: {
-                properties: { "[[BooleanData]]": Value::Bool(b) },
+                properties: {},
                 symbol_properties: {},
                 descriptors: {},
                 symbol_descriptors: {},
-                internal_slots: {},
+                internal_slots: { "[[BooleanData]]": Value::Bool(b) },
               },
               prototype: boolean_proto,
               callable: None,

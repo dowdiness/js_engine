@@ -597,17 +597,17 @@ pub impl Show for Value with fn output(self, logger) {
         None =>
           // Boxed primitive objects: unwrap to primitive string representation
           if data.class_name == "String" {
-            match data.bag.properties.get("[[StringData]]") {
+            match data.bag.internal_slots.get("[[StringData]]") {
               Some(String_(s)) => logger.write_string(s)
               _ => logger.write_string("[object String]")
             }
           } else if data.class_name == "Number" {
-            match data.bag.properties.get("[[NumberData]]") {
+            match data.bag.internal_slots.get("[[NumberData]]") {
               Some(n) => n.output(logger)
               _ => logger.write_string("[object Number]")
             }
           } else if data.class_name == "Boolean" {
-            match data.bag.properties.get("[[BooleanData]]") {
+            match data.bag.internal_slots.get("[[BooleanData]]") {
               Some(Bool(b)) => logger.write_string(b.to_string())
               _ => logger.write_string("[object Boolean]")
             }

@@ -62,7 +62,7 @@ fn setup_symbol_builtins(
           }
         Object(data) =>
           // Support Symbol wrapper objects (e.g. Object(sym).toString())
-          match data.bag.properties.get("[[SymbolData]]") {
+          match data.bag.internal_slots.get("[[SymbolData]]") {
             Some(Value::Symbol(sym)) =>
               match sym.description {
                 Some(desc) => Value::String_("Symbol(\{desc})")
@@ -89,7 +89,7 @@ fn setup_symbol_builtins(
         Symbol(_) => this_val
         Object(data) =>
           // Support Symbol wrapper objects
-          match data.bag.properties.get("[[SymbolData]]") {
+          match data.bag.internal_slots.get("[[SymbolData]]") {
             Some(sym) => sym
             _ =>
               raise @errors.TypeError(
@@ -117,7 +117,7 @@ fn setup_symbol_builtins(
             None => Undefined
           }
         Object(data) =>
-          match data.bag.properties.get("[[SymbolData]]") {
+          match data.bag.internal_slots.get("[[SymbolData]]") {
             Some(Value::Symbol(sym)) =>
               match sym.description {
                 Some(desc) => Value::String_(desc)
@@ -156,7 +156,7 @@ fn setup_symbol_builtins(
       match this_val {
         Symbol(_) => this_val
         Object(data) =>
-          match data.bag.properties.get("[[SymbolData]]") {
+          match data.bag.internal_slots.get("[[SymbolData]]") {
             Some(sym) => sym
             _ =>
               raise @errors.TypeError(

@@ -1022,7 +1022,13 @@ fn Interpreter::eval_expr(
       // called on the literal.
       let default_obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
       let object_data : ObjectData = {
-        bag: { properties, symbol_properties, descriptors, symbol_descriptors, internal_slots: {} },
+        bag: {
+          properties,
+          symbol_properties,
+          descriptors,
+          symbol_descriptors,
+          internal_slots: {},
+        },
         prototype: default_obj_proto,
         callable: None,
         class_name: "Object",

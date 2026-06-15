@@ -182,8 +182,6 @@ pub fn is_es_whitespace_cp(Int) -> Bool
 
 pub fn is_function_value(Value) -> Bool
 
-pub fn is_internal_array_bag_key(String) -> Bool
-
 pub fn is_js_catchable_error(Error) -> Bool
 
 pub fn is_object_value(Value) -> Bool
@@ -720,6 +718,7 @@ pub(all) struct PropertyBag {
   symbol_properties : Map[Int, Value]
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor]
+  internal_slots : Map[String, Value]
 }
 pub fn PropertyBag::PropertyBag() -> Self
 

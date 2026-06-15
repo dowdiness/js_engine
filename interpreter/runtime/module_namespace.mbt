@@ -113,14 +113,13 @@ fn module_export_entry_is_live_cell(value : Value) -> Bool {
 /// instantiation but have not been initialized yet. Namespace access resolves
 /// this marker to the ReferenceError required for TDZ exports.
 fn make_module_tdz_marker(export_name : String) -> Value {
-  let props : Map[String, Value] = { "[[ExportName]]": String_(export_name) }
   Object({
     bag: {
-      properties: props,
+      properties: {},
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: {},
+      internal_slots: { "[[ExportName]]": String_(export_name) },
     },
     prototype: Null,
     callable: None,
@@ -186,7 +185,7 @@ fn resolve_module_export_value(value : Value) -> Value raise Error {
   }
   match value {
     Object(data) if data.class_name == "ModuleTDZ" => {
-      let export_name = match data.bag.properties.get("[[ExportName]]") {
+      let export_name = match data.bag.internal_slots.get("[[ExportName]]") {
         Some(String_(name)) => name
         _ => "export"
       }

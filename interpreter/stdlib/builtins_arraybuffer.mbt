@@ -136,7 +136,7 @@ pub fn get_buffer_id(obj : Value) -> Int? {
   match obj {
     Object(data) =>
       if data.class_name == "ArrayBuffer" {
-        match data.bag.properties.get("[[ArrayBufferID]]") {
+        match data.bag.internal_slots.get("[[ArrayBufferID]]") {
           Some(Value::Number(n)) => Some(n.to_int())
           _ => None
         }
@@ -155,33 +155,16 @@ pub fn make_arraybuffer_object(
   proto : Value,
 ) -> Value raise Error {
   let id = alloc_arraybuffer(realm_state.arraybuffer_state, byte_length)
-  let props : Map[String, Value] = {}
-  props["[[ArrayBufferID]]"] = Value::Number(id.to_double())
-  props["[[ArrayBufferByteLength]]"] = Value::Number(byte_length.to_double())
-  let descs : Map[String, PropDescriptor] = {}
-  descs["[[ArrayBufferID]]"] = {
-    writable: false,
-    enumerable: false,
-    configurable: false,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  descs["[[ArrayBufferByteLength]]"] = {
-    writable: false,
-    enumerable: false,
-    configurable: false,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
   Value::Object({
     bag: {
-      properties: props,
+      properties: {},
       symbol_properties: {},
-      descriptors: descs,
+      descriptors: {},
       symbol_descriptors: {},
-      internal_slots: {},
+      internal_slots: {
+        "[[ArrayBufferID]]": Value::Number(id.to_double()),
+        "[[ArrayBufferByteLength]]": Value::Number(byte_length.to_double()),
+      },
     },
     prototype: proto,
     callable: None,
@@ -252,12 +235,13 @@ pub fn setup_arraybuffer_builtins(
                 data,
                 realm_state.arraybuffer_state,
               )
-              match data.bag.properties.get("[[ArrayBufferID]]") {
+              match data.bag.internal_slots.get("[[ArrayBufferID]]") {
                 Some(Value::Number(id_n)) =>
                   if is_arraybuffer_state_detached(storage_state, id_n.to_int()) {
                     Value::Number(0.0)
                   } else {
-                    match data.bag.properties.get("[[ArrayBufferByteLength]]") {
+                    match
+                      data.bag.internal_slots.get("[[ArrayBufferByteLength]]") {
                       Some(n) => n
                       None => Value::Number(0.0)
                     }
@@ -292,7 +276,8 @@ pub fn setup_arraybuffer_builtins(
               data,
               realm_state.arraybuffer_state,
             )
-            let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+            let buf_id = match
+              data.bag.internal_slots.get("[[ArrayBufferID]]") {
               Some(Value::Number(n)) => n.to_int()
               _ =>
                 raise @errors.TypeError(
@@ -630,7 +615,7 @@ pub fn validate_typedarray_buffer(
   data : ObjectData,
   realm_state : @runtime.RealmState,
 ) -> Unit raise Error {
-  let buf_id = match data.bag.properties.get("[[ArrayBufferID]]") {
+  let buf_id = match data.bag.internal_slots.get("[[ArrayBufferID]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => -1
   }

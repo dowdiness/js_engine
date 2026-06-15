@@ -833,7 +833,7 @@ fn Interpreter::get_computed_property_impl(
               let iterator_sym = well_known_symbols.iterator
               if sym.id == iterator_sym.id {
                 if data.class_name == "String" {
-                  match data.bag.properties.get("[[StringData]]") {
+                  match data.bag.internal_slots.get("[[StringData]]") {
                     Some(String_(_)) =>
                       return make_method_func(
                         name="[Symbol.iterator]",
@@ -844,7 +844,8 @@ fn Interpreter::get_computed_property_impl(
                             String_(sv) => sv
                             Object(d) =>
                               if d.class_name == "String" {
-                                match d.bag.properties.get("[[StringData]]") {
+                                match
+                                  d.bag.internal_slots.get("[[StringData]]") {
                                   Some(String_(sv)) => sv
                                   _ => this_val.to_string()
                                 }

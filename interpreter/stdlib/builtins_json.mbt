@@ -58,12 +58,12 @@ fn setup_json_builtins(
         let space_arg = match args[2] {
           Object(data) =>
             if data.class_name == "Number" {
-              match data.bag.properties.get("[[NumberData]]") {
+              match data.bag.internal_slots.get("[[NumberData]]") {
                 Some(n) => n
                 None => args[2]
               }
             } else if data.class_name == "String" {
-              match data.bag.properties.get("[[StringData]]") {
+              match data.bag.internal_slots.get("[[StringData]]") {
                 Some(s) => s
                 None => args[2]
               }
@@ -672,7 +672,7 @@ fn json_stringify_value(
         None => {
           // Unwrap boxed primitives per spec (SerializeJSONProperty step 4)
           if data.class_name == "Number" {
-            match data.bag.properties.get("[[NumberData]]") {
+            match data.bag.internal_slots.get("[[NumberData]]") {
               Some(Value::Number(n)) =>
                 return if n.is_nan() || n.is_inf() {
                   Value::String_("null")
@@ -682,13 +682,13 @@ fn json_stringify_value(
               _ => ()
             }
           } else if data.class_name == "String" {
-            match data.bag.properties.get("[[StringData]]") {
+            match data.bag.internal_slots.get("[[StringData]]") {
               Some(Value::String_(s)) =>
                 return Value::String_(json_escape_string(s))
               _ => ()
             }
           } else if data.class_name == "Boolean" {
-            match data.bag.properties.get("[[BooleanData]]") {
+            match data.bag.internal_slots.get("[[BooleanData]]") {
               Some(Value::Bool(b)) => return Value::String_(b.to_string())
               _ => ()
             }

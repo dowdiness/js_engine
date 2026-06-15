@@ -75,7 +75,7 @@ pub fn revoke_proxy(proxy_data : ProxyData) -> Unit {
 ///|
 fn typedarray_declared_length(data : ObjectData) -> Int {
   guard is_typedarray_class(data.class_name) else { return 0 }
-  match data.bag.properties.get("[[ArrayLength]]") {
+  match data.bag.internal_slots.get("[[ArrayLength]]") {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }

@@ -50,7 +50,7 @@ fn number_this_value(
     Value::Number(v) => v
     Object(data) =>
       if data.class_name == "Number" {
-        match data.bag.properties.get("[[NumberData]]") {
+        match data.bag.internal_slots.get("[[NumberData]]") {
           Some(Value::Number(v)) => v
           _ =>
             raise @errors.TypeError(
@@ -417,8 +417,6 @@ fn setup_number_builtins(
       Value::String_(number_to_string(n))
     },
   )
-  // Per ES spec, Number.prototype has [[NumberData]] internal slot with value +0
-  number_proto_props["[[NumberData]]"] = Value::Number(0.0)
   let num_method_desc = @runtime.builtin_method_desc()
   let number_proto_descs : Map[String, PropDescriptor] = {}
   number_proto_descs["toString"] = num_method_desc
@@ -434,7 +432,7 @@ fn setup_number_builtins(
       symbol_properties: {},
       descriptors: number_proto_descs,
       symbol_descriptors: {},
-      internal_slots: {},
+      internal_slots: { "[[NumberData]]": Value::Number(0.0) },
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -585,11 +583,11 @@ fn setup_number_builtins(
             // new Value::Number(value) → boxed Number object
             Value::Object({
               bag: {
-                properties: { "[[NumberData]]": Value::Number(n) },
+                properties: {},
                 symbol_properties: {},
                 descriptors: {},
                 symbol_descriptors: {},
-                internal_slots: {},
+                internal_slots: { "[[NumberData]]": Value::Number(n) },
               },
               prototype: number_proto,
               callable: None,

@@ -1,41 +1,41 @@
 ///|
 pub fn get_typedarray_viewed_buffer(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[ViewedArrayBuffer]]")
+  data.bag.internal_slots.get("[[ViewedArrayBuffer]]")
 }
 
 ///|
 pub fn get_typedarray_array_length(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[ArrayLength]]")
+  data.bag.internal_slots.get("[[ArrayLength]]")
 }
 
 ///|
 pub fn get_typedarray_byte_length(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[ByteLength]]")
+  data.bag.internal_slots.get("[[ByteLength]]")
 }
 
 ///|
 pub fn get_typedarray_byte_offset(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[ByteOffset]]")
+  data.bag.internal_slots.get("[[ByteOffset]]")
 }
 
 ///|
 pub fn get_typedarray_buffer_id(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[ArrayBufferID]]")
+  data.bag.internal_slots.get("[[ArrayBufferID]]")
 }
 
 ///|
 pub fn get_arraybuffer_byte_length(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[ArrayBufferByteLength]]")
+  data.bag.internal_slots.get("[[ArrayBufferByteLength]]")
 }
 
 ///|
 pub fn get_arraybuffer_id(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[ArrayBufferID]]")
+  data.bag.internal_slots.get("[[ArrayBufferID]]")
 }
 
 ///|
 pub fn get_boolean_data(data : ObjectData) -> Value? {
-  data.bag.properties.get("[[BooleanData]]")
+  data.bag.internal_slots.get("[[BooleanData]]")
 }
 
 ///|

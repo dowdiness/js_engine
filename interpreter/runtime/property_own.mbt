@@ -47,8 +47,7 @@ fn sort_property_keys_filtered(
 /// 1. Integer indices in ascending numeric order
 /// 2. Other string keys in insertion order
 pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
-  // Skip internal slots (e.g., [[BooleanData]], [[NumberData]], [[StringData]])
-  sort_property_keys_filtered(props, fn(k) { k.has_prefix("[[") })
+  sort_property_keys_filtered(props, fn(_) { false })
 }
 
 ///|
