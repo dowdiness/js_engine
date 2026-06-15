@@ -838,12 +838,12 @@ fn is_id_continue_char(c : Char) -> Bool {
 
 ///|
 priv struct RegexNameSummary {
-  names : Map[String, Bool]
+  names : @set.Set[String]
 }
 
 ///|
 fn RegexNameSummary::RegexNameSummary() -> RegexNameSummary {
-  { names: {} }
+  { names: @set.Set::default() }
 }
 
 ///|
@@ -851,12 +851,7 @@ fn regex_name_summary_intersects(
   left : RegexNameSummary,
   right : RegexNameSummary,
 ) -> Bool {
-  for name, _ in left.names {
-    if right.names.contains(name) {
-      return true
-    }
-  }
-  false
+  !left.names.is_disjoint(right.names)
 }
 
 ///|
@@ -864,8 +859,8 @@ fn regex_name_summary_union_into(
   target : RegexNameSummary,
   source : RegexNameSummary,
 ) -> Unit {
-  for name, _ in source.names {
-    target.names[name] = true
+  for name in source.names {
+    target.names.add(name)
   }
 }
 
@@ -899,7 +894,7 @@ fn regex_name_summary_for_node(
       if summary.names.contains(name) {
         regex_raise_duplicate_group_name()
       }
-      summary.names[name] = true
+      summary.names.add(name)
       summary
     }
     Group(children, _, None) | Lookahead(children, _) =>

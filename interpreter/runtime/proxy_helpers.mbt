@@ -943,7 +943,7 @@ pub fn proxy_own_property_keys(
       )
   }
   // Step 9: If trapResult contains any duplicate entries, throw TypeError
-  let seen_strings : Map[String, Bool] = {}
+  let seen_strings = @set.Set::default()
   let seen_symbols : Map[Int, Bool] = {}
   for key in trap_keys {
     match key {
@@ -953,7 +953,7 @@ pub fn proxy_own_property_keys(
             message="'ownKeys' on proxy: trap returned duplicate key '\{s}'",
           )
         }
-        seen_strings[s] = true
+        seen_strings.add(s)
       }
       Value::Symbol(sym) => {
         if seen_symbols.contains(sym.id) {

@@ -1237,9 +1237,9 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
   }
   self.eat_semicolon()
   // Validate: no duplicate bound names in import
-  let bound_names : Map[String, Bool] = {}
+  let bound_names = @set.Set::default()
   match default_import {
-    Some(name) => bound_names[name] = true
+    Some(name) => bound_names.add(name)
     None => ()
   }
   match namespace_import {
@@ -1247,7 +1247,7 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
       if bound_names.contains(name) {
         raise @errors.SyntaxError(message="Duplicate import binding '\{name}'")
       } else {
-        bound_names[name] = true
+        bound_names.add(name)
       }
     None => ()
   }
@@ -1257,7 +1257,7 @@ fn Parser::parse_import_decl(self : Parser) -> @ast.Stmt raise Error {
         message="Duplicate import binding '\{spec.local_name}'",
       )
     }
-    bound_names[spec.local_name] = true
+    bound_names.add(spec.local_name)
   }
   ImportDecl(
     default_import, specifiers, namespace_import, source, source_lex_form, source_loc,

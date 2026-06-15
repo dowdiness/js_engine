@@ -483,16 +483,16 @@ fn classify_path_by_edition(
     return ("Pre-ES2015 (baseline)", [])
   }
   let editions : Array[String] = []
-  let unmapped_seen : Map[String, Bool] = {}
+  let unmapped_seen = @set.Set::default()
   let feature_map = feature_edition()
   for feature in features {
     match feature_map.get(feature) {
       Some(edition) => editions.push(edition)
-      None => unmapped_seen[feature] = true
+      None => unmapped_seen.add(feature)
     }
   }
   let unmapped : Array[String] = []
-  for feature, _ in unmapped_seen {
+  for feature in unmapped_seen {
     unmapped.push(feature)
   }
   unmapped.sort()

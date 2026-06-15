@@ -111,7 +111,7 @@ fn main {
             exit_with_error()
             return
           }
-          let registered_specifiers : Map[String, Bool] = {}
+          let registered_specifiers = @set.Set::default()
           for fixture in fixtures {
             let (specifier, _) = fixture
             if registered_specifiers.contains(specifier) {
@@ -119,7 +119,7 @@ fn main {
               exit_with_error()
               return
             }
-            registered_specifiers[specifier] = true
+            registered_specifiers.add(specifier)
           }
           if registered_specifiers.contains(main_module_specifier) {
             println(
