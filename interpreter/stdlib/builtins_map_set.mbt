@@ -78,12 +78,17 @@ fn get_set_record(
       message="Set method argument's size property is not a number",
     )
   }
-  let int_size = num_size.floor()
-  // floor(+Infinity) = +Infinity, which is not < 0.0 and would pass through.
-  // §7.4.2 step 6b: if intSize is not finite, throw a RangeError.
-  if int_size.is_inf() || int_size < 0.0 {
+  // §7.4.2 step 5: ToIntegerOrInfinity truncates toward zero, not floor.
+  // floor(-0.5) = -1 (would wrongly throw), trunc(-0.5) = 0 (valid).
+  // +∞ is allowed and passes the < 0.0 check below; -∞ is caught by it.
+  let int_size = if num_size >= 0.0 {
+    num_size.floor()
+  } else {
+    num_size.ceil()
+  }
+  if int_size < 0.0 {
     raise @errors.RangeError(
-      message="Set method argument's size property is not a valid non-negative integer",
+      message="Set method argument's size property must be a non-negative integer",
     )
   }
   let has_val = interp.get_property(obj, "has", loc)
@@ -1046,10 +1051,8 @@ fn setup_set_builtins(
       let loc = @token.Loc::default()
       let other = if args.length() > 0 { args[0] } else { Undefined }
       let other_rec = get_set_record(interp, other, loc)
-      let result_values : Array[Value] = []
-      for v in data.values {
-        result_values.push(v)
-      }
+      // §24.2.3.1 step 4: Call other.keys() before copying this.[[SetData]] (step 6).
+      // keys() is user code that may mutate the receiver; copy must happen after.
       let key_iter = interp.call_value(
         other_rec.keys,
         other_rec.set_object,
@@ -1057,6 +1060,10 @@ fn setup_set_builtins(
         loc,
       )
       let next_method = interp.get_iterator_next_method(key_iter, loc)
+      let result_values : Array[Value] = []
+      for v in data.values {
+        result_values.push(v)
+      }
       while true {
         let iter_result = match
           interp.iterator_step_result(key_iter, next_method, loc) {
@@ -1093,26 +1100,26 @@ fn setup_set_builtins(
       let result_values : Array[Value] = []
       let this_size = data.values.length().to_double()
       if this_size <= other_rec.size {
-        // has-path: iterate this, call other.has for each value
-        // Use manual index loop: has() may mutate data.values, and MoonBit's
-        // `for x in arr` iterates with a fixed length snapshot, causing out-of-bounds
-        // if the array shrinks. Checking length() each step gives live semantics.
-        let mut i = 0
-        while i < data.values.length() {
-          let v = data.values[i]
-          let has_result = interp.call_value(
-            other_rec.has,
-            other_rec.set_object,
-            [v],
-            loc,
-          )
-          if @runtime.is_truthy(has_result) {
-            // §24.2.3.2 step 5.a.ii.2: only add if e is still in thisData
-            if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
+        // has-path: snapshot thisData, then check each element against other.has.
+        // Snapshot: elements deleted by has() before we reach them are skipped
+        // via the guard; elements added by has() are not visited (not in snapshot).
+        // The spec appends v whenever inOther is true — no re-check of thisData.
+        let snapshot : Array[Value] = []
+        for v in data.values {
+          snapshot.push(v)
+        }
+        for v in snapshot {
+          if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
+            let has_result = interp.call_value(
+              other_rec.has,
+              other_rec.set_object,
+              [v],
+              loc,
+            )
+            if @runtime.is_truthy(has_result) {
               result_values.push(v)
             }
           }
-          i = i + 1
         }
       } else {
         // keys-path: iterate other.keys(), include keys also in this
@@ -1162,20 +1169,25 @@ fn setup_set_builtins(
       let result_values : Array[Value] = []
       let this_size = data.values.length().to_double()
       if this_size <= other_rec.size {
-        // has-path: iterate this, keep values NOT in other
-        let mut i = 0
-        while i < data.values.length() {
-          let v = data.values[i]
-          let has_result = interp.call_value(
-            other_rec.has,
-            other_rec.set_object,
-            [v],
-            loc,
-          )
-          if !@runtime.is_truthy(has_result) {
-            result_values.push(v)
+        // has-path: snapshot thisData so has() mutations don't expand the set.
+        // Elements not in the original snapshot are never visited; elements
+        // deleted before we reach them (by earlier has() calls) are skipped.
+        let snapshot : Array[Value] = []
+        for v in data.values {
+          snapshot.push(v)
+        }
+        for v in snapshot {
+          if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
+            let has_result = interp.call_value(
+              other_rec.has,
+              other_rec.set_object,
+              [v],
+              loc,
+            )
+            if !@runtime.is_truthy(has_result) {
+              result_values.push(v)
+            }
           }
-          i = i + 1
         }
       } else {
         // keys-path: start with copy of this, remove keys found in other
@@ -1226,11 +1238,7 @@ fn setup_set_builtins(
       let loc = @token.Loc::default()
       let other = if args.length() > 0 { args[0] } else { Undefined }
       let other_rec = get_set_record(interp, other, loc)
-      // Start result as copy of this, then toggle membership based on other.keys()
-      let result_values : Array[Value] = []
-      for v in data.values {
-        result_values.push(v)
-      }
+      // §24.2.3.4 step 4: Call other.keys() before copying this.[[SetData]] (step 6).
       let key_iter = interp.call_value(
         other_rec.keys,
         other_rec.set_object,
@@ -1238,6 +1246,11 @@ fn setup_set_builtins(
         loc,
       )
       let next_method = interp.get_iterator_next_method(key_iter, loc)
+      // Start result as copy of this, then toggle membership based on other.keys()
+      let result_values : Array[Value] = []
+      for v in data.values {
+        result_values.push(v)
+      }
       while true {
         let iter_result = match
           interp.iterator_step_result(key_iter, next_method, loc) {
@@ -1288,19 +1301,26 @@ fn setup_set_builtins(
       if this_size > other_rec.size {
         return Value::Bool(false)
       }
-      let mut i = 0
-      while i < data.values.length() {
-        let v = data.values[i]
-        let has_result = interp.call_value(
-          other_rec.has,
-          other_rec.set_object,
-          [v],
-          loc,
-        )
-        if !@runtime.is_truthy(has_result) {
-          return Value::Bool(false)
+      // Snapshot thisData: if has() deletes the current element, the array
+      // compacts and the next element shifts into the same index, causing an
+      // index-based loop to skip it. Iterating the snapshot avoids this; elements
+      // deleted before we reach them are skipped via the membership guard.
+      let snapshot : Array[Value] = []
+      for v in data.values {
+        snapshot.push(v)
+      }
+      for v in snapshot {
+        if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if !@runtime.is_truthy(has_result) {
+            return Value::Bool(false)
+          }
         }
-        i = i + 1
       }
       Value::Bool(true)
     },
@@ -1341,9 +1361,7 @@ fn setup_set_builtins(
         let next_val = interp.iterator_result_value(iter_result, loc)
         let next_val = canonicalize_keyed_collection_key(next_val)
         if data.values.search_by(v => same_value_zero(v, next_val)) is None {
-          interp.iterator_close(key_iter, loc) catch {
-            _ => ()
-          }
+          interp.iterator_close(key_iter, loc)
           return Value::Bool(false)
         }
       }
@@ -1368,20 +1386,23 @@ fn setup_set_builtins(
       let other_rec = get_set_record(interp, other, loc)
       let this_size = data.values.length().to_double()
       if this_size <= other_rec.size {
-        // has-path: iterate this, call other.has; return false on any match
-        let mut i = 0
-        while i < data.values.length() {
-          let v = data.values[i]
-          let has_result = interp.call_value(
-            other_rec.has,
-            other_rec.set_object,
-            [v],
-            loc,
-          )
-          if @runtime.is_truthy(has_result) {
-            return Value::Bool(false)
+        // has-path: snapshot thisData; has() may mutate data.values.
+        let snapshot : Array[Value] = []
+        for v in data.values {
+          snapshot.push(v)
+        }
+        for v in snapshot {
+          if data.values.search_by(e => same_value_zero(e, v)) is Some(_) {
+            let has_result = interp.call_value(
+              other_rec.has,
+              other_rec.set_object,
+              [v],
+              loc,
+            )
+            if @runtime.is_truthy(has_result) {
+              return Value::Bool(false)
+            }
           }
-          i = i + 1
         }
       } else {
         // keys-path: iterate other.keys(); return false if any key is in this
@@ -1401,9 +1422,7 @@ fn setup_set_builtins(
           let next_val = interp.iterator_result_value(iter_result, loc)
           let next_val = canonicalize_keyed_collection_key(next_val)
           if data.values.search_by(v => same_value_zero(v, next_val)) is Some(_) {
-            interp.iterator_close(key_iter, loc) catch {
-              _ => ()
-            }
+            interp.iterator_close(key_iter, loc)
             return Value::Bool(false)
           }
         }
