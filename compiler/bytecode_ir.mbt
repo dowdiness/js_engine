@@ -280,6 +280,9 @@ priv struct BytecodeFunction {
   // setup when both direct references and eval references are absent.
   needs_arguments_object : Bool
   local_names : Array[String]
+  // O(1) slot lookup — same data as local_names but indexed; computed once at
+  // lower time so BytecodeFrame and call_compiled_func avoid O(N) linear scans.
+  local_indices : Map[String, Int]
   env_slot_names : Array[String]
   // Var-declared names that are NOT local slots, in source order with duplicates
   // preserved — precomputed at lowering so the VM hoists them without re-walking

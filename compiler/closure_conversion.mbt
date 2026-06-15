@@ -911,7 +911,7 @@ fn compile_func_expr_with_constructable(
       params,
       env,
       ctx.strict || @static_semantics.has_use_strict(body),
-      compiled_body,
+      body=Some(compiled_body),
       constructable~,
     )
   }
@@ -1206,7 +1206,7 @@ fn compile_stmt(
           params,
           env,
           ctx.strict || @static_semantics.has_use_strict(body),
-          compiled_body,
+          body=Some(compiled_body),
         )
         if env.bindings.contains(name) || env.has_var(name) {
           env.assign_var(name, func)
@@ -1298,7 +1298,7 @@ fn make_compiled_func(
   params : Array[String],
   closure : Environment,
   strict : Bool,
-  body : CompiledBody,
+  body? : CompiledBody? = None,
   rest_param? : String? = None,
   constructable? : Bool = true,
   call_self_name? : Bool = false,
@@ -1383,7 +1383,7 @@ fn make_compiled_func(
               params,
               closure,
               strict,
-              body,
+              body~,
               rest_param~,
               new_target~,
               call_self_name~,
@@ -1404,7 +1404,7 @@ fn make_compiled_func(
               params,
               closure,
               strict,
-              body,
+              body~,
               rest_param~,
               call_self_name~,
               define_arguments_object~,
@@ -1504,7 +1504,7 @@ fn call_compiled_func(
   params : Array[String],
   closure : Environment,
   strict : Bool,
-  body : CompiledBody,
+  body? : CompiledBody? = None,
   rest_param? : String? = None,
   new_target? : Value? = None,
   call_self_name? : Bool = false,
@@ -1537,16 +1537,7 @@ fn call_compiled_func(
       Some(bf) =>
         // Fast path: only bind params NOT in local_names to env (env_slot_names
         // and params in neither list still need env for bind_env_slots/LoadName).
-        for i, param in params {
-          if !string_array_contains(bf.local_names, param) {
-            let value = args.get(i).unwrap_or(Value::Undefined)
-            if func_env.bindings.contains(param) {
-              func_env.assign(param, value)
-            } else {
-              func_env.def_parameter(param, value)
-            }
-          }
-        }
+        bind_params_to_env_skip_locals(func_env, params, args, bf.local_indices)
       None => bind_simple_params(func_env, params, args)
     }
     bind_rest_param(func_env, params.length(), rest_param, args)
@@ -1580,7 +1571,12 @@ fn call_compiled_func(
           BytecodeNormal(_) => Value::Undefined
           BytecodeReturn(value) => value
         }
-      None => reduce_body_signal((body.0)(interp, func_ctx, func_env))
+      None =>
+        match body {
+          Some(b) => reduce_body_signal((b.0)(interp, func_ctx, func_env))
+          None =>
+            abort("call_compiled_func: body required when bytecode_func=None")
+        }
     }
   } catch {
     err => {
@@ -1648,6 +1644,25 @@ fn bind_rest_param(
       env.def_parameter(name, @runtime.make_array(rest_elements))
     }
     None => ()
+  }
+}
+
+///|
+fn bind_params_to_env_skip_locals(
+  env : Environment,
+  params : Array[String],
+  args : Array[Value],
+  local_indices : Map[String, Int],
+) -> Unit raise Error {
+  for i, param in params {
+    if !local_indices.contains(param) {
+      let value = args.get(i).unwrap_or(Value::Undefined)
+      if env.bindings.contains(param) {
+        env.assign(param, value)
+      } else {
+        env.def_parameter(param, value)
+      }
+    }
   }
 }
 

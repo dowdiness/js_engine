@@ -30,7 +30,7 @@ fn BytecodeFrame::BytecodeFrame(
     Some(args) =>
       // Fast path: iterate params forward so last occurrence wins (duplicate params).
       for j, param in func_def.params {
-        match local_index_from_names(func_def.local_names, param) {
+        match func_def.local_indices.get(param) {
           Some(slot) => locals[slot] = args.get(j).unwrap_or(Value::Undefined)
           None => ()
         }
@@ -275,12 +275,6 @@ fn make_bytecode_func(
     func_def.params,
     closure,
     strict,
-    CompiledBody(fn(interp, ctx, env) raise {
-      match run_bytecode_function(interp, ctx, env, func_def) {
-        BytecodeNormal(value) => Signal::Normal(value)
-        BytecodeReturn(value) => Signal::ReturnSignal(value)
-      }
-    }),
     rest_param=func_def.rest_param,
     define_arguments_object=func_def.needs_arguments_object,
     bytecode_func=Some(func_def),
@@ -332,12 +326,6 @@ fn make_bytecode_method_func(
     func_def.params,
     method_env,
     strict,
-    CompiledBody(fn(interp, ctx, env) raise {
-      match run_bytecode_function(interp, ctx, env, func_def) {
-        BytecodeNormal(value) => Signal::Normal(value)
-        BytecodeReturn(value) => Signal::ReturnSignal(value)
-      }
-    }),
     rest_param=func_def.rest_param,
     constructable=false,
     call_self_name=func_def.call_self_name,
