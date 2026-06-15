@@ -14,8 +14,8 @@ struct TestFile {
 ///|
 struct SuiteMetadata {
   files_scanned : Int
-  features : Map[String, Bool]
-  flags : Map[String, Bool]
+  features : @set.Set[String]
+  flags : @set.Set[String]
   paths : Array[String]
 } derive(Debug)
 
@@ -136,8 +136,8 @@ fn collect_suite_metadata(test262_root : String) -> SuiteMetadata raise {
     fail(missing_suite_message(test262_root))
   }
 
-  let features : Map[String, Bool] = {}
-  let flags : Map[String, Bool] = {}
+  let features = @set.Set::default()
+  let flags = @set.Set::default()
   let paths : Array[String] = []
   let mut files_scanned = 0
 
@@ -149,10 +149,10 @@ fn collect_suite_metadata(test262_root : String) -> SuiteMetadata raise {
     let source = python_text_newlines(@fs.read_file_to_string(file.full_path))
     let data = @utils.parse_yaml_frontmatter(source)
     for feature in metadata_list_strings(data, "features") {
-      features[feature] = true
+      features.add(feature)
     }
     for flag in metadata_list_strings(data, "flags") {
-      flags[flag] = true
+      flags.add(flag)
     }
   }
 
