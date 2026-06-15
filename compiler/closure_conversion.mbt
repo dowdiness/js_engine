@@ -1303,6 +1303,7 @@ fn make_compiled_func(
   constructable? : Bool = true,
   call_self_name? : Bool = false,
   define_arguments_object? : Bool = true,
+  bytecode_func? : BytecodeFunction? = None,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1387,6 +1388,7 @@ fn make_compiled_func(
               new_target~,
               call_self_name~,
               define_arguments_object~,
+              bytecode_func~,
             )
             if is_constructor_return_object(result) {
               result
@@ -1406,6 +1408,7 @@ fn make_compiled_func(
               rest_param~,
               call_self_name~,
               define_arguments_object~,
+              bytecode_func~,
             )
           }
         }),
@@ -1506,6 +1509,7 @@ fn call_compiled_func(
   new_target? : Value? = None,
   call_self_name? : Bool = false,
   define_arguments_object? : Bool = true,
+  bytecode_func? : BytecodeFunction? = None,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
@@ -1527,26 +1531,78 @@ fn call_compiled_func(
       new_target.unwrap_or(Value::Undefined),
       BindingKind::LetBinding,
     )
-    bind_simple_params(func_env, params, args)
-    bind_rest_param(func_env, params.length(), rest_param, args)
-    if define_arguments_object {
-      match rest_param {
-        Some(_) =>
-          if !compiled_params_include_arguments(params, rest_param) {
-            interp.define_unmapped_arguments_object(
-              func_env, args, callee, strict,
-            )
+    match bytecode_func {
+      Some(bf) => {
+        // Fast path: skip env round-trip for params in local_names.
+        // Only bind params NOT in local_names to env (env_slot_names and
+        // params in neither list still need env for bind_env_slots/LoadName).
+        for i, param in params {
+          if !string_array_contains(bf.local_names, param) {
+            let value = if i < args.length() {
+              args[i]
+            } else {
+              Value::Undefined
+            }
+            if func_env.bindings.contains(param) {
+              func_env.assign(param, value)
+            } else {
+              func_env.def_parameter(param, value)
+            }
           }
-        None =>
-          interp.define_simple_arguments_object(
-            func_env, args, callee, strict, params,
-          )
+        }
+        bind_rest_param(func_env, params.length(), rest_param, args)
+        if define_arguments_object {
+          match rest_param {
+            Some(_) =>
+              if !compiled_params_include_arguments(params, rest_param) {
+                interp.define_unmapped_arguments_object(
+                  func_env, args, callee, strict,
+                )
+              }
+            None =>
+              interp.define_simple_arguments_object(
+                func_env, args, callee, strict, params,
+              )
+          }
+        }
+        if call_self_name {
+          func_env.def_builtin("[[BytecodeCallee]]", callee)
+        }
+        match
+          run_bytecode_function(
+            interp,
+            func_ctx,
+            func_env,
+            bf,
+            direct_args=Some(args),
+          ) {
+          BytecodeNormal(_) => Value::Undefined
+          BytecodeReturn(value) => value
+        }
+      }
+      None => {
+        bind_simple_params(func_env, params, args)
+        bind_rest_param(func_env, params.length(), rest_param, args)
+        if define_arguments_object {
+          match rest_param {
+            Some(_) =>
+              if !compiled_params_include_arguments(params, rest_param) {
+                interp.define_unmapped_arguments_object(
+                  func_env, args, callee, strict,
+                )
+              }
+            None =>
+              interp.define_simple_arguments_object(
+                func_env, args, callee, strict, params,
+              )
+          }
+        }
+        if call_self_name {
+          func_env.def_builtin("[[BytecodeCallee]]", callee)
+        }
+        reduce_body_signal((body.0)(interp, func_ctx, func_env))
       }
     }
-    if call_self_name {
-      func_env.def_builtin("[[BytecodeCallee]]", callee)
-    }
-    reduce_body_signal((body.0)(interp, func_ctx, func_env))
   } catch {
     err => {
       interp.in_nonarrow_param_default_eval = saved_in_default
