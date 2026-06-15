@@ -7,8 +7,8 @@ const SKIP_METADATA_SCHEMA_VERSION = 1
 /// Keep the fields private so consumers use `skip_reason` instead of copying
 /// classification logic.
 pub struct SkipMetadata {
-  priv features : Map[String, Bool]
-  priv flags : Map[String, Bool]
+  priv features : @set.Set[String]
+  priv flags : @set.Set[String]
   priv path_suffixes : Map[String, String]
 } derive(Debug)
 
@@ -54,18 +54,15 @@ fn require_field(
 
 ///|
 fn validate_schema_keys(data : Map[String, Json], path : String) -> Unit raise {
-  let allowed : Map[String, Bool] = {
-    "schema_version": true,
-    "skip_features": true,
-    "skip_flags": true,
-    "skip_path_suffixes": true,
-  }
+  let allowed = @set.Set([
+    "schema_version", "skip_features", "skip_flags", "skip_path_suffixes",
+  ])
   for key, _ in data {
     if !allowed.contains(key) {
       schema_error(path, "unknown key: \{key}")
     }
   }
-  for key, _ in allowed {
+  for key in allowed {
     if !data.contains(key) {
       schema_error(path, "missing key: \{key}")
     }
@@ -93,12 +90,12 @@ fn decode_string_array(
   let values : Array[String] = @json.from_json(raw) catch {
     _ => schema_error(path, "\{key} must be an array of strings")
   }
-  let seen : Map[String, Bool] = {}
+  let seen = @set.Set::default()
   for value in values {
     if seen.contains(value) {
       schema_error(path, "\{key} must not contain duplicate entries: \{value}")
     }
-    seen[value] = true
+    seen.add(value)
   }
   values
 }
@@ -116,24 +113,13 @@ fn decode_string_map(
 }
 
 ///|
-fn string_membership(values : Array[String]) -> Map[String, Bool] {
-  let out : Map[String, Bool] = {}
-  for value in values {
-    out[value] = true
-  }
-  out
-}
-
-///|
 fn load_skip_metadata_file(path : String) -> SkipMetadata raise {
   let data = decode_object(@json.parse(@fs.read_file_to_string(path)), path)
   validate_schema_keys(data, path)
   decode_schema_version(data, path)
   {
-    features: string_membership(
-      decode_string_array(data, "skip_features", path),
-    ),
-    flags: string_membership(decode_string_array(data, "skip_flags", path)),
+    features: @set.Set(decode_string_array(data, "skip_features", path)),
+    flags: @set.Set(decode_string_array(data, "skip_flags", path)),
     path_suffixes: decode_string_map(data, "skip_path_suffixes", path),
   }
 }
@@ -162,7 +148,9 @@ fn[V] sorted_keys(map : Map[String, V]) -> Array[String] {
 /// classification should continue to call `skip_reason` so the decision order
 /// stays centralized.
 pub fn SkipMetadata::skip_feature_names(self : SkipMetadata) -> Array[String] {
-  sorted_keys(self.features)
+  let names = self.features.to_array()
+  names.sort()
+  names
 }
 
 ///|
@@ -172,7 +160,9 @@ pub fn SkipMetadata::skip_feature_names(self : SkipMetadata) -> Array[String] {
 /// classification should continue to call `skip_reason` so the decision order
 /// stays centralized.
 pub fn SkipMetadata::skip_flag_names(self : SkipMetadata) -> Array[String] {
-  sorted_keys(self.flags)
+  let names = self.flags.to_array()
+  names.sort()
+  names
 }
 
 ///|
