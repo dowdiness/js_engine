@@ -181,6 +181,7 @@ pub fn make_arraybuffer_object(
       symbol_properties: {},
       descriptors: descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: proto,
     callable: None,
@@ -469,6 +470,7 @@ pub fn setup_arraybuffer_builtins(
       symbol_properties: ab_proto_sym_props,
       descriptors: ab_proto_descs,
       symbol_descriptors: ab_proto_sym_descs,
+      internal_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -534,6 +536,7 @@ pub fn setup_arraybuffer_builtins(
       symbol_properties: {},
       descriptors: ab_ctor_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: Null,
     callable: Some(

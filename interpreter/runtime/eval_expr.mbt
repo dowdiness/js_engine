@@ -1022,7 +1022,7 @@ fn Interpreter::eval_expr(
       // called on the literal.
       let default_obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
       let object_data : ObjectData = {
-        bag: { properties, symbol_properties, descriptors, symbol_descriptors },
+        bag: { properties, symbol_properties, descriptors, symbol_descriptors, internal_slots: {} },
         prototype: default_obj_proto,
         callable: None,
         class_name: "Object",
@@ -1252,6 +1252,7 @@ fn Interpreter::eval_expr(
             symbol_properties: {},
             descriptors: { "name": nf_desc, "length": nf_desc },
             symbol_descriptors: {},
+            internal_slots: {},
           },
           prototype: get_func_proto(realm_state=Some(self.realm_state)),
           callable: Some(ArrowFunc(func_data)),
@@ -1299,6 +1300,7 @@ fn Interpreter::eval_expr(
             symbol_properties: {},
             descriptors: { "name": nf_desc, "length": nf_desc },
             symbol_descriptors: {},
+            internal_slots: {},
           },
           prototype: get_func_proto(realm_state=Some(self.realm_state)),
           callable: Some(ArrowFuncExt(func_data)),

@@ -1104,6 +1104,7 @@ fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: Null,
     extensible: true,

@@ -385,6 +385,7 @@ fn setup_reflect_builtins(
       symbol_properties: reflect_sym_props,
       descriptors: reflect_descs,
       symbol_descriptors: reflect_sym_descs,
+      internal_slots: {},
     },
     prototype: Null,
     callable: None,

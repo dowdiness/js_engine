@@ -864,6 +864,7 @@ pub fn setup_dataview_builtins(
       symbol_properties: dv_proto_sym_props,
       descriptors: dv_proto_descs,
       symbol_descriptors: dv_proto_sym_descs,
+      internal_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -904,6 +905,7 @@ pub fn setup_dataview_builtins(
       symbol_properties: {},
       descriptors: dv_ctor_descs,
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -1015,6 +1017,7 @@ pub fn setup_dataview_builtins(
             symbol_properties: {},
             descriptors: descs,
             symbol_descriptors: {},
+            internal_slots: {},
           },
           prototype: proto,
           callable: None,

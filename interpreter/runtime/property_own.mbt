@@ -683,6 +683,7 @@ pub fn descriptor_to_value(
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
+      internal_slots: {},
     },
     prototype: get_obj_proto(realm_state~),
     extensible: true,

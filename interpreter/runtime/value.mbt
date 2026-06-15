@@ -134,10 +134,11 @@ pub(all) struct PropDescriptor {
 /// exotic Value variant. Consolidates what used to be four parallel fields
 /// so descriptor invariants are enforced in one place.
 pub(all) struct PropertyBag {
-  properties : Map[String, Value] // User-defined string-keyed properties
+  properties : Map[String, Value] // User-visible string-keyed properties only
   symbol_properties : Map[Int, Value] // Symbol-keyed properties (key is symbol ID)
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
+  internal_slots : Map[String, Value] // Engine-internal slots, invisible to enumeration
 }
 
 ///|
@@ -148,6 +149,7 @@ pub fn PropertyBag::PropertyBag() -> PropertyBag {
     symbol_properties: {},
     descriptors: {},
     symbol_descriptors: {},
+    internal_slots: {},
   }
 }
 
