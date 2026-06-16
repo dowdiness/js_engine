@@ -161,6 +161,46 @@ test "active override on non-function slot blocks fast path" {
 }
 
 ///|
+test "apply_active_realm_protos with all-None clears an existing override" {
+  let realm_state = RealmState()
+  let base_map_proto = test_proto("base map")
+  let active_map_proto = test_proto("active map")
+  realm_state.map_prototype.val = Some(base_map_proto)
+  // Stamp the func now so Part 2 of realm_fast_path_allowed stays green
+  let func = make_native_func(name="fn", realm_state=Some(realm_state), fn(
+    _args,
+  ) {
+    Undefined
+  })
+  apply_active_realm_protos(
+    realm_state,
+    FunctionRealmProtos(map_proto=Some(active_map_proto)),
+  )
+  // Override active: Part 1 blocks fast path; getter returns override
+  if realm_fast_path_allowed(func, realm_state) {
+    fail("fast path must be blocked when map override is active")
+  }
+  if !strict_equal(
+      get_map_proto(realm_state=Some(realm_state)),
+      active_map_proto,
+    ) {
+    fail("expected get_map_proto to return the active override")
+  }
+  // Clear all overrides with all-None protos
+  apply_active_realm_protos(realm_state, FunctionRealmProtos())
+  // No override active: fast path allowed; getter falls back to base
+  if !realm_fast_path_allowed(func, realm_state) {
+    fail("fast path must be allowed after clearing all overrides")
+  }
+  if !strict_equal(
+      get_map_proto(realm_state=Some(realm_state)),
+      base_map_proto,
+    ) {
+    fail("expected get_map_proto to return base proto after override cleared")
+  }
+}
+
+///|
 // Calibration: stamp a function with a foreign Array.prototype while keeping
 // Function.prototype and Object.prototype matching the realm. The OLD single-
 // proto check would have allowed the fast path. The full check must reject it.
