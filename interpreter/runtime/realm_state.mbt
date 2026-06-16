@@ -41,6 +41,7 @@ pub(all) struct RealmState {
   active_map_prototype_override : Ref[Value?]
   active_set_prototype_override : Ref[Value?]
   active_promise_prototype_override : Ref[Value?]
+  mut has_active_override : Bool
   object_prototype : Ref[Value?]
   function_prototype : Ref[Value?]
   string_prototype : Ref[Value?]
@@ -90,6 +91,7 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     active_map_prototype_override: { val: None },
     active_set_prototype_override: { val: None },
     active_promise_prototype_override: { val: None },
+    has_active_override: false,
     object_prototype: { val: None },
     function_prototype: { val: None },
     string_prototype: { val: None },

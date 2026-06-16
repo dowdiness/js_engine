@@ -7,6 +7,7 @@ test "get_array_prototype ignores active callee realm without override" {
   let active_proto = make_object({}, Null, None, "Object", {}, true)
   realm_state.array_prototype.val = Some(base_proto)
   realm_state.active_array_prototype_override.val = Some(active_proto)
+  realm_state.has_active_override = true
   let arr = make_array([Number(1.0)])
   match arr {
     Array(data) => {

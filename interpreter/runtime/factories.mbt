@@ -903,37 +903,8 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
 // subset is unsafe because RealmState fields are public and stamp_function_realm_with
 // accepts slots independently.
 fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
-  // Part 1: every active override must be None
-  guard realm_state.active_function_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_object_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_string_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_number_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_boolean_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_symbol_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_array_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_map_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_set_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_promise_prototype_override.val is None else {
-    return false
-  }
+  // Part 1: no active cross-realm override — one Bool read instead of 10 Ref reads
+  guard !realm_state.has_active_override else { return false }
   // Part 2: every callee stamped proto is absent or pointer-equal to the main realm's.
   // One HashMap lookup + 10 array reads — avoids rebuilding a FunctionRealmProtos struct.
   match get_callee_packed_realm_protos(callee) {
@@ -991,6 +962,16 @@ fn apply_active_realm_protos(
   realm_state.active_map_prototype_override.val = protos.map_proto
   realm_state.active_set_prototype_override.val = protos.set_proto
   realm_state.active_promise_prototype_override.val = protos.promise_proto
+  realm_state.has_active_override = protos.function_proto is Some(_) ||
+    protos.object_proto is Some(_) ||
+    protos.string_proto is Some(_) ||
+    protos.number_proto is Some(_) ||
+    protos.boolean_proto is Some(_) ||
+    protos.symbol_proto is Some(_) ||
+    protos.array_proto is Some(_) ||
+    protos.map_proto is Some(_) ||
+    protos.set_proto is Some(_) ||
+    protos.promise_proto is Some(_)
 }
 
 ///|

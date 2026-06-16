@@ -167,6 +167,7 @@ test "Map and Set property lookup uses target realm prototype" {
   )
   interp.realm_state.active_map_prototype_override.val = Some(active_map_proto)
   interp.realm_state.active_set_prototype_override.val = Some(active_set_proto)
+  interp.realm_state.has_active_override = true
   install_borrowed_marker(
     interp.realm_state.get_map_proto(),
     "__target_marker__",

@@ -82,6 +82,7 @@ test "unmarked callees clear inherited active realm overrides" {
     realm_state.active_string_prototype_override.val = Some(
       override_string_proto,
     )
+    realm_state.has_active_override = true
     let _ = with_active_callee_realm_value(realm_state, unmarked_callable(), fn() raise {
       if !strict_equal(
           get_func_proto(realm_state=Some(realm_state)),
@@ -150,6 +151,7 @@ test "active override on non-function slot blocks fast path" {
   })
   // Activate a non-function override while the function slot is None
   realm_state.active_array_prototype_override.val = Some(foreign_array_proto)
+  realm_state.has_active_override = true
   // Fast path must NOT be allowed: override is active
   if realm_fast_path_allowed(func, realm_state) {
     fail(
