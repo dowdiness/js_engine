@@ -11,6 +11,7 @@ test "has_property_key uses target Map prototype, not active callee realm" {
   let target_proto = has_marker_proto()
   let active_proto = make_object({}, Null, None, "Object", {}, true)
   interp.realm_state.active_map_prototype_override.val = Some(active_proto)
+  interp.realm_state.has_active_override = true
   let target = Map(MapData([], prototype=target_proto))
   assert_true(interp.has_property_key(target, String_("marker")))
 }
@@ -21,6 +22,7 @@ test "has_property_key uses target Set prototype, not active callee realm" {
   let target_proto = has_marker_proto()
   let active_proto = make_object({}, Null, None, "Object", {}, true)
   interp.realm_state.active_set_prototype_override.val = Some(active_proto)
+  interp.realm_state.has_active_override = true
   let target = Set(SetData([], prototype=target_proto))
   assert_true(interp.has_property_key(target, String_("marker")))
 }
@@ -32,6 +34,7 @@ test "has_property_key uses base Promise prototype, not active callee realm" {
   let active_proto = make_object({}, Null, None, "Object", {}, true)
   interp.realm_state.promise_prototype.val = Some(base_proto)
   interp.realm_state.active_promise_prototype_override.val = Some(active_proto)
+  interp.realm_state.has_active_override = true
   let target = Promise(new_promise_data())
   assert_true(interp.has_property_key(target, String_("marker")))
 }
