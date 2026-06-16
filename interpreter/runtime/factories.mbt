@@ -1,36 +1,40 @@
 ///|
 // Engine-private negative symbol IDs are reserved in docs/development.md.
-// -101..-110 store a function object's home-realm intrinsic prototypes.
-// Keep this block contiguous and do not reuse these IDs for user-visible
-// symbols or other hidden metadata.
-const FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID = -101
+// -101 stores a function object's packed home-realm intrinsic prototypes as a
+// 10-element Array[Value] (indices REALM_PROTO_IDX_*), enabling the call_value
+// fast path to do 1 HashMap lookup + 10 array reads instead of 10 HashMap lookups.
+// -102..-110 are freed. Keep this comment updated if the range changes.
+const FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID = -101
 
 ///|
-const FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID = -102
+const REALM_PROTO_IDX_FUNCTION = 0
 
 ///|
-const FUNCTION_REALM_STRING_PROTO_SYMBOL_ID = -103
+const REALM_PROTO_IDX_OBJECT = 1
 
 ///|
-const FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID = -104
+const REALM_PROTO_IDX_STRING = 2
 
 ///|
-const FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID = -105
+const REALM_PROTO_IDX_NUMBER = 3
 
 ///|
-const FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID = -106
+const REALM_PROTO_IDX_BOOLEAN = 4
 
 ///|
-const FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID = -107
+const REALM_PROTO_IDX_SYMBOL = 5
 
 ///|
-const FUNCTION_REALM_MAP_PROTO_SYMBOL_ID = -108
+const REALM_PROTO_IDX_ARRAY = 6
 
 ///|
-const FUNCTION_REALM_SET_PROTO_SYMBOL_ID = -109
+const REALM_PROTO_IDX_MAP = 7
 
 ///|
-const FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID = -110
+const REALM_PROTO_IDX_SET = 8
+
+///|
+const REALM_PROTO_IDX_PROMISE = 9
 
 ///|
 priv struct FunctionRealmProtos {
@@ -529,69 +533,62 @@ fn function_realm_protos_from_realm_state(
 }
 
 ///|
-fn put_function_realm_symbol_prop(
-  props : Map[Int, Value],
-  id : Int,
-  proto : Value?,
-) -> Unit {
-  match proto {
-    Some(proto) => props[id] = proto
+fn make_realm_protos_packed_array(protos : FunctionRealmProtos) -> Value {
+  let e : Array[Value] = Array::make(10, Null)
+  match protos.function_proto {
+    Some(v) => e[REALM_PROTO_IDX_FUNCTION] = v
     None => ()
   }
+  match protos.object_proto {
+    Some(v) => e[REALM_PROTO_IDX_OBJECT] = v
+    None => ()
+  }
+  match protos.string_proto {
+    Some(v) => e[REALM_PROTO_IDX_STRING] = v
+    None => ()
+  }
+  match protos.number_proto {
+    Some(v) => e[REALM_PROTO_IDX_NUMBER] = v
+    None => ()
+  }
+  match protos.boolean_proto {
+    Some(v) => e[REALM_PROTO_IDX_BOOLEAN] = v
+    None => ()
+  }
+  match protos.symbol_proto {
+    Some(v) => e[REALM_PROTO_IDX_SYMBOL] = v
+    None => ()
+  }
+  match protos.array_proto {
+    Some(v) => e[REALM_PROTO_IDX_ARRAY] = v
+    None => ()
+  }
+  match protos.map_proto {
+    Some(v) => e[REALM_PROTO_IDX_MAP] = v
+    None => ()
+  }
+  match protos.set_proto {
+    Some(v) => e[REALM_PROTO_IDX_SET] = v
+    None => ()
+  }
+  match protos.promise_proto {
+    Some(v) => e[REALM_PROTO_IDX_PROMISE] = v
+    None => ()
+  }
+  Array({
+    elements: e,
+    bag: PropertyBag(),
+    length_writable: false,
+    holes: {},
+    extensible: false,
+  })
 }
 
 ///|
 fn function_realm_symbol_props(protos : FunctionRealmProtos) -> Map[Int, Value] {
   let props : Map[Int, Value] = {}
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
-    protos.function_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
-    protos.object_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
-    protos.string_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
-    protos.number_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
-    protos.boolean_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
-    protos.symbol_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
-    protos.array_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
-    protos.map_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
-    protos.set_proto,
-  )
-  put_function_realm_symbol_prop(
-    props,
-    FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
-    protos.promise_proto,
+  props[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = make_realm_protos_packed_array(
+    protos,
   )
   props
 }
@@ -609,84 +606,11 @@ fn function_realm_symbol_desc() -> PropDescriptor {
 }
 
 ///|
-fn put_function_realm_symbol_desc(
-  descs : Map[Int, PropDescriptor],
-  id : Int,
-  proto : Value?,
-  desc : PropDescriptor,
-) -> Unit {
-  match proto {
-    Some(_) => descs[id] = desc
-    None => ()
-  }
-}
-
-///|
 fn function_realm_symbol_descs(
-  protos : FunctionRealmProtos,
+  _ : FunctionRealmProtos,
 ) -> Map[Int, PropDescriptor] {
   let descs : Map[Int, PropDescriptor] = {}
-  let desc = function_realm_symbol_desc()
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
-    protos.function_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
-    protos.object_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
-    protos.string_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
-    protos.number_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
-    protos.boolean_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
-    protos.symbol_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
-    protos.array_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
-    protos.map_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
-    protos.set_proto,
-    desc,
-  )
-  put_function_realm_symbol_desc(
-    descs,
-    FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
-    protos.promise_proto,
-    desc,
-  )
+  descs[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = function_realm_symbol_desc()
   descs
 }
 
@@ -699,10 +623,22 @@ fn usable_realm_proto(proto : Value) -> Value? {
 }
 
 ///|
-fn function_realm_symbol_prop(data : ObjectData, id : Int) -> Value? {
-  match data.bag.symbol_properties.get(id) {
-    Some(proto) => usable_realm_proto(proto)
-    None => None
+// Returns the 10-element packed-proto array elements for the callee, following
+// Proxy targets. Returns None when no packed entry is present (all slots absent).
+fn get_callee_packed_realm_protos(callee : Value) -> Array[Value]? {
+  match callee {
+    Object(data) =>
+      match
+        data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
+        Some(Array(arr_data)) => Some(arr_data.elements)
+        _ => None
+      }
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) => get_callee_packed_realm_protos(target)
+        None => None
+      }
+    _ => None
   }
 }
 
@@ -748,9 +684,8 @@ pub fn stamp_function_realm_with(
 ///|
 fn stamp_realm_proto(
   data : ObjectData,
-  id : Int,
+  idx : Int,
   proto : Value?,
-  desc : PropDescriptor,
   set_function_prototype? : Bool = false,
 ) -> Unit {
   match proto {
@@ -761,8 +696,23 @@ fn stamp_realm_proto(
           _ => ()
         }
       }
-      data.bag.symbol_properties[id] = proto
-      data.bag.symbol_descriptors[id] = desc
+      match
+        data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
+        Some(Array(arr_data)) => arr_data.elements[idx] = proto
+        _ => {
+          let e : Array[Value] = Array::make(10, Null)
+          e[idx] = proto
+          data.bag.symbol_properties[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = Array({
+              elements: e,
+              bag: PropertyBag(),
+              length_writable: false,
+              holes: {},
+              extensible: false,
+            },
+          )
+          data.bag.symbol_descriptors[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = function_realm_symbol_desc()
+        }
+      }
     }
     None => ()
   }
@@ -771,20 +721,26 @@ fn stamp_realm_proto(
 ///|
 fn stamp_realm_proto_if_unstamped(
   data : ObjectData,
-  id : Int,
+  idx : Int,
   proto : Value?,
   set_function_prototype? : Bool = false,
 ) -> Unit {
-  match (function_realm_symbol_prop(data, id), proto) {
-    (None, Some(proto)) =>
-      stamp_realm_proto(
-        data,
-        id,
-        Some(proto),
-        function_realm_symbol_desc(),
-        set_function_prototype~,
-      )
-    _ => ()
+  match proto {
+    None => ()
+    Some(proto) => {
+      let already_set = match
+        data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
+        Some(Array(arr_data)) =>
+          match arr_data.elements[idx] {
+            Null => false
+            _ => true
+          }
+        _ => false
+      }
+      if !already_set {
+        stamp_realm_proto(data, idx, Some(proto), set_function_prototype~)
+      }
+    }
   }
 }
 
@@ -797,68 +753,21 @@ fn stamp_function_realm_with_protos(
     Object(data) =>
       match data.callable {
         Some(_) => {
-          let desc = function_realm_symbol_desc()
           stamp_realm_proto(
             data,
-            FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_FUNCTION,
             protos.function_proto,
-            desc,
             set_function_prototype=true,
           )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
-            protos.object_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
-            protos.string_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
-            protos.number_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
-            protos.boolean_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
-            protos.symbol_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
-            protos.array_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
-            protos.map_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
-            protos.set_proto,
-            desc,
-          )
-          stamp_realm_proto(
-            data,
-            FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
-            protos.promise_proto,
-            desc,
-          )
+          stamp_realm_proto(data, REALM_PROTO_IDX_OBJECT, protos.object_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_STRING, protos.string_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_NUMBER, protos.number_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_BOOLEAN, protos.boolean_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_SYMBOL, protos.symbol_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_ARRAY, protos.array_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_MAP, protos.map_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_SET, protos.set_proto)
+          stamp_realm_proto(data, REALM_PROTO_IDX_PROMISE, protos.promise_proto)
         }
         None => ()
       }
@@ -878,53 +787,53 @@ fn stamp_function_realm_if_unstamped_with_protos(
         Some(_) => {
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_FUNCTION,
             protos.function_proto,
             set_function_prototype=true,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_OBJECT,
             protos.object_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_STRING,
             protos.string_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_NUMBER,
             protos.number_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_BOOLEAN,
             protos.boolean_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_SYMBOL,
             protos.symbol_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_ARRAY,
             protos.array_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_MAP,
             protos.map_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_SET,
             protos.set_proto,
           )
           stamp_realm_proto_if_unstamped(
             data,
-            FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
+            REALM_PROTO_IDX_PROMISE,
             protos.promise_proto,
           )
         }
@@ -949,50 +858,27 @@ fn stamp_function_realm_from_state_if_unstamped(
 ///|
 fn object_data_function_realm_protos(data : ObjectData) -> FunctionRealmProtos {
   match data.callable {
-    Some(_) =>
-      {
-        function_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_FUNCTION_PROTO_SYMBOL_ID,
-        ),
-        object_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_OBJECT_PROTO_SYMBOL_ID,
-        ),
-        string_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_STRING_PROTO_SYMBOL_ID,
-        ),
-        number_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_NUMBER_PROTO_SYMBOL_ID,
-        ),
-        boolean_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_BOOLEAN_PROTO_SYMBOL_ID,
-        ),
-        symbol_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_SYMBOL_PROTO_SYMBOL_ID,
-        ),
-        array_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_ARRAY_PROTO_SYMBOL_ID,
-        ),
-        map_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_MAP_PROTO_SYMBOL_ID,
-        ),
-        set_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_SET_PROTO_SYMBOL_ID,
-        ),
-        promise_proto: function_realm_symbol_prop(
-          data,
-          FUNCTION_REALM_PROMISE_PROTO_SYMBOL_ID,
-        ),
-      }
     None => empty_function_realm_protos()
+    Some(_) =>
+      match
+        data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
+        Some(Array(arr_data)) => {
+          let e = arr_data.elements
+          {
+            function_proto: usable_realm_proto(e[REALM_PROTO_IDX_FUNCTION]),
+            object_proto: usable_realm_proto(e[REALM_PROTO_IDX_OBJECT]),
+            string_proto: usable_realm_proto(e[REALM_PROTO_IDX_STRING]),
+            number_proto: usable_realm_proto(e[REALM_PROTO_IDX_NUMBER]),
+            boolean_proto: usable_realm_proto(e[REALM_PROTO_IDX_BOOLEAN]),
+            symbol_proto: usable_realm_proto(e[REALM_PROTO_IDX_SYMBOL]),
+            array_proto: usable_realm_proto(e[REALM_PROTO_IDX_ARRAY]),
+            map_proto: usable_realm_proto(e[REALM_PROTO_IDX_MAP]),
+            set_proto: usable_realm_proto(e[REALM_PROTO_IDX_SET]),
+            promise_proto: usable_realm_proto(e[REALM_PROTO_IDX_PROMISE]),
+          }
+        }
+        _ => empty_function_realm_protos()
+      }
   }
 }
 
@@ -1006,6 +892,71 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
         None => empty_function_realm_protos()
       }
     _ => empty_function_realm_protos()
+  }
+}
+
+///|
+// Returns true when call_value can skip both realm-proto wrapper layers.
+// Safe only when every active-override slot is None (no cross-realm context is
+// active) AND every callee realm slot is absent or matches the main realm's
+// corresponding prototype. All 10 slots are checked in both sets; sampling a
+// subset is unsafe because RealmState fields are public and stamp_function_realm_with
+// accepts slots independently.
+fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
+  // Part 1: every active override must be None
+  guard realm_state.active_function_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_object_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_string_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_number_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_boolean_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_symbol_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_array_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_map_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_set_prototype_override.val is None else {
+    return false
+  }
+  guard realm_state.active_promise_prototype_override.val is None else {
+    return false
+  }
+  // Part 2: every callee stamped proto is absent or pointer-equal to the main realm's.
+  // One HashMap lookup + 10 array reads — avoids rebuilding a FunctionRealmProtos struct.
+  match get_callee_packed_realm_protos(callee) {
+    None => true // no protos stamped at all — all slots absent → same-realm
+    Some(e) => {
+      fn same(idx : Int, main_ref : Ref[Value?]) -> Bool {
+        match (e[idx], main_ref.val) {
+          (Null, _) => true // absent slot — inherits same-realm semantics
+          (Object(c), Some(Object(m))) => physical_equal(c, m)
+          _ => false // conservative: any mismatch forces slow path
+        }
+      }
+      same(REALM_PROTO_IDX_FUNCTION, realm_state.function_prototype) &&
+      same(REALM_PROTO_IDX_OBJECT, realm_state.object_prototype) &&
+      same(REALM_PROTO_IDX_STRING, realm_state.string_prototype) &&
+      same(REALM_PROTO_IDX_NUMBER, realm_state.number_prototype) &&
+      same(REALM_PROTO_IDX_BOOLEAN, realm_state.boolean_prototype) &&
+      same(REALM_PROTO_IDX_SYMBOL, realm_state.symbol_prototype) &&
+      same(REALM_PROTO_IDX_ARRAY, realm_state.array_prototype) &&
+      same(REALM_PROTO_IDX_MAP, realm_state.map_prototype) &&
+      same(REALM_PROTO_IDX_SET, realm_state.set_prototype) &&
+      same(REALM_PROTO_IDX_PROMISE, realm_state.promise_prototype)
+    }
   }
 }
 
