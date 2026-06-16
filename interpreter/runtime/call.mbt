@@ -671,11 +671,19 @@ pub fn Interpreter::call_value(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
-  self.with_active_value(fn() raise {
-    with_active_callee_realm_value(self.realm_state, callee, fn() raise {
-      self.call_value_impl(callee, this_val, args, loc)
+  // Fast path: skip both realm-proto wrapper layers when every active-override
+  // slot is None and every callee stamped proto matches the main realm's (or is
+  // absent). Checks all 10 slots so it is safe even when stamp_function_realm_with
+  // sets slots independently or when a non-function override is active.
+  if realm_fast_path_allowed(callee, self.realm_state) {
+    self.call_value_impl(callee, this_val, args, loc)
+  } else {
+    self.with_active_value(fn() raise {
+      with_active_callee_realm_value(self.realm_state, callee, fn() raise {
+        self.call_value_impl(callee, this_val, args, loc)
+      })
     })
-  })
+  }
 }
 
 ///|
