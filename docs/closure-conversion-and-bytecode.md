@@ -168,6 +168,33 @@ the semantic owner. Next prioritize #170 (runtime helper hotspots), then #167
 newer benchmark contradicts this order. Keep the work measurement first and do
 not broaden bytecode syntax as part of these optimization tracks.
 
+### Pre-#361 Property-Access Baseline (2026-06-15)
+
+Stage 8 architecture work (PRs #333–#346) routed property get/set/delete,
+own-property enumeration, object integrity, and Reflect operations through
+runtime ops. The following table is the pre-#361 baseline measured after Stage 8
+landed, using `make bench-focus ARGS="--runs 5 --rows ..."` on the JS target.
+The existing table above reflects an earlier snapshot (pre-Stage-7).
+
+| Microbenchmark | Median (5 runs) | Per-op cost | vs local_access |
+|---|---:|---:|---:|
+| `isolate/bytecode/local_access` | 30.17 ms / 100k-loop | 0.302 µs | — |
+| `isolate/bytecode/runtime_helpers` | 15.74 ms / 10k-helper | 1.574 µs | ~5.2× |
+| `isolate/bytecode/property_get` | 33.65 ms / 100k-get | 0.337 µs | ~1.1× |
+| `isolate/bytecode/property_set` | 33.02 ms / 100k-set | 0.330 µs | ~1.1× |
+| `isolate/bytecode/method_call` | 13.74 ms / 10k-call | 1.374 µs | ~4.6× |
+
+Stage 8 nearly eliminated the plain property get/set gap: `property_get` and
+`property_set` are now only ~1.1× more expensive per operation than
+`local_access`, down from the ~5× shown by the old `runtime_helpers` row. The
+remaining per-operation gap is concentrated in `method_call` (receiver lookup +
+call_value), which is ~4.6× more expensive per call than a local slot read —
+comparable to the `runtime_helpers` row cost and consistent with
+`call_frame` + a property read.
+
+Issue #361 should target the `method_call` and `runtime_helpers` dispatch path,
+not raw property reads (which are now near parity with local access).
+
 Tracking issues:
 
 - [#165](https://github.com/dowdiness/js_engine/issues/165): bytecode
