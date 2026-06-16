@@ -279,6 +279,12 @@ priv struct BytecodeFunction {
   // Direct eval can read `arguments` by string, so only skip arguments-object
   // setup when both direct references and eval references are absent.
   needs_arguments_object : Bool
+  // True unless all of: no env-slot names, no env-var hoists, no arguments
+  // object, no call_self_name, no inner functions, no rest param, no `this`
+  // or super accesses, no `new.target`, no lexical decls, and no destructure
+  // assign patterns (which disable local-slot param binding). When false,
+  // call_compiled_func skips Environment::new + this/new.target inserts.
+  needs_own_env : Bool
   local_names : Array[String]
   // O(1) slot lookup — same data as local_names but indexed; computed once at
   // lower time so BytecodeFrame and call_compiled_func avoid O(N) linear scans.
@@ -308,6 +314,10 @@ priv struct BytecodeBuilder {
   break_contexts : Array[BreakPatchContext]
   label_contexts : Array[LabelPatchContext]
   pending_loop_labels : Array[String]
+  // Set when this function's body emits LoadThis / LoadNewTarget — used to
+  // compute needs_own_env at the end of compile_bytecode_function.
+  mut has_this : Bool
+  mut has_new_target : Bool
 }
 
 ///|
@@ -373,6 +383,8 @@ fn BytecodeBuilder::BytecodeBuilder(
     break_contexts: [],
     label_contexts: [],
     pending_loop_labels: [],
+    has_this: false,
+    has_new_target: false,
   }
 }
 
