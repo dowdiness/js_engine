@@ -73,14 +73,13 @@ test "unmarked callees clear inherited active realm overrides" {
   realm_state.string_prototype.val = Some(base_string_proto)
   let failure : Ref[String?] = { val: None }
   with_active_realm_state_unit(realm_state, fn() {
-    realm_state.active_function_prototype_override.val = Some(
-      override_function_proto,
-    )
-    realm_state.active_object_prototype_override.val = Some(
-      override_object_proto,
-    )
-    realm_state.active_string_prototype_override.val = Some(
-      override_string_proto,
+    apply_active_realm_protos(
+      realm_state,
+      FunctionRealmProtos(
+        function_proto=Some(override_function_proto),
+        object_proto=Some(override_object_proto),
+        string_proto=Some(override_string_proto),
+      ),
     )
     let _ = with_active_callee_realm_value(realm_state, unmarked_callable(), fn() raise {
       if !strict_equal(
@@ -149,7 +148,10 @@ test "active override on non-function slot blocks fast path" {
     Undefined
   })
   // Activate a non-function override while the function slot is None
-  realm_state.active_array_prototype_override.val = Some(foreign_array_proto)
+  apply_active_realm_protos(
+    realm_state,
+    FunctionRealmProtos(array_proto=Some(foreign_array_proto)),
+  )
   // Fast path must NOT be allowed: override is active
   if realm_fast_path_allowed(func, realm_state) {
     fail(

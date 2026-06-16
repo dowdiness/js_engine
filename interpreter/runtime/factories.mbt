@@ -37,7 +37,7 @@ const REALM_PROTO_IDX_SET = 8
 const REALM_PROTO_IDX_PROMISE = 9
 
 ///|
-priv struct FunctionRealmProtos {
+pub(all) struct FunctionRealmProtos {
   function_proto : Value?
   object_proto : Value?
   string_proto : Value?
@@ -51,26 +51,50 @@ priv struct FunctionRealmProtos {
 }
 
 ///|
-fn empty_function_realm_protos() -> FunctionRealmProtos {
+pub fn FunctionRealmProtos::FunctionRealmProtos(
+  function_proto? : Value? = None,
+  object_proto? : Value? = None,
+  string_proto? : Value? = None,
+  number_proto? : Value? = None,
+  boolean_proto? : Value? = None,
+  symbol_proto? : Value? = None,
+  array_proto? : Value? = None,
+  map_proto? : Value? = None,
+  set_proto? : Value? = None,
+  promise_proto? : Value? = None,
+) -> FunctionRealmProtos {
   {
-    function_proto: None,
-    object_proto: None,
-    string_proto: None,
-    number_proto: None,
-    boolean_proto: None,
-    symbol_proto: None,
-    array_proto: None,
-    map_proto: None,
-    set_proto: None,
-    promise_proto: None,
+    function_proto,
+    object_proto,
+    string_proto,
+    number_proto,
+    boolean_proto,
+    symbol_proto,
+    array_proto,
+    map_proto,
+    set_proto,
+    promise_proto,
   }
 }
 
 ///|
-fn active_proto_or_base(active : Ref[Value?], base : Value) -> Value {
-  match active.val {
-    Some(proto) => proto
+fn empty_function_realm_protos() -> FunctionRealmProtos {
+  FunctionRealmProtos()
+}
+
+///|
+fn active_proto_or_base(
+  overrides : Ref[FunctionRealmProtos?],
+  get_proto : (FunctionRealmProtos) -> Value?,
+  base : Value,
+) -> Value {
+  match overrides.val {
     None => base
+    Some(protos) =>
+      match get_proto(protos) {
+        Some(p) => p
+        None => base
+      }
   }
 }
 
@@ -311,10 +335,11 @@ pub fn mark_as_method(v : Value) -> Value {
 pub fn get_func_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
-      match realm_state.active_function_prototype_override.val {
-        Some(proto) => proto
-        None => realm_state.get_func_proto()
-      }
+      active_proto_or_base(
+        realm_state.active_overrides,
+        p => p.function_proto,
+        realm_state.get_func_proto(),
+      )
     None => Null
   }
 }
@@ -323,10 +348,11 @@ pub fn get_func_proto(realm_state? : RealmState? = None) -> Value {
 pub fn get_obj_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
-      match realm_state.active_object_prototype_override.val {
-        Some(proto) => proto
-        None => realm_state.get_obj_proto()
-      }
+      active_proto_or_base(
+        realm_state.active_overrides,
+        p => p.object_proto,
+        realm_state.get_obj_proto(),
+      )
     None => Null
   }
 }
@@ -336,7 +362,8 @@ pub fn get_string_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_string_prototype_override,
+        realm_state.active_overrides,
+        p => p.string_proto,
         realm_state.get_string_proto(),
       )
     None => Null
@@ -348,7 +375,8 @@ pub fn get_number_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_number_prototype_override,
+        realm_state.active_overrides,
+        p => p.number_proto,
         realm_state.get_number_proto(),
       )
     None => Null
@@ -360,7 +388,8 @@ pub fn get_boolean_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_boolean_prototype_override,
+        realm_state.active_overrides,
+        p => p.boolean_proto,
         realm_state.get_boolean_proto(),
       )
     None => Null
@@ -372,7 +401,8 @@ pub fn get_symbol_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_symbol_prototype_override,
+        realm_state.active_overrides,
+        p => p.symbol_proto,
         realm_state.get_symbol_proto(),
       )
     None => Null
@@ -384,7 +414,8 @@ pub fn get_array_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_array_prototype_override,
+        realm_state.active_overrides,
+        p => p.array_proto,
         realm_state.get_array_proto(),
       )
     None => Null
@@ -396,7 +427,8 @@ pub fn get_map_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_map_prototype_override,
+        realm_state.active_overrides,
+        p => p.map_proto,
         realm_state.get_map_proto(),
       )
     None => Null
@@ -408,7 +440,8 @@ pub fn get_set_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_set_prototype_override,
+        realm_state.active_overrides,
+        p => p.set_proto,
         realm_state.get_set_proto(),
       )
     None => Null
@@ -420,7 +453,8 @@ pub fn get_promise_proto(realm_state? : RealmState? = None) -> Value {
   match realm_state {
     Some(realm_state) =>
       active_proto_or_base(
-        realm_state.active_promise_prototype_override,
+        realm_state.active_overrides,
+        p => p.promise_proto,
         realm_state.get_promise_proto(),
       )
     None => Null
@@ -900,40 +934,11 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
 // Safe only when every active-override slot is None (no cross-realm context is
 // active) AND every callee realm slot is absent or matches the main realm's
 // corresponding prototype. All 10 slots are checked in both sets; sampling a
-// subset is unsafe because RealmState fields are public and stamp_function_realm_with
+// subset is unsafe because stamp_function_realm_with
 // accepts slots independently.
 fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
-  // Part 1: every active override must be None
-  guard realm_state.active_function_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_object_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_string_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_number_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_boolean_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_symbol_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_array_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_map_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_set_prototype_override.val is None else {
-    return false
-  }
-  guard realm_state.active_promise_prototype_override.val is None else {
-    return false
-  }
+  // Part 1: no active cross-realm override — one Ref read (None = no overrides active)
+  guard realm_state.active_overrides.val is None else { return false }
   // Part 2: every callee stamped proto is absent or pointer-equal to the main realm's.
   // One HashMap lookup + 10 array reads — avoids rebuilding a FunctionRealmProtos struct.
   match get_callee_packed_realm_protos(callee) {
@@ -962,35 +967,28 @@ fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
 
 ///|
 fn active_realm_protos(realm_state : RealmState) -> FunctionRealmProtos {
-  {
-    function_proto: realm_state.active_function_prototype_override.val,
-    object_proto: realm_state.active_object_prototype_override.val,
-    string_proto: realm_state.active_string_prototype_override.val,
-    number_proto: realm_state.active_number_prototype_override.val,
-    boolean_proto: realm_state.active_boolean_prototype_override.val,
-    symbol_proto: realm_state.active_symbol_prototype_override.val,
-    array_proto: realm_state.active_array_prototype_override.val,
-    map_proto: realm_state.active_map_prototype_override.val,
-    set_proto: realm_state.active_set_prototype_override.val,
-    promise_proto: realm_state.active_promise_prototype_override.val,
+  match realm_state.active_overrides.val {
+    None => empty_function_realm_protos()
+    Some(protos) => protos
   }
 }
 
 ///|
-fn apply_active_realm_protos(
+pub fn apply_active_realm_protos(
   realm_state : RealmState,
   protos : FunctionRealmProtos,
 ) -> Unit {
-  realm_state.active_function_prototype_override.val = protos.function_proto
-  realm_state.active_object_prototype_override.val = protos.object_proto
-  realm_state.active_string_prototype_override.val = protos.string_proto
-  realm_state.active_number_prototype_override.val = protos.number_proto
-  realm_state.active_boolean_prototype_override.val = protos.boolean_proto
-  realm_state.active_symbol_prototype_override.val = protos.symbol_proto
-  realm_state.active_array_prototype_override.val = protos.array_proto
-  realm_state.active_map_prototype_override.val = protos.map_proto
-  realm_state.active_set_prototype_override.val = protos.set_proto
-  realm_state.active_promise_prototype_override.val = protos.promise_proto
+  let any_set = protos.function_proto is Some(_) ||
+    protos.object_proto is Some(_) ||
+    protos.string_proto is Some(_) ||
+    protos.number_proto is Some(_) ||
+    protos.boolean_proto is Some(_) ||
+    protos.symbol_proto is Some(_) ||
+    protos.array_proto is Some(_) ||
+    protos.map_proto is Some(_) ||
+    protos.set_proto is Some(_) ||
+    protos.promise_proto is Some(_)
+  realm_state.active_overrides.val = if any_set { Some(protos) } else { None }
 }
 
 ///|
