@@ -10,6 +10,8 @@ import {
 }
 
 // Values
+pub fn apply_active_realm_protos(RealmState, FunctionRealmProtos) -> Unit
+
 pub fn apply_array_literal_element(Value, Value) -> Unit raise
 
 pub fn apply_array_literal_hole(Value) -> Unit raise
@@ -505,6 +507,20 @@ pub(all) struct FuncDataExt {
   is_method : Bool
 }
 
+pub(all) struct FunctionRealmProtos {
+  function_proto : Value?
+  object_proto : Value?
+  string_proto : Value?
+  number_proto : Value?
+  boolean_proto : Value?
+  symbol_proto : Value?
+  array_proto : Value?
+  map_proto : Value?
+  set_proto : Value?
+  promise_proto : Value?
+}
+pub fn FunctionRealmProtos::FunctionRealmProtos(function_proto? : Value?, object_proto? : Value?, string_proto? : Value?, number_proto? : Value?, boolean_proto? : Value?, symbol_proto? : Value?, array_proto? : Value?, map_proto? : Value?, set_proto? : Value?, promise_proto? : Value?) -> Self
+
 pub(all) enum GenState {
   SuspendedStart
   Executing
@@ -732,17 +748,7 @@ pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
-  active_function_prototype_override : @ref.Ref[Value?]
-  active_object_prototype_override : @ref.Ref[Value?]
-  active_string_prototype_override : @ref.Ref[Value?]
-  active_number_prototype_override : @ref.Ref[Value?]
-  active_boolean_prototype_override : @ref.Ref[Value?]
-  active_symbol_prototype_override : @ref.Ref[Value?]
-  active_array_prototype_override : @ref.Ref[Value?]
-  active_map_prototype_override : @ref.Ref[Value?]
-  active_set_prototype_override : @ref.Ref[Value?]
-  active_promise_prototype_override : @ref.Ref[Value?]
-  mut has_active_override : Bool
+  active_overrides : @ref.Ref[FunctionRealmProtos?]
   object_prototype : @ref.Ref[Value?]
   function_prototype : @ref.Ref[Value?]
   string_prototype : @ref.Ref[Value?]
