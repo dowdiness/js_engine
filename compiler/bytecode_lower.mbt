@@ -1396,6 +1396,8 @@ fn compile_bytecode_function(
       local_index_from_names(builder.local_names, name) is None
     },
   )
+  let needs_arguments_obj = bytecode_body_references_outer_arguments(body) ||
+    bytecode_body_references_eval(body)
   {
     name,
     params,
@@ -1403,8 +1405,17 @@ fn compile_bytecode_function(
     source_body: body,
     body_has_use_strict: @static_semantics.has_use_strict(body),
     call_self_name,
-    needs_arguments_object: bytecode_body_references_outer_arguments(body) ||
-    bytecode_body_references_eval(body),
+    needs_arguments_object: needs_arguments_obj,
+    needs_own_env: !(builder.env_slot_names.is_empty() &&
+    env_var_hoist_names.is_empty() &&
+    !needs_arguments_obj &&
+    !call_self_name &&
+    builder.children.is_empty() &&
+    rest_param is None &&
+    !builder.has_this &&
+    !builder.has_new_target &&
+    !stmts_have_lexical_decl(body) &&
+    !bytecode_body_contains_destructure_assign(body)),
     local_names: builder.local_names,
     local_indices: builder.local_indices,
     env_slot_names: builder.env_slot_names,
@@ -3077,16 +3088,20 @@ fn BytecodeBuilder::compile_expr(
     }
     ArrayHole(_) => bytecode_unsupported(UNSUPPORTED_ARRAY_HOLE)
     ThisExpr(_) => {
+      self.has_this = true
       let _ = self.emit(LoadThis)
     }
     NewTargetExpr(_) => {
+      self.has_new_target = true
       let _ = self.emit(LoadNewTarget)
     }
     SuperCall(_, _) => bytecode_unsupported(UNSUPPORTED_SUPER_CALL)
     SuperMember(prop, loc) => {
+      self.has_this = true
       let _ = self.emit(LoadSuperProperty(prop, loc))
     }
     SuperComputedMember(key, loc) => {
+      self.has_this = true
       self.compile_expr(key)
       let _ = self.emit(LoadSuperComputed(loc))
     }
@@ -3408,10 +3423,12 @@ fn BytecodeBuilder::compile_expr(
       self.emit_call(args, loc)
     }
     Call(SuperMember(prop, member_loc), args, loc) => {
+      self.has_this = true
       let _ = self.emit(PrepareSuperPropertyCall(prop, member_loc))
       self.emit_call_with_receiver(args, loc)
     }
     Call(SuperComputedMember(key, member_loc), args, loc) => {
+      self.has_this = true
       self.compile_expr(key)
       let _ = self.emit(PrepareSuperComputedCall(member_loc))
       self.emit_call_with_receiver(args, loc)
