@@ -192,10 +192,7 @@ test "apply_active_realm_protos with all-None clears an existing override" {
   if !realm_fast_path_allowed(func, realm_state) {
     fail("fast path must be allowed after clearing all overrides")
   }
-  if !strict_equal(
-      get_map_proto(realm_state=Some(realm_state)),
-      base_map_proto,
-    ) {
+  if !strict_equal(get_map_proto(realm_state=Some(realm_state)), base_map_proto) {
     fail("expected get_map_proto to return base proto after override cleared")
   }
 }
