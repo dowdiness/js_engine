@@ -14,6 +14,21 @@
 //
 // Both surfaces share the JS workload strings from workloads.mbt and the
 // verify() helper defined below.
+//
+// Benchmark category naming convention:
+//
+//   exec/<name>       Full interpreter pipeline (lex + parse + eval via @lib.run).
+//                     Cost includes parse overhead; use for regression tracking of
+//                     end-to-end execution paths the bytecode VM does not cover
+//                     (e.g. for-of, async, generators).
+//
+//   isolate/bytecode/<name>  Pre-compiled bytecode program, interpreter excluded.
+//                     Measures bytecode VM dispatch only; parse overhead removed.
+//                     Use when the workload is supported by the bytecode compiler.
+//
+// Note: the bytecode VM does not yet support: for-of, async/await, generators,
+// destructuring patterns, or labeled break/continue. Workloads for those paths
+// must use the exec/ category.
 // =============================================================================
 
 ///|
@@ -387,6 +402,17 @@ fn bench_bytecode_array_literal() -> BenchResult raise {
 }
 
 ///|
+pub fn bench_for_of() -> BenchResult raise {
+  verify(FOR_OF_SRC, "499500")
+  run_bench(
+    "exec/for_of",
+    Component,
+    { warmup: 3, iterations: 20, group_size: 3 },
+    fn() raise { let _ = @lib.run(FOR_OF_SRC) },
+  )
+}
+
+///|
 pub fn bench_object_construction() -> BenchResult raise {
   verify(OBJECT_CONSTRUCTION_SRC, "1000")
   run_bench(
@@ -585,6 +611,7 @@ pub fn run_component() -> Array[BenchResult] raise {
     bench_bytecode_method_call(),
     bench_bytecode_object_literal(),
     bench_bytecode_array_literal(),
+    bench_for_of(),
     bench_arithmetic_loop(),
     bench_object_construction(),
     bench_string_ops(),
@@ -649,6 +676,7 @@ pub fn all_bench_names() -> Array[(String, String, String)] {
     ("isolate/bytecode/method_call", "component", "execution"),
     ("isolate/bytecode/object_literal", "component", "execution"),
     ("isolate/bytecode/array_literal", "component", "execution"),
+    ("exec/for_of", "component", "execution"),
     ("exec/arithmetic_loop", "component", "execution"),
     ("exec/object_construction", "component", "execution"),
     ("exec/string_ops", "component", "execution"),

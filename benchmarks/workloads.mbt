@@ -589,6 +589,27 @@ const BYTECODE_ARRAY_LITERAL_SRC : String =
   #|})();
 
 ///|
+/// For-of iterator workload (interpreter path — bytecode VM does not support for-of).
+///
+/// Category: Component
+/// Exercises: array iterator protocol — create_iter_result called once per
+///            element (1000 × {done:false} + 1 × {done:true}).
+///            Measures full-pipeline cost (lex + parse + eval) dominated by the
+///            iterator protocol; parse overhead for this short source is small
+///            but present. Use exec/for_of regressions to track changes to the
+///            iterator path, not to attribute cost to individual operations.
+///
+/// Expected result: "499500"
+const FOR_OF_SRC : String =
+  #|(function() {
+  #|  var arr = [];
+  #|  for (var i = 0; i < 1000; i = i + 1) { arr[i] = i; }
+  #|  var total = 0;
+  #|  for (var x of arr) { total = total + x; }
+  #|  return total;
+  #|})();
+
+///|
 pub const BYTECODE_MICRO_ACCESS_EXPECTED : String = "100000"
 
 ///|

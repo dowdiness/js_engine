@@ -76,6 +76,8 @@ pub fn bench_closure_legacy_closure_factory() -> BenchResult raise
 
 pub fn bench_fibonacci() -> BenchResult raise
 
+pub fn bench_for_of() -> BenchResult raise
+
 pub fn bench_lexer_large() -> BenchResult raise
 
 pub fn bench_lexer_small() -> BenchResult raise
