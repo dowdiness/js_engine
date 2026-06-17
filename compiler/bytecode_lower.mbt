@@ -1406,6 +1406,7 @@ fn compile_bytecode_function(
     body_has_use_strict: @static_semantics.has_use_strict(body),
     call_self_name,
     needs_arguments_object: needs_arguments_obj,
+    // When false, run_bytecode_function skips all hoist calls (each is a no-op per these conditions).
     needs_own_env: !(builder.env_slot_names.is_empty() &&
     env_var_hoist_names.is_empty() &&
     !needs_arguments_obj &&

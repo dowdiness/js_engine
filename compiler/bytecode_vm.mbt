@@ -461,13 +461,16 @@ fn run_bytecode_function(
   direct_args? : Array[Value]? = None,
 ) -> BytecodeRunResult raise Error {
   let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
-  frame.hoist_env_var_bindings(interp)
-  frame.hoist_lexical_bindings()
-  if frame.func_def.env_slot_names.length() > 0 {
-    frame.bind_env_slots()
+  // needs_own_env=false implies all four hoist calls are provably no-ops.
+  if func_def.needs_own_env {
+    frame.hoist_env_var_bindings(interp)
+    frame.hoist_lexical_bindings()
+    if frame.func_def.env_slot_names.length() > 0 {
+      frame.bind_env_slots()
+    }
+    frame.hoist_function_decls(interp)
+    frame.bind_call_self_name()
   }
-  frame.hoist_function_decls(interp)
-  frame.bind_call_self_name()
   let code = frame.func_def.code
   let code_len = code.length()
   let stack = frame.stack
