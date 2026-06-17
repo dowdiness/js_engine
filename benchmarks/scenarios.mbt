@@ -14,6 +14,21 @@
 //
 // Both surfaces share the JS workload strings from workloads.mbt and the
 // verify() helper defined below.
+//
+// Benchmark category naming convention:
+//
+//   exec/<name>       Full interpreter pipeline (lex + parse + eval via @lib.run).
+//                     Cost includes parse overhead; use for regression tracking of
+//                     end-to-end execution paths the bytecode VM does not cover
+//                     (e.g. for-of, async, generators).
+//
+//   isolate/bytecode/<name>  Pre-compiled bytecode program, interpreter excluded.
+//                     Measures bytecode VM dispatch only; parse overhead removed.
+//                     Use when the workload is supported by the bytecode compiler.
+//
+// Note: the bytecode VM does not yet support: for-of, async/await, generators,
+// destructuring patterns, or labeled break/continue. Workloads for those paths
+// must use the exec/ category.
 // =============================================================================
 
 ///|

@@ -594,8 +594,10 @@ const BYTECODE_ARRAY_LITERAL_SRC : String =
 /// Category: Component
 /// Exercises: array iterator protocol — create_iter_result called once per
 ///            element (1000 × {done:false} + 1 × {done:true}).
-///            Isolates iterator result object allocation cost from property
-///            access and method call overhead.
+///            Measures full-pipeline cost (lex + parse + eval) dominated by the
+///            iterator protocol; parse overhead for this short source is small
+///            but present. Use exec/for_of regressions to track changes to the
+///            iterator path, not to attribute cost to individual operations.
 ///
 /// Expected result: "499500"
 const FOR_OF_SRC : String =
