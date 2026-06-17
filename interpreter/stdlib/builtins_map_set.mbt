@@ -881,8 +881,23 @@ fn setup_set_builtins(
     match this_val {
       Value::Set(data) => {
         let value = if args.length() > 0 { args[0] } else { Undefined }
-        // Check if value already exists using SameValueZero
-        if data.values.search_by(v => same_value_zero(v, value)) is Some(_) {
+        // Only skip if the value exists at a non-tombstoned index. A tombstoned
+        // slot is logically deleted, so delete+add during forEach must append.
+        let already_live = match data.tombstones {
+          None =>
+            data.values.search_by(v => same_value_zero(v, value)) is Some(_)
+          Some(ts) => {
+            let mut found = false
+            for i, v in data.values {
+              if !ts.contains(i) && same_value_zero(v, value) {
+                found = true
+                break
+              }
+            }
+            found
+          }
+        }
+        if already_live {
           return this_val
         }
         // Add new value
@@ -904,10 +919,22 @@ fn setup_set_builtins(
     match this_val {
       Value::Set(data) => {
         let value = if args.length() > 0 { args[0] } else { Undefined }
-        // Find value using SameValueZero
-        Value::Bool(
-          data.values.search_by(v => same_value_zero(v, value)) is Some(_),
-        )
+        // Skip tombstoned indices: a value deleted during active forEach is not "in" the set.
+        let found = match data.tombstones {
+          None =>
+            data.values.search_by(v => same_value_zero(v, value)) is Some(_)
+          Some(ts) => {
+            let mut found = false
+            for i, v in data.values {
+              if !ts.contains(i) && same_value_zero(v, value) {
+                found = true
+                break
+              }
+            }
+            found
+          }
+        }
+        Value::Bool(found)
       }
       _ =>
         raise @errors.TypeError(
@@ -924,13 +951,53 @@ fn setup_set_builtins(
       match this_val {
         Value::Set(data) => {
           let value = if args.length() > 0 { args[0] } else { Undefined }
-          // Find and remove value using SameValueZero
-          match data.values.search_by(v => same_value_zero(v, value)) {
-            Some(i) => {
-              let _ = data.values.remove(i)
-              Value::Bool(true)
+          // During active iteration, tombstone the slot instead of compacting.
+          // Compacting would shift later elements down, corrupting the index
+          // cursor in forEach; it would also cause delete+add of the last
+          // element to re-land at the same index, fooling the advancement guard.
+          if data.iteration_depth > 0 {
+            // Search only non-tombstoned slots.
+            let mut found_idx : Int? = None
+            match data.tombstones {
+              None =>
+                for i, v in data.values {
+                  if same_value_zero(v, value) {
+                    found_idx = Some(i)
+                    break
+                  }
+                }
+              Some(ts) =>
+                for i, v in data.values {
+                  if !ts.contains(i) && same_value_zero(v, value) {
+                    found_idx = Some(i)
+                    break
+                  }
+                }
             }
-            None => Value::Bool(false)
+            match found_idx {
+              None => Value::Bool(false)
+              Some(i) => {
+                let ts = match data.tombstones {
+                  None => {
+                    let ts : @set.Set[Int] = @set.Set::default()
+                    data.tombstones = Some(ts)
+                    ts
+                  }
+                  Some(ts) => ts
+                }
+                ts.add(i)
+                Value::Bool(true)
+              }
+            }
+          } else {
+            // No active iteration: compact normally.
+            match data.values.search_by(v => same_value_zero(v, value)) {
+              Some(i) => {
+                let _ = data.values.remove(i)
+                Value::Bool(true)
+              }
+              None => Value::Bool(false)
+            }
           }
         }
         _ =>
@@ -949,6 +1016,7 @@ fn setup_set_builtins(
     match this_val {
       Value::Set(data) => {
         data.values.clear()
+        data.tombstones = None // all slots gone; no tombstones remain
         Undefined
       }
       _ =>
@@ -968,26 +1036,57 @@ fn setup_set_builtins(
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
-          // Iterate over values. Use manual index loop; the callback may mutate
-          // data.values via set.delete/set.add. `for x in arr` snapshots initial
-          // length and crashes if the array shrinks. We also must not skip the
-          // element that shifts into the deleted slot: only advance i when value
-          // is still at position i after the callback (§24.2.3.12 live iteration).
-          let mut i = 0
-          while i < data.values.length() {
-            let value = data.values[i]
-            let _ = interp.call_value(
-              callback,
-              this_arg,
-              [value, value, this_val],
-              loc,
-            )
-            if i < data.values.length() &&
-              same_value_zero(data.values[i], value) {
-              i = i + 1
+          // §24.2.3.12: iteration is over the live [[SetData]] list. We model
+          // this with a tombstone index set: delete() tombstones during active
+          // iteration instead of compacting, so indices stay stable. add()
+          // appends; the new slot is visited when the cursor reaches it.
+          // iteration_depth lets nested forEach calls share tombstones and
+          // prevents compaction until the outermost exits.
+          data.iteration_depth += 1
+          let result : Result[Value, Error] = try {
+            let mut i = 0
+            while i < data.values.length() {
+              let is_tombstoned = match data.tombstones {
+                None => false
+                Some(ts) => ts.contains(i)
+              }
+              if !is_tombstoned {
+                let value = data.values[i]
+                let _ = interp.call_value(
+                  callback,
+                  this_arg,
+                  [value, value, this_val],
+                  loc,
+                )
+              }
+              // Always advance: values never compact during iteration.
+              i += 1
+            }
+            Ok(Undefined)
+          } catch {
+            e => Err(e)
+          }
+          // Decrement depth and compact on outermost exit.
+          data.iteration_depth -= 1
+          if data.iteration_depth == 0 {
+            match data.tombstones {
+              None => ()
+              Some(ts) => {
+                // Remove tombstoned slots in descending index order so earlier
+                // removals do not shift later indices.
+                let indices = ts.to_array()
+                indices.sort_by(fn(a, b) { b - a })
+                for i in indices {
+                  let _ = data.values.remove(i)
+                }
+                data.tombstones = None
+              }
             }
           }
-          Undefined
+          match result {
+            Ok(v) => v
+            Err(e) => raise e
+          }
         }
         _ =>
           raise @errors.TypeError(
@@ -1492,7 +1591,13 @@ fn setup_set_builtins(
     _args,
   ) raise {
     match this_val {
-      Value::Set(data) => Value::Number(data.values.length().to_double())
+      Value::Set(data) => {
+        let tombstone_count = match data.tombstones {
+          None => 0
+          Some(ts) => ts.length()
+        }
+        Value::Number((data.values.length() - tombstone_count).to_double())
+      }
       _ =>
         raise @errors.TypeError(
           message="Method Set.prototype.size called on incompatible receiver",

@@ -2677,6 +2677,70 @@ test "run_modules: legacy octal escape in module body rejected" {
 }
 
 ///|
+test "Set.forEach visits re-added value when callback deletes and re-adds last element" {
+  // Issue #357: delete+add on the last (or only) element landed the re-added
+  // value at the same array index, causing the advancement guard to fire and
+  // skip the second visit. Expected per §24.2.3.12: re-added values are visited.
+  let src =
+    #|const s = new Set([1]);
+    #|const seen = [];
+    #|s.forEach(v => {
+    #|  seen.push(v);
+    #|  if (v === 1) { s.delete(1); s.add(1); }
+    #|});
+    #|console.log(JSON.stringify(seen));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,1]"])
+}
+
+///|
+test "Set.forEach delete+re-add of non-last element still visits once" {
+  // Regression guard: non-last delete+re-add must still be visited only once on
+  // the original pass; the re-added copy at the end is visited later.
+  let src =
+    #|const s = new Set([1, 2]);
+    #|const seen = [];
+    #|s.forEach(v => {
+    #|  seen.push(v);
+    #|  if (v === 1) { s.delete(1); s.add(1); }
+    #|});
+    #|console.log(JSON.stringify(seen));
+  let (output, _) = @js_engine.run(src)
+  // 1 is re-added after 2, so order is: visit 1, visit 2, visit re-added 1
+  json_inspect(output, content=["[1,2,1]"])
+}
+
+///|
+test "Set.size reflects tombstoned entries during forEach" {
+  // During iteration, deleted entries must not count toward size.
+  let src =
+    #|const s = new Set([1, 2, 3]);
+    #|const sizes = [];
+    #|s.forEach(v => {
+    #|  if (v === 1) s.delete(2);
+    #|  sizes.push(s.size);
+    #|});
+    #|console.log(JSON.stringify(sizes));
+  let (output, _) = @js_engine.run(src)
+  // After deleting 2 during visit of 1: size=2; visit 3: size=2; (2 never visited)
+  json_inspect(output, content=["[2,2]"])
+}
+
+///|
+test "Set.has returns false for tombstoned entry during forEach" {
+  // A tombstoned (deleted-during-iteration) entry must not be seen by has().
+  let src =
+    #|const s = new Set([1, 2]);
+    #|let hasAfterDelete;
+    #|s.forEach(v => {
+    #|  if (v === 1) { s.delete(2); hasAfterDelete = s.has(2); }
+    #|});
+    #|console.log(hasAfterDelete);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["false"])
+}
+
+///|
 test "builtin method descriptors use standard metadata" {
   let src =
     #|function attrs(desc) {
