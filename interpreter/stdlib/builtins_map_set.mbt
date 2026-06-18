@@ -1015,8 +1015,28 @@ fn setup_set_builtins(
   ) raise {
     match this_val {
       Value::Set(data) => {
-        data.values.clear()
-        data.tombstones = None // all slots gone; no tombstones remain
+        if data.iteration_depth > 0 {
+          // During active forEach the cursor uses stable indices, so we must
+          // not compact. Tombstone every current slot; elements added after
+          // clear() will append at higher indices and be visited normally.
+          let n = data.values.length()
+          if n > 0 {
+            let ts = match data.tombstones {
+              None => {
+                let ts : @set.Set[Int] = @set.Set::default()
+                data.tombstones = Some(ts)
+                ts
+              }
+              Some(ts) => ts
+            }
+            for i in 0..<n {
+              ts.add(i)
+            }
+          }
+        } else {
+          data.values.clear()
+          data.tombstones = None
+        }
         Undefined
       }
       _ =>
@@ -1933,7 +1953,19 @@ fn make_set_values_iterator(
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
+        // Skip tombstoned slots (entries deleted during a live forEach).
+        let mut idx = index_ref.val
+        while idx < set_data.values.length() {
+          let is_tomb = match set_data.tombstones {
+            None => false
+            Some(ts) => ts.contains(idx)
+          }
+          if is_tomb {
+            idx += 1
+          } else {
+            break
+          }
+        }
         if idx < set_data.values.length() {
           let value = set_data.values[idx]
           index_ref.val = idx + 1
@@ -1955,6 +1987,7 @@ fn make_set_values_iterator(
             arraybuffer_state: None,
           })
         } else {
+          index_ref.val = idx
           let result_props : Map[String, Value] = {}
           result_props["value"] = Undefined
           result_props["done"] = Value::Bool(true)
@@ -2039,7 +2072,19 @@ fn make_set_entries_iterator(
     prototype: Null,
     callable: Some(
       NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
+        // Skip tombstoned slots (entries deleted during a live forEach).
+        let mut idx = index_ref.val
+        while idx < set_data.values.length() {
+          let is_tomb = match set_data.tombstones {
+            None => false
+            Some(ts) => ts.contains(idx)
+          }
+          if is_tomb {
+            idx += 1
+          } else {
+            break
+          }
+        }
         if idx < set_data.values.length() {
           let value = set_data.values[idx]
           index_ref.val = idx + 1

@@ -2741,6 +2741,39 @@ test "Set.has returns false for tombstoned entry during forEach" {
 }
 
 ///|
+test "Set.forEach visits value added after clear() inside callback" {
+  // P2: clear() during forEach must tombstone current slots rather than
+  // compacting. Without this, add(x) after clear() lands at index 0 and
+  // the unconditional i+=1 cursor skips it.
+  let src =
+    #|const s = new Set([1]);
+    #|const seen = [];
+    #|s.forEach(v => {
+    #|  seen.push(v);
+    #|  if (v === 1) { s.clear(); s.add(2); }
+    #|});
+    #|console.log(JSON.stringify(seen));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,2]"])
+}
+
+///|
+test "Set spread hides tombstoned entries during forEach" {
+  // P2: make_set_values_iterator reads data.values directly; tombstoned
+  // slots must be skipped so [...s] inside a forEach callback does not
+  // expose deleted values.
+  let src =
+    #|const s = new Set([1, 2, 3]);
+    #|let spread;
+    #|s.forEach(v => {
+    #|  if (v === 1) { s.delete(2); spread = [...s]; }
+    #|});
+    #|console.log(JSON.stringify(spread));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,3]"])
+}
+
+///|
 test "builtin method descriptors use standard metadata" {
   let src =
     #|function attrs(desc) {
