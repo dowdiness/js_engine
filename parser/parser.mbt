@@ -130,8 +130,149 @@ fn Parser::peek_kind(self : Parser) -> @token.TokenKind {
 fn Parser::advance(self : Parser) -> @token.Token {
   let tok = self.tokens[self.pos]
   self.pos += 1
-  self.last_end = tok.loc.offset + tok.raw.length()
+  self.last_end = self.token_end_offset(tok)
   tok
+}
+
+///|
+fn is_ascii_alpha_num(c : Char) -> Bool {
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+///|
+fn Parser::scan_identifier_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start
+  while i < len {
+    let c = chars[i]
+    if is_ascii_alpha_num(c) || c == '_' || c == '$' || c.to_int() >= 128 {
+      i += 1
+    } else if c == '\\' && i + 1 < len && chars[i + 1] == 'u' {
+      i += 2
+      if i < len && chars[i] == '{' {
+        i += 1
+        while i < len && chars[i] != '}' {
+          i += 1
+        }
+        if i < len {
+          i += 1
+        }
+      } else {
+        i += 4
+      }
+    } else {
+      break
+    }
+  }
+  i
+}
+
+///|
+fn Parser::scan_regex_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start + 1
+  let mut in_class = false
+  while i < len {
+    let c = chars[i]
+    if c == '/' && !in_class {
+      i += 1
+      while i < len &&
+            (is_ascii_alpha_num(chars[i]) || chars[i] == '_' || chars[i] == '$') {
+        i += 1
+      }
+      return i
+    }
+    if c == '[' {
+      in_class = true
+    } else if c == ']' {
+      in_class = false
+    } else if c == '\\' && i + 1 < len {
+      i += 2
+      continue
+    }
+    i += 1
+  }
+  i
+}
+
+///|
+fn Parser::scan_template_segment_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start
+  if i < len && (chars[i] == '`' || chars[i] == '}') {
+    i += 1
+  }
+  while i < len {
+    let c = chars[i]
+    if c == '`' {
+      return i + 1
+    }
+    if c == '$' && i + 1 < len && chars[i + 1] == '{' {
+      return i + 2
+    }
+    if c == '\\' && i + 1 < len {
+      i += 2
+    } else {
+      i += 1
+    }
+  }
+  i
+}
+
+///|
+fn Parser::scan_number_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start
+  while i < len {
+    let c = chars[i]
+    if is_ascii_alpha_num(c) || c == '_' || c == '.' {
+      i += 1
+    } else if (c == '+' || c == '-') &&
+      i > start &&
+      (chars[i - 1] == 'e' || chars[i - 1] == 'E') {
+      i += 1
+    } else {
+      break
+    }
+  }
+  i
+}
+
+///|
+fn Parser::scan_source_token_end(self : Parser, tok : @token.Token) -> Int? {
+  let start = tok.loc.offset
+  if self.source == "" || start < 0 || start >= self.source.length() {
+    return None
+  }
+  match tok.kind {
+    Ident(_) => Some(self.scan_identifier_end(start))
+    Regex(_, _) => Some(self.scan_regex_end(start))
+    NoSubTemplate(_) | TemplateHead(_) | TemplateMiddle(_) | TemplateTail(_) =>
+      Some(self.scan_template_segment_end(start))
+    Number(_) => Some(self.scan_number_end(start))
+    _ => None
+  }
+}
+
+///|
+fn Parser::token_end_offset(self : Parser, tok : @token.Token) -> Int {
+  let raw_end = tok.loc.offset + tok.raw.length()
+  if self.source == "" {
+    raw_end
+  } else if tok.raw != "" &&
+    raw_end <= self.source.length() &&
+    self.source.unsafe_substring(start=tok.loc.offset, end=raw_end) == tok.raw {
+    raw_end
+  } else {
+    match self.scan_source_token_end(tok) {
+      Some(end_offset) => end_offset
+      None => raw_end
+    }
+  }
 }
 
 ///|

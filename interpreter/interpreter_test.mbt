@@ -13415,6 +13415,10 @@ test "Function.prototype.toString preserves parsed source text" {
     (
       #|console.log((function f() {}).toString());
       #|console.log((() => 42).toString());
+      #|console.log((() => /x/g).toString());
+      #|console.log((() => `x`).toString());
+      #|let escapedIdent = 1;
+      #|console.log((() => \u0065scapedIdent).toString());
       #|console.log((x => { return x; }).toString());
       #|console.log((async () => {}).toString());
       #|console.log((function* g() {}).toString());
@@ -13444,12 +13448,13 @@ test "Function.prototype.toString preserves parsed source text" {
     ),
   )
   json_inspect(output, content=[
-    "function f() {}", "() => 42", "x => { return x; }", "async () => {}", "function* g() {}",
-    "function* hg() {}", "async function ha() {}", "async function* hag() {}", "class Foo {}",
-    "function anonymous(\n) {\nreturn 1\n}", "function anonymous(\n) {\n\n}", "function* anonymous(\n) {\n\n}",
-    "async function anonymous(\n) {\n\n}", "get x(){}", "set y(v){}", "async m(){}",
-    "*g(){}", "function proxy() { [native code] }", "function proxy() { [native code] }",
-    "function parseInt() { [native code] }", "function bound() { [native code] }",
+    "function f() {}", "() => 42", "() => /x/g", "() => `x`", "() => \\u0065scapedIdent",
+    "x => { return x; }", "async () => {}", "function* g() {}", "function* hg() {}",
+    "async function ha() {}", "async function* hag() {}", "class Foo {}", "function anonymous(\n) {\nreturn 1\n}",
+    "function anonymous(\n) {\n\n}", "function* anonymous(\n) {\n\n}", "async function anonymous(\n) {\n\n}",
+    "get x(){}", "set y(v){}", "async m(){}", "*g(){}", "function proxy() { [native code] }",
+    "function proxy() { [native code] }", "function parseInt() { [native code] }",
+    "function bound() { [native code] }",
   ])
 }
 
