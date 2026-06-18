@@ -16,17 +16,25 @@ interfaces:
 
 | Package | Responsibility |
 |---|---|
-| `.` | User-facing facade over parse + interpreter execution. |
+| `.` | User-facing facade over parse, interpreter execution, module execution, and the opt-in compiled path. |
 | `token` | Token kinds, source locations, and literal provenance tags. |
 | `errors` | JavaScript error variants and formatting helpers. |
-| `ast` | Public AST node definitions consumed by parser and runtime. |
+| `ast` | Public AST node definitions consumed by parser, static semantics, compiler, and runtime. |
 | `lexer` | Source text to token stream. |
 | `parser` | Token stream to AST. |
+| `static_semantics` | Early-error checks and declaration-fact analysis. |
+| `compiler` | Opt-in closure-conversion prototype used by benchmarks and `run_compiled`. |
 | `interpreter` | Wiring layer that creates a runtime interpreter with stdlib hooks. |
 | `interpreter/runtime` | Tree-walking evaluator, value model, environments, property dispatch, modules, event-loop state. |
 | `interpreter/stdlib` | JavaScript built-ins and stdlib/runtime hook implementations. |
-| `cmd/main` | CLI executable package. |
 | `benchmarks` | Benchmark workloads, benchmark tests, and benchmark CLI. |
+| `cmd/main` | User-facing CLI executable. |
+| `cmd/test262_runner` | Authoritative native Test262 runner. |
+| `cmd/report_test262` | CI-artifact conformance report generator. |
+| `cmd/test262_analyze`, `cmd/test262_validate_skips`, `cmd/classify_by_edition` | Test262 metadata, skip validation, and reporting helpers. |
+| `cmd/architecture_*`, `tooling/architecture_*` | Architecture state/boundary audit CLIs and libraries. |
+| `cmd/bench_focus` | Native repeated-benchmark helper for lower-noise local timing. |
+| `tooling/test262_*`, `tooling/subprocess_helpers` | Shared native tooling libraries for Test262 and subprocess handling. |
 
 Use `moon ide outline <package>` or `pkg.generated.mbti` for the current public
 API. Do not infer public API from file names.
@@ -49,16 +57,15 @@ and `@js_engine/interpreter/runtime`.
 
 The authoritative full-suite workflow is `.github/workflows/test262.yml`.
 It builds the JS target with `moon build --target js --release` and runs the
-native MoonBit runner (`cmd/test262_runner`) once per mode (`strict`,
-`non-strict`) with 4 threads and a 5-second per-test timeout. The GitHub
-Actions job timeout is set in the workflow file.
+native MoonBit runner (`cmd/test262_runner`) in a matrix of two modes (`strict`,
+`non-strict`) × four shards. Each shard uses 4 threads and a 5-second per-test
+timeout. The GitHub Actions job timeout is set in the workflow file.
 
 Generate release-grade conformance text from CI artifacts:
 
 ```bash
-make test262-report
+make test262-report                         # includes edition tables by default
 make test262-report ARGS="--format=changelog"
-make test262-report ARGS="--with-editions"
 ```
 
 Do not hand-copy headline conformance numbers between docs. If a table needs
@@ -188,15 +195,21 @@ maps. Reserve IDs in code comments before adding new hidden slots:
 
 - `-1..-2`: Array exotic length/prototype override slots in
   `interpreter/runtime/value.mbt`.
-- `-101..-110`: function home-realm intrinsic prototype slots in
+- `-3..-5`: Array iterator next-index, iterated-object, and kind slots in
+  `interpreter/runtime/iterators.mbt`.
+- `-101`: function home-realm intrinsic prototype bundle slot in
   `interpreter/runtime/factories.mbt`.
 - `-111`: final realm-stamp traversal marker in
   `interpreter/stdlib/builtins.mbt`, mirrored by
   `benchmarks/startup_new_interpreter_subphases.mbt`.
 - `-112`: realm-owned `%ArrayProto_values%` intrinsic cache on
   `Array.prototype` in `interpreter/runtime/iterators.mbt`.
-- `-130..-132`: Map iterator next-index, iterated-map, and kind slots in
-  `interpreter/stdlib/builtins_map_set.mbt`.
+- `-120..-122`: RegExp original source/flags and intrinsic constructor slots in
+  `interpreter/stdlib/builtins_regex.mbt`.
+- `-123..-128`: RegExp String Iterator brand, regexp, string, global, unicode,
+  and done slots in `interpreter/stdlib/builtins_regex.mbt`.
+- `-130..-132`: Map/Set iterator next-index, iterated collection, and kind slots
+  in `interpreter/stdlib/builtins_map_set.mbt`.
 
 Runtime-created user and well-known symbols must stay non-negative. Traversal
 code treats negative symbol IDs as engine-private metadata and must not expose
