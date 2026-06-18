@@ -134,16 +134,26 @@ test "build_test_tasks falls back to defaults when task metadata read fails" {
   let test_dir = @path_utils.join_path(TEST_ROOT, "selection/fallback")
   let missing = @path_utils.join_path(test_dir, "missing.js")
   let bad_path = @path_utils.join_path(test_dir, "bad-file")
+  let malformed = @path_utils.join_path(test_dir, "malformed.js")
   let valid = @path_utils.join_path(test_dir, "valid.js")
   ensure_dir(bad_path)
+  write_text(
+    malformed,
+    (
+      #|/*---
+      #|flags: [raw
+    ),
+  )
   write_test_file(valid)
 
-  let tasks = build_test_tasks([missing, bad_path, valid], "both")
+  let tasks = build_test_tasks([missing, bad_path, malformed, valid], "both")
   json_inspect(tasks, content=[
     (missing, "non-strict"),
     (missing, "strict"),
     (bad_path, "non-strict"),
     (bad_path, "strict"),
+    (malformed, "non-strict"),
+    (malformed, "strict"),
     (valid, "non-strict"),
     (valid, "strict"),
   ])
@@ -329,6 +339,38 @@ test "atomics short timeout preamble normalizes non-number and missing inputs" {
     ),
     content="true",
   )
+}
+
+///|
+async test "atomics short timeout wrapper passes coerced timeouts at runtime" {
+  let root = @path_utils.join_path(TEST_ROOT, "harness/runtime-atomics")
+  let harness_dir = @path_utils.join_path(root, "harness")
+  write_text(@path_utils.join_path(harness_dir, "sta.js"), "")
+  write_text(@path_utils.join_path(harness_dir, "assert.js"), "")
+  let harness = load_harness(
+    root,
+    [],
+    false,
+    harness_options=HarnessOptions(
+      atomics_timeout_profile=ATOMICS_TIMEOUT_PROFILE_SHORT,
+    ),
+  )
+  let script = harness +
+    (
+      #|let captured = [];
+      #|__TEST262_ORIGINAL_ATOMICS_WAIT = function(typedArray, index, value, timeout) {
+      #|  captured.push(timeout);
+      #|};
+      #|const ta = new Int32Array(new SharedArrayBuffer(4));
+      #|Atomics.wait(ta, 0, 0, 200);
+      #|Atomics.wait(ta, 0, 0, "foo");
+      #|Atomics.wait(ta, 0, 0, undefined);
+      #|Atomics.wait(ta, 0, 0, -1);
+      #|console.log(captured.join(','));
+    )
+  let capture = collect_output_hard("node", ["-e", script])
+  inspect(capture.code, content="0")
+  inspect(capture.stdout.trim(), content="100,100,100,-1")
 }
 
 ///|
