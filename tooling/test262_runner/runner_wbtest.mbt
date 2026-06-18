@@ -29,7 +29,16 @@ fn assert_raises(f : () -> Unit raise) -> Unit {
 ///|
 async fn run_node_script(script : String) -> ProcessCapture? {
   Some(collect_output_hard("node", ["-e", script])) catch {
-    _ => None
+    err => {
+      let msg = @debug.to_string(err)
+      if msg.contains("No such file or directory") ||
+        msg.contains("not found") ||
+        msg.contains("The system cannot find the file specified") {
+        None
+      } else {
+        fail("Unexpected node execution failure: \{msg}")
+      }
+    }
   }
 }
 
@@ -385,7 +394,7 @@ async test "atomics short timeout wrapper passes coerced timeouts at runtime" {
 }
 
 ///|
-async test "atomics short timeout wrapper passes coerced timeouts for waitAsync at runtime" {
+async test "atomics short timeout wrapper passes coerced timeouts for waitAsync when native delegate exists" {
   let root = @path_utils.join_path(TEST_ROOT, "harness/runtime-atomics")
   let harness_dir = @path_utils.join_path(root, "harness")
   write_text(@path_utils.join_path(harness_dir, "sta.js"), "")
@@ -400,15 +409,60 @@ async test "atomics short timeout wrapper passes coerced timeouts for waitAsync 
   )
   let script = (
       #|let captured = [];
-      #|const original_wait_async = Atomics.waitAsync;
-      #|const fallback_wait_async = function(_typedArray, _index, _value, timeout) {
-      #|  return { value: timeout };
-      #|};
-      #|Atomics.waitAsync = function(typedArray, index, value, timeout) {
+      #|const native_wait_async = Atomics.waitAsync;
+      #|const has_native_wait_async = typeof native_wait_async === 'function';
+      #|if (has_native_wait_async) {
+      #|  Atomics.waitAsync = function(typedArray, index, value, timeout) {
+      #|    captured.push(timeout);
+      #|    return native_wait_async(typedArray, index, value, timeout);
+      #|  };
+      #|} else {
+      #|  console.log('native-waitAsync-unavailable');
+      #|}
+    ) +
+    harness +
+    (
+      #|if (has_native_wait_async) {
+      #|  const ta = new Int32Array(new SharedArrayBuffer(4));
+      #|  Atomics.waitAsync(ta, 0, 0, 200);
+      #|  Atomics.waitAsync(ta, 0, 0, "foo");
+      #|  Atomics.waitAsync(ta, 0, 0, undefined);
+      #|  Atomics.waitAsync(ta, 0, 0, -1);
+      #|  console.log(captured.join(','));
+      #|}
+    )
+  match run_node_script(script) {
+    None => inspect(true, content="true")
+    Some(capture) => {
+      inspect(capture.code, content="0")
+      if capture.stdout.contains("native-waitAsync-unavailable") {
+        inspect(true, content="true")
+      } else {
+        inspect(capture.stdout.trim(), content="100,100,100,-1")
+      }
+    }
+  }
+}
+
+///|
+async test "atomics short timeout wrapper passes coerced timeouts for waitAsync with injected fallback delegate" {
+  let root = @path_utils.join_path(TEST_ROOT, "harness/runtime-atomics")
+  let harness_dir = @path_utils.join_path(root, "harness")
+  write_text(@path_utils.join_path(harness_dir, "sta.js"), "")
+  write_text(@path_utils.join_path(harness_dir, "assert.js"), "")
+  let harness = load_harness(
+    root,
+    [],
+    false,
+    harness_options=HarnessOptions(
+      atomics_timeout_profile=ATOMICS_TIMEOUT_PROFILE_SHORT,
+    ),
+  )
+  let script = (
+      #|let captured = [];
+      #|Atomics.waitAsync = function(_typedArray, _index, _value, timeout) {
       #|  captured.push(timeout);
-      #|  const impl =
-      #|    typeof original_wait_async === 'function' ? original_wait_async : fallback_wait_async;
-      #|  return impl(typedArray, index, value, timeout);
+      #|  return { value: timeout };
       #|};
     ) +
     harness +
