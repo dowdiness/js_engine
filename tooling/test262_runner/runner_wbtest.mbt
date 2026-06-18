@@ -130,6 +130,26 @@ test "task selection mirrors Python runner helpers" {
 }
 
 ///|
+test "build_test_tasks falls back to defaults when task metadata read fails" {
+  let test_dir = @path_utils.join_path(TEST_ROOT, "selection/fallback")
+  let missing = @path_utils.join_path(test_dir, "missing.js")
+  let bad_path = @path_utils.join_path(test_dir, "bad-file")
+  let valid = @path_utils.join_path(test_dir, "valid.js")
+  ensure_dir(bad_path)
+  write_test_file(valid)
+
+  let tasks = build_test_tasks([missing, bad_path, valid], "both")
+  json_inspect(tasks, content=[
+    (missing, "non-strict"),
+    (missing, "strict"),
+    (bad_path, "non-strict"),
+    (bad_path, "strict"),
+    (valid, "non-strict"),
+    (valid, "strict"),
+  ])
+}
+
+///|
 test "resume keys and artifact schema fields match the contract" {
   let root = @path_utils.join_path(TEST_ROOT, "resume/test262")
   let test_root = @path_utils.join_path(root, "test")
@@ -255,6 +275,60 @@ test "harness options parse and transform helpers deterministically" {
     content="true",
   )
   inspect(transformed_other, content="const already = 1;")
+}
+
+///|
+test "atomics short timeout preamble normalizes non-number and missing inputs" {
+  let helper = HarnessOptions(
+    atomics_timeout_profile=ATOMICS_TIMEOUT_PROFILE_SHORT,
+  )
+  let preamble = helper.preamble()
+  inspect(
+    preamble.contains(
+      "var __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM = Number(timeout);",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "if (Number.isNaN(__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM)) {",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM = Number.POSITIVE_INFINITY;",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "return (__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM > __TEST262_ATOMICS_TIMEOUT_MS) ? __TEST262_ATOMICS_TIMEOUT_MS : __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM;",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains("if (typeof timeout !== 'number' || timeout < 0)"),
+    content="false",
+  )
+  inspect(
+    preamble.contains(
+      "Atomics.wait = function(typedArray, index, value, timeout)",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "return __TEST262_ORIGINAL_ATOMICS_WAIT(typedArray, index, value, __TEST262_LIMITED_ATOMICS_TIMEOUT(timeout));",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "return __TEST262_ORIGINAL_ATOMICS_WAIT_ASYNC(typedArray, index, value, __TEST262_LIMITED_ATOMICS_TIMEOUT(timeout));",
+    ),
+    content="true",
+  )
 }
 
 ///|

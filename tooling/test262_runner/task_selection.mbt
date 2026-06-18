@@ -330,10 +330,11 @@ fn build_test_tasks(
 ) -> Array[(String, String)] {
   let test_tasks : Array[(String, String)] = []
   for test_file in test_files {
-    let flags_result = try? metadata_flags_for_test(test_file)
-    let modes = match flags_result {
-      Ok(flags) => modes_for_metadata_flags(flags, run_mode)
-      Err(_) => default_modes_for_run_mode(run_mode)
+    let modes = try {
+      let flags = metadata_flags_for_test(test_file)
+      modes_for_metadata_flags(flags, run_mode)
+    } catch {
+      _ => default_modes_for_run_mode(run_mode)
     }
     for mode in modes {
       test_tasks.push((test_file, mode))

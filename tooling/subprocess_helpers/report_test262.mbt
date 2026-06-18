@@ -625,8 +625,8 @@ fn parse_shard_of_total(inner : String, context : String) -> (Int, Int) raise {
     )
   }
   (
-    parse_uint(inner.substring(end=of_pos), context),
-    parse_uint(inner.substring(start=of_pos + 2), context),
+    parse_uint(inner[:of_pos].to_owned(), context),
+    parse_uint(inner[of_pos + 2:].to_owned(), context),
   )
 }
 
@@ -643,10 +643,7 @@ fn validate_shard_completeness(
   let seen_indices : Array[Int] = []
   for path in paths {
     let name = @path_utils.basename(path)
-    let inner = name.substring(
-      start=prefix.length(),
-      end=name.length() - suffix.length(),
-    )
+    let inner = name[prefix.length():name.length() - suffix.length()].to_owned()
     let (n, t) = parse_shard_of_total(inner, name)
     guard expected_total == 0 || expected_total == t else {
       fail(mode + " shards have inconsistent totals in filenames")
