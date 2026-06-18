@@ -78,6 +78,53 @@ test "task selection mirrors Python runner helpers" {
     absolute_path(normal),
     absolute_path(raw),
   ])
+
+  let resume_file = join_path(TEST_ROOT, "selection/results.json")
+  write_text(
+    resume_file,
+    (
+      #|{"results":[
+      #|  {"path":"test/language/normal.js","mode":"non-strict","status":"pass"},
+      #|  {"path":"test/language/raw.js","mode":"non-strict","status":"fail"},
+      #|  {"path":"test/language/raw.js","mode":"strict","status":"skip"}
+      #|]}
+    ),
+  )
+  let selection = [
+    (join_path(test_dir, "normal.js"), "non-strict"),
+    (join_path(test_dir, "normal.js"), "strict"),
+    (join_path(test_dir, "raw.js"), "non-strict"),
+    (join_path(test_dir, "raw.js"), "strict"),
+    (join_path(test_dir, "module.js"), "non-strict"),
+  ]
+  let (sliced, messages) = apply_task_selection(
+    selection,
+    start=1,
+    count=Some(3),
+    resume_from=resume_file,
+    test262_dir=join_path(test262_root, "test"),
+  )
+  json_inspect(sliced, content=[
+    (join_path(test_dir, "normal.js"), "strict"),
+  ])
+  inspect(messages.length(), content="2")
+  inspect(messages[0], content="Selected task slice: start=1, count=3 (3/5)")
+  inspect(
+    messages[1].contains("Resume: skipped 2 completed task(s) from " + resume_file),
+    content="true",
+  )
+
+  let (sharded, shard_messages) = apply_task_selection(
+    selection,
+    shard_spec=Some((1, 2)),
+    test262_dir=join_path(test262_root, "test"),
+  )
+  json_inspect(sharded, content=[
+    (join_path(test_dir, "normal.js"), "non-strict"),
+    (join_path(test_dir, "normal.js"), "strict"),
+    (join_path(test_dir, "raw.js"), "non-strict"),
+  ])
+  inspect(shard_messages[0].contains("Selected shard 1/2"), content="true")
 }
 
 ///|
