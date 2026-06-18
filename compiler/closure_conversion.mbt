@@ -2,7 +2,7 @@
 //
 // This file implements an opt-in closure-conversion prototype. It is retained
 // as a benchmark comparison path and research artifact, not as the long-term
-// optimization architecture. See docs/architecture-execution-plan-2026-06-12.md
+// optimization architecture. See docs/design/architecture-execution-plan-2026-06-12.md
 // §8 (Closure-Conversion Policy) for the retirement criteria and the list of
 // allowed and forbidden work.
 //

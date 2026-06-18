@@ -52,7 +52,7 @@ Unit tests: **2055 passing** (was 1227 at v0.2.3).
   operators (#158), comma expressions (#159), constructor/object/control-flow
   nodes (#164), and arguments-object elision (#172). Design rationale and
   the explicit decision *not* to grow it into a second full interpreter are
-  recorded in `docs/closure-conversion-and-bytecode.md`.
+  recorded in `docs/design/closure-conversion-and-bytecode.md`.
 - **RegExp `Symbol.*` protocol methods.** `Symbol.replace` (#196),
   `Symbol.match` (#197), `Symbol.split` (#198), and `Symbol.matchAll` (#200)
   now follow their spec algorithms, with the `exec`/`search` `lastIndex`
@@ -120,7 +120,7 @@ and caches.
   plain-object property-helper hot-path optimizations (#177/#186).
 
 Timing figures are intentionally omitted — per
-`docs/closure-conversion-and-bytecode.md`, they vary by backend, hardware,
+`docs/design/closure-conversion-and-bytecode.md`, they vary by backend, hardware,
 and local noise; run `make bench` for fresh numbers.
 
 ### Tooling — Python → MoonBit migration
