@@ -258,6 +258,60 @@ test "harness options parse and transform helpers deterministically" {
 }
 
 ///|
+test "atomics short timeout preamble normalizes non-number and missing inputs" {
+  let helper = HarnessOptions(
+    atomics_timeout_profile=ATOMICS_TIMEOUT_PROFILE_SHORT,
+  )
+  let preamble = helper.preamble()
+  inspect(
+    preamble.contains(
+      "var __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM = Number(timeout);",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "if (Number.isNaN(__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM)) {",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM = Number.POSITIVE_INFINITY;",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "return (__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM > __TEST262_ATOMICS_TIMEOUT_MS) ? __TEST262_ATOMICS_TIMEOUT_MS : __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM;",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains("if (typeof timeout !== 'number' || timeout < 0)"),
+    content="false",
+  )
+  inspect(
+    preamble.contains(
+      "Atomics.wait = function(typedArray, index, value, timeout)",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "return __TEST262_ORIGINAL_ATOMICS_WAIT(typedArray, index, value, __TEST262_LIMITED_ATOMICS_TIMEOUT(timeout));",
+    ),
+    content="true",
+  )
+  inspect(
+    preamble.contains(
+      "return __TEST262_ORIGINAL_ATOMICS_WAIT_ASYNC(typedArray, index, value, __TEST262_LIMITED_ATOMICS_TIMEOUT(timeout));",
+    ),
+    content="true",
+  )
+}
+
+///|
 test "relative_path only returns dot for equal normalized paths" {
   let base = @path_utils.absolute_path(
     @path_utils.join_path(TEST_ROOT, "relative"),
