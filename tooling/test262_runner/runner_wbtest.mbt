@@ -130,6 +130,26 @@ test "task selection mirrors Python runner helpers" {
 }
 
 ///|
+test "build_test_tasks falls back to defaults when task metadata read fails" {
+  let test_dir = @path_utils.join_path(TEST_ROOT, "selection/fallback")
+  let missing = @path_utils.join_path(test_dir, "missing.js")
+  let bad_path = @path_utils.join_path(test_dir, "bad-file")
+  let valid = @path_utils.join_path(test_dir, "valid.js")
+  ensure_dir(bad_path)
+  write_test_file(valid)
+
+  let tasks = build_test_tasks([missing, bad_path, valid], "both")
+  json_inspect(tasks, content=[
+    (missing, "non-strict"),
+    (missing, "strict"),
+    (bad_path, "non-strict"),
+    (bad_path, "strict"),
+    (valid, "non-strict"),
+    (valid, "strict"),
+  ])
+}
+
+///|
 test "resume keys and artifact schema fields match the contract" {
   let root = @path_utils.join_path(TEST_ROOT, "resume/test262")
   let test_root = @path_utils.join_path(root, "test")
