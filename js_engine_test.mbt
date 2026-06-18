@@ -2678,15 +2678,17 @@ test "run_modules: legacy octal escape in module body rejected" {
 
 ///|
 test "Set.forEach visits re-added value when callback deletes and re-adds last element" {
-  // Issue #357: delete+add on the last (or only) element landed the re-added
-  // value at the same array index, causing the advancement guard to fire and
-  // skip the second visit. Expected per §24.2.3.12: re-added values are visited.
+  // Issue #357: delete+add on the last (or only) element must land the re-added
+  // value at a new index so the forEach cursor reaches it. The guard prevents
+  // infinite looping: per §24.2.3.12, unconditional delete+add inside forEach
+  // grows the list forever since numEntries is re-evaluated after each callback.
   let src =
     #|const s = new Set([1]);
     #|const seen = [];
+    #|let deleted = false;
     #|s.forEach(v => {
     #|  seen.push(v);
-    #|  if (v === 1) { s.delete(1); s.add(1); }
+    #|  if (v === 1 && !deleted) { deleted = true; s.delete(1); s.add(1); }
     #|});
     #|console.log(JSON.stringify(seen));
   let (output, _) = @js_engine.run(src)
@@ -2695,14 +2697,16 @@ test "Set.forEach visits re-added value when callback deletes and re-adds last e
 
 ///|
 test "Set.forEach delete+re-add of non-last element still visits once" {
-  // Regression guard: non-last delete+re-add must still be visited only once on
-  // the original pass; the re-added copy at the end is visited later.
+  // Regression guard: deleting a non-last element and re-adding it puts it at
+  // the end of the iteration order. The guard prevents infinite looping (same
+  // reason as the test above — unconditional delete+add grows the list forever).
   let src =
     #|const s = new Set([1, 2]);
     #|const seen = [];
+    #|let deleted = false;
     #|s.forEach(v => {
     #|  seen.push(v);
-    #|  if (v === 1) { s.delete(1); s.add(1); }
+    #|  if (v === 1 && !deleted) { deleted = true; s.delete(1); s.add(1); }
     #|});
     #|console.log(JSON.stringify(seen));
   let (output, _) = @js_engine.run(src)
