@@ -2677,6 +2677,122 @@ test "run_modules: legacy octal escape in module body rejected" {
 }
 
 ///|
+test "Set.forEach visits re-added value when callback deletes and re-adds last element" {
+  // Issue #357: delete+add on the last (or only) element must land the re-added
+  // value at a new index so the forEach cursor reaches it. The guard prevents
+  // infinite looping: per §24.2.3.12, unconditional delete+add inside forEach
+  // grows the list forever since numEntries is re-evaluated after each callback.
+  let src =
+    #|const s = new Set([1]);
+    #|const seen = [];
+    #|let deleted = false;
+    #|s.forEach(v => {
+    #|  seen.push(v);
+    #|  if (v === 1 && !deleted) { deleted = true; s.delete(1); s.add(1); }
+    #|});
+    #|console.log(JSON.stringify(seen));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,1]"])
+}
+
+///|
+test "Set.forEach delete+re-add of non-last element still visits once" {
+  // Regression guard: deleting a non-last element and re-adding it puts it at
+  // the end of the iteration order. The guard prevents infinite looping (same
+  // reason as the test above — unconditional delete+add grows the list forever).
+  let src =
+    #|const s = new Set([1, 2]);
+    #|const seen = [];
+    #|let deleted = false;
+    #|s.forEach(v => {
+    #|  seen.push(v);
+    #|  if (v === 1 && !deleted) { deleted = true; s.delete(1); s.add(1); }
+    #|});
+    #|console.log(JSON.stringify(seen));
+  let (output, _) = @js_engine.run(src)
+  // 1 is re-added after 2, so order is: visit 1, visit 2, visit re-added 1
+  json_inspect(output, content=["[1,2,1]"])
+}
+
+///|
+test "Set.size reflects tombstoned entries during forEach" {
+  // During iteration, deleted entries must not count toward size.
+  let src =
+    #|const s = new Set([1, 2, 3]);
+    #|const sizes = [];
+    #|s.forEach(v => {
+    #|  if (v === 1) s.delete(2);
+    #|  sizes.push(s.size);
+    #|});
+    #|console.log(JSON.stringify(sizes));
+  let (output, _) = @js_engine.run(src)
+  // After deleting 2 during visit of 1: size=2; visit 3: size=2; (2 never visited)
+  json_inspect(output, content=["[2,2]"])
+}
+
+///|
+test "Set.has returns false for tombstoned entry during forEach" {
+  // A tombstoned (deleted-during-iteration) entry must not be seen by has().
+  let src =
+    #|const s = new Set([1, 2]);
+    #|let hasAfterDelete;
+    #|s.forEach(v => {
+    #|  if (v === 1) { s.delete(2); hasAfterDelete = s.has(2); }
+    #|});
+    #|console.log(hasAfterDelete);
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["false"])
+}
+
+///|
+test "Set.forEach visits value added after clear() inside callback" {
+  // P2: clear() during forEach must tombstone current slots rather than
+  // compacting. Without this, add(x) after clear() lands at index 0 and
+  // the unconditional i+=1 cursor skips it.
+  let src =
+    #|const s = new Set([1]);
+    #|const seen = [];
+    #|s.forEach(v => {
+    #|  seen.push(v);
+    #|  if (v === 1) { s.clear(); s.add(2); }
+    #|});
+    #|console.log(JSON.stringify(seen));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,2]"])
+}
+
+///|
+test "Set spread hides tombstoned entries during forEach" {
+  // P2: make_set_values_iterator reads data.values directly; tombstoned
+  // slots must be skipped so [...s] inside a forEach callback does not
+  // expose deleted values.
+  let src =
+    #|const s = new Set([1, 2, 3]);
+    #|let spread;
+    #|s.forEach(v => {
+    #|  if (v === 1) { s.delete(2); spread = [...s]; }
+    #|});
+    #|console.log(JSON.stringify(spread));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,3]"])
+}
+
+///|
+test "Set.entries() hides tombstoned entries during forEach" {
+  // make_set_entries_iterator next() skips tombstoned slots so that
+  // entries() iterated inside a forEach callback omits deleted entries.
+  let src =
+    #|const s = new Set([1, 2, 3]);
+    #|let collected;
+    #|s.forEach(v => {
+    #|  if (v === 1) { s.delete(2); collected = [...s.entries()].map(e => e[0]); }
+    #|});
+    #|console.log(JSON.stringify(collected));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,3]"])
+}
+
+///|
 test "builtin method descriptors use standard metadata" {
   let src =
     #|function attrs(desc) {

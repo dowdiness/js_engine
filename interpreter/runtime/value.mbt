@@ -318,7 +318,9 @@ pub fn MapData::MapData(
 /// Set data structure - stores unique values with insertion order preservation
 /// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
 pub(all) struct SetData {
-  values : Array[Value] // Array of unique values
+  values : Array[Value] // Array of unique values (includes tombstoned slots during iteration)
+  mut iteration_depth : Int // incremented per active forEach; tombstones are held until depth → 0
+  mut tombstones : @set.Set[Int]? // indices logically deleted during iteration; None when idle
   mut prototype : Value
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
@@ -330,7 +332,13 @@ pub fn SetData::SetData(
   values : Array[Value],
   prototype? : Value = Null,
 ) -> SetData {
-  { values, prototype, bag: PropertyBag() }
+  {
+    values,
+    iteration_depth: 0,
+    tombstones: None,
+    prototype,
+    bag: PropertyBag(),
+  }
 }
 
 ///|
