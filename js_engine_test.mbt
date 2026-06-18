@@ -2774,6 +2774,21 @@ test "Set spread hides tombstoned entries during forEach" {
 }
 
 ///|
+test "Set.entries() hides tombstoned entries during forEach" {
+  // make_set_entries_iterator next() skips tombstoned slots so that
+  // entries() iterated inside a forEach callback omits deleted entries.
+  let src =
+    #|const s = new Set([1, 2, 3]);
+    #|let collected;
+    #|s.forEach(v => {
+    #|  if (v === 1) { s.delete(2); collected = [...s.entries()].map(e => e[0]); }
+    #|});
+    #|console.log(JSON.stringify(collected));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,3]"])
+}
+
+///|
 test "builtin method descriptors use standard metadata" {
   let src =
     #|function attrs(desc) {
