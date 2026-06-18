@@ -88,9 +88,9 @@ fn collect_block_lexical_decl_names_from_stmt(
       collect_pattern_decl_names(pattern, lexical_names, lexical=true)
     DestructureDecl(ConstKind, pattern, _, _) =>
       collect_pattern_decl_names(pattern, lexical_names, lexical=true)
-    ClassDecl(name, _, _, _) => add_lexical_decl_name(lexical_names, name)
+    ClassDecl(name, _, _, _, _) => add_lexical_decl_name(lexical_names, name)
     // Function declarations are lexical only in block statement lists.
-    FuncDecl(name, _, _, _) =>
+    FuncDecl(name, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           if !(allow_duplicate_block_functions &&
@@ -104,7 +104,7 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 1
       }
-    FuncDeclExt(name, _, _, _, _) =>
+    FuncDeclExt(name, _, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           if !(allow_duplicate_block_functions &&
@@ -118,7 +118,7 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 1
       }
-    GeneratorDecl(name, _, _, _) =>
+    GeneratorDecl(name, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           raise @errors.SyntaxError(
@@ -129,7 +129,7 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 2
       }
-    GeneratorDeclExt(name, _, _, _, _) =>
+    GeneratorDeclExt(name, _, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           raise @errors.SyntaxError(
@@ -140,7 +140,7 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 2
       }
-    AsyncFuncDecl(name, _, _, _) =>
+    AsyncFuncDecl(name, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           raise @errors.SyntaxError(
@@ -151,7 +151,7 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 2
       }
-    AsyncFuncDeclExt(name, _, _, _, _) =>
+    AsyncFuncDeclExt(name, _, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           raise @errors.SyntaxError(
@@ -162,7 +162,7 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 2
       }
-    AsyncGeneratorDecl(name, _, _, _) =>
+    AsyncGeneratorDecl(name, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           raise @errors.SyntaxError(
@@ -173,7 +173,7 @@ fn collect_block_lexical_decl_names_from_stmt(
         }
         block_function_kinds[name] = 2
       }
-    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
       if include_block_functions {
         if lexical_names.contains(name) {
           raise @errors.SyntaxError(
@@ -348,7 +348,7 @@ fn validate_block_early_errors_expr(
       validate_strict_lex_form(lex_form, loc, strict_context)
     NumberLit(_, lex_form, loc) =>
       validate_strict_lex_form(lex_form, loc, strict_context)
-    FuncExpr(_, _, body, _) => {
+    FuncExpr(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -358,7 +358,7 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    FuncExprExt(_, _, _, body, _) => {
+    FuncExprExt(_, _, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -368,7 +368,7 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    ArrowFunc(_, body, _) => {
+    ArrowFunc(_, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -378,7 +378,7 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    ArrowFuncExt(_, _, body, _) => {
+    ArrowFuncExt(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -388,7 +388,7 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    GeneratorExpr(_, _, body, _) => {
+    GeneratorExpr(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -398,7 +398,7 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    GeneratorExprExt(_, _, _, body, _) => {
+    GeneratorExprExt(_, _, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -408,12 +408,12 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    AsyncFuncExpr(_, _, body, _)
-    | AsyncFuncExprExt(_, _, _, body, _)
-    | AsyncArrowFunc(_, body, _)
-    | AsyncArrowFuncExt(_, _, body, _)
-    | AsyncGeneratorExpr(_, _, body, _)
-    | AsyncGeneratorExprExt(_, _, _, body, _) => {
+    AsyncFuncExpr(_, _, body, _, _)
+    | AsyncFuncExprExt(_, _, _, body, _, _)
+    | AsyncArrowFunc(_, body, _, _)
+    | AsyncArrowFuncExt(_, _, body, _, _)
+    | AsyncGeneratorExpr(_, _, body, _, _)
+    | AsyncGeneratorExprExt(_, _, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -425,7 +425,7 @@ fn validate_block_early_errors_expr(
     }
     AwaitExpr(inner, _) =>
       validate_block_early_errors_expr(inner, strict_context)
-    ClassExpr(_, superclass, members, _) => {
+    ClassExpr(_, superclass, members, _, _) => {
       // ES262 §15.7.1: all parts of a ClassDeclaration / ClassExpression are
       // strict-mode code, including the ClassHeritage (extends) expression.
       match superclass {
@@ -738,7 +738,7 @@ fn validate_block_early_errors_stmt(
         None => ()
       }
     }
-    FuncDecl(_, _, body, _) => {
+    FuncDecl(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -748,7 +748,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    FuncDeclExt(_, _, _, body, _) => {
+    FuncDeclExt(_, _, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -758,7 +758,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    GeneratorDecl(_, _, body, _) => {
+    GeneratorDecl(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -768,7 +768,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    GeneratorDeclExt(_, _, _, body, _) => {
+    GeneratorDeclExt(_, _, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -778,7 +778,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    AsyncFuncDecl(_, _, body, _) => {
+    AsyncFuncDecl(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -788,7 +788,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    AsyncFuncDeclExt(_, _, _, body, _) => {
+    AsyncFuncDeclExt(_, _, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -798,7 +798,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    AsyncGeneratorDecl(_, _, body, _) => {
+    AsyncGeneratorDecl(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -808,7 +808,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    AsyncGeneratorDeclExt(_, _, _, body, _) => {
+    AsyncGeneratorDeclExt(_, _, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -818,7 +818,7 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    ClassDecl(_, superclass, members, _) => {
+    ClassDecl(_, superclass, members, _, _) => {
       // ES262 §15.7.1: all parts of a ClassDeclaration / ClassExpression are
       // strict-mode code, including the ClassHeritage (extends) expression.
       match superclass {
@@ -897,14 +897,17 @@ fn collect_eval_var_names_from_stmt(
 ) -> Unit raise Error {
   match stmt {
     VarDecl(VarKind, name, _, _) => names.push(name)
-    FuncDecl(name, _, _, _) => if !in_block { names.push(name) }
-    FuncDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
-    GeneratorDecl(name, _, _, _) => if !in_block { names.push(name) }
-    GeneratorDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncFuncDecl(name, _, _, _) => if !in_block { names.push(name) }
-    AsyncFuncDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncGeneratorDecl(name, _, _, _) => if !in_block { names.push(name) }
-    AsyncGeneratorDeclExt(name, _, _, _, _) => if !in_block { names.push(name) }
+    FuncDecl(name, _, _, _, _) => if !in_block { names.push(name) }
+    FuncDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
+    GeneratorDecl(name, _, _, _, _) => if !in_block { names.push(name) }
+    GeneratorDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
+    AsyncFuncDecl(name, _, _, _, _) => if !in_block { names.push(name) }
+    AsyncFuncDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
+    AsyncGeneratorDecl(name, _, _, _, _) => if !in_block { names.push(name) }
+    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
+      if !in_block {
+        names.push(name)
+      }
     DestructureDecl(VarKind, pattern, _, _) =>
       collect_pattern_var_names(pattern, names)
     StmtList(inner_stmts, _) =>
@@ -1182,7 +1185,7 @@ fn add_stmt_lex_names(
   match stmt {
     VarDecl(LetKind, name, _, _) | VarDecl(ConstKind, name, _, _) =>
       names.add(name)
-    ClassDecl(name, _, _, _) => names.add(name)
+    ClassDecl(name, _, _, _, _) => names.add(name)
     DestructureDecl(LetKind, pattern, _, _)
     | DestructureDecl(ConstKind, pattern, _, _) =>
       collect_pattern_lex_names(pattern, names)
@@ -1316,7 +1319,7 @@ fn walk_eval_annex_b_stmt(
   excluded~ : @set.Set[String],
 ) -> Unit raise Error {
   match stmt {
-    FuncDecl(name, _, _, _) | FuncDeclExt(name, _, _, _, _) =>
+    FuncDecl(name, _, _, _, _) | FuncDeclExt(name, _, _, _, _, _) =>
       if in_block &&
         !annex_b_candidate_conflicts(name, top_lex, stack, excluded~) {
         tag_annex_b_hoisted(interp, var_env, name)
@@ -1701,7 +1704,7 @@ fn Interpreter::hoist_declarations(
             _self.mirror_to_global(name, Undefined)
           }
         }
-      FuncDecl(name, params, body, _) => {
+      FuncDecl(name, params, body, _, source_text) => {
         validate_function_signature(strict, Some(name), params, body)
         let func_data : FuncData = {
           name: Some(name),
@@ -1713,6 +1716,7 @@ fn Interpreter::hoist_declarations(
           // the name is hoisted into the enclosing VarEnvironment instead.
           has_name_binding: false,
           is_method: false,
+          source_text,
         }
         let func_val = make_func(func_data)
         if env.bindings.contains(name) {
@@ -1725,7 +1729,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, func_val)
         }
       }
-      FuncDeclExt(name, params, rest_param, body, _) => {
+      FuncDeclExt(name, params, rest_param, body, _, source_text) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1742,6 +1746,7 @@ fn Interpreter::hoist_declarations(
           strict: is_function_strict(strict, body),
           has_name_binding: false,
           is_method: false,
+          source_text,
         }
         let func_val = make_func_ext(func_data)
         if env.bindings.contains(name) {
@@ -1754,7 +1759,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, func_val)
         }
       }
-      GeneratorDecl(name, params, body, _) => {
+      GeneratorDecl(name, params, body, _, _) => {
         validate_function_signature(strict, Some(name), params, body)
         let gen_func = _self.make_generator_function(
           Some(name),
@@ -1774,7 +1779,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, gen_func)
         }
       }
-      GeneratorDeclExt(name, params, rest_param, body, _) => {
+      GeneratorDeclExt(name, params, rest_param, body, _, _) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1800,7 +1805,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, gen_func)
         }
       }
-      AsyncFuncDecl(name, params, body, _) => {
+      AsyncFuncDecl(name, params, body, _, _) => {
         validate_function_signature(strict, Some(name), params, body)
         let async_func = _self.make_async_function(
           Some(name),
@@ -1816,7 +1821,7 @@ fn Interpreter::hoist_declarations(
           env.def(name, async_func, VarBinding)
         }
       }
-      AsyncFuncDeclExt(name, params, rest_param, body, _) => {
+      AsyncFuncDeclExt(name, params, rest_param, body, _, _) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1838,7 +1843,7 @@ fn Interpreter::hoist_declarations(
           env.def(name, async_func, VarBinding)
         }
       }
-      AsyncGeneratorDecl(name, params, body, _) => {
+      AsyncGeneratorDecl(name, params, body, _, _) => {
         validate_function_signature(strict, Some(name), params, body)
         let gen_func = _self.make_async_generator_function(
           Some(name),
@@ -1854,7 +1859,7 @@ fn Interpreter::hoist_declarations(
           env.def(name, gen_func, VarBinding)
         }
       }
-      AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
+      AsyncGeneratorDeclExt(name, params, rest_param, body, _, _) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1896,7 +1901,7 @@ fn Interpreter::hoist_declarations(
         _self.hoist_declarations(inner_stmts, env, strict~)
       }
       // export default function name() {} - hoist the named function
-      ExportDefaultDecl(FuncExpr(Some(name), params, body, _), _) => {
+      ExportDefaultDecl(FuncExpr(Some(name), params, body, _, source_text), _) => {
         validate_function_signature(strict, Some(name), params, body)
         let func_data : FuncData = {
           name: Some(name),
@@ -1908,6 +1913,7 @@ fn Interpreter::hoist_declarations(
           // the name is bound in the module env, not on a funcEnv.
           has_name_binding: false,
           is_method: false,
+          source_text,
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func(func_data))
@@ -1915,7 +1921,10 @@ fn Interpreter::hoist_declarations(
           env.def(name, make_func(func_data), VarBinding)
         }
       }
-      ExportDefaultDecl(FuncExprExt(Some(name), params, rest_param, body, _), _) => {
+      ExportDefaultDecl(
+        FuncExprExt(Some(name), params, rest_param, body, _, source_text),
+        _
+      ) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1932,6 +1941,7 @@ fn Interpreter::hoist_declarations(
           strict: is_function_strict(strict, body),
           has_name_binding: false,
           is_method: false,
+          source_text,
         }
         if env.bindings.contains(name) {
           env.assign(name, make_func_ext(func_data))
@@ -2006,7 +2016,7 @@ fn hoist_block_tdz(
         hoist_pattern_tdz(pattern, env, ConstBinding)
       StmtList(inner_stmts, _) => hoist_block_tdz(inner_stmts, env)
       // Class declarations have TDZ (similar to let)
-      ClassDecl(name, _, _, _) =>
+      ClassDecl(name, _, _, _, _) =>
         if !env.bindings.contains(name) {
           env.def_tdz(name, LetBinding)
         }

@@ -26,6 +26,54 @@ fn Interpreter::array_get_indexed(
 }
 
 ///|
+fn callable_to_source_string(data : ObjectData, callable : Callable) -> String {
+  match callable {
+    UserFunc(func_data) =>
+      match func_data.source_text {
+        Some(text) => text
+        None =>
+          "function " + func_data.name.unwrap_or("") + "() { [native code] }"
+      }
+    UserFuncExt(func_data) =>
+      match func_data.source_text {
+        Some(text) => text
+        None =>
+          "function " + func_data.name.unwrap_or("") + "() { [native code] }"
+      }
+    ArrowFunc(func_data) =>
+      match func_data.source_text {
+        Some(text) => text
+        None => "() => { [native code] }"
+      }
+    ArrowFuncExt(func_data) =>
+      match func_data.source_text {
+        Some(text) => text
+        None => "() => { [native code] }"
+      }
+    BoundFunc(_, _, _) => "function () { [native code] }"
+    NativeCallable(n, _) | NativeCallableWithContext(n, _) =>
+      "function " + n + "() { [native code] }"
+    NonConstructableCallable(n, _) => "function " + n + "() { [native code] }"
+    FuncCallMethod(_) => "function call() { [native code] }"
+    FuncApplyMethod(_) => "function apply() { [native code] }"
+    MethodCallable(n, _) => "function " + n + "() { [native code] }"
+    InterpreterCallable(n, _) | InterpreterCallableWithContext(n, _) =>
+      match data.bag.internal_slots.get("[[SourceText]]") {
+        Some(String_(text)) => text
+        _ => "function " + n + "() { [native code] }"
+      }
+    NonConstructableInterpreterCallable(n, _) =>
+      "function " + n + "() { [native code] }"
+    ConstructorOnlyCallable(n, _) => "function " + n + "() { [native code] }"
+    ClassConstructor({ name: n, source_text, .. }) =>
+      match source_text {
+        Some(text) => text
+        None => "class " + n + " { [native code] }"
+      }
+  }
+}
+
+///|
 fn Interpreter::with_active_property_access_value(
   self : Interpreter,
   eval : () -> Value raise Error,
@@ -550,35 +598,7 @@ fn Interpreter::get_property_of_object(
             return String_(func_name)
           } else if prop == "toString" {
             // Return function string representation
-            let func_str : String = match callable {
-              UserFunc(func_data) => {
-                let name = func_data.name.unwrap_or("")
-                "function " + name + "() { [native code] }"
-              }
-              UserFuncExt(func_data) => {
-                let name = func_data.name.unwrap_or("")
-                "function " + name + "() { [native code] }"
-              }
-              ArrowFunc(_) => "() => { [native code] }"
-              ArrowFuncExt(_) => "() => { [native code] }"
-              BoundFunc(_, _, _) => "function () { [native code] }"
-              NativeCallable(n, _) | NativeCallableWithContext(n, _) =>
-                "function " + n + "() { [native code] }"
-              NonConstructableCallable(n, _) =>
-                "function " + n + "() { [native code] }"
-              FuncCallMethod(_) => "function call() { [native code] }"
-              FuncApplyMethod(_) => "function apply() { [native code] }"
-              MethodCallable(n, _) => "function " + n + "() { [native code] }"
-              InterpreterCallable(n, _)
-              | InterpreterCallableWithContext(n, _) =>
-                "function " + n + "() { [native code] }"
-              NonConstructableInterpreterCallable(n, _) =>
-                "function " + n + "() { [native code] }"
-              ConstructorOnlyCallable(n, _) =>
-                "function " + n + "() { [native code] }"
-              ClassConstructor({ name: n, .. }) =>
-                "class " + n + " { [native code] }"
-            }
+            let func_str = callable_to_source_string(data, callable)
             return make_native_func(
               name="toString",
               realm_state=Some(self.realm_state),
@@ -1273,36 +1293,7 @@ fn Interpreter::get_computed_property_impl(
                 return String_(func_name)
               } else if prop == "toString" {
                 // Return function string representation
-                let func_str : String = match callable {
-                  UserFunc(func_data) => {
-                    let name = func_data.name.unwrap_or("")
-                    "function " + name + "() { [native code] }"
-                  }
-                  UserFuncExt(func_data) => {
-                    let name = func_data.name.unwrap_or("")
-                    "function " + name + "() { [native code] }"
-                  }
-                  ArrowFunc(_) => "() => { [native code] }"
-                  ArrowFuncExt(_) => "() => { [native code] }"
-                  BoundFunc(_, _, _) => "function () { [native code] }"
-                  NativeCallable(n, _) | NativeCallableWithContext(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  NonConstructableCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  FuncCallMethod(_) => "function call() { [native code] }"
-                  FuncApplyMethod(_) => "function apply() { [native code] }"
-                  MethodCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  InterpreterCallable(n, _)
-                  | InterpreterCallableWithContext(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  NonConstructableInterpreterCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  ConstructorOnlyCallable(n, _) =>
-                    "function " + n + "() { [native code] }"
-                  ClassConstructor({ name: n, .. }) =>
-                    "class " + n + " { [native code] }"
-                }
+                let func_str = callable_to_source_string(data, callable)
                 return make_native_func(
                   name="toString",
                   realm_state=Some(self.realm_state),

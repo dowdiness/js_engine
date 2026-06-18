@@ -38,23 +38,23 @@ fn Interpreter::predeclare_decl_exports(
   match decl {
     VarDecl(_, name, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    FuncDecl(name, _, _, _) =>
+    FuncDecl(name, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    FuncDeclExt(name, _, _, _, _) =>
+    FuncDeclExt(name, _, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    GeneratorDecl(name, _, _, _) =>
+    GeneratorDecl(name, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    GeneratorDeclExt(name, _, _, _, _) =>
+    GeneratorDeclExt(name, _, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    AsyncFuncDecl(name, _, _, _) =>
+    AsyncFuncDecl(name, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    AsyncFuncDeclExt(name, _, _, _, _) =>
+    AsyncFuncDeclExt(name, _, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    AsyncGeneratorDecl(name, _, _, _) =>
+    AsyncGeneratorDecl(name, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
-    ClassDecl(name, _, _, _) =>
+    ClassDecl(name, _, _, _, _) =>
       self.predeclare_module_export_cell(name, name, env)
     DestructureDecl(_, pattern, _, _) =>
       self.predeclare_pattern_exports(pattern, env)
@@ -443,15 +443,15 @@ fn pattern_exports_name(pattern : @ast.Pattern, export_name : String) -> Bool {
 fn decl_exports_name(decl : @ast.Stmt, export_name : String) -> Bool {
   match decl {
     VarDecl(_, name, _, _) => name == export_name
-    FuncDecl(name, _, _, _) => name == export_name
-    FuncDeclExt(name, _, _, _, _) => name == export_name
-    GeneratorDecl(name, _, _, _) => name == export_name
-    GeneratorDeclExt(name, _, _, _, _) => name == export_name
-    AsyncFuncDecl(name, _, _, _) => name == export_name
-    AsyncFuncDeclExt(name, _, _, _, _) => name == export_name
-    AsyncGeneratorDecl(name, _, _, _) => name == export_name
-    AsyncGeneratorDeclExt(name, _, _, _, _) => name == export_name
-    ClassDecl(name, _, _, _) => name == export_name
+    FuncDecl(name, _, _, _, _) => name == export_name
+    FuncDeclExt(name, _, _, _, _, _) => name == export_name
+    GeneratorDecl(name, _, _, _, _) => name == export_name
+    GeneratorDeclExt(name, _, _, _, _, _) => name == export_name
+    AsyncFuncDecl(name, _, _, _, _) => name == export_name
+    AsyncFuncDeclExt(name, _, _, _, _, _) => name == export_name
+    AsyncGeneratorDecl(name, _, _, _, _) => name == export_name
+    AsyncGeneratorDeclExt(name, _, _, _, _, _) => name == export_name
+    ClassDecl(name, _, _, _, _) => name == export_name
     DestructureDecl(_, pattern, _, _) =>
       pattern_exports_name(pattern, export_name)
     StmtList(stmts, _) => {
@@ -474,15 +474,15 @@ fn collect_decl_export_names(
 ) -> Unit {
   match decl {
     VarDecl(_, name, _, _)
-    | FuncDecl(name, _, _, _)
-    | FuncDeclExt(name, _, _, _, _)
-    | GeneratorDecl(name, _, _, _)
-    | GeneratorDeclExt(name, _, _, _, _)
-    | AsyncFuncDecl(name, _, _, _)
-    | AsyncFuncDeclExt(name, _, _, _, _)
-    | AsyncGeneratorDecl(name, _, _, _)
-    | AsyncGeneratorDeclExt(name, _, _, _, _)
-    | ClassDecl(name, _, _, _) => add_module_export_name(names, seen, name)
+    | FuncDecl(name, _, _, _, _)
+    | FuncDeclExt(name, _, _, _, _, _)
+    | GeneratorDecl(name, _, _, _, _)
+    | GeneratorDeclExt(name, _, _, _, _, _)
+    | AsyncFuncDecl(name, _, _, _, _)
+    | AsyncFuncDeclExt(name, _, _, _, _, _)
+    | AsyncGeneratorDecl(name, _, _, _, _)
+    | AsyncGeneratorDeclExt(name, _, _, _, _, _)
+    | ClassDecl(name, _, _, _, _) => add_module_export_name(names, seen, name)
     DestructureDecl(_, pattern, _, _) =>
       collect_pattern_export_names(pattern, names, seen)
     StmtList(stmts, _) =>

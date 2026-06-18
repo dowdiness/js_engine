@@ -147,21 +147,21 @@ fn scan_stmt(scan : EvalContainsScan, stmt : @ast.Stmt) -> Unit {
     }
     // Class declaration: visit heritage (extends clause is in surrounding
     // scope) but skip member bodies (each member has its own context).
-    ClassDecl(_, superclass, _, _) =>
+    ClassDecl(_, superclass, _, _, _) =>
       match superclass {
         Some(e) => scan_expr(scan, e)
         None => ()
       }
     // Skip-entirely productions: each introduces its own function-scope
     // binding for new.target/arguments/super, so Contains stops here.
-    FuncDecl(_, _, _, _)
-    | FuncDeclExt(_, _, _, _, _)
-    | GeneratorDecl(_, _, _, _)
-    | GeneratorDeclExt(_, _, _, _, _)
-    | AsyncFuncDecl(_, _, _, _)
-    | AsyncFuncDeclExt(_, _, _, _, _)
-    | AsyncGeneratorDecl(_, _, _, _)
-    | AsyncGeneratorDeclExt(_, _, _, _, _) => ()
+    FuncDecl(_, _, _, _, _)
+    | FuncDeclExt(_, _, _, _, _, _)
+    | GeneratorDecl(_, _, _, _, _)
+    | GeneratorDeclExt(_, _, _, _, _, _)
+    | AsyncFuncDecl(_, _, _, _, _)
+    | AsyncFuncDeclExt(_, _, _, _, _, _)
+    | AsyncGeneratorDecl(_, _, _, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, _, _) => ()
     // Module-level decls: import/export shouldn't appear in eval source, but
     // be defensive — they have nothing scan-relevant in their headers.
     _ => ()
@@ -232,16 +232,16 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
     Ident("arguments", _) => scan.arguments_ref = true
     // Skip-entirely: non-arrow function/generator/async bodies define their
     // own super/arguments/new.target context per ES262 §15.2.12.
-    FuncExpr(_, _, _, _)
-    | FuncExprExt(_, _, _, _, _)
-    | GeneratorExpr(_, _, _, _)
-    | GeneratorExprExt(_, _, _, _, _)
-    | AsyncFuncExpr(_, _, _, _)
-    | AsyncFuncExprExt(_, _, _, _, _)
-    | AsyncGeneratorExpr(_, _, _, _)
-    | AsyncGeneratorExprExt(_, _, _, _, _) => ()
+    FuncExpr(_, _, _, _, _)
+    | FuncExprExt(_, _, _, _, _, _)
+    | GeneratorExpr(_, _, _, _, _)
+    | GeneratorExprExt(_, _, _, _, _, _)
+    | AsyncFuncExpr(_, _, _, _, _)
+    | AsyncFuncExprExt(_, _, _, _, _, _)
+    | AsyncGeneratorExpr(_, _, _, _, _)
+    | AsyncGeneratorExprExt(_, _, _, _, _, _) => ()
     // ClassExpr: visit heritage only, skip member bodies.
-    ClassExpr(_, superclass, _, _) =>
+    ClassExpr(_, superclass, _, _, _) =>
       match superclass {
         Some(e) => scan_expr(scan, e)
         None => ()
@@ -254,11 +254,12 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
     // params — no expressions to scan. ArrowFuncExt carries Param values
     // with optional default_val and destructuring pattern, both of which
     // must be visited.
-    ArrowFunc(_, body, _) | AsyncArrowFunc(_, body, _) =>
+    ArrowFunc(_, body, _, _) | AsyncArrowFunc(_, body, _, _) =>
       for s in body {
         scan_stmt(scan, s)
       }
-    ArrowFuncExt(params, _, body, _) | AsyncArrowFuncExt(params, _, body, _) => {
+    ArrowFuncExt(params, _, body, _, _)
+    | AsyncArrowFuncExt(params, _, body, _, _) => {
       for p in params {
         match p.default_val {
           Some(e) => scan_expr(scan, e)

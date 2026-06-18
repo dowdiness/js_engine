@@ -48,7 +48,9 @@ fn is_reserved_word(name : String) -> Bool {
 ///|
 pub(all) struct Parser {
   tokens : Array[@token.Token]
+  source : String
   mut pos : Int
+  mut last_end : Int
   mut allow_import_export : Bool // true at module top-level, false in nested blocks
   generator_depth : Array[Bool] // Stack: true when inside a generator function body
   async_depth : Array[Bool] // Stack: true when inside an async function body
@@ -56,10 +58,12 @@ pub(all) struct Parser {
 }
 
 ///|
-pub fn Parser::new(tokens : Array[@token.Token]) -> Parser {
+pub fn Parser::new(tokens : Array[@token.Token], source : String) -> Parser {
   {
     tokens,
+    source,
     pos: 0,
+    last_end: 0,
     allow_import_export: true,
     generator_depth: [false],
     async_depth: [false],
@@ -126,7 +130,13 @@ fn Parser::peek_kind(self : Parser) -> @token.TokenKind {
 fn Parser::advance(self : Parser) -> @token.Token {
   let tok = self.tokens[self.pos]
   self.pos += 1
+  self.last_end = tok.loc.offset + tok.raw.length()
   tok
+}
+
+///|
+fn Parser::consume_source_text(self : Parser, start_offset : Int) -> String {
+  self.source.unsafe_substring(start=start_offset, end=self.last_end)
 }
 
 ///|
@@ -137,7 +147,7 @@ fn Parser::at(self : Parser, kind : @token.TokenKind) -> Bool {
 ///|
 fn Parser::eat(self : Parser, kind : @token.TokenKind) -> Bool {
   if self.at(kind) {
-    self.pos += 1
+    let _ = self.advance()
     true
   } else {
     false
@@ -172,32 +182,32 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
           message="Unexpected reserved word '\{name}' at line \{tok.loc.line}, col \{tok.loc.col}",
         )
       }
-      self.pos += 1
+      let _ = self.advance()
       name
     }
     Get => {
-      self.pos += 1
+      let _ = self.advance()
       "get"
     }
     Set => {
-      self.pos += 1
+      let _ = self.advance()
       "set"
     }
     From => {
-      self.pos += 1
+      let _ = self.advance()
       "from"
     }
     As => {
-      self.pos += 1
+      let _ = self.advance()
       "as"
     }
     Of => {
-      self.pos += 1
+      let _ = self.advance()
       "of"
     }
     Undefined => {
       // undefined is NOT a reserved word - it's a regular identifier
-      self.pos += 1
+      let _ = self.advance()
       "undefined"
     }
     Yield =>
@@ -205,7 +215,7 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       // unless the current grammar production (for example class field
       // initializers) forbids Yield as an IdentifierReference.
       if !self.in_generator() && self.allow_yield_identifier() {
-        self.pos += 1
+        let _ = self.advance()
         "yield"
       } else {
         let tok = self.peek()
@@ -214,7 +224,7 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
         )
       }
     Static => {
-      self.pos += 1
+      let _ = self.advance()
       "static"
     }
     _ => {
@@ -275,7 +285,7 @@ fn Parser::expect_ident_name(self : Parser) -> String raise Error {
     | False
     | Null
     | Undefined => {
-      self.pos += 1
+      let _ = self.advance()
       tok.raw
     }
     _ =>
@@ -335,8 +345,11 @@ fn Parser::is_async_generator(self : Parser) -> Bool {
 }
 
 ///|
-pub fn parse_tokens(tokens : Array[@token.Token]) -> @ast.Program raise Error {
-  let parser = Parser::new(tokens)
+pub fn parse_tokens(
+  tokens : Array[@token.Token],
+  source? : String = "",
+) -> @ast.Program raise Error {
+  let parser = Parser::new(tokens, source)
   let stmts : Array[@ast.Stmt] = []
   while !parser.at(EOF) {
     stmts.push(parser.parse_stmt())
@@ -347,5 +360,5 @@ pub fn parse_tokens(tokens : Array[@token.Token]) -> @ast.Program raise Error {
 ///|
 pub fn parse(source : String) -> @ast.Program raise Error {
   let tokens = @lexer.tokenize(source)
-  parse_tokens(tokens)
+  parse_tokens(tokens, source~)
 }

@@ -735,7 +735,13 @@ pub fn to_js_string(
         }
       })
       .join(",")
-    Map(_) | Set(_) | Promise(_) | Proxy(_) => "[object Object]"
+    Map(_) | Set(_) | Promise(_) => "[object Object]"
+    Proxy(proxy_data) =>
+      if proxy_data.is_callable {
+        "function proxy() { [native code] }"
+      } else {
+        "[object Object]"
+      }
   }
 }
 

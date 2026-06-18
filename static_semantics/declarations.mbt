@@ -61,14 +61,14 @@ fn collect_var_declared_names_from_stmt(
   let count_funcs = include_funcs && !in_block
   match stmt {
     VarDecl(VarKind, name, _, _) => out.push(name)
-    FuncDecl(name, _, _, _)
-    | FuncDeclExt(name, _, _, _, _)
-    | GeneratorDecl(name, _, _, _)
-    | GeneratorDeclExt(name, _, _, _, _)
-    | AsyncFuncDecl(name, _, _, _)
-    | AsyncFuncDeclExt(name, _, _, _, _)
-    | AsyncGeneratorDecl(name, _, _, _)
-    | AsyncGeneratorDeclExt(name, _, _, _, _) =>
+    FuncDecl(name, _, _, _, _)
+    | FuncDeclExt(name, _, _, _, _, _)
+    | GeneratorDecl(name, _, _, _, _)
+    | GeneratorDeclExt(name, _, _, _, _, _)
+    | AsyncFuncDecl(name, _, _, _, _)
+    | AsyncFuncDeclExt(name, _, _, _, _, _)
+    | AsyncGeneratorDecl(name, _, _, _, _)
+    | AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
       if count_funcs {
         out.push(name)
       }

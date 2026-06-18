@@ -56,10 +56,10 @@ fn bytecode_is_direct_eval_callee(expr : @ast.Expr) -> Bool {
 ///|
 fn bytecode_is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
   match expr {
-    FuncExpr(None, _, _, _)
-    | FuncExprExt(None, _, _, _, _)
-    | ArrowFunc(_, _, _)
-    | ArrowFuncExt(_, _, _, _) => true
+    FuncExpr(None, _, _, _, _)
+    | FuncExprExt(None, _, _, _, _, _)
+    | ArrowFunc(_, _, _, _)
+    | ArrowFuncExt(_, _, _, _, _) => true
     Grouping(inner, _) => bytecode_is_anonymous_function_definition(inner)
     _ => false
   }
@@ -68,7 +68,7 @@ fn bytecode_is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
 ///|
 fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
   match stmt {
-    FuncDecl(_, _, _, _) | FuncDeclExt(_, _, _, _, _) => true
+    FuncDecl(_, _, _, _, _) | FuncDeclExt(_, _, _, _, _, _) => true
     StmtList(stmts, _) | Block(stmts, _) => stmts_have_function_decl(stmts)
     IfStmt(_, then_branch, else_branch, _) => {
       let else_has = match else_branch {
@@ -223,7 +223,7 @@ fn collect_nested_function_refs_from_stmt(
   refs : Map[String, Bool],
 ) -> Unit {
   match stmt {
-    FuncDecl(_, _, body, _) | FuncDeclExt(_, _, _, body, _) =>
+    FuncDecl(_, _, body, _, _) | FuncDeclExt(_, _, _, body, _, _) =>
       collect_name_refs_from_stmts(body, refs)
     VarDecl(_, _, Some(expr), _)
     | ExprStmt(expr, _)
@@ -302,10 +302,10 @@ fn collect_nested_function_refs_from_expr(
   refs : Map[String, Bool],
 ) -> Unit {
   match expr {
-    FuncExpr(_, _, body, _)
-    | FuncExprExt(_, _, _, body, _)
-    | ArrowFunc(_, body, _)
-    | ArrowFuncExt(_, _, body, _) => collect_name_refs_from_stmts(body, refs)
+    FuncExpr(_, _, body, _, _)
+    | FuncExprExt(_, _, _, body, _, _)
+    | ArrowFunc(_, body, _, _)
+    | ArrowFuncExt(_, _, body, _, _) => collect_name_refs_from_stmts(body, refs)
     Unary(_, operand, _) =>
       collect_nested_function_refs_from_expr(operand, refs)
     Binary(_, left, right, _) | Comma(left, right, _) => {
@@ -475,7 +475,7 @@ fn collect_name_refs_from_stmt(
       )
       collect_name_refs_from_expr(init, refs, nested_functions~)
     }
-    FuncDecl(_, _, body, _) | FuncDeclExt(_, _, _, body, _) =>
+    FuncDecl(_, _, body, _, _) | FuncDeclExt(_, _, _, body, _, _) =>
       if nested_functions {
         collect_name_refs_from_stmts(body, refs, nested_functions~)
       }
@@ -615,10 +615,10 @@ fn collect_name_refs_from_expr(
     }
     UpdateExpr(_, operand, _, _) =>
       collect_name_refs_from_expr(operand, refs, nested_functions~)
-    FuncExpr(_, _, body, _)
-    | FuncExprExt(_, _, _, body, _)
-    | ArrowFunc(_, body, _)
-    | ArrowFuncExt(_, _, body, _) =>
+    FuncExpr(_, _, body, _, _)
+    | FuncExprExt(_, _, _, body, _, _)
+    | ArrowFunc(_, body, _, _)
+    | ArrowFuncExt(_, _, body, _, _) =>
       if nested_functions {
         collect_name_refs_from_stmts(body, refs, nested_functions~)
       }
@@ -808,7 +808,7 @@ fn bytecode_stmt_references_outer_arguments(stmt : @ast.Stmt) -> Bool {
       bytecode_binding_pattern_exprs_reference_outer_arguments(pattern) ||
       bytecode_expr_references_outer_arguments(init)
     // Ordinary functions bind their own `arguments`; arrows inherit it.
-    FuncDecl(_, _, _, _) | FuncDeclExt(_, _, _, _, _) => false
+    FuncDecl(_, _, _, _, _) | FuncDeclExt(_, _, _, _, _, _) => false
     StmtList(stmts, _) | Block(stmts, _) =>
       bytecode_body_references_outer_arguments(stmts)
     IfStmt(cond, then_branch, else_branch, _) => {
@@ -944,8 +944,8 @@ fn bytecode_expr_references_outer_arguments(expr : @ast.Expr) -> Bool {
       bytecode_expr_references_outer_arguments(value)
     UpdateExpr(_, operand, _, _) =>
       bytecode_expr_references_outer_arguments(operand)
-    FuncExpr(_, _, _, _) | FuncExprExt(_, _, _, _, _) => false
-    ArrowFunc(_, body, _) | ArrowFuncExt(_, _, body, _) =>
+    FuncExpr(_, _, _, _, _) | FuncExprExt(_, _, _, _, _, _) => false
+    ArrowFunc(_, body, _, _) | ArrowFuncExt(_, _, body, _, _) =>
       bytecode_body_references_outer_arguments(body)
     ArrayLit(elements, _) => {
       for element in elements {
@@ -1247,10 +1247,10 @@ fn bytecode_expr_contains_destructure_assign(expr : @ast.Expr) -> Bool {
       bytecode_expr_contains_destructure_assign(value)
     UpdateExpr(_, operand, _, _) =>
       bytecode_expr_contains_destructure_assign(operand)
-    FuncExpr(_, _, body, _)
-    | FuncExprExt(_, _, _, body, _)
-    | ArrowFunc(_, body, _)
-    | ArrowFuncExt(_, _, body, _) =>
+    FuncExpr(_, _, body, _, _)
+    | FuncExprExt(_, _, _, body, _, _)
+    | ArrowFunc(_, body, _, _)
+    | ArrowFuncExt(_, _, body, _, _) =>
       bytecode_body_contains_destructure_assign(body)
     ArrayLit(elements, _) => {
       for element in elements {
@@ -1896,12 +1896,12 @@ fn BytecodeBuilder::compile_stmt(
       self.compile_for_in_expr(target, obj_expr, body)
     SwitchStmt(discriminant, cases, _) =>
       self.compile_switch(discriminant, cases)
-    FuncDecl(name, params, body, _) => {
+    FuncDecl(name, params, body, _, _) => {
       let fn_idx = self.add_function(Some(name), params, body, None)
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
-    FuncDeclExt(name, params, rest_param, body, _) => {
+    FuncDeclExt(name, params, rest_param, body, _, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
@@ -1959,13 +1959,15 @@ fn BytecodeBuilder::compile_stmt(
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
       }
     }
-    GeneratorDecl(_, _, _, _) | GeneratorDeclExt(_, _, _, _, _) =>
+    GeneratorDecl(_, _, _, _, _) | GeneratorDeclExt(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_GENERATOR_DECLARATION)
-    AsyncFuncDecl(_, _, _, _) | AsyncFuncDeclExt(_, _, _, _, _) =>
+    AsyncFuncDecl(_, _, _, _, _) | AsyncFuncDeclExt(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_ASYNC_FUNCTION_DECLARATION)
-    AsyncGeneratorDecl(_, _, _, _) | AsyncGeneratorDeclExt(_, _, _, _, _) =>
+    AsyncGeneratorDecl(_, _, _, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_DECLARATION)
-    ClassDecl(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_CLASS_DECLARATION)
+    ClassDecl(_, _, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_CLASS_DECLARATION)
     WithStmt(_, _, _) => bytecode_unsupported(UNSUPPORTED_WITH_STATEMENT)
     ImportDecl(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_IMPORT_DECLARATION)
@@ -2627,14 +2629,14 @@ fn bytecode_stmt_contains_super(stmt : @ast.Stmt) -> Bool {
       false
     }
     LabeledStmt(_, body, _) => bytecode_stmt_contains_super(body)
-    FuncDecl(_, _, body, _)
-    | FuncDeclExt(_, _, _, body, _)
-    | GeneratorDecl(_, _, body, _)
-    | GeneratorDeclExt(_, _, _, body, _)
-    | AsyncFuncDecl(_, _, body, _)
-    | AsyncFuncDeclExt(_, _, _, body, _)
-    | AsyncGeneratorDecl(_, _, body, _)
-    | AsyncGeneratorDeclExt(_, _, _, body, _) =>
+    FuncDecl(_, _, body, _, _)
+    | FuncDeclExt(_, _, _, body, _, _)
+    | GeneratorDecl(_, _, body, _, _)
+    | GeneratorDeclExt(_, _, _, body, _, _)
+    | AsyncFuncDecl(_, _, body, _, _)
+    | AsyncFuncDeclExt(_, _, _, body, _, _)
+    | AsyncGeneratorDecl(_, _, body, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, body, _, _) =>
       bytecode_stmts_contain_super(body)
     _ => false
   }
@@ -2683,10 +2685,10 @@ fn bytecode_expr_contains_super(expr : @ast.Expr) -> Bool {
       bytecode_pattern_contains_super(pattern) ||
       bytecode_expr_contains_super(value)
     UpdateExpr(_, operand, _, _) => bytecode_expr_contains_super(operand)
-    FuncExpr(_, _, body, _)
-    | FuncExprExt(_, _, _, body, _)
-    | ArrowFunc(_, body, _)
-    | ArrowFuncExt(_, _, body, _) => bytecode_stmts_contain_super(body)
+    FuncExpr(_, _, body, _, _)
+    | FuncExprExt(_, _, _, body, _, _)
+    | ArrowFunc(_, body, _, _)
+    | ArrowFuncExt(_, _, body, _, _) => bytecode_stmts_contain_super(body)
     ArrayLit(elements, _) => {
       for element in elements {
         if bytecode_expr_contains_super(element) {
@@ -2801,31 +2803,32 @@ fn BytecodeBuilder::compile_object_method(
   computed_key_on_stack? : Bool = false,
 ) -> Unit raise Error {
   let fn_idx = match prop.value {
-    FuncExpr(Some(name), params, body, _) =>
+    FuncExpr(Some(name), params, body, _, _) =>
       self.add_function(Some(name), params, body, None)
-    FuncExpr(None, params, body, _) =>
+    FuncExpr(None, params, body, _, _) =>
       self.add_function(None, params, body, None)
-    FuncExprExt(Some(name), params, rest_param, body, _) => {
+    FuncExprExt(Some(name), params, rest_param, body, _, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
       self.add_function(Some(name), simple_params, body, simple_rest)
     }
-    FuncExprExt(None, params, rest_param, body, _) => {
+    FuncExprExt(None, params, rest_param, body, _, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
       self.add_function(None, simple_params, body, simple_rest)
     }
-    GeneratorExpr(_, _, _, _) | GeneratorExprExt(_, _, _, _, _) => {
+    GeneratorExpr(_, _, _, _, _) | GeneratorExprExt(_, _, _, _, _, _) => {
       bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_GENERATOR_METHOD_PROPERTY)
       0
     }
-    AsyncFuncExpr(_, _, _, _) | AsyncFuncExprExt(_, _, _, _, _) => {
+    AsyncFuncExpr(_, _, _, _, _) | AsyncFuncExprExt(_, _, _, _, _, _) => {
       bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_ASYNC_METHOD_PROPERTY)
       0
     }
-    AsyncGeneratorExpr(_, _, _, _) | AsyncGeneratorExprExt(_, _, _, _, _) => {
+    AsyncGeneratorExpr(_, _, _, _, _)
+    | AsyncGeneratorExprExt(_, _, _, _, _, _) => {
       bytecode_unsupported(
         UNSUPPORTED_OBJECT_LITERAL_ASYNC_GENERATOR_METHOD_PROPERTY,
       )
@@ -3261,15 +3264,15 @@ fn BytecodeBuilder::compile_expr(
       )
     CompoundAssign(_, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET)
-    FuncExpr(Some(name), params, body, _) => {
+    FuncExpr(Some(name), params, body, _, _) => {
       let fn_idx = self.add_function(Some(name), params, body, None)
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
     }
-    FuncExpr(None, params, body, _) => {
+    FuncExpr(None, params, body, _, _) => {
       let fn_idx = self.add_function(None, params, body, None)
       let _ = self.emit(MakeFunction(fn_idx))
     }
-    FuncExprExt(Some(name), params, rest_param, body, _) => {
+    FuncExprExt(Some(name), params, rest_param, body, _, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
@@ -3281,18 +3284,18 @@ fn BytecodeBuilder::compile_expr(
       )
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
     }
-    FuncExprExt(None, params, rest_param, body, _) => {
+    FuncExprExt(None, params, rest_param, body, _, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
       let fn_idx = self.add_function(None, simple_params, body, simple_rest)
       let _ = self.emit(MakeFunction(fn_idx))
     }
-    ArrowFunc(params, body, _) => {
+    ArrowFunc(params, body, _, _) => {
       let fn_idx = self.add_function(None, params, body, None)
       let _ = self.emit(MakeArrowFunction(fn_idx))
     }
-    ArrowFuncExt(params, rest_param, body, _) => {
+    ArrowFuncExt(params, rest_param, body, _, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
         params, rest_param,
       )
@@ -3475,17 +3478,19 @@ fn BytecodeBuilder::compile_expr(
         self.emit_call(args, loc)
       }
     SpreadExpr(_, _) => bytecode_unsupported(UNSUPPORTED_SPREAD_EXPRESSION)
-    GeneratorExpr(_, _, _, _) | GeneratorExprExt(_, _, _, _, _) =>
+    GeneratorExpr(_, _, _, _, _) | GeneratorExprExt(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_GENERATOR_EXPRESSION)
     YieldExpr(_, _, _) => bytecode_unsupported(UNSUPPORTED_YIELD_EXPRESSION)
-    AsyncFuncExpr(_, _, _, _) | AsyncFuncExprExt(_, _, _, _, _) =>
+    AsyncFuncExpr(_, _, _, _, _) | AsyncFuncExprExt(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_ASYNC_FUNCTION_EXPRESSION)
-    AsyncArrowFunc(_, _, _) | AsyncArrowFuncExt(_, _, _, _) =>
+    AsyncArrowFunc(_, _, _, _) | AsyncArrowFuncExt(_, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_ASYNC_ARROW_FUNCTION)
-    AsyncGeneratorExpr(_, _, _, _) | AsyncGeneratorExprExt(_, _, _, _, _) =>
+    AsyncGeneratorExpr(_, _, _, _, _)
+    | AsyncGeneratorExprExt(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_EXPRESSION)
     AwaitExpr(_, _) => bytecode_unsupported(UNSUPPORTED_AWAIT_EXPRESSION)
-    ClassExpr(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
+    ClassExpr(_, _, _, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
   }
 }
 

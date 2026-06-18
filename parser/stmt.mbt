@@ -142,7 +142,14 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
         let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
-        return FuncDeclExt(name, ext_params, rest_param, body, tok.loc)
+        return FuncDeclExt(
+          name,
+          ext_params,
+          rest_param,
+          body,
+          tok.loc,
+          Some(self.consume_source_text(tok.loc.offset)),
+        )
       } else {
         raise @errors.SyntaxError(message=msg)
       }
@@ -153,7 +160,13 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
   let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
-  FuncDecl(name, params, body, tok.loc)
+  FuncDecl(
+    name,
+    params,
+    body,
+    tok.loc,
+    Some(self.consume_source_text(tok.loc.offset)),
+  )
 }
 
 ///|
@@ -174,7 +187,14 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
         let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
-        return GeneratorDeclExt(name, ext_params, rest_param, body, tok.loc)
+        return GeneratorDeclExt(
+          name,
+          ext_params,
+          rest_param,
+          body,
+          tok.loc,
+          Some(self.consume_source_text(tok.loc.offset)),
+        )
       } else {
         raise @errors.SyntaxError(message=msg)
       }
@@ -185,7 +205,13 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
   let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
-  GeneratorDecl(name, params, body, tok.loc)
+  GeneratorDecl(
+    name,
+    params,
+    body,
+    tok.loc,
+    Some(self.consume_source_text(tok.loc.offset)),
+  )
 }
 
 ///|
@@ -206,7 +232,14 @@ fn Parser::parse_async_func_decl(self : Parser) -> @ast.Stmt raise Error {
         let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
-        return AsyncFuncDeclExt(name, ext_params, rest_param, body, tok.loc)
+        return AsyncFuncDeclExt(
+          name,
+          ext_params,
+          rest_param,
+          body,
+          tok.loc,
+          Some(self.consume_source_text(tok.loc.offset)),
+        )
       } else {
         raise @errors.SyntaxError(message=msg)
       }
@@ -217,7 +250,13 @@ fn Parser::parse_async_func_decl(self : Parser) -> @ast.Stmt raise Error {
   let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
-  AsyncFuncDecl(name, params, body, tok.loc)
+  AsyncFuncDecl(
+    name,
+    params,
+    body,
+    tok.loc,
+    Some(self.consume_source_text(tok.loc.offset)),
+  )
 }
 
 ///|
@@ -245,6 +284,7 @@ fn Parser::parse_async_generator_decl(self : Parser) -> @ast.Stmt raise Error {
           rest_param,
           body,
           tok.loc,
+          Some(self.consume_source_text(tok.loc.offset)),
         )
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -256,7 +296,13 @@ fn Parser::parse_async_generator_decl(self : Parser) -> @ast.Stmt raise Error {
   let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
-  AsyncGeneratorDecl(name, params, body, tok.loc)
+  AsyncGeneratorDecl(
+    name,
+    params,
+    body,
+    tok.loc,
+    Some(self.consume_source_text(tok.loc.offset)),
+  )
 }
 
 ///|
@@ -445,14 +491,14 @@ fn Parser::parse_if_stmt(self : Parser) -> @ast.Stmt raise Error {
 ///|
 fn reject_function_decl_in_stmt_position(stmt : @ast.Stmt) -> Unit raise Error {
   match stmt {
-    FuncDecl(_, _, _, _)
-    | FuncDeclExt(_, _, _, _, _)
-    | GeneratorDecl(_, _, _, _)
-    | GeneratorDeclExt(_, _, _, _, _)
-    | AsyncFuncDecl(_, _, _, _)
-    | AsyncFuncDeclExt(_, _, _, _, _)
-    | AsyncGeneratorDecl(_, _, _, _)
-    | AsyncGeneratorDeclExt(_, _, _, _, _) =>
+    FuncDecl(_, _, _, _, _)
+    | FuncDeclExt(_, _, _, _, _, _)
+    | GeneratorDecl(_, _, _, _, _)
+    | GeneratorDeclExt(_, _, _, _, _, _)
+    | AsyncFuncDecl(_, _, _, _, _)
+    | AsyncFuncDeclExt(_, _, _, _, _, _)
+    | AsyncGeneratorDecl(_, _, _, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, _, _) =>
       raise @errors.SyntaxError(
         message="Function declaration in statement position is not allowed",
       )
@@ -524,7 +570,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       return self.parse_for_rest(init, tok.loc)
     }
     let name = if self.at(Let) && var_kind == VarKind {
-      self.pos += 1
+      let _ = self.advance()
       "let"
     } else {
       self.expect_ident()
@@ -588,7 +634,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       Some(expr) => {
         if self.at(Of) {
           let expr = unwrap_parenthesized_lhs(expr)
-          self.pos += 1 // consume 'of'
+          let _ = self.advance() // consume 'of'
           let iterable = self.parse_assignment()
           let _ = self.expect(RParen)
           let body = self.parse_stmt()
@@ -610,7 +656,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
         }
         if self.at(In) {
           let expr = unwrap_parenthesized_lhs(expr)
-          self.pos += 1 // consume 'in'
+          let _ = self.advance() // consume 'in'
           let obj = self.parse_expr()
           let _ = self.expect(RParen)
           let body = self.parse_stmt()
@@ -696,7 +742,7 @@ fn Parser::parse_break_stmt(self : Parser) -> @ast.Stmt raise Error {
   let label : String? = match self.peek_kind() {
     Ident(name) =>
       if self.peek().loc.line == tok.loc.line {
-        self.pos += 1
+        let _ = self.advance()
         Some(name)
       } else {
         None
@@ -713,7 +759,7 @@ fn Parser::parse_continue_stmt(self : Parser) -> @ast.Stmt raise Error {
   let label : String? = match self.peek_kind() {
     Ident(name) =>
       if self.peek().loc.line == tok.loc.line {
-        self.pos += 1
+        let _ = self.advance()
         Some(name)
       } else {
         None
@@ -1029,7 +1075,13 @@ fn Parser::parse_class_decl(self : Parser) -> @ast.Stmt raise Error {
     None
   }
   let methods = self.parse_class_body()
-  ClassDecl(name, superclass, methods, tok.loc)
+  ClassDecl(
+    name,
+    superclass,
+    methods,
+    tok.loc,
+    Some(self.consume_source_text(tok.loc.offset)),
+  )
 }
 
 ///|
@@ -1065,103 +1117,103 @@ fn Parser::expect_module_export_name(self : Parser) -> String raise Error {
   let tok = self.peek()
   match tok.kind {
     Ident(name) => {
-      self.pos += 1
+      let _ = self.advance()
       name
     }
     String_(name) => {
-      self.pos += 1
+      let _ = self.advance()
       name
     }
     Default => {
-      self.pos += 1
+      let _ = self.advance()
       "default"
     }
     Get => {
-      self.pos += 1
+      let _ = self.advance()
       "get"
     }
     Set => {
-      self.pos += 1
+      let _ = self.advance()
       "set"
     }
     From => {
-      self.pos += 1
+      let _ = self.advance()
       "from"
     }
     As => {
-      self.pos += 1
+      let _ = self.advance()
       "as"
     }
     Let => {
-      self.pos += 1
+      let _ = self.advance()
       "let"
     }
     Const => {
-      self.pos += 1
+      let _ = self.advance()
       "const"
     }
     Var => {
-      self.pos += 1
+      let _ = self.advance()
       "var"
     }
     Class => {
-      self.pos += 1
+      let _ = self.advance()
       "class"
     }
     Function => {
-      self.pos += 1
+      let _ = self.advance()
       "function"
     }
     If => {
-      self.pos += 1
+      let _ = self.advance()
       "if"
     }
     Else => {
-      self.pos += 1
+      let _ = self.advance()
       "else"
     }
     Return => {
-      self.pos += 1
+      let _ = self.advance()
       "return"
     }
     Typeof => {
-      self.pos += 1
+      let _ = self.advance()
       "typeof"
     }
     New => {
-      self.pos += 1
+      let _ = self.advance()
       "new"
     }
     This => {
-      self.pos += 1
+      let _ = self.advance()
       "this"
     }
     Void => {
-      self.pos += 1
+      let _ = self.advance()
       "void"
     }
     Delete => {
-      self.pos += 1
+      let _ = self.advance()
       "delete"
     }
     In => {
-      self.pos += 1
+      let _ = self.advance()
       "in"
     }
     Instanceof => {
-      self.pos += 1
+      let _ = self.advance()
       "instanceof"
     }
     Static => {
-      self.pos += 1
+      let _ = self.advance()
       "static"
     }
     Import => {
-      self.pos += 1
+      let _ = self.advance()
       "import"
     }
     Export => {
-      self.pos += 1
+      let _ = self.advance()
       "export"
     }
     _ =>

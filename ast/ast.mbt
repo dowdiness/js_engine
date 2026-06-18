@@ -112,8 +112,8 @@ pub(all) enum Expr {
   Call(Expr, Array[Expr], @token.Loc)
   Member(Expr, String, @token.Loc)
   Ternary(Expr, Expr, Expr, @token.Loc)
-  FuncExpr(String?, Array[String], Array[Stmt], @token.Loc)
-  FuncExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  FuncExpr(String?, Array[String], Array[Stmt], @token.Loc, String?)
+  FuncExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc, String?) // name, params, rest_param, body, source_text
   Grouping(Expr, @token.Loc)
   ObjectLit(Array[Property], @token.Loc)
   ArrayLit(Array[Expr], @token.Loc)
@@ -126,8 +126,8 @@ pub(all) enum Expr {
   CompoundAssign(CompoundOp, Expr, Expr, @token.Loc)
   Comma(Expr, Expr, @token.Loc)
   TemplateLit(Array[String], Array[Expr], @token.Loc)
-  ArrowFunc(Array[String], Array[Stmt], @token.Loc)
-  ArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc) // params, rest_param, body
+  ArrowFunc(Array[String], Array[Stmt], @token.Loc, String?)
+  ArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc, String?) // params, rest_param, body, source_text
   SpreadExpr(Expr, @token.Loc)
   RegexLit(String, String, @token.Loc) // pattern, flags
   DestructureAssign(Pattern, Expr, @token.Loc)
@@ -135,26 +135,47 @@ pub(all) enum Expr {
   OptionalComputedMember(Expr, Expr, @token.Loc) // obj?.[expr]
   OptionalCall(Expr, Array[Expr], @token.Loc) // func?.(args)
   // Class expressions
-  ClassExpr(String?, Expr?, Array[ClassMember], @token.Loc) // name, superclass, members
+  ClassExpr(String?, Expr?, Array[ClassMember], @token.Loc, String?) // name, superclass, members, source_text
   SuperCall(Array[Expr], @token.Loc) // super(args)
   SuperMember(String, @token.Loc) // super.prop
   SuperComputedMember(Expr, @token.Loc) // super[expr]
   NewTargetExpr(@token.Loc) // new.target
   TaggedTemplate(Expr, Array[String], Array[Expr], @token.Loc) // tag`str${expr}str`
   // Generator expressions
-  GeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc) // name, params, body
-  GeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  GeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc, String?) // name, params, body, source_text
+  GeneratorExprExt(
+    String?,
+    Array[Param],
+    String?,
+    Array[Stmt],
+    @token.Loc,
+    String?
+  ) // name, params, rest_param, body, source_text
   // Yield expression
   YieldExpr(Expr?, Bool, @token.Loc) // argument, delegate (yield* vs yield)
   // Async function expressions
-  AsyncFuncExpr(String?, Array[String], Array[Stmt], @token.Loc) // name, params, body
-  AsyncFuncExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  AsyncFuncExpr(String?, Array[String], Array[Stmt], @token.Loc, String?) // name, params, body, source_text
+  AsyncFuncExprExt(
+    String?,
+    Array[Param],
+    String?,
+    Array[Stmt],
+    @token.Loc,
+    String?
+  ) // name, params, rest_param, body, source_text
   // Async arrow functions
-  AsyncArrowFunc(Array[String], Array[Stmt], @token.Loc) // params, body
-  AsyncArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc) // params, rest_param, body
+  AsyncArrowFunc(Array[String], Array[Stmt], @token.Loc, String?) // params, body, source_text
+  AsyncArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc, String?) // params, rest_param, body, source_text
   // Async generator expressions
-  AsyncGeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc) // name, params, body
-  AsyncGeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  AsyncGeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc, String?) // name, params, body, source_text
+  AsyncGeneratorExprExt(
+    String?,
+    Array[Param],
+    String?,
+    Array[Stmt],
+    @token.Loc,
+    String?
+  ) // name, params, rest_param, body, source_text
   // Await expression
   AwaitExpr(Expr, @token.Loc) // argument
 } derive(Debug, Eq)
@@ -230,8 +251,8 @@ pub(all) enum Stmt {
   IfStmt(Expr, Stmt, Stmt?, @token.Loc)
   WhileStmt(Expr, Stmt, @token.Loc)
   ForStmt(Stmt?, Expr?, Expr?, Stmt, @token.Loc)
-  FuncDecl(String, Array[String], Array[Stmt], @token.Loc)
-  FuncDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  FuncDecl(String, Array[String], Array[Stmt], @token.Loc, String?)
+  FuncDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc, String?) // name, params, rest_param, body, source_text
   ReturnStmt(Expr?, @token.Loc)
   BreakStmt(String?, @token.Loc)
   ContinueStmt(String?, @token.Loc)
@@ -248,16 +269,37 @@ pub(all) enum Stmt {
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
   // Generator declarations
-  GeneratorDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
-  GeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  GeneratorDecl(String, Array[String], Array[Stmt], @token.Loc, String?) // name, params, body, source_text
+  GeneratorDeclExt(
+    String,
+    Array[Param],
+    String?,
+    Array[Stmt],
+    @token.Loc,
+    String?
+  ) // name, params, rest_param, body, source_text
   // Async function declarations
-  AsyncFuncDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
-  AsyncFuncDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  AsyncFuncDecl(String, Array[String], Array[Stmt], @token.Loc, String?) // name, params, body, source_text
+  AsyncFuncDeclExt(
+    String,
+    Array[Param],
+    String?,
+    Array[Stmt],
+    @token.Loc,
+    String?
+  ) // name, params, rest_param, body, source_text
   // Async generator declarations
-  AsyncGeneratorDecl(String, Array[String], Array[Stmt], @token.Loc) // name, params, body
-  AsyncGeneratorDeclExt(String, Array[Param], String?, Array[Stmt], @token.Loc) // name, params, rest_param, body
+  AsyncGeneratorDecl(String, Array[String], Array[Stmt], @token.Loc, String?) // name, params, body, source_text
+  AsyncGeneratorDeclExt(
+    String,
+    Array[Param],
+    String?,
+    Array[Stmt],
+    @token.Loc,
+    String?
+  ) // name, params, rest_param, body, source_text
   // Class declaration
-  ClassDecl(String, Expr?, Array[ClassMember], @token.Loc) // name, superclass, members
+  ClassDecl(String, Expr?, Array[ClassMember], @token.Loc, String?) // name, superclass, members, source_text
   // With statement (sloppy mode only)
   WithStmt(Expr, Stmt, @token.Loc) // with(expr) stmt
   // Module declarations
