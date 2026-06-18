@@ -1,4 +1,4 @@
-.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt unicode-tables unicode-tables-mbt clean
+.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 
@@ -177,6 +177,13 @@ test262-report-mbt: subprocess-helpers-mbt-test
 	else \
 		echo "built cmd/report_test262 (pass ARGS='--run ...' to run; does not run the engine)"; \
 	fi
+
+# Render a human-readable Test262 skip-policy report from shared metadata.
+# Output path defaults to docs/test262-skip-report.md for easy review.
+test262-skip-report:
+	python3 scripts/test262_skip_report.py \
+		--metadata scripts/test262_skip_metadata.json \
+		--output docs/test262-skip-report.md
 
 # Regenerate lexer/unicode_id.mbt from DerivedCoreProperties.txt.
 # Pass UNICODE_VERSION=X.Y.Z to target a specific Unicode release (default: 17.0.0).

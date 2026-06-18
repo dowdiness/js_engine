@@ -268,6 +268,22 @@ This runs the native `cmd/test262_validate_skips`. It only reports dead or
 unknown skip metadata entries; it does not run tests or produce conformance
 numbers.
 
+
+## Skip policy report
+
+To keep the skip configuration readable for PR review and CI triage, generate a
+human-friendly report from the same source-of-truth file:
+
+```bash
+# stdout
+python3 scripts/test262_skip_report.py
+
+# repo artifact (used by this target)
+make test262-skip-report
+```
+
+`make test262-skip-report` writes `docs/test262-skip-report.md`.
+
 ## CI Integration
 
 The GitHub Actions workflow (`.github/workflows/test262.yml`) runs the full suite automatically:
