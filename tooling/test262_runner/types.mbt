@@ -62,11 +62,21 @@ fn atomics_timeout_profile_preamble(profile : String) -> String {
   out.write_string("\") {\n")
   out.write_string("    return timeout;\n")
   out.write_string("  }\n")
-  out.write_string("  if (typeof timeout !== 'number' || timeout < 0) {\n")
-  out.write_string("    return timeout;\n")
+  out.write_string(
+    "  var __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM = Number(timeout);\n",
+  )
+  out.write_string(
+    "  if (Number.isNaN(__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM)) {\n",
+  )
+  out.write_string(
+    "    __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM = Number.POSITIVE_INFINITY;\n",
+  )
+  out.write_string("  }\n")
+  out.write_string("  if (__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM < 0) {\n")
+  out.write_string("    return __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM;\n")
   out.write_string("  }\n")
   out.write_string(
-    "  return timeout < 0 ? timeout : (timeout > __TEST262_ATOMICS_TIMEOUT_MS ? __TEST262_ATOMICS_TIMEOUT_MS : timeout);\n",
+    "  return (__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM > __TEST262_ATOMICS_TIMEOUT_MS) ? __TEST262_ATOMICS_TIMEOUT_MS : __TEST262_LIMITED_ATOMICS_TIMEOUT_NUM;\n",
   )
   out.write_string("};\n")
   out.write_string(

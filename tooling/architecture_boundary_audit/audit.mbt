@@ -56,20 +56,11 @@ fn[T] schema_error(path : String, message : String) -> T raise {
 }
 
 ///|
-fn join_path(left : String, right : String) -> String {
-  if left == "" || left == "." {
-    right
-  } else if left.has_suffix("/") {
-    left + right
-  } else {
-    left + "/" + right
-  }
-}
 
 ///|
 fn normalize_rel_path(path : String) -> String {
-  let normalized = path.replace_all(old="\\", new="/")
-  if normalized == "" {
+  let normalized = @path_utils.normalize_path(path)
+  if normalized == "" || normalized == "." {
     "."
   } else if normalized.has_prefix("./") {
     normalize_rel_path(normalized[2:].to_owned())
@@ -85,13 +76,13 @@ fn manifest_rel_path(rel_dir : String) -> String {
   if rel_dir == "." || rel_dir == "" {
     "moon.pkg"
   } else {
-    join_path(rel_dir, "moon.pkg")
+    @path_utils.join_path(rel_dir, "moon.pkg")
   }
 }
 
 ///|
 fn rules_path(root : String) -> String {
-  join_path(root, "scripts/architecture_boundary_rules.json")
+  @path_utils.join_path(root, "scripts/architecture_boundary_rules.json")
 }
 
 ///|
@@ -231,7 +222,7 @@ fn load_rules(root : String) -> BoundaryRules raise {
 
 ///|
 fn module_name(root : String) -> String raise {
-  let path = join_path(root, "moon.mod")
+  let path = @path_utils.join_path(root, "moon.mod")
   let lines = @fs.read_file_to_string(path)
     .split("\n")
     .map(line => line.to_owned())
@@ -260,8 +251,7 @@ fn is_skipped_dir_segment(segment : String) -> Bool {
 
 ///|
 fn should_skip_dir(rel_path : String) -> Bool {
-  let parts = rel_path.split("/").map(part => part.to_owned()).to_array()
-  parts.any(is_skipped_dir_segment)
+  @path_utils.path_components(rel_path).any(is_skipped_dir_segment)
 }
 
 ///|
@@ -270,16 +260,20 @@ fn collect_manifest_dirs(
   rel_dir : String,
   out : Array[String],
 ) -> Unit raise {
-  let full_dir = if rel_dir == "." { root } else { join_path(root, rel_dir) }
+  let full_dir = if rel_dir == "." {
+    root
+  } else {
+    @path_utils.join_path(root, rel_dir)
+  }
   let entries = @fs.read_dir(full_dir)
   entries.sort()
   for entry in entries {
     let rel_path = if rel_dir == "." {
       entry
     } else {
-      join_path(rel_dir, entry)
+      @path_utils.join_path(rel_dir, entry)
     }
-    let full_path = join_path(full_dir, entry)
+    let full_path = @path_utils.join_path(full_dir, entry)
     if entry == "moon.pkg" && @fs.is_file(full_path) {
       out.push(rel_dir)
     } else if @fs.is_dir(full_path) &&
@@ -465,7 +459,7 @@ fn discover_import_edges(root : String) -> Array[ImportEdge] raise {
   let edges : Array[ImportEdge] = []
   for rel_dir in discover_manifest_dirs(root) {
     let manifest_path = manifest_rel_path(rel_dir)
-    let full_path = join_path(root, manifest_path)
+    let full_path = @path_utils.join_path(root, manifest_path)
     let source = @fs.read_file_to_string(full_path)
     for
       edge in parse_manifest_import_edges(

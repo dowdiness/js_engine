@@ -1,5 +1,6 @@
 import {
   "moonbitlang/x/fs",
+  "dowdiness/js_engine/tooling/path_utils",
   "moonbitlang/core/json",
   "moonbitlang/core/set",
   "moonbitlang/core/string",

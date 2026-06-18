@@ -13,19 +13,8 @@ pub struct SkipMetadata {
 } derive(Debug)
 
 ///|
-fn join_path(left : String, right : String) -> String {
-  if left == "" || left == "." {
-    right
-  } else if left.has_suffix("/") {
-    left + right
-  } else {
-    left + "/" + right
-  }
-}
-
-///|
 fn skip_metadata_path(root~ : String) -> String {
-  join_path(root, "scripts/test262_skip_metadata.json")
+  @path_utils.join_path(root, "scripts/test262_skip_metadata.json")
 }
 
 ///|
@@ -210,7 +199,7 @@ pub fn SkipMetadata::skip_reason(
     return Some("fixture file")
   }
 
-  let normalized_path = filepath.replace_all(old="\\", new="/")
+  let normalized_path = @path_utils.normalize_path(filepath)
   for suffix, reason in self.path_suffixes {
     if normalized_path.has_suffix(suffix) {
       return Some(reason)

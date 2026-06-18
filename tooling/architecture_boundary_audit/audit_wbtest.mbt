@@ -10,13 +10,11 @@ fn ensure_parent_dirs(root : String, rel_path : String) -> Unit raise {
   match rel_path.rev_find("/") {
     Some(index) => {
       let dir = rel_path[:index].to_owned()
-      let parts = dir.split("/").map(part => part.to_owned()).to_array()
+      let parts = @path_utils.path_components(dir)
       let mut current = root
       for part in parts {
-        if part != "" {
-          current = join_path(current, part)
-          ensure_dir(current)
-        }
+        current = @path_utils.join_path(current, part)
+        ensure_dir(current)
       }
     }
     None => ()
@@ -26,7 +24,7 @@ fn ensure_parent_dirs(root : String, rel_path : String) -> Unit raise {
 ///|
 fn write_file(root : String, rel_path : String, content : String) -> Unit raise {
   ensure_parent_dirs(root, rel_path)
-  @fs.write_string_to_file(join_path(root, rel_path), content)
+  @fs.write_string_to_file(@path_utils.join_path(root, rel_path), content)
 }
 
 ///|

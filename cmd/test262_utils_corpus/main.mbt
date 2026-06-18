@@ -22,19 +22,8 @@ fn eprintln(line : String) -> Unit {
 }
 
 ///|
-fn join_path(left : String, right : String) -> String {
-  if left == "" || left == "." {
-    right
-  } else if left.has_suffix("/") {
-    left + right
-  } else {
-    left + "/" + right
-  }
-}
-
-///|
 fn resolve_test_dir(test262_root : String) -> String raise {
-  let test_dir = join_path(test262_root, "test")
+  let test_dir = @path_utils.join_path(test262_root, "test")
   guard @fs.path_exists(test_dir) && @fs.is_dir(test_dir) else {
     guard @fs.path_exists(test262_root) && @fs.is_dir(test262_root) else {
       fail("Test262 test directory not found under: \{test262_root}")
@@ -53,11 +42,11 @@ fn collect_js_files_in_dir(
   let entries = @fs.read_dir(dir)
   entries.sort()
   for entry in entries {
-    let full_path = join_path(dir, entry)
+    let full_path = @path_utils.join_path(dir, entry)
     let rel_path = if rel_prefix == "" {
       entry
     } else {
-      join_path(rel_prefix, entry)
+      @path_utils.join_path(rel_prefix, entry)
     }
     if @fs.is_dir(full_path) {
       collect_js_files_in_dir(full_path, rel_path, files)
@@ -98,7 +87,9 @@ fn parsed_list_field(value : Map[String, Json]?, key : String) -> Json {
 
 ///|
 fn corpus_record(test_dir : String, rel_path : String) -> Json raise {
-  let source = @fs.read_file_to_string(join_path(test_dir, rel_path))
+  let source = @fs.read_file_to_string(
+    @path_utils.join_path(test_dir, rel_path),
+  )
   let parsed = @utils.parse_yaml_frontmatter(source)
   let record : Map[String, Json] = {
     "path": Json::string(rel_path),

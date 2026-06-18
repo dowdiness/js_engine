@@ -45,14 +45,14 @@ test "task selection mirrors Python runner helpers" {
     ("/suite/test/language/t6.js", "strict"),
   ])
 
-  let test262_root = join_path(TEST_ROOT, "selection/test262")
-  let test_dir = join_path(test262_root, "test/language")
-  let normal = join_path(test_dir, "normal.js")
-  let raw = join_path(test_dir, "raw.js")
-  let module_test = join_path(test_dir, "module.js")
-  let only_strict = join_path(test_dir, "only-strict.js")
-  let no_strict = join_path(test_dir, "no-strict.js")
-  let missing = join_path(test_dir, "missing.js")
+  let test262_root = @path_utils.join_path(TEST_ROOT, "selection/test262")
+  let test_dir = @path_utils.join_path(test262_root, "test/language")
+  let normal = @path_utils.join_path(test_dir, "normal.js")
+  let raw = @path_utils.join_path(test_dir, "raw.js")
+  let module_test = @path_utils.join_path(test_dir, "module.js")
+  let only_strict = @path_utils.join_path(test_dir, "only-strict.js")
+  let no_strict = @path_utils.join_path(test_dir, "no-strict.js")
+  let missing = @path_utils.join_path(test_dir, "missing.js")
   write_test_file(normal)
   write_test_file(raw, frontmatter="flags: [raw]")
   write_test_file(module_test, frontmatter="flags: [module]")
@@ -70,16 +70,16 @@ test "task selection mirrors Python runner helpers" {
     (missing, "strict"),
   ])
 
-  let tests_file = join_path(TEST_ROOT, "selection/tests.txt")
+  let tests_file = @path_utils.join_path(TEST_ROOT, "selection/tests.txt")
   write_text(
     tests_file, "# comment\nlanguage/normal.js\n test/language/raw.js # inline\n",
   )
   json_inspect(load_tests_file(tests_file, test262_root), content=[
-    absolute_path(normal),
-    absolute_path(raw),
+    @path_utils.absolute_path(normal),
+    @path_utils.absolute_path(raw),
   ])
 
-  let resume_file = join_path(TEST_ROOT, "selection/results.json")
+  let resume_file = @path_utils.join_path(TEST_ROOT, "selection/results.json")
   write_text(
     resume_file,
     (
@@ -91,20 +91,22 @@ test "task selection mirrors Python runner helpers" {
     ),
   )
   let selection = [
-    (join_path(test_dir, "normal.js"), "non-strict"),
-    (join_path(test_dir, "normal.js"), "strict"),
-    (join_path(test_dir, "raw.js"), "non-strict"),
-    (join_path(test_dir, "raw.js"), "strict"),
-    (join_path(test_dir, "module.js"), "non-strict"),
+    (@path_utils.join_path(test_dir, "normal.js"), "non-strict"),
+    (@path_utils.join_path(test_dir, "normal.js"), "strict"),
+    (@path_utils.join_path(test_dir, "raw.js"), "non-strict"),
+    (@path_utils.join_path(test_dir, "raw.js"), "strict"),
+    (@path_utils.join_path(test_dir, "module.js"), "non-strict"),
   ]
   let (sliced, messages) = apply_task_selection(
     selection,
     start=1,
     count=Some(3),
     resume_from=resume_file,
-    test262_dir=join_path(test262_root, "test"),
+    test262_dir=@path_utils.join_path(test262_root, "test"),
   )
-  json_inspect(sliced, content=[(join_path(test_dir, "normal.js"), "strict")])
+  json_inspect(sliced, content=[
+    (@path_utils.join_path(test_dir, "normal.js"), "strict"),
+  ])
   inspect(messages.length(), content="2")
   inspect(messages[0], content="Selected task slice: start=1, count=3 (3/5)")
   inspect(
@@ -117,21 +119,21 @@ test "task selection mirrors Python runner helpers" {
   let (sharded, shard_messages) = apply_task_selection(
     selection,
     shard_spec=Some((1, 2)),
-    test262_dir=join_path(test262_root, "test"),
+    test262_dir=@path_utils.join_path(test262_root, "test"),
   )
   json_inspect(sharded, content=[
-    (join_path(test_dir, "normal.js"), "non-strict"),
-    (join_path(test_dir, "normal.js"), "strict"),
-    (join_path(test_dir, "raw.js"), "non-strict"),
+    (@path_utils.join_path(test_dir, "normal.js"), "non-strict"),
+    (@path_utils.join_path(test_dir, "normal.js"), "strict"),
+    (@path_utils.join_path(test_dir, "raw.js"), "non-strict"),
   ])
   inspect(shard_messages[0].contains("Selected shard 1/2"), content="true")
 }
 
 ///|
 test "resume keys and artifact schema fields match the contract" {
-  let root = join_path(TEST_ROOT, "resume/test262")
-  let test_root = join_path(root, "test")
-  let results_file = join_path(TEST_ROOT, "resume/results.json")
+  let root = @path_utils.join_path(TEST_ROOT, "resume/test262")
+  let test_root = @path_utils.join_path(root, "test")
+  let results_file = @path_utils.join_path(TEST_ROOT, "resume/results.json")
   write_text(
     results_file,
     (
@@ -144,28 +146,28 @@ test "resume keys and artifact schema fields match the contract" {
   )
   let completed = load_completed_task_keys(results_file, test262_dir=root)
   let tasks = [
-    (join_path(test_root, "language/add.js"), "strict"),
-    (join_path(test_root, "language/add.js"), "non-strict"),
-    (join_path(test_root, "language/if.js"), "strict"),
+    (@path_utils.join_path(test_root, "language/add.js"), "strict"),
+    (@path_utils.join_path(test_root, "language/add.js"), "non-strict"),
+    (@path_utils.join_path(test_root, "language/if.js"), "strict"),
   ]
   json_inspect(filter_completed_tasks(tasks, completed, test262_dir=root), content=[
-    (join_path(test_root, "language/if.js"), "strict"),
+    (@path_utils.join_path(test_root, "language/if.js"), "strict"),
   ])
 
   let results = [
     TestResult(
-      path=join_path(test_root, "language/expressions/pass.js"),
+      path=@path_utils.join_path(test_root, "language/expressions/pass.js"),
       status="pass",
       mode="strict",
     ),
     TestResult(
-      path=join_path(test_root, "language/expressions/fail.js"),
+      path=@path_utils.join_path(test_root, "language/expressions/fail.js"),
       status="fail",
       reason="boom",
       mode="non-strict",
     ),
     TestResult(
-      path=join_path(test_root, "language/expressions/skip.js"),
+      path=@path_utils.join_path(test_root, "language/expressions/skip.js"),
       status="skip",
       reason="why",
       mode="strict",
@@ -226,8 +228,14 @@ test "harness options parse and transform helpers deterministically" {
     helpers=[HELPER_CODE_POINT_RANGE],
     atomics_timeout_profile=ATOMICS_TIMEOUT_PROFILE_SHORT,
   )
+  let preamble = helper.preamble()
   inspect(
-    helper.preamble().contains("__TEST262_LIMITED_ATOMICS_TIMEOUT"),
+    preamble.contains("__TEST262_LIMITED_ATOMICS_TIMEOUT"),
+    content="true",
+  )
+  inspect(preamble.contains("Number(timeout)"), content="true")
+  inspect(
+    preamble.contains("Number.isNaN(__TEST262_LIMITED_ATOMICS_TIMEOUT_NUM)"),
     content="true",
   )
 
@@ -250,13 +258,27 @@ test "harness options parse and transform helpers deterministically" {
 }
 
 ///|
+test "relative_path only returns dot for equal normalized paths" {
+  let base = @path_utils.absolute_path(
+    @path_utils.join_path(TEST_ROOT, "relative"),
+  )
+  inspect(@path_utils.relative_path(base, base), content=".")
+
+  let other = @path_utils.relative_path(
+    @path_utils.join_path(base, "child"),
+    @path_utils.join_path(base, "sibling"),
+  )
+  inspect(other, content="../child")
+}
+
+///|
 test "harness helpers and module fixture resolution are shadow-compatible" {
-  let root = join_path(TEST_ROOT, "harness/test262")
-  let harness_dir = join_path(root, "harness")
-  write_text(join_path(harness_dir, "sta.js"), "// sta\n")
-  write_text(join_path(harness_dir, "assert.js"), "// assert\n")
+  let root = @path_utils.join_path(TEST_ROOT, "harness/test262")
+  let harness_dir = @path_utils.join_path(root, "harness")
+  write_text(@path_utils.join_path(harness_dir, "sta.js"), "// sta\n")
+  write_text(@path_utils.join_path(harness_dir, "assert.js"), "// assert\n")
   write_text(
-    join_path(harness_dir, "regExpUtils.js"),
+    @path_utils.join_path(harness_dir, "regExpUtils.js"),
     REGEXP_UTILS_BUILD_STRING,
   )
 
@@ -275,11 +297,11 @@ test "harness helpers and module fixture resolution are shadow-compatible" {
     content="true",
   )
 
-  let test_dir = join_path(root, "test/language/module")
-  let main = join_path(test_dir, "main.js")
-  let from_fixture = join_path(test_dir, "from_FIXTURE.js")
-  let import_fixture = join_path(test_dir, "import_FIXTURE.js")
-  let nested = join_path(test_dir, "nested_FIXTURE.js")
+  let test_dir = @path_utils.join_path(root, "test/language/module")
+  let main = @path_utils.join_path(test_dir, "main.js")
+  let from_fixture = @path_utils.join_path(test_dir, "from_FIXTURE.js")
+  let import_fixture = @path_utils.join_path(test_dir, "import_FIXTURE.js")
+  let nested = @path_utils.join_path(test_dir, "nested_FIXTURE.js")
   write_text(
     main, "import {value} from './from_FIXTURE.js';\nimport './import_FIXTURE.js';\n",
   )
@@ -295,11 +317,11 @@ test "harness helpers and module fixture resolution are shadow-compatible" {
 
 ///|
 async test "run_single_test preserves external subprocess status semantics" {
-  let root = join_path(TEST_ROOT, "execute/test262")
-  let harness_dir = join_path(root, "harness")
-  write_text(join_path(harness_dir, "sta.js"), "")
-  write_text(join_path(harness_dir, "assert.js"), "")
-  let engine = join_path(TEST_ROOT, "execute/fake_engine.sh")
+  let root = @path_utils.join_path(TEST_ROOT, "execute/test262")
+  let harness_dir = @path_utils.join_path(root, "harness")
+  write_text(@path_utils.join_path(harness_dir, "sta.js"), "")
+  write_text(@path_utils.join_path(harness_dir, "assert.js"), "")
+  let engine = @path_utils.join_path(TEST_ROOT, "execute/fake_engine.sh")
   write_text(
     engine,
     (
@@ -318,14 +340,14 @@ async test "run_single_test preserves external subprocess status semantics" {
       #|esac
     ),
   )
-  let test_dir = join_path(root, "test/language")
-  let pass_test = join_path(test_dir, "pass.js")
-  let fail_test = join_path(test_dir, "fail.js")
-  let negative_test = join_path(test_dir, "negative.js")
-  let async_pass_test = join_path(test_dir, "async-pass.js")
-  let async_fail_test = join_path(test_dir, "async-fail.js")
-  let crlf_error_test = join_path(test_dir, "crlf-error.js")
-  let null_test = join_path(test_dir, "null-byte.js")
+  let test_dir = @path_utils.join_path(root, "test/language")
+  let pass_test = @path_utils.join_path(test_dir, "pass.js")
+  let fail_test = @path_utils.join_path(test_dir, "fail.js")
+  let negative_test = @path_utils.join_path(test_dir, "negative.js")
+  let async_pass_test = @path_utils.join_path(test_dir, "async-pass.js")
+  let async_fail_test = @path_utils.join_path(test_dir, "async-fail.js")
+  let crlf_error_test = @path_utils.join_path(test_dir, "crlf-error.js")
+  let null_test = @path_utils.join_path(test_dir, "null-byte.js")
   write_test_file(pass_test, body="PASS_ENGINE")
   write_test_file(fail_test, body="FAIL_ENGINE")
   write_test_file(
@@ -420,8 +442,8 @@ async test "run_single_test preserves external subprocess status semantics" {
   inspect(crlf_error_result.reason, content="TypeError: boom")
   inspect(null_result.reason, content="embedded null byte")
 
-  let progress_log = join_path(TEST_ROOT, "execute/progress.jsonl")
-  let merged_log = join_path(TEST_ROOT, "execute/merged.jsonl")
+  let progress_log = @path_utils.join_path(TEST_ROOT, "execute/progress.jsonl")
+  let merged_log = @path_utils.join_path(TEST_ROOT, "execute/merged.jsonl")
   initialize_result_logs(progress_log, merged_log)
   write_result_logs(progress_log, merged_log, pass_result)
   write_result_logs(progress_log, merged_log, fail_result)
@@ -433,12 +455,18 @@ async test "run_single_test preserves external subprocess status semantics" {
   inspect(merged_text.contains("\"status\":\"pass\""), content="false")
   inspect(merged_text.contains("\"status\":\"fail\""), content="true")
 
-  let empty_merged_log = join_path(TEST_ROOT, "execute/empty-merged.jsonl")
+  let empty_merged_log = @path_utils.join_path(
+    TEST_ROOT,
+    "execute/empty-merged.jsonl",
+  )
   initialize_result_logs("", empty_merged_log)
   inspect(@fs.path_exists(empty_merged_log), content="true")
   inspect(@fs.read_file_to_string(empty_merged_log), content="")
 
-  let bad_merged_log = join_path(TEST_ROOT, "execute/merged-log-dir")
+  let bad_merged_log = @path_utils.join_path(
+    TEST_ROOT,
+    "execute/merged-log-dir",
+  )
   ensure_dir(bad_merged_log)
   try {
     initialize_result_logs("", bad_merged_log)

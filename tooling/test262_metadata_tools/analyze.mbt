@@ -290,9 +290,9 @@ fn json_percent(numerator : Int, denominator : Int) -> Json {
 
 ///|
 fn category_from_rel_path(rel_path : String) -> String {
-  let parts = rel_path.split("/").map(part => part.to_owned()).to_array()
+  let parts = @path_utils.path_components(@path_utils.normalize_path(rel_path))
   if parts.length() >= 2 {
-    parts[0] + "/" + parts[1]
+    @path_utils.join_path(parts[0], parts[1])
   } else if parts.length() == 1 {
     parts[0]
   } else {
@@ -452,10 +452,10 @@ fn analyze_test_file(
   let uses_prototype = source.contains(".prototype")
   let uses_throw = source.contains("throw ")
   {
-    path: normalize_path(file.rel_path),
+    path: @path_utils.normalize_path(file.rel_path),
     classification,
     reason,
-    category: category_from_rel_path(normalize_path(file.rel_path)),
+    category: category_from_rel_path(@path_utils.normalize_path(file.rel_path)),
     complexity: analysis_complexity(
       classification, uses_eval, uses_try_catch, uses_new, uses_object_literal, uses_array,
       uses_regex, uses_this, uses_prototype, uses_throw,
@@ -479,11 +479,11 @@ fn collect_analyzer_files_in_dir(
   let entries = @fs.read_dir(dir)
   entries.sort()
   for entry in entries {
-    let full_path = join_path(dir, entry)
+    let full_path = @path_utils.join_path(dir, entry)
     let rel_path = if rel_prefix == "" {
       entry
     } else {
-      join_path(rel_prefix, entry)
+      @path_utils.join_path(rel_prefix, entry)
     }
     if rel_path.has_prefix("intl402") {
       continue
@@ -500,7 +500,7 @@ fn collect_analyzer_files_in_dir(
 fn discover_analyzer_tests(
   test262_root : String,
 ) -> (Array[TestFile], String) raise {
-  let test_dir = join_path(test262_root, "test")
+  let test_dir = @path_utils.join_path(test262_root, "test")
   let files : Array[TestFile] = []
   if @fs.path_exists(test_dir) && @fs.is_dir(test_dir) {
     collect_analyzer_files_in_dir(test_dir, "", files)
@@ -848,7 +848,7 @@ pub fn run_analyze(
   test262_root? : String = "./test262",
   output? : String = "test262-analysis.moonbit-shadow.json",
 ) -> ToolRun raise {
-  let test262_dir = absolute_path(test262_root)
+  let test262_dir = @path_utils.absolute_path(test262_root)
   guard @fs.path_exists(test262_root) && @fs.is_dir(test262_root) else {
     return {
       stdout_lines: [],

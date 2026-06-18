@@ -264,7 +264,7 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
     threads = 1
   }
   let engine_cmd = shlex_split(engine)
-  let test262_dir = absolute_path(config.test262)
+  let test262_dir = @path_utils.absolute_path(config.test262)
   guard is_readable_dir(test262_dir) else {
     fail("test262 directory not found: \{test262_dir}")
   }

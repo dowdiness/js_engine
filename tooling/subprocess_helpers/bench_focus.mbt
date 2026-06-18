@@ -91,17 +91,6 @@ fn splitlines(source : String) -> Array[String] {
 }
 
 ///|
-fn join_path(left : String, right : String) -> String {
-  if left == "" || left == "." {
-    right
-  } else if left.has_suffix("/") {
-    left + right
-  } else {
-    left + "/" + right
-  }
-}
-
-///|
 fn pad_int(value : Int, width : Int) -> String {
   value.to_string().pad_start(width, '0')
 }
@@ -145,7 +134,7 @@ fn utc_timestamp() -> String {
 
 ///|
 fn bench_output_dir(root : String, timestamp : String?) -> String {
-  join_path(
+  @path_utils.join_path(
     root,
     match timestamp {
       Some(value) => value
@@ -506,7 +495,10 @@ fn render_bench_table(
 
 ///|
 fn csv_path(out_dir : String, run : Int) -> String {
-  join_path(out_dir, "run-" + run.to_string().pad_start(2, '0') + ".csv")
+  @path_utils.join_path(
+    out_dir,
+    "run-" + run.to_string().pad_start(2, '0') + ".csv",
+  )
 }
 
 ///|

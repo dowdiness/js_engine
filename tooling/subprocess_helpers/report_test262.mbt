@@ -463,7 +463,9 @@ async fn executable_exists(cmd : String) -> Bool {
       None => ""
     }
     for dir in path.split(":") {
-      let can_execute = @afs.can_execute(join_path(dir.to_owned(), cmd)) catch {
+      let can_execute = @afs.can_execute(
+        @path_utils.join_path(dir.to_owned(), cmd),
+      ) catch {
         _ => false
       }
       if can_execute {
@@ -571,7 +573,7 @@ fn find_file_rec(dir : String, filename : String) -> String? raise {
   let entries = @fs.read_dir(dir)
   entries.sort()
   for entry in entries {
-    let path = join_path(dir, entry)
+    let path = @path_utils.join_path(dir, entry)
     if @fs.is_dir(path) {
       match find_file_rec(path, filename) {
         Some(found) => return Some(found)
@@ -582,18 +584,6 @@ fn find_file_rec(dir : String, filename : String) -> String? raise {
     }
   }
   None
-}
-
-///|
-fn basename(path : String) -> String {
-  let chars = path.to_array()
-  let mut last = -1
-  for i in 0..<chars.length() {
-    if chars[i] == '/' {
-      last = i
-    }
-  }
-  path.substring(start=last + 1)
 }
 
 ///|
@@ -652,7 +642,7 @@ fn validate_shard_completeness(
   let mut expected_total = 0
   let seen_indices : Array[Int] = []
   for path in paths {
-    let name = basename(path)
+    let name = @path_utils.basename(path)
     let inner = name.substring(
       start=prefix.length(),
       end=name.length() - suffix.length(),
@@ -704,7 +694,7 @@ fn collect_files_matching(
   let entries = @fs.read_dir(dir)
   entries.sort()
   for entry in entries {
-    let path = join_path(dir, entry)
+    let path = @path_utils.join_path(dir, entry)
     if @fs.is_dir(path) {
       let sub = collect_files_matching(path, prefix, suffix)
       for f in sub {
@@ -804,8 +794,10 @@ fn find_results(artifact_dir : String) -> (String, String) raise {
   validate_shard_completeness(
     nonstrict_shards, "test262-non-strict-shard-", "-results.json", "non-strict",
   )
-  let strict_path = join_path(artifact_dir, "test262-strict-results.json")
-  let nonstrict_path = join_path(
+  let strict_path = @path_utils.join_path(
+    artifact_dir, "test262-strict-results.json",
+  )
+  let nonstrict_path = @path_utils.join_path(
     artifact_dir, "test262-non-strict-results.json",
   )
   merge_shards_to_file(strict_shards, strict_path)
@@ -858,9 +850,9 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
       stdout += "\n"
       let repo_root = match config.repo_root {
         Some(root) => root
-        None => current_dir_or_dot()
+        None => @path_utils.current_dir_or_dot()
       }
-      let classifier = join_path(
+      let classifier = @path_utils.join_path(
         repo_root, "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
       )
       let capture = collect_process_args(
@@ -868,7 +860,7 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
         [
           "--markdown",
           "--test262-root",
-          join_path(repo_root, "test262"),
+          @path_utils.join_path(repo_root, "test262"),
           strict_path,
           nonstrict_path,
         ],

@@ -42,7 +42,7 @@ struct RepresentationAccess {
 
 ///|
 fn representation_path(root : String) -> String {
-  join_path(root, "scripts/architecture_representation_access.json")
+  @path_utils.join_path(root, "scripts/architecture_representation_access.json")
 }
 
 ///|
@@ -398,7 +398,7 @@ fn collect_representation_files(
   rules : RepresentationRules,
   out : Array[String],
 ) -> Unit raise {
-  let full_path = join_path(root, rel_path)
+  let full_path = @path_utils.join_path(root, rel_path)
   if @fs.is_file(full_path) {
     if rel_path.has_suffix(".mbt") &&
       !should_ignore_representation_path(rel_path, rules) {
@@ -411,7 +411,7 @@ fn collect_representation_files(
       if !entry.has_prefix(".") {
         collect_representation_files(
           root,
-          join_path(rel_path, entry),
+          @path_utils.join_path(rel_path, entry),
           rules,
           out,
         )
@@ -428,7 +428,7 @@ fn discover_representation_files(
   let files : Array[String] = []
   let metadata_path = representation_path(root)
   for scan_root in rules.scan_roots {
-    let full_path = join_path(root, scan_root)
+    let full_path = @path_utils.join_path(root, scan_root)
     if !@fs.path_exists(full_path) {
       schema_error(metadata_path, "scan root not found: \{scan_root}")
     }
@@ -445,7 +445,7 @@ fn scan_representation_file(
   rules : RepresentationRules,
   out : Array[RepresentationAccess],
 ) -> Unit raise {
-  let source = @fs.read_file_to_string(join_path(root, rel_path))
+  let source = @fs.read_file_to_string(@path_utils.join_path(root, rel_path))
   let lines = source.split("\n").map(line => line.to_owned()).to_array()
   for line_index, line in lines {
     let line_number = line_index + 1
