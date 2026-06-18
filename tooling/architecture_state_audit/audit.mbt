@@ -151,15 +151,6 @@ fn parse_module_let(lines : Array[String], start : Int) -> MutableBinding? {
 }
 
 ///|
-fn join_path(left : String, right : String) -> String {
-  if left == "" || left == "." {
-    right
-  } else if left.has_suffix("/") {
-    left + right
-  } else {
-    left + "/" + right
-  }
-}
 
 ///|
 fn source_lines(source : String) -> Array[String] {
@@ -170,14 +161,14 @@ fn source_lines(source : String) -> Array[String] {
 fn discover_mutable_bindings(repo_root : String) -> Array[MutableBinding] raise {
   let bindings : Array[MutableBinding] = []
   for scan_dir in scan_dirs() {
-    let root = join_path(repo_root, scan_dir)
+    let root = @path_utils.join_path(repo_root, scan_dir)
     if @fs.path_exists(root) {
       let entries = @fs.read_dir(root)
       entries.sort()
       for entry in entries {
         if entry.has_suffix(".mbt") {
-          let rel_path = join_path(scan_dir, entry)
-          let full_path = join_path(repo_root, rel_path)
+          let rel_path = @path_utils.join_path(scan_dir, entry)
+          let full_path = @path_utils.join_path(repo_root, rel_path)
           if @fs.is_file(full_path) {
             let lines = source_lines(@fs.read_file_to_string(full_path))
             for index in 0..<lines.length() {
@@ -207,7 +198,7 @@ fn discover_mutable_bindings(repo_root : String) -> Array[MutableBinding] raise 
 fn load_classified_mutable_state(
   repo_root : String,
 ) -> Map[String, String] raise {
-  let metadata_path = join_path(
+  let metadata_path = @path_utils.join_path(
     repo_root, "scripts/architecture_state_classified_mutable_state.json",
   )
   if !@fs.path_exists(metadata_path) {

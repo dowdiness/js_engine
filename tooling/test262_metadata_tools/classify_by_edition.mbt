@@ -509,14 +509,6 @@ fn classify_path_by_edition(
 }
 
 ///|
-fn basename(path : String) -> String {
-  match normalize_path(path).rev_find("/") {
-    Some(index) => normalize_path(path)[index + 1:].to_owned()
-    None => path
-  }
-}
-
-///|
 fn json_string_field(data : Map[String, Json], key : String) -> String raise {
   match data.get(key) {
     Some(raw) =>
@@ -554,23 +546,25 @@ fn load_result_file(path : String) -> ResultFileData raise {
   }
   let mode = if results.length() > 0 {
     match raw_results[0].get("mode") {
-      Some(raw) => @json.from_json(raw) catch { _ => basename(path) }
-      None => basename(path)
+      Some(raw) =>
+        @json.from_json(raw) catch {
+          _ => @path_utils.basename(path)
+        }
+      None => @path_utils.basename(path)
     }
   } else {
-    basename(path)
+    @path_utils.basename(path)
   }
   { mode, results }
 }
 
 ///|
 fn result_abs_path(path : String, test262_root : String) -> String {
-  if path.has_prefix("/") {
-    path
-  } else if path.has_prefix("test262/") {
-    path
+  let normalized = @path_utils.normalize_path(path)
+  if normalized.has_prefix("/") || normalized.has_prefix("test262/") {
+    normalized
   } else {
-    join_path(test262_root, path)
+    @path_utils.join_path(test262_root, normalized)
   }
 }
 
@@ -856,16 +850,9 @@ fn reason_key(reason : String) -> String {
 
 ///|
 fn top_subdir(path : String, depth~ : Int) -> String {
-  let parts = normalize_path(path)
-    .split("/")
-    .map(part => part.to_owned())
-    .to_array()
+  let parts = @path_utils.path_components(@path_utils.normalize_path(path))
   let end = if depth < parts.length() { depth } else { parts.length() }
-  let out : Array[String] = []
-  for i in 0..<end {
-    out.push(parts[i])
-  }
-  out.join("/")
+  [ for i in 0..<end => parts[i] ].join("/")
 }
 
 ///|

@@ -38,7 +38,7 @@ enum SurfaceClassification {
 
 ///|
 fn taxonomy_rules_path(root : String) -> String {
-  join_path(root, "scripts/architecture_surface_taxonomy.json")
+  @path_utils.join_path(root, "scripts/architecture_surface_taxonomy.json")
 }
 
 ///|
@@ -234,7 +234,7 @@ fn mbti_path_for_dir(rel_dir : String) -> String {
   if rel_dir == "." || rel_dir == "" {
     "pkg.generated.mbti"
   } else {
-    join_path(rel_dir, "pkg.generated.mbti")
+    @path_utils.join_path(rel_dir, "pkg.generated.mbti")
   }
 }
 
@@ -244,16 +244,20 @@ fn collect_mbti_dirs(
   rel_dir : String,
   out : Array[String],
 ) -> Unit raise {
-  let full_dir = if rel_dir == "." { root } else { join_path(root, rel_dir) }
+  let full_dir = if rel_dir == "." {
+    root
+  } else {
+    @path_utils.join_path(root, rel_dir)
+  }
   let entries = @fs.read_dir(full_dir)
   entries.sort()
   for entry in entries {
     let rel_path = if rel_dir == "." {
       entry
     } else {
-      join_path(rel_dir, entry)
+      @path_utils.join_path(rel_dir, entry)
     }
-    let full_path = join_path(full_dir, entry)
+    let full_path = @path_utils.join_path(full_dir, entry)
     if entry == "pkg.generated.mbti" && @fs.is_file(full_path) {
       out.push(rel_dir)
     } else if @fs.is_dir(full_path) &&
@@ -272,7 +276,7 @@ fn discover_package_surfaces(root : String) -> Array[PackageSurface] raise {
   let surfaces : Array[PackageSurface] = []
   for rel_dir in dirs {
     let mbti_path = mbti_path_for_dir(rel_dir)
-    let full_path = join_path(root, mbti_path)
+    let full_path = @path_utils.join_path(root, mbti_path)
     let source = @fs.read_file_to_string(full_path)
     let (pkg_name, symbols) = parse_mbti(source)
     if pkg_name != "" {

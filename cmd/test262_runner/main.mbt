@@ -206,10 +206,10 @@ async fn main {
       @argparse.OptionArg(
         "harness-helper",
         action=Append,
-        about="Opt into modified Test262 harness helper(s); currently: codePointRange",
+        about="Opt into modified Test262 harness helper(s); currently: codePointRange, atomicsTimeoutProfile=<default|short>",
       ),
     ],
-    about="MoonBit async Test262 runner shadow. Python scripts/test262-runner.py remains authoritative.",
+    about="MoonBit async Test262 runner shadow.",
   )
   let raw_args = @env.args()
   let matches = cmd.parse(argv=program_args(raw_args), env={}) catch {

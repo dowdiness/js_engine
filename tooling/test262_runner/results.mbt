@@ -1,9 +1,9 @@
 ///|
 fn category_for_path(path : String, test262_dir : String) -> String {
   let rel = normalize_test262_path(path, test262_dir~)
-  let parts = rel.split("/").map(part => part.to_owned()).to_array()
+  let parts = @path_utils.path_components(rel)
   if parts.length() >= 2 {
-    parts[0] + "/" + parts[1]
+    @path_utils.join_path(parts[0], parts[1])
   } else if parts.length() == 1 {
     parts[0]
   } else {
@@ -101,7 +101,9 @@ fn json_double(value : Double, places : Int) -> Json {
 ///|
 fn result_json_record(result : TestResult) -> Json {
   Json::object({
-    "path": Json::string(relative_path(result.path, current_dir_or_dot())),
+    "path": Json::string(
+      @path_utils.relative_path(result.path, @path_utils.current_dir_or_dot()),
+    ),
     "status": Json::string(result.status),
     "reason": Json::string(result.reason),
     "duration_ms": json_double(result.duration_ms, 1),
@@ -340,7 +342,7 @@ fn print_report_text(
       for i in 0..<limit {
         let result = failures[i]
         out.write_string(
-          "  FAIL: \{relative_path(result.path, current_dir_or_dot())}\n",
+          "  FAIL: \{@path_utils.relative_path(result.path, @path_utils.current_dir_or_dot())}\n",
         )
         if result.reason != "" {
           let reason_short = truncate_reason(result.reason).replace_all(

@@ -27,41 +27,24 @@ struct ValidationIssue {
 } derive(Debug)
 
 ///|
-fn join_path(left : String, right : String) -> String {
-  if left == "" || left == "." {
-    right
-  } else if left.has_suffix("/") {
-    left + right
-  } else {
-    left + "/" + right
-  }
-}
 
 ///|
 fn display_path(path : String) -> String {
-  if path.has_prefix("./") {
+  let normalized = if path.has_prefix("./") {
     path[2:].to_owned()
   } else {
     path
   }
-}
-
-///|
-fn normalize_path(path : String) -> String {
-  path.replace_all(old="\\", new="/")
-}
-
-///|
-fn absolute_path(path : String) -> String {
-  if path.has_prefix("/") {
-    path
+  if normalized == "" {
+    ""
   } else {
-    match @env.current_dir() {
-      Some(cwd) => join_path(cwd, path)
-      None => path
-    }
+    @path_utils.normalize_path(normalized)
   }
 }
+
+///|
+
+///|
 
 ///|
 fn json_python_str(value : Json) -> String {
@@ -101,11 +84,11 @@ fn collect_js_files_in_dir(
   let entries = @fs.read_dir(dir)
   entries.sort()
   for entry in entries {
-    let full_path = join_path(dir, entry)
+    let full_path = @path_utils.join_path(dir, entry)
     let rel_path = if rel_prefix == "" {
       entry
     } else {
-      join_path(rel_prefix, entry)
+      @path_utils.join_path(rel_prefix, entry)
     }
     if @fs.is_dir(full_path) {
       collect_js_files_in_dir(full_path, rel_path, files)
@@ -125,13 +108,13 @@ fn collect_js_files(test_dir : String) -> Array[TestFile] raise {
 
 ///|
 fn missing_suite_message(test262_root : String) -> String {
-  display_path(join_path(test262_root, "test")) +
+  display_path(@path_utils.join_path(test262_root, "test")) +
   " does not exist; run `make test262-download` first"
 }
 
 ///|
 fn collect_suite_metadata(test262_root : String) -> SuiteMetadata raise {
-  let test_root = join_path(test262_root, "test")
+  let test_root = @path_utils.join_path(test262_root, "test")
   guard @fs.path_exists(test_root) && @fs.is_dir(test_root) else {
     fail(missing_suite_message(test262_root))
   }
@@ -143,8 +126,10 @@ fn collect_suite_metadata(test262_root : String) -> SuiteMetadata raise {
 
   for file in collect_js_files(test_root) {
     files_scanned += 1
-    paths.push(normalize_path(file.full_path))
-    paths.push(join_path("test", normalize_path(file.rel_path)))
+    paths.push(@path_utils.normalize_path(file.full_path))
+    paths.push(
+      @path_utils.join_path("test", @path_utils.normalize_path(file.rel_path)),
+    )
 
     let source = python_text_newlines(@fs.read_file_to_string(file.full_path))
     let data = @utils.parse_yaml_frontmatter(source)
@@ -161,7 +146,7 @@ fn collect_suite_metadata(test262_root : String) -> SuiteMetadata raise {
 
 ///|
 fn path_suffix_is_live(paths : Array[String], suffix : String) -> Bool {
-  let normalized_suffix = normalize_path(suffix)
+  let normalized_suffix = @path_utils.normalize_path(suffix)
   paths.any(path => path.has_suffix(normalized_suffix))
 }
 
@@ -243,7 +228,7 @@ pub fn run_validate_skips(
   test262_root? : String = "./test262",
 ) -> ToolRun raise {
   let metadata = @metadata.load_skip_metadata(root=repo_root)
-  let test_root = join_path(test262_root, "test")
+  let test_root = @path_utils.join_path(test262_root, "test")
   guard @fs.path_exists(test_root) && @fs.is_dir(test_root) else {
     return {
       stdout_lines: [],

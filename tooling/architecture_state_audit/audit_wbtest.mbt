@@ -7,17 +7,19 @@ fn ensure_dir(path : String) -> Unit raise {
 
 ///|
 fn write_mbt(root : String, rel_path : String, content : String) -> Unit raise {
-  let path = join_path(root, rel_path)
+  let path = @path_utils.join_path(root, rel_path)
   match rel_path.rev_find("/") {
     Some(index) => {
-      let dir = join_path(root, rel_path[:index].to_owned())
-      let parts = dir.split("/").map(part => part.to_owned()).to_array()
+      let dir = @path_utils.join_path(root, rel_path[:index].to_owned())
+      let parts = @path_utils.path_components(dir)
       let mut current = ""
       for part in parts {
-        if part != "" {
-          current = if current == "" { part } else { join_path(current, part) }
-          ensure_dir(current)
+        current = if current == "" {
+          part
+        } else {
+          @path_utils.join_path(current, part)
         }
+        ensure_dir(current)
       }
     }
     None => ()

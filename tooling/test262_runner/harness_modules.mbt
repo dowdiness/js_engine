@@ -4,7 +4,7 @@ fn load_harness_file(
   include_name : String,
   harness_options : HarnessOptions,
 ) -> String {
-  let path = join_path(harness_dir, include_name)
+  let path = @path_utils.join_path(harness_dir, include_name)
   if is_readable_file(path) {
     let source = @fs.read_file_to_string(path) catch { _ => "" }
     harness_options.transform_include(include_name, source)
@@ -22,7 +22,7 @@ fn load_harness(
   harness_options? : HarnessOptions = HarnessOptions(),
 ) -> String {
   guard !is_raw else { return "" }
-  let harness_dir = join_path(test262_dir, "harness")
+  let harness_dir = @path_utils.join_path(test262_dir, "harness")
   let parts : Array[String] = [PRINT_PREAMBLE]
   let helper_source = harness_options.preamble()
   if helper_source != "" {
@@ -110,7 +110,9 @@ fn visit_fixture(
   stack : @set.Set[String],
   order : Array[String],
 ) -> Unit raise {
-  let abs_path = normalize_path(join_path(importer_dir, spec))
+  let abs_path = @path_utils.normalize_path(
+    @path_utils.join_path(importer_dir, spec),
+  )
   guard abs_path != test_abs &&
     !visited.contains(abs_path) &&
     !stack.contains(abs_path) else {
@@ -124,7 +126,7 @@ fn visit_fixture(
   for nested_spec in import_relative_specifiers(fixture_src) {
     visit_fixture(
       nested_spec,
-      dirname(abs_path),
+      @path_utils.dirname(abs_path),
       test_abs,
       visited,
       stack,
@@ -141,8 +143,8 @@ fn resolve_fixtures(
   test_path : String,
   source : String,
 ) -> Array[(String, String)] raise {
-  let test_abs = absolute_path(test_path)
-  let test_dir = dirname(test_abs)
+  let test_abs = @path_utils.absolute_path(test_path)
+  let test_dir = @path_utils.dirname(test_abs)
   let visited : Map[String, (String, String)] = {}
   let stack = @set.Set::default()
   let order : Array[String] = []
@@ -171,7 +173,7 @@ fn append_engine_flags(
 ) -> Array[String] raise {
   let cmd = copy_args(engine_cmd)
   if is_module {
-    let main_specifier = "./" + basename(test_path)
+    let main_specifier = "./" + @path_utils.basename(test_path)
     cmd.push("--module")
     cmd.push("--module-specifier")
     cmd.push(main_specifier)

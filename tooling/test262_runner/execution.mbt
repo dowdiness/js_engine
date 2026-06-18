@@ -305,11 +305,11 @@ fn discover_tests_in_dir(
   let entries = @fs.read_dir(dir)
   entries.sort()
   for entry in entries {
-    let full_path = join_path(dir, entry)
+    let full_path = @path_utils.join_path(dir, entry)
     let rel_path = if rel_prefix == "" {
       entry
     } else {
-      join_path(rel_prefix, entry)
+      @path_utils.join_path(rel_prefix, entry)
     }
     if is_readable_dir(full_path) {
       if rel_path.has_prefix("intl402") || rel_path.has_prefix("staging") {
@@ -331,7 +331,7 @@ fn discover_tests(
   test262_dir : String,
   filter_pattern? : String = "",
 ) -> Array[String] raise {
-  let test_dir = join_path(test262_dir, "test")
+  let test_dir = @path_utils.join_path(test262_dir, "test")
   let tests : Array[String] = []
   discover_tests_in_dir(test_dir, "", filter_pattern, tests)
   tests

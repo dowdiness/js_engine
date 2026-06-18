@@ -60,21 +60,28 @@ fn resolve_test_entry(entry : String, test262_dir : String) -> String raise {
   let entry = entry.trim().to_owned()
   guard entry != "" else { fail("empty Test262 test entry") }
   if entry.has_prefix("/") {
-    return normalize_path(entry)
+    return @path_utils.normalize_path(entry)
   }
-  let normalized = normalize_path(entry)
+  let normalized = @path_utils.normalize_path(entry)
   if normalized.has_prefix("test262/test/") {
-    return absolute_path(
-      join_path(
+    return @path_utils.absolute_path(
+      @path_utils.join_path(
         test262_dir,
         "test/" + normalized["test262/test/".length():].to_owned(),
       ),
     )
   }
   if normalized.has_prefix("test/") {
-    return absolute_path(join_path(test262_dir, normalized))
+    return @path_utils.absolute_path(
+      @path_utils.join_path(test262_dir, normalized),
+    )
   }
-  absolute_path(join_path(join_path(test262_dir, "test"), normalized))
+  @path_utils.absolute_path(
+    @path_utils.join_path(
+      @path_utils.join_path(test262_dir, "test"),
+      normalized,
+    ),
+  )
 }
 
 ///|
@@ -175,19 +182,28 @@ fn shard_tasks(
 
 ///|
 fn normalize_test262_path(path : String, test262_dir? : String = "") -> String {
-  let raw = path.trim().to_owned()
-  if raw == "" {
+  let mut normalized = @path_utils.normalize_path(path.trim().to_owned())
+  if normalized == "" {
     return ""
   }
   if test262_dir != "" {
-    let test_root = absolute_path(join_path(test262_dir, "test"))
-    let candidate = if raw.has_prefix("/") { raw } else { absolute_path(raw) }
-    let rel = relative_path(candidate, test_root)
-    if rel != ".." && !rel.has_prefix("../") {
-      return rel.replace_all(old="\\", new="/")
+    let test_root = @path_utils.absolute_path(
+      @path_utils.join_path(test262_dir, "test"),
+    )
+    let candidate = if normalized.has_prefix("/") {
+      normalized
+    } else {
+      @path_utils.absolute_path(normalized)
+    }
+    let rel = @path_utils.relative_path(candidate, test_root)
+    let rel_norm = @path_utils.normalize_path(rel)
+    if rel_norm != ".." && !rel_norm.has_prefix("../") {
+      return rel_norm
     }
   }
-  let mut normalized = normalize_path(raw).replace_all(old="\\", new="/")
+  while normalized.has_suffix("/") {
+    normalized = normalized[:normalized.length() - 1].to_owned()
+  }
   if normalized.has_prefix("./") {
     normalized = normalized[2:].to_owned()
   }
