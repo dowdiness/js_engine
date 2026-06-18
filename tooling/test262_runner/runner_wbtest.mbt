@@ -28,7 +28,9 @@ fn assert_raises(f : () -> Unit raise) -> Unit {
 
 ///|
 async fn run_node_script(script : String) -> ProcessCapture? {
-  Some(collect_output_hard("node", ["-e", script])) catch {
+  let capture = @async.with_timeout_opt(3000, () => {
+    collect_output_hard("node", ["-e", script])
+  }) catch {
     err => {
       let msg = @debug.to_string(err)
       if msg.contains("No such file or directory") ||
@@ -39,6 +41,10 @@ async fn run_node_script(script : String) -> ProcessCapture? {
         fail("Unexpected node execution failure: \{msg}")
       }
     }
+  }
+  match capture {
+    None => fail("Node harness probe timed out")
+    Some(capture) => Some(capture)
   }
 }
 
