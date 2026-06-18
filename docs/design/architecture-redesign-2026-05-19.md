@@ -498,5 +498,5 @@ runtime/stdlib/compiler files. Important source areas include:
   `builtins_promise.mbt`, and `builtins_regex.mbt` for stdlib-owned mutable
   state.
 - `compiler/closure_conversion.mbt` and
-  `docs/closure-conversion-and-bytecode.md` for the execution optimization
+  `docs/design/closure-conversion-and-bytecode.md` for the execution optimization
   boundary.

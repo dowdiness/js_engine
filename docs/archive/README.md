@@ -5,3 +5,8 @@
 Historical records of completed work and superseded analyses, kept for context only. For live project status and up-to-date material, return to [../README.md](../README.md) and [../ROADMAP.md](../ROADMAP.md).
 
 Files in this directory were written at a specific point in time and are not updated when the code or conventions change. Internal prose references may point to pre-restructure paths; follow the docs index instead.
+
+Key history files:
+
+- [executed-roadmap-history.md](executed-roadmap-history.md) — completed roadmap plans and stale planning snapshots moved out of the active roadmap.
+- [phase-history.md](phase-history.md) — detailed phase implementation history.

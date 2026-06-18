@@ -15,7 +15,7 @@ moon info && moon fmt     # Before committing
 
 ## Package Map
 
-A `SessionStart` hook runs `scripts/package-overview.sh` to provide a live package map. Use `moon ide outline <path>` to explore any package's public API. `moon.mod.json` holds module dependencies.
+A `SessionStart` hook runs `scripts/package-overview.sh` to provide a live package map. Use `moon ide outline <path>` to explore any package's public API. `moon.mod` holds module dependencies.
 
 ## ES Spec Discipline
 
@@ -326,7 +326,7 @@ Before designing any performance optimization, write a microbenchmark that **rep
 
 ### Workspace Commands
 
-For multi-project workspaces (monorepos with multiple `moon.mod.json`):
+For multi-project workspaces (monorepos with multiple `moon.mod` files):
 
 - `moon work init` — Initialize a workspace
 - `moon work use <path>` — Add a project to the workspace

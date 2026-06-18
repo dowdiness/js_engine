@@ -7,7 +7,7 @@ Completed tasks should be struck through and dated.
 
 ## ~~Stage 2a well-known symbol ownership~~ — DONE (2026-05-19, branch `codex/stage2a-well-known-symbols`)
 
-**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md),
+**Source:** [architecture-redesign-2026-05-19.md](design/architecture-redesign-2026-05-19.md),
 after Stage 1 introduced `RealmState`.
 
 **Goal:** Move well-known symbol identity allocation out of individual
@@ -68,7 +68,7 @@ WeakSet side-table, or prototype-cache migration.
 
 ## ~~Stage 2c iterator/prototype cache slice~~ — DONE (2026-05-22, PR #133)
 
-**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md),
+**Source:** [architecture-redesign-2026-05-19.md](design/architecture-redesign-2026-05-19.md),
 Stage 2 after the well-known symbol ownership slice.
 
 **Pressure:** The mutable-state audit classified lazy iterator/prototype caches
@@ -173,7 +173,7 @@ Conformance` (unit-test plus strict and non-strict Test262 jobs).
 
 ## ~~Stage 1 RealmState seed~~ — DONE (2026-05-19, branch `codex/stage1-realmstate-seed`)
 
-**Source:** [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md)
+**Source:** [architecture-redesign-2026-05-19.md](design/architecture-redesign-2026-05-19.md)
 after Stage 0 guardrails landed in PR #126.
 
 **Goal:** Introduce the first interpreter-owned `RealmState` container without
@@ -262,7 +262,7 @@ The JS interpreter domain forces all meaningful callbacks to raise. Every `each`
 ### ~~Start bytecode/IR execution prototype~~ — DONE (2026-05-28, `50bcb94`)
 
 **Source:** closure-conversion benchmark work and the decision recorded in
-[closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md).
+[closure-conversion-and-bytecode.md](design/closure-conversion-and-bytecode.md).
 
 **Result:** The first opt-in stack-bytecode prototype shipped in `50bcb94`.
 Default `run` remains on the tree-walking interpreter. The prototype exposes
@@ -273,7 +273,7 @@ for those workloads.
 
 **Guardrails carried forward:** Keep bytecode opt-in, reuse runtime helpers, and
 reject unsupported semantics explicitly. The current fail-fast rejection list is
-tracked in [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md#current-explicit-bytecode-rejections).
+tracked in [closure-conversion-and-bytecode.md](design/closure-conversion-and-bytecode.md#current-explicit-bytecode-rejections).
 
 ### ~~Bytecode performance follow-ups~~ — DONE/STABILIZED (2026-06-01, PRs #172/#182/#185/#186)
 
@@ -715,7 +715,7 @@ All four stages shipped. See [archive/architecture-redesign-2026-04-15.md](archi
 ## Recommended Next Targets (2026-04-17 probes)
 
 Four uncertainty probes sharpened the targets. Full analysis in
-[architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md).
+[architecture-redesign-2026-04-17-probes.md](design/architecture-redesign-2026-04-17-probes.md).
 The 2026-04-16 analysis below is still valid; this section overrides it
 where they disagree.
 
@@ -966,7 +966,7 @@ param-default `eval("var arguments")` case (~96 tests, out of scope #1 below).
 Both need ES2020 module instantiation-phase support (pre-bind exports
 before evaluation) — engine work, not runner.
 
-### Architectural track (multi-PR; see architecture-redesign-2026-04-17-probes.md)
+### Architectural track (multi-PR; see design/architecture-redesign-2026-04-17-probes.md)
 
 Redesign targeting CP-1 (proxy access protocol) and CP-2 (ArrayData
 representation). Staged:
