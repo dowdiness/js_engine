@@ -51,7 +51,7 @@ See [docs/ROADMAP.md § How to read these rates](docs/ROADMAP.md#how-to-read-the
 
 - Use `json_inspect` for arrays or structured data when JSON/data semantics are what the test should assert.
 - Use `inspect` only when MoonBit `Show` output itself is the behavior being asserted.
-- Remaining deprecated `inspect` snapshot migration work is tracked in [docs/agent-todo.md](docs/agent-todo.md); check that task list before starting new cleanup work.
+- Deprecated `inspect` snapshot migration work is complete; historical notes are archived in [docs/archive/agent-todo-history.md](docs/archive/agent-todo-history.md#migrate-remaining-deprecated-inspect-snapshots--done-2026-05-14).
 
 ## Documentation
 
