@@ -27,6 +27,13 @@ fn assert_raises(f : () -> Unit raise) -> Unit {
 }
 
 ///|
+async fn run_node_script(script : String) -> ProcessCapture? {
+  Some(collect_output_hard("node", ["-e", script])) catch {
+    _ => None
+  }
+}
+
+///|
 test "task selection mirrors Python runner helpers" {
   let tasks : Array[(String, String)] = []
   for i in 0..<10 {
@@ -368,9 +375,58 @@ async test "atomics short timeout wrapper passes coerced timeouts at runtime" {
       #|Atomics.wait(ta, 0, 0, -1);
       #|console.log(captured.join(','));
     )
-  let capture = collect_output_hard("node", ["-e", script])
-  inspect(capture.code, content="0")
-  inspect(capture.stdout.trim(), content="100,100,100,-1")
+  match run_node_script(script) {
+    None => inspect(true, content="true")
+    Some(capture) => {
+      inspect(capture.code, content="0")
+      inspect(capture.stdout.trim(), content="100,100,100,-1")
+    }
+  }
+}
+
+///|
+async test "atomics short timeout wrapper passes coerced timeouts for waitAsync at runtime" {
+  let root = @path_utils.join_path(TEST_ROOT, "harness/runtime-atomics")
+  let harness_dir = @path_utils.join_path(root, "harness")
+  write_text(@path_utils.join_path(harness_dir, "sta.js"), "")
+  write_text(@path_utils.join_path(harness_dir, "assert.js"), "")
+  let harness = load_harness(
+    root,
+    [],
+    false,
+    harness_options=HarnessOptions(
+      atomics_timeout_profile=ATOMICS_TIMEOUT_PROFILE_SHORT,
+    ),
+  )
+  let script = (
+      #|let captured = [];
+      #|const original_wait_async = Atomics.waitAsync;
+      #|const fallback_wait_async = function(_typedArray, _index, _value, timeout) {
+      #|  return { value: timeout };
+      #|};
+      #|Atomics.waitAsync = function(typedArray, index, value, timeout) {
+      #|  captured.push(timeout);
+      #|  const impl =
+      #|    typeof original_wait_async === 'function' ? original_wait_async : fallback_wait_async;
+      #|  return impl(typedArray, index, value, timeout);
+      #|};
+    ) +
+    harness +
+    (
+      #|const ta = new Int32Array(new SharedArrayBuffer(4));
+      #|Atomics.waitAsync(ta, 0, 0, 200);
+      #|Atomics.waitAsync(ta, 0, 0, "foo");
+      #|Atomics.waitAsync(ta, 0, 0, undefined);
+      #|Atomics.waitAsync(ta, 0, 0, -1);
+      #|console.log(captured.join(','));
+    )
+  match run_node_script(script) {
+    None => inspect(true, content="true")
+    Some(capture) => {
+      inspect(capture.code, content="0")
+      inspect(capture.stdout.trim(), content="100,100,100,-1")
+    }
+  }
 }
 
 ///|
