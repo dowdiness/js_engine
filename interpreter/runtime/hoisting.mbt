@@ -1759,7 +1759,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, func_val)
         }
       }
-      GeneratorDecl(name, params, body, _, _) => {
+      GeneratorDecl(name, params, body, _, source_text) => {
         validate_function_signature(strict, Some(name), params, body)
         let gen_func = _self.make_generator_function(
           Some(name),
@@ -1768,6 +1768,7 @@ fn Interpreter::hoist_declarations(
           body,
           is_function_strict(strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)
@@ -1779,7 +1780,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, gen_func)
         }
       }
-      GeneratorDeclExt(name, params, rest_param, body, _, _) => {
+      GeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1794,6 +1795,7 @@ fn Interpreter::hoist_declarations(
           body,
           is_function_strict(strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)
@@ -1805,7 +1807,7 @@ fn Interpreter::hoist_declarations(
           _self.mirror_to_global(name, gen_func)
         }
       }
-      AsyncFuncDecl(name, params, body, _, _) => {
+      AsyncFuncDecl(name, params, body, _, source_text) => {
         validate_function_signature(strict, Some(name), params, body)
         let async_func = _self.make_async_function(
           Some(name),
@@ -1814,6 +1816,7 @@ fn Interpreter::hoist_declarations(
           body,
           is_function_strict(strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, async_func)
@@ -1821,7 +1824,7 @@ fn Interpreter::hoist_declarations(
           env.def(name, async_func, VarBinding)
         }
       }
-      AsyncFuncDeclExt(name, params, rest_param, body, _, _) => {
+      AsyncFuncDeclExt(name, params, rest_param, body, _, source_text) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1836,6 +1839,7 @@ fn Interpreter::hoist_declarations(
           body,
           is_function_strict(strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, async_func)
@@ -1843,7 +1847,7 @@ fn Interpreter::hoist_declarations(
           env.def(name, async_func, VarBinding)
         }
       }
-      AsyncGeneratorDecl(name, params, body, _, _) => {
+      AsyncGeneratorDecl(name, params, body, _, source_text) => {
         validate_function_signature(strict, Some(name), params, body)
         let gen_func = _self.make_async_generator_function(
           Some(name),
@@ -1852,6 +1856,7 @@ fn Interpreter::hoist_declarations(
           body,
           is_function_strict(strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)
@@ -1859,7 +1864,7 @@ fn Interpreter::hoist_declarations(
           env.def(name, gen_func, VarBinding)
         }
       }
-      AsyncGeneratorDeclExt(name, params, rest_param, body, _, _) => {
+      AsyncGeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
         validate_function_signature_ext(
           strict,
           Some(name),
@@ -1874,6 +1879,7 @@ fn Interpreter::hoist_declarations(
           body,
           is_function_strict(strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)

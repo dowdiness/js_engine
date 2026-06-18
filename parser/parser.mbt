@@ -135,8 +135,15 @@ fn Parser::advance(self : Parser) -> @token.Token {
 }
 
 ///|
-fn Parser::consume_source_text(self : Parser, start_offset : Int) -> String {
-  self.source.unsafe_substring(start=start_offset, end=self.last_end)
+fn Parser::consume_source_text(self : Parser, start_offset : Int) -> String? {
+  if self.source == "" ||
+    start_offset < 0 ||
+    self.last_end > self.source.length() ||
+    start_offset > self.last_end {
+    None
+  } else {
+    Some(self.source.unsafe_substring(start=start_offset, end=self.last_end))
+  }
 }
 
 ///|

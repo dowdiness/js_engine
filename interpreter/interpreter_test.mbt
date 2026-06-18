@@ -13418,6 +13418,12 @@ test "Function.prototype.toString preserves parsed source text" {
       #|console.log((x => { return x; }).toString());
       #|console.log((async () => {}).toString());
       #|console.log((function* g() {}).toString());
+      #|function* hg() {}
+      #|console.log(hg.toString());
+      #|async function ha() {}
+      #|console.log(ha.toString());
+      #|async function* hag() {}
+      #|console.log(hag.toString());
       #|console.log((class Foo {}).toString());
       #|console.log(Function("return 1").toString());
       #|console.log(Function().toString());
@@ -13439,11 +13445,11 @@ test "Function.prototype.toString preserves parsed source text" {
   )
   json_inspect(output, content=[
     "function f() {}", "() => 42", "x => { return x; }", "async () => {}", "function* g() {}",
-    "class Foo {}", "function anonymous(\n) {\nreturn 1\n}", "function anonymous(\n) {\n\n}",
-    "function* anonymous(\n) {\n\n}", "async function anonymous(\n) {\n\n}", "get x(){}",
-    "set y(v){}", "async m(){}", "*g(){}", "function proxy() { [native code] }",
-    "function proxy() { [native code] }", "function parseInt() { [native code] }",
-    "function bound() { [native code] }",
+    "function* hg() {}", "async function ha() {}", "async function* hag() {}", "class Foo {}",
+    "function anonymous(\n) {\nreturn 1\n}", "function anonymous(\n) {\n\n}", "function* anonymous(\n) {\n\n}",
+    "async function anonymous(\n) {\n\n}", "get x(){}", "set y(v){}", "async m(){}",
+    "*g(){}", "function proxy() { [native code] }", "function proxy() { [native code] }",
+    "function parseInt() { [native code] }", "function bound() { [native code] }",
   ])
 }
 

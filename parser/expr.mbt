@@ -33,12 +33,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
       let name = self.expect_ident()
       let _ = self.advance() // consume =>
       let body = self.parse_arrow_body(is_async=true)
-      return AsyncArrowFunc(
-        [name],
-        body,
-        loc,
-        Some(self.consume_source_text(start)),
-      )
+      return AsyncArrowFunc([name], body, loc, self.consume_source_text(start))
     }
     // async arrow with parens: async [no LT] ( ... ) =>
     if self.peek_kind_at(1) == LParen &&
@@ -68,7 +63,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
                 rest_param,
                 body,
                 async_loc,
-                Some(self.consume_source_text(start)),
+                self.consume_source_text(start),
               )
             } else {
               let param_names = ext_params.map(fn(p) { p.name })
@@ -76,7 +71,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
                 param_names,
                 body,
                 async_loc,
-                Some(self.consume_source_text(start)),
+                self.consume_source_text(start),
               )
             }
           } else {
@@ -96,12 +91,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
           let start = loc.offset
           let _ = self.advance() // consume =>
           let body = self.parse_arrow_body()
-          return ArrowFunc(
-            [name],
-            body,
-            loc,
-            Some(self.consume_source_text(start)),
-          )
+          return ArrowFunc([name], body, loc, self.consume_source_text(start))
         }
         _ => ()
       }
@@ -119,12 +109,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
           let start = loc.offset
           let _ = self.advance() // consume =>
           let body = self.parse_arrow_body()
-          return ArrowFunc(
-            [name],
-            body,
-            loc,
-            Some(self.consume_source_text(start)),
-          )
+          return ArrowFunc([name], body, loc, self.consume_source_text(start))
         }
         _ => ()
       }
@@ -156,7 +141,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
               rest_param,
               body,
               loc,
-              Some(self.consume_source_text(start)),
+              self.consume_source_text(start),
             )
           } else {
             // Simple arrow func, extract names
@@ -167,7 +152,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
               param_names,
               body,
               loc,
-              Some(self.consume_source_text(start)),
+              self.consume_source_text(start),
             )
           }
         } else {
@@ -822,7 +807,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
               [],
               body,
               tok.loc,
-              Some(self.consume_source_text(tok.loc.offset)),
+              self.consume_source_text(tok.loc.offset),
             )
           }
           _ =>
@@ -1112,7 +1097,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             params,
             body,
             gen_mloc,
-            Some(self.consume_source_text(gen_start)),
+            self.consume_source_text(gen_start),
           )
         } else {
           @ast.Expr::GeneratorExpr(
@@ -1120,7 +1105,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             params,
             body,
             gen_mloc,
-            Some(self.consume_source_text(gen_start)),
+            self.consume_source_text(gen_start),
           )
         }
       } catch {
@@ -1142,7 +1127,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
                 rest_param,
                 body,
                 gen_mloc,
-                Some(self.consume_source_text(gen_start)),
+                self.consume_source_text(gen_start),
               )
             } else {
               GeneratorExprExt(
@@ -1151,7 +1136,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
                 rest_param,
                 body,
                 gen_mloc,
-                Some(self.consume_source_text(gen_start)),
+                self.consume_source_text(gen_start),
               )
             }
           } else {
@@ -1429,7 +1414,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             params,
             body,
             mloc,
-            Some(self.consume_source_text(method_start)),
+            self.consume_source_text(method_start),
           )
         } else {
           @ast.Expr::FuncExpr(
@@ -1437,7 +1422,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
             params,
             body,
             mloc,
-            Some(self.consume_source_text(method_start)),
+            self.consume_source_text(method_start),
           )
         }
       } catch {
@@ -1457,7 +1442,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
                 rest_param,
                 body,
                 mloc,
-                Some(self.consume_source_text(method_start)),
+                self.consume_source_text(method_start),
               )
             } else {
               FuncExprExt(
@@ -1466,7 +1451,7 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
                 rest_param,
                 body,
                 mloc,
-                Some(self.consume_source_text(method_start)),
+                self.consume_source_text(method_start),
               )
             }
           } else {
@@ -1574,7 +1559,7 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
           rest_param,
           body,
           tok.loc,
-          Some(self.consume_source_text(tok.loc.offset)),
+          self.consume_source_text(tok.loc.offset),
         )
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -1591,7 +1576,7 @@ fn Parser::parse_func_expr(self : Parser) -> @ast.Expr raise Error {
     params,
     body,
     tok.loc,
-    Some(self.consume_source_text(tok.loc.offset)),
+    self.consume_source_text(tok.loc.offset),
   )
 }
 
@@ -1628,7 +1613,7 @@ fn Parser::parse_generator_expr(
           rest_param,
           body,
           func_tok.loc,
-          Some(self.consume_source_text(func_tok.loc.offset)),
+          self.consume_source_text(func_tok.loc.offset),
         )
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -1645,7 +1630,7 @@ fn Parser::parse_generator_expr(
     params,
     body,
     func_tok.loc,
-    Some(self.consume_source_text(func_tok.loc.offset)),
+    self.consume_source_text(func_tok.loc.offset),
   )
 }
 
@@ -1715,7 +1700,7 @@ fn Parser::parse_async_func_body(
             rest_param,
             body,
             loc,
-            Some(self.consume_source_text(loc.offset)),
+            self.consume_source_text(loc.offset),
           )
         } else {
           AsyncFuncExprExt(
@@ -1724,7 +1709,7 @@ fn Parser::parse_async_func_body(
             rest_param,
             body,
             loc,
-            Some(self.consume_source_text(loc.offset)),
+            self.consume_source_text(loc.offset),
           )
         }
       } else {
@@ -1743,16 +1728,10 @@ fn Parser::parse_async_func_body(
       params,
       body,
       loc,
-      Some(self.consume_source_text(loc.offset)),
+      self.consume_source_text(loc.offset),
     )
   } else {
-    AsyncFuncExpr(
-      name,
-      params,
-      body,
-      loc,
-      Some(self.consume_source_text(loc.offset)),
-    )
+    AsyncFuncExpr(name, params, body, loc, self.consume_source_text(loc.offset))
   }
 }
 
@@ -2033,7 +2012,7 @@ fn Parser::parse_class_expr(self : Parser) -> @ast.Expr raise Error {
     superclass,
     methods,
     tok.loc,
-    Some(self.consume_source_text(tok.loc.offset)),
+    self.consume_source_text(tok.loc.offset),
   )
 }
 
@@ -2408,7 +2387,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
             rest_param,
             body,
             mloc,
-            Some(self.consume_source_text(method_start)),
+            self.consume_source_text(method_start),
           )
         } else if is_async {
           AsyncFuncExprExt(
@@ -2417,7 +2396,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
             rest_param,
             body,
             mloc,
-            Some(self.consume_source_text(method_start)),
+            self.consume_source_text(method_start),
           )
         } else if is_generator {
           GeneratorExprExt(
@@ -2426,7 +2405,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
             rest_param,
             body,
             mloc,
-            Some(self.consume_source_text(method_start)),
+            self.consume_source_text(method_start),
           )
         } else {
           FuncExprExt(
@@ -2435,7 +2414,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
             rest_param,
             body,
             mloc,
-            Some(self.consume_source_text(method_start)),
+            self.consume_source_text(method_start),
           )
         }
         return @ast.ClassMember::Method({
@@ -2476,7 +2455,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       params,
       body,
       mloc,
-      Some(self.consume_source_text(method_start)),
+      self.consume_source_text(method_start),
     )
   } else if is_async {
     AsyncFuncExpr(
@@ -2484,7 +2463,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       params,
       body,
       mloc,
-      Some(self.consume_source_text(method_start)),
+      self.consume_source_text(method_start),
     )
   } else if is_generator {
     GeneratorExpr(
@@ -2492,16 +2471,10 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       params,
       body,
       mloc,
-      Some(self.consume_source_text(method_start)),
+      self.consume_source_text(method_start),
     )
   } else {
-    FuncExpr(
-      None,
-      params,
-      body,
-      mloc,
-      Some(self.consume_source_text(method_start)),
-    )
+    FuncExpr(None, params, body, mloc, self.consume_source_text(method_start))
   }
   @ast.ClassMember::Method({
     key: key_expr,

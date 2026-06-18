@@ -148,7 +148,7 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
           rest_param,
           body,
           tok.loc,
-          Some(self.consume_source_text(tok.loc.offset)),
+          self.consume_source_text(tok.loc.offset),
         )
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -165,7 +165,7 @@ fn Parser::parse_func_decl(self : Parser) -> @ast.Stmt raise Error {
     params,
     body,
     tok.loc,
-    Some(self.consume_source_text(tok.loc.offset)),
+    self.consume_source_text(tok.loc.offset),
   )
 }
 
@@ -193,7 +193,7 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
           rest_param,
           body,
           tok.loc,
-          Some(self.consume_source_text(tok.loc.offset)),
+          self.consume_source_text(tok.loc.offset),
         )
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -210,7 +210,7 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
     params,
     body,
     tok.loc,
-    Some(self.consume_source_text(tok.loc.offset)),
+    self.consume_source_text(tok.loc.offset),
   )
 }
 
@@ -238,7 +238,7 @@ fn Parser::parse_async_func_decl(self : Parser) -> @ast.Stmt raise Error {
           rest_param,
           body,
           tok.loc,
-          Some(self.consume_source_text(tok.loc.offset)),
+          self.consume_source_text(tok.loc.offset),
         )
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -255,7 +255,7 @@ fn Parser::parse_async_func_decl(self : Parser) -> @ast.Stmt raise Error {
     params,
     body,
     tok.loc,
-    Some(self.consume_source_text(tok.loc.offset)),
+    self.consume_source_text(tok.loc.offset),
   )
 }
 
@@ -284,7 +284,7 @@ fn Parser::parse_async_generator_decl(self : Parser) -> @ast.Stmt raise Error {
           rest_param,
           body,
           tok.loc,
-          Some(self.consume_source_text(tok.loc.offset)),
+          self.consume_source_text(tok.loc.offset),
         )
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -301,7 +301,7 @@ fn Parser::parse_async_generator_decl(self : Parser) -> @ast.Stmt raise Error {
     params,
     body,
     tok.loc,
-    Some(self.consume_source_text(tok.loc.offset)),
+    self.consume_source_text(tok.loc.offset),
   )
 }
 
@@ -1080,7 +1080,7 @@ fn Parser::parse_class_decl(self : Parser) -> @ast.Stmt raise Error {
     superclass,
     methods,
     tok.loc,
-    Some(self.consume_source_text(tok.loc.offset)),
+    self.consume_source_text(tok.loc.offset),
   )
 }
 

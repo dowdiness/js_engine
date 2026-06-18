@@ -1341,7 +1341,7 @@ fn Interpreter::exec_stmt(
         Normal(Undefined)
       }
     }
-    GeneratorDecl(name, params, body, _, _) => {
+    GeneratorDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       if function_decl_is_hoisted_noop(env, name) {
         Normal(Undefined)
@@ -1353,6 +1353,7 @@ fn Interpreter::exec_stmt(
           body,
           is_function_strict(ctx.strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)
@@ -1364,7 +1365,7 @@ fn Interpreter::exec_stmt(
         Normal(Undefined)
       }
     }
-    GeneratorDeclExt(name, params, rest_param, body, _, _) => {
+    GeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1382,6 +1383,7 @@ fn Interpreter::exec_stmt(
           body,
           is_function_strict(ctx.strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)
@@ -1393,7 +1395,7 @@ fn Interpreter::exec_stmt(
         Normal(Undefined)
       }
     }
-    AsyncFuncDecl(name, params, body, _, _) => {
+    AsyncFuncDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       let async_func = self.make_async_function(
         Some(name),
@@ -1402,6 +1404,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, async_func)
@@ -1412,7 +1415,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    AsyncFuncDeclExt(name, params, rest_param, body, _, _) => {
+    AsyncFuncDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1427,6 +1430,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, async_func)
@@ -1437,7 +1441,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    AsyncGeneratorDecl(name, params, body, _, _) => {
+    AsyncGeneratorDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       let gen_func = self.make_async_generator_function(
         Some(name),
@@ -1446,6 +1450,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
@@ -1456,7 +1461,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    AsyncGeneratorDeclExt(name, params, rest_param, body, _, _) => {
+    AsyncGeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1471,6 +1476,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)

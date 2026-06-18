@@ -776,3 +776,18 @@ test "trailing comma after rest param with leading param is SyntaxError" {
   }
   expect_err(result)
 }
+
+///|
+test "parse_tokens without source leaves source text absent" {
+  let source = "function f() {} class C {}"
+  let tokens = @lexer.tokenize(source)
+  let prog = @parser.parse_tokens(tokens)
+  match prog.stmts[0] {
+    FuncDecl(_, _, _, _, None) => ()
+    _ => fail("Expected FuncDecl without source text")
+  }
+  match prog.stmts[1] {
+    ClassDecl(_, _, _, _, None) => ()
+    _ => fail("Expected ClassDecl without source text")
+  }
+}
