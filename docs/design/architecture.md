@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** principles only. Specific struct names, field names, and internal file paths are intentionally omitted — they drift from the code faster than docs update. For the current public API use `moon ide outline interpreter/`; for the completed restructuring analyses see [archive/](archive/).
+> **Status:** principles only. Specific struct names, field names, and internal file paths are intentionally omitted — they drift from the code faster than docs update. For the current public API use `moon ide outline interpreter/`; for the completed restructuring analyses see [archive/](../archive/).
 
 ## Shape
 
@@ -54,9 +54,9 @@ The variant-level distinction between "ordinary object" and each exotic kind exi
 
 ## Related Documents
 
-- [ROADMAP.md](ROADMAP.md) — current conformance status and in-progress structural work
+- [ROADMAP.md](../ROADMAP.md) — current conformance status and in-progress structural work
 - [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md) — execution optimization direction
 - [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — current realm-state ownership and execution-boundary redesign findings
-- [archive/architecture-redesign-2026-04-15.md](archive/architecture-redesign-2026-04-15.md) — completed April-2026 restructuring (ExecContext, runtime/stdlib split, timer API, descriptor consolidation)
-- [archive/2026-04-09-structural-refactoring.md](archive/2026-04-09-structural-refactoring.md) — earlier structural work that produced the current file layout
+- [archive/architecture-redesign-2026-04-15.md](../archive/architecture-redesign-2026-04-15.md) — completed April-2026 restructuring (ExecContext, runtime/stdlib split, timer API, descriptor consolidation)
+- [archive/2026-04-09-structural-refactoring.md](../archive/2026-04-09-structural-refactoring.md) — earlier structural work that produced the current file layout
 - [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md) — exploratory pressures for the next phase

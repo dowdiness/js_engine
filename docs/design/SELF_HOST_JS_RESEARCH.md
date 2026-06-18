@@ -259,7 +259,7 @@ True self-interpretation (running the compiled JS through itself) would require 
 - Classes and prototypes
 - Closures and higher-order functions
 - Map, Set, and other built-in types
-- Test262 pass rate changes over time; see [ROADMAP.md](ROADMAP.md) for the latest totals
+- Test262 pass rate changes over time; see [ROADMAP.md](../ROADMAP.md) for the latest totals
 
 This is a long-term goal that would improve naturally as Test262 compliance increases.
 
@@ -278,7 +278,7 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 
 1. ~~Add CI workflow for JS-compiled engine~~ — `.github/workflows/test262.yml` builds with `moon build --target js` and runs via `node`
 2. ~~Run full Test262 suite against JS-compiled engine~~ — see
-   [ROADMAP.md](ROADMAP.md) for the latest pass/skip/fail snapshot
+   [ROADMAP.md](../ROADMAP.md) for the latest pass/skip/fail snapshot
 3. CI used `node target/js/release/build/cmd/main/main.js` directly
    (faster than `moon run`). Verify the current thread count, per-test
    timeout, and job timeout in `.github/workflows/test262.yml` and
@@ -310,6 +310,6 @@ This is a long-term goal that would improve naturally as Test262 compliance incr
 | Code changes required | **3 new files** (backend-specific argv), **1 edit** (Error toString) |
 | Build command | `moon build --target js` |
 | Run command | `node ./target/js/release/build/cmd/main/main.js '<code>'` |
-| Test262 pass rate | See [ROADMAP.md](ROADMAP.md) for latest totals |
+| Test262 pass rate | See [ROADMAP.md](../ROADMAP.md) for latest totals |
 
 The codebase's pure-MoonBit, zero-FFI architecture made JS-target compilation straightforward. The only issues encountered were the `process.argv` offset difference (solved with backend-specific files) and Error object toString formatting (solved by checking `class_name`).

@@ -44,6 +44,7 @@ test "README run facade" {
 The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
 
 - `run` — evaluate a script; drains microtasks and timers before returning
+- `run_compiled` — evaluate the supported script subset through the opt-in closure-conversion prototype
 - `run_module` / `run_modules` — evaluate one or more ES modules and collect exports
 - `run_with_event_loop`, `run_microtask_checkpoint`, `run_timer_checkpoint`,
   `has_pending_microtasks`, `has_pending_timers` — for hosts that want to drive the event loop themselves
@@ -52,7 +53,7 @@ The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
 
 Core ES5 plus selected ES6+ features: `let` / `const` / `var`, arrow functions, closures, classes, `for` / `while` / `for-in` / `for-of`, `try` / `catch` / `finally`, template literals, destructuring, spread / rest, ES Modules, Promises + microtasks, `setTimeout` / `setInterval`, ES6 Proxy (13 traps) + Reflect API (13 methods), TypedArrays (9 types), ArrayBuffer, DataView, RegExp, JSON, Map / Set / WeakMap / WeakSet, generators, Symbols.
 
-For current conformance per category, see [docs/ROADMAP.md](docs/ROADMAP.md).
+For current conformance per category, see [docs/supported-features.md](docs/supported-features.md).
 
 ## Package Structure
 
@@ -62,10 +63,14 @@ errors/         JavaScript error variants and formatting helpers
 lexer/          Tokenizer
 ast/            AST node definitions
 parser/         Recursive descent parser with Pratt precedence
+static_semantics/  Early-error and declaration-fact analysis
+compiler/       Opt-in closure-conversion prototype
 interpreter/    Wiring layer for runtime + standard library
 interpreter/runtime/  Tree-walking evaluator, value model, host state
 interpreter/stdlib/   JavaScript built-ins
 cmd/main/       CLI entry point
+cmd/test262_runner/  Native test262 runner
+cmd/report_test262/  CI artifact report generator
 benchmarks/     Benchmark workloads and runner
 ```
 
@@ -85,7 +90,8 @@ Run the test262 conformance suite with `make test262`. See [docs/TEST262.md](doc
 
 - [docs/README.md](docs/README.md) — start here for deeper material
 - [docs/development.md](docs/development.md) — maintainer workflow and generated files
-- [docs/ROADMAP.md](docs/ROADMAP.md) — current status, failure breakdown, next targets
+- [docs/ROADMAP.md](docs/ROADMAP.md) — current status and active roadmap
+- [docs/supported-features.md](docs/supported-features.md) — per-category conformance, Annex B, and missing features
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — terminology used in the code and docs
 - [AGENTS.md](AGENTS.md) — MoonBit coding conventions (also used by AI agents)
 

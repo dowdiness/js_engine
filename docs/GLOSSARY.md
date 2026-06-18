@@ -190,4 +190,4 @@ Domain-specific terms used in this JavaScript engine, organized by specification
 | **MoonBit** | — | Statically-typed language that compiles to WebAssembly. The implementation language for this JS engine. |
 | **Ref[T]** | mutable reference | MoonBit's mutable box type (e.g., `Ref[Int]`, `Ref[Bool]`), used for counters and shared mutable state in closures. |
 | **.mbt** | — | MoonBit source file extension. |
-| **moon.mod.json** | — | MoonBit module manifest declaring package name, version, and dependencies. |
+| **moon.mod** | — | MoonBit module manifest declaring package name, version, and dependencies. |

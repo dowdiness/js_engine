@@ -6,7 +6,7 @@
 
 ## Scope clarification
 
-The formal Stage 9 in `docs/architecture-execution-plan-2026-06-12.md` covers *calls and direct-eval routing*. This document describes a **pre-Stage-9 raw-installs slice**: migrating the remaining raw `bag.properties`/`bag.descriptors` writes for `"constructor"` and `"prototype"` in 9 stdlib files that Stage 8 deferred. Calls/direct-eval is a separate concern and is explicitly excluded here.
+The formal Stage 9 in `docs/design/architecture-execution-plan-2026-06-12.md` covers *calls and direct-eval routing*. This document describes a **pre-Stage-9 raw-installs slice**: migrating the remaining raw `bag.properties`/`bag.descriptors` writes for `"constructor"` and `"prototype"` in 9 stdlib files that Stage 8 deferred. Calls/direct-eval is a separate concern and is explicitly excluded here.
 
 ## What was deferred from Stage 8
 

@@ -1,7 +1,7 @@
 # Architecture Redesign Probes — 2026-04-17
 
 > **Status:** exploratory — analysis, not yet executed. Supplements
-> [archive/architecture-redesign-2026-04-15.md](archive/architecture-redesign-2026-04-15.md)
+> [archive/architecture-redesign-2026-04-15.md](../archive/architecture-redesign-2026-04-15.md)
 > (complete and shipped). This document records the next-phase
 > pressures identified after April-15 and the sizing evidence gathered
 > from four uncertainty probes.
