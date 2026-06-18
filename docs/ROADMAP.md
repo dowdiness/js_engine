@@ -92,17 +92,19 @@ make test262-filter ARGS="--filter <path-or-category> --summary"
 make test262-report
 ```
 
-### 4. Continue architecture cleanup around realm/state ownership
+### 4. Tighten architecture boundaries as optimization paths grow
 
-The active architectural pressure is realm hermeticity and state ownership: keep
-mutable well-known-symbol, prototype-cache, ArrayBuffer, WeakMap/WeakSet, and
-construction-context state under interpreter/realm ownership instead of module
-globals. The current design context is in
-[architecture-redesign-2026-05-19.md](design/architecture-redesign-2026-05-19.md) and
-[architecture-execution-plan-2026-06-12.md](design/architecture-execution-plan-2026-06-12.md).
+Mutable realm-state ownership is now a maintenance invariant, not the active
+redesign pressure: the architecture-state audit inventory is empty
+(`scripts/architecture_state_classified_mutable_state.json` is `{}`). Keep that
+gate green, but focus new architecture work on boundary clarity between the
+runtime semantic owner, stdlib bootstrap, static-semantic preparation, and
+compiler/bytecode experiments. The current design context is in
+[architecture-redesign-2026-06-12.md](design/architecture-redesign-2026-06-12.md)
+and [architecture-execution-plan-2026-06-12.md](design/architecture-execution-plan-2026-06-12.md).
 
-Completed representation-access and dispatcher stages are archived in
-[archive/executed-roadmap-history.md](archive/executed-roadmap-history.md#completed-structural-refactoring-stages).
+Completed realm-state, representation-access, and dispatcher stages are archived
+in [archive/executed-roadmap-history.md](archive/executed-roadmap-history.md#completed-structural-refactoring-stages).
 
 ### 5. Keep bytecode optimization disciplined
 
