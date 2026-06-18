@@ -13406,8 +13406,55 @@ test "Function.prototype.toString distinguishes async functions" {
     #|console.log((function foo(){}).toString());
     #|console.log((async function bar(){}).toString());
   let output = run_output(src)
+  json_inspect(output, content=["function foo(){}", "async function bar(){}"])
+}
+
+///|
+test "Function.prototype.toString preserves parsed source text" {
+  let output = run_output(
+    (
+      #|console.log((function f() {}).toString());
+      #|console.log((() => 42).toString());
+      #|console.log((() => /x/g).toString());
+      #|console.log((() => `x`).toString());
+      #|let escapedIdent = 1;
+      #|console.log((() => \u0065scapedIdent).toString());
+      #|console.log((x => { return x; }).toString());
+      #|console.log((async () => {}).toString());
+      #|console.log((function* g() {}).toString());
+      #|function* hg() {}
+      #|console.log(hg.toString());
+      #|async function ha() {}
+      #|console.log(ha.toString());
+      #|async function* hag() {}
+      #|console.log(hag.toString());
+      #|console.log((class Foo {}).toString());
+      #|console.log(Function("return 1").toString());
+      #|console.log(Function().toString());
+      #|let GF = Object.getPrototypeOf(function*(){}).constructor;
+      #|console.log(GF().toString());
+      #|let AF = Object.getPrototypeOf(async function(){}).constructor;
+      #|console.log(AF().toString());
+      #|let C = class { get x(){} set y(v){} async m(){} *g(){} };
+      #|console.log(Object.getOwnPropertyDescriptor(C.prototype, "x").get.toString());
+      #|console.log(Object.getOwnPropertyDescriptor(C.prototype, "y").set.toString());
+      #|console.log(C.prototype.m.toString());
+      #|console.log(C.prototype.g.toString());
+      #|let p = new Proxy(function f(){}, {});
+      #|console.log(Function.prototype.toString.call(p));
+      #|console.log(String(p));
+      #|console.log(parseInt.toString());
+      #|console.log((function(){}).bind(null).toString());
+    ),
+  )
   json_inspect(output, content=[
-    "function foo() { [native code] }", "async function bar() { [native code] }",
+    "function f() {}", "() => 42", "() => /x/g", "() => `x`", "() => \\u0065scapedIdent",
+    "x => { return x; }", "async () => {}", "function* g() {}", "function* hg() {}",
+    "async function ha() {}", "async function* hag() {}", "class Foo {}", "function anonymous(\n) {\nreturn 1\n}",
+    "function anonymous(\n) {\n\n}", "function* anonymous(\n) {\n\n}", "async function anonymous(\n) {\n\n}",
+    "get x(){}", "set y(v){}", "async m(){}", "*g(){}", "function proxy() { [native code] }",
+    "function proxy() { [native code] }", "function parseInt() { [native code] }",
+    "function bound() { [native code] }",
   ])
 }
 
@@ -16484,7 +16531,7 @@ test "new Function with strict directive and legacy octal" {
   let src =
     #|new Function('"use strict"; "\\1"');
   expect_throw(
-    src, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+    src, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 3, col 15",
   )
 }
 
@@ -16494,7 +16541,7 @@ test "new GeneratorFunction with strict directive and legacy octal" {
     #|let GF = (function*(){}).constructor;
     #|new GF('"use strict"; "\\1"');
   expect_throw(
-    src, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+    src, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 3, col 15",
   )
 }
 
@@ -16504,7 +16551,7 @@ test "new AsyncFunction with strict directive and legacy octal" {
     #|let AF = (async function(){}).constructor;
     #|new AF('"use strict"; "\\1"');
   expect_throw(
-    src, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 2, col 15",
+    src, "SyntaxError: Octal escape sequences are not allowed in strict mode at line 3, col 15",
   )
 }
 

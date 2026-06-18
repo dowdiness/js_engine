@@ -12,10 +12,16 @@ fn Interpreter::make_async_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  source_text? : String? = None,
 ) -> Value {
   let func_name = match name {
     Some(n) => n
     None => ""
+  }
+  let internal_slots : Map[String, Value] = {}
+  match source_text {
+    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    None => ()
   }
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -36,7 +42,7 @@ fn Interpreter::make_async_function(
         symbol_properties: {},
         descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
-        internal_slots: {},
+        internal_slots,
       },
       prototype: async_proto,
       callable: Some(
@@ -76,10 +82,16 @@ fn Interpreter::make_async_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  source_text? : String? = None,
 ) -> Value {
   let func_name = match name {
     Some(n) => n
     None => ""
+  }
+  let internal_slots : Map[String, Value] = {}
+  match source_text {
+    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    None => ()
   }
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -101,7 +113,7 @@ fn Interpreter::make_async_function_ext(
         symbol_properties: {},
         descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
-        internal_slots: {},
+        internal_slots,
       },
       prototype: async_proto,
       callable: Some(
@@ -398,6 +410,7 @@ fn Interpreter::make_async_generator_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  source_text? : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
     self,
@@ -408,6 +421,7 @@ fn Interpreter::make_async_generator_function(
     body,
     strict,
     closure,
+    source_text,
   )
 }
 
@@ -421,6 +435,7 @@ fn Interpreter::make_async_generator_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  source_text? : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
     self,
@@ -431,6 +446,7 @@ fn Interpreter::make_async_generator_function_ext(
     body,
     strict,
     closure,
+    source_text,
   )
 }
 
@@ -446,6 +462,7 @@ fn make_async_gen_function_inner(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  source_text : String?,
 ) -> Value {
   let object_prototype = interp.global.get("[[ObjectPrototype]]") catch {
     _ => Null
@@ -480,6 +497,11 @@ fn make_async_gen_function_inner(
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
   fn_props["length"] = Number(func_length.to_double())
+  let internal_slots : Map[String, Value] = {}
+  match source_text {
+    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    None => ()
+  }
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -506,7 +528,7 @@ fn make_async_gen_function_inner(
           },
         },
         symbol_descriptors: {},
-        internal_slots: {},
+        internal_slots,
       },
       prototype: gen_func_proto,
       callable: Some(
@@ -698,23 +720,19 @@ pub fn setup_async_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(interp, _this, args) raise {
-      if args.length() == 0 {
-        return interp.make_async_function(
-          Some("anonymous"),
-          [],
-          None,
-          [],
-          false,
-          interp.global,
-        )
+      // Last arg is body, previous args are parameter names. With no
+      // arguments, the synthesized body and parameter list are both empty.
+      let body_str = if args.length() == 0 {
+        ""
+      } else {
+        match args[args.length() - 1] {
+          String_(s) => s
+          _ => args[args.length() - 1].to_string()
+        }
       }
-      // Last arg is body, previous args are parameter names
-      let body_str = match args[args.length() - 1] {
-        String_(s) => s
-        _ => args[args.length() - 1].to_string()
-      }
+      let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
       let param_parts : Array[String] = []
-      for i = 0; i < args.length() - 1; i = i + 1 {
+      for i = 0; i < param_count; i = i + 1 {
         match args[i] {
           String_(s) => param_parts.push(s)
           _ => param_parts.push(args[i].to_string())
@@ -723,13 +741,13 @@ pub fn setup_async_function_constructor(
       let params_str = param_parts.join(",")
       let source = "async function anonymous(" +
         params_str +
-        ") {\n" +
+        "\n) {\n" +
         body_str +
         "\n}"
       let prog = @parser.parse(source)
       if prog.stmts.length() > 0 {
         match prog.stmts[0] {
-          AsyncFuncDecl(_, params, body, _) => {
+          AsyncFuncDecl(_, params, body, _, source_text) => {
             // Validate static early errors against the function's strict context.
             let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params(true, params, None, body)
@@ -741,9 +759,10 @@ pub fn setup_async_function_constructor(
               body,
               body_strict,
               interp.global,
+              source_text~,
             )
           }
-          AsyncFuncDeclExt(_, params, rest_param, body, _) => {
+          AsyncFuncDeclExt(_, params, rest_param, body, _, source_text) => {
             // Validate static early errors against the function's strict context.
             let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params_ext(params, rest_param, body)
@@ -755,6 +774,7 @@ pub fn setup_async_function_constructor(
               body,
               body_strict,
               interp.global,
+              source_text~,
             )
           }
           _ => ()

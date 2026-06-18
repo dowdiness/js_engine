@@ -3,19 +3,19 @@
 /// per ECMAScript IsAnonymousFunctionDefinition (§15.2)
 fn is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
   match expr {
-    FuncExpr(None, _, _, _) => true
-    FuncExprExt(None, _, _, _, _) => true
-    ArrowFunc(_, _, _) => true
-    ArrowFuncExt(_, _, _, _) => true
-    ClassExpr(None, _, _, _) => true
-    GeneratorExpr(None, _, _, _) => true
-    GeneratorExprExt(None, _, _, _, _) => true
-    AsyncFuncExpr(None, _, _, _) => true
-    AsyncFuncExprExt(None, _, _, _, _) => true
-    AsyncArrowFunc(_, _, _) => true
-    AsyncArrowFuncExt(_, _, _, _) => true
-    AsyncGeneratorExpr(None, _, _, _) => true
-    AsyncGeneratorExprExt(None, _, _, _, _) => true
+    FuncExpr(None, _, _, _, _) => true
+    FuncExprExt(None, _, _, _, _, _) => true
+    ArrowFunc(_, _, _, _) => true
+    ArrowFuncExt(_, _, _, _, _) => true
+    ClassExpr(None, _, _, _, _) => true
+    GeneratorExpr(None, _, _, _, _) => true
+    GeneratorExprExt(None, _, _, _, _, _) => true
+    AsyncFuncExpr(None, _, _, _, _) => true
+    AsyncFuncExprExt(None, _, _, _, _, _) => true
+    AsyncArrowFunc(_, _, _, _) => true
+    AsyncArrowFuncExt(_, _, _, _, _) => true
+    AsyncGeneratorExpr(None, _, _, _, _) => true
+    AsyncGeneratorExprExt(None, _, _, _, _, _) => true
     Grouping(inner, _) => is_anonymous_function_definition(inner)
     _ => false
   }

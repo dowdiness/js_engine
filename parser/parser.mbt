@@ -48,7 +48,9 @@ fn is_reserved_word(name : String) -> Bool {
 ///|
 pub(all) struct Parser {
   tokens : Array[@token.Token]
+  source : String
   mut pos : Int
+  mut last_end : Int
   mut allow_import_export : Bool // true at module top-level, false in nested blocks
   generator_depth : Array[Bool] // Stack: true when inside a generator function body
   async_depth : Array[Bool] // Stack: true when inside an async function body
@@ -56,10 +58,12 @@ pub(all) struct Parser {
 }
 
 ///|
-pub fn Parser::new(tokens : Array[@token.Token]) -> Parser {
+pub fn Parser::new(tokens : Array[@token.Token], source : String) -> Parser {
   {
     tokens,
+    source,
     pos: 0,
+    last_end: 0,
     allow_import_export: true,
     generator_depth: [false],
     async_depth: [false],
@@ -126,7 +130,161 @@ fn Parser::peek_kind(self : Parser) -> @token.TokenKind {
 fn Parser::advance(self : Parser) -> @token.Token {
   let tok = self.tokens[self.pos]
   self.pos += 1
+  self.last_end = self.token_end_offset(tok)
   tok
+}
+
+///|
+fn is_ascii_alpha_num(c : Char) -> Bool {
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+///|
+fn Parser::scan_identifier_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start
+  while i < len {
+    let c = chars[i]
+    if is_ascii_alpha_num(c) || c == '_' || c == '$' || c.to_int() >= 128 {
+      i += 1
+    } else if c == '\\' && i + 1 < len && chars[i + 1] == 'u' {
+      i += 2
+      if i < len && chars[i] == '{' {
+        i += 1
+        while i < len && chars[i] != '}' {
+          i += 1
+        }
+        if i < len {
+          i += 1
+        }
+      } else {
+        i += 4
+      }
+    } else {
+      break
+    }
+  }
+  i
+}
+
+///|
+fn Parser::scan_regex_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start + 1
+  let mut in_class = false
+  while i < len {
+    let c = chars[i]
+    if c == '/' && !in_class {
+      i += 1
+      while i < len &&
+            (is_ascii_alpha_num(chars[i]) || chars[i] == '_' || chars[i] == '$') {
+        i += 1
+      }
+      return i
+    }
+    if c == '[' {
+      in_class = true
+    } else if c == ']' {
+      in_class = false
+    } else if c == '\\' && i + 1 < len {
+      i += 2
+      continue
+    }
+    i += 1
+  }
+  i
+}
+
+///|
+fn Parser::scan_template_segment_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start
+  if i < len && (chars[i] == '`' || chars[i] == '}') {
+    i += 1
+  }
+  while i < len {
+    let c = chars[i]
+    if c == '`' {
+      return i + 1
+    }
+    if c == '$' && i + 1 < len && chars[i + 1] == '{' {
+      return i + 2
+    }
+    if c == '\\' && i + 1 < len {
+      i += 2
+    } else {
+      i += 1
+    }
+  }
+  i
+}
+
+///|
+fn Parser::scan_number_end(self : Parser, start : Int) -> Int {
+  let chars = self.source.to_array()
+  let len = chars.length()
+  let mut i = start
+  while i < len {
+    let c = chars[i]
+    if is_ascii_alpha_num(c) || c == '_' || c == '.' {
+      i += 1
+    } else if (c == '+' || c == '-') &&
+      i > start &&
+      (chars[i - 1] == 'e' || chars[i - 1] == 'E') {
+      i += 1
+    } else {
+      break
+    }
+  }
+  i
+}
+
+///|
+fn Parser::scan_source_token_end(self : Parser, tok : @token.Token) -> Int? {
+  let start = tok.loc.offset
+  if self.source == "" || start < 0 || start >= self.source.length() {
+    return None
+  }
+  match tok.kind {
+    Ident(_) => Some(self.scan_identifier_end(start))
+    Regex(_, _) => Some(self.scan_regex_end(start))
+    NoSubTemplate(_) | TemplateHead(_) | TemplateMiddle(_) | TemplateTail(_) =>
+      Some(self.scan_template_segment_end(start))
+    Number(_) => Some(self.scan_number_end(start))
+    _ => None
+  }
+}
+
+///|
+fn Parser::token_end_offset(self : Parser, tok : @token.Token) -> Int {
+  let raw_end = tok.loc.offset + tok.raw.length()
+  if self.source == "" {
+    raw_end
+  } else if tok.raw != "" &&
+    raw_end <= self.source.length() &&
+    self.source.unsafe_substring(start=tok.loc.offset, end=raw_end) == tok.raw {
+    raw_end
+  } else {
+    match self.scan_source_token_end(tok) {
+      Some(end_offset) => end_offset
+      None => raw_end
+    }
+  }
+}
+
+///|
+fn Parser::consume_source_text(self : Parser, start_offset : Int) -> String? {
+  if self.source == "" ||
+    start_offset < 0 ||
+    self.last_end > self.source.length() ||
+    start_offset > self.last_end {
+    None
+  } else {
+    Some(self.source.unsafe_substring(start=start_offset, end=self.last_end))
+  }
 }
 
 ///|
@@ -137,7 +295,7 @@ fn Parser::at(self : Parser, kind : @token.TokenKind) -> Bool {
 ///|
 fn Parser::eat(self : Parser, kind : @token.TokenKind) -> Bool {
   if self.at(kind) {
-    self.pos += 1
+    let _ = self.advance()
     true
   } else {
     false
@@ -172,32 +330,32 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
           message="Unexpected reserved word '\{name}' at line \{tok.loc.line}, col \{tok.loc.col}",
         )
       }
-      self.pos += 1
+      let _ = self.advance()
       name
     }
     Get => {
-      self.pos += 1
+      let _ = self.advance()
       "get"
     }
     Set => {
-      self.pos += 1
+      let _ = self.advance()
       "set"
     }
     From => {
-      self.pos += 1
+      let _ = self.advance()
       "from"
     }
     As => {
-      self.pos += 1
+      let _ = self.advance()
       "as"
     }
     Of => {
-      self.pos += 1
+      let _ = self.advance()
       "of"
     }
     Undefined => {
       // undefined is NOT a reserved word - it's a regular identifier
-      self.pos += 1
+      let _ = self.advance()
       "undefined"
     }
     Yield =>
@@ -205,7 +363,7 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
       // unless the current grammar production (for example class field
       // initializers) forbids Yield as an IdentifierReference.
       if !self.in_generator() && self.allow_yield_identifier() {
-        self.pos += 1
+        let _ = self.advance()
         "yield"
       } else {
         let tok = self.peek()
@@ -214,7 +372,7 @@ fn Parser::expect_ident(self : Parser) -> String raise Error {
         )
       }
     Static => {
-      self.pos += 1
+      let _ = self.advance()
       "static"
     }
     _ => {
@@ -275,7 +433,7 @@ fn Parser::expect_ident_name(self : Parser) -> String raise Error {
     | False
     | Null
     | Undefined => {
-      self.pos += 1
+      let _ = self.advance()
       tok.raw
     }
     _ =>
@@ -335,8 +493,11 @@ fn Parser::is_async_generator(self : Parser) -> Bool {
 }
 
 ///|
-pub fn parse_tokens(tokens : Array[@token.Token]) -> @ast.Program raise Error {
-  let parser = Parser::new(tokens)
+pub fn parse_tokens(
+  tokens : Array[@token.Token],
+  source? : String = "",
+) -> @ast.Program raise Error {
+  let parser = Parser::new(tokens, source)
   let stmts : Array[@ast.Stmt] = []
   while !parser.at(EOF) {
     stmts.push(parser.parse_stmt())
@@ -347,5 +508,5 @@ pub fn parse_tokens(tokens : Array[@token.Token]) -> @ast.Program raise Error {
 ///|
 pub fn parse(source : String) -> @ast.Program raise Error {
   let tokens = @lexer.tokenize(source)
-  parse_tokens(tokens)
+  parse_tokens(tokens, source~)
 }

@@ -9,20 +9,22 @@ import {
 // Values
 pub fn parse(String) -> @ast.Program raise
 
-pub fn parse_tokens(Array[@token.Token]) -> @ast.Program raise
+pub fn parse_tokens(Array[@token.Token], source? : String) -> @ast.Program raise
 
 // Errors
 
 // Types and methods
 pub(all) struct Parser {
   tokens : Array[@token.Token]
+  source : String
   mut pos : Int
+  mut last_end : Int
   mut allow_import_export : Bool
   generator_depth : Array[Bool]
   async_depth : Array[Bool]
   yield_identifier_depth : Array[Bool]
 }
-pub fn Parser::new(Array[@token.Token]) -> Self
+pub fn Parser::new(Array[@token.Token], String) -> Self
 
 // Type aliases
 

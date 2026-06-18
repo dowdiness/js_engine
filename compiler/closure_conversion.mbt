@@ -114,11 +114,11 @@ fn compile_expr_to_closure_inner(
     }
     Ternary(cond, then_expr, else_expr, _) =>
       compile_ternary(cond, then_expr, else_expr)
-    FuncExpr(name, params, body, _) => compile_func_expr(name, params, body)
-    FuncExprExt(name, params, rest_param, body, _) =>
+    FuncExpr(name, params, body, _, _) => compile_func_expr(name, params, body)
+    FuncExprExt(name, params, rest_param, body, _, _) =>
       compile_func_expr_ext(name, params, rest_param, body)
-    ArrowFunc(params, body, _) => compile_arrow_func(params, body)
-    ArrowFuncExt(params, rest_param, body, _) =>
+    ArrowFunc(params, body, _, _) => compile_arrow_func(params, body)
+    ArrowFuncExt(params, rest_param, body, _, _) =>
       compile_arrow_func_ext(params, rest_param, body)
     Call(callee, args, loc) => compile_call(callee, args, loc)
     Member(Ident("console", _), prop, loc) =>
@@ -358,7 +358,7 @@ fn compile_property_value(
 ) -> (Interpreter, ExecContext, Environment) -> Value raise Error {
   if prop.is_method {
     match prop.value {
-      FuncExpr(name, params, body, _) =>
+      FuncExpr(name, params, body, _, _) =>
         compile_func_expr_with_constructable(name, params, body, false)
       _ => compile_expr_to_closure_inner(prop.value)
     }
@@ -941,6 +941,7 @@ fn compile_func_expr_ext(
       strict: ctx.strict || @static_semantics.has_use_strict(body),
       has_name_binding: name is Some(_),
       is_method: false,
+      source_text: None,
     }
     @runtime.make_func_ext(func_data)
   }
@@ -986,6 +987,7 @@ fn compile_arrow_func_ext(
       strict: ctx.strict || @static_semantics.has_use_strict(body),
       has_name_binding: false,
       is_method: false,
+      source_text: None,
     }
     make_arrow_func_ext(func_data, arrow_ext_length(params))
   }
@@ -1192,7 +1194,7 @@ fn compile_stmt(
       let body = compile_body(stmts)
       fn(interp, ctx, env) raise { (body.0)(interp, ctx, env) }
     }
-    FuncDecl(name, params, body, _) => {
+    FuncDecl(name, params, body, _, _) => {
       let compiled_body = compile_body(body)
       fn(_interp, ctx, env) raise {
         @runtime.validate_function_signature(

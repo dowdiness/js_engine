@@ -449,6 +449,7 @@ pub(all) struct ClassConstructorData {
   closure : Environment
   super_proto : Value
   instance_fields : Array[ClassFieldInit]
+  source_text : String?
 }
 
 pub(all) struct ClassFieldInit {
@@ -494,6 +495,7 @@ pub(all) struct FuncData {
   strict : Bool
   has_name_binding : Bool
   is_method : Bool
+  source_text : String?
 }
 
 pub(all) struct FuncDataExt {
@@ -505,6 +507,7 @@ pub(all) struct FuncDataExt {
   strict : Bool
   has_name_binding : Bool
   is_method : Bool
+  source_text : String?
 }
 
 pub(all) struct FunctionRealmProtos {

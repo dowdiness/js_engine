@@ -193,22 +193,23 @@ fn Interpreter::extract_export_names(
 ) -> Unit {
   match decl {
     VarDecl(_, name, _, _) => self.module_export_bindings.push((name, name))
-    FuncDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
-    FuncDeclExt(name, _, _, _, _) =>
+    FuncDecl(name, _, _, _, _) => self.module_export_bindings.push((name, name))
+    FuncDeclExt(name, _, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
-    GeneratorDecl(name, _, _, _) =>
+    GeneratorDecl(name, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
-    GeneratorDeclExt(name, _, _, _, _) =>
+    GeneratorDeclExt(name, _, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
-    AsyncFuncDecl(name, _, _, _) =>
+    AsyncFuncDecl(name, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
-    AsyncFuncDeclExt(name, _, _, _, _) =>
+    AsyncFuncDeclExt(name, _, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
-    AsyncGeneratorDecl(name, _, _, _) =>
+    AsyncGeneratorDecl(name, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
-    AsyncGeneratorDeclExt(name, _, _, _, _) =>
+    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
       self.module_export_bindings.push((name, name))
-    ClassDecl(name, _, _, _) => self.module_export_bindings.push((name, name))
+    ClassDecl(name, _, _, _, _) =>
+      self.module_export_bindings.push((name, name))
     DestructureDecl(_, pattern, _, _) =>
       self.extract_pattern_export_names(pattern)
     StmtList(stmts, _) =>

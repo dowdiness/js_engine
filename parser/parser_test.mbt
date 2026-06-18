@@ -178,7 +178,7 @@ test "parse function declaration" {
   let prog = @parser.parse("function add(a, b) { return a + b; }")
   expect_int(prog.stmts.length(), 1, "statement count")
   match prog.stmts[0] {
-    FuncDecl(name, params, _, _) => {
+    FuncDecl(name, params, _, _, _) => {
       expect_string(name, "add", "function name")
       json_inspect(params, content=["a", "b"])
     }
@@ -244,7 +244,7 @@ test "parse ternary" {
 test "parse function expression" {
   let prog = @parser.parse("let f = function(x) { return x; }")
   match prog.stmts[0] {
-    VarDecl(_, _, Some(FuncExpr(_, params, _, _)), _) =>
+    VarDecl(_, _, Some(FuncExpr(_, params, _, _, _)), _) =>
       json_inspect(params, content=["x"])
     _ => fail("Expected FuncExpr in VarDecl")
   }
@@ -347,7 +347,7 @@ test "parenthesized destructuring for-in/of heads are SyntaxError" {
 test "parse class accessors allow line terminator after keyword" {
   let prog = @parser.parse("class C { get\nx() { return 1; } set\ny(v) { } }")
   match prog.stmts[0] {
-    ClassDecl(name, None, members, _) => {
+    ClassDecl(name, None, members, _, _) => {
       expect_string(name, "C", "class name")
       guard members.length() == 2 else { fail("expected two class members") }
       match members[0] {
@@ -711,7 +711,7 @@ test "export-named-from propagates source_lex_form" {
 test "trailing comma in named function params (single)" {
   let prog = @parser.parse("function f(a,) {}")
   match prog.stmts[0] {
-    FuncDecl(name, params, _, _) => {
+    FuncDecl(name, params, _, _, _) => {
       expect_string(name, "f", "function name")
       json_inspect(params, content=["a"])
     }
@@ -723,7 +723,7 @@ test "trailing comma in named function params (single)" {
 test "trailing comma in named function params (multiple)" {
   let prog = @parser.parse("function f(a, b,) {}")
   match prog.stmts[0] {
-    FuncDecl(name, params, _, _) => {
+    FuncDecl(name, params, _, _, _) => {
       expect_string(name, "f", "function name")
       json_inspect(params, content=["a", "b"])
     }
@@ -741,7 +741,7 @@ test "trailing comma in nameless function expression params" {
 test "trailing comma in generator params" {
   let prog = @parser.parse("function* g(a, b,) { yield a; }")
   match prog.stmts[0] {
-    GeneratorDecl(name, params, _, _) => {
+    GeneratorDecl(name, params, _, _, _) => {
       expect_string(name, "g", "generator name")
       json_inspect(params, content=["a", "b"])
     }
@@ -775,4 +775,19 @@ test "trailing comma after rest param with leading param is SyntaxError" {
     _ => Err(())
   }
   expect_err(result)
+}
+
+///|
+test "parse_tokens without source leaves source text absent" {
+  let source = "function f() {} class C {}"
+  let tokens = @lexer.tokenize(source)
+  let prog = @parser.parse_tokens(tokens)
+  match prog.stmts[0] {
+    FuncDecl(_, _, _, _, None) => ()
+    _ => fail("Expected FuncDecl without source text")
+  }
+  match prog.stmts[1] {
+    ClassDecl(_, _, _, _, None) => ()
+    _ => fail("Expected ClassDecl without source text")
+  }
 }

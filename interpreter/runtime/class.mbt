@@ -31,6 +31,7 @@ fn Interpreter::create_class(
   superclass_expr : @ast.Expr?,
   members : Array[@ast.ClassMember],
   env : Environment,
+  source_text : String?,
 ) -> Value raise Error {
   // Class bodies are always strict per spec
   let class_ctx : ExecContext = {
@@ -189,7 +190,7 @@ fn Interpreter::create_class(
           // Extract constructor params and body
           // Class bodies are always strict, so ensure constructor body has "use strict"
           match m.value {
-            FuncExpr(_, param_names, body, _) => {
+            FuncExpr(_, param_names, body, _, _) => {
               let strict_body = ensure_strict_body(body)
               validate_function_signature(true, None, param_names, strict_body)
               // Wrap plain names as Param objects (no defaults/rest/patterns)
@@ -205,7 +206,7 @@ fn Interpreter::create_class(
               ctor_fn = Some((params, None, strict_body))
               ctor_param_count = param_names.length()
             }
-            FuncExprExt(_, params, rest, body, _) => {
+            FuncExprExt(_, params, rest, body, _, _) => {
               let strict_body = ensure_strict_body(body)
               validate_function_signature_ext(
                 true,
@@ -237,7 +238,7 @@ fn Interpreter::create_class(
           instance_method_env
         }
         let method_val : Value = match m.value {
-          FuncExpr(fn_name, params, body, _) => {
+          FuncExpr(fn_name, params, body, _, method_source_text) => {
             let strict_body = ensure_strict_body(body)
             validate_function_signature(true, fn_name, params, strict_body)
             let func_data : FuncData = {
@@ -250,10 +251,11 @@ fn Interpreter::create_class(
               has_name_binding: false,
               // Class MethodDefinitions do not go through MakeConstructor.
               is_method: true,
+              source_text: method_source_text,
             }
             make_func(func_data)
           }
-          FuncExprExt(fn_name, params, rest, body, _) => {
+          FuncExprExt(fn_name, params, rest, body, _, method_source_text) => {
             let strict_body = ensure_strict_body(body)
             validate_function_signature_ext(
               true, fn_name, params, rest, strict_body,
@@ -267,6 +269,7 @@ fn Interpreter::create_class(
               strict: true,
               has_name_binding: false,
               is_method: true,
+              source_text: method_source_text,
             }
             make_func_ext(func_data)
           }
@@ -460,6 +463,7 @@ fn Interpreter::create_class(
           closure: env,
           super_proto,
           instance_fields,
+          source_text,
         }),
       ),
       class_name: "Function",

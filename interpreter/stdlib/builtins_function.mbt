@@ -11,6 +11,24 @@ fn func_kind_prefix(class_name : String) -> String {
 ///|
 /// ES262 §10.2.4 ExpectedArgumentCount for extended parameter lists:
 /// count parameters before the first default initializer or rest parameter.
+fn callable_source_text(data : @runtime.ObjectData) -> String? {
+  match data.callable {
+    Some(UserFunc(func_data)) | Some(ArrowFunc(func_data)) =>
+      func_data.source_text
+    Some(UserFuncExt(func_data)) | Some(ArrowFuncExt(func_data)) =>
+      func_data.source_text
+    Some(ClassConstructor({ source_text, .. })) => source_text
+    Some(InterpreterCallable(_, _))
+    | Some(InterpreterCallableWithContext(_, _)) =>
+      match data.bag.internal_slots.get("[[SourceText]]") {
+        Some(String_(text)) => Some(text)
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
 fn expected_argument_count_ext(params : Array[@ast.Param]) -> Int {
   for p in params; count = 0 {
     if p.default_val is Some(_) || p.is_rest_pattern {
@@ -38,55 +56,67 @@ fn setup_function_builtins(
       match this_val {
         Object(data) => {
           let prefix = func_kind_prefix(data.class_name)
-          match data.callable {
-            Some(UserFunc(func_data)) => {
-              let name = func_data.name.unwrap_or("")
-              Value::String_(prefix + name + "() { [native code] }")
-            }
-            Some(UserFuncExt(func_data)) => {
-              let name = func_data.name.unwrap_or("")
-              Value::String_(prefix + name + "() { [native code] }")
-            }
-            Some(ArrowFunc(_)) =>
-              if data.class_name == "AsyncFunction" {
-                Value::String_("async () => { [native code] }")
-              } else {
-                Value::String_("() => { [native code] }")
-              }
-            Some(ArrowFuncExt(_)) =>
-              if data.class_name == "AsyncFunction" {
-                Value::String_("async () => { [native code] }")
-              } else {
-                Value::String_("() => { [native code] }")
-              }
-            Some(NativeCallable(name, _))
-            | Some(NativeCallableWithContext(name, _)) =>
-              Value::String_(prefix + name + "() { [native code] }")
-            Some(NonConstructableCallable(name, _)) =>
-              Value::String_(prefix + name + "() { [native code] }")
-            Some(BoundFunc(_, _, _)) =>
-              Value::String_(prefix + "() { [native code] }")
-            Some(MethodCallable(name, _)) =>
-              Value::String_(prefix + name + "() { [native code] }")
-            Some(InterpreterCallable(name, _))
-            | Some(InterpreterCallableWithContext(name, _)) =>
-              Value::String_(prefix + name + "() { [native code] }")
-            Some(NonConstructableInterpreterCallable(name, _)) =>
-              Value::String_(prefix + name + "() { [native code] }")
-            Some(ConstructorOnlyCallable(name, _)) =>
-              Value::String_(prefix + name + "() { [native code] }")
-            Some(FuncCallMethod(_)) =>
-              Value::String_(prefix + "call() { [native code] }")
-            Some(FuncApplyMethod(_)) =>
-              Value::String_(prefix + "apply() { [native code] }")
-            Some(ClassConstructor({ name, .. })) =>
-              Value::String_("class " + name + " { [native code] }")
+          match callable_source_text(data) {
+            Some(text) => Value::String_(text)
             None =>
-              raise @errors.TypeError(
-                message="Function.prototype.toString requires a function",
-              )
+              match data.callable {
+                Some(UserFunc(func_data)) => {
+                  let name = func_data.name.unwrap_or("")
+                  Value::String_(prefix + name + "() { [native code] }")
+                }
+                Some(UserFuncExt(func_data)) => {
+                  let name = func_data.name.unwrap_or("")
+                  Value::String_(prefix + name + "() { [native code] }")
+                }
+                Some(ArrowFunc(_)) =>
+                  if data.class_name == "AsyncFunction" {
+                    Value::String_("async () => { [native code] }")
+                  } else {
+                    Value::String_("() => { [native code] }")
+                  }
+                Some(ArrowFuncExt(_)) =>
+                  if data.class_name == "AsyncFunction" {
+                    Value::String_("async () => { [native code] }")
+                  } else {
+                    Value::String_("() => { [native code] }")
+                  }
+                Some(NativeCallable(name, _))
+                | Some(NativeCallableWithContext(name, _)) =>
+                  Value::String_(prefix + name + "() { [native code] }")
+                Some(NonConstructableCallable(name, _)) =>
+                  Value::String_(prefix + name + "() { [native code] }")
+                Some(BoundFunc(_, _, _)) =>
+                  Value::String_(prefix + "bound() { [native code] }")
+                Some(MethodCallable(name, _)) =>
+                  Value::String_(prefix + name + "() { [native code] }")
+                Some(InterpreterCallable(name, _))
+                | Some(InterpreterCallableWithContext(name, _)) =>
+                  Value::String_(prefix + name + "() { [native code] }")
+                Some(NonConstructableInterpreterCallable(name, _)) =>
+                  Value::String_(prefix + name + "() { [native code] }")
+                Some(ConstructorOnlyCallable(name, _)) =>
+                  Value::String_(prefix + name + "() { [native code] }")
+                Some(FuncCallMethod(_)) =>
+                  Value::String_(prefix + "call() { [native code] }")
+                Some(FuncApplyMethod(_)) =>
+                  Value::String_(prefix + "apply() { [native code] }")
+                Some(ClassConstructor({ name, .. })) =>
+                  Value::String_("class " + name + " { [native code] }")
+                None =>
+                  raise @errors.TypeError(
+                    message="Function.prototype.toString requires a function",
+                  )
+              }
           }
         }
+        Proxy(proxy_data) =>
+          if proxy_data.is_callable {
+            Value::String_("function proxy() { [native code] }")
+          } else {
+            raise @errors.TypeError(
+              message="Function.prototype.toString requires a function",
+            )
+          }
         _ =>
           raise @errors.TypeError(
             message="Function.prototype.toString requires a function",
@@ -337,35 +367,19 @@ fn setup_function_builtins(
     prototype: Null,
     callable: Some(
       InterpreterCallable("Function", fn(interp, _this, args) raise {
-        if args.length() == 0 {
-          return @runtime.stamp_function_realm(
-            Value::Object({
-              bag: {
-                properties: {
-                  "length": Value::Number(0.0),
-                  "name": Value::String_("anonymous"),
-                },
-                symbol_properties: {},
-                descriptors: { "length": nf_desc, "name": nf_desc },
-                symbol_descriptors: {},
-                internal_slots: {},
-              },
-              prototype: func_proto,
-              callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
-              class_name: "Function",
-              extensible: true,
-              arraybuffer_state: None,
-            }),
-            realm_state=Some(realm_state),
-          )
+        // Last arg is body, previous args are parameter names. With no
+        // arguments, the synthesized body and parameter list are both empty.
+        let body_str = if args.length() == 0 {
+          ""
+        } else {
+          match args[args.length() - 1] {
+            Value::String_(s) => s
+            _ => args[args.length() - 1].to_string()
+          }
         }
-        // Last arg is body, previous args are parameter names
-        let body_str = match args[args.length() - 1] {
-          Value::String_(s) => s
-          _ => args[args.length() - 1].to_string()
-        }
+        let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
         let param_parts : Array[String] = []
-        for i = 0; i < args.length() - 1; i = i + 1 {
+        for i = 0; i < param_count; i = i + 1 {
           match args[i] {
             Value::String_(s) => param_parts.push(s)
             _ => param_parts.push(args[i].to_string())
@@ -374,14 +388,14 @@ fn setup_function_builtins(
         let params_str = param_parts.join(",")
         let source = "function anonymous(" +
           params_str +
-          ") {\n" +
+          "\n) {\n" +
           body_str +
           "\n}"
         let prog = @parser.parse(source)
         // The first statement should be a function declaration — extract its parts
         if prog.stmts.length() > 0 {
           match prog.stmts[0] {
-            FuncDecl(_, params, body, _) => {
+            FuncDecl(_, params, body, _, _) => {
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
               fn_props["name"] = Value::String_("anonymous")
@@ -414,6 +428,7 @@ fn setup_function_builtins(
                       // `new Function(...)` result has no self-name binding.
                       has_name_binding: false,
                       is_method: false,
+                      source_text: Some(source),
                     }),
                   ),
                   class_name: "Function",
@@ -423,7 +438,7 @@ fn setup_function_builtins(
                 realm_state=Some(realm_state),
               )
             }
-            FuncDeclExt(_, params, rest_param, body, _) => {
+            FuncDeclExt(_, params, rest_param, body, _, _) => {
               let fn_props : Map[String, Value] = {}
               let fn_length = expected_argument_count_ext(params)
               fn_props["length"] = Value::Number(fn_length.to_double())
@@ -454,6 +469,7 @@ fn setup_function_builtins(
                       strict: body_strict,
                       has_name_binding: false,
                       is_method: false,
+                      source_text: Some(source),
                     }),
                   ),
                   class_name: "Function",

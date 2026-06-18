@@ -16,6 +16,7 @@ pub(all) struct FuncData {
   // such functions have no [[Construct]] internal method and must throw
   // TypeError when called via `new`. Class methods use a separate path.
   is_method : Bool
+  source_text : String?
 }
 
 ///|
@@ -32,6 +33,7 @@ pub(all) struct FuncDataExt {
   // such functions have no [[Construct]] internal method and must throw
   // TypeError when called via `new`. Class methods use a separate path.
   is_method : Bool
+  source_text : String?
 }
 
 ///|
@@ -115,6 +117,7 @@ pub(all) struct ClassConstructorData {
   closure : Environment // lexical environment where the class was defined
   super_proto : Value // super class's prototype (bound as [[SuperPrototype]])
   instance_fields : Array[ClassFieldInit] // instance field initializers, run before ctor body
+  source_text : String?
 }
 
 ///|
@@ -656,6 +659,11 @@ pub impl Show for Value with fn output(self, logger) {
     Map(_) => logger.write_string("[object Map]")
     Set(_) => logger.write_string("[object Set]")
     Promise(_) => logger.write_string("[object Promise]")
-    Proxy(_) => logger.write_string("[object Object]")
+    Proxy(proxy_data) =>
+      if proxy_data.is_callable {
+        logger.write_string("function proxy() { [native code] }")
+      } else {
+        logger.write_string("[object Object]")
+      }
   }
 }

@@ -448,7 +448,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(completion)
     }
-    FuncDecl(name, params, body, _) => {
+    FuncDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       // FunctionDeclaration at the top of a var scope is fully handled during
       // hoisting (the func value was already bound there); execution is a
@@ -466,6 +466,7 @@ fn Interpreter::exec_stmt(
           // VarEnvironment, no dedicated funcEnv.
           has_name_binding: false,
           is_method: false,
+          source_text,
         }
         let func_val = make_func(func_data)
         self.bind_function_decl_value(ctx, env, name, func_val)
@@ -1313,7 +1314,7 @@ fn Interpreter::exec_stmt(
       self.bind_pattern(pattern, value, env, bk, ctx~)
       Normal(Undefined)
     }
-    FuncDeclExt(name, params, rest_param, body, _) => {
+    FuncDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1333,13 +1334,14 @@ fn Interpreter::exec_stmt(
           strict: is_function_strict(ctx.strict, body),
           has_name_binding: false,
           is_method: false,
+          source_text,
         }
         let func_val = make_func_ext(func_data)
         self.bind_function_decl_value(ctx, env, name, func_val)
         Normal(Undefined)
       }
     }
-    GeneratorDecl(name, params, body, _) => {
+    GeneratorDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       if function_decl_is_hoisted_noop(env, name) {
         Normal(Undefined)
@@ -1351,6 +1353,7 @@ fn Interpreter::exec_stmt(
           body,
           is_function_strict(ctx.strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)
@@ -1362,7 +1365,7 @@ fn Interpreter::exec_stmt(
         Normal(Undefined)
       }
     }
-    GeneratorDeclExt(name, params, rest_param, body, _) => {
+    GeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1380,6 +1383,7 @@ fn Interpreter::exec_stmt(
           body,
           is_function_strict(ctx.strict, body),
           env,
+          source_text~,
         )
         if env.bindings.contains(name) {
           env.assign(name, gen_func)
@@ -1391,7 +1395,7 @@ fn Interpreter::exec_stmt(
         Normal(Undefined)
       }
     }
-    AsyncFuncDecl(name, params, body, _) => {
+    AsyncFuncDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       let async_func = self.make_async_function(
         Some(name),
@@ -1400,6 +1404,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, async_func)
@@ -1410,7 +1415,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    AsyncFuncDeclExt(name, params, rest_param, body, _) => {
+    AsyncFuncDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1425,6 +1430,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, async_func)
@@ -1435,7 +1441,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    AsyncGeneratorDecl(name, params, body, _) => {
+    AsyncGeneratorDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
       let gen_func = self.make_async_generator_function(
         Some(name),
@@ -1444,6 +1450,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
@@ -1454,7 +1461,7 @@ fn Interpreter::exec_stmt(
       }
       Normal(Undefined)
     }
-    AsyncGeneratorDeclExt(name, params, rest_param, body, _) => {
+    AsyncGeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         Some(name),
@@ -1469,6 +1476,7 @@ fn Interpreter::exec_stmt(
         body,
         is_function_strict(ctx.strict, body),
         env,
+        source_text~,
       )
       if env.bindings.contains(name) {
         env.assign(name, gen_func)
@@ -1489,8 +1497,10 @@ fn Interpreter::exec_stmt(
           }
         other => other
       }
-    ClassDecl(name, superclass, methods, _) => {
-      let class_val = self.create_class(ctx, name, superclass, methods, env)
+    ClassDecl(name, superclass, methods, _, source_text) => {
+      let class_val = self.create_class(
+        ctx, name, superclass, methods, env, source_text,
+      )
       // Class was hoisted with TDZ, initialize it now
       if env.bindings.contains(name) {
         env.initialize(name, class_val)
@@ -1518,26 +1528,27 @@ fn Interpreter::exec_stmt(
       self.module_exports["default"] = value
       // Named default exports also bind the name locally
       match expr {
-        FuncExpr(Some(name), _, _, _) | FuncExprExt(Some(name), _, _, _, _) =>
+        FuncExpr(Some(name), _, _, _, _)
+        | FuncExprExt(Some(name), _, _, _, _, _) =>
           if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
-        GeneratorExpr(Some(name), _, _, _)
-        | GeneratorExprExt(Some(name), _, _, _, _) =>
+        GeneratorExpr(Some(name), _, _, _, _)
+        | GeneratorExprExt(Some(name), _, _, _, _, _) =>
           if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
-        AsyncFuncExpr(Some(name), _, _, _)
-        | AsyncFuncExprExt(Some(name), _, _, _, _) =>
+        AsyncFuncExpr(Some(name), _, _, _, _)
+        | AsyncFuncExprExt(Some(name), _, _, _, _, _) =>
           if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
-        AsyncGeneratorExpr(Some(name), _, _, _)
-        | AsyncGeneratorExprExt(Some(name), _, _, _, _) =>
+        AsyncGeneratorExpr(Some(name), _, _, _, _)
+        | AsyncGeneratorExprExt(Some(name), _, _, _, _, _) =>
           if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
-        ClassExpr(Some(name), _, _, _) =>
+        ClassExpr(Some(name), _, _, _, _) =>
           if !env.bindings.contains(name) {
             env.def(name, value, LetBinding)
           }
@@ -1778,15 +1789,15 @@ fn is_declaration_stmt(stmt : @ast.Stmt) -> Bool {
   match stmt {
     VarDecl(_, _, _, _)
     | DestructureDecl(_, _, _, _)
-    | FuncDecl(_, _, _, _)
-    | FuncDeclExt(_, _, _, _, _)
-    | GeneratorDecl(_, _, _, _)
-    | GeneratorDeclExt(_, _, _, _, _)
-    | AsyncFuncDecl(_, _, _, _)
-    | AsyncFuncDeclExt(_, _, _, _, _)
-    | AsyncGeneratorDecl(_, _, _, _)
-    | AsyncGeneratorDeclExt(_, _, _, _, _)
-    | ClassDecl(_, _, _, _)
+    | FuncDecl(_, _, _, _, _)
+    | FuncDeclExt(_, _, _, _, _, _)
+    | GeneratorDecl(_, _, _, _, _)
+    | GeneratorDeclExt(_, _, _, _, _, _)
+    | AsyncFuncDecl(_, _, _, _, _)
+    | AsyncFuncDeclExt(_, _, _, _, _, _)
+    | AsyncGeneratorDecl(_, _, _, _, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, _, _)
+    | ClassDecl(_, _, _, _, _)
     | ImportDecl(_, _, _, _, _, _)
     | ExportNamedDecl(_, _, _, _, _)
     | ExportDefaultDecl(_, _)

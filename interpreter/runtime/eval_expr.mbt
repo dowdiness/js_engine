@@ -114,7 +114,7 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
     TemplateLit(_, exprs, _) => exprs.iter().any(expr_may_contain_yield)
     TaggedTemplate(tag, _, exprs, _) =>
       expr_may_contain_yield(tag) || exprs.iter().any(expr_may_contain_yield)
-    ClassExpr(_, superclass, members, _) => {
+    ClassExpr(_, superclass, members, _, _) => {
       let super_has_yield = match superclass {
         Some(expr) => expr_may_contain_yield(expr)
         None => false
@@ -373,7 +373,7 @@ fn Interpreter::eval_prop_value(
 ) -> Value raise Error {
   if prop.is_method {
     match prop.value {
-      FuncExpr(name, params, body, _) => {
+      FuncExpr(name, params, body, _, source_text) => {
         validate_function_signature(ctx.strict, None, params, body)
         let func_data : FuncData = {
           name,
@@ -383,10 +383,11 @@ fn Interpreter::eval_prop_value(
           strict: is_function_strict(ctx.strict, body),
           has_name_binding: false,
           is_method: true,
+          source_text,
         }
         return make_func(func_data)
       }
-      FuncExprExt(name, params, rest_param, body, _) => {
+      FuncExprExt(name, params, rest_param, body, _, source_text) => {
         validate_function_signature_ext(
           ctx.strict,
           None,
@@ -403,6 +404,7 @@ fn Interpreter::eval_prop_value(
           strict: is_function_strict(ctx.strict, body),
           has_name_binding: false,
           is_method: true,
+          source_text,
         }
         return make_func_ext(func_data)
       }
@@ -920,7 +922,7 @@ fn Interpreter::eval_expr(
     Call(callee, args, loc) => self.eval_call(ctx, callee, args, env, loc)
     Member(obj_expr, prop, loc) =>
       self.eval_member(ctx, obj_expr, prop, env, loc)
-    FuncExpr(name, params, body, _) => {
+    FuncExpr(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, name, params, body)
       let func_data : FuncData = {
         name,
@@ -932,15 +934,24 @@ fn Interpreter::eval_expr(
         // in a dedicated funcEnv. Anonymous FEs have no such binding.
         has_name_binding: name is Some(_),
         is_method: false,
+        source_text,
       }
       make_func(func_data)
     }
-    GeneratorExpr(name, params, body, _) => {
+    GeneratorExpr(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, name, params, body)
       let strict = is_function_strict(ctx.strict, body)
-      self.make_generator_function(name, params, None, body, strict, env)
+      self.make_generator_function(
+        name,
+        params,
+        None,
+        body,
+        strict,
+        env,
+        source_text~,
+      )
     }
-    GeneratorExprExt(name, params, rest_param, body, _) => {
+    GeneratorExprExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         name,
@@ -950,15 +961,29 @@ fn Interpreter::eval_expr(
       )
       let strict = is_function_strict(ctx.strict, body)
       self.make_generator_function_ext(
-        name, params, rest_param, body, strict, env,
+        name,
+        params,
+        rest_param,
+        body,
+        strict,
+        env,
+        source_text~,
       )
     }
-    AsyncFuncExpr(name, params, body, _) => {
+    AsyncFuncExpr(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, name, params, body)
       let strict = is_function_strict(ctx.strict, body)
-      self.make_async_function(name, params, None, body, strict, env)
+      self.make_async_function(
+        name,
+        params,
+        None,
+        body,
+        strict,
+        env,
+        source_text~,
+      )
     }
-    AsyncFuncExprExt(name, params, rest_param, body, _) => {
+    AsyncFuncExprExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         name,
@@ -967,14 +992,30 @@ fn Interpreter::eval_expr(
         body,
       )
       let strict = is_function_strict(ctx.strict, body)
-      self.make_async_function_ext(name, params, rest_param, body, strict, env)
+      self.make_async_function_ext(
+        name,
+        params,
+        rest_param,
+        body,
+        strict,
+        env,
+        source_text~,
+      )
     }
-    AsyncArrowFunc(params, body, _) => {
+    AsyncArrowFunc(params, body, _, source_text) => {
       validate_function_signature(ctx.strict, None, params, body)
       let strict = is_function_strict(ctx.strict, body)
-      self.make_async_function(None, params, None, body, strict, env)
+      self.make_async_function(
+        None,
+        params,
+        None,
+        body,
+        strict,
+        env,
+        source_text~,
+      )
     }
-    AsyncArrowFuncExt(params, rest_param, body, _) => {
+    AsyncArrowFuncExt(params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         None,
@@ -983,14 +1024,30 @@ fn Interpreter::eval_expr(
         body,
       )
       let strict = is_function_strict(ctx.strict, body)
-      self.make_async_function_ext(None, params, rest_param, body, strict, env)
+      self.make_async_function_ext(
+        None,
+        params,
+        rest_param,
+        body,
+        strict,
+        env,
+        source_text~,
+      )
     }
-    AsyncGeneratorExpr(name, params, body, _) => {
+    AsyncGeneratorExpr(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, name, params, body)
       let strict = is_function_strict(ctx.strict, body)
-      self.make_async_generator_function(name, params, None, body, strict, env)
+      self.make_async_generator_function(
+        name,
+        params,
+        None,
+        body,
+        strict,
+        env,
+        source_text~,
+      )
     }
-    AsyncGeneratorExprExt(name, params, rest_param, body, _) => {
+    AsyncGeneratorExprExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         name,
@@ -1000,7 +1057,13 @@ fn Interpreter::eval_expr(
       )
       let strict = is_function_strict(ctx.strict, body)
       self.make_async_generator_function_ext(
-        name, params, rest_param, body, strict, env,
+        name,
+        params,
+        rest_param,
+        body,
+        strict,
+        env,
+        source_text~,
       )
     }
     AwaitExpr(argument, _) =>
@@ -1229,7 +1292,7 @@ fn Interpreter::eval_expr(
       }
       self.call_value(tag, this_val, args, loc)
     }
-    ArrowFunc(params, body, _) => {
+    ArrowFunc(params, body, _, source_text) => {
       validate_function_signature(ctx.strict, None, params, body)
       let func_data : FuncData = {
         name: None,
@@ -1239,6 +1302,7 @@ fn Interpreter::eval_expr(
         strict: is_function_strict(ctx.strict, body),
         has_name_binding: false,
         is_method: false,
+        source_text,
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -1269,7 +1333,7 @@ fn Interpreter::eval_expr(
         realm_state=Some(self.realm_state),
       )
     }
-    ArrowFuncExt(params, rest_param, body, _) => {
+    ArrowFuncExt(params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         None,
@@ -1286,6 +1350,7 @@ fn Interpreter::eval_expr(
         strict: is_function_strict(ctx.strict, body),
         has_name_binding: false,
         is_method: false,
+        source_text,
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -1317,7 +1382,7 @@ fn Interpreter::eval_expr(
         realm_state=Some(self.realm_state),
       )
     }
-    FuncExprExt(name, params, rest_param, body, _) => {
+    FuncExprExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
         ctx.strict,
         name,
@@ -1334,6 +1399,7 @@ fn Interpreter::eval_expr(
         strict: is_function_strict(ctx.strict, body),
         has_name_binding: name is Some(_),
         is_method: false,
+        source_text,
       }
       make_func_ext(func_data)
     }
@@ -1438,7 +1504,7 @@ fn Interpreter::eval_expr(
           }
         }
       }
-    ClassExpr(name, superclass, methods, _) => {
+    ClassExpr(name, superclass, methods, _, source_text) => {
       // For named class expressions, the name is visible inside the class body
       // but not in the outer scope. Create a new scope for this.
       let class_name = name.unwrap_or("")
@@ -1451,7 +1517,7 @@ fn Interpreter::eval_expr(
         env
       }
       let class_val = self.create_class(
-        ctx, class_name, superclass, methods, class_env,
+        ctx, class_name, superclass, methods, class_env, source_text,
       )
       // Set the class name binding in the inner scope
       if class_name != "" {
