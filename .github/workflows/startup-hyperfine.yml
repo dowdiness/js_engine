@@ -23,6 +23,7 @@ jobs:
       contents: read
 
     env:
+      MOONBIT_CACHE_VERSION: "2026-06"
       WARMUP_RUNS: ${{ inputs.warmup }}
       MIN_RUNS: ${{ inputs.min_runs }}
       STARTUP_SOURCE: "1 + 1"
@@ -32,10 +33,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
 
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
       - name: Set up MoonBit
-        run: |
-          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
-          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Get MoonBit version
         id: moonbit-version
