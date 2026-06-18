@@ -41,6 +41,7 @@ lag the code. Start with [design/README.md](design/README.md) for the design-fol
 Completed or superseded material, kept for record only. Do not treat these as current guidance.
 
 - [archive/executed-roadmap-history.md](archive/executed-roadmap-history.md) — completed roadmap plans and stale planning snapshots moved out of `ROADMAP.md`
+- [archive/agent-todo-history.md](archive/agent-todo-history.md) — completed task-queue entries and historical investigation notes moved out of `agent-todo.md`
 - [archive/phase-history.md](archive/phase-history.md) — implementation notes for completed phases
 - [archive/implementation-priority-snapshot.md](archive/implementation-priority-snapshot.md) — phase-planning snapshot (superseded by `ROADMAP.md`)
 - [archive/generator-plan.md](archive/generator-plan.md) — generator implementation plan (COMPLETE)

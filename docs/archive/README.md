@@ -9,4 +9,5 @@ Files in this directory were written at a specific point in time and are not upd
 Key history files:
 
 - [executed-roadmap-history.md](executed-roadmap-history.md) — completed roadmap plans and stale planning snapshots moved out of the active roadmap.
+- [agent-todo-history.md](agent-todo-history.md) — completed task-queue entries and historical investigation notes moved out of the active agent queue.
 - [phase-history.md](phase-history.md) — detailed phase implementation history.
