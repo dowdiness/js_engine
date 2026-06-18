@@ -104,13 +104,13 @@ test "task selection mirrors Python runner helpers" {
     resume_from=resume_file,
     test262_dir=join_path(test262_root, "test"),
   )
-  json_inspect(sliced, content=[
-    (join_path(test_dir, "normal.js"), "strict"),
-  ])
+  json_inspect(sliced, content=[(join_path(test_dir, "normal.js"), "strict")])
   inspect(messages.length(), content="2")
   inspect(messages[0], content="Selected task slice: start=1, count=3 (3/5)")
   inspect(
-    messages[1].contains("Resume: skipped 2 completed task(s) from " + resume_file),
+    messages[1].contains(
+      "Resume: skipped 2 completed task(s) from " + resume_file,
+    ),
     content="true",
   )
 
@@ -202,20 +202,46 @@ test "resume keys and artifact schema fields match the contract" {
 
 ///|
 test "harness options parse and transform helpers deterministically" {
-  let parsed = HarnessOptions::from_cli(["codePointRange, codePointRange"])
-  json_inspect(parsed.helper_names(), content=[HELPER_CODE_POINT_RANGE])
-  assert_raises(() => ignore(HarnessOptions::from_cli(["notReal" ])))
+  let parsed = HarnessOptions::from_cli([
+    "codePointRange, atomicsTimeoutProfile=short",
+  ])
+  json_inspect(parsed.helper_names(), content=[
+    HELPER_CODE_POINT_RANGE,
+    HELPER_ATOMICS_TIMEOUT_PROFILE + "=" + ATOMICS_TIMEOUT_PROFILE_SHORT,
+  ])
 
-  let helper = HarnessOptions(helpers=[HELPER_CODE_POINT_RANGE])
+  let parsed_default = HarnessOptions::from_cli([
+    "atomicsTimeoutProfile=default",
+  ])
+  json_inspect(parsed_default.helper_names(), content=[])
+  inspect(parsed_default.is_modified(), content="false")
+  inspect(parsed_default.preamble(), content="")
+
+  assert_raises(() => ignore(HarnessOptions::from_cli(["notReal"])))
+  assert_raises(() => {
+    ignore(HarnessOptions::from_cli(["atomicsTimeoutProfile=bad"]))
+  })
+
+  let helper = HarnessOptions(
+    helpers=[HELPER_CODE_POINT_RANGE],
+    atomics_timeout_profile=ATOMICS_TIMEOUT_PROFILE_SHORT,
+  )
+  inspect(
+    helper.preamble().contains("__TEST262_LIMITED_ATOMICS_TIMEOUT"),
+    content="true",
+  )
+
   let transformed_regexp = helper.transform_include(
     "path/to/regExpUtils.js",
     REGEXP_UTILS_BUILD_STRING,
   )
   let transformed_other = helper.transform_include(
-    "path/to/other.js",
-    "const already = 1;",
+    "path/to/other.js", "const already = 1;",
   )
-  inspect(transformed_regexp.contains("typeof $262.codePointRange"), content="true")
+  inspect(
+    transformed_regexp.contains("typeof $262.codePointRange"),
+    content="true",
+  )
   inspect(
     transformed_regexp.contains("result += $262.codePointRange(start, end);"),
     content="true",

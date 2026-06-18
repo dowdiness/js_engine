@@ -14,6 +14,15 @@ const DEFAULT_THREAD_COUNT = 4
 const HELPER_CODE_POINT_RANGE = "codePointRange"
 
 ///|
+const HELPER_ATOMICS_TIMEOUT_PROFILE = "atomicsTimeoutProfile"
+
+///|
+const ATOMICS_TIMEOUT_PROFILE_DEFAULT = "default"
+
+///|
+const ATOMICS_TIMEOUT_PROFILE_SHORT = "short"
+
+///|
 const PRINT_PREAMBLE = "function print() { var s = \"\"; for (var i = 0; i < arguments.length; i++) { if (i > 0) s += \" \"; s += String(arguments[i]); } console.log(s); }\n"
 
 ///|
@@ -27,6 +36,67 @@ const REGEXP_UTILS_BUILD_STRING = "function buildString(args) {\n  // Use member
 
 ///|
 const REGEXP_UTILS_BUILD_STRING_WITH_HELPER = "function buildString(args) {\n  // Use member expressions rather than destructuring `args` for improved\n  // compatibility with engines that only implement assignment patterns\n  // partially or not at all.\n  const loneCodePoints = args.loneCodePoints;\n  const ranges = args.ranges;\n  const CHUNK_SIZE = 10000;\n  let result = String.fromCodePoint.apply(null, loneCodePoints);\n  for (let i = 0; i < ranges.length; i++) {\n    let range = ranges[i];\n    let start = range[0];\n    let end = range[1];\n    if (typeof $262 !== \"undefined\" && typeof $262.codePointRange === \"function\") {\n      result += $262.codePointRange(start, end);\n      continue;\n    }\n    let codePoints = [];\n    for (let length = 0, codePoint = start; codePoint <= end; codePoint++) {\n      codePoints[length++] = codePoint;\n      if (length === CHUNK_SIZE) {\n        result += String.fromCodePoint.apply(null, codePoints);\n        codePoints.length = length = 0;\n      }\n    }\n    result += String.fromCodePoint.apply(null, codePoints);\n  }\n  return result;\n}\n"
+
+// Opt-in timeout helper for local diagnosis of Atomics-heavy tests.
+// The injected wait timeout cap keeps local investigations from stalling on
+// long-hanging Atomics waits when the goal is to triage failures quickly.
+
+///|
+fn atomics_timeout_profile_preamble(profile : String) -> String {
+  let ms = if profile == ATOMICS_TIMEOUT_PROFILE_SHORT { 100 } else { 0 }
+  let out = StringBuilder()
+  out.write_string(
+    "\n// Modified-harness Atomics timeout profile for local runs only.\n",
+  )
+  out.write_string("var __TEST262_ATOMICS_TIMEOUT_PROFILE = \"")
+  out.write_string(profile)
+  out.write_string("\";\n")
+  out.write_string("var __TEST262_ATOMICS_TIMEOUT_MS = ")
+  out.write_string(ms.to_string())
+  out.write_string(";\n")
+  out.write_string(
+    "var __TEST262_LIMITED_ATOMICS_TIMEOUT = function(timeout) {\n",
+  )
+  out.write_string("  if (__TEST262_ATOMICS_TIMEOUT_PROFILE == \"")
+  out.write_string(ATOMICS_TIMEOUT_PROFILE_DEFAULT)
+  out.write_string("\") {\n")
+  out.write_string("    return timeout;\n")
+  out.write_string("  }\n")
+  out.write_string("  if (typeof timeout !== 'number' || timeout < 0) {\n")
+  out.write_string("    return timeout;\n")
+  out.write_string("  }\n")
+  out.write_string(
+    "  return timeout < 0 ? timeout : (timeout > __TEST262_ATOMICS_TIMEOUT_MS ? __TEST262_ATOMICS_TIMEOUT_MS : timeout);\n",
+  )
+  out.write_string("};\n")
+  out.write_string(
+    "if (typeof Atomics === 'object' && Atomics !== null && typeof Atomics.wait === 'function') {\n",
+  )
+  out.write_string("  var __TEST262_ORIGINAL_ATOMICS_WAIT = Atomics.wait;\n")
+  out.write_string(
+    "  Atomics.wait = function(typedArray, index, value, timeout) {\n",
+  )
+  out.write_string(
+    "    return __TEST262_ORIGINAL_ATOMICS_WAIT(typedArray, index, value, __TEST262_LIMITED_ATOMICS_TIMEOUT(timeout));\n",
+  )
+  out.write_string("  };\n")
+  out.write_string("}\n")
+  out.write_string(
+    "if (typeof Atomics === 'object' && Atomics !== null && typeof Atomics.waitAsync === 'function') {\n",
+  )
+  out.write_string(
+    "  var __TEST262_ORIGINAL_ATOMICS_WAIT_ASYNC = Atomics.waitAsync;\n",
+  )
+  out.write_string(
+    "  Atomics.waitAsync = function(typedArray, index, value, timeout) {\n",
+  )
+  out.write_string(
+    "    return __TEST262_ORIGINAL_ATOMICS_WAIT_ASYNC(typedArray, index, value, __TEST262_LIMITED_ATOMICS_TIMEOUT(timeout));\n",
+  )
+  out.write_string("  };\n")
+  out.write_string("}\n")
+  out.to_string()
+}
 
 ///|
 pub struct ToolRun {
@@ -45,13 +115,32 @@ struct ProcessCapture {
 ///|
 pub struct HarnessOptions {
   priv helpers : Array[String]
+  priv atomics_timeout_profile : String
 } derive(Debug)
 
 ///|
 fn HarnessOptions::HarnessOptions(
   helpers? : Array[String] = [],
+  atomics_timeout_profile? : String = ATOMICS_TIMEOUT_PROFILE_DEFAULT,
 ) -> HarnessOptions {
-  { helpers, }
+  { helpers, atomics_timeout_profile }
+}
+
+///|
+fn parse_timeout_profile_value(raw : String) -> String raise {
+  let value = raw.trim().to_owned()
+  if value == ATOMICS_TIMEOUT_PROFILE_DEFAULT ||
+    value == ATOMICS_TIMEOUT_PROFILE_SHORT {
+    value
+  } else {
+    fail(
+      "unknown atomicsTimeoutProfile '\{value}' (supported: " +
+      ATOMICS_TIMEOUT_PROFILE_DEFAULT +
+      ", " +
+      ATOMICS_TIMEOUT_PROFILE_SHORT +
+      ")",
+    )
+  }
 }
 
 ///|
@@ -59,23 +148,50 @@ pub fn HarnessOptions::from_cli(
   values : ArrayView[String],
 ) -> HarnessOptions raise {
   let selected : Array[String] = []
+  let mut atomics_timeout_profile = ATOMICS_TIMEOUT_PROFILE_DEFAULT
   for raw in values {
-    for name in raw.split(",") {
-      let helper = name.trim().to_owned()
+    for item in raw.split(",") {
+      let helper = item.trim().to_owned()
       if helper == "" {
         continue
       }
-      if helper != HELPER_CODE_POINT_RANGE {
-        fail(
-          "unknown harness helper '\{helper}' (supported: \{HELPER_CODE_POINT_RANGE})",
-        )
+      if helper == HELPER_CODE_POINT_RANGE {
+        if !selected.any(item => item == helper) {
+          selected.push(helper)
+        }
+        continue
       }
-      if !selected.any(item => item == helper) {
-        selected.push(helper)
+      match helper.split_once("=") {
+        Some((name, value)) => {
+          let name = name.trim().to_owned()
+          let value = value.trim().to_owned()
+          if name == HELPER_ATOMICS_TIMEOUT_PROFILE {
+            if atomics_timeout_profile != ATOMICS_TIMEOUT_PROFILE_DEFAULT {
+              fail("duplicate atomicsTimeoutProfile helper values")
+            }
+            atomics_timeout_profile = parse_timeout_profile_value(value)
+            continue
+          }
+          fail(
+            "unknown harness helper '\{name}' (supported: " +
+            HELPER_CODE_POINT_RANGE +
+            ", " +
+            HELPER_ATOMICS_TIMEOUT_PROFILE +
+            "=<value>)",
+          )
+        }
+        None =>
+          fail(
+            "unknown harness helper '\{helper}' (supported: " +
+            HELPER_CODE_POINT_RANGE +
+            ", " +
+            HELPER_ATOMICS_TIMEOUT_PROFILE +
+            "=<value>)",
+          )
       }
     }
   }
-  HarnessOptions(helpers=selected)
+  HarnessOptions(helpers=selected, atomics_timeout_profile~)
 }
 
 ///|
@@ -84,20 +200,27 @@ fn HarnessOptions::helper_names(self : HarnessOptions) -> Array[String] {
   for helper in self.helpers {
     out.push(helper)
   }
+  if self.atomics_timeout_profile != ATOMICS_TIMEOUT_PROFILE_DEFAULT {
+    out.push(
+      HELPER_ATOMICS_TIMEOUT_PROFILE + "=" + self.atomics_timeout_profile,
+    )
+  }
   out
 }
 
 ///|
 fn HarnessOptions::is_modified(self : HarnessOptions) -> Bool {
-  self.helpers.length() > 0
+  self.helpers.length() > 0 ||
+  self.atomics_timeout_profile != ATOMICS_TIMEOUT_PROFILE_DEFAULT
 }
 
 ///|
 fn HarnessOptions::methodology_label(self : HarnessOptions) -> String {
-  if self.helpers.length() == 0 {
+  let helper_names = self.helper_names()
+  if helper_names.length() == 0 {
     "default"
   } else {
-    "modified harness (helpers: \{self.helpers.join(", ")})"
+    "modified harness (helpers: \{helper_names.join(", ")})"
   }
 }
 
@@ -109,13 +232,16 @@ fn HarnessOptions::preamble(self : HarnessOptions) -> String {
       parts.push(CODE_POINT_RANGE_PREAMBLE)
     }
   }
+  if self.atomics_timeout_profile != ATOMICS_TIMEOUT_PROFILE_DEFAULT {
+    parts.push(atomics_timeout_profile_preamble(self.atomics_timeout_profile))
+  }
   parts.join("\n")
 }
 
 ///|
 fn HarnessOptions::methodology_json_record(self : HarnessOptions) -> Json? {
   guard self.is_modified() else { return None }
-  let helper_json = self.helpers.map(helper => Json::string(helper))
+  let helper_json = self.helper_names().map(helper => Json::string(helper))
   Some(
     Json::object({
       "label": Json::string(self.methodology_label()),

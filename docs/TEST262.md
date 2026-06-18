@@ -148,11 +148,16 @@ local investigations, the runner can opt into explicitly labeled helpers:
 Test262 harness files load and rewrites loaded `regExpUtils.js` source in memory
 to use it when the checked-out harness matches the known Test262 helper shape.
 If the engine already provides a native helper, the injected source leaves it in
-place; otherwise it installs a JavaScript fallback. This is for RegExp-heavy
-local diagnosis only: it does not change skip metadata, pass/fail/timeout
-classification, the checked-out Test262 tree, or CI defaults. Modified-harness
-runs print a methodology line and add `methodology` metadata to the output JSON
-so their numbers are not confused with official CI results.
+place; otherwise it installs a JavaScript fallback.
+
+`--harness-helper atomicsTimeoutProfile=short` caps `Atomics.wait` and
+`Atomics.waitAsync` timeouts to 100ms in the local harness for faster local
+triage. Use `atomicsTimeoutProfile=default` (or omit the helper) to disable.
+
+These helpers are for local diagnosis only: they do not change skip metadata,
+pass/fail/timeout classification, the checked-out Test262 tree, or CI defaults.
+Modified-harness runs print a methodology line and add `methodology` metadata to
+the output JSON so their numbers are not confused with official CI results.
 
 ## Runner Options
 
@@ -170,7 +175,7 @@ so their numbers are not confused with official CI results.
 | `--merged-log FILE` | (none) | Append fail/timeout/error records as JSON Lines |
 | `--timeout SECS` | `5` | Timeout per test in seconds |
 | `--threads N` | Auto (CPU count) | Number of parallel workers |
-| `--harness-helper NAME` | (none) | Opt into a modified harness helper; currently `codePointRange` |
+| `--harness-helper NAME` | (none) | Opt into a modified harness helper: `codePointRange`, `atomicsTimeoutProfile=<default|short>` |
 | `--output FILE` | `test262-results.json` | Write JSON results to this file |
 | `--summary` | off | Print summary only, no individual failures |
 | `--verbose` | off | Print each test result as it runs |
