@@ -944,8 +944,9 @@ pub fn setup_async_generator_function_constructor(
   // async_gen_func_ctor.prototype = agf_proto
   match agf_proto {
     Object(data) => {
+      // §27.4.3.2: prototype property on %AsyncGeneratorFunction%.prototype is configurable
       data.bag.properties["prototype"] = async_gen_proto
-      data.bag.descriptors["prototype"] = frozen
+      data.bag.descriptors["prototype"] = non_enum_non_writable
       data.bag.properties["constructor"] = async_gen_func_ctor
       data.bag.descriptors["constructor"] = non_enum_non_writable
     }

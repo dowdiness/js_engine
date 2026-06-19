@@ -13545,6 +13545,25 @@ test "AsyncGeneratorPrototype.constructor points to AsyncGeneratorFunction.proto
 }
 
 ///|
+test "AsyncGeneratorFunction.prototype.prototype descriptor is configurable:true (§27.4.3.2)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let AsyncGenerator = Object.getPrototypeOf(g);
+      #|let d = Object.getOwnPropertyDescriptor(AsyncGenerator, 'prototype');
+      #|console.log(d.writable);
+      #|console.log(d.enumerable);
+      #|console.log(d.configurable);
+      #|let ctorDesc = Object.getOwnPropertyDescriptor(g.constructor, 'prototype');
+      #|console.log(ctorDesc.configurable);
+    ),
+  )
+  // agf_proto.prototype: writable=false, enumerable=false, configurable=true (§27.4.3.2)
+  // async_gen_func_ctor.prototype: configurable=false (§27.4.2.2)
+  json_inspect(output, content=["false", "false", "true", "false"])
+}
+
+///|
 test "async generator function name and length" {
   let output = run_output(
     (
