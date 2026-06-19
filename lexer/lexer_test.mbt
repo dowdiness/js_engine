@@ -782,4 +782,22 @@ test "end_offset: plain identifier" {
   let toks = @lexer.tokenize(src)
   let tok = toks[0]
   inspect(tok.end_offset, content="5")
+  inspect(
+    src.unsafe_substring(start=tok.loc.offset, end=tok.end_offset),
+    content="hello",
+  )
+}
+
+///|
+test "end_offset: numeric separator preserved in source span" {
+  // raw = "1000" (underscores stripped for parsing), but end_offset must
+  // point past the full "1_000" source text, not loc.offset+raw.length().
+  let src = "1_000"
+  let toks = @lexer.tokenize(src)
+  let tok = toks[0]
+  inspect(tok.end_offset, content="5")
+  inspect(
+    src.unsafe_substring(start=tok.loc.offset, end=tok.end_offset),
+    content="1_000",
+  )
 }
