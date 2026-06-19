@@ -162,7 +162,9 @@ fn run_async_body(
   let promise_data = new_promise_data()
   let promise_val = Promise(promise_data)
   let (resolve_fn, reject_fn) = create_resolving_functions(ip, promise_data)
-  // Create a generator object from the async function body
+  // Create a generator object from the async function body.
+  // The prototype here is unused for step driving — async_step calls
+  // generator_resume() directly, bypassing any prototype dispatch.
   let gen_proto : Value = match
     ip.global.bindings.get("[[GeneratorPrototype]]") {
     Some(binding) => binding.value
@@ -216,14 +218,15 @@ fn async_step(
   is_throw : Bool,
 ) -> Unit {
   let loc = @token.Loc::default()
-  // Call gen.next(value) or gen.throw(value)
+  // Drive the internal generator directly — NOT through prototype dispatch.
+  // The gen_val here is an implementation artifact (not user-accessible),
+  // so using ip.get_property would allow user monkey-patching of
+  // %GeneratorPrototype%.next to hijack async function resolution.
   let result : Value = try {
     if is_throw {
-      let throw_method = ip.get_property(gen_val, "throw", loc)
-      ip.call_value(throw_method, gen_val, [value], loc)
+      generator_resume(ip, gen_val, Throw(value))
     } else {
-      let next_method = ip.get_property(gen_val, "next", loc)
-      ip.call_value(next_method, gen_val, [value], loc)
+      generator_resume(ip, gen_val, Next(value))
     }
   } catch {
     JsException(e) => {

@@ -13571,6 +13571,19 @@ test "Function.prototype.toString: astral-plane identifier in body (2 UTF-16 uni
 }
 
 ///|
+test "async function resolution is not affected by monkey-patching %GeneratorPrototype%.next" {
+  let output = run_output_async(
+    (
+      #|Object.getPrototypeOf(function*(){}.prototype).next = () => ({ value: 99, done: true });
+      #|async function f() { return 1; }
+      #|f().then(v => console.log(v));
+    ),
+  )
+  // Must resolve to 1, not 99 — internal async generator bypasses public prototype
+  json_inspect(output, content=["1"])
+}
+
+///|
 test "async functions and generators expose well-known symbol protocol hooks" {
   let output = run_output(
     (
