@@ -13472,18 +13472,19 @@ test "GeneratorFunction.prototype own key order is constructor,prototype (§27.3
 }
 
 ///|
-test "GeneratorPrototype[Symbol.iterator] descriptor is non-enumerable writable configurable (§27.3.1)" {
+test "GeneratorPrototype inherits Symbol.iterator from %IteratorPrototype% (§27.3.1)" {
   let output = run_output(
     (
       #|function* g() {}
       #|var GenProto = Object.getPrototypeOf(g.prototype);
-      #|var d = Object.getOwnPropertyDescriptor(GenProto, Symbol.iterator);
-      #|console.log(d.writable);
-      #|console.log(d.enumerable);
-      #|console.log(d.configurable);
+      #|// Symbol.iterator is NOT an own property — inherited from %IteratorPrototype%
+      #|console.log(Object.getOwnPropertyDescriptor(GenProto, Symbol.iterator) === undefined);
+      #|// But accessible via prototype chain (returns this per §27.1.2)
+      #|var gen = g();
+      #|console.log(gen[Symbol.iterator]() === gen);
     ),
   )
-  json_inspect(output, content=["true", "false", "true"])
+  json_inspect(output, content=["true", "true"])
 }
 
 ///|

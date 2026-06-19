@@ -114,8 +114,10 @@ pub fn setup_generator_function_constructor(
     Some(binding) => binding.value
     None => Null
   }
-  let object_prototype = env.get("[[ObjectPrototype]]") catch { _ => Null }
-  let iterator_sym = well_known_symbols.iterator
+  let iter_proto = match env.realm_state {
+    Some(rs) => rs.get_iterator_proto()
+    None => Null
+  }
   let tostringtag_sym = well_known_symbols.to_string_tag
   let non_enum : PropDescriptor = {
     writable: true,
@@ -209,15 +211,10 @@ pub fn setup_generator_function_constructor(
     },
   )
   gp_descs["throw"] = non_enum
-  gp_sym_props[iterator_sym.id] = make_method_func(
-    name="[Symbol.iterator]",
-    length=0,
-    realm_state=env.realm_state,
-    fn(this_val, _args) { this_val },
-  )
-  gp_sym_descs[iterator_sym.id] = non_enum
   gp_sym_props[tostringtag_sym.id] = String_("Generator")
   gp_sym_descs[tostringtag_sym.id] = non_enum_non_writable
+  // [[Prototype]] = %IteratorPrototype% per §27.3.1 — Symbol.iterator is
+  // inherited from there, not an own property of %GeneratorPrototype%.
   let gen_proto : Value = Object({
     bag: {
       properties: gp_props,
@@ -226,7 +223,7 @@ pub fn setup_generator_function_constructor(
       symbol_descriptors: gp_sym_descs,
       internal_slots: {},
     },
-    prototype: object_prototype,
+    prototype: iter_proto,
     callable: None,
     class_name: "Generator",
     extensible: true,
