@@ -789,6 +789,21 @@ test "end_offset: plain identifier" {
 }
 
 ///|
+test "end_offset: direct supplementary-plane identifier (astral char, 2 UTF-16 units)" {
+  // 𝒜 = U+1D49C occupies 1 code point but 2 UTF-16 code units.
+  // offset (code-point-based) would give end_offset=1; decoded.length() gives
+  // the correct UTF-16 value 2 so unsafe_substring recovers the full identifier.
+  let src = "𝒜"
+  let toks = @lexer.tokenize(src)
+  let tok = toks[0]
+  inspect(tok.end_offset, content="2")
+  inspect(
+    src.unsafe_substring(start=tok.loc.offset, end=tok.end_offset),
+    content="𝒜",
+  )
+}
+
+///|
 test "end_offset: numeric separator preserved in source span" {
   // raw = "1000" (underscores stripped for parsing), but end_offset must
   // point past the full "1_000" source text, not loc.offset+raw.length().

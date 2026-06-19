@@ -951,7 +951,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       } else {
         resolve_keyword(decoded)
       }
-      tokens.push(@token.Token(kind, loc, decoded, end_offset=offset))
+      // For escaped identifiers (has_escape=true), offset is code-point-based
+      // but all escape sequences (\uXXXX, \u{XXXXX}) are ASCII so code-point
+      // count == UTF-16 code-unit count — offset is safe to use directly.
+      // For non-escaped identifiers, decoded.length() gives UTF-16 code units
+      // (matching String::unsafe_substring), while offset counts code points and
+      // would be short by one per direct supplementary-plane character.
+      let end_offset = if has_escape {
+        offset
+      } else {
+        loc.offset + decoded.length()
+      }
+      tokens.push(@token.Token(kind, loc, decoded, end_offset~))
       match kind {
         Function => {
           let follows_dot = tokens.length() >= 2 &&

@@ -13485,6 +13485,21 @@ test "Function.prototype.toString: numeric separator preserved in source" {
 }
 
 ///|
+test "Function.prototype.toString: astral-plane identifier in body (2 UTF-16 units)" {
+  // 𝒜 (U+1D49C) is 1 code point but 2 UTF-16 code units.
+  // With end_offset=offset (code-point-based), only 1 unit was included and
+  // consume_source_text returned a half-surrogate. With end_offset=loc.offset+
+  // decoded.length() (UTF-16 units), both code units are included correctly.
+  // No prior astral chars in source — this isolates the per-identifier regression.
+  let output = run_output(
+    (
+      #|console.log((() => 𝒜).toString());
+    ),
+  )
+  json_inspect(output, content=["() => 𝒜"])
+}
+
+///|
 test "async functions and generators expose well-known symbol protocol hooks" {
   let output = run_output(
     (
