@@ -640,17 +640,16 @@ pub fn setup_async_function_constructor(
     fn(interp, _this, args) raise {
       // Last arg is body, previous args are parameter names. With no
       // arguments, the synthesized body and parameter list are both empty.
-      let body_str = if args.length() == 0 {
-        ""
-      } else {
-        match args[args.length() - 1] {
-          String_(s) => s
-          _ => args[args.length() - 1].to_string()
-        }
+      let body_str = match args {
+        [] => ""
+        [.., last] =>
+          match last {
+            String_(s) => s
+            _ => last.to_string()
+          }
       }
-      let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
       let param_parts : Array[String] = []
-      for i = 0; i < param_count; i = i + 1 {
+      for i in 0..<(args.length() - 1) {
         match args[i] {
           String_(s) => param_parts.push(s)
           _ => param_parts.push(args[i].to_string())
@@ -663,40 +662,36 @@ pub fn setup_async_function_constructor(
         body_str +
         "\n}"
       let prog = @parser.parse(source)
-      if prog.stmts.length() > 0 {
-        match prog.stmts[0] {
-          AsyncFuncDecl(_, params, body, _, source_text) => {
-            // Validate static early errors against the function's strict context.
-            let body_strict = @static_semantics.has_use_strict(body)
-            validate_function_constructor_params(true, params, None, body)
-            interp.validate_block_early_errors(body, body_strict)
-            return interp.make_async_function(
-              Some("anonymous"),
-              params,
-              None,
-              body,
-              body_strict,
-              interp.global,
-              source_text~,
-            )
-          }
-          AsyncFuncDeclExt(_, params, rest_param, body, _, source_text) => {
-            // Validate static early errors against the function's strict context.
-            let body_strict = @static_semantics.has_use_strict(body)
-            validate_function_constructor_params_ext(params, rest_param, body)
-            interp.validate_block_early_errors(body, body_strict)
-            return interp.make_async_function_ext(
-              Some("anonymous"),
-              params,
-              rest_param,
-              body,
-              body_strict,
-              interp.global,
-              source_text~,
-            )
-          }
-          _ => ()
+      match prog.stmts {
+        [AsyncFuncDecl(_, params, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params(true, params, None, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_function(
+            Some("anonymous"),
+            params,
+            None,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
         }
+        [AsyncFuncDeclExt(_, params, rest_param, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params_ext(params, rest_param, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_function_ext(
+            Some("anonymous"),
+            params,
+            rest_param,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
+        }
+        _ => ()
       }
       raise @errors.SyntaxError(
         message="Invalid AsyncFunction constructor source",
@@ -799,7 +794,10 @@ pub fn setup_async_generator_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(ip, this_val, args) {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
       async_generator_resume(ip, this_val, Next(arg))
     },
   )
@@ -809,7 +807,10 @@ pub fn setup_async_generator_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(ip, this_val, args) {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
       async_generator_resume(ip, this_val, Throw(arg))
     },
   )
@@ -819,7 +820,10 @@ pub fn setup_async_generator_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(ip, this_val, args) {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
       async_generator_resume(ip, this_val, Return(arg))
     },
   )
@@ -874,17 +878,16 @@ pub fn setup_async_generator_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(interp, _this, args) raise {
-      let body_str = if args.length() == 0 {
-        ""
-      } else {
-        match args[args.length() - 1] {
-          String_(s) => s
-          _ => args[args.length() - 1].to_string()
-        }
+      let body_str = match args {
+        [] => ""
+        [.., last] =>
+          match last {
+            String_(s) => s
+            _ => last.to_string()
+          }
       }
-      let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
       let param_parts : Array[String] = []
-      for i = 0; i < param_count; i = i + 1 {
+      for i in 0..<(args.length() - 1) {
         match args[i] {
           String_(s) => param_parts.push(s)
           _ => param_parts.push(args[i].to_string())
@@ -897,38 +900,36 @@ pub fn setup_async_generator_function_constructor(
         body_str +
         "\n}"
       let prog = @parser.parse(source)
-      if prog.stmts.length() > 0 {
-        match prog.stmts[0] {
-          AsyncGeneratorDecl(_, params, body, _, source_text) => {
-            let body_strict = @static_semantics.has_use_strict(body)
-            validate_function_constructor_params(true, params, None, body)
-            interp.validate_block_early_errors(body, body_strict)
-            return interp.make_async_generator_function(
-              Some("anonymous"),
-              params,
-              None,
-              body,
-              body_strict,
-              interp.global,
-              source_text~,
-            )
-          }
-          AsyncGeneratorDeclExt(_, params, rest_param, body, _, source_text) => {
-            let body_strict = @static_semantics.has_use_strict(body)
-            validate_function_constructor_params_ext(params, rest_param, body)
-            interp.validate_block_early_errors(body, body_strict)
-            return interp.make_async_generator_function_ext(
-              Some("anonymous"),
-              params,
-              rest_param,
-              body,
-              body_strict,
-              interp.global,
-              source_text~,
-            )
-          }
-          _ => ()
+      match prog.stmts {
+        [AsyncGeneratorDecl(_, params, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params(true, params, None, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_generator_function(
+            Some("anonymous"),
+            params,
+            None,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
         }
+        [AsyncGeneratorDeclExt(_, params, rest_param, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params_ext(params, rest_param, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_generator_function_ext(
+            Some("anonymous"),
+            params,
+            rest_param,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
+        }
+        _ => ()
       }
       raise @errors.SyntaxError(
         message="Invalid AsyncGeneratorFunction constructor source",
