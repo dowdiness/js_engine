@@ -13401,6 +13401,77 @@ test "GeneratorFunction constructor throws SyntaxError on bad source" {
 }
 
 ///|
+test "GeneratorPrototype is a shared singleton across generator functions (§27.3.1)" {
+  let output = run_output(
+    (
+      #|function* g1() {}
+      #|function* g2() {}
+      #|console.log(Object.getPrototypeOf(g1.prototype) === Object.getPrototypeOf(g2.prototype));
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "GeneratorPrototype own key order is constructor,next,return,throw (§27.3.1)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var proto = Object.getPrototypeOf(g.prototype);
+      #|console.log(Object.getOwnPropertyNames(proto).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,next,return,throw"])
+}
+
+///|
+test "GeneratorPrototype.constructor points to GeneratorFunction.prototype (§27.3.1.1)" {
+  let output = run_output(
+    (
+      #|function* g1() {}
+      #|function* g2() {}
+      #|var GeneratorProto = Object.getPrototypeOf(g1.prototype);
+      #|var GeneratorFuncProto = Object.getPrototypeOf(g1);
+      #|console.log(GeneratorProto.constructor === GeneratorFuncProto);
+      #|console.log(Object.getPrototypeOf(g1) === Object.getPrototypeOf(g2));
+      #|console.log(GeneratorFuncProto[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "GeneratorFunction"])
+}
+
+///|
+test "GeneratorFunction.prototype.prototype descriptor is configurable:true (§27.3.3.2)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var GeneratorFuncProto = Object.getPrototypeOf(g);
+      #|var d = Object.getOwnPropertyDescriptor(GeneratorFuncProto, 'prototype');
+      #|console.log(d.writable);
+      #|console.log(d.enumerable);
+      #|console.log(d.configurable);
+      #|var ctorDesc = Object.getOwnPropertyDescriptor(g.constructor, 'prototype');
+      #|console.log(ctorDesc.configurable);
+    ),
+  )
+  // gen_func_proto.prototype: writable=false, enumerable=false, configurable=true (§27.3.3.2)
+  // gen_func_ctor.prototype: configurable=false (§27.3.2.2)
+  json_inspect(output, content=["false", "false", "true", "false"])
+}
+
+///|
+test "GeneratorFunction.prototype own key order is constructor,prototype (§27.3.3)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var GeneratorFuncProto = Object.getPrototypeOf(g);
+      #|console.log(Object.getOwnPropertyNames(GeneratorFuncProto).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,prototype"])
+}
+
+///|
 test "Function.prototype.toString distinguishes async functions" {
   let src =
     #|console.log((function foo(){}).toString());

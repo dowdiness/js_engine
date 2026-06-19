@@ -73,21 +73,6 @@ pub(all) struct GeneratorObject {
 }
 
 ///|
-/// Get or create %GeneratorPrototype% for the given interpreter.
-/// We create a new prototype each time to avoid stale symbol IDs
-/// across interpreter instances (each test creates a new interpreter).
-fn get_generator_prototype(interp : Interpreter) -> Value {
-  let object_proto = interp.global.get("[[ObjectPrototype]]") catch {
-    _ => Null
-  }
-  init_generator_prototype(
-    interp.realm_state.well_known_symbols,
-    interp.realm_state,
-    object_proto,
-  )
-}
-
-///|
 /// Mark generator as completed and remove from global map to free resources
 fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.state = Completed
@@ -116,110 +101,6 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 }
 
 ///|
-/// Initialize %GeneratorPrototype% with next, throw, return methods
-fn init_generator_prototype(
-  well_known_symbols : WellKnownSymbols,
-  realm_state : RealmState,
-  object_prototype : Value,
-) -> Value {
-  let iterator_sym = well_known_symbols.iterator
-  let props : Map[String, Value] = {}
-  let sym_props : Map[Int, Value] = {}
-  let descs : Map[String, PropDescriptor] = {}
-
-  // .next(value)
-  props["next"] = make_interp_method_func(
-    name="next",
-    length=1,
-    realm_state=Some(realm_state),
-    fn(ip, this_val, args) raise {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
-      generator_resume(ip, this_val, Next(arg))
-    },
-  )
-  descs["next"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-
-  // .throw(exception)
-  props["throw"] = make_interp_method_func(
-    name="throw",
-    length=1,
-    realm_state=Some(realm_state),
-    fn(ip, this_val, args) raise {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
-      generator_resume(ip, this_val, Throw(arg))
-    },
-  )
-  descs["throw"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-
-  // .return(value)
-  props["return"] = make_interp_method_func(
-    name="return",
-    length=1,
-    realm_state=Some(realm_state),
-    fn(ip, this_val, args) raise {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
-      generator_resume(ip, this_val, Return(arg))
-    },
-  )
-  descs["return"] = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-
-  // [Symbol.iterator]() { return this; }
-  sym_props[iterator_sym.id] = make_method_func(
-    name="[Symbol.iterator]",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) { this_val },
-  )
-  // [Symbol.toStringTag] = "Generator"
-  let sym_descs : Map[Int, PropDescriptor] = {}
-  let tostringtag_sym = well_known_symbols.to_string_tag
-  sym_props[tostringtag_sym.id] = String_("Generator")
-  sym_descs[tostringtag_sym.id] = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: sym_props,
-      descriptors: descs,
-      symbol_descriptors: sym_descs,
-      internal_slots: {},
-    },
-    prototype: object_prototype,
-    callable: None,
-    class_name: "Generator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-}
-
-///|
 /// Set up the GeneratorFunction constructor on the given interpreter.
 /// GeneratorFunction("a", "yield a") creates a generator function,
 /// analogous to Function("a", "return a") for regular functions.
@@ -233,11 +114,18 @@ pub fn setup_generator_function_constructor(
     Some(binding) => binding.value
     None => Null
   }
-  let gf_sym_props : Map[Int, Value] = {}
-  let gf_sym_descs : Map[Int, PropDescriptor] = {}
+  let object_prototype = env.get("[[ObjectPrototype]]") catch { _ => Null }
+  let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
-  gf_sym_props[tostringtag_sym.id] = String_("GeneratorFunction")
-  gf_sym_descs[tostringtag_sym.id] = {
+  let non_enum : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let non_enum_non_writable : PropDescriptor = {
     writable: false,
     enumerable: false,
     configurable: true,
@@ -245,6 +133,21 @@ pub fn setup_generator_function_constructor(
     setter: None,
     is_accessor: false,
   }
+  let frozen : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  // %GeneratorFunction%.prototype — build shell first so it can serve as
+  // the constructor value in %GeneratorPrototype%'s property map, ensuring
+  // insertion order follows §27.3.3: constructor, prototype (string keys).
+  let gf_sym_props : Map[Int, Value] = {}
+  let gf_sym_descs : Map[Int, PropDescriptor] = {}
+  gf_sym_props[tostringtag_sym.id] = String_("GeneratorFunction")
+  gf_sym_descs[tostringtag_sym.id] = non_enum_non_writable
   let gen_func_proto : Value = Object({
     bag: {
       properties: {},
@@ -256,6 +159,75 @@ pub fn setup_generator_function_constructor(
     prototype: func_proto,
     callable: None,
     class_name: "GeneratorFunction",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  // %GeneratorPrototype% — shared singleton for all sync generator instances.
+  // Own string keys follow §27.3.1: constructor, next, return, throw.
+  let gp_props : Map[String, Value] = {}
+  let gp_sym_props : Map[Int, Value] = {}
+  let gp_descs : Map[String, PropDescriptor] = {}
+  let gp_sym_descs : Map[Int, PropDescriptor] = {}
+  gp_props["constructor"] = gen_func_proto
+  gp_descs["constructor"] = non_enum_non_writable
+  gp_props["next"] = make_interp_method_func(
+    name="next",
+    length=1,
+    realm_state=env.realm_state,
+    fn(ip, this_val, args) raise {
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
+      generator_resume(ip, this_val, Next(arg))
+    },
+  )
+  gp_descs["next"] = non_enum
+  gp_props["return"] = make_interp_method_func(
+    name="return",
+    length=1,
+    realm_state=env.realm_state,
+    fn(ip, this_val, args) raise {
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
+      generator_resume(ip, this_val, Return(arg))
+    },
+  )
+  gp_descs["return"] = non_enum
+  gp_props["throw"] = make_interp_method_func(
+    name="throw",
+    length=1,
+    realm_state=env.realm_state,
+    fn(ip, this_val, args) raise {
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
+      generator_resume(ip, this_val, Throw(arg))
+    },
+  )
+  gp_descs["throw"] = non_enum
+  gp_sym_props[iterator_sym.id] = make_method_func(
+    name="[Symbol.iterator]",
+    length=0,
+    realm_state=env.realm_state,
+    fn(this_val, _args) { this_val },
+  )
+  gp_sym_props[tostringtag_sym.id] = String_("Generator")
+  gp_sym_descs[tostringtag_sym.id] = non_enum_non_writable
+  let gen_proto : Value = Object({
+    bag: {
+      properties: gp_props,
+      symbol_properties: gp_sym_props,
+      descriptors: gp_descs,
+      symbol_descriptors: gp_sym_descs,
+      internal_slots: {},
+    },
+    prototype: object_prototype,
+    callable: None,
+    class_name: "Generator",
     extensible: true,
     arraybuffer_state: None,
   })
@@ -293,7 +265,6 @@ pub fn setup_generator_function_constructor(
       if prog.stmts.length() > 0 {
         match prog.stmts[0] {
           GeneratorDecl(_, params, body, _, source_text) => {
-            // Validate static early errors against the function's strict context.
             let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params(true, params, None, body)
             interp.validate_block_early_errors(body, body_strict)
@@ -308,7 +279,6 @@ pub fn setup_generator_function_constructor(
             )
           }
           GeneratorDeclExt(_, params, rest_param, body, _, source_text) => {
-            // Validate static early errors against the function's strict context.
             let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params_ext(params, rest_param, body)
             interp.validate_block_early_errors(body, body_strict)
@@ -330,18 +300,13 @@ pub fn setup_generator_function_constructor(
       )
     },
   )
-  // Set up prototype chain: GeneratorFunction.prototype.constructor = GeneratorFunction
+  // §27.3.3: gen_func_proto string keys: constructor (§27.3.3.1) then prototype (§27.3.3.2).
   match gen_func_proto {
     Object(data) => {
       data.bag.properties["constructor"] = gen_func_ctor
-      data.bag.descriptors["constructor"] = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      data.bag.descriptors["constructor"] = non_enum_non_writable
+      data.bag.properties["prototype"] = gen_proto
+      data.bag.descriptors["prototype"] = non_enum_non_writable
     }
     _ => ()
   }
@@ -354,19 +319,13 @@ pub fn setup_generator_function_constructor(
   match gen_func_ctor {
     Object(data) => {
       data.bag.properties["prototype"] = gen_func_proto
-      data.bag.descriptors["prototype"] = {
-        writable: false,
-        enumerable: false,
-        configurable: false,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
+      data.bag.descriptors["prototype"] = frozen
     }
     _ => ()
   }
   env.def_builtin("GeneratorFunction", gen_func_ctor)
   env.def_builtin("[[GeneratorFunctionPrototype]]", gen_func_proto)
+  env.def_builtin("[[GeneratorPrototype]]", gen_proto)
 }
 
 ///|
@@ -395,7 +354,11 @@ fn Interpreter::make_generator_function(
   source_text? : String? = None,
 ) -> Value {
   let interp = self
-  let gen_proto = get_generator_prototype(interp)
+  let gen_proto : Value = match
+    interp.global.bindings.get("[[GeneratorPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
   // Create the generator function's own .prototype (instances inherit from it)
   let func_prototype = Object({
     bag: PropertyBag(),
@@ -491,7 +454,11 @@ fn Interpreter::make_generator_function_ext(
   source_text? : String? = None,
 ) -> Value {
   let interp = self
-  let gen_proto = get_generator_prototype(interp)
+  let gen_proto : Value = match
+    interp.global.bindings.get("[[GeneratorPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
   let func_prototype = Object({
     bag: PropertyBag(),
     prototype: gen_proto,

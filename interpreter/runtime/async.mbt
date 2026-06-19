@@ -163,7 +163,11 @@ fn run_async_body(
   let promise_val = Promise(promise_data)
   let (resolve_fn, reject_fn) = create_resolving_functions(ip, promise_data)
   // Create a generator object from the async function body
-  let gen_proto = get_generator_prototype(ip)
+  let gen_proto : Value = match
+    ip.global.bindings.get("[[GeneratorPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
   let func_proto = Object({
     bag: PropertyBag(),
     prototype: gen_proto,
