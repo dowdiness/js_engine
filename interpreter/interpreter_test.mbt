@@ -13599,6 +13599,37 @@ test "AsyncGeneratorFunction [[Prototype]] is Function (§27.4.1)" {
 }
 
 ///|
+test "AsyncGeneratorFunction constructor throws TypeError for Symbol body (§7.1.17)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|try {
+      #|  g.constructor(Symbol());
+      #|  console.log('no throw');
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "AsyncGeneratorFunction constructor calls object toString for body (§7.1.17)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let called = false;
+      #|const body = { toString() { called = true; return ''; } };
+      #|const f = g.constructor(body);
+      #|console.log(typeof f);
+      #|console.log(called);
+    ),
+  )
+  json_inspect(output, content=["function", "true"])
+}
+
+///|
 test "async generator function name and length" {
   let output = run_output(
     (

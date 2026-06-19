@@ -645,14 +645,14 @@ pub fn setup_async_function_constructor(
         [.., last] =>
           match last {
             String_(s) => s
-            _ => last.to_string()
+            _ => to_js_string(last, interp=Some(interp))
           }
       }
       let param_parts : Array[String] = []
       for i in 0..<(args.length() - 1) {
         match args[i] {
           String_(s) => param_parts.push(s)
-          _ => param_parts.push(args[i].to_string())
+          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
         }
       }
       let params_str = param_parts.join(",")
@@ -888,14 +888,14 @@ pub fn setup_async_generator_function_constructor(
         [.., last] =>
           match last {
             String_(s) => s
-            _ => last.to_string()
+            _ => to_js_string(last, interp=Some(interp))
           }
       }
       let param_parts : Array[String] = []
       for i in 0..<(args.length() - 1) {
         match args[i] {
           String_(s) => param_parts.push(s)
-          _ => param_parts.push(args[i].to_string())
+          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
         }
       }
       let params_str = param_parts.join(",")
