@@ -13571,6 +13571,21 @@ test "Function.prototype.toString: astral-plane identifier in body (2 UTF-16 uni
 }
 
 ///|
+// Positive control: confirms %GeneratorPrototype%.next is writable and the singleton
+// is shared — the patch IS live for sync generators, making the async isolation test below
+// a genuine discriminator (not a vacuous pass).
+test "monkey-patch on %GeneratorPrototype%.next intercepts sync generator iteration" {
+  let output = run_output(
+    (
+      #|Object.getPrototypeOf(function*(){}.prototype).next = () => ({ value: 99, done: true });
+      #|function* g() { yield 1; }
+      #|console.log(g().next().value);
+    ),
+  )
+  json_inspect(output, content=["99"])
+}
+
+///|
 test "async function resolution is not affected by monkey-patching %GeneratorPrototype%.next" {
   let output = run_output_async(
     (
