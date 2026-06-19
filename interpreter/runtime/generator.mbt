@@ -215,6 +215,7 @@ pub fn setup_generator_function_constructor(
     realm_state=env.realm_state,
     fn(this_val, _args) { this_val },
   )
+  gp_sym_descs[iterator_sym.id] = non_enum
   gp_sym_props[tostringtag_sym.id] = String_("Generator")
   gp_sym_descs[tostringtag_sym.id] = non_enum_non_writable
   let gen_proto : Value = Object({

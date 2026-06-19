@@ -13472,6 +13472,21 @@ test "GeneratorFunction.prototype own key order is constructor,prototype (§27.3
 }
 
 ///|
+test "GeneratorPrototype[Symbol.iterator] descriptor is non-enumerable writable configurable (§27.3.1)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var GenProto = Object.getPrototypeOf(g.prototype);
+      #|var d = Object.getOwnPropertyDescriptor(GenProto, Symbol.iterator);
+      #|console.log(d.writable);
+      #|console.log(d.enumerable);
+      #|console.log(d.configurable);
+    ),
+  )
+  json_inspect(output, content=["true", "false", "true"])
+}
+
+///|
 test "Function.prototype.toString distinguishes async functions" {
   let src =
     #|console.log((function foo(){}).toString());
