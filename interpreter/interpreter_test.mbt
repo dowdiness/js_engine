@@ -13564,6 +13564,30 @@ test "AsyncGeneratorFunction.prototype.prototype descriptor is configurable:true
 }
 
 ///|
+test "AsyncGeneratorPrototype own key order is constructor,next,return,throw (§27.6)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let proto = Object.getPrototypeOf(g.prototype);
+      #|console.log(Object.getOwnPropertyNames(proto).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,next,return,throw"])
+}
+
+///|
+test "AsyncGeneratorFunction.prototype own key order is constructor,prototype (§27.4.3)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let AsyncGenerator = Object.getPrototypeOf(g);
+      #|console.log(Object.getOwnPropertyNames(AsyncGenerator).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,prototype"])
+}
+
+///|
 test "AsyncGeneratorFunction [[Prototype]] is Function (§27.4.1)" {
   let output = run_output(
     (

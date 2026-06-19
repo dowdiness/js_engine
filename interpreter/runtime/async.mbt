@@ -783,12 +783,37 @@ pub fn setup_async_generator_function_constructor(
     is_accessor: false,
   }
 
-  // Build %AsyncGeneratorPrototype% — shared singleton for all async gen instances
+  // Build %AsyncGeneratorFunction%.prototype first so it can be used as the
+  // constructor value in %AsyncGeneratorPrototype%'s property map, ensuring
+  // insertion order follows spec §27.4.3: constructor, prototype (string keys).
+  let agf_sym_props : Map[Int, Value] = {}
+  let agf_sym_descs : Map[Int, PropDescriptor] = {}
+  agf_sym_props[to_string_tag_sym.id] = String_("AsyncGeneratorFunction")
+  agf_sym_descs[to_string_tag_sym.id] = non_enum_non_writable
+  let agf_proto : Value = Object({
+    bag: {
+      properties: {},
+      symbol_properties: agf_sym_props,
+      descriptors: {},
+      symbol_descriptors: agf_sym_descs,
+      internal_slots: {},
+    },
+    prototype: func_proto,
+    callable: None,
+    class_name: "AsyncGeneratorFunction",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+
+  // Build %AsyncGeneratorPrototype% — shared singleton for all async gen instances.
+  // Property insertion order follows spec §27.6: constructor, next, return, throw.
   let agp_props : Map[String, Value] = {}
   let agp_sym_props : Map[Int, Value] = {}
   let agp_descs : Map[String, PropDescriptor] = {}
   let agp_sym_descs : Map[Int, PropDescriptor] = {}
 
+  agp_props["constructor"] = agf_proto
+  agp_descs["constructor"] = non_enum_non_writable
   agp_props["next"] = make_interp_method_func(
     name="next",
     length=1,
@@ -802,19 +827,6 @@ pub fn setup_async_generator_function_constructor(
     },
   )
   agp_descs["next"] = non_enum
-  agp_props["throw"] = make_interp_method_func(
-    name="throw",
-    length=1,
-    realm_state=env.realm_state,
-    fn(ip, this_val, args) {
-      let arg = match args {
-        [first, ..] => first
-        [] => Undefined
-      }
-      async_generator_resume(ip, this_val, Throw(arg))
-    },
-  )
-  agp_descs["throw"] = non_enum
   agp_props["return"] = make_interp_method_func(
     name="return",
     length=1,
@@ -828,6 +840,19 @@ pub fn setup_async_generator_function_constructor(
     },
   )
   agp_descs["return"] = non_enum
+  agp_props["throw"] = make_interp_method_func(
+    name="throw",
+    length=1,
+    realm_state=env.realm_state,
+    fn(ip, this_val, args) {
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
+      async_generator_resume(ip, this_val, Throw(arg))
+    },
+  )
+  agp_descs["throw"] = non_enum
   agp_sym_props[async_iter_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
@@ -848,26 +873,6 @@ pub fn setup_async_generator_function_constructor(
     prototype: object_prototype,
     callable: None,
     class_name: "AsyncGenerator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-
-  // Build %AsyncGeneratorFunction%.prototype — shared prototype of all async gen functions
-  let agf_sym_props : Map[Int, Value] = {}
-  let agf_sym_descs : Map[Int, PropDescriptor] = {}
-  agf_sym_props[to_string_tag_sym.id] = String_("AsyncGeneratorFunction")
-  agf_sym_descs[to_string_tag_sym.id] = non_enum_non_writable
-  let agf_proto : Value = Object({
-    bag: {
-      properties: {},
-      symbol_properties: agf_sym_props,
-      descriptors: {},
-      symbol_descriptors: agf_sym_descs,
-      internal_slots: {},
-    },
-    prototype: func_proto,
-    callable: None,
-    class_name: "AsyncGeneratorFunction",
     extensible: true,
     arraybuffer_state: None,
   })
@@ -937,25 +942,16 @@ pub fn setup_async_generator_function_constructor(
     },
   )
 
-  // Wire up cross-references between the three objects
-  // agf_proto.prototype = async_gen_proto
-  // agf_proto.constructor = async_gen_func_ctor
-  // async_gen_proto.constructor = agf_proto (per spec: constructor points to %AsyncGeneratorFunction%.prototype)
-  // async_gen_func_ctor.prototype = agf_proto
+  // Wire up cross-references between the three objects.
+  // %AsyncGeneratorPrototype%.constructor was set at construction time (agf_proto).
+  // §27.4.3: agf_proto string keys must be constructor (§27.4.3.1) then prototype (§27.4.3.2).
   match agf_proto {
     Object(data) => {
+      data.bag.properties["constructor"] = async_gen_func_ctor
+      data.bag.descriptors["constructor"] = non_enum_non_writable
       // §27.4.3.2: prototype property on %AsyncGeneratorFunction%.prototype is configurable
       data.bag.properties["prototype"] = async_gen_proto
       data.bag.descriptors["prototype"] = non_enum_non_writable
-      data.bag.properties["constructor"] = async_gen_func_ctor
-      data.bag.descriptors["constructor"] = non_enum_non_writable
-    }
-    _ => ()
-  }
-  match async_gen_proto {
-    Object(data) => {
-      data.bag.properties["constructor"] = agf_proto
-      data.bag.descriptors["constructor"] = non_enum_non_writable
     }
     _ => ()
   }
