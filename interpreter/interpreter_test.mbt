@@ -13488,6 +13488,19 @@ test "GeneratorPrototype inherits Symbol.iterator from %IteratorPrototype% (§27
 }
 
 ///|
+// Chain: gen → g.prototype → %GeneratorPrototype% → %IteratorPrototype% → %ObjectPrototype%
+test "generator instances are instanceof Object (§27.3.1 prototype chain)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var gen = g();
+      #|console.log(gen instanceof Object);
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "Function.prototype.toString distinguishes async functions" {
   let src =
     #|console.log((function foo(){}).toString());
