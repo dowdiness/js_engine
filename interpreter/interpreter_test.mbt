@@ -13564,6 +13564,17 @@ test "AsyncGeneratorFunction.prototype.prototype descriptor is configurable:true
 }
 
 ///|
+test "AsyncGeneratorFunction [[Prototype]] is Function (§27.4.1)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|console.log(Object.getPrototypeOf(g.constructor) === Function);
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "async generator function name and length" {
   let output = run_output(
     (

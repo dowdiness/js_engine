@@ -959,10 +959,13 @@ pub fn setup_async_generator_function_constructor(
     }
     _ => ()
   }
+  // §27.4.1: %AsyncGeneratorFunction%.[[Prototype]] = Function (not Function.prototype)
+  let function_ctor = env.get("Function") catch { _ => Null }
   match async_gen_func_ctor {
     Object(data) => {
       data.bag.properties["prototype"] = agf_proto
       data.bag.descriptors["prototype"] = frozen
+      data.prototype = function_ctor
     }
     _ => ()
   }
