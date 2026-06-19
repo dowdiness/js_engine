@@ -211,6 +211,10 @@ fn setup_startup_generator_async_constructors(
     core.global,
     well_known_symbols=core.realm_state.well_known_symbols,
   )
+  @runtime.setup_async_generator_function_constructor(
+    core.global,
+    well_known_symbols=core.realm_state.well_known_symbols,
+  )
 }
 
 ///|
@@ -702,6 +706,7 @@ fn time_generator_async_constructors() -> Double {
   })
   keep_global_binding(core.global, "GeneratorFunction")
   keep_global_binding(core.global, "[[AsyncFunctionPrototype]]")
+  keep_global_binding(core.global, "[[AsyncGeneratorPrototype]]")
   elapsed
 }
 

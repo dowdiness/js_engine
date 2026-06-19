@@ -239,6 +239,11 @@ pub fn Interpreter::new(
       global,
       well_known_symbols=realm_state.well_known_symbols,
     )
+    // Set up AsyncGeneratorFunction constructor and shared %AsyncGeneratorPrototype%
+    setup_async_generator_function_constructor(
+      global,
+      well_known_symbols=realm_state.well_known_symbols,
+    )
     // Set up test262 harness host functions (print, $262)
     setup_harness(global, output, global_this)
   })

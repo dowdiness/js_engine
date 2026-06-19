@@ -13515,6 +13515,154 @@ test "async functions and generators expose well-known symbol protocol hooks" {
 }
 
 ///|
+test "AsyncGeneratorPrototype has correct Symbol.toStringTag" {
+  let output = run_output(
+    (
+      #|async function* ag() {}
+      #|let iter = ag();
+      #|let proto = Object.getPrototypeOf(iter);
+      #|let AsyncGenProto = Object.getPrototypeOf(proto);
+      #|console.log(AsyncGenProto[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["AsyncGenerator"])
+}
+
+///|
+test "AsyncGeneratorPrototype.constructor points to AsyncGeneratorFunction.prototype" {
+  let output = run_output(
+    (
+      #|async function* g1() {}
+      #|async function* g2() {}
+      #|let AsyncGenerator = Object.getPrototypeOf(g1);
+      #|let AsyncGeneratorProto = AsyncGenerator.prototype;
+      #|console.log(AsyncGeneratorProto.constructor === AsyncGenerator);
+      #|console.log(Object.getPrototypeOf(g1) === Object.getPrototypeOf(g2));
+      #|console.log(AsyncGenerator[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "AsyncGeneratorFunction"])
+}
+
+///|
+test "AsyncGeneratorFunction.prototype.prototype descriptor is configurable:true (§27.4.3.2)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let AsyncGenerator = Object.getPrototypeOf(g);
+      #|let d = Object.getOwnPropertyDescriptor(AsyncGenerator, 'prototype');
+      #|console.log(d.writable);
+      #|console.log(d.enumerable);
+      #|console.log(d.configurable);
+      #|let ctorDesc = Object.getOwnPropertyDescriptor(g.constructor, 'prototype');
+      #|console.log(ctorDesc.configurable);
+    ),
+  )
+  // agf_proto.prototype: writable=false, enumerable=false, configurable=true (§27.4.3.2)
+  // async_gen_func_ctor.prototype: configurable=false (§27.4.2.2)
+  json_inspect(output, content=["false", "false", "true", "false"])
+}
+
+///|
+test "AsyncGeneratorPrototype own key order is constructor,next,return,throw (§27.6)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let proto = Object.getPrototypeOf(g.prototype);
+      #|console.log(Object.getOwnPropertyNames(proto).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,next,return,throw"])
+}
+
+///|
+test "AsyncGeneratorFunction.prototype own key order is constructor,prototype (§27.4.3)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let AsyncGenerator = Object.getPrototypeOf(g);
+      #|console.log(Object.getOwnPropertyNames(AsyncGenerator).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,prototype"])
+}
+
+///|
+test "AsyncGeneratorFunction [[Prototype]] is Function (§27.4.1)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|console.log(Object.getPrototypeOf(g.constructor) === Function);
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "Symbol.asyncIterator lives on %AsyncIteratorPrototype%, not %AsyncGeneratorPrototype% (§27.1.2)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|const agp = Object.getPrototypeOf(g.prototype);
+      #|const aip = Object.getPrototypeOf(agp);
+      #|console.log(Object.prototype.hasOwnProperty.call(agp, Symbol.asyncIterator));
+      #|console.log(Object.prototype.hasOwnProperty.call(aip, Symbol.asyncIterator));
+      #|console.log(typeof agp[Symbol.asyncIterator]);
+    ),
+  )
+  json_inspect(output, content=["false", "true", "function"])
+}
+
+///|
+test "AsyncGeneratorFunction constructor throws TypeError for Symbol body (§7.1.17)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|try {
+      #|  g.constructor(Symbol());
+      #|  console.log('no throw');
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "AsyncGeneratorFunction constructor coerces params before body (§20.2.1.1)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let bodyCalled = false;
+      #|const body = { toString() { bodyCalled = true; return ''; } };
+      #|try {
+      #|  g.constructor(Symbol(), body);
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(bodyCalled);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
+test "AsyncGeneratorFunction constructor calls object toString for body (§7.1.17)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let called = false;
+      #|const body = { toString() { called = true; return ''; } };
+      #|const f = g.constructor(body);
+      #|console.log(typeof f);
+      #|console.log(called);
+    ),
+  )
+  json_inspect(output, content=["function", "true"])
+}
+
+///|
 test "async generator function name and length" {
   let output = run_output(
     (

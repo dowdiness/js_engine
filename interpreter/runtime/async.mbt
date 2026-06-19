@@ -464,14 +464,12 @@ fn make_async_gen_function_inner(
   closure : Environment,
   source_text : String?,
 ) -> Value {
-  let object_prototype = interp.global.get("[[ObjectPrototype]]") catch {
-    _ => Null
+  // Use the shared %AsyncGeneratorPrototype% singleton (set up during interpreter init).
+  let async_gen_proto : Value = match
+    interp.global.bindings.get("[[AsyncGeneratorPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
   }
-  let async_gen_proto = init_async_generator_prototype(
-    interp.realm_state.well_known_symbols,
-    interp.realm_state,
-    object_prototype,
-  )
   let func_prototype = Object({
     bag: PropertyBag(),
     prototype: async_gen_proto,
@@ -480,8 +478,9 @@ fn make_async_gen_function_inner(
     extensible: true,
     arraybuffer_state: None,
   })
+  // Use the shared %AsyncGeneratorFunction%.prototype (not the sync generator's prototype).
   let gen_func_proto : Value = match
-    interp.global.bindings.get("[[GeneratorFunctionPrototype]]") {
+    interp.global.bindings.get("[[AsyncGeneratorFunctionPrototype]]") {
     Some(binding) => binding.value
     None => Null
   }
@@ -545,87 +544,6 @@ fn make_async_gen_function_inner(
     }),
     realm_state=Some(interp.realm_state),
   )
-}
-
-///|
-/// Create the async generator prototype with Promise-wrapping protocol methods.
-/// Async generator .next()/.throw()/.return() return Promises per ECMAScript spec.
-fn init_async_generator_prototype(
-  well_known_symbols : WellKnownSymbols,
-  realm_state : RealmState,
-  object_prototype : Value,
-) -> Value {
-  let async_iter_sym = well_known_symbols.async_iterator
-  let props : Map[String, Value] = {}
-  let sym_props : Map[Int, Value] = {}
-  let descs : Map[String, PropDescriptor] = {}
-  let non_enum : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-
-  // .next(value) — returns Promise<{value, done}>
-  props["next"] = make_interp_method_func(
-    name="next",
-    length=1,
-    realm_state=Some(realm_state),
-    fn(ip, this_val, args) {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
-      async_generator_resume(ip, this_val, Next(arg))
-    },
-  )
-  descs["next"] = non_enum
-
-  // .throw(exception) — returns Promise<{value, done}>
-  props["throw"] = make_interp_method_func(
-    name="throw",
-    length=1,
-    realm_state=Some(realm_state),
-    fn(ip, this_val, args) {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
-      async_generator_resume(ip, this_val, Throw(arg))
-    },
-  )
-  descs["throw"] = non_enum
-
-  // .return(value) — returns Promise<{value, done}>
-  props["return"] = make_interp_method_func(
-    name="return",
-    length=1,
-    realm_state=Some(realm_state),
-    fn(ip, this_val, args) {
-      let arg = if args.length() > 0 { args[0] } else { Undefined }
-      async_generator_resume(ip, this_val, Return(arg))
-    },
-  )
-  descs["return"] = non_enum
-
-  // [Symbol.asyncIterator]() { return this; }
-  sym_props[async_iter_sym.id] = make_method_func(
-    name="[Symbol.asyncIterator]",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) { this_val },
-  )
-
-  Object({
-    bag: {
-      properties: props,
-      symbol_properties: sym_props,
-      descriptors: descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: object_prototype,
-    callable: None,
-    class_name: "AsyncGenerator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
 }
 
 ///|
@@ -720,23 +638,21 @@ pub fn setup_async_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(interp, _this, args) raise {
-      // Last arg is body, previous args are parameter names. With no
-      // arguments, the synthesized body and parameter list are both empty.
-      let body_str = if args.length() == 0 {
-        ""
-      } else {
-        match args[args.length() - 1] {
-          String_(s) => s
-          _ => args[args.length() - 1].to_string()
-        }
-      }
-      let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
+      // §20.2.1.1: coerce all parameter args before the body arg
       let param_parts : Array[String] = []
-      for i = 0; i < param_count; i = i + 1 {
+      for i in 0..<(args.length() - 1) {
         match args[i] {
           String_(s) => param_parts.push(s)
-          _ => param_parts.push(args[i].to_string())
+          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
         }
+      }
+      let body_str = match args {
+        [] => ""
+        [.., last] =>
+          match last {
+            String_(s) => s
+            _ => to_js_string(last, interp=Some(interp))
+          }
       }
       let params_str = param_parts.join(",")
       let source = "async function anonymous(" +
@@ -745,40 +661,36 @@ pub fn setup_async_function_constructor(
         body_str +
         "\n}"
       let prog = @parser.parse(source)
-      if prog.stmts.length() > 0 {
-        match prog.stmts[0] {
-          AsyncFuncDecl(_, params, body, _, source_text) => {
-            // Validate static early errors against the function's strict context.
-            let body_strict = @static_semantics.has_use_strict(body)
-            validate_function_constructor_params(true, params, None, body)
-            interp.validate_block_early_errors(body, body_strict)
-            return interp.make_async_function(
-              Some("anonymous"),
-              params,
-              None,
-              body,
-              body_strict,
-              interp.global,
-              source_text~,
-            )
-          }
-          AsyncFuncDeclExt(_, params, rest_param, body, _, source_text) => {
-            // Validate static early errors against the function's strict context.
-            let body_strict = @static_semantics.has_use_strict(body)
-            validate_function_constructor_params_ext(params, rest_param, body)
-            interp.validate_block_early_errors(body, body_strict)
-            return interp.make_async_function_ext(
-              Some("anonymous"),
-              params,
-              rest_param,
-              body,
-              body_strict,
-              interp.global,
-              source_text~,
-            )
-          }
-          _ => ()
+      match prog.stmts {
+        [AsyncFuncDecl(_, params, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params(true, params, None, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_function(
+            Some("anonymous"),
+            params,
+            None,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
         }
+        [AsyncFuncDeclExt(_, params, rest_param, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params_ext(params, rest_param, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_function_ext(
+            Some("anonymous"),
+            params,
+            rest_param,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
+        }
+        _ => ()
       }
       raise @errors.SyntaxError(
         message="Invalid AsyncFunction constructor source",
@@ -819,4 +731,266 @@ pub fn setup_async_function_constructor(
   // It is only reachable via (async function(){}).constructor.
   // We store it as an internal binding so async functions get the right prototype.
   env.def_builtin("[[AsyncFunctionPrototype]]", async_func_proto)
+}
+
+///|
+/// Set up the AsyncGeneratorFunction constructor and prototype chain.
+/// Mirrors setup_generator_function_constructor in generator.mbt.
+///
+/// Prototype chain (per ES spec §27.4):
+///   %AsyncGeneratorFunction%.__proto__ === Function
+///   %AsyncGeneratorFunction%.prototype.__proto__ === Function.prototype
+///   %AsyncGeneratorFunction%.prototype[@@toStringTag] === "AsyncGeneratorFunction"
+///   %AsyncGeneratorFunction%.prototype.constructor === %AsyncGeneratorFunction%
+///   %AsyncGeneratorFunction%.prototype.prototype === %AsyncGeneratorPrototype%
+///   %AsyncIteratorPrototype%.__proto__ === Object.prototype
+///   %AsyncIteratorPrototype%[@@asyncIterator] returns this
+///   %AsyncGeneratorPrototype%.__proto__ === %AsyncIteratorPrototype%
+///   %AsyncGeneratorPrototype%.constructor === %AsyncGeneratorFunction%.prototype
+///   %AsyncGeneratorPrototype%[@@toStringTag] === "AsyncGenerator"
+pub fn setup_async_generator_function_constructor(
+  env : Environment,
+  well_known_symbols~ : WellKnownSymbols,
+) -> Unit {
+  let async_iter_sym = well_known_symbols.async_iterator
+  let to_string_tag_sym = well_known_symbols.to_string_tag
+  let object_prototype = env.get("[[ObjectPrototype]]") catch { _ => Null }
+  let func_proto : Value = match env.bindings.get("[[FunctionPrototype]]") {
+    Some(binding) => binding.value
+    None => Null
+  }
+  let non_enum : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let non_enum_non_writable : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let frozen : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+
+  // Build %AsyncGeneratorFunction%.prototype first so it can be used as the
+  // constructor value in %AsyncGeneratorPrototype%'s property map, ensuring
+  // insertion order follows spec §27.4.3: constructor, prototype (string keys).
+  let agf_sym_props : Map[Int, Value] = {}
+  let agf_sym_descs : Map[Int, PropDescriptor] = {}
+  agf_sym_props[to_string_tag_sym.id] = String_("AsyncGeneratorFunction")
+  agf_sym_descs[to_string_tag_sym.id] = non_enum_non_writable
+  let agf_proto : Value = Object({
+    bag: {
+      properties: {},
+      symbol_properties: agf_sym_props,
+      descriptors: {},
+      symbol_descriptors: agf_sym_descs,
+      internal_slots: {},
+    },
+    prototype: func_proto,
+    callable: None,
+    class_name: "AsyncGeneratorFunction",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+
+  // Build %AsyncIteratorPrototype% (§27.1.2) — owns Symbol.asyncIterator only.
+  // %AsyncGeneratorPrototype% inherits from it; own-key checks on the latter
+  // must not see Symbol.asyncIterator.
+  let aip_sym_props : Map[Int, Value] = {}
+  let aip_sym_descs : Map[Int, PropDescriptor] = {}
+  aip_sym_props[async_iter_sym.id] = make_method_func(
+    name="[Symbol.asyncIterator]",
+    length=0,
+    realm_state=env.realm_state,
+    fn(this_val, _args) { this_val },
+  )
+  aip_sym_descs[async_iter_sym.id] = non_enum
+  let async_iter_proto : Value = Object({
+    bag: {
+      properties: {},
+      symbol_properties: aip_sym_props,
+      descriptors: {},
+      symbol_descriptors: aip_sym_descs,
+      internal_slots: {},
+    },
+    prototype: object_prototype,
+    callable: None,
+    class_name: "AsyncIterator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+
+  // Build %AsyncGeneratorPrototype% — shared singleton for all async gen instances.
+  // [[Prototype]] = %AsyncIteratorPrototype% (not Object.prototype).
+  // Own string keys follow spec §27.6: constructor, next, return, throw.
+  // Own symbol keys: Symbol.toStringTag only — Symbol.asyncIterator is inherited.
+  let agp_props : Map[String, Value] = {}
+  let agp_sym_props : Map[Int, Value] = {}
+  let agp_descs : Map[String, PropDescriptor] = {}
+  let agp_sym_descs : Map[Int, PropDescriptor] = {}
+
+  agp_props["constructor"] = agf_proto
+  agp_descs["constructor"] = non_enum_non_writable
+  agp_props["next"] = make_interp_method_func(
+    name="next",
+    length=1,
+    realm_state=env.realm_state,
+    fn(ip, this_val, args) {
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
+      async_generator_resume(ip, this_val, Next(arg))
+    },
+  )
+  agp_descs["next"] = non_enum
+  agp_props["return"] = make_interp_method_func(
+    name="return",
+    length=1,
+    realm_state=env.realm_state,
+    fn(ip, this_val, args) {
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
+      async_generator_resume(ip, this_val, Return(arg))
+    },
+  )
+  agp_descs["return"] = non_enum
+  agp_props["throw"] = make_interp_method_func(
+    name="throw",
+    length=1,
+    realm_state=env.realm_state,
+    fn(ip, this_val, args) {
+      let arg = match args {
+        [first, ..] => first
+        [] => Undefined
+      }
+      async_generator_resume(ip, this_val, Throw(arg))
+    },
+  )
+  agp_descs["throw"] = non_enum
+  agp_sym_props[to_string_tag_sym.id] = String_("AsyncGenerator")
+  agp_sym_descs[to_string_tag_sym.id] = non_enum_non_writable
+  let async_gen_proto : Value = Object({
+    bag: {
+      properties: agp_props,
+      symbol_properties: agp_sym_props,
+      descriptors: agp_descs,
+      symbol_descriptors: agp_sym_descs,
+      internal_slots: {},
+    },
+    prototype: async_iter_proto,
+    callable: None,
+    class_name: "AsyncGenerator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+
+  // Build AsyncGeneratorFunction constructor
+  let async_gen_func_ctor : Value = make_interp_method_func(
+    name="AsyncGeneratorFunction",
+    length=1,
+    realm_state=env.realm_state,
+    fn(interp, _this, args) raise {
+      // §20.2.1.1: coerce all parameter args before the body arg
+      let param_parts : Array[String] = []
+      for i in 0..<(args.length() - 1) {
+        match args[i] {
+          String_(s) => param_parts.push(s)
+          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
+        }
+      }
+      let body_str = match args {
+        [] => ""
+        [.., last] =>
+          match last {
+            String_(s) => s
+            _ => to_js_string(last, interp=Some(interp))
+          }
+      }
+      let params_str = param_parts.join(",")
+      let source = "async function* anonymous(" +
+        params_str +
+        "\n) {\n" +
+        body_str +
+        "\n}"
+      let prog = @parser.parse(source)
+      match prog.stmts {
+        [AsyncGeneratorDecl(_, params, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params(true, params, None, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_generator_function(
+            Some("anonymous"),
+            params,
+            None,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
+        }
+        [AsyncGeneratorDeclExt(_, params, rest_param, body, _, source_text), ..] => {
+          let body_strict = @static_semantics.has_use_strict(body)
+          validate_function_constructor_params_ext(params, rest_param, body)
+          interp.validate_block_early_errors(body, body_strict)
+          return interp.make_async_generator_function_ext(
+            Some("anonymous"),
+            params,
+            rest_param,
+            body,
+            body_strict,
+            interp.global,
+            source_text~,
+          )
+        }
+        _ => ()
+      }
+      raise @errors.SyntaxError(
+        message="Invalid AsyncGeneratorFunction constructor source",
+      )
+    },
+  )
+
+  // Wire up cross-references between the three objects.
+  // %AsyncGeneratorPrototype%.constructor was set at construction time (agf_proto).
+  // §27.4.3: agf_proto string keys must be constructor (§27.4.3.1) then prototype (§27.4.3.2).
+  match agf_proto {
+    Object(data) => {
+      data.bag.properties["constructor"] = async_gen_func_ctor
+      data.bag.descriptors["constructor"] = non_enum_non_writable
+      // §27.4.3.2: prototype property on %AsyncGeneratorFunction%.prototype is configurable
+      data.bag.properties["prototype"] = async_gen_proto
+      data.bag.descriptors["prototype"] = non_enum_non_writable
+    }
+    _ => ()
+  }
+  // §27.4.1: %AsyncGeneratorFunction%.[[Prototype]] = Function (not Function.prototype)
+  let function_ctor = env.get("Function") catch { _ => Null }
+  match async_gen_func_ctor {
+    Object(data) => {
+      data.bag.properties["prototype"] = agf_proto
+      data.bag.descriptors["prototype"] = frozen
+      data.prototype = function_ctor
+    }
+    _ => ()
+  }
+
+  env.def_builtin("[[AsyncIteratorPrototype]]", async_iter_proto)
+  env.def_builtin("[[AsyncGeneratorPrototype]]", async_gen_proto)
+  env.def_builtin("[[AsyncGeneratorFunctionPrototype]]", agf_proto)
 }
