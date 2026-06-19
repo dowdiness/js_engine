@@ -316,6 +316,8 @@ pub fn set_map_iterator_next_index(ObjectData, Int, Value) -> Unit
 
 pub fn setup_async_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
 
+pub fn setup_async_generator_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
+
 pub fn setup_generator_function_constructor(Environment, Value, well_known_symbols~ : WellKnownSymbols) -> Unit
 
 pub fn sort_property_keys(Map[String, Value]) -> Array[String]

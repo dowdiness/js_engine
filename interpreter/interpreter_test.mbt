@@ -13515,6 +13515,36 @@ test "async functions and generators expose well-known symbol protocol hooks" {
 }
 
 ///|
+test "AsyncGeneratorPrototype has correct Symbol.toStringTag" {
+  let output = run_output(
+    (
+      #|async function* ag() {}
+      #|let iter = ag();
+      #|let proto = Object.getPrototypeOf(iter);
+      #|let AsyncGenProto = Object.getPrototypeOf(proto);
+      #|console.log(AsyncGenProto[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["AsyncGenerator"])
+}
+
+///|
+test "AsyncGeneratorPrototype.constructor points to AsyncGeneratorFunction.prototype" {
+  let output = run_output(
+    (
+      #|async function* g1() {}
+      #|async function* g2() {}
+      #|let AsyncGenerator = Object.getPrototypeOf(g1);
+      #|let AsyncGeneratorProto = AsyncGenerator.prototype;
+      #|console.log(AsyncGeneratorProto.constructor === AsyncGenerator);
+      #|console.log(Object.getPrototypeOf(g1) === Object.getPrototypeOf(g2));
+      #|console.log(AsyncGenerator[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "AsyncGeneratorFunction"])
+}
+
+///|
 test "async generator function name and length" {
   let output = run_output(
     (
