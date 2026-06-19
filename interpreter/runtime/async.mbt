@@ -744,7 +744,9 @@ pub fn setup_async_function_constructor(
 ///   %AsyncGeneratorFunction%.prototype[@@toStringTag] === "AsyncGeneratorFunction"
 ///   %AsyncGeneratorFunction%.prototype.constructor === %AsyncGeneratorFunction%
 ///   %AsyncGeneratorFunction%.prototype.prototype === %AsyncGeneratorPrototype%
-///   %AsyncGeneratorPrototype%.__proto__ === Object.prototype (simplified; spec: %AsyncIteratorPrototype%)
+///   %AsyncIteratorPrototype%.__proto__ === Object.prototype
+///   %AsyncIteratorPrototype%[@@asyncIterator] returns this
+///   %AsyncGeneratorPrototype%.__proto__ === %AsyncIteratorPrototype%
 ///   %AsyncGeneratorPrototype%.constructor === %AsyncGeneratorFunction%.prototype
 ///   %AsyncGeneratorPrototype%[@@toStringTag] === "AsyncGenerator"
 pub fn setup_async_generator_function_constructor(
@@ -805,8 +807,37 @@ pub fn setup_async_generator_function_constructor(
     arraybuffer_state: None,
   })
 
+  // Build %AsyncIteratorPrototype% (§27.1.2) — owns Symbol.asyncIterator only.
+  // %AsyncGeneratorPrototype% inherits from it; own-key checks on the latter
+  // must not see Symbol.asyncIterator.
+  let aip_sym_props : Map[Int, Value] = {}
+  let aip_sym_descs : Map[Int, PropDescriptor] = {}
+  aip_sym_props[async_iter_sym.id] = make_method_func(
+    name="[Symbol.asyncIterator]",
+    length=0,
+    realm_state=env.realm_state,
+    fn(this_val, _args) { this_val },
+  )
+  aip_sym_descs[async_iter_sym.id] = non_enum
+  let async_iter_proto : Value = Object({
+    bag: {
+      properties: {},
+      symbol_properties: aip_sym_props,
+      descriptors: {},
+      symbol_descriptors: aip_sym_descs,
+      internal_slots: {},
+    },
+    prototype: object_prototype,
+    callable: None,
+    class_name: "AsyncIterator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+
   // Build %AsyncGeneratorPrototype% — shared singleton for all async gen instances.
-  // Property insertion order follows spec §27.6: constructor, next, return, throw.
+  // [[Prototype]] = %AsyncIteratorPrototype% (not Object.prototype).
+  // Own string keys follow spec §27.6: constructor, next, return, throw.
+  // Own symbol keys: Symbol.toStringTag only — Symbol.asyncIterator is inherited.
   let agp_props : Map[String, Value] = {}
   let agp_sym_props : Map[Int, Value] = {}
   let agp_descs : Map[String, PropDescriptor] = {}
@@ -853,13 +884,6 @@ pub fn setup_async_generator_function_constructor(
     },
   )
   agp_descs["throw"] = non_enum
-  agp_sym_props[async_iter_sym.id] = make_method_func(
-    name="[Symbol.asyncIterator]",
-    length=0,
-    realm_state=env.realm_state,
-    fn(this_val, _args) { this_val },
-  )
-  agp_sym_descs[async_iter_sym.id] = non_enum
   agp_sym_props[to_string_tag_sym.id] = String_("AsyncGenerator")
   agp_sym_descs[to_string_tag_sym.id] = non_enum_non_writable
   let async_gen_proto : Value = Object({
@@ -870,7 +894,7 @@ pub fn setup_async_generator_function_constructor(
       symbol_descriptors: agp_sym_descs,
       internal_slots: {},
     },
-    prototype: object_prototype,
+    prototype: async_iter_proto,
     callable: None,
     class_name: "AsyncGenerator",
     extensible: true,
@@ -966,6 +990,7 @@ pub fn setup_async_generator_function_constructor(
     _ => ()
   }
 
+  env.def_builtin("[[AsyncIteratorPrototype]]", async_iter_proto)
   env.def_builtin("[[AsyncGeneratorPrototype]]", async_gen_proto)
   env.def_builtin("[[AsyncGeneratorFunctionPrototype]]", agf_proto)
 }

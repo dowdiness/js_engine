@@ -13599,6 +13599,21 @@ test "AsyncGeneratorFunction [[Prototype]] is Function (§27.4.1)" {
 }
 
 ///|
+test "Symbol.asyncIterator lives on %AsyncIteratorPrototype%, not %AsyncGeneratorPrototype% (§27.1.2)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|const agp = Object.getPrototypeOf(g.prototype);
+      #|const aip = Object.getPrototypeOf(agp);
+      #|console.log(Object.prototype.hasOwnProperty.call(agp, Symbol.asyncIterator));
+      #|console.log(Object.prototype.hasOwnProperty.call(aip, Symbol.asyncIterator));
+      #|console.log(typeof agp[Symbol.asyncIterator]);
+    ),
+  )
+  json_inspect(output, content=["false", "true", "function"])
+}
+
+///|
 test "AsyncGeneratorFunction constructor throws TypeError for Symbol body (§7.1.17)" {
   let output = run_output(
     (
