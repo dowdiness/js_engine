@@ -714,3 +714,72 @@ test "numeric 0 is LexNormal" {
   let toks = @lexer.tokenize("0")
   expect_lex_form(toks[0].lex_form, @token.LexForm::LexNormal)
 }
+
+// ── end_offset coverage: token kinds where raw != source slice ──────────────
+
+///|
+test "end_offset: regex token spans full /pattern/flags" {
+  let src = "/abc/gi"
+  let toks = @lexer.tokenize(src)
+  let tok = toks[0]
+  inspect(
+    src.unsafe_substring(start=tok.loc.offset, end=tok.end_offset),
+    content="/abc/gi",
+  )
+}
+
+///|
+test "end_offset: no-sub template spans backtick-to-backtick" {
+  let src = "`hello`"
+  let toks = @lexer.tokenize(src)
+  let tok = toks[0]
+  inspect(
+    src.unsafe_substring(start=tok.loc.offset, end=tok.end_offset),
+    content="`hello`",
+  )
+}
+
+///|
+test "end_offset: template head spans open-backtick to dollar-brace" {
+  let src = "`hi${x}`"
+  let toks = @lexer.tokenize(src)
+  let head = toks[0]
+  inspect(
+    src.unsafe_substring(start=head.loc.offset, end=head.end_offset),
+    content="`hi${",
+  )
+}
+
+///|
+test "end_offset: template tail spans close-brace to backtick" {
+  let src = "`hi${x}`"
+  let toks = @lexer.tokenize(src)
+  // tokens: TemplateHead, Ident("x"), TemplateTail, EOF
+  // TemplateTail loc is at the } that closes the substitution
+  let tail = toks[2]
+  inspect(
+    src.unsafe_substring(start=tail.loc.offset, end=tail.end_offset),
+    content="}`",
+  )
+}
+
+///|
+test "end_offset: unicode-escaped identifier spans full escape sequence" {
+  // f = 'f', o = 'o', o = 'o'  → decoded "foo", source length 18
+  let src = "\\u0066\\u006F\\u006F"
+  let toks = @lexer.tokenize(src)
+  let tok = toks[0]
+  inspect(tok.end_offset, content="18")
+  inspect(
+    src.unsafe_substring(start=tok.loc.offset, end=tok.end_offset),
+    content="\\u0066\\u006F\\u006F",
+  )
+}
+
+///|
+test "end_offset: plain identifier" {
+  let src = "hello"
+  let toks = @lexer.tokenize(src)
+  let tok = toks[0]
+  inspect(tok.end_offset, content="5")
+}

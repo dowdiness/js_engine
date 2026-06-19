@@ -31,10 +31,11 @@ pub(all) struct Token {
   loc : Loc
   raw : String
   lex_form : LexForm
+  end_offset : Int
 } derive(Eq, @debug.Debug)
-pub fn Token::Token(TokenKind, Loc, String, lex_form? : LexForm) -> Self
+pub fn Token::Token(TokenKind, Loc, String, lex_form? : LexForm, end_offset? : Int) -> Self
 pub fn Token::eof(Loc) -> Self
-pub fn Token::new(TokenKind, Loc, String, lex_form? : LexForm) -> Self
+pub fn Token::new(TokenKind, Loc, String, lex_form? : LexForm, end_offset? : Int) -> Self
 pub impl Show for Token
 
 pub(all) enum TokenKind {

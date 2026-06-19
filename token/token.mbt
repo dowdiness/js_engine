@@ -168,6 +168,7 @@ pub(all) struct Token {
   loc : Loc
   raw : String
   lex_form : LexForm
+  end_offset : Int
 } derive(Eq, Debug)
 
 ///|
@@ -176,13 +177,24 @@ pub impl Show for Token with fn output(self, logger) {
 }
 
 ///|
+/// `end_offset` is the exclusive byte offset in the original source string at
+/// which this token ends. When -1 (the default for call sites that don't track
+/// source position, e.g. tests), it is derived as `loc.offset + raw.length()`,
+/// which is correct for all tokens whose `raw` field is the verbatim source
+/// slice. The lexer always supplies an explicit value.
 pub fn Token::Token(
   kind : TokenKind,
   loc : Loc,
   raw : String,
   lex_form? : LexForm = LexNormal,
+  end_offset? : Int = -1,
 ) -> Token noraise {
-  { kind, loc, raw, lex_form }
+  let end_offset = if end_offset == -1 {
+    loc.offset + raw.length()
+  } else {
+    end_offset
+  }
+  { kind, loc, raw, lex_form, end_offset }
 }
 
 ///|
@@ -191,11 +203,12 @@ pub fn Token::new(
   loc : Loc,
   raw : String,
   lex_form? : LexForm = LexNormal,
+  end_offset? : Int = -1,
 ) -> Token noraise {
-  Token(kind, loc, raw, lex_form~)
+  Token(kind, loc, raw, lex_form~, end_offset~)
 }
 
 ///|
 pub fn Token::eof(loc : Loc) -> Token noraise {
-  Token(EOF, loc, "")
+  Token(EOF, loc, "", end_offset=loc.offset)
 }
