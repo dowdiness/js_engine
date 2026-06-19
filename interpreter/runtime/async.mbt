@@ -638,8 +638,14 @@ pub fn setup_async_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(interp, _this, args) raise {
-      // Last arg is body, previous args are parameter names. With no
-      // arguments, the synthesized body and parameter list are both empty.
+      // §20.2.1.1: coerce all parameter args before the body arg
+      let param_parts : Array[String] = []
+      for i in 0..<(args.length() - 1) {
+        match args[i] {
+          String_(s) => param_parts.push(s)
+          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
+        }
+      }
       let body_str = match args {
         [] => ""
         [.., last] =>
@@ -647,13 +653,6 @@ pub fn setup_async_function_constructor(
             String_(s) => s
             _ => to_js_string(last, interp=Some(interp))
           }
-      }
-      let param_parts : Array[String] = []
-      for i in 0..<(args.length() - 1) {
-        match args[i] {
-          String_(s) => param_parts.push(s)
-          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
-        }
       }
       let params_str = param_parts.join(",")
       let source = "async function anonymous(" +
@@ -907,6 +906,14 @@ pub fn setup_async_generator_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(interp, _this, args) raise {
+      // §20.2.1.1: coerce all parameter args before the body arg
+      let param_parts : Array[String] = []
+      for i in 0..<(args.length() - 1) {
+        match args[i] {
+          String_(s) => param_parts.push(s)
+          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
+        }
+      }
       let body_str = match args {
         [] => ""
         [.., last] =>
@@ -914,13 +921,6 @@ pub fn setup_async_generator_function_constructor(
             String_(s) => s
             _ => to_js_string(last, interp=Some(interp))
           }
-      }
-      let param_parts : Array[String] = []
-      for i in 0..<(args.length() - 1) {
-        match args[i] {
-          String_(s) => param_parts.push(s)
-          _ => param_parts.push(to_js_string(args[i], interp=Some(interp)))
-        }
       }
       let params_str = param_parts.join(",")
       let source = "async function* anonymous(" +

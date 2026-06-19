@@ -13630,6 +13630,24 @@ test "AsyncGeneratorFunction constructor throws TypeError for Symbol body (§7.1
 }
 
 ///|
+test "AsyncGeneratorFunction constructor coerces params before body (§20.2.1.1)" {
+  let output = run_output(
+    (
+      #|async function* g() {}
+      #|let bodyCalled = false;
+      #|const body = { toString() { bodyCalled = true; return ''; } };
+      #|try {
+      #|  g.constructor(Symbol(), body);
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|  console.log(bodyCalled);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
 test "AsyncGeneratorFunction constructor calls object toString for body (§7.1.17)" {
   let output = run_output(
     (
