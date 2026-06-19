@@ -592,13 +592,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          tokens.push({
-            kind: Regex(pattern_buf.to_string(), flags_buf.to_string()),
-            loc: rloc,
-            raw: "",
-            lex_form: LexNormal,
-            end_offset: offset,
-          })
+          tokens.push(
+            @token.Token(
+              Regex(pattern_buf.to_string(), flags_buf.to_string()),
+              rloc,
+              "",
+              end_offset=offset,
+            ),
+          )
           continue
         }
       }
@@ -631,13 +632,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 1
           }
           let raw = raw_slice(start, offset)
-          tokens.push({
-            kind: Number(value),
-            loc,
-            raw,
-            lex_form: LexNormal,
-            end_offset: offset,
-          })
+          tokens.push(@token.Token(Number(value), loc, raw))
           continue
         } else if next == 'b' || next == 'B' {
           // Binary number
@@ -655,13 +650,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 1
           }
           let raw = raw_slice(start, offset)
-          tokens.push({
-            kind: Number(value),
-            loc,
-            raw,
-            lex_form: LexNormal,
-            end_offset: offset,
-          })
+          tokens.push(@token.Token(Number(value), loc, raw))
           continue
         } else if next == 'o' || next == 'O' {
           // Octal number
@@ -679,13 +668,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col += 1
           }
           let raw = raw_slice(start, offset)
-          tokens.push({
-            kind: Number(value),
-            loc,
-            raw,
-            lex_form: LexNormal,
-            end_offset: offset,
-          })
+          tokens.push(@token.Token(Number(value), loc, raw))
           continue
         } else if next == '8' || next == '9' {
           // 08 / 09 — NonOctalDecimalIntegerLiteral (Annex B)
@@ -753,13 +736,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               col += 1
             }
             let raw = raw_slice(start, offset)
-            tokens.push({
-              kind: Number(value),
-              loc,
-              raw,
-              lex_form: NumberLegacyOctalInt,
-              end_offset: offset,
-            })
+            tokens.push(
+              @token.Token(
+                Number(value),
+                loc,
+                raw,
+                lex_form=NumberLegacyOctalInt,
+              ),
+            )
             continue
           }
         }
@@ -911,13 +895,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       } else {
         LexNormal
       }
-      tokens.push({
-        kind: Number(value),
-        loc,
-        raw,
-        lex_form,
-        end_offset: offset,
-      })
+      tokens.push(@token.Token(Number(value), loc, raw, lex_form~))
       continue
     }
     // Identifiers / Keywords (including \uXXXX and \u{XXXXX} escapes)
@@ -973,13 +951,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       } else {
         resolve_keyword(decoded)
       }
-      tokens.push({
-        kind,
-        loc,
-        raw: decoded,
-        lex_form: LexNormal,
-        end_offset: offset,
-      })
+      tokens.push(@token.Token(kind, loc, decoded, end_offset=offset))
       match kind {
         Function => {
           let follows_dot = tokens.length() >= 2 &&
@@ -1145,13 +1117,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       } else {
         LexNormal
       }
-      tokens.push({
-        kind: String_(buf.to_string()),
-        loc,
-        raw,
-        lex_form,
-        end_offset: offset,
-      })
+      tokens.push(@token.Token(String_(buf.to_string()), loc, raw, lex_form~))
       continue
     }
     // Template literals (backtick)
@@ -1162,21 +1128,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let (text, has_expr) = scan_template_string()
       if has_expr {
         template_depth_stack.push(1)
-        tokens.push({
-          kind: TemplateHead(text),
-          loc: tloc,
-          raw: "",
-          lex_form: LexNormal,
-          end_offset: offset,
-        })
+        tokens.push(
+          @token.Token(TemplateHead(text), tloc, "", end_offset=offset),
+        )
       } else {
-        tokens.push({
-          kind: NoSubTemplate(text),
-          loc: tloc,
-          raw: "",
-          lex_form: LexNormal,
-          end_offset: offset,
-        })
+        tokens.push(
+          @token.Token(NoSubTemplate(text), tloc, "", end_offset=offset),
+        )
       }
       continue
     }
@@ -1187,13 +1145,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       char_at(offset + 1) == '>' &&
       char_at(offset + 2) == '>' &&
       char_at(offset + 3) == '=' {
-      tokens.push({
-        kind: URShiftAssign,
-        loc,
-        raw: ">>>=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 4,
-      })
+      tokens.push(@token.Token(URShiftAssign, loc, ">>>="))
       offset += 4
       col += 4
       continue
@@ -1203,13 +1155,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '=' &&
       char_at(offset + 2) == '=' {
-      tokens.push({
-        kind: EqEqEq,
-        loc,
-        raw: "===",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(EqEqEq, loc, "==="))
       offset += 3
       col += 3
       continue
@@ -1218,13 +1164,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '=' &&
       char_at(offset + 2) == '=' {
-      tokens.push({
-        kind: BangEqEq,
-        loc,
-        raw: "!==",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(BangEqEq, loc, "!=="))
       offset += 3
       col += 3
       continue
@@ -1233,13 +1173,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '>' &&
       char_at(offset + 2) == '>' {
-      tokens.push({
-        kind: URShift,
-        loc,
-        raw: ">>>",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(URShift, loc, ">>>"))
       offset += 3
       col += 3
       continue
@@ -1248,13 +1182,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '>' &&
       char_at(offset + 2) == '=' {
-      tokens.push({
-        kind: RShiftAssign,
-        loc,
-        raw: ">>=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(RShiftAssign, loc, ">>="))
       offset += 3
       col += 3
       continue
@@ -1263,206 +1191,104 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '<' &&
       char_at(offset + 2) == '=' {
-      tokens.push({
-        kind: LShiftAssign,
-        loc,
-        raw: "<<=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(LShiftAssign, loc, "<<="))
       offset += 3
       col += 3
       continue
     }
     // 2-char
     if c == '=' && offset + 1 < len && char_at(offset + 1) == '>' {
-      tokens.push({
-        kind: Arrow,
-        loc,
-        raw: "=>",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(Arrow, loc, "=>"))
       offset += 2
       col += 2
       continue
     }
     if c == '=' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: EqEq,
-        loc,
-        raw: "==",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(EqEq, loc, "=="))
       offset += 2
       col += 2
       continue
     }
     if c == '!' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: BangEq,
-        loc,
-        raw: "!=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(BangEq, loc, "!="))
       offset += 2
       col += 2
       continue
     }
     if c == '>' && offset + 1 < len && char_at(offset + 1) == '>' {
-      tokens.push({
-        kind: RShift,
-        loc,
-        raw: ">>",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(RShift, loc, ">>"))
       offset += 2
       col += 2
       continue
     }
     if c == '>' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: GtEq,
-        loc,
-        raw: ">=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(GtEq, loc, ">="))
       offset += 2
       col += 2
       continue
     }
     if c == '<' && offset + 1 < len && char_at(offset + 1) == '<' {
-      tokens.push({
-        kind: LShift,
-        loc,
-        raw: "<<",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(LShift, loc, "<<"))
       offset += 2
       col += 2
       continue
     }
     if c == '<' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: LtEq,
-        loc,
-        raw: "<=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(LtEq, loc, "<="))
       offset += 2
       col += 2
       continue
     }
     if c == '+' && offset + 1 < len && char_at(offset + 1) == '+' {
-      tokens.push({
-        kind: PlusPlus,
-        loc,
-        raw: "++",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(PlusPlus, loc, "++"))
       offset += 2
       col += 2
       continue
     }
     if c == '+' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: PlusAssign,
-        loc,
-        raw: "+=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(PlusAssign, loc, "+="))
       offset += 2
       col += 2
       continue
     }
     if c == '-' && offset + 1 < len && char_at(offset + 1) == '-' {
-      tokens.push({
-        kind: MinusMinus,
-        loc,
-        raw: "--",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(MinusMinus, loc, "--"))
       offset += 2
       col += 2
       continue
     }
     if c == '-' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: MinusAssign,
-        loc,
-        raw: "-=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(MinusAssign, loc, "-="))
       offset += 2
       col += 2
       continue
     }
     if c == '*' && offset + 1 < len && char_at(offset + 1) == '*' {
       if offset + 2 < len && char_at(offset + 2) == '=' {
-        tokens.push({
-          kind: StarStarAssign,
-          loc,
-          raw: "**=",
-          lex_form: LexNormal,
-          end_offset: loc.offset + 3,
-        })
+        tokens.push(@token.Token(StarStarAssign, loc, "**="))
         offset += 3
         col += 3
         continue
       }
-      tokens.push({
-        kind: StarStar,
-        loc,
-        raw: "**",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(StarStar, loc, "**"))
       offset += 2
       col += 2
       continue
     }
     if c == '*' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: StarAssign,
-        loc,
-        raw: "*=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(StarAssign, loc, "*="))
       offset += 2
       col += 2
       continue
     }
     if c == '/' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: SlashAssign,
-        loc,
-        raw: "/=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(SlashAssign, loc, "/="))
       offset += 2
       col += 2
       continue
     }
     if c == '%' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: PercentAssign,
-        loc,
-        raw: "%=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(PercentAssign, loc, "%="))
       offset += 2
       col += 2
       continue
@@ -1472,37 +1298,19 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '&' &&
       char_at(offset + 2) == '=' {
-      tokens.push({
-        kind: AndAssign,
-        loc,
-        raw: "&&=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(AndAssign, loc, "&&="))
       offset += 3
       col += 3
       continue
     }
     if c == '&' && offset + 1 < len && char_at(offset + 1) == '&' {
-      tokens.push({
-        kind: And,
-        loc,
-        raw: "&&",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(And, loc, "&&"))
       offset += 2
       col += 2
       continue
     }
     if c == '&' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: BitAndAssign,
-        loc,
-        raw: "&=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(BitAndAssign, loc, "&="))
       offset += 2
       col += 2
       continue
@@ -1511,49 +1319,25 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '|' &&
       char_at(offset + 2) == '=' {
-      tokens.push({
-        kind: OrAssign,
-        loc,
-        raw: "||=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(OrAssign, loc, "||="))
       offset += 3
       col += 3
       continue
     }
     if c == '|' && offset + 1 < len && char_at(offset + 1) == '|' {
-      tokens.push({
-        kind: Or,
-        loc,
-        raw: "||",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(Or, loc, "||"))
       offset += 2
       col += 2
       continue
     }
     if c == '|' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: BitOrAssign,
-        loc,
-        raw: "|=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(BitOrAssign, loc, "|="))
       offset += 2
       col += 2
       continue
     }
     if c == '^' && offset + 1 < len && char_at(offset + 1) == '=' {
-      tokens.push({
-        kind: BitXorAssign,
-        loc,
-        raw: "^=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(BitXorAssign, loc, "^="))
       offset += 2
       col += 2
       continue
@@ -1563,25 +1347,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '?' &&
       char_at(offset + 2) == '=' {
-      tokens.push({
-        kind: NullishAssign,
-        loc,
-        raw: "??=",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(NullishAssign, loc, "??="))
       offset += 3
       col += 3
       continue
     }
     if c == '?' && offset + 1 < len && char_at(offset + 1) == '?' {
-      tokens.push({
-        kind: QuestionQuestion,
-        loc,
-        raw: "??",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 2,
-      })
+      tokens.push(@token.Token(QuestionQuestion, loc, "??"))
       offset += 2
       col += 2
       continue
@@ -1590,13 +1362,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       // Distinguish from ternary with number: x ? .5 : y
       // ?. is optional chaining only if NOT followed by a digit
       if offset + 2 >= len || !is_digit(char_at(offset + 2)) {
-        tokens.push({
-          kind: QuestionDot,
-          loc,
-          raw: "?.",
-          lex_form: LexNormal,
-          end_offset: loc.offset + 2,
-        })
+        tokens.push(@token.Token(QuestionDot, loc, "?."))
         offset += 2
         col += 2
         continue
@@ -1614,21 +1380,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         let (text, has_expr) = scan_template_string()
         if has_expr {
           template_depth_stack.push(1)
-          tokens.push({
-            kind: TemplateMiddle(text),
-            loc: tloc,
-            raw: "",
-            lex_form: LexNormal,
-            end_offset: offset,
-          })
+          tokens.push(
+            @token.Token(TemplateMiddle(text), tloc, "", end_offset=offset),
+          )
         } else {
-          tokens.push({
-            kind: TemplateTail(text),
-            loc: tloc,
-            raw: "",
-            lex_form: LexNormal,
-            end_offset: offset,
-          })
+          tokens.push(
+            @token.Token(TemplateTail(text), tloc, "", end_offset=offset),
+          )
         }
         continue
       }
@@ -1699,13 +1457,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Invalid or unexpected token at line \{line}, col \{col}",
           )
       }
-      tokens.push({
-        kind: Number(value),
-        loc,
-        raw: num_str,
-        lex_form: LexNormal,
-        end_offset: offset,
-      })
+      tokens.push(@token.Token(Number(value), loc, num_str, end_offset=offset))
       continue
     }
     // ... (spread/rest)
@@ -1713,13 +1465,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       offset + 2 < len &&
       char_at(offset + 1) == '.' &&
       char_at(offset + 2) == '.' {
-      tokens.push({
-        kind: DotDotDot,
-        loc,
-        raw: "...",
-        lex_form: LexNormal,
-        end_offset: loc.offset + 3,
-      })
+      tokens.push(@token.Token(DotDotDot, loc, "..."))
       offset += 3
       col += 3
       continue
@@ -1755,13 +1501,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           message="Unexpected character '\{c}' at line \{loc.line}, col \{loc.col}",
         )
     }
-    tokens.push({
-      kind,
-      loc,
-      raw,
-      lex_form: LexNormal,
-      end_offset: loc.offset + raw.length(),
-    })
+    tokens.push(@token.Token(kind, loc, raw))
     // Track function bodies and control-flow parens for regex disambiguation.
     match kind {
       Star => {
