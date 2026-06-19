@@ -13459,6 +13459,47 @@ test "Function.prototype.toString preserves parsed source text" {
 }
 
 ///|
+test "Function.prototype.toString: template tail end_offset includes closing backtick" {
+  // Arrow whose body ends with a TemplateTail token (raw:"" because lexer
+  // doesn't fill raw for templates). Verifies advance→last_end→consume_source_text
+  // uses end_offset rather than loc.offset+raw.length(), which would give 0+0=start.
+  let output = run_output(
+    (
+      #|let y = 1;
+      #|console.log((() => `x${y}`).toString());
+    ),
+  )
+  json_inspect(output, content=["() => `x${y}`"])
+}
+
+///|
+test "Function.prototype.toString: numeric separator preserved in source" {
+  // Arrow whose body ends with a NumericLiteral whose raw has underscores stripped.
+  // end_offset is set to lexer's offset (past the full token), not loc.offset+raw.length().
+  let output = run_output(
+    (
+      #|console.log((() => 1_000).toString());
+    ),
+  )
+  json_inspect(output, content=["() => 1_000"])
+}
+
+///|
+test "Function.prototype.toString: astral-plane identifier in body (2 UTF-16 units)" {
+  // 𝒜 (U+1D49C) is 1 code point but 2 UTF-16 code units.
+  // With end_offset=offset (code-point-based), only 1 unit was included and
+  // consume_source_text returned a half-surrogate. With end_offset=loc.offset+
+  // decoded.length() (UTF-16 units), both code units are included correctly.
+  // No prior astral chars in source — this isolates the per-identifier regression.
+  let output = run_output(
+    (
+      #|console.log((() => 𝒜).toString());
+    ),
+  )
+  json_inspect(output, content=["() => 𝒜"])
+}
+
+///|
 test "async functions and generators expose well-known symbol protocol hooks" {
   let output = run_output(
     (
