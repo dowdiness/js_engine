@@ -1191,14 +1191,22 @@ pub fn setup_promise(
             )
         }
 
-        // §9.1.13 OrdinaryCreateFromConstructor: read newTarget.prototype so
-        // any getter-based abrupt completion propagates (§27.2.1.1 step 3).
-        if context.new_target() is Some(new_target) {
-          let _ = interp.get_property(new_target, "prototype", loc)
+        // §9.1.13/§9.1.14 OrdinaryCreateFromConstructor (§27.2.1.1 step 3):
+        // read newTarget.prototype — propagates abrupt completion; if the result
+        // is an Object it becomes the promise's [[Prototype]], otherwise
+        // %Promise.prototype% is used (Null sentinel → realm fallback at lookup).
+        let new_target_proto : Value = if context.new_target()
+          is Some(new_target) {
+          interp.get_property(new_target, "prototype", loc)
+        } else {
+          Null
         }
 
         // Create new promise
         let promise_data = @runtime.new_promise_data()
+        if @runtime.is_object_value(new_target_proto) {
+          promise_data.prototype = new_target_proto
+        }
         let promise = Value::Promise(promise_data)
 
         // Create resolving functions
