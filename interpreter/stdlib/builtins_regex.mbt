@@ -481,6 +481,106 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
 }
 
 ///|
+/// Parse a single escaped character atom inside a character class `[...]`,
+/// called after `\` and the escape letter have both been consumed from pos.
+/// Does NOT handle shorthand classes (\d \w \s \D \W \S) — those are handled
+/// by the caller before reaching this function.
+fn RegexParser::parse_class_single_escape(
+  self : RegexParser,
+  escaped : Char,
+) -> Char raise Error {
+  match escaped {
+    'u' =>
+      if self.unicode {
+        self.parse_unicode_escape_in_name()
+      } else {
+        // Annex B: parse exactly 4 hex digits, no {…} form, no surrogate-pair folding.
+        // In non-unicode char classes, \uD83D and \uDE00 are separate code-unit atoms —
+        // combining them into a scalar would remove both surrogates from the class.
+        let saved = self.pos
+        let mut cp = 0
+        let mut ok = true
+        for i = 0; i < 4; i = i + 1 {
+          if self.pos >= self.pattern.length() ||
+            !is_hex_digit(self.pattern[self.pos]) {
+            ok = false
+            break
+          }
+          cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
+          self.pos += 1
+        }
+        if ok {
+          cp.unsafe_to_char()
+        } else {
+          self.pos = saved
+          'u'
+        }
+      }
+    'x' => {
+      // Lookahead: both hex digits must be present before consuming any
+      let has_2_hex = self.pos + 1 < self.pattern.length() &&
+        is_hex_digit(self.pattern[self.pos]) &&
+        is_hex_digit(self.pattern[self.pos + 1])
+      if !has_2_hex {
+        if self.unicode {
+          raise @errors.SyntaxError(
+            message="Invalid regex: invalid hex escape in character class",
+          )
+        }
+        // Annex B: identity escape — return 'x' without consuming anything
+        'x'
+      } else {
+        let cp = hex_digit_value(self.pattern[self.pos]) * 16 +
+          hex_digit_value(self.pattern[self.pos + 1])
+        self.pos += 2
+        cp.unsafe_to_char()
+      }
+    }
+    'n' => '\n'
+    'r' => '\r'
+    't' => '\t'
+    'f' => '\u{000C}' // form feed
+    'v' => '\u{000B}' // vertical tab
+    '0' => {
+      // Check for a decimal digit following \0
+      let next_is_decimal = self.pos < self.pattern.length() &&
+        self.pattern[self.pos] >= '0' &&
+        self.pattern[self.pos] <= '9'
+      if next_is_decimal {
+        if self.unicode {
+          raise @errors.SyntaxError(
+            message="Invalid regex: invalid decimal escape in character class",
+          )
+        }
+        // Annex B legacy octal: \0 followed by 8 or 9 → NUL (don't consume non-octal digit)
+        // \0 followed by 0-7 → parse as 2- or 3-digit octal
+        if self.pattern[self.pos] >= '8' {
+          '\u{0000}' // NUL; 8/9 left as separate class char
+        } else {
+          let d1 = self.pattern[self.pos].to_int() - '0'.to_int()
+          self.pos += 1
+          // Leading digit 0 is in range 0-3, so up to 2 additional octal digits allowed
+          let val = if self.pos < self.pattern.length() &&
+            self.pattern[self.pos] >= '0' &&
+            self.pattern[self.pos] <= '7' {
+            let d2 = self.pattern[self.pos].to_int() - '0'.to_int()
+            self.pos += 1
+            d1 * 8 + d2 // 3-digit octal: \0 d1 d2
+          } else {
+            d1 // 2-digit octal: \0 d1
+          }
+          val.unsafe_to_char()
+        }
+      } else {
+        '\u{0000}' // plain \0 = NUL
+      }
+    }
+    'b' => '\u{0008}' // backspace (\b inside [] means backspace, not word boundary)
+    _ => escaped
+  }
+}
+
+///|
 fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
   self.pos += 1 // skip '['
   let negated = if self.pos < self.pattern.length() &&
@@ -522,10 +622,7 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
           ranges.push(('\r', '\r'))
           continue
         }
-        'n' => '\n'
-        'r' => '\r'
-        't' => '\t'
-        _ => escaped
+        _ => self.parse_class_single_escape(escaped)
       }
     } else {
       self.pos += 1
@@ -545,7 +642,7 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
         }
         let esc = self.pattern[self.pos]
         self.pos += 1
-        esc
+        self.parse_class_single_escape(esc)
       } else {
         let c = self.pattern[self.pos]
         self.pos += 1

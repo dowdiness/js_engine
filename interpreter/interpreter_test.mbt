@@ -18230,3 +18230,100 @@ test "String.prototype.replaceAll: non-global RegExp throws TypeError" {
   )
   json_inspect(output, content=["true"])
 }
+
+///|
+test "regex char class: \\uXXXX and \\xHH escapes decode correctly" {
+  // Regression: \uXXXX inside [...] was decoded as literal 'u' causing
+  // ranges like \u2000-\u200A to corrupt into ('-','u') = (0x2D-0x75)
+  // which false-matched ASCII letters like 'f'.
+  let output = run_output(
+    (
+      #|console.log(/[\u2000-\u200A]/.test('f'));     // false -- U+0066 not in range
+      #|console.log(/[\u0041-\u005A]/.test('Z'));     // true -- Z = U+005A
+      #|console.log(/[\u0041-\u005A]/.test('f'));     // false -- f = U+0066 > U+005A
+      #|console.log(/[\u0066]/.test('f'));             // true -- U+0066 = f
+      #|console.log(/[\x41-\x5A]/.test('Z'));         // true -- \xHH range A-Z
+      #|console.log(/[\x41-\x5A]/.test('f'));         // false -- f > Z via \xHH
+    ),
+  )
+  json_inspect(output, content=["false", "true", "false", "true", "true", "false"])
+}
+
+///|
+test "regex char class: Annex B identity escape for malformed \\x and \\u" {
+  // In non-Unicode mode, \x without 2 valid hex digits is an identity escape
+  // for 'x'; \u with fewer than 4 hex digits is an identity escape for 'u'.
+  let output = run_output(
+    (
+      #|console.log(/[\x]/.test('x'));   // true — identity escape
+      #|console.log(/[\u]/.test('u'));   // true — identity escape
+      #|console.log(/[\u1]/.test('u'));  // true — 'u' identity + '1' separate
+      #|console.log(/[\u1]/.test('1'));  // true — '1' is in the class
+      #|console.log(/[\x4]/.test('x'));  // true — 'x' identity + '4' separate
+      #|console.log(/[\x4]/.test('4'));  // true — '4' is in the class
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true", "true", "true"])
+}
+
+///|
+test "regex char class: \\0 null escape with following decimal digits" {
+  // \0 not followed by digit: NUL
+  // \00, \07: consumed as 2-digit octal (non-unicode)
+  // \000:     consumed as 3-digit octal (non-unicode)
+  // \08:      NUL + '8' as separate class char (8 is not octal)
+  // \00 in unicode mode: SyntaxError (decimal escape not allowed)
+  let output = run_output(
+    (
+      #|console.log(/[\0]/.test('\x00'));       // true -- plain \0 = NUL
+      #|console.log(/[\00]/.test('\x00'));      // true -- octal \00 = NUL
+      #|console.log(/[\00]/.test('0'));         // false -- '0' consumed by \00
+      #|console.log(/[\07]/.test('\x07'));      // true -- octal \07 = BEL
+      #|console.log(/[\000]/.test('\x00'));     // true -- 3-digit octal \000 = NUL
+      #|console.log(/[\000]/.test('0'));        // false -- '0' consumed
+      #|console.log(/[\08]/.test('\x00'));      // true -- \0=NUL; 8 not octal
+      #|console.log(/[\08]/.test('8'));         // true -- '8' is separate class char
+      #|try { /[\00]/u; console.log('no error') } catch(e) { console.log(e instanceof SyntaxError) }
+    ),
+  )
+  json_inspect(output, content=["true", "true", "false", "true", "true", "false", "true", "true", "true"])
+}
+
+///|
+test "regex char class: unicode mode strict errors for malformed \\x and \\u" {
+  // In Unicode mode (/u flag), malformed \x and \u must throw SyntaxError.
+  let output = run_output(
+    (
+      #|var threw = 0;
+      #|try { /[\x]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { /[\u]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { /[\u1]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { /[\x4]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|console.log(threw);   // 4 -- all four must throw
+      #|try { /[\xA0]/u; console.log(true) } catch(e) { console.log(false) }
+      #|try { /[A]/u; console.log(true) } catch(e) { console.log(false) }
+    ),
+  )
+  json_inspect(output, content=["4", "true", "true"])
+}
+
+
+///|
+test "regex char class: non-unicode surrogate \\u escapes are not folded" {
+  // In non-unicode mode, \uD83D and \uDE00 inside [...] are separate code-unit atoms;
+  // parse_class_single_escape must not fold adjacent surrogate \uXXXX escapes.
+  let output = run_output(
+    (
+      #|// Escape form: \uD83D and \uDE00 as two separate class members
+      #|console.log(/[\uD83D\uDE00]/.test('\uD83D')); // true -- high surrogate
+      #|console.log(/[\uD83D\uDE00]/.test('\uDE00')); // true -- low surrogate
+      #|// Unicode mode: class folds to scalar U+1F600; surrogates not in class
+      #|console.log(/[\uD83D\uDE00]/u.test('\uD83D')); // false
+      #|console.log(/[\uD83D\uDE00]/u.test('\uDE00')); // false
+      #|// \u{41} in non-unicode mode: { is not a hex digit, so identity escape
+      #|console.log(/[\u{41}]/.test('u'));  // true -- identity escape
+      #|console.log(/[\u{41}]/.test('A'));  // false
+    ),
+  )
+  json_inspect(output, content=["true", "true", "false", "false", "true", "false"])
+}
