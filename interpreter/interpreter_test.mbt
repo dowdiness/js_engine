@@ -13600,6 +13600,46 @@ test "Function.prototype.toString: astral-plane identifier in body (2 UTF-16 uni
 }
 
 ///|
+test "Function.prototype.toString: loc.offset correct when prior astral identifier shifts UTF-16 positions" {
+  // The first 𝒜 (binding) causes astral_count=1 after its token is scanned.
+  // Without the loc.offset fix, the second 𝒜 (body) gets loc.offset off by 1,
+  // and unsafe_substring returns a half-surrogate instead of the full char.
+  let output = run_output(
+    (
+      #|var 𝒜 = 1;
+      #|console.log((() => 𝒜).toString());
+    ),
+  )
+  json_inspect(output, content=["() => 𝒜"])
+}
+
+///|
+test "Function.prototype.toString: loc.offset correct when prior astral char in string" {
+  // "𝒜" advances astral_count by 1; the arrow function body token must have
+  // the correct UTF-16 loc.offset so toString returns unshifted source text.
+  let output = run_output(
+    (
+      #|"𝒜";
+      #|console.log((() => 1).toString());
+    ),
+  )
+  json_inspect(output, content=["() => 1"])
+}
+
+///|
+test "Function.prototype.toString: loc.offset correct when prior astral char in comment" {
+  // 𝒜 inside a block comment advances astral_count; the following arrow function
+  // body must still start at the correct UTF-16 offset.
+  let output = run_output(
+    (
+      #|/* 𝒜 */
+      #|console.log((() => 1).toString());
+    ),
+  )
+  json_inspect(output, content=["() => 1"])
+}
+
+///|
 // Positive control: confirms %GeneratorPrototype%.next is writable and the singleton
 // is shared — the patch IS live for sync generators, making the async isolation test below
 // a genuine discriminator (not a vacuous pass).

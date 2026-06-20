@@ -816,3 +816,45 @@ test "end_offset: numeric separator preserved in source span" {
     content="1_000",
   )
 }
+
+///|
+test "loc.offset: token after astral identifier is UTF-16-correct" {
+  // 𝒜 (U+1D49C) is 1 code point but 2 UTF-16 units. After consuming 𝒜,
+  // the next token must start at UTF-16 offset 3, not code-point offset 2.
+  let src = "𝒜 x"
+  let toks = @lexer.tokenize(src)
+  // toks[0]=𝒜, toks[1]=x, toks[2]=EOF
+  inspect(toks[1].loc.offset, content="3")
+  inspect(
+    src.unsafe_substring(start=toks[1].loc.offset, end=toks[1].end_offset),
+    content="x",
+  )
+}
+
+///|
+test "loc.offset: token after astral char in string is UTF-16-correct" {
+  // "𝒜" spans 4 UTF-16 units (opening quote + 2-unit surrogate pair + closing quote).
+  // The x identifier must start at UTF-16 offset 5 (4 for string + 1 for space).
+  let src = "\"𝒜\" x"
+  let toks = @lexer.tokenize(src)
+  // toks[0]="𝒜" string, toks[1]=x, toks[2]=EOF
+  inspect(toks[1].loc.offset, content="5")
+  inspect(
+    src.unsafe_substring(start=toks[1].loc.offset, end=toks[1].end_offset),
+    content="x",
+  )
+}
+
+///|
+test "loc.offset: token after astral char in single-line comment is UTF-16-correct" {
+  // // 𝒜\n x — 𝒜 is consumed inside the comment; x must start at UTF-16 offset 7.
+  // Code-point offset of x is 6; the astral_count bump for 𝒜 adds 1.
+  let src = "// 𝒜\n x"
+  let toks = @lexer.tokenize(src)
+  // toks[0]=x, toks[1]=EOF
+  inspect(toks[0].loc.offset, content="7")
+  inspect(
+    src.unsafe_substring(start=toks[0].loc.offset, end=toks[0].end_offset),
+    content="x",
+  )
+}
