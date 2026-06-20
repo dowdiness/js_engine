@@ -726,7 +726,10 @@ fn collapse_js_paths(value : String) -> String {
       let mut j = i + 1
       let mut js_end : Int? = None
       while j < len && value[j] != ' ' && value[j] != '\t' && value[j] != '\n' {
-        if j + 3 <= len && value[j:j + 3] == ".js" {
+        if j + 3 <= len &&
+          value[j] == '.' &&
+          value[j + 1] == 'j' &&
+          value[j + 2] == 's' {
           js_end = Some(j + 3)
           break
         }
@@ -757,7 +760,12 @@ fn collapse_line_numbers(value : String) -> String {
   let len = value.length()
   let mut i = 0
   while i < len {
-    if i + 5 <= len && value[i:i + 5] == "line " {
+    if i + 5 <= len &&
+      value[i] == 'l' &&
+      value[i + 1] == 'i' &&
+      value[i + 2] == 'n' &&
+      value[i + 3] == 'e' &&
+      value[i + 4] == ' ' {
       let mut j = i + 5
       if j < len && value[j] >= '0' && value[j] <= '9' {
         while j < len && value[j] >= '0' && value[j] <= '9' {
@@ -842,7 +850,14 @@ fn reason_key(reason : String) -> String {
     "\"…\"",
   )
   if collapsed.length() > 120 {
-    collapsed[:120].to_owned()
+    // Don't split a surrogate pair: if position 120 is a low surrogate,
+    // position 119 is the high surrogate and would be left unpaired.
+    let end = if collapsed[120] >= 0xDC00 && collapsed[120] <= 0xDFFF {
+      119
+    } else {
+      120
+    }
+    collapsed[:end].to_owned()
   } else {
     collapsed
   }
