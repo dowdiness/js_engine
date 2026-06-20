@@ -13,6 +13,7 @@
     "WeakRef",
     "arraybuffer-transfer",
     "async-iteration",
+    "await-dictionary",
     "caller",
     "class-fields-private",
     "class-methods-private",
