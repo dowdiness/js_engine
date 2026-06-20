@@ -530,7 +530,40 @@ fn RegexParser::parse_class_single_escape(
     't' => '\t'
     'f' => '\u{000C}' // form feed
     'v' => '\u{000B}' // vertical tab
-    '0' => '\u{0000}' // null
+    '0' => {
+      // Check for a decimal digit following \0
+      let next_is_decimal = self.pos < self.pattern.length() &&
+        self.pattern[self.pos] >= '0' &&
+        self.pattern[self.pos] <= '9'
+      if next_is_decimal {
+        if self.unicode {
+          raise @errors.SyntaxError(
+            message="Invalid regex: invalid decimal escape in character class",
+          )
+        }
+        // Annex B legacy octal: \0 followed by 8 or 9 → NUL (don't consume non-octal digit)
+        // \0 followed by 0-7 → parse as 2- or 3-digit octal
+        if self.pattern[self.pos] >= '8' {
+          '\u{0000}' // NUL; 8/9 left as separate class char
+        } else {
+          let d1 = self.pattern[self.pos].to_int() - '0'.to_int()
+          self.pos += 1
+          // Leading digit 0 is in range 0-3, so up to 2 additional octal digits allowed
+          let val = if self.pos < self.pattern.length() &&
+            self.pattern[self.pos] >= '0' &&
+            self.pattern[self.pos] <= '7' {
+            let d2 = self.pattern[self.pos].to_int() - '0'.to_int()
+            self.pos += 1
+            d1 * 8 + d2 // 3-digit octal: \0 d1 d2
+          } else {
+            d1 // 2-digit octal: \0 d1
+          }
+          val.unsafe_to_char()
+        }
+      } else {
+        '\u{0000}' // plain \0 = NUL
+      }
+    }
     'b' => '\u{0008}' // backspace (\b inside [] means backspace, not word boundary)
     _ => escaped
   }

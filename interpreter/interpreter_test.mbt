@@ -18213,3 +18213,44 @@ test "regex char class: Annex B identity escape for malformed \\x and \\u" {
   )
   json_inspect(output, content=["true", "true", "true", "true", "true", "true"])
 }
+
+///|
+test "regex char class: \\0 null escape with following decimal digits" {
+  // \0 not followed by digit: NUL
+  // \00, \07: consumed as 2-digit octal (non-unicode)
+  // \000:     consumed as 3-digit octal (non-unicode)
+  // \08:      NUL + '8' as separate class char (8 is not octal)
+  // \00 in unicode mode: SyntaxError (decimal escape not allowed)
+  let output = run_output(
+    (
+      #|console.log(/[\0]/.test('\x00'));       // true -- plain \0 = NUL
+      #|console.log(/[\00]/.test('\x00'));      // true -- octal \00 = NUL
+      #|console.log(/[\00]/.test('0'));         // false -- '0' consumed by \00
+      #|console.log(/[\07]/.test('\x07'));      // true -- octal \07 = BEL
+      #|console.log(/[\000]/.test('\x00'));     // true -- 3-digit octal \000 = NUL
+      #|console.log(/[\000]/.test('0'));        // false -- '0' consumed
+      #|console.log(/[\08]/.test('\x00'));      // true -- \0=NUL; 8 not octal
+      #|console.log(/[\08]/.test('8'));         // true -- '8' is separate class char
+      #|try { /[\00]/u; console.log('no error') } catch(e) { console.log(e instanceof SyntaxError) }
+    ),
+  )
+  json_inspect(output, content=["true", "true", "false", "true", "true", "false", "true", "true", "true"])
+}
+
+///|
+test "regex char class: unicode mode strict errors for malformed \\x and \\u" {
+  // In Unicode mode (/u flag), malformed \x and \u must throw SyntaxError.
+  let output = run_output(
+    (
+      #|var threw = 0;
+      #|try { /[\x]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { /[\u]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { /[\u1]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { /[\x4]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|console.log(threw);   // 4 -- all four must throw
+      #|try { /[\xA0]/u; console.log(true) } catch(e) { console.log(false) }
+      #|try { /[A]/u; console.log(true) } catch(e) { console.log(false) }
+    ),
+  )
+  json_inspect(output, content=["4", "true", "true"])
+}
