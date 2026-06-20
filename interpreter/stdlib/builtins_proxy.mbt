@@ -1,4 +1,30 @@
 ///|
+fn assert_proxy_args(args : Array[Value]) -> (Value, Value) raise Error {
+  if args.length() < 2 {
+    raise @errors.TypeError(
+      message="Cannot create proxy with a non-object as target or handler",
+    )
+  }
+  let target = args[0]
+  let handler = args[1]
+  match target {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+    _ =>
+      raise @errors.TypeError(
+        message="Cannot create proxy with a non-object as target or handler",
+      )
+  }
+  match handler {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
+    _ =>
+      raise @errors.TypeError(
+        message="Cannot create proxy with a non-object as target or handler",
+      )
+  }
+  (target, handler)
+}
+
+///|
 fn setup_proxy_builtins(env : Environment) -> Unit {
   let nf_desc : PropDescriptor = {
     writable: false,
@@ -23,29 +49,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     prototype: Null,
     callable: Some(
       ConstructorOnlyCallable("Proxy", fn(_interp, args) raise {
-        if args.length() < 2 {
-          raise @errors.TypeError(
-            message="Cannot create proxy with a non-object as target or handler",
-          )
-        }
-        let target = args[0]
-        let handler = args[1]
-        // Validate target is an object
-        match target {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot create proxy with a non-object as target or handler",
-            )
-        }
-        // Validate handler is an object
-        match handler {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot create proxy with a non-object as target or handler",
-            )
-        }
+        let (target, handler) = assert_proxy_args(args)
         Value::Proxy({
           target: Some(target),
           handler: Some(handler),
@@ -63,29 +67,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
     name="revocable",
     length=2,
     fn(args) raise {
-      if args.length() < 2 {
-        raise @errors.TypeError(
-          message="Cannot create proxy with a non-object as target or handler",
-        )
-      }
-      let target = args[0]
-      let handler = args[1]
-      // Validate target is an object
-      match target {
-        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-        _ =>
-          raise @errors.TypeError(
-            message="Cannot create proxy with a non-object as target or handler",
-          )
-      }
-      // Validate handler is an object
-      match handler {
-        Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-        _ =>
-          raise @errors.TypeError(
-            message="Cannot create proxy with a non-object as target or handler",
-          )
-      }
+      let (target, handler) = assert_proxy_args(args)
       let proxy_data : ProxyData = {
         target: Some(target),
         handler: Some(handler),
