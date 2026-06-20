@@ -169,6 +169,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let mut line = 1
   let mut col = 1
   let mut offset = 0
+  let mut astral_count = 0
   let chars = source.to_array()
   let len = chars.length()
   let template_depth_stack : Array[Int] = []
@@ -185,7 +186,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let function_body_is_generator : Array[Bool] = []
   let mut last_yield_allows_regex = false
   fn make_loc() -> @token.Loc {
-    { line, col, offset }
+    { line, col, offset: offset + astral_count }
   }
 
   fn char_at(i : Int) -> Char {
@@ -385,6 +386,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             buf.write_char(esc)
           }
         }
+        if esc.to_int() > 0xFFFF {
+          astral_count += 1
+        }
         offset += 1
         col += 1
       } else {
@@ -404,6 +408,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         } else {
           col += 1
           buf.write_char(tc)
+        }
+        if tc.to_int() > 0xFFFF {
+          astral_count += 1
         }
         offset += 1
       }
@@ -440,6 +447,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 2
         col += 2
         while offset < len && !is_line_terminator(char_at(offset)) {
+          if char_at(offset).to_int() > 0xFFFF {
+            astral_count += 1
+          }
           offset += 1
           col += 1
         }
@@ -466,6 +476,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             col = 1
           } else {
             col += 1
+          }
+          if char_at(offset).to_int() > 0xFFFF {
+            astral_count += 1
           }
           offset += 1
         }
@@ -570,11 +583,17 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               offset += 1
               col += 1
               pattern_buf.write_char(char_at(offset))
+              if char_at(offset).to_int() > 0xFFFF {
+                astral_count += 1
+              }
               offset += 1
               col += 1
               continue
             }
             pattern_buf.write_char(rc)
+            if rc.to_int() > 0xFFFF {
+              astral_count += 1
+            }
             offset += 1
             col += 1
           }
@@ -597,7 +616,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               Regex(pattern_buf.to_string(), flags_buf.to_string()),
               rloc,
               "",
-              end_offset=offset,
+              end_offset=offset + astral_count,
             ),
           )
           continue
@@ -917,6 +936,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         write_code_point(ident_buf, cp)
       } else {
         ident_buf.write_char(c)
+        if c.to_int() > 0xFFFF {
+          astral_count += 1
+        }
         offset += 1
         col += 1
       }
@@ -924,6 +946,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         let ch = char_at(offset)
         if is_id_continue_cp(ch.to_int()) {
           ident_buf.write_char(ch)
+          if ch.to_int() > 0xFFFF {
+            astral_count += 1
+          }
           offset += 1
           col += 1
         } else if ch == '\\' && offset + 1 < len && char_at(offset + 1) == 'u' {
@@ -951,14 +976,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       } else {
         resolve_keyword(decoded)
       }
-      // For escaped identifiers (has_escape=true), offset is code-point-based
-      // but all escape sequences (\uXXXX, \u{XXXXX}) are ASCII so code-point
-      // count == UTF-16 code-unit count — offset is safe to use directly.
-      // For non-escaped identifiers, decoded.length() gives UTF-16 code units
-      // (matching String::unsafe_substring), while offset counts code points and
-      // would be short by one per direct supplementary-plane character.
+      // Both paths produce the same formula after the utf-16 fix: offset is the
+      // code-point index and astral_count tracks the extra UTF-16 units consumed
+      // by supplementary-plane chars, so offset + astral_count is the UTF-16 end.
+      // For non-escaped identifiers decoded.length() is equivalent (UTF-16 length
+      // of the decoded string equals the source span in UTF-16 code units), so we
+      // keep the alternative for clarity.
       let end_offset = if has_escape {
-        offset
+        offset + astral_count
       } else {
         loc.offset + decoded.length()
       }
@@ -1099,6 +1124,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               // NonEscapeCharacter: the backslash is consumed; the char itself is the value.
               buf.write_char(esc)
           }
+          if esc.to_int() > 0xFFFF {
+            astral_count += 1
+          }
           offset += 1
           col += 1
         } else {
@@ -1111,6 +1139,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             )
           }
           col += 1
+          if raw_cp > 0xFFFF {
+            astral_count += 1
+          }
           buf.write_char(char_at(offset))
           offset += 1
         }
@@ -1140,11 +1171,21 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       if has_expr {
         template_depth_stack.push(1)
         tokens.push(
-          @token.Token(TemplateHead(text), tloc, "", end_offset=offset),
+          @token.Token(
+            TemplateHead(text),
+            tloc,
+            "",
+            end_offset=offset + astral_count,
+          ),
         )
       } else {
         tokens.push(
-          @token.Token(NoSubTemplate(text), tloc, "", end_offset=offset),
+          @token.Token(
+            NoSubTemplate(text),
+            tloc,
+            "",
+            end_offset=offset + astral_count,
+          ),
         )
       }
       continue
@@ -1392,11 +1433,21 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         if has_expr {
           template_depth_stack.push(1)
           tokens.push(
-            @token.Token(TemplateMiddle(text), tloc, "", end_offset=offset),
+            @token.Token(
+              TemplateMiddle(text),
+              tloc,
+              "",
+              end_offset=offset + astral_count,
+            ),
           )
         } else {
           tokens.push(
-            @token.Token(TemplateTail(text), tloc, "", end_offset=offset),
+            @token.Token(
+              TemplateTail(text),
+              tloc,
+              "",
+              end_offset=offset + astral_count,
+            ),
           )
         }
         continue
@@ -1468,7 +1519,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             message="Invalid or unexpected token at line \{line}, col \{col}",
           )
       }
-      tokens.push(@token.Token(Number(value), loc, num_str, end_offset=offset))
+      tokens.push(
+        @token.Token(
+          Number(value),
+          loc,
+          num_str,
+          end_offset=offset + astral_count,
+        ),
+      )
       continue
     }
     // ... (spread/rest)
