@@ -189,6 +189,16 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     { line, col, offset: offset + astral_count }
   }
 
+  fn bump_if_astral(c : Char) -> Unit {
+    if c.to_int() > 0xFFFF {
+      astral_count += 1
+    }
+  }
+
+  fn utf16_pos() -> Int {
+    offset + astral_count
+  }
+
   fn char_at(i : Int) -> Char {
     chars[i]
   }
@@ -386,9 +396,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             buf.write_char(esc)
           }
         }
-        if esc.to_int() > 0xFFFF {
-          astral_count += 1
-        }
+        bump_if_astral(esc)
         offset += 1
         col += 1
       } else {
@@ -409,9 +417,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           col += 1
           buf.write_char(tc)
         }
-        if tc.to_int() > 0xFFFF {
-          astral_count += 1
-        }
+        bump_if_astral(tc)
         offset += 1
       }
     }
@@ -447,9 +453,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 2
         col += 2
         while offset < len && !is_line_terminator(char_at(offset)) {
-          if char_at(offset).to_int() > 0xFFFF {
-            astral_count += 1
-          }
+          bump_if_astral(char_at(offset))
           offset += 1
           col += 1
         }
@@ -477,9 +481,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           } else {
             col += 1
           }
-          if char_at(offset).to_int() > 0xFFFF {
-            astral_count += 1
-          }
+          bump_if_astral(char_at(offset))
           offset += 1
         }
         continue
@@ -583,17 +585,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               offset += 1
               col += 1
               pattern_buf.write_char(char_at(offset))
-              if char_at(offset).to_int() > 0xFFFF {
-                astral_count += 1
-              }
+              bump_if_astral(char_at(offset))
               offset += 1
               col += 1
               continue
             }
             pattern_buf.write_char(rc)
-            if rc.to_int() > 0xFFFF {
-              astral_count += 1
-            }
+            bump_if_astral(rc)
             offset += 1
             col += 1
           }
@@ -616,7 +614,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               Regex(pattern_buf.to_string(), flags_buf.to_string()),
               rloc,
               "",
-              end_offset=offset + astral_count,
+              end_offset=utf16_pos(),
             ),
           )
           continue
@@ -936,9 +934,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         write_code_point(ident_buf, cp)
       } else {
         ident_buf.write_char(c)
-        if c.to_int() > 0xFFFF {
-          astral_count += 1
-        }
+        bump_if_astral(c)
         offset += 1
         col += 1
       }
@@ -946,9 +942,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         let ch = char_at(offset)
         if is_id_continue_cp(ch.to_int()) {
           ident_buf.write_char(ch)
-          if ch.to_int() > 0xFFFF {
-            astral_count += 1
-          }
+          bump_if_astral(ch)
           offset += 1
           col += 1
         } else if ch == '\\' && offset + 1 < len && char_at(offset + 1) == 'u' {
@@ -976,14 +970,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       } else {
         resolve_keyword(decoded)
       }
-      // Both paths produce the same formula after the utf-16 fix: offset is the
-      // code-point index and astral_count tracks the extra UTF-16 units consumed
-      // by supplementary-plane chars, so offset + astral_count is the UTF-16 end.
-      // For non-escaped identifiers decoded.length() is equivalent (UTF-16 length
-      // of the decoded string equals the source span in UTF-16 code units), so we
-      // keep the alternative for clarity.
+      // has_escape=false: loc.offset + decoded.length() is equivalent to utf16_pos()
+      // because decoded is the verbatim source span (no \uXXXX escapes change it)
+      // and MoonBit String.length() returns UTF-16 length. Keep the formula for
+      // clarity over the escape path.
       let end_offset = if has_escape {
-        offset + astral_count
+        utf16_pos()
       } else {
         loc.offset + decoded.length()
       }
@@ -1124,9 +1116,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               // NonEscapeCharacter: the backslash is consumed; the char itself is the value.
               buf.write_char(esc)
           }
-          if esc.to_int() > 0xFFFF {
-            astral_count += 1
-          }
+          bump_if_astral(esc)
           offset += 1
           col += 1
         } else {
@@ -1139,9 +1129,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             )
           }
           col += 1
-          if raw_cp > 0xFFFF {
-            astral_count += 1
-          }
+          bump_if_astral(char_at(offset))
           buf.write_char(char_at(offset))
           offset += 1
         }
@@ -1171,21 +1159,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       if has_expr {
         template_depth_stack.push(1)
         tokens.push(
-          @token.Token(
-            TemplateHead(text),
-            tloc,
-            "",
-            end_offset=offset + astral_count,
-          ),
+          @token.Token(TemplateHead(text), tloc, "", end_offset=utf16_pos()),
         )
       } else {
         tokens.push(
-          @token.Token(
-            NoSubTemplate(text),
-            tloc,
-            "",
-            end_offset=offset + astral_count,
-          ),
+          @token.Token(NoSubTemplate(text), tloc, "", end_offset=utf16_pos()),
         )
       }
       continue
@@ -1433,21 +1411,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         if has_expr {
           template_depth_stack.push(1)
           tokens.push(
-            @token.Token(
-              TemplateMiddle(text),
-              tloc,
-              "",
-              end_offset=offset + astral_count,
-            ),
+            @token.Token(TemplateMiddle(text), tloc, "", end_offset=utf16_pos()),
           )
         } else {
           tokens.push(
-            @token.Token(
-              TemplateTail(text),
-              tloc,
-              "",
-              end_offset=offset + astral_count,
-            ),
+            @token.Token(TemplateTail(text), tloc, "", end_offset=utf16_pos()),
           )
         }
         continue
@@ -1520,12 +1488,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           )
       }
       tokens.push(
-        @token.Token(
-          Number(value),
-          loc,
-          num_str,
-          end_offset=offset + astral_count,
-        ),
+        @token.Token(Number(value), loc, num_str, end_offset=utf16_pos()),
       )
       continue
     }
