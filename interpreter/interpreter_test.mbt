@@ -18254,3 +18254,24 @@ test "regex char class: unicode mode strict errors for malformed \\x and \\u" {
   )
   json_inspect(output, content=["4", "true", "true"])
 }
+
+
+///|
+test "regex char class: non-unicode surrogate \\u escapes are not folded" {
+  // In non-unicode mode, \uD83D and \uDE00 inside [...] are separate code-unit atoms;
+  // parse_class_single_escape must not fold adjacent surrogate \uXXXX escapes.
+  let output = run_output(
+    (
+      #|// Escape form: \uD83D and \uDE00 as two separate class members
+      #|console.log(/[\uD83D\uDE00]/.test('\uD83D')); // true -- high surrogate
+      #|console.log(/[\uD83D\uDE00]/.test('\uDE00')); // true -- low surrogate
+      #|// Unicode mode: class folds to scalar U+1F600; surrogates not in class
+      #|console.log(/[\uD83D\uDE00]/u.test('\uD83D')); // false
+      #|console.log(/[\uD83D\uDE00]/u.test('\uDE00')); // false
+      #|// \u{41} in non-unicode mode: { is not a hex digit, so identity escape
+      #|console.log(/[\u{41}]/.test('u'));  // true -- identity escape
+      #|console.log(/[\u{41}]/.test('A'));  // false
+    ),
+  )
+  json_inspect(output, content=["true", "true", "false", "false", "true", "false"])
+}

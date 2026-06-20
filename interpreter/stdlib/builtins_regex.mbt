@@ -494,15 +494,26 @@ fn RegexParser::parse_class_single_escape(
       if self.unicode {
         self.parse_unicode_escape_in_name()
       } else {
-        // Annex B: try to decode; on failure restore pos and return 'u' (identity escape)
+        // Annex B: parse exactly 4 hex digits, no {…} form, no surrogate-pair folding.
+        // In non-unicode char classes, \uD83D and \uDE00 are separate code-unit atoms —
+        // combining them into a scalar would remove both surrogates from the class.
         let saved = self.pos
-        try {
-          self.parse_unicode_escape_in_name()
-        } catch {
-          _ => {
-            self.pos = saved
-            'u'
+        let mut cp = 0
+        let mut ok = true
+        for i = 0; i < 4; i = i + 1 {
+          if self.pos >= self.pattern.length() ||
+            !is_hex_digit(self.pattern[self.pos]) {
+            ok = false
+            break
           }
+          cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
+          self.pos += 1
+        }
+        if ok {
+          cp.unsafe_to_char()
+        } else {
+          self.pos = saved
+          'u'
         }
       }
     'x' => {
