@@ -22,21 +22,32 @@ fn setup_json_builtins(
       } else {
         ""
       }
-      let result = json_parse(str)
+      let result = json_parse(str, interp)
       // Handle reviver
       if args.length() > 1 && @runtime.is_callable(args[1]) {
-        // Wrap in a root holder object
+        // Wrap in a root holder object with Object.prototype as prototype
+        // and the parsed value as a data property (CreateDataPropertyOrThrow
+        // semantics: writable/enumerable/configurable).
         let root_props : Map[String, Value] = {}
         root_props[""] = result
+        let root_descs : Map[String, PropDescriptor] = {}
+        root_descs[""] = {
+          writable: true,
+          enumerable: true,
+          configurable: true,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        }
         let root : Value = Value::Object({
           bag: {
             properties: root_props,
             symbol_properties: {},
-            descriptors: {},
+            descriptors: root_descs,
             symbol_descriptors: {},
             internal_slots: {},
           },
-          prototype: Null,
+          prototype: interp.realm_state.get_obj_proto(),
           callable: None,
           class_name: "Object",
           extensible: true,
@@ -192,7 +203,8 @@ fn setup_json_builtins(
 }
 
 ///|
-fn json_parse(input : String) -> Value raise Error {
+fn json_parse(input : String, interp : Interpreter) -> Value raise Error {
+  let obj_proto = interp.realm_state.get_obj_proto()
   let chars = input.to_array()
   let len = chars.length()
   let pos : Array[Int] = [0] // mutable position
@@ -371,7 +383,7 @@ fn json_parse(input : String) -> Value raise Error {
           symbol_descriptors: {},
           internal_slots: {},
         },
-        prototype: Null,
+        prototype: obj_proto,
         callable: None,
         class_name: "Object",
         extensible: true,
@@ -420,7 +432,7 @@ fn json_parse(input : String) -> Value raise Error {
         symbol_descriptors: {},
         internal_slots: {},
       },
-      prototype: Null,
+      prototype: obj_proto,
       callable: None,
       class_name: "Object",
       extensible: true,
@@ -466,63 +478,91 @@ fn json_parse(input : String) -> Value raise Error {
 }
 
 ///|
-/// InternalizeJSONProperty - walks the parsed value and calls the reviver
+/// §7.2.2 IsArray check that sees through Proxy chains.
+fn json_is_array_like(val : Value) -> Bool {
+  match val {
+    Array(_) => true
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) => json_is_array_like(target)
+        None => false
+      }
+    _ => false
+  }
+}
+
+///|
+/// InternalizeJSONProperty — walks the parsed (or reviver-returned) value
+/// using the full abstract operations so that Proxy traps fire correctly.
 fn json_internalize(
   holder : Value,
   name : String,
   reviver : Value,
   interp : Interpreter,
 ) -> Value raise Error {
-  let val = match holder {
-    Object(data) =>
-      match data.bag.properties.get(name) {
-        Some(v) => v
-        None => Undefined
+  let loc = @token.Loc::default()
+  // Step 1: Let val be ? Get(holder, name) — handles accessor getters and
+  // Proxy get traps.
+  let val = interp.get_property(holder, name, loc)
+  // Step 2: Recurse into object-typed values (including Proxies).
+  if @runtime.is_object_value(val) {
+    if json_is_array_like(val) {
+      // Array branch: ? ToLength(? Get(val, "length")), then for each index:
+      // delete or CreateDataProperty via [[DefineOwnProperty]].
+      let len = @runtime.to_array_like_length_interp(val, interp)
+      for i = 0; i < len; i = i + 1 {
+        let idx = i.to_string()
+        let new_val = json_internalize(val, idx, reviver, interp)
+        match new_val {
+          Undefined =>
+            // ? val.[[Delete]](ToString(I)) — non-strict: silent false return
+            // for non-configurable properties, TypeError only on revoked Proxy.
+            interp.delete_property_key(val, String_(idx)) |> ignore
+          _ =>
+            // ? CreateDataProperty(val, ToString(I), newElement)
+            interp.define_own_property(
+              val,
+              String_(idx),
+              @runtime.PartialDescriptor::data_default(new_val),
+              loc,
+            )
+            |> ignore
+        }
       }
-    Array(arr_data) => {
-      let idx = @string.parse_int(name) catch { _ => -1 }
-      if idx >= 0 && idx < arr_data.elements.length() {
-        arr_data.elements[idx]
-      } else {
-        Undefined
-      }
-    }
-    _ => Undefined
-  }
-  // Recurse into objects and arrays
-  match val {
-    Object(data) => {
+    } else {
+      // Object branch: ? EnumerableOwnPropertyNames(val, "key"), then for each:
+      // delete or CreateDataProperty. Proxy ownKeys/getOwnPropertyDescriptor
+      // traps fire through object_keys.
+      let keys_val = @runtime.object_keys(interp, val)
       let keys : Array[String] = []
-      for key, _ in data.bag.properties {
-        keys.push(key)
+      match keys_val {
+        Array(arr) =>
+          for k in arr.elements {
+            match k {
+              String_(s) => keys.push(s)
+              _ => ()
+            }
+          }
+        _ => ()
       }
       for key in keys {
         let new_val = json_internalize(val, key, reviver, interp)
         match new_val {
-          Undefined =>
-            // Delete the property
-            data.bag.properties.remove(key)
-          _ => data.bag.properties[key] = new_val
+          Undefined => interp.delete_property_key(val, String_(key)) |> ignore
+          _ =>
+            interp.define_own_property(
+              val,
+              String_(key),
+              @runtime.PartialDescriptor::data_default(new_val),
+              loc,
+            )
+            |> ignore
         }
       }
     }
-    Array(arr_data) =>
-      for i = 0; i < arr_data.elements.length(); i = i + 1 {
-        let new_val = json_internalize(val, i.to_string(), reviver, interp)
-        match new_val {
-          Undefined => arr_data.elements[i] = Undefined
-          _ => arr_data.elements[i] = new_val
-        }
-      }
-    _ => ()
   }
-  // Call reviver with (holder, name, val)
-  interp.call_value(
-    reviver,
-    holder,
-    [Value::String_(name), val],
-    @token.Loc::default(),
-  )
+  // Step 3: Call reviver(holder, name, val).
+  interp.call_value(reviver, holder, [Value::String_(name), val], loc)
 }
 
 ///|
