@@ -441,11 +441,16 @@ pub fn setup_object_builtins(
           Object(data) => {
             match data.bag.descriptors.get(prop) {
               Some(desc) =>
-                match desc.getter {
-                  Some(getter) => return getter
-                  None => ()
+                // Own property found — return getter or undefined (spec step b.ii)
+                return match desc.getter {
+                  Some(getter) => getter
+                  None => Undefined
                 }
-              None => ()
+              None =>
+                // Data property in properties map — stops the chain (spec step b.ii)
+                if data.bag.properties.contains(prop) {
+                  return Undefined
+                }
             }
             current = data.prototype
           }
@@ -470,11 +475,16 @@ pub fn setup_object_builtins(
           Object(data) => {
             match data.bag.descriptors.get(prop) {
               Some(desc) =>
-                match desc.setter {
-                  Some(setter) => return setter
-                  None => ()
+                // Own property found — return setter or undefined (spec step b.ii)
+                return match desc.setter {
+                  Some(setter) => setter
+                  None => Undefined
                 }
-              None => ()
+              None =>
+                // Data property in properties map — stops the chain (spec step b.ii)
+                if data.bag.properties.contains(prop) {
+                  return Undefined
+                }
             }
             current = data.prototype
           }
