@@ -3725,6 +3725,58 @@ test "JSON.parse booleans null" {
 }
 
 ///|
+test "JSON.parse parsed object has Object.prototype" {
+  let src =
+    #|var x = JSON.parse('{"a":1}');
+    #|console.log(Object.getPrototypeOf(x) === Object.prototype);
+    #|console.log(x.hasOwnProperty('a'));
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "JSON.parse reviver accessor getter error propagates" {
+  let src =
+    #|var err = null;
+    #|try {
+    #|  JSON.parse('[0,1]', function() {
+    #|    Object.defineProperty(this, '1', { get: function() { throw new Error('trap'); } });
+    #|  });
+    #|} catch(e) { err = e.message; }
+    #|console.log(err);
+  let output = run_output(src)
+  json_inspect(output, content=["trap"])
+}
+
+///|
+test "JSON.parse reviver Proxy deleteProperty trap error propagates" {
+  let src =
+    #|var err = null;
+    #|try {
+    #|  JSON.parse('[0,1]', function() {
+    #|    this[1] = new Proxy([0], { deleteProperty: function() { throw new Error('del'); } });
+    #|  });
+    #|} catch(e) { err = e.message; }
+    #|console.log(err);
+  let output = run_output(src)
+  json_inspect(output, content=["del"])
+}
+
+///|
+test "JSON.parse reviver Proxy ownKeys trap error propagates" {
+  let src =
+    #|var err = null;
+    #|try {
+    #|  JSON.parse('[0,1]', function() {
+    #|    this[1] = new Proxy({}, { ownKeys: function() { throw new Error('keys'); } });
+    #|  });
+    #|} catch(e) { err = e.message; }
+    #|console.log(err);
+  let output = run_output(src)
+  json_inspect(output, content=["keys"])
+}
+
+///|
 test "JSON.stringify basic" {
   let src =
     #|var obj = {a: 1, b: "hello"};
