@@ -165,7 +165,7 @@ pub fn create_resolving_functions(
 
   // Create resolve function
   let resolve_func = make_interp_method_func(
-    name="resolve",
+    name="",
     length=1,
     realm_state=Some(interp.realm_state),
     fn(i, _this, args) {
@@ -249,7 +249,7 @@ pub fn create_resolving_functions(
 
   // Create reject function
   let reject_func = make_interp_method_func(
-    name="reject",
+    name="",
     length=1,
     realm_state=Some(interp.realm_state),
     fn(i, _this, args) {
