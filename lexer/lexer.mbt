@@ -185,8 +185,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let function_body_depth : Array[Int] = []
   let function_body_is_generator : Array[Bool] = []
   let mut last_yield_allows_regex = false
-  fn make_loc() -> @token.Loc {
-    { line, col, offset: offset + astral_count }
+  fn utf16_pos() -> Int {
+    offset + astral_count
   }
 
   fn bump_if_astral(c : Char) -> Unit {
@@ -195,8 +195,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     }
   }
 
-  fn utf16_pos() -> Int {
-    offset + astral_count
+  fn make_loc() -> @token.Loc {
+    { line, col, offset: utf16_pos() }
   }
 
   fn char_at(i : Int) -> Char {
