@@ -189,14 +189,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     offset + astral_count
   }
 
-  fn bump_if_astral(c : Char) -> Unit {
-    if c.to_int() > 0xFFFF {
-      astral_count += 1
-    }
-  }
-
   fn advance_char(c : Char) -> Unit {
-    bump_if_astral(c)
+    astral_count += c.utf16_len() - 1
     offset += 1
   }
 
@@ -209,11 +203,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   }
 
   fn raw_slice_cp(start : Int, stop : Int) -> String {
-    let buf = StringBuilder::new()
-    for i in start..<stop {
-      buf.write_char(char_at(i))
-    }
-    buf.to_string()
+    String::from_array(chars[start:stop])
   }
 
   fn in_generator_lexer_context() -> Bool {
@@ -1123,7 +1113,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // Only \n (0x0A) and \r (0x0D) terminate string literals.
           // U+2028 and U+2029 are allowed per ES2019 json-superset (§12.9.4).
           let raw_ch = char_at(offset)
-          if raw_ch.to_int() == 0x0A || raw_ch.to_int() == 0x0D {
+          let raw_cp = raw_ch.to_int()
+          if raw_cp == 0x0A || raw_cp == 0x0D {
             raise @errors.SyntaxError(
               message="Unterminated string at line \{line}, col \{col}",
             )
