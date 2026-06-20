@@ -490,20 +490,40 @@ fn RegexParser::parse_class_single_escape(
   escaped : Char,
 ) -> Char raise Error {
   match escaped {
-    'u' => self.parse_unicode_escape_in_name()
+    'u' =>
+      if self.unicode {
+        self.parse_unicode_escape_in_name()
+      } else {
+        // Annex B: try to decode; on failure restore pos and return 'u' (identity escape)
+        let saved = self.pos
+        try {
+          self.parse_unicode_escape_in_name()
+        } catch {
+          _ => {
+            self.pos = saved
+            'u'
+          }
+        }
+      }
     'x' => {
-      let mut cp = 0
-      for i = 0; i < 2; i = i + 1 {
-        if self.pos >= self.pattern.length() ||
-          !is_hex_digit(self.pattern[self.pos]) {
+      // Lookahead: both hex digits must be present before consuming any
+      let has_2_hex = self.pos + 1 < self.pattern.length() &&
+        is_hex_digit(self.pattern[self.pos]) &&
+        is_hex_digit(self.pattern[self.pos + 1])
+      if !has_2_hex {
+        if self.unicode {
           raise @errors.SyntaxError(
             message="Invalid regex: invalid hex escape in character class",
           )
         }
-        cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
-        self.pos += 1
+        // Annex B: identity escape — return 'x' without consuming anything
+        'x'
+      } else {
+        let cp = hex_digit_value(self.pattern[self.pos]) * 16 +
+          hex_digit_value(self.pattern[self.pos + 1])
+        self.pos += 2
+        cp.unsafe_to_char()
       }
-      cp.unsafe_to_char()
     }
     'n' => '\n'
     'r' => '\r'

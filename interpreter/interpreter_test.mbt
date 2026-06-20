@@ -18178,3 +18178,38 @@ test "String.prototype.replaceAll: non-global RegExp throws TypeError" {
   )
   json_inspect(output, content=["true"])
 }
+
+///|
+test "regex char class: \\uXXXX and \\xHH escapes decode correctly" {
+  // Regression: \uXXXX inside [...] was decoded as literal 'u' causing
+  // ranges like \u2000-\u200A to corrupt into ('-','u') = (0x2D-0x75)
+  // which false-matched ASCII letters like 'f'.
+  let output = run_output(
+    (
+      #|console.log(/[\u2000-\u200A]/.test('f'));     // false -- U+0066 not in range
+      #|console.log(/[\u0041-\u005A]/.test('Z'));     // true -- Z = U+005A
+      #|console.log(/[\u0041-\u005A]/.test('f'));     // false -- f = U+0066 > U+005A
+      #|console.log(/[\u0066]/.test('f'));             // true -- U+0066 = f
+      #|console.log(/[\x41-\x5A]/.test('Z'));         // true -- \xHH range A-Z
+      #|console.log(/[\x41-\x5A]/.test('f'));         // false -- f > Z via \xHH
+    ),
+  )
+  json_inspect(output, content=["false", "true", "false", "true", "true", "false"])
+}
+
+///|
+test "regex char class: Annex B identity escape for malformed \\x and \\u" {
+  // In non-Unicode mode, \x without 2 valid hex digits is an identity escape
+  // for 'x'; \u with fewer than 4 hex digits is an identity escape for 'u'.
+  let output = run_output(
+    (
+      #|console.log(/[\x]/.test('x'));   // true — identity escape
+      #|console.log(/[\u]/.test('u'));   // true — identity escape
+      #|console.log(/[\u1]/.test('u'));  // true — 'u' identity + '1' separate
+      #|console.log(/[\u1]/.test('1'));  // true — '1' is in the class
+      #|console.log(/[\x4]/.test('x'));  // true — 'x' identity + '4' separate
+      #|console.log(/[\x4]/.test('4'));  // true — '4' is in the class
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true", "true", "true"])
+}
