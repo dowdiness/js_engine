@@ -481,6 +481,42 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
 }
 
 ///|
+/// Parse a single escaped character atom inside a character class `[...]`,
+/// called after `\` and the escape letter have both been consumed from pos.
+/// Does NOT handle shorthand classes (\d \w \s \D \W \S) — those are handled
+/// by the caller before reaching this function.
+fn RegexParser::parse_class_single_escape(
+  self : RegexParser,
+  escaped : Char,
+) -> Char raise Error {
+  match escaped {
+    'u' => self.parse_unicode_escape_in_name()
+    'x' => {
+      let mut cp = 0
+      for i = 0; i < 2; i = i + 1 {
+        if self.pos >= self.pattern.length() ||
+          !is_hex_digit(self.pattern[self.pos]) {
+          raise @errors.SyntaxError(
+            message="Invalid regex: invalid hex escape in character class",
+          )
+        }
+        cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
+        self.pos += 1
+      }
+      cp.unsafe_to_char()
+    }
+    'n' => '\n'
+    'r' => '\r'
+    't' => '\t'
+    'f' => '\u{000C}' // form feed
+    'v' => '\u{000B}' // vertical tab
+    '0' => '\u{0000}' // null
+    'b' => '\u{0008}' // backspace (\b inside [] means backspace, not word boundary)
+    _ => escaped
+  }
+}
+
+///|
 fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
   self.pos += 1 // skip '['
   let negated = if self.pos < self.pattern.length() &&
@@ -522,10 +558,7 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
           ranges.push(('\r', '\r'))
           continue
         }
-        'n' => '\n'
-        'r' => '\r'
-        't' => '\t'
-        _ => escaped
+        _ => self.parse_class_single_escape(escaped)
       }
     } else {
       self.pos += 1
@@ -545,7 +578,7 @@ fn RegexParser::parse_char_class(self : RegexParser) -> RegexNode raise Error {
         }
         let esc = self.pattern[self.pos]
         self.pos += 1
-        esc
+        self.parse_class_single_escape(esc)
       } else {
         let c = self.pattern[self.pos]
         self.pos += 1
