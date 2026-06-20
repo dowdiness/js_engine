@@ -195,6 +195,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     }
   }
 
+  fn advance_char(c : Char) -> Unit {
+    bump_if_astral(c)
+    offset += 1
+  }
+
   fn make_loc() -> @token.Loc {
     { line, col, offset: utf16_pos() }
   }
@@ -203,7 +208,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     chars[i]
   }
 
-  fn raw_slice(start : Int, stop : Int) -> String {
+  fn raw_slice_cp(start : Int, stop : Int) -> String {
     let buf = StringBuilder::new()
     for i in start..<stop {
       buf.write_char(char_at(i))
@@ -396,8 +401,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             buf.write_char(esc)
           }
         }
-        bump_if_astral(esc)
-        offset += 1
+        advance_char(esc)
         col += 1
       } else {
         // Unescaped characters in template — \u2028/\u2029 are allowed (unlike strings)
@@ -417,8 +421,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           col += 1
           buf.write_char(tc)
         }
-        bump_if_astral(tc)
-        offset += 1
+        advance_char(tc)
       }
     }
     raise @errors.SyntaxError(
@@ -452,9 +455,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         // Single-line comment — terminates at any LineTerminator
         offset += 2
         col += 2
-        while offset < len && !is_line_terminator(char_at(offset)) {
-          bump_if_astral(char_at(offset))
-          offset += 1
+        while offset < len {
+          let ch = char_at(offset)
+          if is_line_terminator(ch) {
+            break
+          }
+          advance_char(ch)
           col += 1
         }
         continue
@@ -464,25 +470,23 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 2
         col += 2
         while offset + 1 < len {
-          if char_at(offset) == '*' && char_at(offset + 1) == '/' {
+          let ch = char_at(offset)
+          if ch == '*' && char_at(offset + 1) == '/' {
             offset += 2
             col += 2
             break
           }
-          if is_line_terminator(char_at(offset)) {
+          if is_line_terminator(ch) {
             // \r\n counts as a single line terminator
-            if char_at(offset) == '\r' &&
-              offset + 1 < len &&
-              char_at(offset + 1) == '\n' {
-              offset += 1 // skip past \r, the loop increment skips \n
+            if ch == '\r' && offset + 1 < len && char_at(offset + 1) == '\n' {
+              offset += 1 // skip past \r; advance_char below advances past \n
             }
             line += 1
             col = 1
           } else {
             col += 1
           }
-          bump_if_astral(char_at(offset))
-          offset += 1
+          advance_char(ch)
         }
         continue
       }
@@ -584,15 +588,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               pattern_buf.write_char(rc)
               offset += 1
               col += 1
-              pattern_buf.write_char(char_at(offset))
-              bump_if_astral(char_at(offset))
-              offset += 1
+              let esc_ch = char_at(offset)
+              pattern_buf.write_char(esc_ch)
+              advance_char(esc_ch)
               col += 1
               continue
             }
             pattern_buf.write_char(rc)
-            bump_if_astral(rc)
-            offset += 1
+            advance_char(rc)
             col += 1
           }
           if offset >= len {
@@ -648,7 +651,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = raw_slice(start, offset)
+          let raw = raw_slice_cp(start, offset)
           tokens.push(@token.Token(Number(value), loc, raw))
           continue
         } else if next == 'b' || next == 'B' {
@@ -666,7 +669,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = raw_slice(start, offset)
+          let raw = raw_slice_cp(start, offset)
           tokens.push(@token.Token(Number(value), loc, raw))
           continue
         } else if next == 'o' || next == 'O' {
@@ -684,7 +687,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
-          let raw = raw_slice(start, offset)
+          let raw = raw_slice_cp(start, offset)
           tokens.push(@token.Token(Number(value), loc, raw))
           continue
         } else if next == '8' || next == '9' {
@@ -752,7 +755,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               offset += 1
               col += 1
             }
-            let raw = raw_slice(start, offset)
+            let raw = raw_slice_cp(start, offset)
             tokens.push(
               @token.Token(
                 Number(value),
@@ -905,7 +908,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
         col += 1
       }
-      let raw = raw_slice(start, offset)
+      let raw = raw_slice_cp(start, offset)
       let value = @string.parse_double(num_str)
       let lex_form : @token.LexForm = if is_non_octal_decimal_int {
         NumberNonOctalDecimalInt
@@ -934,16 +937,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         write_code_point(ident_buf, cp)
       } else {
         ident_buf.write_char(c)
-        bump_if_astral(c)
-        offset += 1
+        advance_char(c)
         col += 1
       }
       while offset < len {
         let ch = char_at(offset)
         if is_id_continue_cp(ch.to_int()) {
           ident_buf.write_char(ch)
-          bump_if_astral(ch)
-          offset += 1
+          advance_char(ch)
           col += 1
         } else if ch == '\\' && offset + 1 < len && char_at(offset + 1) == 'u' {
           has_escape = true
@@ -1116,22 +1117,20 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               // NonEscapeCharacter: the backslash is consumed; the char itself is the value.
               buf.write_char(esc)
           }
-          bump_if_astral(esc)
-          offset += 1
+          advance_char(esc)
           col += 1
         } else {
           // Only \n (0x0A) and \r (0x0D) terminate string literals.
           // U+2028 and U+2029 are allowed per ES2019 json-superset (§12.9.4).
-          let raw_cp = char_at(offset).to_int()
-          if raw_cp == 0x0A || raw_cp == 0x0D {
+          let raw_ch = char_at(offset)
+          if raw_ch.to_int() == 0x0A || raw_ch.to_int() == 0x0D {
             raise @errors.SyntaxError(
               message="Unterminated string at line \{line}, col \{col}",
             )
           }
           col += 1
-          bump_if_astral(char_at(offset))
-          buf.write_char(char_at(offset))
-          offset += 1
+          buf.write_char(raw_ch)
+          advance_char(raw_ch)
         }
       }
       if offset >= len {
@@ -1141,7 +1140,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       }
       offset += 1 // skip closing quote
       col += 1
-      let raw = raw_slice(start, offset)
+      let raw = raw_slice_cp(start, offset)
       let lex_form : @token.LexForm = if has_legacy_octal_escape {
         StringLegacyOctalEscape
       } else {
@@ -1472,7 +1471,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           )
         }
       }
-      let raw_str = raw_slice(num_start, offset)
+      let raw_str = raw_slice_cp(num_start, offset)
       // Remove numeric separators for parsing
       let buf = StringBuilder::new()
       for ch in raw_str {
