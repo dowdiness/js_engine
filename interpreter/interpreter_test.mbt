@@ -18119,3 +18119,62 @@ test "stage8 ownkeys: sparse array names vs descriptors hole handling" {
   // omits it. Spec says both should omit holes; fixing that is a follow-up.
   json_inspect(output, content=["0,1,2,length", "0,2,length"])
 }
+
+///|
+test "Object.prototype.__lookupGetter__: data property on instance stops prototype chain" {
+  // A data property on the instance shadows a getter on the prototype.
+  // __lookupGetter__ must return undefined (spec §B.2.2.1 step 4b.ii) instead
+  // of continuing to find the proto getter.
+  let output = run_output(
+    (
+      #|var root = Object.defineProperty({}, 'x', { get: function() { return 1; } });
+      #|var child = Object.create(root, { x: { value: 42 } });
+      #|console.log(child.__lookupGetter__('x'));
+      #|console.log(root.__lookupGetter__('x') !== undefined);
+    ),
+  )
+  json_inspect(output, content=["undefined", "true"])
+}
+
+///|
+test "Object.prototype.__lookupSetter__: data property on instance stops prototype chain" {
+  let output = run_output(
+    (
+      #|var root = Object.defineProperty({}, 'x', { set: function(v) {} });
+      #|var child = Object.create(root, { x: { value: 42 } });
+      #|console.log(child.__lookupSetter__('x'));
+      #|console.log(root.__lookupSetter__('x') !== undefined);
+    ),
+  )
+  json_inspect(output, content=["undefined", "true"])
+}
+
+///|
+test "String.prototype.replaceAll: global RegExp with Symbol.replace=undefined uses string path" {
+  // When Symbol.replace is null/undefined, replaceAll converts searchValue to
+  // string via ToString and searches for the literal string representation.
+  // The IsRegExp check must still pass (customRE has 'g') without throwing.
+  let output = run_output(
+    (
+      #|var re = /AB/g;
+      #|Object.defineProperty(re, Symbol.replace, { value: undefined });
+      #|var result = '--- /AB/g ---'.replaceAll(re, 'X');
+      #|console.log(result);
+    ),
+  )
+  json_inspect(output, content=["--- X ---"])
+}
+
+///|
+test "String.prototype.replaceAll: non-global RegExp throws TypeError" {
+  let output = run_output(
+    (
+      #|try {
+      #|  'abc'.replaceAll(/a/, 'x');
+      #|} catch (e) {
+      #|  console.log(e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}

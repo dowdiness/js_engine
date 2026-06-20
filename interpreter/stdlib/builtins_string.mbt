@@ -1277,23 +1277,29 @@ pub fn get_string_method(
           if args.length() == 0 {
             return Value::String_(str)
           }
-          // Per spec §22.1.3.19: if searchValue is a RegExp, require global flag FIRST
-          match args[0] {
-            Object(data) =>
-              if data.class_name == "RegExp" {
-                let flags = match data.bag.properties.get("flags") {
-                  Some(Value::String_(f)) => f
-                  _ => ""
-                }
-                if !flags.to_array().contains('g') {
+          // Per spec §22.1.3.19 step 3b: if IsRegExp(searchValue), require global flag FIRST.
+          // Use Get(searchValue, "flags") — flags is an accessor on RegExp.prototype.
+          if !(args[0] is Undefined || args[0] is Null) &&
+            regexp_is_regexp(interp, args[0]) {
+            let loc = @token.Loc::default()
+            let flags_val = interp.get_property(args[0], "flags", loc)
+            match flags_val {
+              Undefined | Null =>
+                raise @errors.TypeError(
+                  message="replaceAll: flags is null or undefined",
+                )
+              _ =>
+                if !interp.to_js_string(flags_val).contains("g") {
                   raise @errors.TypeError(
                     message="replaceAll must be called with a global RegExp",
                   )
                 }
-              }
-            _ => ()
+            }
           }
-          // Per spec: check for [Symbol.replace] method on the argument
+          // Per spec §22.1.3.19 step 3c: GetMethod(searchValue, @@replace).
+          // Track when Symbol.replace is explicitly null/undefined so we don't
+          // route those cases through the regexp fallback below.
+          let mut symbol_replace_explicitly_absent = false
           match args[0] {
             Object(data) => {
               let replace_sym = well_known_symbols.replace
@@ -1304,7 +1310,9 @@ pub fn get_string_method(
                 interp=Some(interp),
               )
               match replace_fn {
-                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
+                Some(Null) | Some(Undefined) =>
+                  // Symbol.replace exists but is null/undefined → string path (spec step 3d)
+                  symbol_replace_explicitly_absent = true
                 Some(fn_val) => {
                   let rep = if args.length() > 1 { args[1] } else { Undefined }
                   let result = @runtime.call_callable_direct(
@@ -1320,26 +1328,30 @@ pub fn get_string_method(
             }
             _ => ()
           }
-          // Fallback for RegExp without Symbol.replace
-          match args[0] {
-            Object(data) =>
-              if data.class_name == "RegExp" {
-                let flags = match data.bag.properties.get("flags") {
-                  Some(Value::String_(f)) => f
-                  _ => ""
+          // Fallback: RegExp without Symbol.replace in the prototype chain at all.
+          // Skip when Symbol.replace was explicitly null/undefined — spec §22.1.3.19
+          // step 3d says only call Symbol.replace when it is callable; null/undefined
+          // means no replacer, so fall through to the string path below.
+          if !symbol_replace_explicitly_absent {
+            match args[0] {
+              Object(data) =>
+                if data.class_name == "RegExp" {
+                  let loc = @token.Loc::default()
+                  let flags = interp.to_js_string(
+                    interp.get_property(args[0], "flags", loc),
+                  )
+                  let pattern = interp.to_js_string(
+                    interp.get_property(args[0], "source", loc),
+                  )
+                  let replacement = if args.length() > 1 {
+                    interp.to_js_string(args[1])
+                  } else {
+                    "undefined"
+                  }
+                  return string_replace_regex(str, pattern, flags, replacement)
                 }
-                let pattern = match data.bag.properties.get("source") {
-                  Some(Value::String_(s)) => s
-                  _ => ""
-                }
-                let replacement = if args.length() > 1 {
-                  interp.to_js_string(args[1])
-                } else {
-                  "undefined"
-                }
-                return string_replace_regex(str, pattern, flags, replacement)
-              }
-            _ => ()
+              _ => ()
+            }
           }
           let search = interp.to_js_string(args[0])
           let replace_val = if args.length() > 1 { args[1] } else { Undefined }
