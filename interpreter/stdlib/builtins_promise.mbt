@@ -482,12 +482,18 @@ pub fn setup_promise(
   promise_proto_descs["then"] = pd_method_desc
   promise_proto_descs["catch"] = pd_method_desc
   promise_proto_descs["finally"] = pd_method_desc
+  // Symbol.toStringTag = "Promise" per §27.2.3.6: {w:false, e:false, c:true}
+  let to_string_tag_sym = realm_state.well_known_symbols.to_string_tag
+  let promise_proto_sym_props : Map[Int, Value] = {}
+  let promise_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  promise_proto_sym_props[to_string_tag_sym.id] = Value::String_("Promise")
+  promise_proto_sym_descs[to_string_tag_sym.id] = nf_desc
   let promise_proto = Value::Object({
     bag: {
       properties: promise_proto_props,
-      symbol_properties: {},
+      symbol_properties: promise_proto_sym_props,
       descriptors: promise_proto_descs,
-      symbol_descriptors: {},
+      symbol_descriptors: promise_proto_sym_descs,
       internal_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
@@ -510,6 +516,10 @@ pub fn setup_promise(
     name="resolve",
     length=1,
     fn(interp, this_val, args) raise {
+      // §27.2.4.5 step 2: If Type(C) is not Object, throw a TypeError exception.
+      if !@runtime.is_object_value(this_val) {
+        raise @errors.TypeError(message="Promise.resolve called on non-object")
+      }
       let value = if args.length() > 0 { args[0] } else { Undefined }
       let loc = @token.Loc::default()
 
@@ -537,6 +547,10 @@ pub fn setup_promise(
     name="reject",
     length=1,
     fn(interp, this_val, args) raise {
+      // §27.2.4.4 step 2: If Type(C) is not Object, throw a TypeError exception.
+      if !@runtime.is_object_value(this_val) {
+        raise @errors.TypeError(message="Promise.reject called on non-object")
+      }
       let reason = if args.length() > 0 { args[0] } else { Undefined }
       let loc = @token.Loc::default()
       let (promise, _resolve, reject) = create_promise_capability_from_constructor(
@@ -1059,30 +1073,29 @@ pub fn setup_promise(
           let next_promise = call_promise_resolve_method(
             interp, promise_resolve, _this, next_value, loc,
           )
-          let already_called : Ref[Bool] = { val: false }
+          // §27.2.4.3.1: Promise.any resolve element has no alreadyCalled guard —
+          // multiple calls are intentionally allowed per spec.
           let on_fulfilled = @runtime.make_interp_method_func(
             name="",
             length=1,
             realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
-              if already_called.val {
-                return Undefined
-              }
-              already_called.val = true
               let value = if args2.length() > 0 { args2[0] } else { Undefined }
               let _ = i2.call_value(resolve, Undefined, [value], loc)
               Undefined
             },
           )
+          // §27.2.4.3.2: Promise.any reject element has its own alreadyCalled guard.
+          let already_called_reject : Ref[Bool] = { val: false }
           let on_rejected = @runtime.make_interp_method_func(
             name="",
             length=1,
             realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
-              if already_called.val {
+              if already_called_reject.val {
                 return Undefined
               }
-              already_called.val = true
+              already_called_reject.val = true
               let reason = if args2.length() > 0 { args2[0] } else { Undefined }
               errors[index] = reason
               remaining.val = remaining.val - 1
@@ -1147,8 +1160,20 @@ pub fn setup_promise(
     },
     prototype: Null,
     callable: Some(
-      ConstructorOnlyCallable("Promise", fn(interp, args) raise {
+      InterpreterCallableWithContext("Promise", fn(
+        interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        // §27.2.1.1: Promise constructor requires 'new'.
+        if !context.is_constructing() {
+          raise @errors.TypeError(
+            message="Promise constructor cannot be invoked without 'new'",
+          )
+        }
         let executor = if args.length() > 0 { args[0] } else { Undefined }
+        let loc = @token.Loc::default()
 
         // Validate executor is callable
         match executor {
@@ -1166,8 +1191,22 @@ pub fn setup_promise(
             )
         }
 
+        // §9.1.13/§9.1.14 OrdinaryCreateFromConstructor (§27.2.1.1 step 3):
+        // read newTarget.prototype — propagates abrupt completion; if the result
+        // is an Object it becomes the promise's [[Prototype]], otherwise
+        // %Promise.prototype% is used (Null sentinel → realm fallback at lookup).
+        let new_target_proto : Value = if context.new_target()
+          is Some(new_target) {
+          interp.get_property(new_target, "prototype", loc)
+        } else {
+          Null
+        }
+
         // Create new promise
         let promise_data = @runtime.new_promise_data()
+        if @runtime.is_object_value(new_target_proto) {
+          promise_data.prototype = new_target_proto
+        }
         let promise = Value::Promise(promise_data)
 
         // Create resolving functions
@@ -1176,7 +1215,6 @@ pub fn setup_promise(
         )
 
         // Call executor synchronously
-        let loc = @token.Loc::default()
         try {
           let _ = interp.call_value(executor, Undefined, [resolve, reject], loc)
         } catch {
