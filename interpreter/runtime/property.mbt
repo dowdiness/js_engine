@@ -907,7 +907,16 @@ fn Interpreter::get_computed_property_impl(
           return Undefined
         }
         Array(arr) => {
-          // Check array's own symbol property bag first.
+          // Check for accessor descriptor (getter) on own symbol property.
+          match arr.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => ()
+              }
+            None => ()
+          }
+          // Check array's own symbol property bag.
           match get_array_symbol_prop(arr, sym.id) {
             Some(v) => return v
             None => ()
