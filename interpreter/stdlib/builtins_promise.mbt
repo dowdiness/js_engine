@@ -249,7 +249,7 @@ fn create_promise_capability_from_constructor(
   let resolve_ref : Ref[Value] = { val: Undefined }
   let reject_ref : Ref[Value] = { val: Undefined }
   let executor = @runtime.make_interp_method_func(
-    name="promiseCapabilityExecutor",
+    name="",
     length=2,
     realm_state=Some(interp.realm_state),
     fn(_i, _this, args) raise {
@@ -490,88 +490,60 @@ pub fn setup_promise(
       // Create wrapper functions that call onFinally then pass through value
       // Per ECMAScript §27.2.5.3, we must await the result of onFinally
       // by chaining through Promise.resolve(onFinally_result).then(...)
-      let value_thunk = Value::Object({
-        bag: @runtime.PropertyBag(),
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("finallyValueThunk", fn(
-            i,
-            _this,
-            inner_args,
-          ) raise {
-            let value = if inner_args.length() > 0 {
-              inner_args[0]
-            } else {
-              Undefined
-            }
-            // Call onFinally
-            let finally_result = i.call_value(on_finally, Undefined, [], loc)
-            let promise_resolve = get_promise_resolve_method(i, ctor, loc)
-            let result_promise = call_promise_resolve_method(
-              i, promise_resolve, ctor, finally_result, loc,
-            )
-            // Create a thunk that returns the original value
-            let return_value_thunk = Value::Object({
-              bag: @runtime.PropertyBag(),
-              prototype: Null,
-              callable: Some(
-                InterpreterCallable("returnValue", fn(_i2, _t, _a) { value }),
-              ),
-              class_name: "Function",
-              extensible: true,
-              arraybuffer_state: None,
-            })
-            // Chain: Promise.resolve(finally_result).then(() => value)
-            let then_method = i.get_property(result_promise, "then", loc)
-            i.call_value(then_method, result_promise, [return_value_thunk], loc)
-          }),
-        ),
-        class_name: "Function",
-        extensible: true,
-        arraybuffer_state: None,
+      let value_thunk = @runtime.make_interp_method_func(name="", length=1, fn(
+        i,
+        _this,
+        inner_args,
+      ) raise {
+        let value = if inner_args.length() > 0 {
+          inner_args[0]
+        } else {
+          Undefined
+        }
+        // Call onFinally
+        let finally_result = i.call_value(on_finally, Undefined, [], loc)
+        let promise_resolve = get_promise_resolve_method(i, ctor, loc)
+        let result_promise = call_promise_resolve_method(
+          i, promise_resolve, ctor, finally_result, loc,
+        )
+        // Create a thunk that returns the original value
+        let return_value_thunk = @runtime.make_interp_method_func(
+          name="",
+          length=0,
+          fn(_i2, _t, _a) { value },
+        )
+        // Chain: Promise.resolve(finally_result).then(() => value)
+        let then_method = i.get_property(result_promise, "then", loc)
+        i.call_value(then_method, result_promise, [return_value_thunk], loc)
       })
-      let thrower_thunk = Value::Object({
-        bag: @runtime.PropertyBag(),
-        prototype: Null,
-        callable: Some(
-          InterpreterCallable("finallyThrowerThunk", fn(
-            i,
-            _this,
-            inner_args,
-          ) raise {
-            let reason = if inner_args.length() > 0 {
-              inner_args[0]
-            } else {
-              Undefined
-            }
-            // Call onFinally
-            let finally_result = i.call_value(on_finally, Undefined, [], loc)
-            let promise_resolve = get_promise_resolve_method(i, ctor, loc)
-            let result_promise = call_promise_resolve_method(
-              i, promise_resolve, ctor, finally_result, loc,
-            )
-            // Create a thunk that re-throws the original reason
-            let throw_reason_thunk = Value::Object({
-              bag: @runtime.PropertyBag(),
-              prototype: Null,
-              callable: Some(
-                InterpreterCallable("throwReason", fn(_i2, _t, _a) raise {
-                  @runtime.raise_js_exception(reason)
-                  Undefined
-                }),
-              ),
-              class_name: "Function",
-              extensible: true,
-              arraybuffer_state: None,
-            })
-            // Chain: Promise.resolve(finally_result).then(() => { throw reason })
-            let then_method = i.get_property(result_promise, "then", loc)
-            i.call_value(then_method, result_promise, [throw_reason_thunk], loc)
-          }),
-        ),
-        class_name: "Function",
-        extensible: true,
-        arraybuffer_state: None,
+      let thrower_thunk = @runtime.make_interp_method_func(name="", length=1, fn(
+        i,
+        _this,
+        inner_args,
+      ) raise {
+        let reason = if inner_args.length() > 0 {
+          inner_args[0]
+        } else {
+          Undefined
+        }
+        // Call onFinally
+        let finally_result = i.call_value(on_finally, Undefined, [], loc)
+        let promise_resolve = get_promise_resolve_method(i, ctor, loc)
+        let result_promise = call_promise_resolve_method(
+          i, promise_resolve, ctor, finally_result, loc,
+        )
+        // Create a thunk that re-throws the original reason
+        let throw_reason_thunk = @runtime.make_interp_method_func(
+          name="",
+          length=0,
+          fn(_i2, _t, _a) raise {
+            @runtime.raise_js_exception(reason)
+            Undefined
+          },
+        )
+        // Chain: Promise.resolve(finally_result).then(() => { throw reason })
+        let then_method = i.get_property(result_promise, "then", loc)
+        i.call_value(then_method, result_promise, [throw_reason_thunk], loc)
       })
       let then_method = interp.get_property(this_val, "then", loc)
       interp.call_value(
@@ -607,8 +579,8 @@ pub fn setup_promise(
 
   // Promise constructor
   let promise_ctor_props : Map[String, Value] = {}
-  promise_ctor_props["name"] = Value::String_("Promise")
   promise_ctor_props["length"] = Value::Number(1.0)
+  promise_ctor_props["name"] = Value::String_("Promise")
 
   // Promise.resolve(value)
   promise_ctor_props["resolve"] = @runtime.make_interp_method_func(
@@ -801,7 +773,7 @@ pub fn setup_promise(
           )
           let already_called : Ref[Bool] = { val: false }
           let resolve_element = @runtime.make_interp_method_func(
-            name="allResolveElement",
+            name="",
             length=1,
             realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
@@ -992,7 +964,7 @@ pub fn setup_promise(
           )
           let already_called : Ref[Bool] = { val: false }
           let on_fulfilled = @runtime.make_interp_method_func(
-            name="allSettledOnFulfilled",
+            name="",
             length=1,
             realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
@@ -1032,7 +1004,7 @@ pub fn setup_promise(
             },
           )
           let on_rejected = @runtime.make_interp_method_func(
-            name="allSettledOnRejected",
+            name="",
             length=1,
             realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
@@ -1166,7 +1138,7 @@ pub fn setup_promise(
           )
           let already_called : Ref[Bool] = { val: false }
           let on_fulfilled = @runtime.make_interp_method_func(
-            name="anyOnFulfilled",
+            name="",
             length=1,
             realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
@@ -1180,7 +1152,7 @@ pub fn setup_promise(
             },
           )
           let on_rejected = @runtime.make_interp_method_func(
-            name="anyOnRejected",
+            name="",
             length=1,
             realm_state=Some(realm_state),
             fn(i2, _t2, args2) raise {
@@ -1228,8 +1200,8 @@ pub fn setup_promise(
       properties: promise_ctor_props,
       symbol_properties: {},
       descriptors: {
-        "name": nf_desc,
         "length": nf_desc,
+        "name": nf_desc,
         "prototype": {
           writable: false,
           enumerable: false,
