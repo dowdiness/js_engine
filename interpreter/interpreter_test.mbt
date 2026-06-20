@@ -13401,6 +13401,106 @@ test "GeneratorFunction constructor throws SyntaxError on bad source" {
 }
 
 ///|
+test "GeneratorPrototype is a shared singleton across generator functions (§27.3.1)" {
+  let output = run_output(
+    (
+      #|function* g1() {}
+      #|function* g2() {}
+      #|console.log(Object.getPrototypeOf(g1.prototype) === Object.getPrototypeOf(g2.prototype));
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "GeneratorPrototype own key order is constructor,next,return,throw (§27.3.1)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var proto = Object.getPrototypeOf(g.prototype);
+      #|console.log(Object.getOwnPropertyNames(proto).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,next,return,throw"])
+}
+
+///|
+test "GeneratorPrototype.constructor points to GeneratorFunction.prototype (§27.3.1.1)" {
+  let output = run_output(
+    (
+      #|function* g1() {}
+      #|function* g2() {}
+      #|var GeneratorProto = Object.getPrototypeOf(g1.prototype);
+      #|var GeneratorFuncProto = Object.getPrototypeOf(g1);
+      #|console.log(GeneratorProto.constructor === GeneratorFuncProto);
+      #|console.log(Object.getPrototypeOf(g1) === Object.getPrototypeOf(g2));
+      #|console.log(GeneratorFuncProto[Symbol.toStringTag]);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "GeneratorFunction"])
+}
+
+///|
+test "GeneratorFunction.prototype.prototype descriptor is configurable:true (§27.3.3.2)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var GeneratorFuncProto = Object.getPrototypeOf(g);
+      #|var d = Object.getOwnPropertyDescriptor(GeneratorFuncProto, 'prototype');
+      #|console.log(d.writable);
+      #|console.log(d.enumerable);
+      #|console.log(d.configurable);
+      #|var ctorDesc = Object.getOwnPropertyDescriptor(g.constructor, 'prototype');
+      #|console.log(ctorDesc.configurable);
+    ),
+  )
+  // gen_func_proto.prototype: writable=false, enumerable=false, configurable=true (§27.3.3.2)
+  // gen_func_ctor.prototype: configurable=false (§27.3.2.2)
+  json_inspect(output, content=["false", "false", "true", "false"])
+}
+
+///|
+test "GeneratorFunction.prototype own key order is constructor,prototype (§27.3.3)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var GeneratorFuncProto = Object.getPrototypeOf(g);
+      #|console.log(Object.getOwnPropertyNames(GeneratorFuncProto).join(','));
+    ),
+  )
+  json_inspect(output, content=["constructor,prototype"])
+}
+
+///|
+test "GeneratorPrototype inherits Symbol.iterator from %IteratorPrototype% (§27.3.1)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var GenProto = Object.getPrototypeOf(g.prototype);
+      #|// Symbol.iterator is NOT an own property — inherited from %IteratorPrototype%
+      #|console.log(Object.getOwnPropertyDescriptor(GenProto, Symbol.iterator) === undefined);
+      #|// But accessible via prototype chain (returns this per §27.1.2)
+      #|var gen = g();
+      #|console.log(gen[Symbol.iterator]() === gen);
+    ),
+  )
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+// Chain: gen → g.prototype → %GeneratorPrototype% → %IteratorPrototype% → %ObjectPrototype%
+test "generator instances are instanceof Object (§27.3.1 prototype chain)" {
+  let output = run_output(
+    (
+      #|function* g() {}
+      #|var gen = g();
+      #|console.log(gen instanceof Object);
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "Function.prototype.toString distinguishes async functions" {
   let src =
     #|console.log((function foo(){}).toString());
@@ -13497,6 +13597,34 @@ test "Function.prototype.toString: astral-plane identifier in body (2 UTF-16 uni
     ),
   )
   json_inspect(output, content=["() => 𝒜"])
+}
+
+///|
+// Positive control: confirms %GeneratorPrototype%.next is writable and the singleton
+// is shared — the patch IS live for sync generators, making the async isolation test below
+// a genuine discriminator (not a vacuous pass).
+test "monkey-patch on %GeneratorPrototype%.next intercepts sync generator iteration" {
+  let output = run_output(
+    (
+      #|Object.getPrototypeOf(function*(){}.prototype).next = () => ({ value: 99, done: true });
+      #|function* g() { yield 1; }
+      #|console.log(g().next().value);
+    ),
+  )
+  json_inspect(output, content=["99"])
+}
+
+///|
+test "async function resolution is not affected by monkey-patching %GeneratorPrototype%.next" {
+  let output = run_output_async(
+    (
+      #|Object.getPrototypeOf(function*(){}.prototype).next = () => ({ value: 99, done: true });
+      #|async function f() { return 1; }
+      #|f().then(v => console.log(v));
+    ),
+  )
+  // Must resolve to 1, not 99 — internal async generator bypasses public prototype
+  json_inspect(output, content=["1"])
 }
 
 ///|

@@ -171,8 +171,7 @@ fn array_iterator_next(
 
 ///|
 /// Per ES spec, %IteratorPrototype% has [Symbol.iterator] that returns `this`
-/// and its [[Prototype]] is %Object.prototype% (Null for now since we don't
-/// thread Object.prototype here — iterators still function correctly).
+/// and its [[Prototype]] is %Object.prototype% (§27.1.2).
 fn make_iterator_proto_value(
   well_known_symbols : WellKnownSymbols,
   realm_state : RealmState,
@@ -202,7 +201,7 @@ fn make_iterator_proto_value(
       symbol_descriptors: proto_sym_descs,
       internal_slots: {},
     },
-    prototype: Null,
+    prototype: realm_state.get_obj_proto(),
     callable: None,
     class_name: "Iterator",
     extensible: true,
