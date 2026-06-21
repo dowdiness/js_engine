@@ -1025,18 +1025,27 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
         }
         Class => {
-          let in_stmt = if tokens.length() <= 1 {
-            true
-          } else {
-            match tokens[tokens.length() - 2].kind {
-              Semicolon | LBrace | Else | Do | Try | Finally => true
-              Colon => colon_is_stmt_ctx()
-              RBrace => last_rbrace_is_block
-              RParen => last_rparen_is_control_flow
-              _ => false
+          // `class` is a valid property name (e.g. `{ class: fn }`, `obj.class`).
+          // Only push a pending class body when it is actually starting a
+          // declaration or expression, not when it is a property-name keyword.
+          let follows_dot = tokens.length() >= 2 &&
+            tokens[tokens.length() - 2].kind == Dot
+          let in_object_literal = brace_content_is_block.length() > 0 &&
+            !brace_content_is_block[brace_content_is_block.length() - 1]
+          if !follows_dot && !in_object_literal {
+            let in_stmt = if tokens.length() <= 1 {
+              true
+            } else {
+              match tokens[tokens.length() - 2].kind {
+                Semicolon | LBrace | Else | Do | Try | Finally => true
+                Colon => colon_is_stmt_ctx()
+                RBrace => last_rbrace_is_block
+                RParen => last_rparen_is_control_flow
+                _ => false
+              }
             }
+            class_pending.push((in_stmt, paren_depth, brace_depth))
           }
-          class_pending.push((in_stmt, paren_depth, brace_depth))
         }
         Yield => last_yield_allows_regex = in_generator_lexer_context()
         _ => ()
