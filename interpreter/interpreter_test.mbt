@@ -18246,7 +18246,9 @@ test "regex char class: \\uXXXX and \\xHH escapes decode correctly" {
       #|console.log(/[\x41-\x5A]/.test('f'));         // false -- f > Z via \xHH
     ),
   )
-  json_inspect(output, content=["false", "true", "false", "true", "true", "false"])
+  json_inspect(output, content=[
+    "false", "true", "false", "true", "true", "false",
+  ])
 }
 
 ///|
@@ -18286,7 +18288,9 @@ test "regex char class: \\0 null escape with following decimal digits" {
       #|try { /[\00]/u; console.log('no error') } catch(e) { console.log(e instanceof SyntaxError) }
     ),
   )
-  json_inspect(output, content=["true", "true", "false", "true", "true", "false", "true", "true", "true"])
+  json_inspect(output, content=[
+    "true", "true", "false", "true", "true", "false", "true", "true", "true",
+  ])
 }
 
 ///|
@@ -18307,7 +18311,6 @@ test "regex char class: unicode mode strict errors for malformed \\x and \\u" {
   json_inspect(output, content=["4", "true", "true"])
 }
 
-
 ///|
 test "regex char class: non-unicode surrogate \\u escapes are not folded" {
   // In non-unicode mode, \uD83D and \uDE00 inside [...] are separate code-unit atoms;
@@ -18325,5 +18328,7 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
       #|console.log(/[\u{41}]/.test('A'));  // false
     ),
   )
-  json_inspect(output, content=["true", "true", "false", "false", "true", "false"])
+  json_inspect(output, content=[
+    "true", "true", "false", "false", "true", "false",
+  ])
 }

@@ -180,11 +180,22 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let mut last_rparen_is_control_flow = false
   let mut paren_depth = 0
   let mut brace_depth = 0
+  // Track whether each open brace is a block (vs. object literal/class-expr/fn-expr body).
+  // When the matching } is emitted, set last_rbrace_is_block so is_regex can use it.
+  let brace_is_block : Array[Bool] = []
+  let mut last_rbrace_is_block = false
   let pending_function_is_generator : Array[Bool] = []
   let pending_function_param_depth : Array[Int] = []
+  // Parallel to pending_function_*: whether the function keyword was in statement position
+  // (declaration), which means its body } allows a following / to be regex.
+  let pending_function_is_stmt_pos : Array[Bool] = []
   let function_body_depth : Array[Int] = []
   let function_body_is_generator : Array[Bool] = []
   let mut last_yield_allows_regex = false
+  // class body tracking: set on `class` keyword, cleared when the class body { is consumed.
+  let mut class_body_pending = false
+  let mut class_body_is_stmt_pos = false
+  let mut class_pending_brace_depth = 0
   fn utf16_pos() -> Int {
     offset + astral_count
   }
@@ -544,6 +555,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             Yield => last_yield_allows_regex
             // RParen after control-flow keyword (if/while/for/switch) starts regex
             RParen => last_rparen_is_control_flow
+            // RBrace after a block (statement/declaration body) starts regex
+            RBrace => last_rbrace_is_block
             _ => false
           }
         }
@@ -972,9 +985,35 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let follows_dot = tokens.length() >= 2 &&
             tokens[tokens.length() - 2].kind == Dot
           if !follows_dot {
+            let in_stmt = if tokens.length() <= 1 {
+              true
+            } else {
+              match tokens[tokens.length() - 2].kind {
+                Semicolon | LBrace | Colon | Else | Do | Try | Finally => true
+                RBrace => last_rbrace_is_block
+                RParen => last_rparen_is_control_flow
+                _ => false
+              }
+            }
             pending_function_is_generator.push(false)
             pending_function_param_depth.push(-1)
+            pending_function_is_stmt_pos.push(in_stmt)
           }
+        }
+        Class => {
+          let in_stmt = if tokens.length() <= 1 {
+            true
+          } else {
+            match tokens[tokens.length() - 2].kind {
+              Semicolon | LBrace | Colon | Else | Do | Try | Finally => true
+              RBrace => last_rbrace_is_block
+              RParen => last_rparen_is_control_flow
+              _ => false
+            }
+          }
+          class_body_pending = true
+          class_body_is_stmt_pos = in_stmt
+          class_pending_brace_depth = brace_depth
         }
         Yield => last_yield_allows_regex = in_generator_lexer_context()
         _ => ()
@@ -1547,6 +1586,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           if starts_method {
             pending_function_is_generator.push(true)
             pending_function_param_depth.push(-1)
+            pending_function_is_stmt_pos.push(false)
           }
         }
       }
@@ -1556,6 +1596,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           pending_function_param_depth[pending_len - 1] == -1 {
           let _ = pending_function_is_generator.pop()
           let _ = pending_function_param_depth.pop()
+          let _ = pending_function_is_stmt_pos.pop()
         }
       }
       LParen => {
@@ -1597,13 +1638,42 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       LBrace => {
-        brace_depth += 1
         let pending_len = pending_function_param_depth.length()
-        if pending_len > 0 &&
-          pending_function_param_depth[pending_len - 1] == -2 {
+        let is_fn_body = pending_len > 0 &&
+          pending_function_param_depth[pending_len - 1] == -2
+        // Function declaration body (not expression): the function keyword was in statement pos
+        let is_fn_decl_body = is_fn_body &&
+          pending_function_is_stmt_pos.length() > 0 &&
+          pending_function_is_stmt_pos[pending_function_is_stmt_pos.length() - 1]
+        // Class body: class keyword was seen and we're at the right brace depth outside parens
+        let is_class_body = class_body_pending &&
+          paren_depth == 0 &&
+          brace_depth == class_pending_brace_depth
+        if is_class_body {
+          class_body_pending = false
+        }
+        // Block statement: { follows a token that puts us in statement position
+        let is_plain_block = if tokens.length() <= 1 {
+          true // { is the first token (start of file)
+        } else {
+          match tokens[tokens.length() - 2].kind {
+            Semicolon | LBrace | Colon | Else | Do | Try | Finally | Arrow =>
+              true
+            RBrace => last_rbrace_is_block
+            RParen => last_rparen_is_control_flow
+            _ => false
+          }
+        }
+        let is_block = is_fn_decl_body ||
+          (is_class_body && class_body_is_stmt_pos) ||
+          is_plain_block
+        brace_is_block.push(is_block)
+        brace_depth += 1
+        if is_fn_body {
           let is_gen = pending_function_is_generator[pending_len - 1]
           let _ = pending_function_is_generator.pop()
           let _ = pending_function_param_depth.pop()
+          let _ = pending_function_is_stmt_pos.pop()
           function_body_depth.push(brace_depth)
           function_body_is_generator.push(is_gen)
         }
@@ -1613,6 +1683,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         if body_len > 0 && function_body_depth[body_len - 1] == brace_depth {
           let _ = function_body_depth.pop()
           let _ = function_body_is_generator.pop()
+        }
+        last_rbrace_is_block = match brace_is_block.pop() {
+          Some(v) => v
+          None => false
         }
         if brace_depth > 0 {
           brace_depth -= 1
