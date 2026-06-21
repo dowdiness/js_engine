@@ -178,6 +178,8 @@ pub(all) enum Expr {
   ) // name, params, rest_param, body, source_text
   // Await expression
   AwaitExpr(Expr, @token.Loc) // argument
+  // Annex B §B.3.4: f()=g() non-strict — eval call for side effects, then throw ReferenceError (strict: SyntaxError)
+  WebCompatCallAssign(Expr, Expr, @token.Loc)
 } derive(Debug, Eq)
 
 ///|

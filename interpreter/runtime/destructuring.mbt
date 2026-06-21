@@ -700,6 +700,37 @@ fn Interpreter::assign_to_expr(
         strict=ctx.strict,
       )
     }
+    Call(_, _, _) => {
+      if ctx.strict {
+        raise @errors.SyntaxError(
+          message="Invalid left-hand side in for-in/for-of",
+        )
+      }
+      let _ = self.eval_expr(ctx, expr, env)
+      raise @errors.ReferenceError(
+        message="Invalid left-hand side in for-in/for-of",
+      )
+    }
+    Grouping(_, _) => {
+      let inner = unwrap_groupings(expr)
+      match inner {
+        Call(_, _, _) => {
+          if ctx.strict {
+            raise @errors.SyntaxError(
+              message="Invalid left-hand side in for-in/for-of",
+            )
+          }
+          let _ = self.eval_expr(ctx, inner, env)
+          raise @errors.ReferenceError(
+            message="Invalid left-hand side in for-in/for-of",
+          )
+        }
+        _ =>
+          raise @errors.ReferenceError(
+            message="Invalid left-hand side in for-in/for-of",
+          )
+      }
+    }
     _ =>
       raise @errors.ReferenceError(
         message="Invalid left-hand side in for-in/for-of",

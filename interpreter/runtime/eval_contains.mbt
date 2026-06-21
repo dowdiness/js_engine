@@ -318,6 +318,10 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
       scan_expr(scan, lhs)
       scan_expr(scan, rhs)
     }
+    WebCompatCallAssign(call_expr, rhs, _) => {
+      scan_expr(scan, call_expr)
+      scan_expr(scan, rhs)
+    }
     // Property keys: prop.key is StringLit for non-computed keys (per
     // ast/ast.mbt:83 comment), so descending into it is safe — a literal
     // `arguments` written as `{ arguments: 1 }` is a StringLit, not an

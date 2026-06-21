@@ -113,6 +113,8 @@ pub const UNSUPPORTED_TRY_CATCH_STATEMENT : String = "try/catch statement"
 
 pub const UNSUPPORTED_UPDATE_TARGET : String = "update target"
 
+pub const UNSUPPORTED_WEB_COMPAT_CALL_ASSIGN : String = "call expression as assignment target"
+
 pub const UNSUPPORTED_WITH_STATEMENT : String = "with statement"
 
 pub const UNSUPPORTED_YIELD_EXPRESSION : String = "yield expression"

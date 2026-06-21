@@ -83,6 +83,9 @@ pub const UNSUPPORTED_FOR_INITIALIZER : String = "for initializer"
 pub const UNSUPPORTED_FOR_IN_ASSIGNMENT_TARGET : String = "for-in assignment target"
 
 ///|
+pub const UNSUPPORTED_WEB_COMPAT_CALL_ASSIGN : String = "call expression as assignment target"
+
+///|
 pub const UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION : String = "for-in lexical declaration"
 
 ///|

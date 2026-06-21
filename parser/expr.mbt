@@ -14,6 +14,17 @@ fn Parser::parse_comma(self : Parser) -> @ast.Expr raise Error {
   left
 }
 
+// Strip nested Groupings and return Some(call_expr) if the innermost is a Call.
+
+///|
+fn inner_call_of_grouping(expr : @ast.Expr) -> @ast.Expr? {
+  match expr {
+    Grouping(inner, _) => inner_call_of_grouping(inner)
+    Call(_, _, _) => Some(expr)
+    _ => None
+  }
+}
+
 ///|
 fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
   // yield expression in generator context (very low precedence, near assignment)
@@ -197,6 +208,15 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         let pattern = expr_to_pattern(expr)
         return DestructureAssign(pattern, value, loc)
       }
+      Call(_, _, _) => return WebCompatCallAssign(expr, value, loc)
+      Grouping(_, _) =>
+        match inner_call_of_grouping(expr) {
+          Some(call_expr) => return WebCompatCallAssign(call_expr, value, loc)
+          None =>
+            raise @errors.SyntaxError(
+              message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
+            )
+        }
       _ =>
         raise @errors.SyntaxError(
           message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
