@@ -501,13 +501,14 @@ test "event_loop/microtask_drain_200" (b : @bench.T) {
 ///|
 /// Timer queue drain: 200 setTimeout calls with delays 0..199.
 ///
-/// What it measures: run_timers() draining 200 timers via sort_by + remove(0).
-///   Current cost: sort_by called once per pop on the remaining queue, giving
-///   O(n log n) per pop × n pops = O(n² log n) comparisons total, plus O(n²)
-///   element shifts from remove(0). At n=200 that is ~70 000 comparisons.
-/// What it answers:  Does sort_by + remove(0) produce measurable overhead?
-///   This benchmark gates the @priority_queue migration in issue #329.
-/// What it excludes: interpreter construction, parse time.
+/// What it measures: run_timers() draining 201 timers via @priority_queue.pop().
+///   Each pop() is O(log n) on the leftist heap; total drain cost is O(n log n).
+///   Note: @lib.run also includes parse and interpreter-construction overhead —
+///   use this benchmark to detect regressions in timer throughput, not as an
+///   isolated queue-operation microbenchmark.
+/// What it answers:  Does the priority-queue drain add measurable overhead?
+///   Baseline after the #329 migration: ~2.0 ms at n=200 (vs ~4.2 ms before).
+/// What it excludes: setInterval re-enqueue paths, microtask overhead.
 test "event_loop/timer_drain_200" (b : @bench.T) {
   let (output, _) = @lib.run(TIMER_DRAIN_200_SRC) catch {
     e => abort("[event_loop/timer_drain_200] pre-check raised: \{e}")

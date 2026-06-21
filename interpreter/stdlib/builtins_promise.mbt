@@ -1324,6 +1324,10 @@ fn Interpreter::schedule_timer(
 ) -> Int {
   let id = self.host.timer_id_counter.val
   self.host.timer_id_counter.val = id + 1
+  // Purge any stale cancellation for this ID before enqueuing.
+  // clearTimeout/clearInterval called with IDs not yet in the queue
+  // would otherwise cancel the first timer to inherit this ID.
+  self.host.cancelled_timer_ids.remove(id)
   let order = self.host.timer_insertion_counter.val
   self.host.timer_insertion_counter.val = order + 1
   self.host.timer_queue.push({

@@ -2102,6 +2102,19 @@ test "timers with equal delay fire in registration order" {
 }
 
 ///|
+/// clearTimeout with an ID that is not yet in the queue must be a no-op:
+/// the first allocated ID must not inherit a stale cancellation entry.
+test "clearTimeout with unknown id is a no-op" {
+  let output = run_output_timers(
+    (
+      #|clearTimeout(0);
+      #|setTimeout(function() { console.log("ran"); }, 0);
+    ),
+  )
+  json_inspect(output, content=["ran"])
+}
+
+///|
 /// clearTimeout before drain must prevent the callback from firing.
 test "clearTimeout cancels timer before it fires" {
   let output = run_output_timers(

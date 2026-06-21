@@ -742,9 +742,9 @@ pub const MICROTASK_DRAIN_200_OUTPUT : String = "200"
 ///
 /// Expected console output: "200"
 ///
-/// This workload exposes the O(n² log n) bottleneck in the current run_timers():
-/// sort_by is called on the full remaining queue before every pop, so 201 pops
-/// cost O(201² log 201) comparisons plus O(201²) element shifts from remove(0).
+/// This workload gates the @priority_queue timer-queue migration (issue #329).
+/// After migration: 201 pops each O(log n) on the leftist heap = O(n log n) total.
+/// Before migration (historical): sort_by + remove(0) per pop = O(n² log n) total.
 pub const TIMER_DRAIN_200_SRC : String =
   #|var counter = 0;
   #|for (var i = 0; i < 200; i++) {
