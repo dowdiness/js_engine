@@ -173,7 +173,7 @@ fn setup_function_builtins(
   func_proto_props["bind"] = @runtime.make_interp_method_func(
     name="bind",
     length=1,
-    fn(_interp, this_val, args) raise {
+    fn(interp, this_val, args) raise {
       // Function.prototype.bind - §20.2.3.2
       // Step 1: If IsCallable(this) is false, throw a TypeError exception
       if !@runtime.is_function_value(this_val) {
@@ -181,6 +181,7 @@ fn setup_function_builtins(
           message="Function.prototype.bind called on non-callable",
         )
       }
+      let loc = @token.Loc::default()
       let target_proto = match this_val {
         Object(data) =>
           match data.prototype {
@@ -194,15 +195,40 @@ fn setup_function_builtins(
       for i = 1; i < args.length(); i = i + 1 {
         bound_args.push(args[i])
       }
-      let bound_name = @runtime.get_bound_func_name(this_val)
-      let target_length = @runtime.get_function_length(this_val)
-      let bound_length = {
-        let diff = target_length - bound_args.length()
-        if diff < 0 {
-          0
-        } else {
-          diff
-        }
+      // §20.2.3.2 steps 5–6: HasOwnProperty("length"), then ToIntegerOrInfinity
+      // Must come before the "name" Get so a name getter cannot mutate length first.
+      let arg_count = bound_args.length().to_double()
+      let bound_length : Double = match
+        interp.get_own_property(this_val, Value::String_("length")) {
+        Some(_) =>
+          match interp.get_property(this_val, "length", loc) {
+            Value::Number(n) =>
+              if n.is_inf() && n > 0.0 {
+                // +∞: L = +∞ (preserved as-is)
+                n
+              } else if n.is_inf() {
+                // -∞: L = 0
+                0.0
+              } else {
+                // ToIntegerOrInfinity: truncate toward zero (NaN → 0)
+                let int_n : Double = if n.is_nan() {
+                  0.0
+                } else if n >= 0.0 {
+                  n.floor()
+                } else {
+                  n.ceil()
+                }
+                (int_n - arg_count).max(0.0)
+              }
+            _ => 0.0
+          }
+        None => 0.0
+      }
+      // §20.2.3.2 steps 12–14: Get "name" via JS property access so getter errors propagate
+      let raw_name = interp.get_property(this_val, "name", loc)
+      let bound_name = match raw_name {
+        Value::String_(s) => "bound " + s
+        _ => "bound "
       }
       let nf_desc : PropDescriptor = {
         writable: false,
@@ -213,7 +239,7 @@ fn setup_function_builtins(
         is_accessor: false,
       }
       let bprops : Map[String, Value] = {}
-      bprops["length"] = Value::Number(bound_length.to_double())
+      bprops["length"] = Value::Number(bound_length)
       bprops["name"] = Value::String_(bound_name)
       @runtime.stamp_function_realm(
         Value::Object({
@@ -367,25 +393,25 @@ fn setup_function_builtins(
     prototype: Null,
     callable: Some(
       InterpreterCallable("Function", fn(interp, _this, args) raise {
-        // Last arg is body, previous args are parameter names. With no
-        // arguments, the synthesized body and parameter list are both empty.
-        let body_str = if args.length() == 0 {
-          ""
-        } else {
-          match args[args.length() - 1] {
-            Value::String_(s) => s
-            _ => args[args.length() - 1].to_string()
-          }
-        }
+        // §20.2.1.1.1 CreateDynamicFunction: coerce params first (step 5a), body second (step 6).
+        // Order matters: a throwing body toString must not suppress param toString side-effects.
         let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
         let param_parts : Array[String] = []
         for i = 0; i < param_count; i = i + 1 {
           match args[i] {
             Value::String_(s) => param_parts.push(s)
-            _ => param_parts.push(args[i].to_string())
+            _ => param_parts.push(interp.to_js_string(args[i]))
           }
         }
         let params_str = param_parts.join(",")
+        let body_str = if args.length() == 0 {
+          ""
+        } else {
+          match args[args.length() - 1] {
+            Value::String_(s) => s
+            _ => interp.to_js_string(args[args.length() - 1])
+          }
+        }
         let source = "function anonymous(" +
           params_str +
           "\n) {\n" +
