@@ -192,13 +192,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let function_body_depth : Array[Int] = []
   let function_body_is_generator : Array[Bool] = []
   let mut last_yield_allows_regex = false
-  // class body tracking: set on `class` keyword, cleared when the class body { is consumed.
-  let mut class_body_pending = false
-  let mut class_body_is_stmt_pos = false
-  let mut class_pending_brace_depth = 0
-  // Ternary depth: incremented on bare ? (never ?. or ??), decremented on : when >0.
-  // last_colon_is_ternary is set on each : and used to filter ternary : from case/label :.
-  let mut ternary_depth = 0
+  // class body tracking: stacked per nesting so class A extends class B {} {} works.
+  // Each entry is (is_stmt_pos, paren_depth_when_class_was_seen, brace_depth_when_class_was_seen).
+  let class_pending : Array[(Bool, Int, Int)] = []
+  // Ternary depth: stack of brace_depth at each bare ? (never ?. or ??).
+  // A : matches the top entry only when current brace_depth == top, so object-property
+  // colons inside the consequent don't consume the ternary's slot.
+  let ternary_depths : Array[Int] = []
   let mut last_colon_is_ternary = false
   fn utf16_pos() -> Int {
     offset + astral_count
@@ -1028,9 +1028,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               _ => false
             }
           }
-          class_body_pending = true
-          class_body_is_stmt_pos = in_stmt
-          class_pending_brace_depth = brace_depth
+          class_pending.push((in_stmt, paren_depth, brace_depth))
         }
         Yield => last_yield_allows_regex = in_generator_lexer_context()
         _ => ()
@@ -1608,12 +1606,13 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       // Bare ? is exclusively the ternary operator (not ?. or ??).
-      // Increment depth so the matching : can be identified as a ternary colon.
-      Question => ternary_depth += 1
+      // Push brace_depth so the matching : can be identified by depth equality.
+      Question => ternary_depths.push(brace_depth)
       Colon | Comma | Semicolon | Assign => {
         if kind == Colon {
-          if ternary_depth > 0 {
-            ternary_depth -= 1
+          let d_len = ternary_depths.length()
+          if d_len > 0 && ternary_depths[d_len - 1] == brace_depth {
+            let _ = ternary_depths.pop()
             last_colon_is_ternary = true
           } else {
             last_colon_is_ternary = false
@@ -1673,12 +1672,20 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         let is_fn_decl_body = is_fn_body &&
           pending_function_is_stmt_pos.length() > 0 &&
           pending_function_is_stmt_pos[pending_function_is_stmt_pos.length() - 1]
-        // Class body: class keyword was seen and we're at the right brace depth outside parens
-        let is_class_body = class_body_pending &&
-          paren_depth == 0 &&
-          brace_depth == class_pending_brace_depth
-        if is_class_body {
-          class_body_pending = false
+        // Class body: pop the top of class_pending when paren/brace depth matches.
+        // Stack order ensures inner classes (extends clause) are matched before outer ones.
+        let c_len = class_pending.length()
+        let is_class_body = c_len > 0 &&
+          ({
+            let top = class_pending[c_len - 1]
+            top.1 == paren_depth && top.2 == brace_depth
+          })
+        let class_body_stmt_pos = if is_class_body {
+          let top = class_pending[class_pending.length() - 1]
+          let _ = class_pending.pop()
+          top.0
+        } else {
+          false
         }
         // Block statement: { follows a token that puts us in statement position
         let is_plain_block = if tokens.length() <= 1 {
@@ -1693,7 +1700,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
         }
         let is_block = is_fn_decl_body ||
-          (is_class_body && class_body_is_stmt_pos) ||
+          (is_class_body && class_body_stmt_pos) ||
           is_plain_block
         brace_is_block.push(is_block)
         brace_depth += 1
