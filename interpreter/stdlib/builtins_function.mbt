@@ -195,13 +195,8 @@ fn setup_function_builtins(
       for i = 1; i < args.length(); i = i + 1 {
         bound_args.push(args[i])
       }
-      // §20.2.3.2 steps 12–14: Get "name" via JS property access so getter errors propagate
-      let raw_name = interp.get_property(this_val, "name", loc)
-      let bound_name = match raw_name {
-        Value::String_(s) => "bound " + s
-        _ => "bound "
-      }
       // §20.2.3.2 steps 5–6: HasOwnProperty("length"), then ToIntegerOrInfinity
+      // Must come before the "name" Get so a name getter cannot mutate length first.
       let arg_count = bound_args.length().to_double()
       let bound_length : Double = match
         interp.get_own_property(this_val, Value::String_("length")) {
@@ -228,6 +223,12 @@ fn setup_function_builtins(
             _ => 0.0
           }
         None => 0.0
+      }
+      // §20.2.3.2 steps 12–14: Get "name" via JS property access so getter errors propagate
+      let raw_name = interp.get_property(this_val, "name", loc)
+      let bound_name = match raw_name {
+        Value::String_(s) => "bound " + s
+        _ => "bound "
       }
       let nf_desc : PropDescriptor = {
         writable: false,
