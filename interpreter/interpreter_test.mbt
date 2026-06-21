@@ -2084,6 +2084,53 @@ test "timer callbacks create functions with active realm prototypes" {
   json_inspect(output, content=["true", "true"])
 }
 
+///|
+/// Equal-delay timers fire in registration (insertion) order.
+/// This pins the tie-break-by-insertion_order invariant required by the
+/// WHATWG timer spec and must survive any queue-structure migration.
+test "timers with equal delay fire in registration order" {
+  let output = run_output_timers(
+    (
+      #|var log = [];
+      #|setTimeout(function() { log.push("a"); }, 0);
+      #|setTimeout(function() { log.push("b"); }, 0);
+      #|setTimeout(function() { log.push("c"); }, 0);
+      #|setTimeout(function() { console.log(log.join(",")); }, 1);
+    ),
+  )
+  json_inspect(output, content=["a,b,c"])
+}
+
+///|
+/// clearTimeout before drain must prevent the callback from firing.
+test "clearTimeout cancels timer before it fires" {
+  let output = run_output_timers(
+    (
+      #|var fired = false;
+      #|var id = setTimeout(function() { fired = true; }, 0);
+      #|clearTimeout(id);
+      #|setTimeout(function() { console.log(fired); }, 1);
+    ),
+  )
+  json_inspect(output, content=["false"])
+}
+
+///|
+/// clearInterval inside the callback fires the timer exactly N times.
+test "clearInterval inside callback stops re-enqueue" {
+  let output = run_output_timers(
+    (
+      #|var count = 0;
+      #|var id = setInterval(function() {
+      #|  count++;
+      #|  if (count >= 3) { clearInterval(id); }
+      #|}, 0);
+      #|setTimeout(function() { console.log(count); }, 1);
+    ),
+  )
+  json_inspect(output, content=["3"])
+}
+
 // ====== Phase 2: Array Methods ======
 
 ///|

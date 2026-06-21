@@ -11,6 +11,7 @@ import {
   "dowdiness/js_engine/token",
   "moonbitlang/core/env",
   "moonbitlang/core/bench",
+  "moonbitlang/core/priority_queue",
 }
 
 options(

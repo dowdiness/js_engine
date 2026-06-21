@@ -1,3 +1,26 @@
+// Ordering for the priority queue (max-heap as min-delay-first min-heap).
+// A timer with smaller (delay, insertion_order) compares as "greater" so that
+// @priority_queue.pop() always extracts the soonest-due timer first.
+// Eq uses timer ID as the unique identity.
+
+///|
+pub impl Eq for TimerTask with fn equal(self : TimerTask, other : TimerTask) -> Bool {
+  self.id == other.id
+}
+
+///|
+pub impl Compare for TimerTask with fn compare(
+  self : TimerTask,
+  other : TimerTask,
+) -> Int {
+  let d = self.delay.compare(other.delay)
+  if d != 0 {
+    -d
+  } else {
+    -self.insertion_order.compare(other.insertion_order)
+  }
+}
+
 ///|
 /// Enqueue a microtask to be executed when the current execution context completes.
 /// This implements HostEnqueuePromiseJob from the ECMAScript spec.
@@ -281,17 +304,13 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
     let mut iterations = 0
     while self.host.timer_queue.length() > 0 && iterations < max_iterations {
       iterations = iterations + 1
-      // Sort timers by delay (ascending), then by insertion order (ascending)
-      self.host.timer_queue.sort_by(fn(a, b) {
-        if a.delay != b.delay {
-          a.delay - b.delay
-        } else {
-          a.insertion_order - b.insertion_order
-        }
-      })
-      // Take the first (soonest) timer
-      let timer = self.host.timer_queue.remove(0)
-      if timer.cancelled {
+      // pop() extracts the soonest-due timer via the Compare impl
+      let timer = match self.host.timer_queue.pop() {
+        Some(t) => t
+        None => break // unreachable: guarded by length() > 0 above
+      }
+      // Lazy deletion: skip timers cancelled via clearTimeout/clearInterval
+      if self.host.cancelled_timer_ids.contains(timer.id) {
         continue
       }
       // Execute the timer callback
@@ -299,13 +318,9 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
       let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
       // Microtask checkpoint after each task (per WHATWG event loop spec)
       self.run_microtasks()
-      // If this is setInterval and not cancelled, re-enqueue.
-      // Check both the timer's cancelled flag and cancelled_timer_ids,
-      // because clearInterval called inside the callback can't mark the
-      // already-removed timer struct — it records in cancelled_timer_ids instead.
-      if timer.is_interval &&
-        !timer.cancelled &&
-        !self.host.cancelled_timer_ids.contains(timer.id) {
+      // If this is setInterval and not cancelled inside the callback, re-enqueue.
+      // cancelled_timer_ids covers both pre-pop and in-callback cancellation.
+      if timer.is_interval && !self.host.cancelled_timer_ids.contains(timer.id) {
         let order = self.host.timer_insertion_counter.val
         self.host.timer_insertion_counter.val = order + 1
         self.host.timer_queue.push({
@@ -314,14 +329,17 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
           args: timer.args,
           delay: timer.delay + timer.period,
           period: timer.period,
-          cancelled: false,
           is_interval: true,
           insertion_order: order,
         })
       }
     }
-    // Clear the cancelled set for this run
-    self.host.cancelled_timer_ids.clear()
+    // Clear cancelled IDs only when the queue is fully drained.
+    // If the safety limit fires, surviving timers may fire on the next
+    // run_timers call; keeping cancelled IDs ensures they are still skipped.
+    if self.host.timer_queue.length() == 0 {
+      self.host.cancelled_timer_ids.clear()
+    }
   }) catch {
     e => raise e
   }

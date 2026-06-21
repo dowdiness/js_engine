@@ -105,7 +105,7 @@ fn make_startup_host(output : Array[String]) -> HostEnv {
   {
     output,
     microtask_queue: [],
-    timer_queue: [],
+    timer_queue: @priority_queue.PriorityQueue([]),
     timer_id_counter: { val: 1 },
     timer_insertion_counter: { val: 0 },
     cancelled_timer_ids: {},

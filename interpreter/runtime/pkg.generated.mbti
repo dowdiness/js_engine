@@ -5,6 +5,7 @@ import {
   "dowdiness/js_engine/ast",
   "dowdiness/js_engine/token",
   "moonbitlang/core/debug",
+  "moonbitlang/core/priority_queue",
   "moonbitlang/core/ref",
   "moonbitlang/core/set",
 }
@@ -574,7 +575,7 @@ pub(all) struct GeneratorObject {
 pub(all) struct HostEnv {
   output : Array[String]
   microtask_queue : Array[Microtask]
-  timer_queue : Array[TimerTask]
+  timer_queue : @priority_queue.PriorityQueue[TimerTask]
   timer_id_counter : @ref.Ref[Int]
   timer_insertion_counter : @ref.Ref[Int]
   cancelled_timer_ids : Map[Int, Bool]
@@ -880,10 +881,11 @@ pub(all) struct TimerTask {
   args : Array[Value]
   delay : Int
   period : Int
-  mut cancelled : Bool
   is_interval : Bool
   insertion_order : Int
 }
+pub impl Compare for TimerTask
+pub impl Eq for TimerTask
 
 pub(all) enum Value {
   Number(Double)

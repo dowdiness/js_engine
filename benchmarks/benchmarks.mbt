@@ -463,3 +463,64 @@ test "pipeline/parse_heavy" (b : @bench.T) {
     }
   })
 }
+
+// =============================================================================
+// EVENT-LOOP benchmarks
+// These benchmarks gate the @priority_queue / @deque migration (issue #329).
+// Both create a fresh interpreter per b.bench() iteration because timer and
+// microtask registration is stateful — the queues must be populated anew each
+// time to measure drain cost rather than an already-empty queue.
+// =============================================================================
+
+///|
+/// Microtask queue drain: 200 Promise.resolve().then() callbacks.
+///
+/// What it measures: run_microtasks() draining 200 queued microtasks, plus
+///   one run_timers() call for the sentinel setTimeout that logs the counter.
+/// What it answers:  Is microtask drain a bottleneck at this scale?
+///   The current head-pointer implementation is O(n), so this is a control
+///   benchmark — no quadratic behavior expected.
+/// What it excludes: interpreter construction, parse time.
+test "event_loop/microtask_drain_200" (b : @bench.T) {
+  let (output, _) = @lib.run(MICROTASK_DRAIN_200_SRC) catch {
+    e => abort("[event_loop/microtask_drain_200] pre-check raised: \{e}")
+  }
+  let got = if output.length() > 0 { output[0] } else { "<no output>" }
+  if got != MICROTASK_DRAIN_200_OUTPUT {
+    abort(
+      "[event_loop/microtask_drain_200] correctness check failed\n  expected: \{MICROTASK_DRAIN_200_OUTPUT}\n  got:      \{got}",
+    )
+  }
+  b.bench(fn() {
+    let _ = @lib.run(MICROTASK_DRAIN_200_SRC) catch {
+      _ => abort("event_loop/microtask_drain_200: raised in bench loop")
+    }
+  })
+}
+
+///|
+/// Timer queue drain: 200 setTimeout calls with delays 0..199.
+///
+/// What it measures: run_timers() draining 200 timers via sort_by + remove(0).
+///   Current cost: sort_by called once per pop on the remaining queue, giving
+///   O(n log n) per pop × n pops = O(n² log n) comparisons total, plus O(n²)
+///   element shifts from remove(0). At n=200 that is ~70 000 comparisons.
+/// What it answers:  Does sort_by + remove(0) produce measurable overhead?
+///   This benchmark gates the @priority_queue migration in issue #329.
+/// What it excludes: interpreter construction, parse time.
+test "event_loop/timer_drain_200" (b : @bench.T) {
+  let (output, _) = @lib.run(TIMER_DRAIN_200_SRC) catch {
+    e => abort("[event_loop/timer_drain_200] pre-check raised: \{e}")
+  }
+  let got = if output.length() > 0 { output[0] } else { "<no output>" }
+  if got != TIMER_DRAIN_200_OUTPUT {
+    abort(
+      "[event_loop/timer_drain_200] correctness check failed\n  expected: \{TIMER_DRAIN_200_OUTPUT}\n  got:      \{got}",
+    )
+  }
+  b.bench(fn() {
+    let _ = @lib.run(TIMER_DRAIN_200_SRC) catch {
+      _ => abort("event_loop/timer_drain_200: raised in bench loop")
+    }
+  })
+}

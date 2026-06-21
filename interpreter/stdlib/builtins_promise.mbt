@@ -1332,7 +1332,6 @@ fn Interpreter::schedule_timer(
     args: extra_args,
     delay,
     period,
-    cancelled: false,
     is_interval,
     insertion_order: order,
   })
@@ -1341,13 +1340,8 @@ fn Interpreter::schedule_timer(
 
 ///|
 /// Cancel a pending setTimeout or setInterval by ID.
+/// Uses lazy deletion: the ID is recorded here; run_timers skips it on pop.
 fn Interpreter::cancel_timer(self : Interpreter, id : Int) -> Unit {
-  for timer in self.host.timer_queue {
-    if timer.id == id {
-      timer.cancelled = true
-      break
-    }
-  }
   self.host.cancelled_timer_ids[id] = true
 }
 
