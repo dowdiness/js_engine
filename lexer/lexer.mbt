@@ -221,6 +221,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     }
   }
 
+  // Returns true when the current brace context is a block (or we're at the top level).
+  // Used to filter Colon: a colon is a statement-context indicator (case/default/label)
+  // only when we're inside a block, not inside an object literal where colons are
+  // property separators.
+  fn colon_is_stmt_ctx() -> Bool {
+    brace_is_block.length() == 0 || brace_is_block[brace_is_block.length() - 1]
+  }
+
   // Parse unicode escape after \u has been consumed.
   // offset should point at '{' or first hex digit.
   // Returns the code point as Int.
@@ -989,7 +997,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
               true
             } else {
               match tokens[tokens.length() - 2].kind {
-                Semicolon | LBrace | Colon | Else | Do | Try | Finally => true
+                Semicolon | LBrace | Else | Do | Try | Finally => true
+                Colon => colon_is_stmt_ctx()
                 RBrace => last_rbrace_is_block
                 RParen => last_rparen_is_control_flow
                 _ => false
@@ -1005,7 +1014,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             true
           } else {
             match tokens[tokens.length() - 2].kind {
-              Semicolon | LBrace | Colon | Else | Do | Try | Finally => true
+              Semicolon | LBrace | Else | Do | Try | Finally => true
+              Colon => colon_is_stmt_ctx()
               RBrace => last_rbrace_is_block
               RParen => last_rparen_is_control_flow
               _ => false
@@ -1657,8 +1667,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           true // { is the first token (start of file)
         } else {
           match tokens[tokens.length() - 2].kind {
-            Semicolon | LBrace | Colon | Else | Do | Try | Finally | Arrow =>
-              true
+            Semicolon | LBrace | Else | Do | Try | Finally | Arrow => true
+            Colon => colon_is_stmt_ctx()
             RBrace => last_rbrace_is_block
             RParen => last_rparen_is_control_flow
             _ => false
