@@ -3489,6 +3489,8 @@ fn BytecodeBuilder::compile_expr(
     | AsyncGeneratorExprExt(_, _, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_EXPRESSION)
     AwaitExpr(_, _) => bytecode_unsupported(UNSUPPORTED_AWAIT_EXPRESSION)
+    WebCompatCallAssign(_, _, _) =>
+      bytecode_unsupported(UNSUPPORTED_WEB_COMPAT_CALL_ASSIGN)
     ClassExpr(_, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
   }

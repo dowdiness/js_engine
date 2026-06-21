@@ -126,6 +126,18 @@ fn Interpreter::eval_update(
       let key = self.eval_expr(ctx, key_expr, env)
       self.eval_update_computed_property(ctx, obj, key, op, prefix, mloc, loc)
     }
+    Call(_, _, _) => {
+      let _ = self.eval_expr(ctx, operand, env)
+      if ctx.strict {
+        raise @errors.SyntaxError(
+          message="Invalid update target at line \{loc.line}, col \{loc.col}",
+        )
+      } else {
+        raise @errors.ReferenceError(
+          message="Invalid left-hand side expression in prefix/postfix operation",
+        )
+      }
+    }
     _ =>
       raise @errors.SyntaxError(
         message="Invalid update target at line \{loc.line}, col \{loc.col}",
@@ -207,6 +219,18 @@ fn Interpreter::eval_compound_assign(
         strict=ctx.strict,
       )
       result
+    }
+    Call(_, _, _) => {
+      let _ = self.eval_expr(ctx, target, env)
+      if ctx.strict {
+        raise @errors.SyntaxError(
+          message="Invalid compound assignment target at line \{loc.line}, col \{loc.col}",
+        )
+      } else {
+        raise @errors.ReferenceError(
+          message="Invalid left-hand side in assignment",
+        )
+      }
     }
     _ =>
       raise @errors.SyntaxError(

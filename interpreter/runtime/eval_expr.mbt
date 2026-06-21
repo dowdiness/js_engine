@@ -81,7 +81,8 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
     | Comma(left, right, _)
     | ComputedMember(left, right, _)
     | MemberAssign(left, _, right, _)
-    | CompoundAssign(_, left, right, _) =>
+    | CompoundAssign(_, left, right, _)
+    | WebCompatCallAssign(left, right, _) =>
       expr_may_contain_yield(left) || expr_may_contain_yield(right)
     Ternary(cond, then_expr, else_expr, _) =>
       expr_may_contain_yield(cond) ||
@@ -1412,6 +1413,18 @@ fn Interpreter::eval_expr(
     DestructureAssign(pattern, value_expr, _) => {
       let value = self.eval_expr(ctx, value_expr, env)
       self.eval_destructure_assign(ctx, pattern, value, env)
+    }
+    WebCompatCallAssign(call_expr, _, loc) => {
+      let _ = self.eval_expr(ctx, call_expr, env)
+      if ctx.strict {
+        raise @errors.SyntaxError(
+          message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
+        )
+      } else {
+        raise @errors.ReferenceError(
+          message="Invalid left-hand side in assignment",
+        )
+      }
     }
     OptionalMember(obj_expr, prop, loc) => {
       // obj?.prop - return undefined if obj is null/undefined

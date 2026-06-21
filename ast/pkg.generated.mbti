@@ -140,6 +140,7 @@ pub(all) enum Expr {
   AsyncGeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc, String?)
   AsyncGeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc, String?)
   AwaitExpr(Expr, @token.Loc)
+  WebCompatCallAssign(Expr, Expr, @token.Loc)
 } derive(Eq, @debug.Debug)
 pub impl Show for Expr
 

@@ -197,6 +197,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         let pattern = expr_to_pattern(expr)
         return DestructureAssign(pattern, value, loc)
       }
+      Call(_, _, _) => return WebCompatCallAssign(expr, value, loc)
       _ =>
         raise @errors.SyntaxError(
           message="Invalid assignment target at line \{loc.line}, col \{loc.col}",

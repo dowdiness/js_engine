@@ -648,6 +648,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
             }
             Member(_, _, _) | ComputedMember(_, _, _) =>
               return ForOfExpr(expr, iterable, body, tok.loc)
+            Call(_, _, _) => return ForOfExpr(expr, iterable, body, tok.loc)
             _ =>
               raise @errors.SyntaxError(
                 message="Invalid left-hand side in for-of at line \{tok.loc.line}, col \{tok.loc.col}",
@@ -669,6 +670,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
             }
             Member(_, _, _) | ComputedMember(_, _, _) =>
               return ForInExpr(expr, obj, body, tok.loc)
+            Call(_, _, _) => return ForInExpr(expr, obj, body, tok.loc)
             _ =>
               raise @errors.SyntaxError(
                 message="Invalid left-hand side in for-in at line \{tok.loc.line}, col \{tok.loc.col}",
