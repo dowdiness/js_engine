@@ -1415,16 +1415,15 @@ fn Interpreter::eval_expr(
       self.eval_destructure_assign(ctx, pattern, value, env)
     }
     WebCompatCallAssign(call_expr, _, loc) => {
-      let _ = self.eval_expr(ctx, call_expr, env)
       if ctx.strict {
         raise @errors.SyntaxError(
           message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
         )
-      } else {
-        raise @errors.ReferenceError(
-          message="Invalid left-hand side in assignment",
-        )
       }
+      let _ = self.eval_expr(ctx, call_expr, env)
+      raise @errors.ReferenceError(
+        message="Invalid left-hand side in assignment",
+      )
     }
     OptionalMember(obj_expr, prop, loc) => {
       // obj?.prop - return undefined if obj is null/undefined

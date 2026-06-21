@@ -512,7 +512,10 @@ fn unwrap_parenthesized_lhs(expr : @ast.Expr) -> @ast.Expr {
     Grouping(inner, _) => {
       let unwrapped = unwrap_parenthesized_lhs(inner)
       match unwrapped {
-        Ident(_, _) | Member(_, _, _) | ComputedMember(_, _, _) => unwrapped
+        Ident(_, _)
+        | Member(_, _, _)
+        | ComputedMember(_, _, _)
+        | Call(_, _, _) => unwrapped
         _ => expr
       }
     }

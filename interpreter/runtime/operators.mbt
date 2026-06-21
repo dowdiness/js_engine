@@ -85,6 +85,14 @@ pub fn Interpreter::eval_update_computed_property(
 }
 
 ///|
+fn unwrap_groupings(expr : @ast.Expr) -> @ast.Expr {
+  match expr {
+    Grouping(inner, _) => unwrap_groupings(inner)
+    _ => expr
+  }
+}
+
+///|
 fn Interpreter::eval_update(
   self : Interpreter,
   ctx : ExecContext,
@@ -127,15 +135,34 @@ fn Interpreter::eval_update(
       self.eval_update_computed_property(ctx, obj, key, op, prefix, mloc, loc)
     }
     Call(_, _, _) => {
-      let _ = self.eval_expr(ctx, operand, env)
       if ctx.strict {
         raise @errors.SyntaxError(
           message="Invalid update target at line \{loc.line}, col \{loc.col}",
         )
-      } else {
-        raise @errors.ReferenceError(
-          message="Invalid left-hand side expression in prefix/postfix operation",
-        )
+      }
+      let _ = self.eval_expr(ctx, operand, env)
+      raise @errors.ReferenceError(
+        message="Invalid left-hand side expression in prefix/postfix operation",
+      )
+    }
+    Grouping(_, _) => {
+      let inner = unwrap_groupings(operand)
+      match inner {
+        Call(_, _, _) => {
+          if ctx.strict {
+            raise @errors.SyntaxError(
+              message="Invalid update target at line \{loc.line}, col \{loc.col}",
+            )
+          }
+          let _ = self.eval_expr(ctx, inner, env)
+          raise @errors.ReferenceError(
+            message="Invalid left-hand side expression in prefix/postfix operation",
+          )
+        }
+        _ =>
+          raise @errors.SyntaxError(
+            message="Invalid update target at line \{loc.line}, col \{loc.col}",
+          )
       }
     }
     _ =>
@@ -221,15 +248,34 @@ fn Interpreter::eval_compound_assign(
       result
     }
     Call(_, _, _) => {
-      let _ = self.eval_expr(ctx, target, env)
       if ctx.strict {
         raise @errors.SyntaxError(
           message="Invalid compound assignment target at line \{loc.line}, col \{loc.col}",
         )
-      } else {
-        raise @errors.ReferenceError(
-          message="Invalid left-hand side in assignment",
-        )
+      }
+      let _ = self.eval_expr(ctx, target, env)
+      raise @errors.ReferenceError(
+        message="Invalid left-hand side in assignment",
+      )
+    }
+    Grouping(_, _) => {
+      let inner = unwrap_groupings(target)
+      match inner {
+        Call(_, _, _) => {
+          if ctx.strict {
+            raise @errors.SyntaxError(
+              message="Invalid compound assignment target at line \{loc.line}, col \{loc.col}",
+            )
+          }
+          let _ = self.eval_expr(ctx, inner, env)
+          raise @errors.ReferenceError(
+            message="Invalid left-hand side in assignment",
+          )
+        }
+        _ =>
+          raise @errors.SyntaxError(
+            message="Invalid compound assignment target at line \{loc.line}, col \{loc.col}",
+          )
       }
     }
     _ =>
