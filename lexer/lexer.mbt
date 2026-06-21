@@ -180,11 +180,33 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let mut last_rparen_is_control_flow = false
   let mut paren_depth = 0
   let mut brace_depth = 0
+  // Two parallel stacks per open brace:
+  //   brace_is_block       — true when the *closing* } puts us in statement context
+  //                          (declaration function/class body, plain block).
+  //                          Used for last_rbrace_is_block → is_regex and is_plain_block.
+  //   brace_content_is_block — true when the *interior* is statement context
+  //                          (everything above + arrow bodies + expression fn/class bodies).
+  //                          Used for colon_is_stmt_ctx, which must see labels inside arrow
+  //                          bodies but must NOT see object-literal property colons as labels.
+  let brace_is_block : Array[Bool] = []
+  let brace_content_is_block : Array[Bool] = []
+  let mut last_rbrace_is_block = false
   let pending_function_is_generator : Array[Bool] = []
   let pending_function_param_depth : Array[Int] = []
+  // Parallel to pending_function_*: whether the function keyword was in statement position
+  // (declaration), which means its body } allows a following / to be regex.
+  let pending_function_is_stmt_pos : Array[Bool] = []
   let function_body_depth : Array[Int] = []
   let function_body_is_generator : Array[Bool] = []
   let mut last_yield_allows_regex = false
+  // class body tracking: stacked per nesting so class A extends class B {} {} works.
+  // Each entry is (is_stmt_pos, paren_depth_when_class_was_seen, brace_depth_when_class_was_seen).
+  let class_pending : Array[(Bool, Int, Int)] = []
+  // Ternary depth: stack of brace_depth at each bare ? (never ?. or ??).
+  // A : matches the top entry only when current brace_depth == top, so object-property
+  // colons inside the consequent don't consume the ternary's slot.
+  let ternary_depths : Array[Int] = []
+  let mut last_colon_is_ternary = false
   fn utf16_pos() -> Int {
     offset + astral_count
   }
@@ -208,6 +230,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     } else {
       function_body_is_generator[function_body_is_generator.length() - 1]
     }
+  }
+
+  // Returns true when the Colon token is a statement-context indicator (case/default/label).
+  // A Colon is NOT a statement-context indicator when:
+  //   - It is a ternary alternate colon — tracked via last_colon_is_ternary
+  //   - It is an object-literal property separator — the current brace context is an object
+  fn colon_is_stmt_ctx() -> Bool {
+    if last_colon_is_ternary {
+      return false
+    }
+    brace_content_is_block.length() == 0 ||
+    brace_content_is_block[brace_content_is_block.length() - 1]
   }
 
   // Parse unicode escape after \u has been consumed.
@@ -544,6 +578,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             Yield => last_yield_allows_regex
             // RParen after control-flow keyword (if/while/for/switch) starts regex
             RParen => last_rparen_is_control_flow
+            // RBrace after a block (statement/declaration body) starts regex
+            RBrace => last_rbrace_is_block
             _ => false
           }
         }
@@ -972,8 +1008,43 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let follows_dot = tokens.length() >= 2 &&
             tokens[tokens.length() - 2].kind == Dot
           if !follows_dot {
+            let in_stmt = if tokens.length() <= 1 {
+              true
+            } else {
+              match tokens[tokens.length() - 2].kind {
+                Semicolon | LBrace | Else | Do | Try | Finally => true
+                Colon => colon_is_stmt_ctx()
+                RBrace => last_rbrace_is_block
+                RParen => last_rparen_is_control_flow
+                _ => false
+              }
+            }
             pending_function_is_generator.push(false)
             pending_function_param_depth.push(-1)
+            pending_function_is_stmt_pos.push(in_stmt)
+          }
+        }
+        Class => {
+          // `class` is a valid property name (e.g. `{ class: fn }`, `obj.class`).
+          // Only push a pending class body when it is actually starting a
+          // declaration or expression, not when it is a property-name keyword.
+          let follows_dot = tokens.length() >= 2 &&
+            tokens[tokens.length() - 2].kind == Dot
+          let in_object_literal = brace_content_is_block.length() > 0 &&
+            !brace_content_is_block[brace_content_is_block.length() - 1]
+          if !follows_dot && !in_object_literal {
+            let in_stmt = if tokens.length() <= 1 {
+              true
+            } else {
+              match tokens[tokens.length() - 2].kind {
+                Semicolon | LBrace | Else | Do | Try | Finally => true
+                Colon => colon_is_stmt_ctx()
+                RBrace => last_rbrace_is_block
+                RParen => last_rparen_is_control_flow
+                _ => false
+              }
+            }
+            class_pending.push((in_stmt, paren_depth, brace_depth))
           }
         }
         Yield => last_yield_allows_regex = in_generator_lexer_context()
@@ -1547,15 +1618,29 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           if starts_method {
             pending_function_is_generator.push(true)
             pending_function_param_depth.push(-1)
+            pending_function_is_stmt_pos.push(false)
           }
         }
       }
+      // Bare ? is exclusively the ternary operator (not ?. or ??).
+      // Push brace_depth so the matching : can be identified by depth equality.
+      Question => ternary_depths.push(brace_depth)
       Colon | Comma | Semicolon | Assign => {
+        if kind == Colon {
+          let d_len = ternary_depths.length()
+          if d_len > 0 && ternary_depths[d_len - 1] == brace_depth {
+            let _ = ternary_depths.pop()
+            last_colon_is_ternary = true
+          } else {
+            last_colon_is_ternary = false
+          }
+        }
         let pending_len = pending_function_param_depth.length()
         if pending_len > 0 &&
           pending_function_param_depth[pending_len - 1] == -1 {
           let _ = pending_function_is_generator.pop()
           let _ = pending_function_param_depth.pop()
+          let _ = pending_function_is_stmt_pos.pop()
         }
       }
       LParen => {
@@ -1597,13 +1682,63 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         }
       }
       LBrace => {
-        brace_depth += 1
         let pending_len = pending_function_param_depth.length()
-        if pending_len > 0 &&
-          pending_function_param_depth[pending_len - 1] == -2 {
+        let is_fn_body = pending_len > 0 &&
+          pending_function_param_depth[pending_len - 1] == -2
+        // Function declaration body (not expression): the function keyword was in statement pos
+        let is_fn_decl_body = is_fn_body &&
+          pending_function_is_stmt_pos.length() > 0 &&
+          pending_function_is_stmt_pos[pending_function_is_stmt_pos.length() - 1]
+        // Class body: pop the top of class_pending when paren/brace depth matches.
+        // Stack order ensures inner classes (extends clause) are matched before outer ones.
+        let c_len = class_pending.length()
+        let is_class_body = c_len > 0 &&
+          ({
+            let top = class_pending[c_len - 1]
+            top.1 == paren_depth && top.2 == brace_depth
+          })
+        let class_body_stmt_pos = if is_class_body {
+          let top = class_pending[class_pending.length() - 1]
+          let _ = class_pending.pop()
+          top.0
+        } else {
+          false
+        }
+        // Arrow function body: { follows =>.  Content is statement context (labels, function
+        // declarations inside work correctly) but the closing } returns to expression context,
+        // so a following / must be division, not regex.
+        let is_arrow_body = tokens.length() >= 2 &&
+          tokens[tokens.length() - 2].kind == Arrow
+        // Block statement: { follows a token that puts us in statement position.
+        // Arrow is intentionally excluded — see is_arrow_body above.
+        let is_plain_block = if tokens.length() <= 1 {
+          true // { is the first token (start of file)
+        } else {
+          match tokens[tokens.length() - 2].kind {
+            Semicolon | LBrace | Else | Do | Try | Finally => true
+            Colon => colon_is_stmt_ctx()
+            RBrace => last_rbrace_is_block
+            RParen => last_rparen_is_control_flow
+            _ => false
+          }
+        }
+        let is_block = is_fn_decl_body ||
+          (is_class_body && class_body_stmt_pos) ||
+          is_plain_block
+        // Content is statement context for all non-object-literal braces:
+        // declaration/expression fn bodies, class bodies, arrow bodies, and plain blocks.
+        let is_content_block = is_fn_body ||
+          is_class_body ||
+          is_arrow_body ||
+          is_plain_block
+        brace_is_block.push(is_block)
+        brace_content_is_block.push(is_content_block)
+        brace_depth += 1
+        if is_fn_body {
           let is_gen = pending_function_is_generator[pending_len - 1]
           let _ = pending_function_is_generator.pop()
           let _ = pending_function_param_depth.pop()
+          let _ = pending_function_is_stmt_pos.pop()
           function_body_depth.push(brace_depth)
           function_body_is_generator.push(is_gen)
         }
@@ -1614,6 +1749,11 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           let _ = function_body_depth.pop()
           let _ = function_body_is_generator.pop()
         }
+        last_rbrace_is_block = match brace_is_block.pop() {
+          Some(v) => v
+          None => false
+        }
+        let _ = brace_content_is_block.pop()
         if brace_depth > 0 {
           brace_depth -= 1
         }
