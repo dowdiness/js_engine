@@ -180,9 +180,16 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let mut last_rparen_is_control_flow = false
   let mut paren_depth = 0
   let mut brace_depth = 0
-  // Track whether each open brace is a block (vs. object literal/class-expr/fn-expr body).
-  // When the matching } is emitted, set last_rbrace_is_block so is_regex can use it.
+  // Two parallel stacks per open brace:
+  //   brace_is_block       — true when the *closing* } puts us in statement context
+  //                          (declaration function/class body, plain block).
+  //                          Used for last_rbrace_is_block → is_regex and is_plain_block.
+  //   brace_content_is_block — true when the *interior* is statement context
+  //                          (everything above + arrow bodies + expression fn/class bodies).
+  //                          Used for colon_is_stmt_ctx, which must see labels inside arrow
+  //                          bodies but must NOT see object-literal property colons as labels.
   let brace_is_block : Array[Bool] = []
+  let brace_content_is_block : Array[Bool] = []
   let mut last_rbrace_is_block = false
   let pending_function_is_generator : Array[Bool] = []
   let pending_function_param_depth : Array[Int] = []
@@ -233,7 +240,8 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     if last_colon_is_ternary {
       return false
     }
-    brace_is_block.length() == 0 || brace_is_block[brace_is_block.length() - 1]
+    brace_content_is_block.length() == 0 ||
+    brace_content_is_block[brace_content_is_block.length() - 1]
   }
 
   // Parse unicode escape after \u has been consumed.
@@ -1687,12 +1695,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         } else {
           false
         }
-        // Block statement: { follows a token that puts us in statement position
+        // Arrow function body: { follows =>.  Content is statement context (labels, function
+        // declarations inside work correctly) but the closing } returns to expression context,
+        // so a following / must be division, not regex.
+        let is_arrow_body = tokens.length() >= 2 &&
+          tokens[tokens.length() - 2].kind == Arrow
+        // Block statement: { follows a token that puts us in statement position.
+        // Arrow is intentionally excluded — see is_arrow_body above.
         let is_plain_block = if tokens.length() <= 1 {
           true // { is the first token (start of file)
         } else {
           match tokens[tokens.length() - 2].kind {
-            Semicolon | LBrace | Else | Do | Try | Finally | Arrow => true
+            Semicolon | LBrace | Else | Do | Try | Finally => true
             Colon => colon_is_stmt_ctx()
             RBrace => last_rbrace_is_block
             RParen => last_rparen_is_control_flow
@@ -1702,7 +1716,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         let is_block = is_fn_decl_body ||
           (is_class_body && class_body_stmt_pos) ||
           is_plain_block
+        // Content is statement context for all non-object-literal braces:
+        // declaration/expression fn bodies, class bodies, arrow bodies, and plain blocks.
+        let is_content_block = is_fn_body ||
+          is_class_body ||
+          is_arrow_body ||
+          is_plain_block
         brace_is_block.push(is_block)
+        brace_content_is_block.push(is_content_block)
         brace_depth += 1
         if is_fn_body {
           let is_gen = pending_function_is_generator[pending_len - 1]
@@ -1723,6 +1744,7 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           Some(v) => v
           None => false
         }
+        let _ = brace_content_is_block.pop()
         if brace_depth > 0 {
           brace_depth -= 1
         }
