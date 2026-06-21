@@ -55,7 +55,6 @@ pub(all) struct TimerTask {
   args : Array[Value] // Additional arguments to pass to the callback
   delay : Int // Absolute fire-at time in virtual ms (used for ordering)
   period : Int // Interval repeat period (0 for setTimeout)
-  mut cancelled : Bool // Whether clearTimeout was called
   is_interval : Bool // Whether this is a setInterval (repeats)
   insertion_order : Int // Stable sort tiebreaker for equal delays
 }
@@ -76,7 +75,7 @@ pub(all) struct ModuleLoader((String) -> Map[String, Value] raise Error)
 pub(all) struct HostEnv {
   output : Array[String] // console.log / print accumulator
   microtask_queue : Array[Microtask] // Promise microtask queue (WHATWG spec)
-  timer_queue : Array[TimerTask] // setTimeout / setInterval task queue
+  timer_queue : @priority_queue.PriorityQueue[TimerTask] // setTimeout / setInterval task queue
   timer_id_counter : Ref[Int] // Next timer ID (monotonically increasing)
   timer_insertion_counter : Ref[Int] // Stable-sort tiebreaker for equal delays
   cancelled_timer_ids : Map[Int, Bool] // IDs cancelled during an active callback
@@ -146,7 +145,7 @@ pub fn Interpreter::new(
   let host : HostEnv = {
     output,
     microtask_queue: [],
-    timer_queue: [],
+    timer_queue: @priority_queue.PriorityQueue([]),
     timer_id_counter: { val: 1 },
     timer_insertion_counter: { val: 0 },
     cancelled_timer_ids: {},

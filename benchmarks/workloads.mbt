@@ -710,3 +710,47 @@ pub const VARHOIST_NESTED_BODY : String =
   #|}
   #|var result = total;
   #|result;
+
+// ---------------------------------------------------------------------------
+// Event-loop workloads (microtask and timer queue drain benchmarks)
+//
+// These workloads gate the @priority_queue migration in issue #329.
+// ---------------------------------------------------------------------------
+
+///|
+/// 200 Promise.resolve().then() callbacks that all increment a shared counter.
+/// A final setTimeout at delay=0 logs the counter value after microtasks drain.
+///
+/// Expected console output: "200"
+///
+/// Used as a control benchmark — the head-pointer microtask drain is already
+/// O(n), so no quadratic behavior is expected here.
+pub const MICROTASK_DRAIN_200_SRC : String =
+  #|var counter = 0;
+  #|var p = Promise.resolve();
+  #|for (var i = 0; i < 200; i++) {
+  #|  p.then(function() { counter++; });
+  #|}
+  #|setTimeout(function() { console.log(counter); }, 0);
+
+///|
+pub const MICROTASK_DRAIN_200_OUTPUT : String = "200"
+
+///|
+/// 200 setTimeout calls with delays 0, 1, ..., 199 (registered ascending),
+/// plus a sentinel at delay=200 that logs the counter after all 200 have fired.
+///
+/// Expected console output: "200"
+///
+/// This workload gates the @priority_queue timer-queue migration (issue #329).
+/// After migration: 201 pops each O(log n) on the leftist heap = O(n log n) total.
+/// Before migration (historical): sort_by + remove(0) per pop = O(n² log n) total.
+pub const TIMER_DRAIN_200_SRC : String =
+  #|var counter = 0;
+  #|for (var i = 0; i < 200; i++) {
+  #|  setTimeout(function() { counter++; }, i);
+  #|}
+  #|setTimeout(function() { console.log(counter); }, 200);
+
+///|
+pub const TIMER_DRAIN_200_OUTPUT : String = "200"

@@ -463,3 +463,65 @@ test "pipeline/parse_heavy" (b : @bench.T) {
     }
   })
 }
+
+// =============================================================================
+// EVENT-LOOP benchmarks
+// These benchmarks gate the @priority_queue / @deque migration (issue #329).
+// Both create a fresh interpreter per b.bench() iteration because timer and
+// microtask registration is stateful — the queues must be populated anew each
+// time to measure drain cost rather than an already-empty queue.
+// =============================================================================
+
+///|
+/// Microtask queue drain: 200 Promise.resolve().then() callbacks.
+///
+/// What it measures: run_microtasks() draining 200 queued microtasks, plus
+///   one run_timers() call for the sentinel setTimeout that logs the counter.
+/// What it answers:  Is microtask drain a bottleneck at this scale?
+///   The current head-pointer implementation is O(n), so this is a control
+///   benchmark — no quadratic behavior expected.
+/// What it excludes: interpreter construction, parse time.
+test "event_loop/microtask_drain_200" (b : @bench.T) {
+  let (output, _) = @lib.run(MICROTASK_DRAIN_200_SRC) catch {
+    e => abort("[event_loop/microtask_drain_200] pre-check raised: \{e}")
+  }
+  let got = if output.length() > 0 { output[0] } else { "<no output>" }
+  if got != MICROTASK_DRAIN_200_OUTPUT {
+    abort(
+      "[event_loop/microtask_drain_200] correctness check failed\n  expected: \{MICROTASK_DRAIN_200_OUTPUT}\n  got:      \{got}",
+    )
+  }
+  b.bench(fn() {
+    let _ = @lib.run(MICROTASK_DRAIN_200_SRC) catch {
+      _ => abort("event_loop/microtask_drain_200: raised in bench loop")
+    }
+  })
+}
+
+///|
+/// Timer queue drain: 200 setTimeout calls with delays 0..199.
+///
+/// What it measures: run_timers() draining 201 timers via @priority_queue.pop().
+///   Each pop() is O(log n) on the leftist heap; total drain cost is O(n log n).
+///   Note: @lib.run also includes parse and interpreter-construction overhead —
+///   use this benchmark to detect regressions in timer throughput, not as an
+///   isolated queue-operation microbenchmark.
+/// What it answers:  Does the priority-queue drain add measurable overhead?
+///   Baseline after the #329 migration: ~2.0 ms at n=200 (vs ~4.2 ms before).
+/// What it excludes: setInterval re-enqueue paths, microtask overhead.
+test "event_loop/timer_drain_200" (b : @bench.T) {
+  let (output, _) = @lib.run(TIMER_DRAIN_200_SRC) catch {
+    e => abort("[event_loop/timer_drain_200] pre-check raised: \{e}")
+  }
+  let got = if output.length() > 0 { output[0] } else { "<no output>" }
+  if got != TIMER_DRAIN_200_OUTPUT {
+    abort(
+      "[event_loop/timer_drain_200] correctness check failed\n  expected: \{TIMER_DRAIN_200_OUTPUT}\n  got:      \{got}",
+    )
+  }
+  b.bench(fn() {
+    let _ = @lib.run(TIMER_DRAIN_200_SRC) catch {
+      _ => abort("event_loop/timer_drain_200: raised in bench loop")
+    }
+  })
+}

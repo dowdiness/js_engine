@@ -1324,6 +1324,10 @@ fn Interpreter::schedule_timer(
 ) -> Int {
   let id = self.host.timer_id_counter.val
   self.host.timer_id_counter.val = id + 1
+  // Purge any stale cancellation for this ID before enqueuing.
+  // clearTimeout/clearInterval called with IDs not yet in the queue
+  // would otherwise cancel the first timer to inherit this ID.
+  self.host.cancelled_timer_ids.remove(id)
   let order = self.host.timer_insertion_counter.val
   self.host.timer_insertion_counter.val = order + 1
   self.host.timer_queue.push({
@@ -1332,7 +1336,6 @@ fn Interpreter::schedule_timer(
     args: extra_args,
     delay,
     period,
-    cancelled: false,
     is_interval,
     insertion_order: order,
   })
@@ -1341,13 +1344,8 @@ fn Interpreter::schedule_timer(
 
 ///|
 /// Cancel a pending setTimeout or setInterval by ID.
+/// Uses lazy deletion: the ID is recorded here; run_timers skips it on pop.
 fn Interpreter::cancel_timer(self : Interpreter, id : Int) -> Unit {
-  for timer in self.host.timer_queue {
-    if timer.id == id {
-      timer.cancelled = true
-      break
-    }
-  }
   self.host.cancelled_timer_ids[id] = true
 }
 
