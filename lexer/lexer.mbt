@@ -196,6 +196,10 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
   let mut class_body_pending = false
   let mut class_body_is_stmt_pos = false
   let mut class_pending_brace_depth = 0
+  // Ternary depth: incremented on bare ? (never ?. or ??), decremented on : when >0.
+  // last_colon_is_ternary is set on each : and used to filter ternary : from case/label :.
+  let mut ternary_depth = 0
+  let mut last_colon_is_ternary = false
   fn utf16_pos() -> Int {
     offset + astral_count
   }
@@ -221,11 +225,14 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     }
   }
 
-  // Returns true when the current brace context is a block (or we're at the top level).
-  // Used to filter Colon: a colon is a statement-context indicator (case/default/label)
-  // only when we're inside a block, not inside an object literal where colons are
-  // property separators.
+  // Returns true when the Colon token is a statement-context indicator (case/default/label).
+  // A Colon is NOT a statement-context indicator when:
+  //   - It is a ternary alternate colon — tracked via last_colon_is_ternary
+  //   - It is an object-literal property separator — the current brace context is an object
   fn colon_is_stmt_ctx() -> Bool {
+    if last_colon_is_ternary {
+      return false
+    }
     brace_is_block.length() == 0 || brace_is_block[brace_is_block.length() - 1]
   }
 
@@ -1600,7 +1607,18 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           }
         }
       }
+      // Bare ? is exclusively the ternary operator (not ?. or ??).
+      // Increment depth so the matching : can be identified as a ternary colon.
+      Question => ternary_depth += 1
       Colon | Comma | Semicolon | Assign => {
+        if kind == Colon {
+          if ternary_depth > 0 {
+            ternary_depth -= 1
+            last_colon_is_ternary = true
+          } else {
+            last_colon_is_ternary = false
+          }
+        }
         let pending_len = pending_function_param_depth.length()
         if pending_len > 0 &&
           pending_function_param_depth[pending_len - 1] == -1 {
