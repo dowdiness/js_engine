@@ -1,3 +1,6 @@
+// Package static_semantics: one file per analysis family (what fact is computed),
+// not per source kind. Each file covers all AST shapes that share that analysis.
+
 ///|
 /// Scan the directive prologue and return whether "use strict" is present.
 ///

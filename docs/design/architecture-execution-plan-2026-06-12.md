@@ -54,6 +54,12 @@ static_semantics/              pure AST preparation and validation
   module preparation           module-level validation and declarations
   bytecode facts               analysis shared by bytecode lowering
 
+  Growth convention (#332): one file per analysis family (what kind of fact is
+  computed), not per source kind. A single file covers all source kinds that
+  share the same analysis. File name = analysis family name (e.g.,
+  `strictness.mbt`, `declarations.mbt`). Split by source kind only if
+  a family's logic diverges enough to require separate types or algorithms.
+
 interpreter/runtime/           runtime public semantic facade
   ops                          JavaScript semantic operation families
   treewalker                   default AST evaluator
