@@ -40,7 +40,16 @@ fn Interpreter::bind_function_decl_value(
     Some(VarBinding) => env.assign(name, func_val)
     Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
     None =>
-      if should_reconcile_eval_function_decl(env, name) {
+      if env_has_binding_ignoring_with(env, EVAL_DELETABLE_VAR_PREFIX + name) &&
+        !env.has_var(name) &&
+        env.parent is Some(p) &&
+        physical_equal(p, env.find_var_env()) {
+        // Top-level eval function whose binding was deleted — skip to
+        // avoid recreating it. Block-level functions have a different
+        // env.parent (block_env) and proceed normally to create a new
+        // block-scoped binding.
+        ()
+      } else if should_reconcile_eval_function_decl(env, name) {
         env.assign_var(name, func_val)
       } else {
         env.def(name, func_val, VarBinding)
@@ -198,6 +207,36 @@ fn Interpreter::exec_stmt(
             self.mirror_to_global(name, value)
           }
         }
+      } else if bk == VarBinding &&
+        env_has_binding_ignoring_with(env, EVAL_DELETABLE_VAR_PREFIX + name) {
+        // Marker exists — check if the binding was deleted by a prior
+        // `delete` in the same eval.
+        if env.has_var(name) {
+          // Binding still exists: marker is still valid. The hoisted
+          // value takes precedence — skip the initializer.
+          ()
+        } else if init is Some(_) {
+          // Binding was deleted but there's an initializer (e.g.
+          // `eval("var x; delete x; var x = 1;")`). The initializer was
+          // already evaluated. Since the env binding is gone, PutValue
+          // creates an implicit global in sloppy mode.
+          // In strict mode, throw ReferenceError per §13.3.2.2.
+          match env.resolve_binding_env(name) {
+            Some(target_env) =>
+              target_env.assign_resolved(name, value, ctx.strict) catch {
+                e => raise e
+              }
+            None => {
+              if ctx.strict {
+                raise @errors.ReferenceError(message="\{name} is not defined")
+              }
+              self.global.def(name, value, VarBinding)
+              self.mirror_to_global(name, value, configurable=true)
+            }
+          }
+        }
+        // No init and binding was deleted: bare `var x` after `delete x`
+        // does nothing — the declaration was already hoisted and deleted.
       } else if (bk == LetBinding || bk == ConstBinding) &&
         env.bindings.contains(name) {
         // let/const hoisted with TDZ - initialize it

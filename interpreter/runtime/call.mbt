@@ -519,6 +519,11 @@ pub fn Interpreter::perform_eval(
         }
       }
     }
+    for name in var_names {
+      if !var_env.bindings.contains(name) {
+        var_env.def(EVAL_DELETABLE_VAR_PREFIX + name, Bool(true), LetBinding)
+      }
+    }
     // Non-strict eval: hoist var/function to the variable environment (leak),
     // then hoist let/const TDZ markers to the eval scope (isolated).
     // `suppress_annex_b_candidates` defers the Annex B walk so we can slot

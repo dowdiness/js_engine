@@ -241,22 +241,30 @@ pub fn Environment::def_builtin(
 
 ///|
 pub fn Environment::has(self : Environment, name : String) -> Bool raise Error {
+  self.resolve_binding_env(name) is Some(_)
+}
+
+///|
+fn Environment::resolve_binding_env(
+  self : Environment,
+  name : String,
+) -> Environment? raise Error {
   // Check with_object first for 'with' statement environments
   match self.with_object {
     Some(obj) => {
       let has_with = with_object_has(self.interpreter_context, obj, name)
       if has_with {
-        return true
+        return Some(self)
       }
     }
     None => ()
   }
   match self.bindings.get(name) {
-    Some(_) => true
+    Some(_) => Some(self)
     None =>
       match self.parent {
-        Some(parent) => parent.has(name)
-        None => false
+        Some(parent) => parent.resolve_binding_env(name)
+        None => None
       }
   }
 }
@@ -316,10 +324,19 @@ pub fn Environment::assign_var(
 
 ///|
 pub fn Environment::get(self : Environment, name : String) -> Value raise Error {
+  self.get_with_strict(name, false)
+}
+
+///|
+fn Environment::get_with_strict(
+  self : Environment,
+  name : String,
+  strict : Bool,
+) -> Value raise Error {
   // Check with_object first for 'with' statement environments
   match self.with_object {
     Some(obj) => {
-      let result = with_object_get(self.interpreter_context, obj, name)
+      let result = with_object_get(self.interpreter_context, obj, name, strict~)
       match result {
         Some(v) => return v
         None => ()
@@ -338,7 +355,7 @@ pub fn Environment::get(self : Environment, name : String) -> Value raise Error 
       }
     None =>
       match self.parent {
-        Some(parent) => parent.get(name)
+        Some(parent) => parent.get_with_strict(name, strict)
         None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
   }
@@ -350,33 +367,85 @@ pub fn Environment::assign(
   name : String,
   value : Value,
 ) -> Unit raise Error {
+  self.assign_with_strict(name, value, false)
+}
+
+///|
+fn Environment::assign_with_strict(
+  self : Environment,
+  name : String,
+  value : Value,
+  strict : Bool,
+) -> Unit raise Error {
   // Check with_object first for 'with' statement environments
   match self.with_object {
-    Some(obj) =>
+    Some(obj) => {
+      let had_own = with_object_has_own_direct(obj, name)
       if with_object_has(self.interpreter_context, obj, name) {
-        with_object_set(obj, name, value)
+        match self.interpreter_context {
+          Some(_) =>
+            if strict && had_own && !with_object_has_own_direct(obj, name) {
+              raise @errors.ReferenceError(message="\{name} is not defined")
+            }
+          None => ()
+        }
+        with_object_set(self.interpreter_context, obj, name, value, strict~)
         return
       }
+    }
     None => ()
   }
   match self.bindings.get(name) {
-    Some(binding) =>
-      if !binding.initialized {
-        raise @errors.ReferenceError(
-          message="Cannot access '\{name}' before initialization",
-        )
-      } else if binding.kind == ConstBinding {
-        raise @errors.TypeError(
-          message="Assignment to constant variable '\{name}'",
-        )
-      } else {
-        binding.value = value
-      }
+    Some(binding) => assign_binding_value(binding, name, value)
     None =>
       match self.parent {
-        Some(parent) => parent.assign(name, value)
+        Some(parent) => parent.assign_with_strict(name, value, strict)
         None => raise @errors.ReferenceError(message="\{name} is not defined")
       }
+  }
+}
+
+///|
+fn Environment::assign_resolved(
+  self : Environment,
+  name : String,
+  value : Value,
+  strict : Bool,
+) -> Unit raise Error {
+  match self.with_object {
+    Some(obj) => {
+      match self.interpreter_context {
+        Some(interp) =>
+          if strict && !interp.has_property_key(obj, String_(name)) {
+            raise @errors.ReferenceError(message="\{name} is not defined")
+          }
+        None => ()
+      }
+      with_object_set(self.interpreter_context, obj, name, value, strict~)
+      return
+    }
+    None => ()
+  }
+  match self.bindings.get(name) {
+    Some(binding) => assign_binding_value(binding, name, value)
+    None => raise @errors.ReferenceError(message="\{name} is not defined")
+  }
+}
+
+///|
+fn assign_binding_value(
+  binding : Binding,
+  name : String,
+  value : Value,
+) -> Unit raise Error {
+  if !binding.initialized {
+    raise @errors.ReferenceError(
+      message="Cannot access '\{name}' before initialization",
+    )
+  } else if binding.kind == ConstBinding {
+    raise @errors.TypeError(message="Assignment to constant variable '\{name}'")
+  } else {
+    binding.value = value
   }
 }
 
@@ -388,44 +457,15 @@ fn is_blocked_by_unscopables(
   name : String,
 ) -> Bool raise Error {
   let unscopables_sym = interp.realm_state.well_known_symbols.unscopables
-  match obj {
-    Proxy(_) => {
-      let unscopables = interp.get_computed_property(
-        obj,
-        Symbol(unscopables_sym),
-        @token.Loc::default(),
-      )
-      match unscopables {
-        Object(data) =>
-          match data.bag.properties.get(name) {
-            Some(v) => is_truthy(v)
-            None => false
-          }
-        _ => false
-      }
-    }
-    Object(data) => {
-      // Walk prototype chain to find @@unscopables
-      let mut current : Value = Object(data)
-      while true {
-        match current {
-          Object(obj_data) =>
-            match obj_data.bag.symbol_properties.get(unscopables_sym.id) {
-              Some(Object(unscopables_data)) =>
-                // Check if the property name is truthy in the unscopables object
-                match unscopables_data.bag.properties.get(name) {
-                  Some(v) => return is_truthy(v)
-                  None => return false
-                }
-              Some(_) => return false
-              None => current = obj_data.prototype
-            }
-          _ => break
-        }
-      }
-      false
-    }
-    _ => false
+  let unscopables = interp.get_computed_property(
+    obj,
+    Symbol(unscopables_sym),
+    @token.Loc::default(),
+  )
+  if is_object_value(unscopables) {
+    is_truthy(interp.get_property(unscopables, name, @token.Loc::default()))
+  } else {
+    false
   }
 }
 
@@ -466,19 +506,50 @@ fn with_object_has(
 
 ///|
 /// Get a property from a with-object (walking prototype chain)
+fn with_object_has_own_direct(obj : Value, name : String) -> Bool {
+  match obj {
+    Object(data) =>
+      data.bag.properties.contains(name) || data.bag.descriptors.contains(name)
+    _ => false
+  }
+}
+
+///|
 fn with_object_get(
   interp_context : Interpreter?,
   obj : Value,
   name : String,
+  strict? : Bool = false,
 ) -> Value? raise Error {
   match interp_context {
-    Some(interp) =>
-      if interp.has_property_key(obj, String_(name)) &&
-        !is_blocked_by_unscopables(interp, obj, name) {
-        return Some(interp.get_property(obj, name, @token.Loc::default()))
-      } else {
-        return None
+    Some(interp) => {
+      // Check if the property exists (spec's HasProperty). For proxies
+      // this triggers the has trap exactly once.
+      let has_prop = interp.has_property_key(obj, String_(name))
+      if has_prop {
+        // Record own-property status BEFORE the @@unscopables getter
+        // runs, since the getter may delete own properties as a side
+        // effect. Use non-trapping direct-bag check for this.
+        let had_own = with_object_has_own_direct(obj, name)
+        if !is_blocked_by_unscopables(interp, obj, name) {
+          // The property is not blocked. If the unscopables getter
+          // deleted an own property, check whether the prototype
+          // chain still provides it (non-proxy path).
+          let still_own = with_object_has_own_direct(obj, name)
+          if had_own &&
+            !still_own &&
+            !interp.has_property_key(obj, String_(name)) {
+            return if strict {
+              raise @errors.ReferenceError(message="\{name} is not defined")
+            } else {
+              Some(Undefined)
+            }
+          }
+          return Some(interp.get_property(obj, name, @token.Loc::default()))
+        }
       }
+      return None
+    }
     None => ()
   }
   let mut current = obj
@@ -499,7 +570,26 @@ fn with_object_get(
 
 ///|
 /// Set a property on a with-object (always sets on the own object)
-fn with_object_set(obj : Value, name : String, value : Value) -> Unit {
+fn with_object_set(
+  interp_context : Interpreter?,
+  obj : Value,
+  name : String,
+  value : Value,
+  strict? : Bool = false,
+) -> Unit raise Error {
+  match interp_context {
+    Some(interp) => {
+      let _ = interp.set_property(
+        obj,
+        name,
+        value,
+        @token.Loc::default(),
+        strict~,
+      )
+      return
+    }
+    None => ()
+  }
   match obj {
     Object(data) => data.bag.properties[name] = value
     _ => ()
