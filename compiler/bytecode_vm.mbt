@@ -16,6 +16,7 @@ priv struct BytecodeFrame {
   ctx : ExecContext
   mut ip : Int
   mut completion : Value
+  mut optional_chain_short_circuited : Bool
 }
 
 ///|
@@ -65,6 +66,7 @@ fn BytecodeFrame::BytecodeFrame(
     ctx,
     ip: 0,
     completion: Value::Undefined,
+    optional_chain_short_circuited: false,
   }
 }
 
@@ -689,6 +691,14 @@ fn run_bytecode_function(
           Null | Undefined => ()
           _ => ip = target
         }
+      BeginOptionalChain => frame.optional_chain_short_circuited = false
+      MarkOptionalChainShortCircuit =>
+        frame.optional_chain_short_circuited = true
+      JumpIfNotOptionalChainShortCircuitKeep(target) =>
+        if !frame.optional_chain_short_circuited {
+          ip = target
+        }
+      EndOptionalChain => frame.optional_chain_short_circuited = false
       StartForIn => {
         let obj = frame.pop()
         frame.for_in_iters.push({

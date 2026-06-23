@@ -535,9 +535,9 @@ fn validate_block_early_errors_expr(
       validate_pattern_early_errors(pattern, strict_context, false)
       validate_block_early_errors_expr(rhs, strict_context)
     }
-    OptionalMember(obj, _, _) =>
+    OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       validate_block_early_errors_expr(obj, strict_context)
-    OptionalComputedMember(obj, key, _) => {
+    OptionalComputedMember(obj, key, _) | ChainComputedMember(obj, key, _) => {
       validate_block_early_errors_expr(obj, strict_context)
       validate_block_early_errors_expr(key, strict_context)
     }

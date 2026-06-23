@@ -294,8 +294,11 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
         scan_expr(scan, a)
       }
     }
-    Member(obj, _, _) | OptionalMember(obj, _, _) => scan_expr(scan, obj)
-    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) => {
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
+      scan_expr(scan, obj)
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) => {
       scan_expr(scan, obj)
       scan_expr(scan, key)
     }

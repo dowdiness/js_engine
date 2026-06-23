@@ -144,6 +144,10 @@ fn compile_expr_to_closure_inner(
     UpdateExpr(op, operand, prefix, loc) =>
       compile_update(op, operand, prefix, loc)
     Comma(left, right, _) => compile_comma(left, right)
+    ChainMember(_, _, _) | ChainComputedMember(_, _, _) =>
+      unsupported_expr(
+        "optional chain member (ChainMember/ChainComputedMember)",
+      )
     _ => unsupported_expr("expression kind")
   }
 }

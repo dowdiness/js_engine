@@ -124,6 +124,8 @@ pub(all) enum Expr {
   OptionalMember(Expr, String, @token.Loc)
   OptionalComputedMember(Expr, Expr, @token.Loc)
   OptionalCall(Expr, Array[Expr], @token.Loc)
+  ChainMember(Expr, String, @token.Loc)
+  ChainComputedMember(Expr, Expr, @token.Loc)
   ClassExpr(String?, Expr?, Array[ClassMember], @token.Loc, String?)
   SuperCall(Array[Expr], @token.Loc)
   SuperMember(String, @token.Loc)
