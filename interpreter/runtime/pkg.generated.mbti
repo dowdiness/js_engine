@@ -359,6 +359,8 @@ pub fn to_property_key(Value, interp? : Interpreter?) -> Value raise
 
 pub fn type_of(Value) -> String
 
+pub fn unwrap_grouping(@ast.Expr) -> @ast.Expr
+
 pub fn utf16_length(String) -> Int
 
 pub fn validate_function_constructor_params(Bool, Array[String], String?, Array[@ast.Stmt]) -> Unit raise

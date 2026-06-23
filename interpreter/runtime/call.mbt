@@ -144,7 +144,7 @@ pub fn Interpreter::call_direct_eval_or_shadowed(
 /// Recursively strip Grouping nodes from an expression.
 /// Per ES spec, grouping parentheses do not change the Reference type,
 /// so ((eval))("code") is still a direct eval call.
-fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
+pub fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
   match expr {
     Grouping(inner, _) => unwrap_grouping(inner)
     _ => expr
@@ -592,10 +592,9 @@ fn Interpreter::eval_call(
     _ => {
       // Per ES spec (13.3.6.1), evaluate callee/receiver first, then arguments.
       // Peel grouping parentheses to recover the reference/receiver.
-      let unwrapped = match callee_expr {
-        Grouping(inner, _) => inner
-        _ => callee_expr
-      }
+      // Use unwrap_grouping to recursively peel nested grouping wrappers,
+      // ensuring (((obj.m))?.() exposes the Member pattern for receiver binding.
+      let unwrapped = unwrap_grouping(callee_expr)
       match unwrapped {
         OptionalCall(inner_callee, inner_args, inner_loc) => {
           // Call(OptionalCall(...), ...): continuation call after optional call.

@@ -906,10 +906,7 @@ fn Interpreter::eval_chain_expr(
     OptionalCall(callee_expr, arg_exprs, loc) => {
       // Peel grouping parentheses to recover the reference/receiver (§13.2.9).
       // Grouping preserves the Reference, so (a.b)?.() should call with this=a.
-      let unwrapped = match callee_expr {
-        Grouping(inner, _) => inner
-        _ => callee_expr
-      }
+      let unwrapped = unwrap_grouping(callee_expr)
       match unwrapped {
         OptionalMember(obj_expr, prop, mloc) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
@@ -1686,10 +1683,7 @@ fn Interpreter::eval_expr(
       // Need to preserve receiver for method calls
       // Peel grouping parentheses to recover the reference/receiver (§13.2.9).
       // Grouping preserves the Reference, so (a.b)?.() should call with this=a.
-      let unwrapped = match callee_expr {
-        Grouping(inner, _) => inner
-        _ => callee_expr
-      }
+      let unwrapped = unwrap_grouping(callee_expr)
       match unwrapped {
         OptionalMember(obj_expr, prop, mloc) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
@@ -2845,34 +2839,36 @@ fn Interpreter::eval_unary(
           let key = self.eval_expr(ctx, key_expr, env)
           eval_delete_computed_property(self, obj, key, ctx.strict)
         }
-        OptionalMember(_obj_expr, prop, _) => {
-          // delete o?.x — evaluate the chain; short-circuit returns true
-          let (obj, short_circuited) = self.eval_chain_expr(ctx, operand, env)
+        OptionalMember(obj_expr, prop, _) => {
+          // delete o?.x: evaluate obj_expr directly, check nullish, delete
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Bool(true)
+            _ => eval_delete_property(self, obj, prop, ctx.strict)
+          }
+        }
+        OptionalComputedMember(obj_expr, key_expr, _) => {
+          // delete o?.[x]: evaluate obj_expr directly, check nullish, delete
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Bool(true)
+            _ => {
+              let key = self.eval_expr(ctx, key_expr, env)
+              eval_delete_computed_property(self, obj, key, ctx.strict)
+            }
+          }
+        }
+        ChainMember(obj_expr, prop, _) => {
+          // delete chain-member: evaluate chain up to base object, delete prop
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
           if short_circuited {
             Bool(true)
           } else {
             eval_delete_property(self, obj, prop, ctx.strict)
           }
         }
-        OptionalComputedMember(_obj_expr, key_expr, _) => {
-          let (obj, short_circuited) = self.eval_chain_expr(ctx, operand, env)
-          if short_circuited {
-            Bool(true)
-          } else {
-            let key = self.eval_expr(ctx, key_expr, env)
-            eval_delete_computed_property(self, obj, key, ctx.strict)
-          }
-        }
-        ChainMember(_obj_expr, prop, _) => {
-          let (obj, short_circuited) = self.eval_chain_expr(ctx, operand, env)
-          if short_circuited {
-            Bool(true)
-          } else {
-            eval_delete_property(self, obj, prop, ctx.strict)
-          }
-        }
-        ChainComputedMember(_obj_expr, key_expr, _) => {
-          let (obj, short_circuited) = self.eval_chain_expr(ctx, operand, env)
+        ChainComputedMember(obj_expr, key_expr, _) => {
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
           if short_circuited {
             Bool(true)
           } else {

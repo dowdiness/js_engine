@@ -1520,8 +1520,13 @@ fn Interpreter::get_computed_property_impl(
           }
         _ => {
           // Non-numeric, non-string, non-symbol key (e.g., Bool(true)).
-          // Convert to string and delegate to the named-property lookup.
+          // Convert to string and check if it's a valid numeric index first.
           let key_str = to_js_string(key, interp=Some(self))
+          let num_idx = @string.parse_int(key_str) catch { _ => -1 }
+          if num_idx >= 0 && num_idx.to_string() == key_str {
+            return self.array_get_indexed(obj, data, num_idx, key_str, loc)
+          }
+          // Non-numeric string: do named-property lookup with descriptor check.
           match data.bag.descriptors.get(key_str) {
             Some(desc) =>
               match desc.getter {

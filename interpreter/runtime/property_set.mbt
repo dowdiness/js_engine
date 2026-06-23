@@ -1529,8 +1529,9 @@ pub fn Interpreter::set_computed_property(
               set_array_length_override(data, new_len)
             }
           } else {
-            // Non-integer numeric key (e.g., 1.1, -0.5): store as named property.
-            data.bag.properties[prop64] = value
+            // Non-integer numeric key (e.g., 1.1, -0.5): delegate to set_property
+            // to enforce descriptor, extensibility, and prototype-chain checks.
+            return self.set_property(obj, prop64, value, loc, strict~)
           }
           value
         }
