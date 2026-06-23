@@ -2778,6 +2778,19 @@ pub fn eval_delete_identifier(
               EVAL_DELETABLE_VAR_PREFIX + name,
             ) {
             let _ = env_delete_binding_ignoring_with(target_env, name)
+            // Also remove the globalThis mirror if the target is the global
+            // environment. eval-created vars are mirrored to globalThis,
+            // and the deleted env binding alone would still be reachable
+            // via the global property fallback in Ident lookup.
+            if target_env.parent is None {
+              match interp.global_this {
+                Object(data) => {
+                  let _ = data.bag.properties.remove(name)
+                  let _ = data.bag.descriptors.remove(name)
+                }
+                _ => ()
+              }
+            }
             Bool(true)
           } else if target_env.parent is None {
             match interp.global_this {
