@@ -41,7 +41,13 @@ fn Interpreter::bind_function_decl_value(
     Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
     None =>
       if env_has_binding_ignoring_with(env, EVAL_DELETABLE_VAR_PREFIX + name) &&
-        !env.has_var(name) {
+        !env.has_var(name) &&
+        env.parent is Some(p) &&
+        physical_equal(p, env.find_var_env()) {
+        // Top-level eval function whose binding was deleted — skip to
+        // avoid recreating it. Block-level functions have a different
+        // env.parent (block_env) and proceed normally to create a new
+        // block-scoped binding.
         ()
       } else if should_reconcile_eval_function_decl(env, name) {
         env.assign_var(name, func_val)

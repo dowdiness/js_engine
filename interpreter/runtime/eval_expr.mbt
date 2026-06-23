@@ -2786,7 +2786,7 @@ pub fn eval_delete_identifier(
       match env.resolve_binding_env(name) {
         Some(target_env) =>
           if env_has_binding_ignoring_with(
-              env,
+              target_env,
               EVAL_DELETABLE_VAR_PREFIX + name,
             ) {
             // Only delete if target_env actually has the eval-created var
