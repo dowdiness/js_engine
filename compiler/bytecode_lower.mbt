@@ -2193,8 +2193,14 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
       self.compile_expr(key)
       let _ = self.emit(GetComputed(loc))
     }
-    OptionalCall(callee, args, loc) =>
-      match callee {
+    OptionalCall(callee, args, loc) => {
+      // Peel grouping wrappers to recover member receivers for receiver binding,
+      // matching the tree-walker's unwrap_grouping in eval_chain_expr.
+      let unwrapped = match callee {
+        Grouping(inner, _) => inner
+        _ => callee
+      }
+      match unwrapped {
         OptionalMember(obj, prop, member_loc) => {
           self.compile_expr(obj)
           self.emit_optional_null_guard(end_jumps)
@@ -2241,12 +2247,35 @@ fn BytecodeBuilder::compile_optional_chain_expr_body(
             optional_callee=true,
           )
         }
+        Member(obj, prop, member_loc) => {
+          // Grouping(Member(...)) recovered — compile with receiver preservation.
+          self.compile_expr(obj)
+          let _ = self.emit(PreparePropertyCall(prop, member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
+        ComputedMember(obj, key, member_loc) => {
+          self.compile_expr(obj)
+          self.compile_expr(key)
+          let _ = self.emit(PrepareComputedCall(member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
         _ => {
           self.compile_expr(callee)
           self.emit_optional_null_guard(end_jumps)
           self.emit_call(args, loc)
         }
       }
+    }
     Call(OptionalMember(obj, prop, member_loc), args, loc) => {
       self.compile_expr(obj)
       self.emit_optional_null_guard(end_jumps)

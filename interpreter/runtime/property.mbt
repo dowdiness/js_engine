@@ -1526,6 +1526,15 @@ fn Interpreter::get_computed_property_impl(
           if num_idx >= 0 && num_idx.to_string() == key_str {
             return self.array_get_indexed(obj, data, num_idx, key_str, loc)
           }
+          // Check for "length" before doing named-property lookup — coerced
+          // keys like ({ toString: () => "length" }) must return the array's
+          // own length, not Array.prototype.length.
+          if key_str == "length" {
+            return match get_array_length_override(data) {
+              Some(n64) => Number(n64.to_double())
+              None => Number(data.elements.length().to_double())
+            }
+          }
           // Non-numeric string: do named-property lookup with descriptor check.
           match data.bag.descriptors.get(key_str) {
             Some(desc) =>
