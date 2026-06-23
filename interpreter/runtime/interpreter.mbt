@@ -525,9 +525,6 @@ pub fn validate_function_constructor_params_ext(
 }
 
 ///|
-const EVAL_FUNCTION_RECONCILE_MARKER = "[[EvalFunctionReconcile]]"
-
-///|
 fn is_function_strict(enclosing_strict : Bool, body : Array[@ast.Stmt]) -> Bool {
   @static_semantics.body_is_strict(body, enclosing_strict)
 }
@@ -641,7 +638,7 @@ fn should_reconcile_eval_function_decl(
   env : Environment,
   name : String,
 ) -> Bool {
-  env.bindings.contains(EVAL_FUNCTION_RECONCILE_MARKER) && env.has_var(name)
+  env.has_marker(EVAL_FUNCTION_RECONCILE_MARKER) && env.has_var(name)
 }
 
 ///|

@@ -43,7 +43,22 @@ pub(all) struct Environment {
   /// stdlib init time; consumed by Error.isError.  Stored per-Environment so
   /// future Realm work isolates correctly.
   error_class_names : Map[String, Unit]
+  /// Internal marker names used for scope metadata that must not collide with
+  /// real JavaScript bindings. Static markers use a fixed key; eval-created
+  /// deletable vars use `eval_deletable_var_marker(name)` per binding.
+  markers : Map[String, Bool]
 }
+
+///|
+const EVAL_DELETABLE_VAR_PREFIX = "[[EvalDeletableVar]]:"
+
+///|
+fn eval_deletable_var_marker(name : String) -> String {
+  EVAL_DELETABLE_VAR_PREFIX + name
+}
+
+///|
+const EVAL_FUNCTION_RECONCILE_MARKER = "[[EvalFunctionReconcile]]"
 
 ///|
 const THIS_INITIALIZED_BY_SUPER_MARKER = "[[ThisInitializedBySuper]]"
@@ -62,6 +77,29 @@ pub fn Environment::new(parent? : Environment? = None) -> Environment {
     realm_state,
     interpreter_context,
     error_class_names: {},
+    markers: {},
+  }
+}
+
+///|
+fn Environment::set_marker(self : Environment, name : String) -> Unit {
+  self.markers[name] = true
+}
+
+///|
+fn Environment::has_marker(self : Environment, name : String) -> Bool {
+  self.markers.contains(name)
+}
+
+///|
+fn Environment::has_marker_in_chain(self : Environment, name : String) -> Bool {
+  if self.markers.contains(name) {
+    true
+  } else {
+    match self.parent {
+      Some(parent) => parent.has_marker_in_chain(name)
+      None => false
+    }
   }
 }
 
@@ -69,9 +107,7 @@ pub fn Environment::new(parent? : Environment? = None) -> Environment {
 /// Walk up the scope chain to find the nearest variable environment
 /// (function or global scope where var declarations are hoisted to).
 pub fn Environment::find_var_env(self : Environment) -> Environment {
-  if self.is_var_scope {
-    return self
-  }
+  guard !self.is_var_scope else { return self }
   match self.parent {
     Some(parent) => parent.find_var_env()
     None => self // Global scope (no parent) is always a variable scope
@@ -186,7 +222,7 @@ pub fn Environment::initialize_in_chain(
   match self.bindings.get(name) {
     Some(binding) => {
       if name == "this" {
-        let initialized_by_super = self.bindings.contains(
+        let initialized_by_super = self.has_marker(
           THIS_INITIALIZED_BY_SUPER_MARKER,
         )
         if binding.initialized &&
@@ -199,13 +235,7 @@ pub fn Environment::initialize_in_chain(
       binding.value = value
       binding.initialized = true
       if name == "this" {
-        self.bindings[THIS_INITIALIZED_BY_SUPER_MARKER] = {
-          value: Bool(true),
-          kind: VarBinding,
-          initialized: true,
-          annex_b_hoisted: false,
-          is_parameter: false,
-        }
+        self.set_marker(THIS_INITIALIZED_BY_SUPER_MARKER)
       }
     }
     None =>

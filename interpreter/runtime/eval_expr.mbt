@@ -2739,21 +2739,6 @@ pub fn eval_delete_computed_property(
 }
 
 ///|
-fn env_has_binding_ignoring_with(env : Environment, name : String) -> Bool {
-  match env.bindings.get(name) {
-    Some(_) => true
-    None =>
-      match env.parent {
-        Some(parent) => env_has_binding_ignoring_with(parent, name)
-        None => false
-      }
-  }
-}
-
-///|
-const EVAL_DELETABLE_VAR_PREFIX = "[[EvalDeletableVar]]:"
-
-///|
 fn env_delete_binding_ignoring_with(env : Environment, name : String) -> Bool {
   if env.bindings.contains(name) {
     let _ = env.bindings.remove(name)
@@ -2785,10 +2770,7 @@ pub fn eval_delete_identifier(
     None =>
       match env.resolve_binding_env(name) {
         Some(target_env) =>
-          if env_has_binding_ignoring_with(
-              target_env,
-              EVAL_DELETABLE_VAR_PREFIX + name,
-            ) {
+          if target_env.has_marker_in_chain(eval_deletable_var_marker(name)) {
             // Only delete if target_env actually has the eval-created var
             // binding. resolve_binding_env may have returned a shadowing
             // let/const from an inner scope — we must not delete that.
