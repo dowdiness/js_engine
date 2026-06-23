@@ -471,6 +471,7 @@ pub(all) struct Environment {
   mut realm_state : RealmState?
   mut interpreter_context : Interpreter?
   error_class_names : Map[String, Unit]
+  markers : Map[String, Bool]
 }
 pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::assign_var(Self, String, Value) -> Unit raise

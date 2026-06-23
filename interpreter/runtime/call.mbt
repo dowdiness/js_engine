@@ -502,7 +502,7 @@ pub fn Interpreter::perform_eval(
     // Per §B.3.4, catch environments are transparent for this check. Our env
     // model does not distinguish catch envs from other block envs, so that
     // edge case remains a known gap (see agent-todo).
-    exec_env.def(EVAL_FUNCTION_RECONCILE_MARKER, Bool(true), LetBinding)
+    exec_env.set_marker(EVAL_FUNCTION_RECONCILE_MARKER)
     {
       let mut this_lex = exec_env
       while !this_lex.is_var_scope {
@@ -521,7 +521,7 @@ pub fn Interpreter::perform_eval(
     }
     for name in var_names {
       if !var_env.bindings.contains(name) {
-        var_env.def(EVAL_DELETABLE_VAR_PREFIX + name, Bool(true), LetBinding)
+        var_env.set_marker(eval_deletable_var_marker(name))
       }
     }
     // Non-strict eval: hoist var/function to the variable environment (leak),

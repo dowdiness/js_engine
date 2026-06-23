@@ -40,7 +40,7 @@ fn Interpreter::bind_function_decl_value(
     Some(VarBinding) => env.assign(name, func_val)
     Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
     None =>
-      if env_has_binding_ignoring_with(env, EVAL_DELETABLE_VAR_PREFIX + name) &&
+      if env.has_marker_in_chain(eval_deletable_var_marker(name)) &&
         !env.has_var(name) &&
         env.parent is Some(p) &&
         physical_equal(p, env.find_var_env()) {
@@ -208,7 +208,7 @@ fn Interpreter::exec_stmt(
           }
         }
       } else if bk == VarBinding &&
-        env_has_binding_ignoring_with(env, EVAL_DELETABLE_VAR_PREFIX + name) {
+        env.has_marker_in_chain(eval_deletable_var_marker(name)) {
         // Marker exists — check if the binding was deleted by a prior
         // `delete` in the same eval.
         if env.has_var(name) {
