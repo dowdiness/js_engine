@@ -1120,7 +1120,13 @@ fn Interpreter::eval_expr(
       // Check if the target is a non-writable property on the global object
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
       // in non-strict mode the assignment is silently ignored.
-      if resolved_env is None && self.is_immutable_global(name) {
+      // Check both unresolvable references AND global-env bindings, since
+      // undefined/NaN/Infinity are installed as global env bindings.
+      let is_global_or_missing = match resolved_env {
+        None => true
+        Some(e) => e.parent is None
+      }
+      if is_global_or_missing && self.is_immutable_global(name) {
         if ctx.strict {
           raise @errors.TypeError(
             message="Cannot assign to read only property '\{name}' of object '[object global]'",
@@ -2807,15 +2813,25 @@ pub fn eval_delete_identifier(
               _ => Bool(false)
             }
           } else if target_env.parent is None {
-            match interp.global_this {
-              Object(data) =>
-                match data.bag.descriptors.get(name) {
-                  Some(desc) if desc.configurable => {
-                    let _ = env_delete_binding_ignoring_with(target_env, name)
-                    let _ = data.bag.properties.remove(name)
-                    let _ = data.bag.descriptors.remove(name)
-                    Bool(true)
-                  }
+            // Only delete if the binding is a VarBinding, not let/const.
+            // A global let/const is non-configurable and must not be
+            // deleted even when globalThis has a configurable property
+            // with the same name (e.g. after defineProperty).
+            match target_env.bindings.get(name) {
+              Some(binding) if binding.kind == VarBinding =>
+                match interp.global_this {
+                  Object(data) =>
+                    match data.bag.descriptors.get(name) {
+                      Some(desc) if desc.configurable => {
+                        let _ = env_delete_binding_ignoring_with(
+                          target_env, name,
+                        )
+                        let _ = data.bag.properties.remove(name)
+                        let _ = data.bag.descriptors.remove(name)
+                        Bool(true)
+                      }
+                      _ => Bool(false)
+                    }
                   _ => Bool(false)
                 }
               _ => Bool(false)
