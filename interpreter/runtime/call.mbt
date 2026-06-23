@@ -521,7 +521,7 @@ pub fn Interpreter::perform_eval(
     }
     for name in var_names {
       if !var_env.bindings.contains(name) {
-        exec_env.def(EVAL_DELETABLE_VAR_PREFIX + name, Bool(true), LetBinding)
+        var_env.def(EVAL_DELETABLE_VAR_PREFIX + name, Bool(true), LetBinding)
       }
     }
     // Non-strict eval: hoist var/function to the variable environment (leak),

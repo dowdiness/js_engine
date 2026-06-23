@@ -523,22 +523,32 @@ fn with_object_get(
 ) -> Value? raise Error {
   match interp_context {
     Some(interp) => {
-      let had_own = with_object_has_own_direct(obj, name)
-      if interp.has_property_key(obj, String_(name)) &&
-        !is_blocked_by_unscopables(interp, obj, name) {
-        match obj {
-          Object(_) if had_own && !with_object_has_own_direct(obj, name) =>
-            if strict {
+      // Check if the property exists (spec's HasProperty). For proxies
+      // this triggers the has trap exactly once.
+      let has_prop = interp.has_property_key(obj, String_(name))
+      if has_prop {
+        // Record own-property status BEFORE the @@unscopables getter
+        // runs, since the getter may delete own properties as a side
+        // effect. Use non-trapping direct-bag check for this.
+        let had_own = with_object_has_own_direct(obj, name)
+        if !is_blocked_by_unscopables(interp, obj, name) {
+          // The property is not blocked. If the unscopables getter
+          // deleted an own property, check whether the prototype
+          // chain still provides it (non-proxy path).
+          let still_own = with_object_has_own_direct(obj, name)
+          if had_own &&
+            !still_own &&
+            !interp.has_property_key(obj, String_(name)) {
+            return if strict {
               raise @errors.ReferenceError(message="\{name} is not defined")
             } else {
-              return Some(Undefined)
+              Some(Undefined)
             }
-          _ =>
-            return Some(interp.get_property(obj, name, @token.Loc::default()))
+          }
+          return Some(interp.get_property(obj, name, @token.Loc::default()))
         }
-      } else {
-        return None
       }
+      return None
     }
     None => ()
   }

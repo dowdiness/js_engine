@@ -40,7 +40,7 @@ fn Interpreter::bind_function_decl_value(
     Some(VarBinding) => env.assign(name, func_val)
     Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
     None =>
-      if env.bindings.contains(EVAL_DELETABLE_VAR_PREFIX + name) &&
+      if env_has_binding_ignoring_with(env, EVAL_DELETABLE_VAR_PREFIX + name) &&
         !env.has_var(name) {
         ()
       } else if should_reconcile_eval_function_decl(env, name) {
