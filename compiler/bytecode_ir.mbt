@@ -216,6 +216,10 @@ priv enum BytecodeInstr {
   JumpIfFalseKeep(Int)
   JumpIfTrueKeep(Int)
   JumpIfNotNullishKeep(Int)
+  BeginOptionalChain
+  MarkOptionalChainShortCircuit
+  JumpIfNotOptionalChainShortCircuitKeep(Int)
+  EndOptionalChain
   StartForIn
   ForInNext(Int)
   EndForIn

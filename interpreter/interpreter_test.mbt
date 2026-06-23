@@ -185,6 +185,107 @@ fn expect_throw(source : String, expected : String) -> Unit raise Error {
 }
 
 ///|
+test "optional chain continuation short-circuits on undefined only" {
+  let src =
+    #|var a = { b: null };
+    #|var hit = 0;
+    #|try {
+    #|  a?.b.c(hit = 1);
+    #|  "no error";
+    #|} catch (e) {
+    #|  e.message + "," + hit;
+    #|}
+  expect_result(run(src), "Cannot read properties of null (reading 'c'),0")
+}
+
+///|
+test "optional chain continuation property null falls through" {
+  let src =
+    #|var a = { b: null };
+    #|try { a?.b.c; } catch (e) { e.message; }
+  expect_result(run(src), "Cannot read properties of null (reading 'c')")
+}
+
+///|
+test "optional chain throws when intermediate property is undefined" {
+  let src =
+    #|var a = { b: undefined };
+    #|try { a?.b.c; } catch (e) { e.message; }
+  expect_result(run(src), "Cannot read properties of undefined (reading 'c')")
+}
+
+///|
+test "optional chain computed key runs when intermediate property is undefined" {
+  let src =
+    #|var a = { b: undefined };
+    #|var hit = 0;
+    #|try { a?.b[(hit = 1, "c")]; } catch (e) { e.message + "," + hit; }
+  expect_result(run(src), "Cannot read properties of undefined (reading 'c'),1")
+}
+
+///|
+test "optional chain throws when continuation call returns undefined" {
+  let src =
+    #|var a = { b: function() {} };
+    #|try { a?.b().c; } catch (e) { e.message; }
+  expect_result(run(src), "Cannot read properties of undefined (reading 'c')")
+}
+
+///|
+test "optional chain base short-circuits continuation after call" {
+  let src =
+    #|var a = null;
+    #|a?.b().c;
+  expect_result(run(src), "undefined")
+}
+
+///|
+test "optional chain explicit optional continuation catches null" {
+  let src =
+    #|var a = { b: null };
+    #|a?.b?.c;
+  expect_result(run(src), "undefined")
+}
+
+///|
+test "optional chain base short-circuits plain continuation" {
+  let src =
+    #|var a = null;
+    #|a?.b.c;
+  expect_result(run(src), "undefined")
+}
+
+///|
+test "optional chain base short-circuits plain continuation call arguments" {
+  let src =
+    #|var a = null;
+    #|var hit = 0;
+    #|a?.b.c(hit = 1);
+    #|hit;
+  expect_result(run(src), "0")
+}
+
+///|
+test "optional chain base short-circuits optional continuation" {
+  let src =
+    #|var a = null;
+    #|a?.b?.c;
+  expect_result(run(src), "undefined")
+}
+
+///|
+test "optional chain continuation preserves object key order" {
+  let src =
+    #|var log = "";
+    #|var xs = [{ x: 5 }];
+    #|function obj() { log = log + "o"; return xs; }
+    #|function key() { log = log + "k"; return 0; }
+    #|var value = obj()?.[key()].x;
+    #|log + ":" + value;
+  expect_result(run(src), "ok:5")
+}
+
+///|
 fn expect_first_output(
   output : Array[String],
   expected : String,

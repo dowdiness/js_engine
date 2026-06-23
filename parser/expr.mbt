@@ -630,7 +630,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       let name = self.expect_ident_name()
       let loc = self.peek().loc
       if in_optional_chain {
-        expr = OptionalMember(expr, name, loc)
+        expr = ChainMember(expr, name, loc)
       } else {
         expr = Member(expr, name, loc)
       }
@@ -639,7 +639,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       let key = self.parse_expr()
       let _ = self.expect(RBracket)
       if in_optional_chain {
-        expr = OptionalComputedMember(expr, key, loc)
+        expr = ChainComputedMember(expr, key, loc)
       } else {
         expr = ComputedMember(expr, key, loc)
       }

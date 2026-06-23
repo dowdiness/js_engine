@@ -109,8 +109,9 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
       .any(fn(prop) {
         expr_may_contain_yield(prop.key) || expr_may_contain_yield(prop.value)
       })
-    OptionalMember(obj, _, _) => expr_may_contain_yield(obj)
-    OptionalComputedMember(obj, key, _) =>
+    OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
+      expr_may_contain_yield(obj)
+    OptionalComputedMember(obj, key, _) | ChainComputedMember(obj, key, _) =>
       expr_may_contain_yield(obj) || expr_may_contain_yield(key)
     TemplateLit(_, exprs, _) => exprs.iter().any(expr_may_contain_yield)
     TaggedTemplate(tag, _, exprs, _) =>
@@ -839,6 +840,234 @@ pub fn Interpreter::copy_object_spread_properties(
 }
 
 ///|
+/// If func_val is null/undefined, short-circuit to (Undefined, true).
+/// Otherwise evaluate arguments and call with the given receiver.
+/// Shared tail for all OptionalCall arms.
+fn Interpreter::eval_optional_call_tail(
+  self : Interpreter,
+  ctx : ExecContext,
+  func_val : Value,
+  receiver : Value,
+  arg_exprs : Array[@ast.Expr],
+  env : Environment,
+  loc : @token.Loc,
+) -> (Value, Bool) raise Error {
+  match func_val {
+    Null | Undefined => (Undefined, true)
+    _ => {
+      let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+      (self.call_value(func_val, receiver, args, loc), false)
+    }
+  }
+}
+
+///|
+fn Interpreter::eval_chain_expr(
+  self : Interpreter,
+  ctx : ExecContext,
+  expr : @ast.Expr,
+  env : Environment,
+) -> (Value, Bool) raise Error {
+  match expr {
+    OptionalMember(obj_expr, prop, loc) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      match obj {
+        Null | Undefined => (Undefined, true)
+        _ => (self.get_property(obj, prop, loc), false)
+      }
+    }
+    OptionalComputedMember(obj_expr, key_expr, loc) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      match obj {
+        Null | Undefined => (Undefined, true)
+        _ => {
+          let key = self.eval_expr(ctx, key_expr, env)
+          (self.get_computed_property(obj, key, loc), false)
+        }
+      }
+    }
+    ChainMember(obj_expr, prop, loc) => {
+      let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+      if short_circuited {
+        (Undefined, true)
+      } else {
+        (self.get_property(obj, prop, loc), false)
+      }
+    }
+    ChainComputedMember(obj_expr, key_expr, loc) => {
+      let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+      if short_circuited {
+        (Undefined, true)
+      } else {
+        let key = self.eval_expr(ctx, key_expr, env)
+        (self.get_computed_property(obj, key, loc), false)
+      }
+    }
+    OptionalCall(callee_expr, arg_exprs, loc) => {
+      // Peel grouping parentheses to recover the reference/receiver (§13.2.9).
+      // Grouping preserves the Reference, so (a.b)?.() should call with this=a.
+      let unwrapped = unwrap_grouping(callee_expr)
+      match unwrapped {
+        OptionalMember(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => (Undefined, true)
+            _ => {
+              let func_val = self.get_property(obj, prop, mloc)
+              self.eval_optional_call_tail(
+                ctx, func_val, obj, arg_exprs, env, loc,
+              )
+            }
+          }
+        }
+        ChainMember(obj_expr, prop, mloc) => {
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+          if short_circuited {
+            (Undefined, true)
+          } else {
+            let func_val = self.get_property(obj, prop, mloc)
+            self.eval_optional_call_tail(
+              ctx, func_val, obj, arg_exprs, env, loc,
+            )
+          }
+        }
+        OptionalComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => (Undefined, true)
+            _ => {
+              let key = self.eval_expr(ctx, key_expr, env)
+              let func_val = self.get_computed_property(obj, key, mloc)
+              self.eval_optional_call_tail(
+                ctx, func_val, obj, arg_exprs, env, loc,
+              )
+            }
+          }
+        }
+        ChainComputedMember(obj_expr, key_expr, mloc) => {
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+          if short_circuited {
+            (Undefined, true)
+          } else {
+            let key = self.eval_expr(ctx, key_expr, env)
+            let func_val = self.get_computed_property(obj, key, mloc)
+            self.eval_optional_call_tail(
+              ctx, func_val, obj, arg_exprs, env, loc,
+            )
+          }
+        }
+        Member(obj_expr, prop, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let func_val = self.get_property(obj, prop, mloc)
+          self.eval_optional_call_tail(ctx, func_val, obj, arg_exprs, env, loc)
+        }
+        ComputedMember(obj_expr, key_expr, mloc) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let key = self.eval_expr(ctx, key_expr, env)
+          let func_val = self.get_computed_property(obj, key, mloc)
+          self.eval_optional_call_tail(ctx, func_val, obj, arg_exprs, env, loc)
+        }
+        SuperMember(prop, sloc) => {
+          let (this_val, func_val) = self.eval_super_property_call_reference(
+            env, prop, sloc,
+          )
+          self.eval_optional_call_tail(
+            ctx, func_val, this_val, arg_exprs, env, loc,
+          )
+        }
+        SuperComputedMember(key_expr, sloc) => {
+          let _ = eval_this_value(env)
+          let key = self.eval_expr(ctx, key_expr, env)
+          let (this_val, func_val) = self.eval_super_computed_call_reference(
+            env, key, sloc,
+          )
+          self.eval_optional_call_tail(
+            ctx, func_val, this_val, arg_exprs, env, loc,
+          )
+        }
+        _ => {
+          let callee = self.eval_expr(ctx, callee_expr, env)
+          match callee {
+            Null | Undefined => (Undefined, true)
+            _ => {
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              (self.call_value(callee, Undefined, args, loc), false)
+            }
+          }
+        }
+      }
+    }
+    // Call(OptionalCall(...), ...): continuation call after an optional call.
+    // If the inner OptionalCall short-circuits, propagate short-circuit.
+    // Otherwise the inner call produced a value; call it with no receiver.
+    // Must recurse on the inner OptionalCall, not on `expr` (which is the
+    // outer Call), to avoid infinite recursion.
+    Call(
+      OptionalCall(inner_callee, inner_args, inner_loc),
+      continuation_args,
+      loc
+    ) => {
+      let (value, short_circuited) = self.eval_chain_expr(
+        ctx,
+        OptionalCall(inner_callee, inner_args, inner_loc),
+        env,
+      )
+      if short_circuited {
+        (Undefined, true)
+      } else {
+        let args = self.eval_args_with_spread(ctx, continuation_args, env)
+        (self.call_value(value, Undefined, args, loc), false)
+      }
+    }
+    Call(OptionalMember(obj_expr, prop, mloc), arg_exprs, loc) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      match obj {
+        Null | Undefined => (Undefined, true)
+        _ => {
+          let func_val = self.get_property(obj, prop, mloc)
+          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+          (self.call_value(func_val, obj, args, loc), false)
+        }
+      }
+    }
+    Call(ChainMember(obj_expr, prop, mloc), arg_exprs, loc) => {
+      let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+      if short_circuited {
+        (Undefined, true)
+      } else {
+        let func_val = self.get_property(obj, prop, mloc)
+        let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+        (self.call_value(func_val, obj, args, loc), false)
+      }
+    }
+    Call(OptionalComputedMember(obj_expr, key_expr, mloc), arg_exprs, loc) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      match obj {
+        Null | Undefined => (Undefined, true)
+        _ => {
+          let key = self.eval_expr(ctx, key_expr, env)
+          let func_val = self.get_computed_property(obj, key, mloc)
+          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+          (self.call_value(func_val, obj, args, loc), false)
+        }
+      }
+    }
+    Call(ChainComputedMember(obj_expr, key_expr, mloc), arg_exprs, loc) => {
+      let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+      if short_circuited {
+        (Undefined, true)
+      } else {
+        let key = self.eval_expr(ctx, key_expr, env)
+        let func_val = self.get_computed_property(obj, key, mloc)
+        let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+        (self.call_value(func_val, obj, args, loc), false)
+      }
+    }
+    _ => (self.eval_expr(ctx, expr, env), false)
+  }
+}
+
+///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -1444,11 +1673,18 @@ fn Interpreter::eval_expr(
         }
       }
     }
-    OptionalCall(callee_expr, arg_exprs, loc) =>
+    ChainMember(_, _, _) | ChainComputedMember(_, _, _) => {
+      let (value, _) = self.eval_chain_expr(ctx, expr, env)
+      value
+    }
+    OptionalCall(callee_expr, arg_exprs, loc) => {
       // func?.(args) - return undefined if func is null/undefined
       // Per ES spec, arguments are NOT evaluated if function is nullish
       // Need to preserve receiver for method calls
-      match callee_expr {
+      // Peel grouping parentheses to recover the reference/receiver (§13.2.9).
+      // Grouping preserves the Reference, so (a.b)?.() should call with this=a.
+      let unwrapped = unwrap_grouping(callee_expr)
+      match unwrapped {
         OptionalMember(obj_expr, prop, mloc) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
           match obj {
@@ -1482,6 +1718,37 @@ fn Interpreter::eval_expr(
             }
           }
         }
+        ChainMember(obj_expr, prop, mloc) => {
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+          if short_circuited {
+            Undefined
+          } else {
+            let func_val = self.get_property(obj, prop, mloc)
+            match func_val {
+              Null | Undefined => Undefined
+              _ => {
+                let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+                self.call_value(func_val, obj, args, loc)
+              }
+            }
+          }
+        }
+        ChainComputedMember(obj_expr, key_expr, mloc) => {
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+          if short_circuited {
+            Undefined
+          } else {
+            let key = self.eval_expr(ctx, key_expr, env)
+            let func_val = self.get_computed_property(obj, key, mloc)
+            match func_val {
+              Null | Undefined => Undefined
+              _ => {
+                let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+                self.call_value(func_val, obj, args, loc)
+              }
+            }
+          }
+        }
         Member(obj_expr, prop, mloc) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
           let func_val = self.get_property(obj, prop, mloc)
@@ -1505,6 +1772,32 @@ fn Interpreter::eval_expr(
             }
           }
         }
+        SuperMember(prop, sloc) => {
+          let (this_val, func_val) = self.eval_super_property_call_reference(
+            env, prop, sloc,
+          )
+          match func_val {
+            Null | Undefined => Undefined
+            _ => {
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, this_val, args, loc)
+            }
+          }
+        }
+        SuperComputedMember(key_expr, sloc) => {
+          let _ = eval_this_value(env)
+          let key = self.eval_expr(ctx, key_expr, env)
+          let (this_val, func_val) = self.eval_super_computed_call_reference(
+            env, key, sloc,
+          )
+          match func_val {
+            Null | Undefined => Undefined
+            _ => {
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, this_val, args, loc)
+            }
+          }
+        }
         _ => {
           let callee = self.eval_expr(ctx, callee_expr, env)
           match callee {
@@ -1516,6 +1809,7 @@ fn Interpreter::eval_expr(
           }
         }
       }
+    }
     ClassExpr(name, superclass, methods, _, source_text) => {
       // For named class expressions, the name is visible inside the class body
       // but not in the outer scope. Create a new scope for this.
@@ -2544,6 +2838,43 @@ fn Interpreter::eval_unary(
           let obj = self.eval_expr(ctx, obj_expr, env)
           let key = self.eval_expr(ctx, key_expr, env)
           eval_delete_computed_property(self, obj, key, ctx.strict)
+        }
+        OptionalMember(obj_expr, prop, _) => {
+          // delete o?.x: evaluate obj_expr directly, check nullish, delete
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Bool(true)
+            _ => eval_delete_property(self, obj, prop, ctx.strict)
+          }
+        }
+        OptionalComputedMember(obj_expr, key_expr, _) => {
+          // delete o?.[x]: evaluate obj_expr directly, check nullish, delete
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          match obj {
+            Null | Undefined => Bool(true)
+            _ => {
+              let key = self.eval_expr(ctx, key_expr, env)
+              eval_delete_computed_property(self, obj, key, ctx.strict)
+            }
+          }
+        }
+        ChainMember(obj_expr, prop, _) => {
+          // delete chain-member: evaluate chain up to base object, delete prop
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+          if short_circuited {
+            Bool(true)
+          } else {
+            eval_delete_property(self, obj, prop, ctx.strict)
+          }
+        }
+        ChainComputedMember(obj_expr, key_expr, _) => {
+          let (obj, short_circuited) = self.eval_chain_expr(ctx, obj_expr, env)
+          if short_circuited {
+            Bool(true)
+          } else {
+            let key = self.eval_expr(ctx, key_expr, env)
+            eval_delete_computed_property(self, obj, key, ctx.strict)
+          }
         }
         Ident(name, _) => eval_delete_identifier(self, ctx, env, name)
         _ => Bool(true)

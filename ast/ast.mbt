@@ -134,6 +134,8 @@ pub(all) enum Expr {
   OptionalMember(Expr, String, @token.Loc) // obj?.prop
   OptionalComputedMember(Expr, Expr, @token.Loc) // obj?.[expr]
   OptionalCall(Expr, Array[Expr], @token.Loc) // func?.(args)
+  ChainMember(Expr, String, @token.Loc) // optional chain continuation .prop
+  ChainComputedMember(Expr, Expr, @token.Loc) // optional chain continuation [expr]
   // Class expressions
   ClassExpr(String?, Expr?, Array[ClassMember], @token.Loc, String?) // name, superclass, members, source_text
   SuperCall(Array[Expr], @token.Loc) // super(args)

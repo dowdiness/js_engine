@@ -1446,7 +1446,9 @@ pub fn Interpreter::set_computed_property(
             _ => ()
           }
           let i = n.to_int()
-          if i >= 0 {
+          // Only treat as array index if n is an exact, non-negative integer.
+          // Non-integer keys like 1.1 must be stored as named properties.
+          if i >= 0 && i.to_double() == n {
             let prop = i.to_string()
             let logical_len64 = match get_array_length_override(data) {
               Some(n64) => n64
@@ -1526,6 +1528,10 @@ pub fn Interpreter::set_computed_property(
               new_len > data.elements.length().to_int64() {
               set_array_length_override(data, new_len)
             }
+          } else {
+            // Non-integer numeric key (e.g., 1.1, -0.5): delegate to set_property
+            // to enforce descriptor, extensibility, and prototype-chain checks.
+            return self.set_property(obj, prop64, value, loc, strict~)
           }
           value
         }

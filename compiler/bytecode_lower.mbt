@@ -326,9 +326,11 @@ fn collect_nested_function_refs_from_expr(
         collect_nested_function_refs_from_expr(arg, refs)
       }
     }
-    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       collect_nested_function_refs_from_expr(obj, refs)
-    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) => {
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) => {
       collect_nested_function_refs_from_expr(obj, refs)
       collect_nested_function_refs_from_expr(key, refs)
     }
@@ -588,9 +590,11 @@ fn collect_name_refs_from_expr(
         collect_name_refs_from_expr(arg, refs, nested_functions~)
       }
     }
-    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       collect_name_refs_from_expr(obj, refs, nested_functions~)
-    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) => {
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) => {
       collect_name_refs_from_expr(obj, refs, nested_functions~)
       collect_name_refs_from_expr(key, refs, nested_functions~)
     }
@@ -923,9 +927,11 @@ fn bytecode_expr_references_outer_arguments(expr : @ast.Expr) -> Bool {
       }
       false
     }
-    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       bytecode_expr_references_outer_arguments(obj)
-    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) =>
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) =>
       bytecode_expr_references_outer_arguments(obj) ||
       bytecode_expr_references_outer_arguments(key)
     SuperComputedMember(key, _) => bytecode_expr_references_outer_arguments(key)
@@ -1228,9 +1234,11 @@ fn bytecode_expr_contains_destructure_assign(expr : @ast.Expr) -> Bool {
       }
       false
     }
-    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       bytecode_expr_contains_destructure_assign(obj)
-    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) =>
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) =>
       bytecode_expr_contains_destructure_assign(obj) ||
       bytecode_expr_contains_destructure_assign(key)
     SuperComputedMember(key, _) =>
@@ -2127,20 +2135,212 @@ fn BytecodeBuilder::compile_nullish_coalesce(
 }
 
 ///|
+/// Emit the nullish-guard preamble for an optional chain step that starts
+/// with a `?.` (question-dot). If the value on the stack is null/undefined,
+/// pop it, push Undefined, mark short-circuit, and route to the end label.
+/// Repeat of the `JumpIfNotNullishKeep / Pop / LoadUndefined / MarkOptionalChainShortCircuit / Jump` pattern.
+fn BytecodeBuilder::emit_optional_null_guard(
+  self : BytecodeBuilder,
+  end_jumps : Array[Int],
+) -> Unit {
+  let jump = self.emit(JumpIfNotNullishKeep(-1))
+  let _ = self.emit(Pop)
+  let _ = self.emit(LoadUndefined)
+  let _ = self.emit(MarkOptionalChainShortCircuit)
+  end_jumps.push(self.emit(Jump(-1)))
+  self.patch(jump, JumpIfNotNullishKeep(self.code.length()))
+}
+
+///|
+/// Emit the chain short-circuit guard for a chain continuation.
+/// If the optional chain already short-circuited (flag set), jump to the end.
+/// Repeat of the `JumpIfNotOptionalChainShortCircuitKeep / Jump` pattern.
+fn BytecodeBuilder::emit_chain_short_circuit_guard(
+  self : BytecodeBuilder,
+  end_jumps : Array[Int],
+) -> Unit {
+  let jump = self.emit(JumpIfNotOptionalChainShortCircuitKeep(-1))
+  end_jumps.push(self.emit(Jump(-1)))
+  self.patch(jump, JumpIfNotOptionalChainShortCircuitKeep(self.code.length()))
+}
+
+///|
+fn BytecodeBuilder::compile_optional_chain_expr_body(
+  self : BytecodeBuilder,
+  expr : @ast.Expr,
+  end_jumps : Array[Int],
+) -> Unit raise Error {
+  match expr {
+    OptionalMember(obj, prop, loc) => {
+      self.compile_expr(obj)
+      self.emit_optional_null_guard(end_jumps)
+      let _ = self.emit(GetProperty(prop, loc))
+    }
+    OptionalComputedMember(obj, key, loc) => {
+      self.compile_expr(obj)
+      self.emit_optional_null_guard(end_jumps)
+      self.compile_expr(key)
+      let _ = self.emit(GetComputed(loc))
+    }
+    ChainMember(obj, prop, loc) => {
+      self.compile_optional_chain_expr_body(obj, end_jumps)
+      self.emit_chain_short_circuit_guard(end_jumps)
+      let _ = self.emit(GetProperty(prop, loc))
+    }
+    ChainComputedMember(obj, key, loc) => {
+      self.compile_optional_chain_expr_body(obj, end_jumps)
+      self.emit_chain_short_circuit_guard(end_jumps)
+      self.compile_expr(key)
+      let _ = self.emit(GetComputed(loc))
+    }
+    OptionalCall(callee, args, loc) => {
+      // Peel grouping wrappers to recover member receivers for receiver binding,
+      // matching the tree-walker's unwrap_grouping in eval_chain_expr.
+      let unwrapped = match callee {
+        Grouping(inner, _) => inner
+        _ => callee
+      }
+      match unwrapped {
+        OptionalMember(obj, prop, member_loc) => {
+          self.compile_expr(obj)
+          self.emit_optional_null_guard(end_jumps)
+          let _ = self.emit(PreparePropertyCall(prop, member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
+        ChainMember(obj, prop, member_loc) => {
+          self.compile_optional_chain_expr_body(obj, end_jumps)
+          self.emit_chain_short_circuit_guard(end_jumps)
+          let _ = self.emit(PreparePropertyCall(prop, member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
+        OptionalComputedMember(obj, key, member_loc) => {
+          self.compile_expr(obj)
+          self.emit_optional_null_guard(end_jumps)
+          self.compile_expr(key)
+          let _ = self.emit(PrepareComputedCall(member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
+        ChainComputedMember(obj, key, member_loc) => {
+          self.compile_optional_chain_expr_body(obj, end_jumps)
+          self.emit_chain_short_circuit_guard(end_jumps)
+          self.compile_expr(key)
+          let _ = self.emit(PrepareComputedCall(member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
+        Member(obj, prop, member_loc) => {
+          // Grouping(Member(...)) recovered — compile with receiver preservation.
+          self.compile_expr(obj)
+          let _ = self.emit(PreparePropertyCall(prop, member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
+        ComputedMember(obj, key, member_loc) => {
+          self.compile_expr(obj)
+          self.compile_expr(key)
+          let _ = self.emit(PrepareComputedCall(member_loc))
+          self.compile_optional_chain_call_with_receiver_tail(
+            args,
+            loc,
+            end_jumps,
+            optional_callee=true,
+          )
+        }
+        _ => {
+          self.compile_expr(callee)
+          self.emit_optional_null_guard(end_jumps)
+          self.emit_call(args, loc)
+        }
+      }
+    }
+    Call(OptionalMember(obj, prop, member_loc), args, loc) => {
+      self.compile_expr(obj)
+      self.emit_optional_null_guard(end_jumps)
+      let _ = self.emit(PreparePropertyCall(prop, member_loc))
+      self.emit_call_with_receiver(args, loc)
+    }
+    Call(ChainMember(obj, prop, member_loc), args, loc) => {
+      self.compile_optional_chain_expr_body(obj, end_jumps)
+      self.emit_chain_short_circuit_guard(end_jumps)
+      let _ = self.emit(PreparePropertyCall(prop, member_loc))
+      self.emit_call_with_receiver(args, loc)
+    }
+    Call(OptionalComputedMember(obj, key, member_loc), args, loc) => {
+      self.compile_expr(obj)
+      self.emit_optional_null_guard(end_jumps)
+      self.compile_expr(key)
+      let _ = self.emit(PrepareComputedCall(member_loc))
+      self.emit_call_with_receiver(args, loc)
+    }
+    Call(ChainComputedMember(obj, key, member_loc), args, loc) => {
+      self.compile_optional_chain_expr_body(obj, end_jumps)
+      self.emit_chain_short_circuit_guard(end_jumps)
+      self.compile_expr(key)
+      let _ = self.emit(PrepareComputedCall(member_loc))
+      self.emit_call_with_receiver(args, loc)
+    }
+    // Call(OptionalCall(...), ...): continuation call after an optional call.
+    // The inner OptionalCall handles its own nullish check and sets the
+    // short-circuit flag if the callee was null. Here we check that flag:
+    // if short-circuited, skip the continuation call; otherwise call the
+    // inner call's result with the continuation arguments.
+    Call(OptionalCall(callee, inner_args, inner_loc), continuation_args, loc) => {
+      self.compile_optional_chain_expr_body(
+        OptionalCall(callee, inner_args, inner_loc),
+        end_jumps,
+      )
+      self.emit_chain_short_circuit_guard(end_jumps)
+      self.emit_call(continuation_args, loc)
+    }
+    _ => self.compile_expr(expr)
+  }
+}
+
+///|
+fn BytecodeBuilder::compile_optional_chain_expr(
+  self : BytecodeBuilder,
+  expr : @ast.Expr,
+) -> Unit raise Error {
+  let end_jumps : Array[Int] = []
+  let _ = self.emit(BeginOptionalChain)
+  self.compile_optional_chain_expr_body(expr, end_jumps)
+  for jump in end_jumps {
+    self.patch(jump, Jump(self.code.length()))
+  }
+  let _ = self.emit(EndOptionalChain)
+}
+
+///|
 fn BytecodeBuilder::compile_optional_member(
   self : BytecodeBuilder,
   obj : @ast.Expr,
   prop : String,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  self.compile_expr(obj)
-  let get_jump = self.emit(JumpIfNotNullishKeep(-1))
-  let _ = self.emit(Pop)
-  let _ = self.emit(LoadUndefined)
-  let end_jump = self.emit(Jump(-1))
-  self.patch(get_jump, JumpIfNotNullishKeep(self.code.length()))
-  let _ = self.emit(GetProperty(prop, loc))
-  self.patch(end_jump, Jump(self.code.length()))
+  self.compile_optional_chain_expr(OptionalMember(obj, prop, loc))
 }
 
 ///|
@@ -2150,15 +2350,27 @@ fn BytecodeBuilder::compile_optional_computed_member(
   key : @ast.Expr,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  self.compile_expr(obj)
-  let get_jump = self.emit(JumpIfNotNullishKeep(-1))
-  let _ = self.emit(Pop)
-  let _ = self.emit(LoadUndefined)
-  let end_jump = self.emit(Jump(-1))
-  self.patch(get_jump, JumpIfNotNullishKeep(self.code.length()))
-  self.compile_expr(key)
-  let _ = self.emit(GetComputed(loc))
-  self.patch(end_jump, Jump(self.code.length()))
+  self.compile_optional_chain_expr(OptionalComputedMember(obj, key, loc))
+}
+
+///|
+fn BytecodeBuilder::compile_chain_member(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  prop : String,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  self.compile_optional_chain_expr(ChainMember(obj, prop, loc))
+}
+
+///|
+fn BytecodeBuilder::compile_chain_computed_member(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  key : @ast.Expr,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  self.compile_optional_chain_expr(ChainComputedMember(obj, key, loc))
 }
 
 ///|
@@ -2198,6 +2410,26 @@ fn BytecodeBuilder::compile_optional_call_with_receiver_tail(
   for jump in end_jumps {
     self.patch(jump, Jump(self.code.length()))
   }
+}
+
+///|
+fn BytecodeBuilder::compile_optional_chain_call_with_receiver_tail(
+  self : BytecodeBuilder,
+  args : Array[@ast.Expr],
+  loc : @token.Loc,
+  end_jumps : Array[Int],
+  optional_callee~ : Bool,
+) -> Unit raise Error {
+  if optional_callee {
+    let call_jump = self.emit(JumpIfNotNullishKeep(-1))
+    let _ = self.emit(Pop)
+    let _ = self.emit(Pop)
+    let _ = self.emit(LoadUndefined)
+    let _ = self.emit(MarkOptionalChainShortCircuit)
+    end_jumps.push(self.emit(Jump(-1)))
+    self.patch(call_jump, JumpIfNotNullishKeep(self.code.length()))
+  }
+  self.emit_call_with_receiver(args, loc)
 }
 
 ///|
@@ -2257,6 +2489,65 @@ fn BytecodeBuilder::compile_optional_computed_call(
     end_jumps,
     optional_callee~,
   )
+}
+
+///|
+fn BytecodeBuilder::compile_chain_property_call(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  prop : String,
+  args : Array[@ast.Expr],
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+  optional_callee~ : Bool,
+) -> Unit raise Error {
+  let end_jumps : Array[Int] = []
+  let _ = self.emit(BeginOptionalChain)
+  self.compile_optional_chain_expr_body(obj, end_jumps)
+  let member_jump = self.emit(JumpIfNotOptionalChainShortCircuitKeep(-1))
+  end_jumps.push(self.emit(Jump(-1)))
+  self.patch(
+    member_jump,
+    JumpIfNotOptionalChainShortCircuitKeep(self.code.length()),
+  )
+  let _ = self.emit(PreparePropertyCall(prop, member_loc))
+  self.compile_optional_call_with_receiver_tail(
+    args,
+    loc,
+    end_jumps,
+    optional_callee~,
+  )
+  let _ = self.emit(EndOptionalChain)
+}
+
+///|
+fn BytecodeBuilder::compile_chain_computed_call(
+  self : BytecodeBuilder,
+  obj : @ast.Expr,
+  key : @ast.Expr,
+  args : Array[@ast.Expr],
+  member_loc : @token.Loc,
+  loc : @token.Loc,
+  optional_callee~ : Bool,
+) -> Unit raise Error {
+  let end_jumps : Array[Int] = []
+  let _ = self.emit(BeginOptionalChain)
+  self.compile_optional_chain_expr_body(obj, end_jumps)
+  let member_jump = self.emit(JumpIfNotOptionalChainShortCircuitKeep(-1))
+  end_jumps.push(self.emit(Jump(-1)))
+  self.patch(
+    member_jump,
+    JumpIfNotOptionalChainShortCircuitKeep(self.code.length()),
+  )
+  self.compile_expr(key)
+  let _ = self.emit(PrepareComputedCall(member_loc))
+  self.compile_optional_call_with_receiver_tail(
+    args,
+    loc,
+    end_jumps,
+    optional_callee~,
+  )
+  let _ = self.emit(EndOptionalChain)
 }
 
 ///|
@@ -2668,9 +2959,11 @@ fn bytecode_expr_contains_super(expr : @ast.Expr) -> Bool {
       }
       false
     }
-    Member(obj, _, _) | OptionalMember(obj, _, _) =>
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       bytecode_expr_contains_super(obj)
-    ComputedMember(obj, key, _) | OptionalComputedMember(obj, key, _) =>
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) =>
       bytecode_expr_contains_super(obj) || bytecode_expr_contains_super(key)
     MemberAssign(obj, _, value, _) =>
       bytecode_expr_contains_super(obj) || bytecode_expr_contains_super(value)
@@ -3363,6 +3656,9 @@ fn BytecodeBuilder::compile_expr(
       self.compile_optional_member(obj, prop, loc)
     OptionalComputedMember(obj, key, loc) =>
       self.compile_optional_computed_member(obj, key, loc)
+    ChainMember(obj, prop, loc) => self.compile_chain_member(obj, prop, loc)
+    ChainComputedMember(obj, key, loc) =>
+      self.compile_chain_computed_member(obj, key, loc)
     MemberAssign(obj, prop, value, loc) => {
       self.compile_expr(obj)
       self.compile_expr(value)
@@ -3398,6 +3694,24 @@ fn BytecodeBuilder::compile_expr(
             member_loc,
             loc,
             optional_obj=true,
+            optional_callee=true,
+          )
+        ChainMember(obj, prop, member_loc) =>
+          self.compile_chain_property_call(
+            obj,
+            prop,
+            args,
+            member_loc,
+            loc,
+            optional_callee=true,
+          )
+        ChainComputedMember(obj, key, member_loc) =>
+          self.compile_chain_computed_call(
+            obj,
+            key,
+            args,
+            member_loc,
+            loc,
             optional_callee=true,
           )
         Member(obj, prop, member_loc) =>
@@ -3455,6 +3769,26 @@ fn BytecodeBuilder::compile_expr(
         member_loc,
         loc,
         optional_obj=true,
+        optional_callee=false,
+      )
+    // Parser emits OptionalCall, not plain Call, inside optional chains;
+    // keep these arms for hand-built ASTs and future parser changes.
+    Call(ChainMember(obj, prop, member_loc), args, loc) =>
+      self.compile_chain_property_call(
+        obj,
+        prop,
+        args,
+        member_loc,
+        loc,
+        optional_callee=false,
+      )
+    Call(ChainComputedMember(obj, key, member_loc), args, loc) =>
+      self.compile_chain_computed_call(
+        obj,
+        key,
+        args,
+        member_loc,
+        loc,
         optional_callee=false,
       )
     Call(Member(obj, prop, member_loc), args, loc) => {
