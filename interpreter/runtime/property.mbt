@@ -1518,7 +1518,26 @@ fn Interpreter::get_computed_property_impl(
             Some(v) => v
             None => Undefined
           }
-        _ => Undefined
+        _ => {
+          // Non-numeric, non-string, non-symbol key (e.g., Bool(true)).
+          // Convert to string and delegate to the named-property lookup.
+          let key_str = to_js_string(key, interp=Some(self))
+          match data.bag.descriptors.get(key_str) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => if desc.setter is Some(_) { return Undefined }
+              }
+            None => ()
+          }
+          match get_array_named_prop(data, key_str) {
+            Some(v) => v
+            None => {
+              let proto = get_array_prototype(self.realm_state, data)
+              self.get_property_from_prototype(obj, proto, key_str, loc)
+            }
+          }
+        }
       }
     String_(s) =>
       match key {
