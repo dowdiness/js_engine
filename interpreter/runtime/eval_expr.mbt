@@ -1131,10 +1131,16 @@ fn Interpreter::eval_expr(
       match resolved_env {
         Some(target_env) =>
           target_env.assign_resolved(name, value, ctx.strict) catch {
-            @errors.ReferenceError(message~) =>
-              // TDZ errors ("Cannot access before initialization") must
-              // propagate as-is.
-              raise @errors.ReferenceError(message~)
+            @errors.ReferenceError(message~) => {
+              // The pre-RHS resolved binding was deleted by RHS evaluation.
+              // In non-strict mode, fall back to implicit global; in strict
+              // mode, propagate the ReferenceError.
+              if ctx.strict {
+                raise @errors.ReferenceError(message~)
+              }
+              self.global.def(name, value, VarBinding)
+              self.mirror_to_global(name, value, configurable=true)
+            }
             e => raise e
           }
         None => {
@@ -2777,21 +2783,29 @@ pub fn eval_delete_identifier(
               env,
               EVAL_DELETABLE_VAR_PREFIX + name,
             ) {
-            let _ = env_delete_binding_ignoring_with(target_env, name)
-            // Also remove the globalThis mirror if the target is the global
-            // environment. eval-created vars are mirrored to globalThis,
-            // and the deleted env binding alone would still be reachable
-            // via the global property fallback in Ident lookup.
-            if target_env.parent is None {
-              match interp.global_this {
-                Object(data) => {
-                  let _ = data.bag.properties.remove(name)
-                  let _ = data.bag.descriptors.remove(name)
+            // Only delete if target_env actually has the eval-created var
+            // binding. resolve_binding_env may have returned a shadowing
+            // let/const from an inner scope — we must not delete that.
+            match target_env.bindings.get(name) {
+              Some(binding) if binding.kind == VarBinding => {
+                let _ = env_delete_binding_ignoring_with(target_env, name)
+                // Also remove the globalThis mirror if the target is the
+                // global environment. eval-created vars are mirrored to
+                // globalThis, and the deleted env binding alone would
+                // still be reachable via the global property fallback.
+                if target_env.parent is None {
+                  match interp.global_this {
+                    Object(data) => {
+                      let _ = data.bag.properties.remove(name)
+                      let _ = data.bag.descriptors.remove(name)
+                    }
+                    _ => ()
+                  }
                 }
-                _ => ()
+                Bool(true)
               }
+              _ => Bool(false)
             }
-            Bool(true)
           } else if target_env.parent is None {
             match interp.global_this {
               Object(data) =>
@@ -2934,10 +2948,18 @@ fn Interpreter::eval_unary(
           }
         }
         Ident(name, _) => eval_delete_identifier(self, ctx, env, name)
-        SuperMember(_, _) =>
+        Grouping(inner, _) =>
+          // Preserve delete semantics: `delete (expr)` evaluates `expr`
+          // with delete semantics, not as a plain value read.
+          self.eval_unary(ctx, Delete, inner, env, loc)
+        SuperMember(_, _) => {
+          // Must evaluate the this-value before throwing, so TDZ and
+          // null/undefined checks for the super-base are performed.
+          let _ = eval_this_value(env)
           raise @errors.ReferenceError(
             message="Cannot delete a super property reference",
           )
+        }
         SuperComputedMember(key_expr, _) => {
           let _ = eval_this_value(env)
           let _ = self.eval_expr(ctx, key_expr, env)

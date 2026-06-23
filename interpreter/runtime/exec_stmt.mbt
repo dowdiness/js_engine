@@ -202,7 +202,7 @@ fn Interpreter::exec_stmt(
           }
         }
       } else if bk == VarBinding &&
-        env.bindings.contains(EVAL_DELETABLE_VAR_PREFIX + name) {
+        env_has_binding_ignoring_with(env, EVAL_DELETABLE_VAR_PREFIX + name) {
         // Marker exists — check if the binding was deleted by a prior
         // `delete` in the same eval.
         if env.has_var(name) {

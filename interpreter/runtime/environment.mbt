@@ -462,10 +462,10 @@ fn is_blocked_by_unscopables(
     Symbol(unscopables_sym),
     @token.Loc::default(),
   )
-  match unscopables {
-    Object(_) =>
-      is_truthy(interp.get_property(unscopables, name, @token.Loc::default()))
-    _ => false
+  if is_object_value(unscopables) {
+    is_truthy(interp.get_property(unscopables, name, @token.Loc::default()))
+  } else {
+    false
   }
 }
 
