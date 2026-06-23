@@ -1083,7 +1083,7 @@ fn Interpreter::eval_expr(
     ArrayHole(_) => Undefined
     Ident(name, _) => {
       @static_semantics.validate_strict_identifier_reference(ctx.strict, name)
-      env.get(name) catch {
+      env.get_with_strict(name, ctx.strict) catch {
         @errors.ReferenceError(message~) =>
           if message == "\{name} is not defined" {
             // Fallback: check global object (globalThis) for properties set via this.x = y
@@ -1111,6 +1111,7 @@ fn Interpreter::eval_expr(
     Unary(op, operand, loc) => self.eval_unary(ctx, op, operand, env, loc)
     Assign(name, value_expr, _) => {
       @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
+      let resolved_env = env.resolve_binding_env(name)
       let value = self.eval_expr(ctx, value_expr, env)
       // SetFunctionName for assignments: x = function() {} gives name "x"
       if is_anonymous_function_definition(value_expr) {
@@ -1119,7 +1120,7 @@ fn Interpreter::eval_expr(
       // Check if the target is a non-writable property on the global object
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
       // in non-strict mode the assignment is silently ignored.
-      if self.is_immutable_global(name) {
+      if resolved_env is None && self.is_immutable_global(name) {
         if ctx.strict {
           raise @errors.TypeError(
             message="Cannot assign to read only property '\{name}' of object '[object global]'",
@@ -1127,19 +1128,25 @@ fn Interpreter::eval_expr(
         }
         return value
       }
-      env.assign(name, value) catch {
-        @errors.ReferenceError(message~) =>
-          // In non-strict mode, assigning to an undeclared variable creates
-          // a global property (sloppy mode implicit global). TDZ errors
-          // ("Cannot access before initialization") must propagate as-is.
-          if !ctx.strict && message == "\{name} is not defined" {
-            self.global.def(name, value, VarBinding)
-            // Also mirror onto globalThis as a configurable, enumerable property
-            self.mirror_to_global(name, value, configurable=true)
-          } else {
-            raise @errors.ReferenceError(message~)
+      match resolved_env {
+        Some(target_env) =>
+          target_env.assign_resolved(name, value, ctx.strict) catch {
+            @errors.ReferenceError(message~) =>
+              // TDZ errors ("Cannot access before initialization") must
+              // propagate as-is.
+              raise @errors.ReferenceError(message~)
+            e => raise e
           }
-        e => raise e
+        None => {
+          if ctx.strict {
+            raise @errors.ReferenceError(message="\{name} is not defined")
+          }
+          // In non-strict mode, assigning to an undeclared variable creates
+          // a global property (sloppy mode implicit global) using the
+          // reference resolution result captured before RHS evaluation.
+          self.global.def(name, value, VarBinding)
+          self.mirror_to_global(name, value, configurable=true)
+        }
       }
       value
     }
@@ -2658,6 +2665,12 @@ pub fn Interpreter::delete_property_key(
     Array(data) =>
       match prop_key {
         Symbol(sym) => delete_symbol_property_from_bag(data.bag, sym.id, strict)
+        String_("length") => {
+          if strict {
+            raise @errors.TypeError(message="Cannot delete property 'length'")
+          }
+          false
+        }
         String_(prop) => {
           let result = delete_string_property_from_bag(data.bag, prop, strict)
           if result {
@@ -2726,6 +2739,22 @@ fn env_has_binding_ignoring_with(env : Environment, name : String) -> Bool {
 }
 
 ///|
+const EVAL_DELETABLE_VAR_PREFIX = "[[EvalDeletableVar]]:"
+
+///|
+fn env_delete_binding_ignoring_with(env : Environment, name : String) -> Bool {
+  if env.bindings.contains(name) {
+    let _ = env.bindings.remove(name)
+    true
+  } else {
+    match env.parent {
+      Some(parent) => env_delete_binding_ignoring_with(parent, name)
+      None => false
+    }
+  }
+}
+
+///|
 pub fn eval_delete_identifier(
   interp : Interpreter,
   ctx : ExecContext,
@@ -2738,41 +2767,56 @@ pub fn eval_delete_identifier(
       message="Delete of an unqualified identifier in strict mode.",
     )
   }
-  // Check if this identifier is in a with-object first
+  // Check if this identifier is in a with-object first.
   match env.find_with_object(name) {
-    Some(Object(with_data)) => {
-      match with_data.bag.descriptors.get(name) {
-        Some(desc) => if !desc.configurable { return Bool(false) }
-        None => ()
-      }
-      let _ = with_data.bag.properties.remove(name)
-      let _ = with_data.bag.descriptors.remove(name)
-      Bool(true)
-    }
-    _ =>
-      if env_has_binding_ignoring_with(env, name) {
-        Bool(false)
-      } else {
-        // In non-strict mode, check if the identifier is a non-configurable
-        // property on the global object (e.g. undefined, NaN, Infinity).
-        match interp.global_this {
-          Object(data) =>
-            match data.bag.descriptors.get(name) {
-              Some(desc) =>
-                if !desc.configurable {
-                  Bool(false)
-                } else {
+    Some(with_obj) => Bool(interp.delete_property_key(with_obj, String_(name)))
+    None =>
+      match env.resolve_binding_env(name) {
+        Some(target_env) =>
+          if env_has_binding_ignoring_with(
+              env,
+              EVAL_DELETABLE_VAR_PREFIX + name,
+            ) {
+            let _ = env_delete_binding_ignoring_with(target_env, name)
+            Bool(true)
+          } else if target_env.parent is None {
+            match interp.global_this {
+              Object(data) =>
+                match data.bag.descriptors.get(name) {
+                  Some(desc) if desc.configurable => {
+                    let _ = env_delete_binding_ignoring_with(target_env, name)
+                    let _ = data.bag.properties.remove(name)
+                    let _ = data.bag.descriptors.remove(name)
+                    Bool(true)
+                  }
+                  _ => Bool(false)
+                }
+              _ => Bool(false)
+            }
+          } else {
+            Bool(false)
+          }
+        None =>
+          // In non-strict mode, check if the identifier is a non-configurable
+          // property on the global object (e.g. undefined, NaN, Infinity).
+          match interp.global_this {
+            Object(data) =>
+              match data.bag.descriptors.get(name) {
+                Some(desc) =>
+                  if !desc.configurable {
+                    Bool(false)
+                  } else {
+                    let _ = data.bag.properties.remove(name)
+                    let _ = data.bag.descriptors.remove(name)
+                    Bool(true)
+                  }
+                None => {
                   let _ = data.bag.properties.remove(name)
-                  let _ = data.bag.descriptors.remove(name)
                   Bool(true)
                 }
-              None => {
-                let _ = data.bag.properties.remove(name)
-                Bool(true)
               }
-            }
-          _ => Bool(true)
-        }
+            _ => Bool(true)
+          }
       }
   }
 }
@@ -2877,7 +2921,21 @@ fn Interpreter::eval_unary(
           }
         }
         Ident(name, _) => eval_delete_identifier(self, ctx, env, name)
-        _ => Bool(true)
+        SuperMember(_, _) =>
+          raise @errors.ReferenceError(
+            message="Cannot delete a super property reference",
+          )
+        SuperComputedMember(key_expr, _) => {
+          let _ = eval_this_value(env)
+          let _ = self.eval_expr(ctx, key_expr, env)
+          raise @errors.ReferenceError(
+            message="Cannot delete a super property reference",
+          )
+        }
+        _ => {
+          let _ = self.eval_expr(ctx, operand, env)
+          Bool(true)
+        }
       }
     _ => {
       let val = self.eval_expr(ctx, operand, env)

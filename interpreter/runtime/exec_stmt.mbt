@@ -40,7 +40,10 @@ fn Interpreter::bind_function_decl_value(
     Some(VarBinding) => env.assign(name, func_val)
     Some(_) => () // §B.3.3.3 conflict: leave outer lex binding intact
     None =>
-      if should_reconcile_eval_function_decl(env, name) {
+      if env.bindings.contains(EVAL_DELETABLE_VAR_PREFIX + name) &&
+        !env.has_var(name) {
+        ()
+      } else if should_reconcile_eval_function_decl(env, name) {
         env.assign_var(name, func_val)
       } else {
         env.def(name, func_val, VarBinding)
@@ -198,6 +201,9 @@ fn Interpreter::exec_stmt(
             self.mirror_to_global(name, value)
           }
         }
+      } else if bk == VarBinding &&
+        env.bindings.contains(EVAL_DELETABLE_VAR_PREFIX + name) {
+        ()
       } else if (bk == LetBinding || bk == ConstBinding) &&
         env.bindings.contains(name) {
         // let/const hoisted with TDZ - initialize it
