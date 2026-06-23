@@ -589,13 +589,12 @@ fn Interpreter::eval_call(
       let args = self.eval_args_with_spread(ctx, arg_exprs, env)
       self.call_value(callee, Undefined, args, loc)
     }
-    _ => {
+    _ =>
       // Per ES spec (13.3.6.1), evaluate callee/receiver first, then arguments.
-      // Peel grouping parentheses to recover the reference/receiver.
-      // Use unwrap_grouping to recursively peel nested grouping wrappers,
-      // ensuring (((obj.m))?.() exposes the Member pattern for receiver binding.
-      let unwrapped = unwrap_grouping(callee_expr)
-      match unwrapped {
+      // First match on the original callee_expr (with possible Grouping) for
+      // Optional/Chain patterns — grouping ends the optional chain boundary.
+      // e.g. (a?.b)() is NOT a?.b() — it's a plain call on the chain result.
+      match callee_expr {
         OptionalCall(inner_callee, inner_args, inner_loc) => {
           // Call(OptionalCall(...), ...): continuation call after optional call.
           // Evaluate the inner OptionalCall; if it short-circuits, return Undefined.
@@ -660,52 +659,119 @@ fn Interpreter::eval_call(
             self.call_value(func_val, obj, args, loc)
           }
         }
-        Member(obj_expr, prop, mloc) =>
-          match obj_expr {
-            Ident("console", _) => {
-              let callee = self.eval_member(ctx, obj_expr, prop, env, mloc)
-              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-              self.call_value(callee, Undefined, args, loc)
-            }
-            _ => {
+        // For Member/ComputedMember/SuperMember/SuperComputedMember, peel
+        // grouping wrappers to recover the receiver — grouping preserves the
+        // Reference, so ((a.b))() should call with this=a.
+        _ => {
+          let unwrapped = unwrap_grouping(callee_expr)
+          match unwrapped {
+            Member(obj_expr, prop, mloc) =>
+              match obj_expr {
+                Ident("console", _) => {
+                  let callee = self.eval_member(ctx, obj_expr, prop, env, mloc)
+                  let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+                  self.call_value(callee, Undefined, args, loc)
+                }
+                _ => {
+                  let obj = self.eval_expr(ctx, obj_expr, env)
+                  let func_val = self.get_property(obj, prop, mloc)
+                  let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+                  self.call_value(func_val, obj, args, loc)
+                }
+              }
+            ComputedMember(obj_expr, key_expr, mloc) => {
               let obj = self.eval_expr(ctx, obj_expr, env)
-              let func_val = self.get_property(obj, prop, mloc)
+              let key = self.eval_expr(ctx, key_expr, env)
+              let func_val = self.get_computed_property(obj, key, mloc)
               let args = self.eval_args_with_spread(ctx, arg_exprs, env)
               self.call_value(func_val, obj, args, loc)
             }
+            SuperMember(prop, sloc) => {
+              let (this_val, func_val) = self.eval_super_property_call_reference(
+                env, prop, sloc,
+              )
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, this_val, args, loc)
+            }
+            SuperComputedMember(key_expr, sloc) => {
+              let _ = eval_this_value(env)
+              let key = self.eval_expr(ctx, key_expr, env)
+              let (this_val, func_val) = self.eval_super_computed_call_reference(
+                env, key, sloc,
+              )
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, this_val, args, loc)
+            }
+            OptionalCall(inner_callee, inner_args, inner_loc) => {
+              // Grouping(OptionalCall(...)) — grouping ended the chain, so
+              // this is a plain call on the chain result. Always call the
+              // resulting value; if it short-circuits to undefined, let
+              // call_value throw TypeError.
+              let (value, _short_circuited) = self.eval_chain_expr(
+                ctx,
+                OptionalCall(inner_callee, inner_args, inner_loc),
+                env,
+              )
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(value, Undefined, args, loc)
+            }
+            OptionalMember(obj_expr, prop, mloc) => {
+              // Grouping(OptionalMember(...)): grouping ended the chain, so
+              // this is a plain call on the chain result. If obj is nullish,
+              // pass Undefined as func_val — call_value will TypeError.
+              let obj = self.eval_expr(ctx, obj_expr, env)
+              let func_val = match obj {
+                Null | Undefined => Undefined
+                _ => self.get_property(obj, prop, mloc)
+              }
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+            OptionalComputedMember(obj_expr, key_expr, mloc) => {
+              let obj = self.eval_expr(ctx, obj_expr, env)
+              let func_val = match obj {
+                Null | Undefined => Undefined
+                _ => {
+                  let key = self.eval_expr(ctx, key_expr, env)
+                  self.get_computed_property(obj, key, mloc)
+                }
+              }
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+            ChainMember(obj_expr, prop, mloc) => {
+              let (obj, short_circuited) = self.eval_chain_expr(
+                ctx, obj_expr, env,
+              )
+              if short_circuited {
+                Undefined
+              } else {
+                let func_val = self.get_property(obj, prop, mloc)
+                let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+                self.call_value(func_val, obj, args, loc)
+              }
+            }
+            ChainComputedMember(obj_expr, key_expr, mloc) => {
+              let (obj, short_circuited) = self.eval_chain_expr(
+                ctx, obj_expr, env,
+              )
+              if short_circuited {
+                Undefined
+              } else {
+                let key = self.eval_expr(ctx, key_expr, env)
+                let func_val = self.get_computed_property(obj, key, mloc)
+                let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+                self.call_value(func_val, obj, args, loc)
+              }
+            }
+            _ => {
+              let callee = self.eval_expr(ctx, callee_expr, env)
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(callee, Undefined, args, loc)
+            }
           }
-        ComputedMember(obj_expr, key_expr, mloc) => {
-          let obj = self.eval_expr(ctx, obj_expr, env)
-          let key = self.eval_expr(ctx, key_expr, env)
-          let func_val = self.get_computed_property(obj, key, mloc)
-          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-          self.call_value(func_val, obj, args, loc)
-        }
-        SuperMember(prop, sloc) => {
-          let (this_val, func_val) = self.eval_super_property_call_reference(
-            env, prop, sloc,
-          )
-          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-          self.call_value(func_val, this_val, args, loc)
-        }
-        SuperComputedMember(key_expr, sloc) => {
-          // Evaluate super binding first to ensure `this` TDZ/derived checks
-          // happen before computed-key side effects.
-          let _ = eval_this_value(env)
-          let key = self.eval_expr(ctx, key_expr, env)
-          let (this_val, func_val) = self.eval_super_computed_call_reference(
-            env, key, sloc,
-          )
-          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-          self.call_value(func_val, this_val, args, loc)
-        }
-        _ => {
-          let callee = self.eval_expr(ctx, callee_expr, env)
-          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-          self.call_value(callee, Undefined, args, loc)
         }
       }
-    }
   }
 }
 
