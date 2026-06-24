@@ -1,45 +1,69 @@
-// Diff two Test262 runner artifacts by per-mode failing SET.
+// Diff two Test262 runner artifacts by per-mode regression / fix transitions.
 //
 // Usage: node scripts/test262_failing_diff.js <baseline.json> <candidate.json>
 //
-// Emits the per-mode (path, mode) failures that the candidate INTRODUCES
-// (regressions, baseline-pass -> candidate-fail) and RESOLVES (fixed,
-// baseline-fail -> candidate-pass). Set-difference, not counts: a run that
-// trades one fail for another nets zero on counts but is surfaced here.
+// Emits the per-mode (normalized path, mode) entries whose outcome the
+// candidate worsened (REGRESSIONS: baseline `pass` -> candidate non-pass) or
+// improved (FIXED: baseline non-pass -> candidate `pass`). A "non-pass" is any
+// of fail / timeout / error (docs/decisions/tooling-migration-contracts.md
+// "Status semantics"): a previously passing test that now times out or hits a
+// runner error is a regression, and a baseline failure that becomes
+// skip/timeout/error is NOT a fix because it did not newly pass.
 //
-// Each artifact conforms to scripts/test262_result_contract.schema.json:
-// results[] carry `path`, `status` ("fail"), and `mode` ("strict" /
-// "non-strict"); summary.failed is the authoritative fail count. Before
-// trusting any diff we validate summary.failed === count(status === "fail")
-// for each input — a mismatch means the extractor or artifact is broken, so
-// we abort rather than report a false "0 regressions".
+// Each artifact conforms to scripts/test262_result_contract.schema.json.
+// Keys are built from the CONTRACT-STABLE key (normalized path, mode):
+// `path` may be repo-relative (test262/test/language/x.js) or Test262-root-
+// relative (language/x.js), so both spellings are normalized to one form
+// before comparison to avoid false regressions/fixes across runs.
+//
+// Before trusting any diff we validate each non-pass count against the
+// artifact summary (summary.failed/timeout/error === counted) — a mismatch
+// means the extractor or artifact is broken, so we abort rather than report a
+// false "0 regressions".
 
-function loadFails(path) {
-  const data = require(require("path").resolve(path));
-  const fails = new Set();
-  let counted = 0;
-  for (const r of data.results) {
-    if (r.status === "fail") {
-      fails.add(`${r.path}\t${r.mode}`);
-      counted++;
-    }
-  }
-  if (counted !== data.summary.failed) {
-    throw new Error(
-      `${path}: summary.failed=${data.summary.failed} but counted ${counted} ` +
-        `fail results — artifact/extractor disagree, refusing to diff`,
-    );
-  }
-  return fails;
+const NONPASS = new Set(["fail", "timeout", "error"]);
+
+// Collapse repo-relative and Test262-root-relative spellings to one key.
+// test262/test/language/x.js -> test/language/x.js -> language/x.js
+// language/x.js (already root-relative) -> language/x.js
+function normalizePath(p) {
+  return p
+    .replace(/^\.\//, "")
+    .replace(/^test262\//, "")
+    .replace(/^test\//, "");
 }
 
-function report(title, set) {
-  console.log(`${title} (${set.size}):`);
-  for (const key of [...set].sort()) {
-    const [p, mode] = key.split("\t");
-    console.log(`  ${mode.padEnd(10)} ${p}`);
+// Build (normalized path \t mode) -> status, validating non-pass counts.
+function loadStatuses(path) {
+  const data = require(require("path").resolve(path));
+  const byKey = new Map();
+  const counts = { fail: 0, timeout: 0, error: 0 };
+  for (const r of data.results) {
+    byKey.set(`${normalizePath(r.path)}\t${r.mode}`, r.status);
+    if (r.status in counts) counts[r.status]++;
   }
-  if (set.size === 0) console.log("  (none)");
+  for (const status of ["fail", "timeout", "error"]) {
+    const field = status === "fail" ? "failed" : status;
+    if (counts[status] !== data.summary[field]) {
+      throw new Error(
+        `${path}: summary.${field}=${data.summary[field]} but counted ` +
+          `${counts[status]} ${status} results — artifact/extractor disagree, ` +
+          `refusing to diff`,
+      );
+    }
+  }
+  return byKey;
+}
+
+function report(title, rows) {
+  console.log(`${title} (${rows.length}):`);
+  for (const { key, from, to } of rows.sort((a, b) =>
+    a.key.localeCompare(b.key),
+  )) {
+    const [p, mode] = key.split("\t");
+    console.log(`  ${mode.padEnd(10)} ${`${from}->${to}`.padEnd(16)} ${p}`);
+  }
+  if (rows.length === 0) console.log("  (none)");
 }
 
 function main() {
@@ -50,21 +74,34 @@ function main() {
     );
     process.exit(2);
   }
-  const baseline = loadFails(baselinePath);
-  const candidate = loadFails(candidatePath);
-  const regressions = new Set([...candidate].filter((k) => !baseline.has(k)));
-  const fixed = new Set([...baseline].filter((k) => !candidate.has(k)));
+  const baseline = loadStatuses(baselinePath);
+  const candidate = loadStatuses(candidatePath);
 
-  report("REGRESSIONS (newly failing)", regressions);
+  const regressions = [];
+  const fixed = [];
+  // Transitions are only classifiable when BOTH artifacts observed the key;
+  // a key present in only one run (e.g. different filter scope) is left
+  // unclassified rather than reported as a false regression/fix.
+  for (const [key, candStatus] of candidate) {
+    const baseStatus = baseline.get(key);
+    if (baseStatus === undefined) continue;
+    if (baseStatus === "pass" && NONPASS.has(candStatus)) {
+      regressions.push({ key, from: baseStatus, to: candStatus });
+    } else if (NONPASS.has(baseStatus) && candStatus === "pass") {
+      fixed.push({ key, from: baseStatus, to: candStatus });
+    }
+  }
+
+  report("REGRESSIONS (pass -> non-pass)", regressions);
   console.log();
-  report("FIXED (newly passing)", fixed);
+  report("FIXED (non-pass -> pass)", fixed);
   console.log();
   console.log(
-    `baseline fails=${baseline.size}  candidate fails=${candidate.size}  ` +
-      `regressions=${regressions.size}  fixed=${fixed.size}`,
+    `baseline keys=${baseline.size}  candidate keys=${candidate.size}  ` +
+      `regressions=${regressions.length}  fixed=${fixed.length}`,
   );
 
-  process.exit(regressions.size === 0 ? 0 : 1);
+  process.exit(regressions.length === 0 ? 0 : 1);
 }
 
 main();
