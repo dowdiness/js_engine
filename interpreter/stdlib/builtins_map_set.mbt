@@ -185,6 +185,22 @@ const MAP_ITERATOR_KIND_VALUE = 1
 const MAP_ITERATOR_KIND_ENTRY = 2
 
 ///|
+// Engine-private negative symbol IDs for Set Iterator internal slots.
+const SET_ITERATOR_NEXT_INDEX_SYMBOL_ID = -133
+
+///|
+const SET_ITERATOR_TARGET_SYMBOL_ID = -134
+
+///|
+const SET_ITERATOR_KIND_SYMBOL_ID = -135
+
+///|
+const SET_ITERATOR_KIND_VALUES = 0
+
+///|
+const SET_ITERATOR_KIND_ENTRIES = 1
+
+///|
 fn map_iterator_internal_slot_descriptor() -> PropDescriptor {
   {
     writable: false,
@@ -1847,6 +1863,73 @@ fn make_map_entries_iterator(
 }
 
 ///|
+fn set_iterator_type_error() -> Value raise Error {
+  raise @errors.TypeError(
+    message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+  )
+}
+
+///|
+/// §23.2.5.2.1 %SetIteratorPrototype%.next
+fn set_iterator_next(this_val : Value) -> Value raise Error {
+  match this_val {
+    Object(data) => {
+      guard data.class_name == "Set Iterator" else {
+        return set_iterator_type_error()
+      }
+      let current = match
+        data.bag.symbol_properties.get(SET_ITERATOR_NEXT_INDEX_SYMBOL_ID) {
+        Some(Number(n)) => n.to_int()
+        _ => return set_iterator_type_error()
+      }
+      let kind = match
+        data.bag.symbol_properties.get(SET_ITERATOR_KIND_SYMBOL_ID) {
+        Some(Number(k)) => k.to_int()
+        _ => return set_iterator_type_error()
+      }
+      // §23.2.5.2.1 step 7: [[IteratedSet]] undefined → already done
+      match data.bag.symbol_properties.get(SET_ITERATOR_TARGET_SYMBOL_ID) {
+        None => return set_iterator_type_error()
+        Some(Undefined) => return @runtime.create_iter_result(Undefined, true)
+        Some(Set(set_data)) => {
+          // Skip tombstoned slots (entries deleted during a live forEach)
+          let mut idx = current
+          while idx < set_data.values.length() {
+            let is_tomb = match set_data.tombstones {
+              None => false
+              Some(ts) => ts.contains(idx)
+            }
+            if is_tomb {
+              idx += 1
+            } else {
+              break
+            }
+          }
+          if idx < set_data.values.length() {
+            let value = set_data.values[idx]
+            data.bag.symbol_properties[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(
+              (idx + 1).to_double(),
+            )
+            let result_value = if kind == SET_ITERATOR_KIND_ENTRIES {
+              @runtime.make_array([value, value])
+            } else {
+              value
+            }
+            @runtime.create_iter_result(result_value, false)
+          } else {
+            // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined
+            data.bag.symbol_properties[SET_ITERATOR_TARGET_SYMBOL_ID] = Undefined
+            @runtime.create_iter_result(Undefined, true)
+          }
+        }
+        _ => set_iterator_type_error()
+      }
+    }
+    _ => set_iterator_type_error()
+  }
+}
+
+///|
 /// Get or create the realm-owned %SetIteratorPrototype%
 fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
   let well_known_symbols = realm_state.well_known_symbols
@@ -1877,11 +1960,7 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
         name="next",
         length=0,
         realm_state=Some(realm_state),
-        fn(_this_val, _args) raise {
-          raise @errors.TypeError(
-            message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-          )
-        },
+        fn(this_val, _args) raise { set_iterator_next(this_val) },
       )
       let proto = Value::Object({
         bag: {
@@ -1915,67 +1994,38 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
 }
 
 ///|
-/// Create a Set values iterator
-fn make_set_values_iterator(
+/// Create a Set iterator using internal slots (§23.2.5.1 CreateSetIterator).
+/// kind: SET_ITERATOR_KIND_VALUES or SET_ITERATOR_KIND_ENTRIES.
+/// next() lives on %SetIteratorPrototype%; each instance holds [[SetNextIndex]],
+/// [[IteratedSet]], and [[SetIterationKind]] as hidden symbol slots.
+fn make_set_iterator(
   realm_state : @runtime.RealmState,
   set_data : SetData,
+  kind : Int,
 ) -> Value {
   let set_iter_proto = get_set_iterator_proto(realm_state)
-  let index_ref : Ref[Int] = { val: 0 }
-  let done_ref : Ref[Bool] = { val: false }
-  let next_method = @runtime.make_method_func(
-    name="next",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) raise {
-      // §23.2.5.2.1 step 2: If Type(O) is not Object, throw a TypeError
-      guard this_val is Object(data) else {
-        raise @errors.TypeError(
-          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-        )
-      }
-      // §23.2.5.2.1 step 3: brand check
-      guard data.class_name == "Set Iterator" else {
-        raise @errors.TypeError(
-          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-        )
-      }
-      // §23.2.5.2.1 step 7: [[IteratedSet]] is undefined means already done
-      if done_ref.val {
-        return @runtime.create_iter_result(Undefined, true)
-      }
-      // Skip tombstoned slots (entries deleted during a live forEach).
-      let mut idx = index_ref.val
-      while idx < set_data.values.length() {
-        let is_tomb = match set_data.tombstones {
-          None => false
-          Some(ts) => ts.contains(idx)
-        }
-        if is_tomb {
-          idx += 1
-        } else {
-          break
-        }
-      }
-      if idx < set_data.values.length() {
-        let value = set_data.values[idx]
-        index_ref.val = idx + 1
-        @runtime.create_iter_result(value, false)
-      } else {
-        // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined
-        done_ref.val = true
-        @runtime.create_iter_result(Undefined, true)
-      }
-    },
-  )
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  let iter_sym_props : Map[Int, Value] = {}
+  iter_sym_props[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
+  iter_sym_props[SET_ITERATOR_TARGET_SYMBOL_ID] = Value::Set(set_data)
+  iter_sym_props[SET_ITERATOR_KIND_SYMBOL_ID] = Value::Number(kind.to_double())
+  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let slot_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  iter_sym_descs[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
+  iter_sym_descs[SET_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
+  iter_sym_descs[SET_ITERATOR_KIND_SYMBOL_ID] = slot_desc
   Value::Object({
     bag: {
-      properties: iter_props,
-      symbol_properties: {},
+      properties: {},
+      symbol_properties: iter_sym_props,
       descriptors: {},
-      symbol_descriptors: {},
+      symbol_descriptors: iter_sym_descs,
       internal_slots: {},
     },
     prototype: set_iter_proto,
@@ -1987,74 +2037,17 @@ fn make_set_values_iterator(
 }
 
 ///|
-/// Create a Set entries iterator (returns [value, value] pairs)
+fn make_set_values_iterator(
+  realm_state : @runtime.RealmState,
+  set_data : SetData,
+) -> Value {
+  make_set_iterator(realm_state, set_data, SET_ITERATOR_KIND_VALUES)
+}
+
+///|
 fn make_set_entries_iterator(
   realm_state : @runtime.RealmState,
   set_data : SetData,
 ) -> Value {
-  let set_iter_proto = get_set_iterator_proto(realm_state)
-  let index_ref : Ref[Int] = { val: 0 }
-  let done_ref : Ref[Bool] = { val: false }
-  let next_method = @runtime.make_method_func(
-    name="next",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) raise {
-      // §23.2.5.2.1 step 2: If Type(O) is not Object, throw a TypeError
-      guard this_val is Object(data) else {
-        raise @errors.TypeError(
-          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-        )
-      }
-      // §23.2.5.2.1 step 3: brand check
-      guard data.class_name == "Set Iterator" else {
-        raise @errors.TypeError(
-          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-        )
-      }
-      // §23.2.5.2.1 step 7: [[IteratedSet]] is undefined means already done
-      if done_ref.val {
-        return @runtime.create_iter_result(Undefined, true)
-      }
-      // Skip tombstoned slots (entries deleted during a live forEach).
-      let mut idx = index_ref.val
-      while idx < set_data.values.length() {
-        let is_tomb = match set_data.tombstones {
-          None => false
-          Some(ts) => ts.contains(idx)
-        }
-        if is_tomb {
-          idx += 1
-        } else {
-          break
-        }
-      }
-      if idx < set_data.values.length() {
-        let value = set_data.values[idx]
-        index_ref.val = idx + 1
-        // Return [value, value] array (Set entries are [value, value] pairs)
-        @runtime.create_iter_result(@runtime.make_array([value, value]), false)
-      } else {
-        // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined
-        done_ref.val = true
-        @runtime.create_iter_result(Undefined, true)
-      }
-    },
-  )
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
-  Value::Object({
-    bag: {
-      properties: iter_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: set_iter_proto,
-    callable: None,
-    class_name: "Set Iterator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+  make_set_iterator(realm_state, set_data, SET_ITERATOR_KIND_ENTRIES)
 }
