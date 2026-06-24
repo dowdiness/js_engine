@@ -2006,12 +2006,12 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
             @runtime.create_iter_result(result_value, false)
           } else {
             // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined (done flag).
-            // Compact tombstones only if no forEach is currently walking the set
-            // (iteration_depth tracks active forEach calls). If depth > 0, the
-            // forEach owns compaction on its exit; leave tombstones in place.
-            if set_data.iteration_depth == 0 {
-              compact_set_tombstones(set_data)
-            }
+            // Do NOT compact here. Multiple live iterators share the same tombstone
+            // set and compact at the same-time compacting would shift values[] indices,
+            // corrupting any other iterator's stored numeric cursor. Tombstone cleanup
+            // is the responsibility of forEach when it exits tombstone mode
+            // (tombstones_pre_existed=false at forEach entry). Until then, tombstones
+            // persist — size is bounded by the count of deleted entries (≤ values.length).
             data.bag.symbol_properties[SET_ITERATOR_TARGET_SYMBOL_ID] = Undefined
             @runtime.create_iter_result(Undefined, true)
           }
