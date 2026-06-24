@@ -185,11 +185,17 @@ fn Interpreter::eval_compound_assign(
   // Handle logical assignment operators with short-circuit semantics
   match op {
     LogicalAndAssign =>
-      return self.eval_logical_assign_and(ctx, target, value_expr, env, loc)
+      return self.eval_logical_assign(
+        ctx, target, value_expr, env, loc, is_truthy,
+      )
     LogicalOrAssign =>
-      return self.eval_logical_assign_or(ctx, target, value_expr, env, loc)
+      return self.eval_logical_assign(ctx, target, value_expr, env, loc, v => {
+        !is_truthy(v)
+      })
     NullishAssign =>
-      return self.eval_nullish_assign(ctx, target, value_expr, env, loc)
+      return self.eval_logical_assign(ctx, target, value_expr, env, loc, v => {
+        v is (Null | Undefined)
+      })
     _ => ()
   }
   let bin_op : @ast.BinOp = match compound_assign_binary_op(op) {
@@ -353,45 +359,4 @@ fn Interpreter::eval_logical_assign(
         message="Invalid assignment target at line \{loc.line}, col \{loc.col}",
       )
   }
-}
-
-///|
-fn Interpreter::eval_logical_assign_and(
-  self : Interpreter,
-  ctx : ExecContext,
-  target : @ast.Expr,
-  value_expr : @ast.Expr,
-  env : Environment,
-  loc : @token.Loc,
-) -> Value raise Error {
-  // x &&= y: assign y when x is truthy
-  self.eval_logical_assign(ctx, target, value_expr, env, loc, is_truthy)
-}
-
-///|
-fn Interpreter::eval_logical_assign_or(
-  self : Interpreter,
-  ctx : ExecContext,
-  target : @ast.Expr,
-  value_expr : @ast.Expr,
-  env : Environment,
-  loc : @token.Loc,
-) -> Value raise Error {
-  // x ||= y: assign y when x is falsy
-  self.eval_logical_assign(ctx, target, value_expr, env, loc, v => !is_truthy(v))
-}
-
-///|
-fn Interpreter::eval_nullish_assign(
-  self : Interpreter,
-  ctx : ExecContext,
-  target : @ast.Expr,
-  value_expr : @ast.Expr,
-  env : Environment,
-  loc : @token.Loc,
-) -> Value raise Error {
-  // x ??= y: assign y when x is null or undefined
-  self.eval_logical_assign(ctx, target, value_expr, env, loc, v => {
-    v is Null || v is Undefined
-  })
 }
