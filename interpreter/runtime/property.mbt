@@ -457,7 +457,7 @@ fn Interpreter::get_property_of_object(
           Set(set_data) => {
             // Handle Set values in the prototype chain
             if prop == "size" {
-              return Number(set_data.values.length().to_double())
+              return Number(set_data.effective_size().to_double())
             }
             let result = (self.stdlib_hooks.get_set_method)(
               set_data,
@@ -1178,7 +1178,7 @@ fn Interpreter::get_computed_property_impl(
               }
               Set(set_data) => {
                 if prop == "size" {
-                  return Number(set_data.values.length().to_double())
+                  return Number(set_data.effective_size().to_double())
                 }
                 let result = (self.stdlib_hooks.get_set_method)(
                   set_data,

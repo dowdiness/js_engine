@@ -185,6 +185,63 @@ const MAP_ITERATOR_KIND_VALUE = 1
 const MAP_ITERATOR_KIND_ENTRY = 2
 
 ///|
+// Engine-private negative symbol IDs for Set Iterator internal slots.
+const SET_ITERATOR_NEXT_INDEX_SYMBOL_ID = -133
+
+///|
+const SET_ITERATOR_TARGET_SYMBOL_ID = -134
+
+///|
+const SET_ITERATOR_KIND_SYMBOL_ID = -135
+
+///|
+const SET_ITERATOR_KIND_VALUES = 0
+
+///|
+const SET_ITERATOR_KIND_ENTRIES = 1
+
+///|
+fn set_data_effective_size(data : SetData) -> Double {
+  let ts_count = match data.tombstones {
+    None => 0
+    Some(ts) => ts.length()
+  }
+  (data.values.length() - ts_count).to_double()
+}
+
+///|
+fn set_data_contains_live(data : SetData, value : Value) -> Bool {
+  match data.tombstones {
+    None => data.values.search_by(v => same_value_zero(v, value)) is Some(_)
+    Some(ts) => {
+      let mut found = false
+      for i, v in data.values {
+        if !ts.contains(i) && same_value_zero(v, value) {
+          found = true
+          break
+        }
+      }
+      found
+    }
+  }
+}
+
+///|
+fn compact_set_tombstones(data : SetData) -> Unit {
+  match data.tombstones {
+    None => ()
+    Some(ts) => {
+      let indices = ts.to_array()
+      indices.sort_by(fn(a, b) { b - a })
+      for i in indices {
+        let _ = data.values.remove(i)
+      }
+      data.tombstones = None
+    }
+  }
+}
+
+///|
 fn map_iterator_internal_slot_descriptor() -> PropDescriptor {
   {
     writable: false,
@@ -951,11 +1008,10 @@ fn setup_set_builtins(
       match this_val {
         Value::Set(data) => {
           let value = if args.length() > 0 { args[0] } else { Undefined }
-          // During active iteration, tombstone the slot instead of compacting.
-          // Compacting would shift later elements down, corrupting the index
-          // cursor in forEach; it would also cause delete+add of the last
-          // element to re-land at the same index, fooling the advancement guard.
-          if data.iteration_depth > 0 {
+          // Tombstone when iteration is active (tombstones is Some) to keep
+          // array indices stable for forEach and for..of cursors. Compact
+          // immediately when tombstones is None (no active or pending iteration).
+          if data.tombstones is Some(_) {
             // Search only non-tombstoned slots.
             let mut found_idx : Int? = None
             match data.tombstones {
@@ -1015,10 +1071,10 @@ fn setup_set_builtins(
   ) raise {
     match this_val {
       Value::Set(data) => {
-        if data.iteration_depth > 0 {
-          // During active forEach the cursor uses stable indices, so we must
-          // not compact. Tombstone every current slot; elements added after
-          // clear() will append at higher indices and be visited normally.
+        if data.tombstones is Some(_) {
+          // Iteration active (forEach or for..of): tombstone every current slot
+          // so cursor indices stay stable. Elements added after clear() append
+          // at higher indices and are visited normally by existing cursors.
           let n = data.values.length()
           if n > 0 {
             let ts = match data.tombstones {
@@ -1056,12 +1112,22 @@ fn setup_set_builtins(
           let callback = if args.length() > 0 { args[0] } else { Undefined }
           let this_arg = if args.length() > 1 { args[1] } else { Undefined }
           let loc = @token.Loc::default()
-          // §24.2.3.12: iteration is over the live [[SetData]] list. We model
-          // this with a tombstone index set: delete() tombstones during active
-          // iteration instead of compacting, so indices stay stable. add()
-          // appends; the new slot is visited when the cursor reaches it.
-          // iteration_depth lets nested forEach calls share tombstones and
-          // prevents compaction until the outermost exits.
+          // §24.2.3.12: iteration is over the live [[SetData]] list. delete()
+          // tombstones instead of compacting while tombstones is Some, so
+          // array indices stay stable. add() appends; the new slot is visited
+          // when the cursor reaches it.
+          //
+          // tombstones_pre_existed: true when tombstones was already Some (a
+          // for..of or outer forEach was already active). We share the tombstone
+          // set but do NOT compact on exit — the scope that entered tombstone
+          // mode is responsible for compaction.
+          // iteration_depth: counted per-forEach so that a nested for..of that
+          // exhausts inside this callback can detect the active forEach and skip
+          // compaction (compacting mid-forEach would corrupt our cursor).
+          let tombstones_pre_existed = data.tombstones is Some(_)
+          if !tombstones_pre_existed {
+            data.tombstones = Some(@set.Set::default())
+          }
           data.iteration_depth += 1
           let result : Result[Value, Error] = try {
             let mut i = 0
@@ -1086,22 +1152,11 @@ fn setup_set_builtins(
           } catch {
             e => Err(e)
           }
-          // Decrement depth and compact on outermost exit.
           data.iteration_depth -= 1
-          if data.iteration_depth == 0 {
-            match data.tombstones {
-              None => ()
-              Some(ts) => {
-                // Remove tombstoned slots in descending index order so earlier
-                // removals do not shift later indices.
-                let indices = ts.to_array()
-                indices.sort_by(fn(a, b) { b - a })
-                for i in indices {
-                  let _ = data.values.remove(i)
-                }
-                data.tombstones = None
-              }
-            }
+          // Compact tombstones only when we entered tombstone mode (not
+          // inherited). Preserves cursor stability for any outer for..of.
+          if !tombstones_pre_existed {
+            compact_set_tombstones(data)
           }
           match result {
             Ok(v) => v
@@ -1185,8 +1240,14 @@ fn setup_set_builtins(
       )
       let next_method = interp.get_iterator_next_method(key_iter, loc)
       let result_values : Array[Value] = []
-      for v in data.values {
-        result_values.push(v)
+      for i, v in data.values {
+        let is_tombstoned = match data.tombstones {
+          None => false
+          Some(ts) => ts.contains(i)
+        }
+        if !is_tombstoned {
+          result_values.push(v)
+        }
       }
       while true {
         let iter_result = match
@@ -1227,7 +1288,7 @@ fn setup_set_builtins(
       let other = if args.length() > 0 { args[0] } else { Undefined }
       let other_rec = get_set_record(interp, other, loc)
       let result_values : Array[Value] = []
-      let this_size = data.values.length().to_double()
+      let this_size = set_data_effective_size(data)
       if this_size <= other_rec.size {
         // has-path: live index loop over thisData (§24.2.3.2 step 4 — spec iterates
         // the live [[SetData]] List, so elements added by has() must be visited).
@@ -1235,19 +1296,27 @@ fn setup_set_builtins(
         // array, so the element at i+1 shifts to i and must not be skipped).
         let mut i = 0
         while i < data.values.length() {
-          let v = data.values[i]
-          let has_result = interp.call_value(
-            other_rec.has,
-            other_rec.set_object,
-            [v],
-            loc,
-          )
-          if i < data.values.length() && same_value_zero(data.values[i], v) {
-            i = i + 1
+          let is_tombstoned = match data.tombstones {
+            None => false
+            Some(ts) => ts.contains(i)
           }
-          if @runtime.is_truthy(has_result) {
-            if result_values.search_by(e => same_value_zero(e, v)) is None {
-              result_values.push(v)
+          if is_tombstoned {
+            i = i + 1
+          } else {
+            let v = data.values[i]
+            let has_result = interp.call_value(
+              other_rec.has,
+              other_rec.set_object,
+              [v],
+              loc,
+            )
+            if i < data.values.length() && same_value_zero(data.values[i], v) {
+              i = i + 1
+            }
+            if @runtime.is_truthy(has_result) {
+              if result_values.search_by(e => same_value_zero(e, v)) is None {
+                result_values.push(v)
+              }
             }
           }
         }
@@ -1275,7 +1344,7 @@ fn setup_set_builtins(
           let next_val = canonicalize_keyed_collection_key(next_val)
           // §24.2.3.2 step 6.a.i: skip if already in result (dedup)
           if result_values.search_by(e => same_value_zero(e, next_val)) is None &&
-            data.values.search_by(e => same_value_zero(e, next_val)) is Some(_) {
+            set_data_contains_live(data, next_val) {
             result_values.push(next_val)
           }
         }
@@ -1302,33 +1371,47 @@ fn setup_set_builtins(
       let other = if args.length() > 0 { args[0] } else { Undefined }
       let other_rec = get_set_record(interp, other, loc)
       let result_values : Array[Value] = []
-      let this_size = data.values.length().to_double()
+      let this_size = set_data_effective_size(data)
       if this_size <= other_rec.size {
         // has-path: live index loop (§24.2.3.3 step 5 iterates the live [[SetData]],
         // so elements added by has() must be visited). Deletion-safe: don't advance
         // i when has() deletes the current element and compacts the array.
         let mut i = 0
         while i < data.values.length() {
-          let v = data.values[i]
-          let has_result = interp.call_value(
-            other_rec.has,
-            other_rec.set_object,
-            [v],
-            loc,
-          )
-          if i < data.values.length() && same_value_zero(data.values[i], v) {
-            i = i + 1
+          let is_tombstoned = match data.tombstones {
+            None => false
+            Some(ts) => ts.contains(i)
           }
-          if !@runtime.is_truthy(has_result) {
-            if result_values.search_by(e => same_value_zero(e, v)) is None {
-              result_values.push(v)
+          if is_tombstoned {
+            i = i + 1
+          } else {
+            let v = data.values[i]
+            let has_result = interp.call_value(
+              other_rec.has,
+              other_rec.set_object,
+              [v],
+              loc,
+            )
+            if i < data.values.length() && same_value_zero(data.values[i], v) {
+              i = i + 1
+            }
+            if !@runtime.is_truthy(has_result) {
+              if result_values.search_by(e => same_value_zero(e, v)) is None {
+                result_values.push(v)
+              }
             }
           }
         }
       } else {
-        // keys-path: start with copy of this, remove keys found in other
-        for v in data.values {
-          result_values.push(v)
+        // keys-path: start with copy of live elements, remove keys found in other
+        for i, v in data.values {
+          let is_tombstoned = match data.tombstones {
+            None => false
+            Some(ts) => ts.contains(i)
+          }
+          if !is_tombstoned {
+            result_values.push(v)
+          }
         }
         let key_iter = interp.call_value(
           other_rec.keys,
@@ -1387,10 +1470,16 @@ fn setup_set_builtins(
         loc,
       )
       let next_method = interp.get_iterator_next_method(key_iter, loc)
-      // Start result as copy of this, then toggle membership based on other.keys()
+      // Start result as copy of live elements, then toggle membership based on other.keys()
       let result_values : Array[Value] = []
-      for v in data.values {
-        result_values.push(v)
+      for i, v in data.values {
+        let is_tombstoned = match data.tombstones {
+          None => false
+          Some(ts) => ts.contains(i)
+        }
+        if !is_tombstoned {
+          result_values.push(v)
+        }
       }
       while true {
         let iter_result = match
@@ -1405,21 +1494,18 @@ fn setup_set_builtins(
           }
         }
         let next_val = canonicalize_keyed_collection_key(next_val)
-        match data.values.search_by(v => same_value_zero(v, next_val)) {
-          Some(_) =>
-            // key is in this: remove from result
-            match result_values.search_by(v => same_value_zero(v, next_val)) {
-              Some(i) => {
-                let _ = result_values.remove(i)
-              }
-              None => ()
+        if set_data_contains_live(data, next_val) {
+          // key is live in this: remove from result
+          match result_values.search_by(v => same_value_zero(v, next_val)) {
+            Some(i) => {
+              let _ = result_values.remove(i)
             }
-          None =>
-            // key not in this: add to result if not already present
-            if result_values.search_by(v => same_value_zero(v, next_val))
-              is None {
-              result_values.push(next_val)
-            }
+            None => ()
+          }
+          // key not in this (or tombstoned): add to result if not already present
+        } else if result_values.search_by(v => same_value_zero(v, next_val))
+          is None {
+          result_values.push(next_val)
         }
       }
       Value::Set(
@@ -1443,7 +1529,7 @@ fn setup_set_builtins(
       let loc = @token.Loc::default()
       let other = if args.length() > 0 { args[0] } else { Undefined }
       let other_rec = get_set_record(interp, other, loc)
-      let this_size = data.values.length().to_double()
+      let this_size = set_data_effective_size(data)
       if this_size > other_rec.size {
         return Value::Bool(false)
       }
@@ -1452,18 +1538,26 @@ fn setup_set_builtins(
       // Deletion-safe: don't advance i when has() deletes the current element.
       let mut i = 0
       while i < data.values.length() {
-        let v = data.values[i]
-        let has_result = interp.call_value(
-          other_rec.has,
-          other_rec.set_object,
-          [v],
-          loc,
-        )
-        if i < data.values.length() && same_value_zero(data.values[i], v) {
-          i = i + 1
+        let is_tombstoned = match data.tombstones {
+          None => false
+          Some(ts) => ts.contains(i)
         }
-        if !@runtime.is_truthy(has_result) {
-          return Value::Bool(false)
+        if is_tombstoned {
+          i = i + 1
+        } else {
+          let v = data.values[i]
+          let has_result = interp.call_value(
+            other_rec.has,
+            other_rec.set_object,
+            [v],
+            loc,
+          )
+          if i < data.values.length() && same_value_zero(data.values[i], v) {
+            i = i + 1
+          }
+          if !@runtime.is_truthy(has_result) {
+            return Value::Bool(false)
+          }
         }
       }
       Value::Bool(true)
@@ -1485,7 +1579,7 @@ fn setup_set_builtins(
       let loc = @token.Loc::default()
       let other = if args.length() > 0 { args[0] } else { Undefined }
       let other_rec = get_set_record(interp, other, loc)
-      let this_size = data.values.length().to_double()
+      let this_size = set_data_effective_size(data)
       if this_size < other_rec.size {
         return Value::Bool(false)
       }
@@ -1509,7 +1603,7 @@ fn setup_set_builtins(
           }
         }
         let next_val = canonicalize_keyed_collection_key(next_val)
-        if data.values.search_by(v => same_value_zero(v, next_val)) is None {
+        if !set_data_contains_live(data, next_val) {
           interp.iterator_close(key_iter, loc)
           return Value::Bool(false)
         }
@@ -1533,29 +1627,37 @@ fn setup_set_builtins(
       let loc = @token.Loc::default()
       let other = if args.length() > 0 { args[0] } else { Undefined }
       let other_rec = get_set_record(interp, other, loc)
-      let this_size = data.values.length().to_double()
+      let this_size = set_data_effective_size(data)
       if this_size <= other_rec.size {
         // has-path: live index loop (§24.2.3.7 step 3 iterates the live [[SetData]],
         // so elements added by has() must be checked). Deletion-safe: don't advance
         // i when has() deletes the current element and compacts the array.
         let mut i = 0
         while i < data.values.length() {
-          let v = data.values[i]
-          let has_result = interp.call_value(
-            other_rec.has,
-            other_rec.set_object,
-            [v],
-            loc,
-          )
-          if i < data.values.length() && same_value_zero(data.values[i], v) {
-            i = i + 1
+          let is_tombstoned = match data.tombstones {
+            None => false
+            Some(ts) => ts.contains(i)
           }
-          if @runtime.is_truthy(has_result) {
-            return Value::Bool(false)
+          if is_tombstoned {
+            i = i + 1
+          } else {
+            let v = data.values[i]
+            let has_result = interp.call_value(
+              other_rec.has,
+              other_rec.set_object,
+              [v],
+              loc,
+            )
+            if i < data.values.length() && same_value_zero(data.values[i], v) {
+              i = i + 1
+            }
+            if @runtime.is_truthy(has_result) {
+              return Value::Bool(false)
+            }
           }
         }
       } else {
-        // keys-path: iterate other.keys(); return false if any key is in this
+        // keys-path: iterate other.keys(); return false if any key is live in this
         let key_iter = interp.call_value(
           other_rec.keys,
           other_rec.set_object,
@@ -1576,7 +1678,7 @@ fn setup_set_builtins(
             }
           }
           let next_val = canonicalize_keyed_collection_key(next_val)
-          if data.values.search_by(v => same_value_zero(v, next_val)) is Some(_) {
+          if set_data_contains_live(data, next_val) {
             interp.iterator_close(key_iter, loc)
             return Value::Bool(false)
           }
@@ -1847,6 +1949,81 @@ fn make_map_entries_iterator(
 }
 
 ///|
+fn set_iterator_type_error() -> Value raise Error {
+  raise @errors.TypeError(
+    message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+  )
+}
+
+///|
+/// §23.2.5.2.1 %SetIteratorPrototype%.next
+fn set_iterator_next(this_val : Value) -> Value raise Error {
+  match this_val {
+    Object(data) => {
+      guard data.class_name == "Set Iterator" else {
+        return set_iterator_type_error()
+      }
+      let current = match
+        data.bag.symbol_properties.get(SET_ITERATOR_NEXT_INDEX_SYMBOL_ID) {
+        Some(Number(n)) => n.to_int()
+        _ => return set_iterator_type_error()
+      }
+      let kind = match
+        data.bag.symbol_properties.get(SET_ITERATOR_KIND_SYMBOL_ID) {
+        Some(Number(k)) => k.to_int()
+        _ => return set_iterator_type_error()
+      }
+      // §23.2.5.2.1 step 7: [[IteratedSet]] undefined → already done
+      match data.bag.symbol_properties.get(SET_ITERATOR_TARGET_SYMBOL_ID) {
+        None => return set_iterator_type_error()
+        Some(Undefined) => return @runtime.create_iter_result(Undefined, true)
+        Some(Set(set_data)) => {
+          // tombstone mode was entered at make_set_iterator so that delete/clear
+          // tombstone instead of compacting while this iterator is live.
+          // Skip tombstoned slots (entries deleted during live iteration).
+          let mut idx = current
+          while idx < set_data.values.length() {
+            let is_tomb = match set_data.tombstones {
+              None => false
+              Some(ts) => ts.contains(idx)
+            }
+            if is_tomb {
+              idx += 1
+            } else {
+              break
+            }
+          }
+          if idx < set_data.values.length() {
+            let value = set_data.values[idx]
+            data.bag.symbol_properties[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(
+              (idx + 1).to_double(),
+            )
+            let result_value = if kind == SET_ITERATOR_KIND_ENTRIES {
+              @runtime.make_array([value, value])
+            } else {
+              value
+            }
+            @runtime.create_iter_result(result_value, false)
+          } else {
+            // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined (done flag).
+            // Do NOT compact here. Multiple live iterators share the same tombstone
+            // set and compact at the same-time compacting would shift values[] indices,
+            // corrupting any other iterator's stored numeric cursor. Tombstone cleanup
+            // is the responsibility of forEach when it exits tombstone mode
+            // (tombstones_pre_existed=false at forEach entry). Until then, tombstones
+            // persist — size is bounded by the count of deleted entries (≤ values.length).
+            data.bag.symbol_properties[SET_ITERATOR_TARGET_SYMBOL_ID] = Undefined
+            @runtime.create_iter_result(Undefined, true)
+          }
+        }
+        _ => set_iterator_type_error()
+      }
+    }
+    _ => set_iterator_type_error()
+  }
+}
+
+///|
 /// Get or create the realm-owned %SetIteratorPrototype%
 fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
   let well_known_symbols = realm_state.well_known_symbols
@@ -1877,11 +2054,7 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
         name="next",
         length=0,
         realm_state=Some(realm_state),
-        fn(_this_val, _args) raise {
-          raise @errors.TypeError(
-            message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-          )
-        },
+        fn(this_val, _args) raise { set_iterator_next(this_val) },
       )
       let proto = Value::Object({
         bag: {
@@ -1915,114 +2088,37 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
 }
 
 ///|
-/// Create a Set values iterator
-fn make_set_values_iterator(
+/// Create a Set iterator using internal slots (§23.2.5.1 CreateSetIterator).
+/// kind: SET_ITERATOR_KIND_VALUES or SET_ITERATOR_KIND_ENTRIES.
+/// next() lives on %SetIteratorPrototype%; each instance holds [[SetNextIndex]],
+/// [[IteratedSet]], and [[SetIterationKind]] as hidden symbol slots.
+/// Entering tombstone mode here (tombstones=Some) ensures that delete/clear
+/// tombstone instead of compacting while any for..of is live.
+fn make_set_iterator(
   realm_state : @runtime.RealmState,
   set_data : SetData,
+  kind : Int,
 ) -> Value {
+  // Enter tombstone mode so delete/clear tombstone (not compact) during for..of.
+  if set_data.tombstones is None {
+    set_data.tombstones = Some(@set.Set::default())
+  }
   let set_iter_proto = get_set_iterator_proto(realm_state)
-  let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Value::Object({
-    bag: {
-      properties: {
-        "length": Value::Number(0.0),
-        "name": Value::String_("next"),
-      },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        // Skip tombstoned slots (entries deleted during a live forEach).
-        let mut idx = index_ref.val
-        while idx < set_data.values.length() {
-          let is_tomb = match set_data.tombstones {
-            None => false
-            Some(ts) => ts.contains(idx)
-          }
-          if is_tomb {
-            idx += 1
-          } else {
-            break
-          }
-        }
-        if idx < set_data.values.length() {
-          let value = set_data.values[idx]
-          index_ref.val = idx + 1
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = value
-          result_props["done"] = Value::Bool(false)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          index_ref.val = idx
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = @runtime.stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
-  )
+  let iter_sym_props : Map[Int, Value] = {}
+  iter_sym_props[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
+  iter_sym_props[SET_ITERATOR_TARGET_SYMBOL_ID] = Value::Set(set_data)
+  iter_sym_props[SET_ITERATOR_KIND_SYMBOL_ID] = Value::Number(kind.to_double())
+  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let slot_desc = map_iterator_internal_slot_descriptor()
+  iter_sym_descs[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
+  iter_sym_descs[SET_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
+  iter_sym_descs[SET_ITERATOR_KIND_SYMBOL_ID] = slot_desc
   Value::Object({
     bag: {
-      properties: iter_props,
-      symbol_properties: {},
+      properties: {},
+      symbol_properties: iter_sym_props,
       descriptors: {},
-      symbol_descriptors: {},
+      symbol_descriptors: iter_sym_descs,
       internal_slots: {},
     },
     prototype: set_iter_proto,
@@ -2034,121 +2130,17 @@ fn make_set_values_iterator(
 }
 
 ///|
-/// Create a Set entries iterator (returns [value, value] pairs)
+fn make_set_values_iterator(
+  realm_state : @runtime.RealmState,
+  set_data : SetData,
+) -> Value {
+  make_set_iterator(realm_state, set_data, SET_ITERATOR_KIND_VALUES)
+}
+
+///|
 fn make_set_entries_iterator(
   realm_state : @runtime.RealmState,
   set_data : SetData,
 ) -> Value {
-  let set_iter_proto = get_set_iterator_proto(realm_state)
-  let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Value::Object({
-    bag: {
-      properties: {
-        "length": Value::Number(0.0),
-        "name": Value::String_("next"),
-      },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        // Skip tombstoned slots (entries deleted during a live forEach).
-        let mut idx = index_ref.val
-        while idx < set_data.values.length() {
-          let is_tomb = match set_data.tombstones {
-            None => false
-            Some(ts) => ts.contains(idx)
-          }
-          if is_tomb {
-            idx += 1
-          } else {
-            break
-          }
-        }
-        if idx < set_data.values.length() {
-          let value = set_data.values[idx]
-          index_ref.val = idx + 1
-          // Return [value, value] array (Set entries are [value, value] pairs)
-          let entry_array = @runtime.make_array([value, value])
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = entry_array
-          result_props["done"] = Value::Bool(false)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = @runtime.stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
-  )
-  Value::Object({
-    bag: {
-      properties: iter_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: set_iter_proto,
-    callable: None,
-    class_name: "Set Iterator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+  make_set_iterator(realm_state, set_data, SET_ITERATOR_KIND_ENTRIES)
 }

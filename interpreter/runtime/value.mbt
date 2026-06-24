@@ -321,9 +321,18 @@ pub fn MapData::MapData(
 /// Set data structure - stores unique values with insertion order preservation
 /// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
 pub(all) struct SetData {
-  values : Array[Value] // Array of unique values (includes tombstoned slots during iteration)
-  mut iteration_depth : Int // incremented per active forEach; tombstones are held until depth → 0
-  mut tombstones : @set.Set[Int]? // indices logically deleted during iteration; None when idle
+  values : Array[Value] // Array of unique values (includes tombstoned slots when Some(tombstones))
+  // tombstones is Some while tombstone mode is active (set by make_set_iterator or
+  // forEach). delete/clear tombstone instead of compacting when Some, so that stored
+  // numeric cursor indices remain valid across concurrent iterators.
+  // Compaction ONLY happens at forEach exit when tombstones_pre_existed=false.
+  // Iterator exhaustion does NOT compact — multiple live iterators share the same
+  // tombstone set and compacting on one would corrupt the other's stored cursor.
+  mut tombstones : @set.Set[Int]?
+  // Counts active forEach calls. forEach uses this to guard the compaction it owns:
+  // a nested for..of that exhausts inside a forEach body checks iteration_depth>0
+  // to avoid compacting while the forEach cursor is still walking.
+  mut iteration_depth : Int
   mut prototype : Value
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
@@ -337,11 +346,21 @@ pub fn SetData::SetData(
 ) -> SetData {
   {
     values,
-    iteration_depth: 0,
     tombstones: None,
+    iteration_depth: 0,
     prototype,
     bag: PropertyBag(),
   }
+}
+
+///|
+/// Live element count — values.length() minus tombstoned slots.
+pub fn SetData::effective_size(self : SetData) -> Int {
+  let ts_count = match self.tombstones {
+    None => 0
+    Some(ts) => ts.length()
+  }
+  self.values.length() - ts_count
 }
 
 ///|

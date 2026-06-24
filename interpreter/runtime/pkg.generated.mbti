@@ -833,12 +833,13 @@ pub fn RuntimeIteratorPrototypeCaches::RuntimeIteratorPrototypeCaches() -> Self
 
 pub(all) struct SetData {
   values : Array[Value]
-  mut iteration_depth : Int
   mut tombstones : @set.Set[Int]?
+  mut iteration_depth : Int
   mut prototype : Value
   bag : PropertyBag
 }
 pub fn SetData::SetData(Array[Value], prototype? : Value) -> Self
+pub fn SetData::effective_size(Self) -> Int
 
 pub(all) enum Signal {
   Normal(Value)
