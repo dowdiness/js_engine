@@ -1922,101 +1922,54 @@ fn make_set_values_iterator(
 ) -> Value {
   let set_iter_proto = get_set_iterator_proto(realm_state)
   let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Value::Object({
-    bag: {
-      properties: {
-        "length": Value::Number(0.0),
-        "name": Value::String_("next"),
-      },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        // Skip tombstoned slots (entries deleted during a live forEach).
-        let mut idx = index_ref.val
-        while idx < set_data.values.length() {
-          let is_tomb = match set_data.tombstones {
-            None => false
-            Some(ts) => ts.contains(idx)
-          }
-          if is_tomb {
-            idx += 1
-          } else {
-            break
-          }
-        }
-        if idx < set_data.values.length() {
-          let value = set_data.values[idx]
-          index_ref.val = idx + 1
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = value
-          result_props["done"] = Value::Bool(false)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          index_ref.val = idx
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = @runtime.stamp_function_realm(
-    next_method,
+  let done_ref : Ref[Bool] = { val: false }
+  let next_method = @runtime.make_method_func(
+    name="next",
+    length=0,
     realm_state=Some(realm_state),
+    fn(this_val, _args) raise {
+      // §23.2.5.2.1 step 2: If Type(O) is not Object, throw a TypeError
+      guard this_val is Object(data) else {
+        raise @errors.TypeError(
+          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+        )
+      }
+      // §23.2.5.2.1 step 3: brand check
+      guard data.class_name == "Set Iterator" else {
+        raise @errors.TypeError(
+          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+        )
+      }
+      // §23.2.5.2.1 step 7: [[IteratedSet]] is undefined means already done
+      if done_ref.val {
+        return @runtime.create_iter_result(Undefined, true)
+      }
+      // Skip tombstoned slots (entries deleted during a live forEach).
+      let mut idx = index_ref.val
+      while idx < set_data.values.length() {
+        let is_tomb = match set_data.tombstones {
+          None => false
+          Some(ts) => ts.contains(idx)
+        }
+        if is_tomb {
+          idx += 1
+        } else {
+          break
+        }
+      }
+      if idx < set_data.values.length() {
+        let value = set_data.values[idx]
+        index_ref.val = idx + 1
+        @runtime.create_iter_result(value, false)
+      } else {
+        // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined
+        done_ref.val = true
+        @runtime.create_iter_result(Undefined, true)
+      }
+    },
   )
+  let iter_props : Map[String, Value] = {}
+  iter_props["next"] = next_method
   Value::Object({
     bag: {
       properties: iter_props,
@@ -2041,102 +1994,55 @@ fn make_set_entries_iterator(
 ) -> Value {
   let set_iter_proto = get_set_iterator_proto(realm_state)
   let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Value::Object({
-    bag: {
-      properties: {
-        "length": Value::Number(0.0),
-        "name": Value::String_("next"),
-      },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        // Skip tombstoned slots (entries deleted during a live forEach).
-        let mut idx = index_ref.val
-        while idx < set_data.values.length() {
-          let is_tomb = match set_data.tombstones {
-            None => false
-            Some(ts) => ts.contains(idx)
-          }
-          if is_tomb {
-            idx += 1
-          } else {
-            break
-          }
-        }
-        if idx < set_data.values.length() {
-          let value = set_data.values[idx]
-          index_ref.val = idx + 1
-          // Return [value, value] array (Set entries are [value, value] pairs)
-          let entry_array = @runtime.make_array([value, value])
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = entry_array
-          result_props["done"] = Value::Bool(false)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Value::Bool(true)
-          Value::Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
-        }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = @runtime.stamp_function_realm(
-    next_method,
+  let done_ref : Ref[Bool] = { val: false }
+  let next_method = @runtime.make_method_func(
+    name="next",
+    length=0,
     realm_state=Some(realm_state),
+    fn(this_val, _args) raise {
+      // §23.2.5.2.1 step 2: If Type(O) is not Object, throw a TypeError
+      guard this_val is Object(data) else {
+        raise @errors.TypeError(
+          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+        )
+      }
+      // §23.2.5.2.1 step 3: brand check
+      guard data.class_name == "Set Iterator" else {
+        raise @errors.TypeError(
+          message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
+        )
+      }
+      // §23.2.5.2.1 step 7: [[IteratedSet]] is undefined means already done
+      if done_ref.val {
+        return @runtime.create_iter_result(Undefined, true)
+      }
+      // Skip tombstoned slots (entries deleted during a live forEach).
+      let mut idx = index_ref.val
+      while idx < set_data.values.length() {
+        let is_tomb = match set_data.tombstones {
+          None => false
+          Some(ts) => ts.contains(idx)
+        }
+        if is_tomb {
+          idx += 1
+        } else {
+          break
+        }
+      }
+      if idx < set_data.values.length() {
+        let value = set_data.values[idx]
+        index_ref.val = idx + 1
+        // Return [value, value] array (Set entries are [value, value] pairs)
+        @runtime.create_iter_result(@runtime.make_array([value, value]), false)
+      } else {
+        // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined
+        done_ref.val = true
+        @runtime.create_iter_result(Undefined, true)
+      }
+    },
   )
+  let iter_props : Map[String, Value] = {}
+  iter_props["next"] = next_method
   Value::Object({
     bag: {
       properties: iter_props,
