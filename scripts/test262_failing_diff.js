@@ -49,11 +49,25 @@ function loadStatuses(path) {
   const byKey = new Map();
   const counts = { pass: 0, fail: 0, timeout: 0, error: 0, skip: 0 };
   for (const r of data.results) {
-    byKey.set(`${normalizePath(r.path)}\t${r.mode}`, r.status);
+    const key = `${normalizePath(r.path)}\t${r.mode}`;
+    // The (normalized path, mode) key must be unique. A duplicate would
+    // overwrite the earlier row in byKey, dropping it from the diff — and a
+    // duplicate paired with a dropped row keeps results.length and the
+    // per-status counts intact, so the count checks below would NOT catch it.
+    // Reject duplicates here so byKey.size === results.length is guaranteed.
+    if (byKey.has(key)) {
+      const [p, mode] = key.split("\t");
+      throw new Error(
+        `${path}: duplicate result for (${p}, ${mode}) — the (normalized ` +
+          `path, mode) key must be unique; refusing to diff`,
+      );
+    }
+    byKey.set(key, r.status);
     if (r.status in counts) counts[r.status]++;
   }
-  // Global integrity: every result row is accounted for. Catches dropped or
-  // duplicated rows that per-status counts alone could miss.
+  // Global integrity: the results row count matches summary.total. Combined
+  // with the duplicate-key rejection above (which makes byKey.size ===
+  // results.length), this ensures no row was silently dropped or overwritten.
   if (data.results.length !== data.summary.total) {
     throw new Error(
       `${path}: summary.total=${data.summary.total} but results has ` +
