@@ -492,107 +492,55 @@ fn make_string_iterator_value_with_proto(
 ) -> Value {
   let chars = s.to_array()
   let index_ref : Ref[Int] = { val: 0 }
-  let next_method = Object({
-    bag: {
-      properties: { "length": Number(0.0), "name": String_("next") },
-      symbol_properties: {},
-      descriptors: {
-        "length": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-        "name": {
-          writable: false,
-          enumerable: false,
-          configurable: true,
-          getter: None,
-          setter: None,
-          is_accessor: false,
-        },
-      },
-      symbol_descriptors: {},
-      internal_slots: {},
-    },
-    prototype: Null,
-    callable: Some(
-      NativeCallable("next", fn(_args) {
-        let idx = index_ref.val
-        if idx < chars.length() {
-          let buf = StringBuilder::new()
-          let c = chars[idx]
-          let code = c.to_int()
+  let next_method = make_method_func(
+    name="next",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(this_val, _args) raise {
+      // §22.1.5.2.1 step 2-3: this must be a String Iterator instance
+      guard this_val is Object(data) else {
+        raise @errors.TypeError(
+          message="String Iterator.prototype.next requires that |this| be a String Iterator",
+        )
+      }
+      guard data.class_name == "String Iterator" else {
+        raise @errors.TypeError(
+          message="String Iterator.prototype.next requires that |this| be a String Iterator",
+        )
+      }
+      let idx = index_ref.val
+      if idx < chars.length() {
+        let buf = StringBuilder::new()
+        let c = chars[idx]
+        let code = c.to_int()
 
-          // Check if this is a high surrogate (0xD800-0xDBFF)
-          // and the next char is a low surrogate (0xDC00-0xDFFF)
-          if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
-            let next_code = chars[idx + 1].to_int()
-            if next_code >= 0xDC00 && next_code <= 0xDFFF {
-              // This is a surrogate pair - yield both together
-              buf.write_char(c)
-              buf.write_char(chars[idx + 1])
-              index_ref.val = idx + 2
-            } else {
-              // High surrogate without valid low surrogate - yield as-is
-              buf.write_char(c)
-              index_ref.val = idx + 1
-            }
+        // Check if this is a high surrogate (0xD800-0xDBFF)
+        // and the next char is a low surrogate (0xDC00-0xDFFF)
+        if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
+          let next_code = chars[idx + 1].to_int()
+          if next_code >= 0xDC00 && next_code <= 0xDFFF {
+            // This is a surrogate pair - yield both together
+            buf.write_char(c)
+            buf.write_char(chars[idx + 1])
+            index_ref.val = idx + 2
           } else {
-            // Regular character or lone surrogate
+            // High surrogate without valid low surrogate - yield as-is
             buf.write_char(c)
             index_ref.val = idx + 1
           }
-          let value = String_(buf.to_string())
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = value
-          result_props["done"] = Bool(false)
-          Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
         } else {
-          let result_props : Map[String, Value] = {}
-          result_props["value"] = Undefined
-          result_props["done"] = Bool(true)
-          Object({
-            bag: {
-              properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-            },
-            prototype: Null,
-            callable: None,
-            class_name: "Object",
-            extensible: true,
-            arraybuffer_state: None,
-          })
+          // Regular character or lone surrogate
+          buf.write_char(c)
+          index_ref.val = idx + 1
         }
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = stamp_function_realm(
-    next_method,
-    realm_state=Some(realm_state),
+        create_iter_result(String_(buf.to_string()), false)
+      } else {
+        create_iter_result(Undefined, true)
+      }
+    },
   )
+  let iter_props : Map[String, Value] = {}
+  iter_props["next"] = next_method
   Object({
     bag: {
       properties: iter_props,
