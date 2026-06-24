@@ -5567,14 +5567,16 @@ test "bugfix: UserFuncExt strict mode" {
 }
 
 ///|
-test "bugfix: UserFuncExt sloppy has callee" {
+test "bugfix: UserFuncExt sloppy callee is ThrowTypeError accessor" {
+  // §10.4.4.6: non-simple params → unmapped arguments; callee is a poison-pill accessor
   let src =
     #|function f(a = 1) {
-    #|  console.log(typeof arguments.callee);
+    #|  try { arguments.callee; console.log("no-throw"); }
+    #|  catch(e) { console.log(e instanceof TypeError); }
     #|}
     #|f();
   let output = run_output(src)
-  json_inspect(output, content=["function"])
+  json_inspect(output, content=["true"])
 }
 
 ///|
