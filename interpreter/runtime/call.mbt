@@ -912,13 +912,13 @@ fn Interpreter::call_value_impl(
               current_generator: None,
             }
             // Arrow functions do NOT rebind this — use closure's this
-            for i = 0; i < data.params.length(); i = i + 1 {
+            for (i, param) in data.params {
               let val : Value = if i < args.length() {
                 args[i]
               } else {
                 Undefined
               }
-              func_env.def_parameter(data.params[i], val)
+              func_env.def_parameter(param, val)
             }
             self.hoist_declarations(data.body, func_env, strict=data.strict)
             hoist_block_tdz(data.body, func_env)
