@@ -730,8 +730,8 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
     match current {
       Object(proto_data) =>
         match
-          self.check_inherited_string_property_bag(
-            proto_data.bag,
+          self.check_inherited_string_property_value(
+            current,
             proto_data.prototype,
             receiver,
             prop,
@@ -748,14 +748,8 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
           self.realm_state.get_array_proto(),
         )
         match
-          self.check_inherited_string_property_bag(
-            proto_data.bag,
-            next_proto,
-            receiver,
-            prop,
-            value,
-            loc,
-            strict,
+          self.check_inherited_string_property_value(
+            current, next_proto, receiver, prop, value, loc, strict,
           ) {
           Handled(result) => return Some(result)
           Continue(next) => current = next
@@ -764,8 +758,8 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
       }
       Map(proto_data) =>
         match
-          self.check_inherited_string_property_bag(
-            proto_data.bag,
+          self.check_inherited_string_property_value(
+            current,
             proto_data.prototype,
             receiver,
             prop,
@@ -779,8 +773,8 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
         }
       Set(proto_data) =>
         match
-          self.check_inherited_string_property_bag(
-            proto_data.bag,
+          self.check_inherited_string_property_value(
+            current,
             proto_data.prototype,
             receiver,
             prop,
@@ -794,8 +788,8 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
         }
       Promise(proto_data) =>
         match
-          self.check_inherited_string_property_bag(
-            proto_data.bag,
+          self.check_inherited_string_property_value(
+            current,
             proto_data.prototype,
             receiver,
             prop,
@@ -825,9 +819,9 @@ priv enum InheritedStringSetResult {
 }
 
 ///|
-fn Interpreter::check_inherited_string_property_bag(
+fn Interpreter::check_inherited_string_property_value(
   self : Interpreter,
-  bag : PropertyBag,
+  owner : Value,
   next_proto : Value,
   receiver : Value,
   prop : String,
@@ -835,7 +829,7 @@ fn Interpreter::check_inherited_string_property_bag(
   loc : @token.Loc,
   strict : Bool,
 ) -> InheritedStringSetResult raise Error {
-  match bag.descriptors.get(prop) {
+  match ordinary_get_own_property(owner, String_(prop)) {
     Some(desc) =>
       match desc.setter {
         Some(setter) => {
@@ -861,12 +855,7 @@ fn Interpreter::check_inherited_string_property_bag(
             Stop
           }
       }
-    None =>
-      if bag.properties.contains(prop) {
-        Stop
-      } else {
-        Continue(next_proto)
-      }
+    None => Continue(next_proto)
   }
 }
 

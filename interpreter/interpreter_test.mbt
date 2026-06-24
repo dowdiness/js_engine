@@ -1324,6 +1324,45 @@ test "Map/Set assignment respects inherited prototype property blockers" {
 }
 
 ///|
+test "Map/Set assignment stops at inherited array own descriptors" {
+  let src =
+    #|var hits = [];
+    #|var higher = {};
+    #|Object.defineProperty(higher, "0", {
+    #|  set: function(v) { hits.push("zero:" + v); },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(higher, "length", {
+    #|  set: function(v) { hits.push("length:" + v); },
+    #|  configurable: true
+    #|});
+    #|var arrayProto = [42];
+    #|Object.setPrototypeOf(arrayProto, higher);
+    #|class M extends Map {}
+    #|Object.setPrototypeOf(M.prototype, Object.create(arrayProto));
+    #|var m = new M();
+    #|m[0] = 7;
+    #|m.length = 8;
+    #|console.log(JSON.stringify(hits));
+    #|console.log(m[0]);
+    #|console.log(m.length);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|class S extends Set {}
+    #|Object.setPrototypeOf(S.prototype, Object.create(arrayProto));
+    #|var s = new S();
+    #|s[0] = 9;
+    #|s.length = 10;
+    #|console.log(JSON.stringify(hits));
+    #|console.log(s[0]);
+    #|console.log(s.length);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "[]", "7", "8", "[\"0\",\"length\"]", "[]", "9", "10", "[\"0\",\"length\"]",
+  ])
+}
+
+///|
 test "Annex B __proto__ setter ignores primitive prototype values" {
   let src =
     #|var obj = {};
