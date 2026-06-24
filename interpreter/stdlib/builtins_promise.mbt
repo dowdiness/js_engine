@@ -235,23 +235,6 @@ fn create_promise_capability_from_constructor(
     },
   )
   let promise = construct_with_value(interp, ctor, [executor], loc)
-  // Promise subclass instances are represented as Promise values in this engine.
-  // Preserve the construction target so SpeciesConstructor-based lookups can
-  // observe the right constructor on subsequent then/catch/finally calls.
-  match promise {
-    Value::Promise(promise_data) => {
-      promise_data.bag.properties["constructor"] = ctor
-      promise_data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-    }
-    _ => ()
-  }
   let resolve = resolve_ref.val
   let reject = reject_ref.val
   guard @runtime.is_function_value(resolve) else {
