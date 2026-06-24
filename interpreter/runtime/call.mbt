@@ -264,7 +264,7 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
     match data.rest_param {
       Some(rest_name) => {
         let rest_elements : Array[Value] = []
-        for i = effective_param_count; i < args.length(); i = i + 1 {
+        for i in effective_param_count..<args.length() {
           rest_elements.push(args[i])
         }
         let rest_val = make_array(rest_elements)
@@ -599,10 +599,7 @@ fn Interpreter::eval_call(
       // Grouping ends the optional-chain boundary: (a?.b)() is a plain call on
       // the chain result, not a?.b().  Detect it once so the Optional arms can
       // decide whether a short-circuit returns Undefined or reaches call_value.
-      let was_grouped = match callee_expr {
-        Grouping(_) => true
-        _ => false
-      }
+      let was_grouped = callee_expr is Grouping(_)
       let unwrapped = unwrap_grouping(callee_expr)
       match unwrapped {
         OptionalCall(inner_callee, inner_args, inner_loc) => {
@@ -833,17 +830,17 @@ fn Interpreter::call_value_impl(
             }
             func_env.def("this", effective_this, LetBinding)
             func_env.def("<new.target>", Undefined, LetBinding)
-            for i = 0; i < data.params.length(); i = i + 1 {
+            for i, param in data.params {
               let val : Value = if i < args.length() {
                 args[i]
               } else {
                 Undefined
               }
               // In sloppy mode, duplicate params are allowed; last value wins
-              if func_env.bindings.contains(data.params[i]) {
-                func_env.assign(data.params[i], val)
+              if func_env.bindings.contains(param) {
+                func_env.assign(param, val)
               } else {
-                func_env.def_parameter(data.params[i], val)
+                func_env.def_parameter(param, val)
               }
             }
             if !params_include_arguments(data.params, None) {
@@ -912,7 +909,7 @@ fn Interpreter::call_value_impl(
               current_generator: None,
             }
             // Arrow functions do NOT rebind this — use closure's this
-            for (i, param) in data.params {
+            for i, param in data.params {
               let val : Value = if i < args.length() {
                 args[i]
               } else {
@@ -1062,7 +1059,7 @@ fn Interpreter::call_value_impl(
               _ => {
                 // apply accepts any array-like object (including `arguments`).
                 let arg_len = to_array_like_length(arg_array)
-                for i = 0; i < arg_len; i = i + 1 {
+                for i in 0..<arg_len {
                   let element = self.get_computed_property(
                     arg_array,
                     Number(i.to_double()),
