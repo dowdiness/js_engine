@@ -10,11 +10,13 @@
 // runner error is a regression, and a baseline failure that becomes
 // skip/timeout/error is NOT a fix because it did not newly pass.
 //
-// LOST COVERAGE (baseline `pass` -> candidate `skip`) is reported separately:
-// over-broad skip metadata stops executing a test that used to pass, lowering
-// Passed/Discovered and hiding the loss. It is not a correctness regression,
-// but it is not "clean" either, so it is surfaced in its own section and, like
-// regressions, forces a non-zero exit so it cannot pass silently.
+// LOST COVERAGE (baseline executed -> candidate `skip`) is reported separately:
+// over-broad skip metadata stops executing a test that previously ran, whatever
+// its outcome. A `pass -> skip` lowers Passed/Discovered; a `fail/timeout/error
+// -> skip` HIDES a known failure so the failing-set diff looks clean when the
+// failure was only masked, not fixed. Both are surfaced here (the `from` status
+// shows which) and, like regressions, force a non-zero exit so newly-skipped
+// tests cannot pass silently.
 //
 // Each artifact conforms to scripts/test262_result_contract.schema.json.
 // Keys are built from the CONTRACT-STABLE key (normalized path, mode):
@@ -28,6 +30,8 @@
 // false "0 regressions".
 
 const NONPASS = new Set(["fail", "timeout", "error"]);
+// Statuses where the test actually ran. Any executed -> skip is lost coverage.
+const EXECUTED = new Set(["pass", "fail", "timeout", "error"]);
 
 // Collapse repo-relative and Test262-root-relative spellings to one key.
 // test262/test/language/x.js -> test/language/x.js -> language/x.js
@@ -113,7 +117,7 @@ function main() {
     if (baseStatus === undefined) continue;
     if (baseStatus === "pass" && NONPASS.has(candStatus)) {
       regressions.push({ key, from: baseStatus, to: candStatus });
-    } else if (baseStatus === "pass" && candStatus === "skip") {
+    } else if (candStatus === "skip" && EXECUTED.has(baseStatus)) {
       lostCoverage.push({ key, from: baseStatus, to: candStatus });
     } else if (NONPASS.has(baseStatus) && candStatus === "pass") {
       fixed.push({ key, from: baseStatus, to: candStatus });
@@ -122,7 +126,7 @@ function main() {
 
   report("REGRESSIONS (pass -> non-pass)", regressions);
   console.log();
-  report("LOST COVERAGE (pass -> skip)", lostCoverage);
+  report("LOST COVERAGE (executed -> skip)", lostCoverage);
   console.log();
   report("FIXED (non-pass -> pass)", fixed);
   console.log();
