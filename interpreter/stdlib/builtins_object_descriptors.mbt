@@ -134,7 +134,7 @@ fn define_properties_from_value(
   }
   // §19.1.2.3 steps 3-5: snapshot OwnPropertyKeys before running descriptor
   // getters. Keys added during ToPropertyDescriptor conversion are ignored.
-  let keys = @runtime.object_own_property_keys_snapshot(interp, props)
+  let keys = interp.own_property_keys(props)
   let pairs = collect_define_properties_pairs_from_keys(
     interp, props, keys, loc,
   )
@@ -162,7 +162,7 @@ fn make_get_own_property_descriptors_func() -> Value {
     }
     let descriptors_props : Map[String, Value] = {}
     let symbol_descriptors_props : Map[Int, Value] = {}
-    let keys = @runtime.object_own_property_keys_snapshot(interp, obj)
+    let keys = interp.own_property_keys(obj)
     append_own_property_descriptors_from_keys(
       interp, obj, keys, descriptors_props, symbol_descriptors_props,
     )
