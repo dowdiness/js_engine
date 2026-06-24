@@ -1264,8 +1264,17 @@ test "Map/Set assignment respects inherited prototype property blockers" {
     #|m.__t447_getter = 2;
     #|console.log(m.__t447_getter);
     #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|var mBracket = new Map();
+    #|mBracket["__t447_getter"] = 2;
+    #|console.log(mBracket.__t447_getter);
+    #|console.log(JSON.stringify(Reflect.ownKeys(mBracket)));
     #|try {
     #|  (function() { "use strict"; var sm = new Map(); sm.__t447_getter = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  (function() { "use strict"; var key = "__t447_getter"; var sm = new Map(); sm[key] = 2; })();
     #|} catch (e) {
     #|  console.log(e.name);
     #|}
@@ -1279,8 +1288,17 @@ test "Map/Set assignment respects inherited prototype property blockers" {
     #|s.__t447_data = 2;
     #|console.log(s.__t447_data);
     #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|var sBracket = new Set();
+    #|sBracket["__t447_data"] = 2;
+    #|console.log(sBracket.__t447_data);
+    #|console.log(JSON.stringify(Reflect.ownKeys(sBracket)));
     #|try {
     #|  (function() { "use strict"; var ss = new Set(); ss.__t447_data = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  (function() { "use strict"; var key = "__t447_data"; var ss = new Set(); ss[key] = 2; })();
     #|} catch (e) {
     #|  console.log(e.name);
     #|}
@@ -1294,9 +1312,14 @@ test "Map/Set assignment respects inherited prototype property blockers" {
     #|m2.__t447_setter = 9;
     #|console.log(seen);
     #|console.log(JSON.stringify(Reflect.ownKeys(m2)));
+    #|var m3 = new Map();
+    #|m3["__t447_setter"] = 10;
+    #|console.log(seen);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m3)));
   let output = run_output(src)
   json_inspect(output, content=[
-    "1", "[]", "TypeError", "1", "[]", "TypeError", "9", "[]",
+    "1", "[]", "1", "[]", "TypeError", "TypeError", "1", "[]", "1", "[]", "TypeError",
+    "TypeError", "9", "[]", "10", "[]",
   ])
 }
 

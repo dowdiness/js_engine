@@ -871,6 +871,67 @@ fn Interpreter::check_inherited_string_property_bag(
 }
 
 ///|
+fn Interpreter::set_string_on_map_set_expando(
+  self : Interpreter,
+  obj : Value,
+  receiver : Value,
+  bag : PropertyBag,
+  proto : Value,
+  prop : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value raise Error {
+  let mut should_walk_proto = false
+  match bag.descriptors.get(prop) {
+    Some(desc) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          return value
+        }
+        None =>
+          if desc.getter is Some(_) {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot set property \{prop} which has only a getter",
+              )
+            }
+            return value
+          } else if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property '\{prop}'",
+              )
+            }
+            return value
+          }
+      }
+    None => if !bag.properties.contains(prop) { should_walk_proto = true }
+  }
+  if should_walk_proto {
+    match
+      self.set_string_via_map_set_prototype_chain(
+        proto, receiver, prop, value, loc, strict,
+      ) {
+      Some(result) => return result
+      None => ()
+    }
+  }
+  if !strict_equal(obj, receiver) {
+    return self.define_value_on_receiver(
+      receiver,
+      String_(prop),
+      value,
+      loc,
+      strict,
+    )
+  }
+  bag.properties[prop] = value
+  value
+}
+
+///|
 /// Helper predicate for §10.1.9.2 step 3.e: an existing receiver-side
 /// descriptor blocks the landing write if it is an accessor descriptor
 /// (getter or setter present) or a non-writable data descriptor. Writable
@@ -1659,46 +1720,56 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
-    Map(data) => {
-      // PRE-EXISTING LIMITATION (not a regression from B.1): Map/Set/Promise/
-      // Array branches do not walk their instance's prototype chain for
-      // inherited setters because MapData/SetData/PromiseData/ArrayData carry
-      // no `prototype` field (only ObjectData does). Setters defined on
-      // Map.prototype / Set.prototype / etc. are therefore invisible here and
-      // also when receiver===obj below. Fixing this requires either adding
-      // `prototype` to the four structs or threading the builtin prototypes
-      // through the dispatcher — both out of B.1 scope.
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(receiver, key, value, loc, strict)
-      }
-      // Write to expando properties bag (used for instance fields from subclasses)
+    Map(data) =>
       match key {
         Symbol(sym) => {
+          if !strict_equal(obj, receiver) {
+            return self.define_value_on_receiver(
+              receiver, key, value, loc, strict,
+            )
+          }
           data.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          data.bag.properties[to_js_string(key, interp=Some(self))] = value
-          value
+          let prop = to_js_string(key, interp=Some(self))
+          self.set_string_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            prop,
+            value,
+            loc,
+            strict,
+          )
         }
       }
-    }
-    Set(data) => {
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(receiver, key, value, loc, strict)
-      }
-      // Write to expando properties bag (used for instance fields from subclasses)
+    Set(data) =>
       match key {
         Symbol(sym) => {
+          if !strict_equal(obj, receiver) {
+            return self.define_value_on_receiver(
+              receiver, key, value, loc, strict,
+            )
+          }
           data.bag.symbol_properties[sym.id] = value
           value
         }
         _ => {
-          data.bag.properties[to_js_string(key, interp=Some(self))] = value
-          value
+          let prop = to_js_string(key, interp=Some(self))
+          self.set_string_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            prop,
+            value,
+            loc,
+            strict,
+          )
         }
       }
-    }
     Array(data) => {
       if !strict_equal(obj, receiver) {
         return self.define_value_on_receiver(receiver, key, value, loc, strict)
