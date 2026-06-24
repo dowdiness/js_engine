@@ -195,6 +195,12 @@ const SET_ITERATOR_TARGET_SYMBOL_ID = -134
 const SET_ITERATOR_KIND_SYMBOL_ID = -135
 
 ///|
+// Tracks whether the iterator has incremented set_data.iteration_depth.
+// True between first non-done next() call and exhaustion. Abandoned iterators
+// (for..of break) leave iteration_depth elevated; no finalizer available.
+const SET_ITERATOR_ACTIVE_SYMBOL_ID = -138
+
+///|
 const SET_ITERATOR_KIND_VALUES = 0
 
 ///|
@@ -1892,7 +1898,23 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
         None => return set_iterator_type_error()
         Some(Undefined) => return @runtime.create_iter_result(Undefined, true)
         Some(Set(set_data)) => {
-          // Skip tombstoned slots (entries deleted during a live forEach)
+          // On first active call increment iteration_depth so that delete/clear
+          // tombstone instead of compacting while the iterator is live. The
+          // matching decrement (and tombstone compaction) happens at exhaustion.
+          // Abandoned iterators (break/return from for..of) leave depth elevated;
+          // there is no finalizer to correct this.
+          let is_active = match
+            data.bag.symbol_properties.get(SET_ITERATOR_ACTIVE_SYMBOL_ID) {
+            Some(Bool(b)) => b
+            _ => false
+          }
+          if !is_active {
+            data.bag.symbol_properties[SET_ITERATOR_ACTIVE_SYMBOL_ID] = Bool(
+              true,
+            )
+            set_data.iteration_depth += 1
+          }
+          // Skip tombstoned slots (entries deleted during live iteration)
           let mut idx = current
           while idx < set_data.values.length() {
             let is_tomb = match set_data.tombstones {
@@ -1917,7 +1939,25 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
             }
             @runtime.create_iter_result(result_value, false)
           } else {
-            // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined
+            // §23.2.5.2.1 step 12: set [[IteratedSet]] to undefined.
+            // Deactivate and compact tombstones if we are the last iterator.
+            data.bag.symbol_properties[SET_ITERATOR_ACTIVE_SYMBOL_ID] = Bool(
+              false,
+            )
+            set_data.iteration_depth -= 1
+            if set_data.iteration_depth == 0 {
+              match set_data.tombstones {
+                None => ()
+                Some(ts) => {
+                  let indices = ts.to_array()
+                  indices.sort_by(fn(a, b) { b - a })
+                  for i in indices {
+                    let _ = set_data.values.remove(i)
+                  }
+                  set_data.tombstones = None
+                }
+              }
+            }
             data.bag.symbol_properties[SET_ITERATOR_TARGET_SYMBOL_ID] = Undefined
             @runtime.create_iter_result(Undefined, true)
           }
@@ -1997,7 +2037,9 @@ fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
 /// Create a Set iterator using internal slots (§23.2.5.1 CreateSetIterator).
 /// kind: SET_ITERATOR_KIND_VALUES or SET_ITERATOR_KIND_ENTRIES.
 /// next() lives on %SetIteratorPrototype%; each instance holds [[SetNextIndex]],
-/// [[IteratedSet]], and [[SetIterationKind]] as hidden symbol slots.
+/// [[IteratedSet]], [[SetIterationKind]], and an engine-private ACTIVE flag as
+/// hidden symbol slots. ACTIVE tracks participation in iteration_depth so that
+/// delete/clear tombstone during live iteration instead of compacting.
 fn make_set_iterator(
   realm_state : @runtime.RealmState,
   set_data : SetData,
@@ -2008,11 +2050,13 @@ fn make_set_iterator(
   iter_sym_props[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
   iter_sym_props[SET_ITERATOR_TARGET_SYMBOL_ID] = Value::Set(set_data)
   iter_sym_props[SET_ITERATOR_KIND_SYMBOL_ID] = Value::Number(kind.to_double())
+  iter_sym_props[SET_ITERATOR_ACTIVE_SYMBOL_ID] = Bool(false)
   let iter_sym_descs : Map[Int, PropDescriptor] = {}
   let slot_desc = map_iterator_internal_slot_descriptor()
   iter_sym_descs[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
   iter_sym_descs[SET_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
   iter_sym_descs[SET_ITERATOR_KIND_SYMBOL_ID] = slot_desc
+  iter_sym_descs[SET_ITERATOR_ACTIVE_SYMBOL_ID] = slot_desc
   Value::Object({
     bag: {
       properties: {},
