@@ -10,6 +10,12 @@
 // runner error is a regression, and a baseline failure that becomes
 // skip/timeout/error is NOT a fix because it did not newly pass.
 //
+// LOST COVERAGE (baseline `pass` -> candidate `skip`) is reported separately:
+// over-broad skip metadata stops executing a test that used to pass, lowering
+// Passed/Discovered and hiding the loss. It is not a correctness regression,
+// but it is not "clean" either, so it is surfaced in its own section and, like
+// regressions, forces a non-zero exit so it cannot pass silently.
+//
 // Each artifact conforms to scripts/test262_result_contract.schema.json.
 // Keys are built from the CONTRACT-STABLE key (normalized path, mode):
 // `path` may be repo-relative (test262/test/language/x.js) or Test262-root-
@@ -37,13 +43,14 @@ function normalizePath(p) {
 function loadStatuses(path) {
   const data = require(require("path").resolve(path));
   const byKey = new Map();
-  const counts = { fail: 0, timeout: 0, error: 0 };
+  const counts = { fail: 0, timeout: 0, error: 0, skip: 0 };
   for (const r of data.results) {
     byKey.set(`${normalizePath(r.path)}\t${r.mode}`, r.status);
     if (r.status in counts) counts[r.status]++;
   }
-  for (const status of ["fail", "timeout", "error"]) {
-    const field = status === "fail" ? "failed" : status;
+  const summaryField = { fail: "failed", timeout: "timeout", error: "error", skip: "skipped" };
+  for (const status of ["fail", "timeout", "error", "skip"]) {
+    const field = summaryField[status];
     if (counts[status] !== data.summary[field]) {
       throw new Error(
         `${path}: summary.${field}=${data.summary[field]} but counted ` +
@@ -79,6 +86,7 @@ function main() {
 
   const regressions = [];
   const fixed = [];
+  const lostCoverage = [];
   // Transitions are only classifiable when BOTH artifacts observed the key;
   // a key present in only one run (e.g. different filter scope) is left
   // unclassified rather than reported as a false regression/fix.
@@ -87,6 +95,8 @@ function main() {
     if (baseStatus === undefined) continue;
     if (baseStatus === "pass" && NONPASS.has(candStatus)) {
       regressions.push({ key, from: baseStatus, to: candStatus });
+    } else if (baseStatus === "pass" && candStatus === "skip") {
+      lostCoverage.push({ key, from: baseStatus, to: candStatus });
     } else if (NONPASS.has(baseStatus) && candStatus === "pass") {
       fixed.push({ key, from: baseStatus, to: candStatus });
     }
@@ -94,14 +104,17 @@ function main() {
 
   report("REGRESSIONS (pass -> non-pass)", regressions);
   console.log();
+  report("LOST COVERAGE (pass -> skip)", lostCoverage);
+  console.log();
   report("FIXED (non-pass -> pass)", fixed);
   console.log();
   console.log(
     `baseline keys=${baseline.size}  candidate keys=${candidate.size}  ` +
-      `regressions=${regressions.length}  fixed=${fixed.length}`,
+      `regressions=${regressions.length}  lost_coverage=${lostCoverage.length}  ` +
+      `fixed=${fixed.length}`,
   );
 
-  process.exit(regressions.length === 0 ? 0 : 1);
+  process.exit(regressions.length + lostCoverage.length === 0 ? 0 : 1);
 }
 
 main();
