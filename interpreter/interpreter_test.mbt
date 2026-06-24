@@ -1224,6 +1224,25 @@ test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
 }
 
 ///|
+// Reflect.ownKeys is defined for any object (§28.1.11, arg passes IsObject).
+// Map, Set, and Promise are exotic objects: Reflect.ownKeys must return their
+// own-key list, not reject with a TypeError. A fresh Map/Set has no own keys;
+// own properties defined directly surface in order. Promise instances carry an
+// engine-installed own `constructor` key (see maybe_set_promise_constructor),
+// so for Promise we only assert that an array is returned rather than thrown.
+test "Reflect.ownKeys on Map/Set/Promise instances" {
+  let src =
+    #|console.log(JSON.stringify(Reflect.ownKeys(new Map())));
+    #|console.log(JSON.stringify(Reflect.ownKeys(new Set())));
+    #|console.log(Array.isArray(Reflect.ownKeys(Promise.resolve(1))));
+    #|var m = new Map();
+    #|Object.defineProperty(m, "extra", { value: 1, enumerable: true });
+    #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+  let output = run_output(src)
+  json_inspect(output, content=["[]", "[]", "true", "[\"extra\"]"])
+}
+
+///|
 test "Annex B __proto__ setter ignores primitive prototype values" {
   let src =
     #|var obj = {};
