@@ -537,7 +537,10 @@ fn make_arguments_object(
     setter: None,
     is_accessor: false,
   }
-  if !strict {
+  // §10.4.4.7 CreateMappedArgumentsObject: sloppy + simple params → writable callee
+  // §10.4.4.6 CreateUnmappedArgumentsObject: strict OR non-simple params → ThrowTypeError
+  // Discriminant: mapped_env is Some(_) iff we have a live-mapped (simple-params) env.
+  if !strict && mapped_env is Some(_) {
     new_args_props["callee"] = ctor
     new_args_descs["callee"] = {
       writable: true,
@@ -548,9 +551,10 @@ fn make_arguments_object(
       is_accessor: false,
     }
   } else {
-    // Strict mode: install %ThrowTypeError% accessors for callee and caller
+    // Strict mode OR non-simple params: install %ThrowTypeError% accessors (§10.4.4.6 step 22)
     match throw_type_error {
       Some(tte) => {
+        new_args_props["callee"] = Undefined // accessor sentinel
         new_args_descs["callee"] = {
           writable: false,
           enumerable: false,
@@ -559,6 +563,7 @@ fn make_arguments_object(
           setter: Some(tte),
           is_accessor: true,
         }
+        new_args_props["caller"] = Undefined // accessor sentinel
         new_args_descs["caller"] = {
           writable: false,
           enumerable: false,
