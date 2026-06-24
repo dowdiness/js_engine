@@ -2009,14 +2009,7 @@ fn make_set_iterator(
   iter_sym_props[SET_ITERATOR_TARGET_SYMBOL_ID] = Value::Set(set_data)
   iter_sym_props[SET_ITERATOR_KIND_SYMBOL_ID] = Value::Number(kind.to_double())
   let iter_sym_descs : Map[Int, PropDescriptor] = {}
-  let slot_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: false,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let slot_desc = map_iterator_internal_slot_descriptor()
   iter_sym_descs[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
   iter_sym_descs[SET_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
   iter_sym_descs[SET_ITERATOR_KIND_SYMBOL_ID] = slot_desc

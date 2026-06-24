@@ -438,17 +438,18 @@ fn string_iterator_next(this_val : Value) -> Value raise Error {
     Some(Undefined) => return create_iter_result(Undefined, true)
     Some(String_(s)) => {
       let len = s.length()
-      if index >= len {
+      guard index < len else {
         data.bag.symbol_properties[STRING_ITERATOR_STRING_SYMBOL_ID] = Undefined
         return create_iter_result(Undefined, true)
       }
       let code = s[index].to_int()
-      let next_index = if code >= 0xD800 &&
-        code <= 0xDBFF &&
-        index + 1 < len &&
-        s[index + 1].to_int() >= 0xDC00 &&
-        s[index + 1].to_int() <= 0xDFFF {
-        index + 2
+      let next_index = if code >= 0xD800 && code <= 0xDBFF && index + 1 < len {
+        let next_code = s[index + 1].to_int()
+        if next_code >= 0xDC00 && next_code <= 0xDFFF {
+          index + 2
+        } else {
+          index + 1
+        }
       } else {
         index + 1
       }
@@ -546,14 +547,7 @@ fn make_string_iterator_value_with_proto(
   s : String,
   _realm_state : RealmState,
 ) -> Value {
-  let slot_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: false,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
+  let slot_desc = array_iterator_internal_slot_descriptor()
   let iter_sym_props : Map[Int, Value] = {}
   iter_sym_props[STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
   iter_sym_props[STRING_ITERATOR_STRING_SYMBOL_ID] = Value::String_(s)
