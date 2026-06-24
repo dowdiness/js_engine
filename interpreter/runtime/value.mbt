@@ -321,9 +321,15 @@ pub fn MapData::MapData(
 /// Set data structure - stores unique values with insertion order preservation
 /// Uses SameValueZero for value comparison (NaN === NaN, +0 === -0)
 pub(all) struct SetData {
-  values : Array[Value] // Array of unique values (includes tombstoned slots during iteration)
-  mut iteration_depth : Int // incremented per active forEach; tombstones are held until depth → 0
-  mut tombstones : @set.Set[Int]? // indices logically deleted during iteration; None when idle
+  values : Array[Value] // Array of unique values (includes tombstoned slots when Some(tombstones))
+  // tombstones is Some while any for..of or forEach is active. delete/clear
+  // tombstone instead of compacting when Some, preserving stable cursor indices.
+  // Compaction is guarded by iteration_depth: compact only when depth reaches 0.
+  mut tombstones : @set.Set[Int]?
+  // Counts active forEach calls only (for..of cannot be abandoned mid-flight
+  // without exhaustion, so iterators do not participate in this count).
+  // for..of exhaustion skips compaction if depth > 0 (a forEach is still walking).
+  mut iteration_depth : Int
   mut prototype : Value
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
@@ -337,8 +343,8 @@ pub fn SetData::SetData(
 ) -> SetData {
   {
     values,
-    iteration_depth: 0,
     tombstones: None,
+    iteration_depth: 0,
     prototype,
     bag: PropertyBag(),
   }

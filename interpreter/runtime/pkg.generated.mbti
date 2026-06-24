@@ -833,8 +833,8 @@ pub fn RuntimeIteratorPrototypeCaches::RuntimeIteratorPrototypeCaches() -> Self
 
 pub(all) struct SetData {
   values : Array[Value]
-  mut iteration_depth : Int
   mut tombstones : @set.Set[Int]?
+  mut iteration_depth : Int
   mut prototype : Value
   bag : PropertyBag
 }
