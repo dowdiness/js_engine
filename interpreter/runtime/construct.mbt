@@ -551,20 +551,12 @@ fn make_arguments_object(
       is_accessor: false,
     }
   } else {
-    // Strict mode OR non-simple params: install %ThrowTypeError% accessors (§10.4.4.6 step 22)
+    // Strict mode OR non-simple params: install %ThrowTypeError% accessor for callee (§10.4.4.6 step 9)
+    // Note: caller is NOT an own property of arguments objects — only callee is poisoned here.
     match throw_type_error {
       Some(tte) => {
         new_args_props["callee"] = Undefined // accessor sentinel
         new_args_descs["callee"] = {
-          writable: false,
-          enumerable: false,
-          configurable: false,
-          getter: Some(tte),
-          setter: Some(tte),
-          is_accessor: true,
-        }
-        new_args_props["caller"] = Undefined // accessor sentinel
-        new_args_descs["caller"] = {
           writable: false,
           enumerable: false,
           configurable: false,
