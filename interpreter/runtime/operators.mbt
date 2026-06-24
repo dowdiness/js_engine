@@ -302,6 +302,9 @@ fn Interpreter::eval_logical_assign(
       let current = get_assignment_name_value(ctx, env, name)
       if should_assign(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
+        if is_anonymous_function_definition(value_expr) {
+          set_function_name(rhs, name)
+        }
         if self.is_immutable_global(name) {
           if ctx.strict {
             raise @errors.TypeError(
