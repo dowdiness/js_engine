@@ -43,13 +43,31 @@ function normalizePath(p) {
 function loadStatuses(path) {
   const data = require(require("path").resolve(path));
   const byKey = new Map();
-  const counts = { fail: 0, timeout: 0, error: 0, skip: 0 };
+  const counts = { pass: 0, fail: 0, timeout: 0, error: 0, skip: 0 };
   for (const r of data.results) {
     byKey.set(`${normalizePath(r.path)}\t${r.mode}`, r.status);
     if (r.status in counts) counts[r.status]++;
   }
-  const summaryField = { fail: "failed", timeout: "timeout", error: "error", skip: "skipped" };
-  for (const status of ["fail", "timeout", "error", "skip"]) {
+  // Global integrity: every result row is accounted for. Catches dropped or
+  // duplicated rows that per-status counts alone could miss.
+  if (data.results.length !== data.summary.total) {
+    throw new Error(
+      `${path}: summary.total=${data.summary.total} but results has ` +
+        `${data.results.length} rows — artifact/extractor disagree, refusing ` +
+        `to diff`,
+    );
+  }
+  // Per-status reconciliation. `pass` is validated too: baseline pass rows are
+  // the only evidence that a candidate non-pass is a regression, so silently
+  // dropped pass rows would hide real pass->fail changes.
+  const summaryField = {
+    pass: "passed",
+    fail: "failed",
+    timeout: "timeout",
+    error: "error",
+    skip: "skipped",
+  };
+  for (const status of ["pass", "fail", "timeout", "error", "skip"]) {
     const field = summaryField[status];
     if (counts[status] !== data.summary[field]) {
       throw new Error(
