@@ -173,6 +173,42 @@ fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
 }
 
 ///|
+/// Check if target has a non-configurable own property with the given symbol
+/// key. Symbol descriptors live in `bag.symbol_descriptors`, keyed by the
+/// symbol's id, for every object-typed value (mirrors the string-keyed
+/// `target_has_non_configurable_key`).
+fn target_has_non_configurable_symbol_key(target : Value, sym_id : Int) -> Bool {
+  match target {
+    Object(data) =>
+      match data.bag.symbol_descriptors.get(sym_id) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Map(data) =>
+      match data.bag.symbol_descriptors.get(sym_id) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Set(data) =>
+      match data.bag.symbol_descriptors.get(sym_id) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Promise(data) =>
+      match data.bag.symbol_descriptors.get(sym_id) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    Array(arr) =>
+      match arr.bag.symbol_descriptors.get(sym_id) {
+        Some(desc) => !desc.configurable
+        None => false
+      }
+    _ => false
+  }
+}
+
+///|
 /// Get the descriptor for a string-keyed own property on the target.
 /// Arrays synthesize `length` and indexed element descriptors; other own
 /// named props live on `bag`.
@@ -914,7 +950,13 @@ pub fn proxy_own_property_keys(
         } else {
           target_configurable_keys.push(key)
         }
-      _ => target_configurable_keys.push(key) // Symbol keys: assume configurable
+      Value::Symbol(sym) =>
+        if target_has_non_configurable_symbol_key(target, sym.id) {
+          target_nonconfigurable_keys.push(key)
+        } else {
+          target_configurable_keys.push(key)
+        }
+      _ => target_configurable_keys.push(key)
     }
   }
   // Step 15: If extensibleTarget is true and targetNonconfigurableKeys is empty, return
