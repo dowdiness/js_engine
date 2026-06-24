@@ -18327,12 +18327,40 @@ test "stage8 ownkeys: sparse array names vs descriptors hole handling" {
     #|console.log(Object.getOwnPropertyNames(a).join(","));
     #|console.log(Object.keys(Object.getOwnPropertyDescriptors(a)).join(","));
   let output = run_output(src)
-  // Sparse array `[1, , 3]` has a hole at index 1. The two enumeration paths
-  // diverge on it (a preserved pre-existing quirk): getOwnPropertyNames walks
-  // `data.elements` by raw length and emits the hole index "1", while the
-  // descriptor snapshot guards each index with `!data.holes.contains(i)` and
-  // omits it. Spec says both should omit holes; fixing that is a follow-up.
-  json_inspect(output, content=["0,1,2,length", "0,2,length"])
+  // Sparse array `[1, , 3]` has a hole at index 1. After the #336 enumerator
+  // unification both paths route through the canonical OrdinaryOwnPropertyKeys
+  // op, which omits the hole index per ES §10.4.2.1 / §10.1.11. Both emit
+  // "0,2,length".
+  json_inspect(output, content=["0,2,length", "0,2,length"])
+}
+
+///|
+test "ownkeys #336: Reflect.ownKeys on sparse array with named + symbol keys" {
+  // Reflect.ownKeys routes through the canonical OrdinaryOwnPropertyKeys op.
+  // Order per ES §10.1.11: integer indices ascending (hole at 1 omitted),
+  // then "length", then insertion-order string keys, then symbol keys.
+  let src =
+    #|var a = [1, , 3];
+    #|a.foo = "x";
+    #|var s = Symbol("s");
+    #|a[s] = 1;
+    #|console.log(Reflect.ownKeys(a).map(function (k) { return k.toString(); }).join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["0,2,length,foo,Symbol(s)"])
+}
+
+///|
+test "ownkeys #336: getOwnPropertyDescriptors on typedarray enumerates integer indices" {
+  // TypedArrays carry own integer-indexed properties (backed by the buffer,
+  // not bag.properties). `length` is a prototype accessor, not an own key.
+  // The canonical op routes the descriptor snapshot through the typedarray
+  // [[OwnPropertyKeys]] variant so the indices surface.
+  let src =
+    #|var ta = new Uint8Array([10, 20, 30]);
+    #|console.log(Object.keys(Object.getOwnPropertyDescriptors(ta)).join(","));
+    #|console.log(Object.getOwnPropertyNames(ta).join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["0,1,2", "0,1,2"])
 }
 
 ///|

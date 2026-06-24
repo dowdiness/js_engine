@@ -1,15 +1,20 @@
 ///|
-/// `[[OwnPropertyKeys]]`-class enumeration operations relocated from
-/// `interpreter/stdlib/builtins_object_descriptors.mbt` so that stdlib calls a
-/// runtime operation instead of reaching into PropertyBag / ArrayData
-/// representation internals (architecture redesign Stage 8).
+/// Canonical `[[OwnPropertyKeys]]` enumeration for the runtime (ES §10.1.11
+/// OrdinaryOwnPropertyKeys plus the Array §10.4.2.1, String, Module, TypedArray
+/// §10.4.5, and Proxy §10.5.11 exotic variants).
 ///
-/// These reproduce the existing Object.getOwnPropertyNames /
-/// getOwnPropertySymbols / getOwnPropertyDescriptors enumeration behavior
-/// verbatim. They are intentionally NOT the canonical OrdinaryOwnPropertyKeys:
-/// `collect_target_own_keys` (proxy_helpers.mbt) remains a separate enumeration
-/// path with different array semantics. Unifying the two is tracked as a
-/// follow-up slice, not done here.
+/// `Interpreter::own_property_keys` is the single enumerator every consumer
+/// routes through: Object.getOwnPropertyNames / getOwnPropertySymbols /
+/// getOwnPropertyDescriptors / defineProperties (this file), Reflect.ownKeys
+/// (builtins_reflect.mbt), and the Proxy ownKeys target-key enumeration
+/// (proxy_helpers.mbt). Key order is integer indices ascending, then string
+/// keys in insertion order, then symbol keys in insertion order; Array holes
+/// are omitted everywhere (§10.4.2.1).
+///
+/// Known limitation (pre-existing, out of scope for the #336 unification):
+/// Array index keys beyond `Int` range (≥ 2^31, stored on the bag rather than
+/// in `elements`) are emitted among the trailing string keys, after "length",
+/// instead of merged into the ascending integer-index run.
 
 ///|
 /// Append the own symbol keys of a property bag (resolved id -> SymbolData) to
@@ -62,23 +67,57 @@ fn append_array_own_keys(
 }
 
 ///|
-/// `[[OwnPropertyKeys]]` snapshot used by Object.getOwnPropertyDescriptors and
-/// Object.defineProperties (§19.1.2.3 / §19.1.2.4 key snapshot). Preserves the
-/// existing stdlib enumeration: hole-skipping for arrays, integer-key-ascending
-/// then insertion-order string keys, then symbol keys.
-pub fn object_own_property_keys_snapshot(
+/// Append a TypedArray's own keys (§10.4.5.2 IntegerIndexedExoticObject
+/// `[[OwnPropertyKeys]]`): the canonical numeric indices `0 .. [[ArrayLength]]`
+/// that are still valid (the buffer may have detached), then non-index string
+/// bag keys in insertion order, then symbol keys.
+fn append_typedarray_own_keys(
   interp : Interpreter,
-  source : Value,
+  keys : Array[Value],
+  data : ObjectData,
+  sym_state : SymbolState,
+) -> Unit {
+  let length = typedarray_declared_length(data)
+  for i in 0..<length {
+    if (interp.stdlib_hooks.typedarray_is_valid_index)(
+        data,
+        i,
+        interp.realm_state,
+      ) {
+      keys.push(Value::String_(i.to_string()))
+    }
+  }
+  for prop_name in sort_property_keys(data.bag.properties) {
+    if is_typedarray_own_index_key(prop_name, length) {
+      continue
+    }
+    keys.push(Value::String_(prop_name))
+  }
+  append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
+}
+
+///|
+/// Canonical `[[OwnPropertyKeys]]` (ES §10.1.11 + Array/String/Module/TypedArray
+/// /Proxy exotic variants). Returns the own keys of `val` as String_/Symbol
+/// Values in spec order: integer indices ascending, then insertion-order string
+/// keys, then symbol keys. Array holes are omitted; TypedArray integer indices
+/// surface; the Proxy variant runs the ownKeys trap. Every own-key consumer in
+/// the runtime/stdlib routes through this op.
+pub fn Interpreter::own_property_keys(
+  self : Interpreter,
+  val : Value,
 ) -> Array[Value] raise Error {
-  let sym_state = interp.realm_state.symbols
+  let sym_state = self.realm_state.symbols
   let keys : Array[Value] = []
-  match source {
+  match val {
     Object(data) =>
       if data.class_name == "Module" {
         for prop_name in module_namespace_own_string_keys(data) {
           keys.push(Value::String_(prop_name))
         }
         append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)
+      } else if is_typedarray_class(data.class_name) {
+        append_typedarray_own_keys(self, keys, data, sym_state)
       } else {
         append_bag_own_keys(keys, data.bag, sym_state)
       }
@@ -86,8 +125,17 @@ pub fn object_own_property_keys_snapshot(
     Map(data) => append_bag_own_keys(keys, data.bag, sym_state)
     Set(data) => append_bag_own_keys(keys, data.bag, sym_state)
     Promise(data) => append_bag_own_keys(keys, data.bag, sym_state)
-    Proxy(proxy_data) =>
-      match proxy_own_property_keys(interp, proxy_data) {
+    Value::String_(s) => {
+      // ToObject(String) characterization (§10.4.3): indexed character slots
+      // then "length". Only reached through getOwnPropertyNames coercion.
+      let chars = s.to_array()
+      for i in 0..<chars.length() {
+        keys.push(Value::String_(i.to_string()))
+      }
+      keys.push(Value::String_("length"))
+    }
+    Value::Proxy(proxy_data) =>
+      match proxy_own_property_keys(self, proxy_data) {
         Value::Array(proxy_keys) =>
           for key in proxy_keys.elements {
             keys.push(key)
@@ -100,10 +148,9 @@ pub fn object_own_property_keys_snapshot(
 }
 
 ///|
-/// Object.getOwnPropertyNames enumeration (§19.1.2.10): own String-typed keys.
-/// Preserves existing behavior, which for ordinary objects emits all visible
-/// bag string keys (no hidden-internal filtering) and for arrays emits every
-/// index slot plus "length".
+/// Object.getOwnPropertyNames (§20.1.2.11): the String-typed own keys from the
+/// canonical `[[OwnPropertyKeys]]` enumeration. Array holes and TypedArray
+/// validity are handled by the canonical op.
 pub fn own_string_property_names(
   interp : Interpreter,
   source : Value,
@@ -113,102 +160,38 @@ pub fn own_string_property_names(
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Value::Proxy(proxy_data) => {
-      let all_keys = proxy_own_property_keys(interp, proxy_data)
+    _ => {
       let result : Array[Value] = []
-      match all_keys {
-        Value::Array(arr) =>
-          for key in arr.elements {
-            match key {
-              Value::String_(_) => result.push(key)
-              _ => () // getOwnPropertyNames only returns strings
-            }
-          }
-        _ => ()
+      for key in interp.own_property_keys(source) {
+        if key is Value::String_(_) {
+          result.push(key)
+        }
       }
       make_array(result)
     }
-    Object(data) => {
-      let keys : Array[Value] = []
-      let sorted = if data.class_name == "Module" {
-        module_namespace_own_string_keys(data)
-      } else {
-        sort_property_keys(data.bag.properties)
-      }
-      for k in sorted {
-        keys.push(Value::String_(k))
-      }
-      make_array(keys)
-    }
-    Value::Array(data) => {
-      let keys : Array[Value] = []
-      for i in 0..<data.elements.length() {
-        keys.push(Value::String_(i.to_string()))
-      }
-      keys.push(Value::String_("length"))
-      for k in sort_property_keys(data.bag.properties) {
-        keys.push(Value::String_(k))
-      }
-      make_array(keys)
-    }
-    Value::String_(s) => {
-      let keys : Array[Value] = []
-      let chars = s.to_array()
-      for i in 0..<chars.length() {
-        keys.push(Value::String_(i.to_string()))
-      }
-      keys.push(Value::String_("length"))
-      make_array(keys)
-    }
-    _ => make_array([])
   }
 }
 
 ///|
-/// Object.getOwnPropertySymbols enumeration (§19.1.2.11): own Symbol-typed keys.
+/// Object.getOwnPropertySymbols (§20.1.2.12): the Symbol-typed own keys from the
+/// canonical `[[OwnPropertyKeys]]` enumeration.
 pub fn own_symbol_properties(
   interp : Interpreter,
   source : Value,
 ) -> Value raise Error {
-  let sym_state = interp.realm_state.symbols
   match source {
     Null | Undefined =>
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Value::Proxy(proxy_data) => {
-      let all_keys = proxy_own_property_keys(interp, proxy_data)
+    _ => {
       let result : Array[Value] = []
-      match all_keys {
-        Value::Array(arr) =>
-          for key in arr.elements {
-            match key {
-              Value::Symbol(_) => result.push(key)
-              _ => () // getOwnPropertySymbols only returns symbols
-            }
-          }
-        _ => ()
+      for key in interp.own_property_keys(source) {
+        if key is Value::Symbol(_) {
+          result.push(key)
+        }
       }
       make_array(result)
     }
-    Object(data) => {
-      let symbols : Array[Value] = []
-      append_resolved_symbol_keys(
-        symbols,
-        data.bag.symbol_properties,
-        sym_state,
-      )
-      make_array(symbols)
-    }
-    Value::Array(data) => {
-      let symbols : Array[Value] = []
-      append_resolved_symbol_keys(
-        symbols,
-        data.bag.symbol_properties,
-        sym_state,
-      )
-      make_array(symbols)
-    }
-    _ => make_array([])
   }
 }

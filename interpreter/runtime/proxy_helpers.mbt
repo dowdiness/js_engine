@@ -89,72 +89,6 @@ fn is_typedarray_own_index_key(key : String, length : Int) -> Bool {
 }
 
 ///|
-/// Collect own property keys from a non-proxy target value as Array[Value].
-/// Returns string keys and symbol keys (symbol keys require SymbolState).
-pub fn collect_target_own_keys(
-  target : Value,
-  interp : Interpreter,
-) -> Array[Value] {
-  let keys : Array[Value] = []
-  match target {
-    Object(data) => {
-      if data.class_name == "Module" {
-        for k in module_namespace_own_string_keys(data) {
-          keys.push(Value::String_(k))
-        }
-        data.bag.symbol_properties.each(fn(id, _v) {
-          match interp.realm_state.symbols.get_symbol_by_id(id) {
-            Some(sym) => keys.push(Value::Symbol(sym))
-            None => ()
-          }
-        })
-        return keys
-      }
-      let typedarray_length = typedarray_declared_length(data)
-      for i = 0; i < typedarray_length; i = i + 1 {
-        if (interp.stdlib_hooks.typedarray_is_valid_index)(
-            data,
-            i,
-            interp.realm_state,
-          ) {
-          keys.push(Value::String_(i.to_string()))
-        }
-      }
-      // Indexed (integer) string keys first, in ascending order
-      let sorted = sort_property_keys(data.bag.properties)
-      for k in sorted {
-        if is_typedarray_own_index_key(k, typedarray_length) {
-          continue
-        }
-        keys.push(Value::String_(k))
-      }
-      // Also include keys from descriptors not in properties
-      data.bag.descriptors.each(fn(k, _v) {
-        if !data.bag.properties.contains(k) &&
-          !is_typedarray_own_index_key(k, typedarray_length) {
-          keys.push(Value::String_(k))
-        }
-      })
-      // Symbol keys
-      data.bag.symbol_properties.each(fn(id, _v) {
-        match interp.realm_state.symbols.get_symbol_by_id(id) {
-          Some(sym) => keys.push(Value::Symbol(sym))
-          None => ()
-        }
-      })
-    }
-    Value::Array(data) => {
-      for i = 0; i < data.elements.length(); i = i + 1 {
-        keys.push(Value::String_(i.to_string()))
-      }
-      keys.push(Value::String_("length"))
-    }
-    _ => ()
-  }
-  keys
-}
-
-///|
 /// Check if target object is extensible. Arrays, Maps, Sets, Promises have
 /// no `extensible` field in their data structs today (tracked as a known
 /// gap from Stage B.1 — `isExtensible` 2/22 Array failures); they behave
@@ -895,7 +829,7 @@ pub fn proxy_own_property_keys(
       match target {
         Value::Proxy(inner_proxy) =>
           return proxy_own_property_keys(interp, inner_proxy)
-        _ => return make_array(collect_target_own_keys(target, interp))
+        _ => return make_array(interp.own_property_keys(target))
       }
     _ => ()
   }
@@ -969,7 +903,7 @@ pub fn proxy_own_property_keys(
   // Step 10: Get extensibleTarget
   let extensible_target = target_is_extensible(target)
   // Step 11-12: Get target keys, split into non-configurable and configurable
-  let target_keys = collect_target_own_keys(target, interp)
+  let target_keys = interp.own_property_keys(target)
   let target_nonconfigurable_keys : Array[Value] = []
   let target_configurable_keys : Array[Value] = []
   for key in target_keys {

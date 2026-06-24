@@ -248,7 +248,7 @@ fn setup_reflect_builtins(
         Value::Proxy(proxy_data) =>
           @runtime.proxy_own_property_keys(interp, proxy_data)
         Object(_) | Value::Array(_) =>
-          @runtime.make_array(@runtime.collect_target_own_keys(target, interp))
+          @runtime.make_array(interp.own_property_keys(target))
         _ =>
           raise @errors.TypeError(
             message="Reflect.ownKeys called on non-object",
