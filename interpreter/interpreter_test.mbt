@@ -1227,19 +1227,77 @@ test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
 // Reflect.ownKeys is defined for any object (§28.1.11, arg passes IsObject).
 // Map, Set, and Promise are exotic objects: Reflect.ownKeys must return their
 // own-key list, not reject with a TypeError. A fresh Map/Set has no own keys;
-// own properties defined directly surface in order. Promise instances carry an
-// engine-installed own `constructor` key (see maybe_set_promise_constructor),
-// so for Promise we only assert that an array is returned rather than thrown.
+// own properties created by assignment or defineProperty surface in order.
+// Promise instances carry an engine-installed own `constructor` key (see
+// maybe_set_promise_constructor), so for Promise we only assert that an array is
+// returned rather than thrown.
 test "Reflect.ownKeys on Map/Set/Promise instances" {
   let src =
     #|console.log(JSON.stringify(Reflect.ownKeys(new Map())));
     #|console.log(JSON.stringify(Reflect.ownKeys(new Set())));
     #|console.log(Array.isArray(Reflect.ownKeys(Promise.resolve(1))));
     #|var m = new Map();
-    #|Object.defineProperty(m, "extra", { value: 1, enumerable: true });
+    #|m.extra = 1;
+    #|console.log(m.extra);
     #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|var s = new Set();
+    #|s.extra = 1;
+    #|console.log(s.extra);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|var m2 = new Map();
+    #|Object.defineProperty(m2, "extra", { value: 1, enumerable: true });
+    #|console.log(JSON.stringify(Reflect.ownKeys(m2)));
   let output = run_output(src)
-  json_inspect(output, content=["[]", "[]", "true", "[\"extra\"]"])
+  json_inspect(output, content=[
+    "[]", "[]", "true", "1", "[\"extra\"]", "1", "[\"extra\"]", "[\"extra\"]",
+  ])
+}
+
+///|
+test "Map/Set assignment respects inherited prototype property blockers" {
+  let src =
+    #|Object.defineProperty(Map.prototype, "__t447_getter", {
+    #|  get: function() { return 1; },
+    #|  configurable: true
+    #|});
+    #|var m = new Map();
+    #|m.__t447_getter = 2;
+    #|console.log(m.__t447_getter);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|try {
+    #|  (function() { "use strict"; var sm = new Map(); sm.__t447_getter = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|delete Map.prototype.__t447_getter;
+    #|Object.defineProperty(Set.prototype, "__t447_data", {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: true
+    #|});
+    #|var s = new Set();
+    #|s.__t447_data = 2;
+    #|console.log(s.__t447_data);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|try {
+    #|  (function() { "use strict"; var ss = new Set(); ss.__t447_data = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|delete Set.prototype.__t447_data;
+    #|var seen;
+    #|Object.defineProperty(Map.prototype, "__t447_setter", {
+    #|  set: function(v) { seen = this instanceof Map ? v : "bad"; },
+    #|  configurable: true
+    #|});
+    #|var m2 = new Map();
+    #|m2.__t447_setter = 9;
+    #|console.log(seen);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m2)));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1", "[]", "TypeError", "1", "[]", "TypeError", "9", "[]",
+  ])
 }
 
 ///|

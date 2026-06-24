@@ -577,6 +577,120 @@ pub fn Interpreter::set_property(
       data.bag.properties[prop] = value
       value
     }
+    Map(data) => {
+      let mut should_walk_proto = false
+      match data.bag.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.setter {
+            Some(setter) => {
+              let _ = self.call_value(setter, receiver, [value], loc)
+              return value
+            }
+            None =>
+              if desc.getter is Some(_) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot set property \{prop} which has only a getter",
+                  )
+                }
+                return value
+              } else if !desc.writable {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot assign to read only property '\{prop}'",
+                  )
+                }
+                return value
+              }
+          }
+        None =>
+          if !data.bag.properties.contains(prop) {
+            should_walk_proto = true
+          }
+      }
+      if should_walk_proto {
+        match
+          self.set_string_via_map_set_prototype_chain(
+            data.prototype,
+            receiver,
+            prop,
+            value,
+            loc,
+            strict,
+          ) {
+          Some(result) => return result
+          None => ()
+        }
+      }
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(
+          receiver,
+          String_(prop),
+          value,
+          loc,
+          strict,
+        )
+      }
+      data.bag.properties[prop] = value
+      value
+    }
+    Set(data) => {
+      let mut should_walk_proto = false
+      match data.bag.descriptors.get(prop) {
+        Some(desc) =>
+          match desc.setter {
+            Some(setter) => {
+              let _ = self.call_value(setter, receiver, [value], loc)
+              return value
+            }
+            None =>
+              if desc.getter is Some(_) {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot set property \{prop} which has only a getter",
+                  )
+                }
+                return value
+              } else if !desc.writable {
+                if strict {
+                  raise @errors.TypeError(
+                    message="Cannot assign to read only property '\{prop}'",
+                  )
+                }
+                return value
+              }
+          }
+        None =>
+          if !data.bag.properties.contains(prop) {
+            should_walk_proto = true
+          }
+      }
+      if should_walk_proto {
+        match
+          self.set_string_via_map_set_prototype_chain(
+            data.prototype,
+            receiver,
+            prop,
+            value,
+            loc,
+            strict,
+          ) {
+          Some(result) => return result
+          None => ()
+        }
+      }
+      if !strict_equal(obj, receiver) {
+        return self.define_value_on_receiver(
+          receiver,
+          String_(prop),
+          value,
+          loc,
+          strict,
+        )
+      }
+      data.bag.properties[prop] = value
+      value
+    }
     Null =>
       raise @errors.TypeError(
         message="Cannot set properties of null (setting '\{prop}')",
@@ -594,6 +708,164 @@ pub fn Interpreter::set_property(
         )
       } else {
         value
+      }
+  }
+}
+
+///|
+/// Map/Set carry their own prototype slot, so string-key [[Set]] must honor
+/// inherited setters and inherited blocker descriptors before creating an
+/// expando property on the receiver.
+fn Interpreter::set_string_via_map_set_prototype_chain(
+  self : Interpreter,
+  proto : Value,
+  receiver : Value,
+  prop : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value? raise Error {
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) =>
+        match
+          self.check_inherited_string_property_bag(
+            proto_data.bag,
+            proto_data.prototype,
+            receiver,
+            prop,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Array(proto_data) => {
+        let next_proto = get_array_prototype_override(proto_data).unwrap_or(
+          self.realm_state.get_array_proto(),
+        )
+        match
+          self.check_inherited_string_property_bag(
+            proto_data.bag,
+            next_proto,
+            receiver,
+            prop,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      }
+      Map(proto_data) =>
+        match
+          self.check_inherited_string_property_bag(
+            proto_data.bag,
+            proto_data.prototype,
+            receiver,
+            prop,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Set(proto_data) =>
+        match
+          self.check_inherited_string_property_bag(
+            proto_data.bag,
+            proto_data.prototype,
+            receiver,
+            prop,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Promise(proto_data) =>
+        match
+          self.check_inherited_string_property_bag(
+            proto_data.bag,
+            proto_data.prototype,
+            receiver,
+            prop,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Proxy(_) =>
+        return Some(
+          self.set_property(current, prop, value, loc, strict~, receiver~),
+        )
+      _ => break
+    }
+  }
+  None
+}
+
+///|
+priv enum InheritedStringSetResult {
+  Handled(Value)
+  Continue(Value)
+  Stop
+}
+
+///|
+fn Interpreter::check_inherited_string_property_bag(
+  self : Interpreter,
+  bag : PropertyBag,
+  next_proto : Value,
+  receiver : Value,
+  prop : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> InheritedStringSetResult raise Error {
+  match bag.descriptors.get(prop) {
+    Some(desc) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          Handled(value)
+        }
+        None =>
+          if desc.getter is Some(_) {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot set property \{prop} which has only a getter",
+              )
+            }
+            Handled(value)
+          } else if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property '\{prop}'",
+              )
+            }
+            Handled(value)
+          } else {
+            Stop
+          }
+      }
+    None =>
+      if bag.properties.contains(prop) {
+        Stop
+      } else {
+        Continue(next_proto)
       }
   }
 }
