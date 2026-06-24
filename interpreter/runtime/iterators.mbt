@@ -24,6 +24,13 @@ priv enum ArrayIteratorKind {
 const ARRAY_PROTO_VALUES_INTRINSIC_SYMBOL_ID = -112
 
 ///|
+// Engine-private negative symbol IDs for String Iterator internal slots.
+const STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID = -136
+
+///|
+const STRING_ITERATOR_STRING_SYMBOL_ID = -137
+
+///|
 fn array_iterator_internal_slot_descriptor() -> PropDescriptor {
   {
     writable: false,
@@ -405,6 +412,59 @@ pub fn RealmState::make_array_entries_iterator_value(
 }
 
 ///|
+fn string_iterator_type_error() -> Value raise Error {
+  raise @errors.TypeError(
+    message="String Iterator.prototype.next requires that |this| be a String Iterator",
+  )
+}
+
+///|
+// §22.1.5.2.1 %StringIteratorPrototype%.next()
+// Reads [[StringIteratorNextIndex]] and [[IteratedString]] from receiver slots.
+// Missing STRING slot → TypeError (catches %StringIteratorPrototype% itself).
+fn string_iterator_next(this_val : Value) -> Value raise Error {
+  guard this_val is Object(data) else { return string_iterator_type_error() }
+  guard data.class_name == "String Iterator" else {
+    return string_iterator_type_error()
+  }
+  let index = match
+    data.bag.symbol_properties.get(STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID) {
+    Some(Number(n)) => n.to_int()
+    _ => return string_iterator_type_error()
+  }
+  match data.bag.symbol_properties.get(STRING_ITERATOR_STRING_SYMBOL_ID) {
+    None => return string_iterator_type_error()
+    // §22.1.5.2.1 step 7: [[IteratedString]] is undefined → already done
+    Some(Undefined) => return create_iter_result(Undefined, true)
+    Some(String_(s)) => {
+      let len = s.length()
+      if index >= len {
+        data.bag.symbol_properties[STRING_ITERATOR_STRING_SYMBOL_ID] = Undefined
+        return create_iter_result(Undefined, true)
+      }
+      let code = s[index].to_int()
+      let next_index = if code >= 0xD800 &&
+        code <= 0xDBFF &&
+        index + 1 < len &&
+        s[index + 1].to_int() >= 0xDC00 &&
+        s[index + 1].to_int() <= 0xDFFF {
+        index + 2
+      } else {
+        index + 1
+      }
+      data.bag.symbol_properties[STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(
+        next_index.to_double(),
+      )
+      create_iter_result(
+        String_(s.unsafe_substring(start=index, end=next_index)),
+        false,
+      )
+    }
+    _ => return string_iterator_type_error()
+  }
+}
+
+///|
 fn make_string_iterator_proto_value(
   well_known_symbols : WellKnownSymbols,
   iterator_proto : Value,
@@ -434,11 +494,7 @@ fn make_string_iterator_proto_value(
     name="next",
     length=0,
     realm_state=Some(realm_state),
-    fn(_this_val, _args) raise {
-      raise @errors.TypeError(
-        message="String Iterator.prototype.next requires that |this| be a String Iterator",
-      )
-    },
+    fn(this_val, _args) raise { string_iterator_next(this_val) },
   )
   let str_proto_descs : Map[String, PropDescriptor] = {}
   str_proto_descs["next"] = {
@@ -483,70 +539,33 @@ pub fn RealmState::get_string_iterator_proto(self : RealmState) -> Value {
 }
 
 ///|
-/// Create a string iterator object that iterates over string characters
-/// Handles Unicode surrogate pairs correctly per ES6 spec
+// §22.1.5.1 CreateStringIterator: stores [[IteratedString]] and
+// [[StringIteratorNextIndex]] as hidden symbol slots; next() lives on the proto.
 fn make_string_iterator_value_with_proto(
   str_iter_proto : Value,
   s : String,
-  realm_state : RealmState,
+  _realm_state : RealmState,
 ) -> Value {
-  let chars = s.to_array()
-  let index_ref : Ref[Int] = { val: 0 }
-  let next_method = make_method_func(
-    name="next",
-    length=0,
-    realm_state=Some(realm_state),
-    fn(this_val, _args) raise {
-      // §22.1.5.2.1 step 2-3: this must be a String Iterator instance
-      guard this_val is Object(data) else {
-        raise @errors.TypeError(
-          message="String Iterator.prototype.next requires that |this| be a String Iterator",
-        )
-      }
-      guard data.class_name == "String Iterator" else {
-        raise @errors.TypeError(
-          message="String Iterator.prototype.next requires that |this| be a String Iterator",
-        )
-      }
-      let idx = index_ref.val
-      if idx < chars.length() {
-        let buf = StringBuilder::new()
-        let c = chars[idx]
-        let code = c.to_int()
-
-        // Check if this is a high surrogate (0xD800-0xDBFF)
-        // and the next char is a low surrogate (0xDC00-0xDFFF)
-        if code >= 0xD800 && code <= 0xDBFF && idx + 1 < chars.length() {
-          let next_code = chars[idx + 1].to_int()
-          if next_code >= 0xDC00 && next_code <= 0xDFFF {
-            // This is a surrogate pair - yield both together
-            buf.write_char(c)
-            buf.write_char(chars[idx + 1])
-            index_ref.val = idx + 2
-          } else {
-            // High surrogate without valid low surrogate - yield as-is
-            buf.write_char(c)
-            index_ref.val = idx + 1
-          }
-        } else {
-          // Regular character or lone surrogate
-          buf.write_char(c)
-          index_ref.val = idx + 1
-        }
-        create_iter_result(String_(buf.to_string()), false)
-      } else {
-        create_iter_result(Undefined, true)
-      }
-    },
-  )
-  let iter_props : Map[String, Value] = {}
-  iter_props["next"] = next_method
+  let slot_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let iter_sym_props : Map[Int, Value] = {}
+  iter_sym_props[STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
+  iter_sym_props[STRING_ITERATOR_STRING_SYMBOL_ID] = Value::String_(s)
+  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  iter_sym_descs[STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
+  iter_sym_descs[STRING_ITERATOR_STRING_SYMBOL_ID] = slot_desc
   Object({
     bag: {
-      properties: iter_props,
-      symbol_properties: {},
+      properties: {},
+      symbol_properties: iter_sym_props,
       descriptors: {},
-      symbol_descriptors: {},
+      symbol_descriptors: iter_sym_descs,
       internal_slots: {},
     },
     prototype: str_iter_proto,
