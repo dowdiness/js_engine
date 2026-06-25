@@ -24,9 +24,10 @@ pub fn RuntimeIteratorPrototypeCaches::RuntimeIteratorPrototypeCaches() -> Runti
 ///|
 /// Per-realm engine state owned by an Interpreter.
 ///
-/// Some ambient module-level intrinsic caches, backing stores, and side tables
-/// remain where they are until their individual migrations are covered by
-/// focused tests.
+/// Realm-scoped mutable engine state belongs here or in an explicit nested
+/// owner record, not in module-level caches. This includes intrinsic/prototype
+/// caches, symbol registries, backing stores, and side tables whose lifetime is
+/// the lifetime of a realm.
 pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols

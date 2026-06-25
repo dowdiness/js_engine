@@ -56,7 +56,8 @@ The variant-level distinction between "ordinary object" and each exotic kind exi
 
 - [ROADMAP.md](../ROADMAP.md) — current conformance status and in-progress structural work
 - [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md) — execution optimization direction
-- [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — current realm-state ownership and execution-boundary redesign findings
+- [runtime-state-ownership-audit-2026-06-25.md](runtime-state-ownership-audit-2026-06-25.md) — current concrete runtime/stdlib mutable-state owner map
+- [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — realm-state ownership and execution-boundary migration record
 - [archive/architecture-redesign-2026-04-15.md](../archive/architecture-redesign-2026-04-15.md) — completed April-2026 restructuring (ExecContext, runtime/stdlib split, timer API, descriptor consolidation)
 - [archive/2026-04-09-structural-refactoring.md](../archive/2026-04-09-structural-refactoring.md) — earlier structural work that produced the current file layout
 - [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md) — exploratory pressures for the next phase

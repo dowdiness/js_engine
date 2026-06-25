@@ -527,6 +527,9 @@ fn tagged_template_cache_key(
 }
 
 ///|
+// Per-interpreter template-object cache. It is stored as an internal global
+// binding so it follows the Interpreter/global lifetime, and all access stays
+// behind Interpreter methods rather than a module-level mutable table.
 const TEMPLATE_OBJECT_CACHE_BINDING = "[[TemplateObjectCache]]"
 
 ///|

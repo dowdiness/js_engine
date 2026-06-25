@@ -18,6 +18,8 @@ This findings note still describes the redesign pressure and target direction,
 but the repo has moved beyond the original starting point:
 
 - Stage 0 guardrails are implemented and wired through `make architecture-audit`.
+- The runtime/stdlib mutable-state owner map is tracked in
+  [runtime-state-ownership-audit-2026-06-25.md](runtime-state-ownership-audit-2026-06-25.md).
 - The representation-access inventory is current and classified, with 1294
   classified access sites after the 2026-06-25 inventory refresh. That count is
   debt visibility, not debt retirement.
