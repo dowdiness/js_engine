@@ -289,6 +289,43 @@ make test262-skip-report
 
 `make test262-skip-report` writes `docs/test262-skip-report.md`.
 
+## Feature gap report
+
+To compare this repo's skip list against an external Test262 feature config (for
+planning purposes only), use the feature-gap script:
+
+```bash
+# Print to stdout
+python3 scripts/test262_feature_gap.py --ext-config /path/to/external-config.ini
+
+# Write to docs/test262-feature-gap.md
+make test262-feature-gap EXT_CONFIG=/path/to/external-config.ini
+```
+
+The script parses the `[features]` section of the external config (an INI-style
+file where each line inside `[features]` is a supported feature name) and
+compares it against `scripts/test262_skip_metadata.json`.  It produces a
+Markdown report with three sections:
+
+- **Features we skip that the external config runs** — implementation gaps;
+  highest planning value.
+- **Features both configs skip** — features not listed as supported by either
+  side.
+- **Features the external config runs that we also run** — no gap; included for
+  completeness.
+
+**This report is non-authoritative.**  It compares metadata lists; it does not
+execute tests, report pass rates, or claim conformance.  Authoritative
+conformance numbers come from CI Test262 artifacts (`make test262-report`).
+
+To run the Python unit tests for the script:
+
+```bash
+make test262-feature-gap-test
+# or directly:
+python3 -m unittest scripts/test_test262_feature_gap.py -v
+```
+
 ## CI Integration
 
 The GitHub Actions workflow (`.github/workflows/test262.yml`) runs the full suite automatically:
