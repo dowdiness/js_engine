@@ -371,8 +371,9 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
         col += 1
         let esc = char_at(offset)
-        // LineContinuation (\<LTS>): TRV = \n, nothing in cooked
+        // LineContinuation (\<LTS>): cooked = "" (TV), raw = \ + \n (TRV §12.9.6.1)
         if is_line_terminator(esc) {
+          raw_buf.write_char('\\')
           raw_buf.write_char('\n')
           if esc == '\r' {
             offset += 1

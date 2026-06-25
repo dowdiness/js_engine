@@ -148,6 +148,21 @@ fn compile_expr_to_closure_inner(
       unsupported_expr(
         "optional chain member (ChainMember/ChainComputedMember)",
       )
+    TemplateLit(quasis, exprs, _) if exprs.is_empty() => {
+      // No-substitution template: restore the StringLit-equivalent path that
+      // was broken by this PR (NoSubTemplate previously lowered to StringLit).
+      // cooked is always Some here — early-error validator rejects None.
+      let cooked = quasis[0].1
+      fn(_, _, _) raise {
+        match cooked {
+          Some(s) => Value::String_(s)
+          None =>
+            raise @errors.InternalError(
+              message="unreachable: no-sub TemplateLit with None cooked reached closure compiler",
+            )
+        }
+      }
+    }
     _ => unsupported_expr("expression kind")
   }
 }

@@ -159,6 +159,17 @@ test "run_compiled facade reports unsupported syntax clearly" {
 }
 
 ///|
+test "run_compiled no-substitution template literal compiles correctly" {
+  let src =
+    #|`hello`;
+  expect_string(
+    run_compiled_outcome(src),
+    "value:hello",
+    "no-sub template in compiled path",
+  )
+}
+
+///|
 test "Promise.resolve" {
   let src =
     #|const p = Promise.resolve(42);

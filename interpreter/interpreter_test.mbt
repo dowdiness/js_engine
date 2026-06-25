@@ -1917,6 +1917,18 @@ test "tagged template raw and cooked for valid escape" {
 }
 
 ///|
+test "tagged template raw preserves backslash in line continuation" {
+  let src =
+    #|function tag(s) { return s[0] + '|' + s.raw[0]; }
+    #|tag`a\
+    #|b`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "ab|a\\\nb", "cooked removes continuation, raw keeps backslash+newline",
+  )
+}
+
+///|
 test "nested untagged template with invalid escape throws SyntaxError" {
   let src =
     #|`${`\1`}`
