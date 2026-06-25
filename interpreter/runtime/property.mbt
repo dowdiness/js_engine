@@ -920,8 +920,9 @@ fn Interpreter::get_computed_property_impl(
             Some(v) => return v
             None => ()
           }
-          // Check Array.prototype for symbol properties (e.g. overridden Symbol.iterator)
-          // while honoring per-array prototype overrides.
+          // Check Array.prototype and the rest of the prototype chain for symbol
+          // properties (e.g. overridden Symbol.iterator, @@toPrimitive on
+          // Object.prototype, etc.) while honoring per-array prototype overrides.
           match get_array_prototype(self.realm_state, arr) {
             Object(proto_data) => {
               // Check symbol descriptors for getters
@@ -937,6 +938,28 @@ fn Interpreter::get_computed_property_impl(
               match proto_data.bag.symbol_properties.get(sym.id) {
                 Some(v) => return v
                 None => ()
+              }
+              // Walk prototype chain beyond Array.prototype (e.g. Object.prototype)
+              let mut current = proto_data.prototype
+              while true {
+                match current {
+                  Object(ancestor) => {
+                    match ancestor.bag.symbol_descriptors.get(sym.id) {
+                      Some(desc) =>
+                        match desc.getter {
+                          Some(getter) =>
+                            return self.call_value(getter, obj, [], loc)
+                          None => ()
+                        }
+                      None => ()
+                    }
+                    match ancestor.bag.symbol_properties.get(sym.id) {
+                      Some(v) => return v
+                      None => current = ancestor.prototype
+                    }
+                  }
+                  _ => break
+                }
               }
             }
             _ => ()

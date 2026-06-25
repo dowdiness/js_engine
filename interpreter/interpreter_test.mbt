@@ -551,6 +551,19 @@ test "logical operators short-circuit" {
 }
 
 ///|
+test "loose equality array inherits toPrimitive from Object prototype chain" {
+  let src =
+    #|try {
+    #|  Object.prototype[Symbol.toPrimitive] = function() { return 1; };
+    #|  console.log([] == 1);
+    #|} finally {
+    #|  delete Object.prototype[Symbol.toPrimitive];
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "unary not" {
   let (_, result) = run_js("!false")
   expect_value_string(result, "true", "unary not result")
