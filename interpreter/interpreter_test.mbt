@@ -1888,6 +1888,33 @@ test "template literal invalid escape throws SyntaxError in strict mode" {
 }
 
 ///|
+test "invalid template in function parameter default throws SyntaxError" {
+  let src =
+    #|function f(a = `\1`) {}
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 16",
+  )
+}
+
+///|
+test "invalid template in arrow function parameter default throws SyntaxError" {
+  let src =
+    #|(a = `\1`) => a;
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 6",
+  )
+}
+
+///|
+test "invalid template in destructuring parameter default throws SyntaxError" {
+  let src =
+    #|function f({a = `\1`} = {}) {}
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 17",
+  )
+}
+
+///|
 test "tagged template cooked is undefined for invalid escape" {
   let src =
     #|function tag(s) { return typeof s[0]; }
