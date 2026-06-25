@@ -551,6 +551,8 @@ pub fn setup_object_builtins(
           data.prototype = proto
         }
         Array(data) => @runtime.set_array_prototype_override(data, proto)
+        Map(data) => data.prototype = proto
+        Set(data) => data.prototype = proto
         Value::Proxy(proxy_data) => {
           let success = @runtime.proxy_set_prototype_of(
             interp, proxy_data, proto,

@@ -1227,7 +1227,8 @@ test "Stage B.3: Proxy prototype ordinary get and with has abrupt completion" {
 // Reflect.ownKeys is defined for any object (§28.1.11, arg passes IsObject).
 // Map, Set, and Promise are exotic objects: Reflect.ownKeys must return their
 // own-key list, not reject with a TypeError. A fresh Map/Set and Promise have
-// no own keys; own properties defined directly surface in order.
+// no own keys; own properties created by assignment or defineProperty surface
+// in order.
 test "Reflect.ownKeys on Map/Set/Promise instances" {
   let src =
     #|console.log(JSON.stringify(Reflect.ownKeys(new Map())));
@@ -1238,12 +1239,223 @@ test "Reflect.ownKeys on Map/Set/Promise instances" {
     #|console.log(p.constructor === Promise);
     #|console.log(p.hasOwnProperty("constructor"));
     #|var m = new Map();
-    #|Object.defineProperty(m, "extra", { value: 1, enumerable: true });
+    #|m.extra = 1;
+    #|console.log(m.extra);
     #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|var s = new Set();
+    #|s.extra = 1;
+    #|console.log(s.extra);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|var m2 = new Map();
+    #|Object.defineProperty(m2, "extra", { value: 1, enumerable: true });
+    #|console.log(JSON.stringify(Reflect.ownKeys(m2)));
   let output = run_output(src)
   json_inspect(output, content=[
-    "[]", "[]", "[]", "[]", "true", "false", "[\"extra\"]",
+    "[]", "[]", "[]", "[]", "true", "false", "1", "[\"extra\"]", "1", "[\"extra\"]",
+    "[\"extra\"]",
   ])
+}
+
+///|
+test "Map/Set assignment respects inherited prototype property blockers" {
+  let src =
+    #|try {
+    #|Object.defineProperty(Map.prototype, "__t447_getter", {
+    #|  get: function() { return 1; },
+    #|  configurable: true
+    #|});
+    #|var m = new Map();
+    #|m.__t447_getter = 2;
+    #|console.log(m.__t447_getter);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|var mBracket = new Map();
+    #|mBracket["__t447_getter"] = 2;
+    #|console.log(mBracket.__t447_getter);
+    #|console.log(JSON.stringify(Reflect.ownKeys(mBracket)));
+    #|try {
+    #|  (function() { "use strict"; var sm = new Map(); sm.__t447_getter = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  (function() { "use strict"; var key = "__t447_getter"; var sm = new Map(); sm[key] = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|delete Map.prototype.__t447_getter;
+    #|Object.defineProperty(Set.prototype, "__t447_data", {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: true
+    #|});
+    #|var s = new Set();
+    #|s.__t447_data = 2;
+    #|console.log(s.__t447_data);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|var sBracket = new Set();
+    #|sBracket["__t447_data"] = 2;
+    #|console.log(sBracket.__t447_data);
+    #|console.log(JSON.stringify(Reflect.ownKeys(sBracket)));
+    #|try {
+    #|  (function() { "use strict"; var ss = new Set(); ss.__t447_data = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|try {
+    #|  (function() { "use strict"; var key = "__t447_data"; var ss = new Set(); ss[key] = 2; })();
+    #|} catch (e) {
+    #|  console.log(e.name);
+    #|}
+    #|delete Set.prototype.__t447_data;
+    #|var seen;
+    #|Object.defineProperty(Map.prototype, "__t447_setter", {
+    #|  set: function(v) { seen = this instanceof Map ? v : "bad"; },
+    #|  configurable: true
+    #|});
+    #|var m2 = new Map();
+    #|m2.__t447_setter = 9;
+    #|console.log(seen);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m2)));
+    #|var m3 = new Map();
+    #|m3["__t447_setter"] = 10;
+    #|console.log(seen);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m3)));
+    #|} finally {
+    #|  delete Map.prototype.__t447_getter;
+    #|  delete Set.prototype.__t447_data;
+    #|  delete Map.prototype.__t447_setter;
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1", "[]", "1", "[]", "TypeError", "TypeError", "1", "[]", "1", "[]", "TypeError",
+    "TypeError", "9", "[]", "10", "[]",
+  ])
+}
+
+///|
+test "Map/Set symbol Reflect.set respects target blockers before receiver landing" {
+  let src =
+    #|var mapSym = Symbol("map");
+    #|var setSym = Symbol("set");
+    #|var inheritedSym = Symbol("inherited");
+    #|var receiver = {};
+    #|
+    #|var m = new Map();
+    #|Object.defineProperty(m, mapSym, {
+    #|  get: function() { return 1; },
+    #|  configurable: true
+    #|});
+    #|console.log(Reflect.set(m, mapSym, 2, receiver));
+    #|console.log(receiver[mapSym]);
+    #|console.log(m[mapSym]);
+    #|
+    #|var s = new Set();
+    #|Object.defineProperty(s, setSym, {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: true
+    #|});
+    #|console.log(Reflect.set(s, setSym, 2, receiver));
+    #|console.log(receiver[setSym]);
+    #|console.log(s[setSym]);
+    #|
+    #|var proto = {};
+    #|Object.defineProperty(proto, inheritedSym, {
+    #|  get: function() { return 3; },
+    #|  configurable: true
+    #|});
+    #|class M extends Map {}
+    #|Object.setPrototypeOf(M.prototype, proto);
+    #|var m2 = new M();
+    #|console.log(Reflect.set(m2, inheritedSym, 4, receiver));
+    #|console.log(receiver[inheritedSym]);
+    #|console.log(m2[inheritedSym]);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "false", "undefined", "1", "false", "undefined", "1", "false", "undefined", "undefined",
+  ])
+}
+
+///|
+test "Map/Set assignment stops at inherited array own descriptors" {
+  let src =
+    #|var hits = [];
+    #|var higher = {};
+    #|Object.defineProperty(higher, "0", {
+    #|  set: function(v) { hits.push("zero:" + v); },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(higher, "length", {
+    #|  set: function(v) { hits.push("length:" + v); },
+    #|  configurable: true
+    #|});
+    #|var arrayProto = [42];
+    #|Object.setPrototypeOf(arrayProto, higher);
+    #|class M extends Map {}
+    #|Object.setPrototypeOf(M.prototype, Object.create(arrayProto));
+    #|var m = new M();
+    #|m[0] = 7;
+    #|m.length = 8;
+    #|console.log(JSON.stringify(hits));
+    #|console.log(m[0]);
+    #|console.log(m.length);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|class S extends Set {}
+    #|Object.setPrototypeOf(S.prototype, Object.create(arrayProto));
+    #|var s = new S();
+    #|s[0] = 9;
+    #|s.length = 10;
+    #|console.log(JSON.stringify(hits));
+    #|console.log(s[0]);
+    #|console.log(s.length);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "[]", "7", "8", "[\"0\",\"length\"]", "[]", "9", "10", "[\"0\",\"length\"]",
+  ])
+}
+
+///|
+test "Map/Set assignment walks Promise prototype fallback" {
+  let src =
+    #|try {
+    #|  var hits = [];
+    #|  Object.defineProperty(Promise.prototype, "__t449_promise_setter", {
+    #|    set: function(v) { hits.push(this === activeMap ? "map:" + v : "bad"); },
+    #|    configurable: true
+    #|  });
+    #|  Object.defineProperty(Promise.prototype, "__t449_promise_blocker", {
+    #|    get: function() { return 5; },
+    #|    configurable: true
+    #|  });
+    #|  var promiseProto = Promise.resolve(0);
+    #|  class M extends Map {}
+    #|  Object.setPrototypeOf(M.prototype, Object.create(promiseProto));
+    #|  var activeMap = new M();
+    #|  activeMap.__t449_promise_setter = 7;
+    #|  console.log(JSON.stringify(hits));
+    #|  console.log(JSON.stringify(Reflect.ownKeys(activeMap)));
+    #|
+    #|  class S extends Set {}
+    #|  Object.setPrototypeOf(S.prototype, Object.create(promiseProto));
+    #|  var s = new S();
+    #|  s.__t449_promise_blocker = 9;
+    #|  console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|  try {
+    #|    (function() {
+    #|      "use strict";
+    #|      var strictSet = new S();
+    #|      strictSet.__t449_promise_blocker = 10;
+    #|    })();
+    #|  } catch (e) {
+    #|    console.log(e.name);
+    #|  }
+    #|} finally {
+    #|  delete Promise.prototype.__t449_promise_setter;
+    #|  delete Promise.prototype.__t449_promise_blocker;
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["[\"map:7\"]", "[]", "[]", "TypeError"])
 }
 
 ///|
@@ -1267,6 +1479,40 @@ test "Annex B __proto__ setter ignores primitive prototype values" {
     #|console.log(trapCalled);
   let output = run_output(src)
   json_inspect(output, content=["true", "true", "true", "true", "false"])
+}
+
+///|
+test "Annex B __proto__ setter updates Map and Set receivers" {
+  let src =
+    #|var mProto = { marker: 11 };
+    #|var m = new Map();
+    #|m.__proto__ = mProto;
+    #|console.log(Object.getPrototypeOf(m) === mProto);
+    #|console.log(m.marker);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|
+    #|var sProto = { marker: 22 };
+    #|var s = new Set();
+    #|s["__proto__"] = sProto;
+    #|console.log(Object.getPrototypeOf(s) === sProto);
+    #|console.log(s.marker);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|
+    #|var setter = Object.getOwnPropertyDescriptor(Object.prototype, "__proto__").set;
+    #|var directProto = { marker: 33 };
+    #|var direct = new Map();
+    #|console.log(setter.call(direct, directProto) === undefined);
+    #|console.log(Object.getPrototypeOf(direct) === directProto);
+    #|console.log(direct.marker);
+    #|
+    #|var unchanged = Object.getPrototypeOf(new Set());
+    #|var ignored = new Set();
+    #|ignored.__proto__ = 1;
+    #|console.log(Object.getPrototypeOf(ignored) === unchanged);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "11", "[]", "true", "22", "[]", "true", "true", "33", "true",
+  ])
 }
 
 ///|
@@ -16564,6 +16810,44 @@ test "TypedArray Set receiver and prototype numeric semantics" {
     "1", "false", "2", "true", "0", "false", "0", "false", "0", "false", "0", "0",
     "true", "9", "true", "1",
   ])
+}
+
+///|
+/// Map/Set instances use a collection-specific prototype walk before writing
+/// expandos. If that walk sees a TypedArray with an own integer-index
+/// descriptor, it must stop there and land on the collection receiver instead
+/// of continuing to a higher setter.
+test "Map and Set prototype Set walk stops at TypedArray integer index" {
+  let src =
+    #|const log = [];
+    #|const blocker = {};
+    #|Object.defineProperty(blocker, "0", {
+    #|  set(v) { log.push("setter:" + v); }
+    #|});
+    #|
+    #|const mapProtoStop = new Uint8Array([7]);
+    #|Object.setPrototypeOf(mapProtoStop, blocker);
+    #|class M extends Map {}
+    #|Object.setPrototypeOf(M.prototype, mapProtoStop);
+    #|const m = new M();
+    #|m[0] = 42;
+    #|console.log(log.length);
+    #|console.log(m[0]);
+    #|console.log(mapProtoStop[0]);
+    #|console.log(Object.getOwnPropertyDescriptor(m, "0").value);
+    #|
+    #|const setProtoStop = new Uint8Array([8]);
+    #|Object.setPrototypeOf(setProtoStop, blocker);
+    #|class S extends Set {}
+    #|Object.setPrototypeOf(S.prototype, setProtoStop);
+    #|const s = new S();
+    #|s[0] = 43;
+    #|console.log(log.length);
+    #|console.log(s[0]);
+    #|console.log(setProtoStop[0]);
+    #|console.log(Object.getOwnPropertyDescriptor(s, "0").value);
+  let output = run_output(src)
+  json_inspect(output, content=["0", "42", "7", "42", "0", "43", "8", "43"])
 }
 
 ///|

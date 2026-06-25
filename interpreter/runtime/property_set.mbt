@@ -577,6 +577,28 @@ pub fn Interpreter::set_property(
       data.bag.properties[prop] = value
       value
     }
+    Map(data) =>
+      self.set_string_on_map_set_expando(
+        obj,
+        receiver,
+        data.bag,
+        data.prototype,
+        prop,
+        value,
+        loc,
+        strict,
+      )
+    Set(data) =>
+      self.set_string_on_map_set_expando(
+        obj,
+        receiver,
+        data.bag,
+        data.prototype,
+        prop,
+        value,
+        loc,
+        strict,
+      )
     Null =>
       raise @errors.TypeError(
         message="Cannot set properties of null (setting '\{prop}')",
@@ -596,6 +618,326 @@ pub fn Interpreter::set_property(
         value
       }
   }
+}
+
+///|
+/// Map/Set carry their own prototype slot, so string-key [[Set]] must honor
+/// inherited setters and inherited blocker descriptors before creating an
+/// expando property on the receiver.
+fn Interpreter::set_string_via_map_set_prototype_chain(
+  self : Interpreter,
+  proto : Value,
+  receiver : Value,
+  prop : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value? raise Error {
+  self.set_key_via_map_set_prototype_chain(
+    proto,
+    receiver,
+    String_(prop),
+    value,
+    loc,
+    strict,
+  )
+}
+
+///|
+fn Interpreter::promise_instance_prototype_for_set(
+  self : Interpreter,
+  data : PromiseData,
+) -> Value {
+  match data.prototype {
+    Null => self.realm_state.get_promise_proto()
+    proto => proto
+  }
+}
+
+///|
+fn Interpreter::next_map_set_walk_prototype(
+  self : Interpreter,
+  current : Value,
+) -> Value? {
+  match current {
+    Object(data) => Some(data.prototype)
+    Array(data) =>
+      Some(
+        get_array_prototype_override(data).unwrap_or(
+          self.realm_state.get_array_proto(),
+        ),
+      )
+    Map(data) => Some(data.prototype)
+    Set(data) => Some(data.prototype)
+    Promise(data) => Some(self.promise_instance_prototype_for_set(data))
+    _ => None
+  }
+}
+
+///|
+priv enum InheritedSetResult {
+  Handled(Value)
+  Continue(Value)
+  Stop
+}
+
+///|
+fn Interpreter::set_key_via_map_set_prototype_chain(
+  self : Interpreter,
+  proto : Value,
+  receiver : Value,
+  prop_key : Value,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value? raise Error {
+  let mut current = proto
+  while true {
+    match self.next_map_set_walk_prototype(current) {
+      Some(next_proto) =>
+        match
+          self.check_inherited_property_value(
+            current, next_proto, receiver, prop_key, value, loc, strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      None =>
+        match current {
+          Proxy(_) =>
+            match prop_key {
+              String_(prop) =>
+                return Some(
+                  self.set_property(
+                    current,
+                    prop,
+                    value,
+                    loc,
+                    strict~,
+                    receiver~,
+                  ),
+                )
+              Symbol(_) =>
+                return Some(
+                  self.set_computed_property(
+                    current,
+                    prop_key,
+                    value,
+                    loc,
+                    strict~,
+                    receiver~,
+                  ),
+                )
+              _ => break
+            }
+          _ => break
+        }
+    }
+  }
+  None
+}
+
+///|
+fn Interpreter::check_inherited_property_value(
+  self : Interpreter,
+  owner : Value,
+  next_proto : Value,
+  receiver : Value,
+  prop_key : Value,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> InheritedSetResult raise Error {
+  match self.get_own_property(owner, prop_key) {
+    Some((desc, _)) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          Handled(value)
+        }
+        None =>
+          if desc.getter is Some(_) {
+            if strict {
+              raise @errors.TypeError(
+                message=inherited_property_getter_only_message(prop_key),
+              )
+            }
+            Handled(value)
+          } else if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message=inherited_property_readonly_message(prop_key),
+              )
+            }
+            Handled(value)
+          } else {
+            Stop
+          }
+      }
+    None => Continue(next_proto)
+  }
+}
+
+///|
+fn inherited_property_getter_only_message(prop_key : Value) -> String {
+  match prop_key {
+    String_(prop) => "Cannot set property \{prop} which has only a getter"
+    _ => "Cannot set property which has only a getter"
+  }
+}
+
+///|
+fn inherited_property_readonly_message(prop_key : Value) -> String {
+  match prop_key {
+    String_(prop) => "Cannot assign to read only property '\{prop}'"
+    _ => "Cannot assign to read only property"
+  }
+}
+
+///|
+fn Interpreter::set_string_on_map_set_expando(
+  self : Interpreter,
+  obj : Value,
+  receiver : Value,
+  bag : PropertyBag,
+  proto : Value,
+  prop : String,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value raise Error {
+  let mut should_walk_proto = false
+  match bag.descriptors.get(prop) {
+    Some(desc) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          return value
+        }
+        None =>
+          if desc.getter is Some(_) {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot set property \{prop} which has only a getter",
+              )
+            }
+            return value
+          } else if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property '\{prop}'",
+              )
+            }
+            return value
+          }
+      }
+    None => if !bag.properties.contains(prop) { should_walk_proto = true }
+  }
+  if should_walk_proto {
+    match
+      self.set_string_via_map_set_prototype_chain(
+        proto, receiver, prop, value, loc, strict,
+      ) {
+      Some(result) => return result
+      None => ()
+    }
+  }
+  if !strict_equal(obj, receiver) {
+    return self.define_value_on_receiver(
+      receiver,
+      String_(prop),
+      value,
+      loc,
+      strict,
+    )
+  }
+  bag.properties[prop] = value
+  value
+}
+
+///|
+fn Interpreter::set_symbol_via_map_set_prototype_chain(
+  self : Interpreter,
+  proto : Value,
+  receiver : Value,
+  sym : SymbolData,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value? raise Error {
+  self.set_key_via_map_set_prototype_chain(
+    proto,
+    receiver,
+    Symbol(sym),
+    value,
+    loc,
+    strict,
+  )
+}
+
+///|
+fn Interpreter::set_symbol_on_map_set_expando(
+  self : Interpreter,
+  obj : Value,
+  receiver : Value,
+  bag : PropertyBag,
+  proto : Value,
+  sym : SymbolData,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value raise Error {
+  let mut should_walk_proto = false
+  match bag.symbol_descriptors.get(sym.id) {
+    Some(desc) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          return value
+        }
+        None =>
+          if desc.getter is Some(_) {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot set property which has only a getter",
+              )
+            }
+            return value
+          } else if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property",
+              )
+            }
+            return value
+          }
+      }
+    None =>
+      if !bag.symbol_properties.contains(sym.id) {
+        should_walk_proto = true
+      }
+  }
+  if should_walk_proto {
+    match
+      self.set_symbol_via_map_set_prototype_chain(
+        proto, receiver, sym, value, loc, strict,
+      ) {
+      Some(result) => return result
+      None => ()
+    }
+  }
+  if !strict_equal(obj, receiver) {
+    return self.define_value_on_receiver(
+      receiver,
+      Symbol(sym),
+      value,
+      loc,
+      strict,
+    )
+  }
+  bag.symbol_properties[sym.id] = value
+  value
 }
 
 ///|
@@ -1387,46 +1729,60 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
-    Map(data) => {
-      // PRE-EXISTING LIMITATION (not a regression from B.1): Map/Set/Promise/
-      // Array branches do not walk their instance's prototype chain for
-      // inherited setters because MapData/SetData/PromiseData/ArrayData carry
-      // no `prototype` field (only ObjectData does). Setters defined on
-      // Map.prototype / Set.prototype / etc. are therefore invisible here and
-      // also when receiver===obj below. Fixing this requires either adding
-      // `prototype` to the four structs or threading the builtin prototypes
-      // through the dispatcher — both out of B.1 scope.
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(receiver, key, value, loc, strict)
-      }
-      // Write to expando properties bag (used for instance fields from subclasses)
+    Map(data) =>
       match key {
-        Symbol(sym) => {
-          data.bag.symbol_properties[sym.id] = value
-          value
-        }
+        Symbol(sym) =>
+          self.set_symbol_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            sym,
+            value,
+            loc,
+            strict,
+          )
         _ => {
-          data.bag.properties[to_js_string(key, interp=Some(self))] = value
-          value
+          let prop = to_js_string(key, interp=Some(self))
+          self.set_string_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            prop,
+            value,
+            loc,
+            strict,
+          )
         }
       }
-    }
-    Set(data) => {
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(receiver, key, value, loc, strict)
-      }
-      // Write to expando properties bag (used for instance fields from subclasses)
+    Set(data) =>
       match key {
-        Symbol(sym) => {
-          data.bag.symbol_properties[sym.id] = value
-          value
-        }
+        Symbol(sym) =>
+          self.set_symbol_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            sym,
+            value,
+            loc,
+            strict,
+          )
         _ => {
-          data.bag.properties[to_js_string(key, interp=Some(self))] = value
-          value
+          let prop = to_js_string(key, interp=Some(self))
+          self.set_string_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            prop,
+            value,
+            loc,
+            strict,
+          )
         }
       }
-    }
     Array(data) => {
       if !strict_equal(obj, receiver) {
         return self.define_value_on_receiver(receiver, key, value, loc, strict)
