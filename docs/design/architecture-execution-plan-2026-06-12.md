@@ -12,6 +12,47 @@
 
 ---
 
+## Current Reconciliation — 2026-06-25
+
+This plan remains the target architecture, but several early guardrails have
+already landed. Treat the items below as the current baseline before starting a
+new architecture PR.
+
+Confirmed current state:
+
+- `make architecture-audit` exists and runs the mutable-state audit, import
+  boundary audit, representation-access audit, and surface-taxonomy audit.
+- The architecture audit currently passes after refreshing the representation
+  inventory: 73 local imports, 2 allowlisted import debts, 1294 classified
+  representation-access sites, 13 generated-interface packages, 597 public
+  symbols, and 12 package-defaulted symbols.
+- The representation-access count is a **classified debt baseline**, not a
+  resolved boundary. It should shrink as Stages 7-12 replace direct
+  representation access with runtime operations and internal packages.
+- `scripts/architecture_boundary_rules.json`,
+  `scripts/architecture_representation_access.json`, and
+  `scripts/architecture_surface_taxonomy.json` are present and should be kept
+  current whenever architecture code moves.
+- Bytecode already has file-level separation between IR, lowering, and VM
+  responsibilities. This is not yet the target package split, but it means
+  Stage 2 should focus on whether package boundaries are needed rather than
+  rediscovering the file split.
+- The Stage 3 bytecode/tree-walker equivalence harness already exists with broad
+  supported/unsupported coverage. Unsupported diagnostics are asserted through a
+  shared unsupported-kind vocabulary. Future bytecode semantic PRs must extend
+  this harness instead of adding ad-hoc comparisons.
+- Some object/array literal accumulator operation work is already covered by
+  bytecode equivalence tests. Do not mark Stage 7 complete until the operation
+  boundary is documented and the representation-access inventory shrinks for the
+  corresponding paths.
+
+Reconciliation rule: before using an older stage description as a to-do list,
+check this section, the current audit output, and the issue tracker. If the
+repo already has the guardrail, the next PR should either tighten it, use it to
+retire debt, or update stale tracking text.
+
+---
+
 ## 1. Execution Principles
 
 1. **One semantic owner.** Runtime operations own JavaScript semantics. Tree-walk
@@ -891,28 +932,47 @@ Stop conditions:
   not.
 - Removal would hide a known correctness comparison gap.
 
-## 10. First PR Sequence
+## 10. Current PR Sequence
 
-Recommended first ten PR-sized slices. The first three are specified in
-[architecture-stage0-implementation-spec-2026-06-12.md](architecture-stage0-implementation-spec-2026-06-12.md):
+The original first slices are partly complete in the current repository. Use the
+status below instead of treating the older Stage 0/Stage 3 work as still
+unstarted.
 
-1. **Boundary audit skeleton.** Import-direction scan plus allowlist.
-2. **Representation-access inventory.** Detect compiler/stdlib direct
-   representation access and record current debt.
-3. **Surface taxonomy inventory.** Classify current public/runtime/compiler
-   surfaces into stable facade, experimental, internal, interface artifact, and
-   tooling/benchmark hook.
-4. **Closure-conversion label/freeze.** Rename docs/tests/benchmarks to mark it
-   legacy experimental; no semantic changes.
-5. **Bytecode split, no behavior change.** IR/lowering/VM split inside compiler.
-6. **Equivalence harness seed.** Add tree-walker/bytecode comparison helpers and
-   a minimal existing-supported matrix.
-7. **Static-semantics package seed.** Move strictness/directive facts and define
-   preparation inputs.
-8. **Early-error preparation slice.** Move one validation family and update all
-   consumers.
-9. **Declaration-facts slice.** Extract pure declaration/name collection.
-10. **Object/array creation ops.** Migrate bytecode literal construction.
+Completed or present baseline:
+
+1. **Stage 0 guardrails are present.** Import-boundary, representation-access,
+   surface-taxonomy, and mutable-state audits are wired into
+   `make architecture-audit`.
+2. **Stage 2 has file-level bytecode separation.** IR, lowering, and VM
+   responsibilities are currently separated at file level. A later package split
+   is a boundary decision, not a prerequisite for understanding the current
+   files.
+3. **Stage 3 has a real seed harness.** Compiler tests compare tree-walker and
+   bytecode behavior, capture host output, check supported equivalence cases,
+   and assert unsupported cases against a shared unsupported-kind vocabulary.
+4. **Stage 7 has partial object/array evidence.** Some literal accumulator paths
+   already route through runtime operations and have equivalence coverage, but
+   Stage 7 remains incomplete until the relevant direct representation access is
+   retired from the audit inventory.
+
+Recommended next PR-sized slices from this baseline:
+
+1. **Keep tracking current.** Update stale architecture issue/doc text whenever
+   an audit or harness milestone is already present. Do not open duplicate
+   tracking issues when an existing tracker can be updated.
+2. **Closure-conversion label/freeze.** Ensure docs, CLI help, tests, and
+   benchmarks consistently mark closure conversion as legacy experimental; no
+   semantic changes.
+3. **Static-semantics preparation seed.** Advance #331/#332-style preparation
+   work: make preparation inputs explicit and keep products pure/inspectable.
+4. **Early-error preparation slice.** Move one validation family only after
+   source-location and error-ordering tests are in place.
+5. **Declaration-facts slice.** Extract pure declaration/name collection while
+   leaving environment mutation in runtime.
+6. **Next runtime-operation retirement slice.** Choose one operation family whose
+   migration can remove concrete entries from
+   `scripts/architecture_representation_access.json`; the audit should shrink or
+   the PR should explain why it does not.
 
 Each PR should include:
 
@@ -934,7 +994,7 @@ For every architecture PR, reviewers should ask:
 - Does closure conversion grow rather than shrink?
 - Is the tree-walker still the correctness oracle?
 - Are unsupported bytecode cases explicit?
-- Do unsupported-kind test assertions reference `UNSUPPORTED_*` constants from `bytecode_ir.mbt`, not inline string literals?
+- Do unsupported-kind test assertions use the shared unsupported-kind vocabulary rather than ad-hoc strings?
 - Does the equivalence harness cover the touched bytecode behavior?
 - Does the interface diff reflect an intentional ideal design change?
 - Are tests inspecting the new boundary rather than only incidental behavior?
