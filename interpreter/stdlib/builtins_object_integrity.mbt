@@ -160,7 +160,7 @@ fn make_group_by_func() -> Value {
     let o = to_object(items, interp)
     let len = @runtime.to_array_like_length_interp(o, interp)
     let group_arrays : Map[String, Array[Value]] = {}
-    for k = 0; k < len; k = k + 1 {
+    for k = 0L; k < len; k = k + 1L {
       let kvalue = @runtime.get_array_like_element_interp(interp, o, k)
       let key = interp.call_value(
         callback,

@@ -143,3 +143,54 @@ test "lookup: own write-only accessor returns OwnAccessor(None)" {
     _ => fail("expected OwnAccessor(None)")
   }
 }
+
+///|
+test "to_array_like_length: keeps max-safe object length as Int64" {
+  let bag = PropertyBag::PropertyBag()
+  bag.properties["length"] = Number(9007199254740991.0)
+  let obj = Object({
+    bag,
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  let len = to_array_like_length(obj)
+  guard len == 9007199254740991L else {
+    fail("expected max-safe length, got " + len.to_string())
+  }
+}
+
+///|
+test "to_array_like_length: sparse array index above Int max contributes to length" {
+  let bag = PropertyBag::PropertyBag()
+  bag.properties["2147483648"] = Number(1.0)
+  let data : ArrayData = {
+    elements: [],
+    bag,
+    length_writable: true,
+    holes: {},
+    extensible: true,
+  }
+  let len = to_array_like_length(Array(data))
+  guard len == 2147483649L else {
+    fail("expected sparse length above Int max, got " + len.to_string())
+  }
+}
+
+///|
+test "to_array_like_length: array length override remains Int64" {
+  let data : ArrayData = {
+    elements: [],
+    bag: PropertyBag::PropertyBag(),
+    length_writable: true,
+    holes: {},
+    extensible: true,
+  }
+  set_array_length_override(data, 9007199254740991L)
+  let len = to_array_like_length(Array(data))
+  guard len == 9007199254740991L else {
+    fail("expected override length, got " + len.to_string())
+  }
+}

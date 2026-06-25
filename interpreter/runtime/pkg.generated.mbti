@@ -27,7 +27,7 @@ pub fn apply_object_literal_proto_property(Value, Value) -> Unit raise
 
 pub fn apply_object_literal_static_data_property(Value, String, Value) -> Unit raise
 
-pub fn array_species_create(Interpreter, Value, Int) -> Value raise
+pub fn array_species_create(Interpreter, Value, Int64) -> Value raise
 
 pub fn builtin_method_desc() -> PropDescriptor
 
@@ -43,7 +43,7 @@ pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
 
 pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
 
-pub fn create_data_property_or_throw(Interpreter, Value, Int, Value) -> Unit raise
+pub fn create_data_property_or_throw(Interpreter, Value, Int64, Value) -> Unit raise
 
 pub fn create_iter_result(Value, Bool) -> Value
 
@@ -81,9 +81,9 @@ pub fn get_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSym
 
 pub fn get_array_length_override(ArrayData) -> Int64?
 
-pub fn get_array_like_element(Value, Int) -> Value
+pub fn get_array_like_element(Value, Int64) -> Value
 
-pub fn get_array_like_element_interp(Interpreter, Value, Int) -> Value raise
+pub fn get_array_like_element_interp(Interpreter, Value, Int64) -> Value raise
 
 pub fn get_array_named_prop(ArrayData, String) -> Value?
 
@@ -155,7 +155,7 @@ pub fn get_typedarray_byte_offset(ObjectData) -> Value?
 
 pub fn get_typedarray_viewed_buffer(ObjectData) -> Value?
 
-pub fn has_array_like_element(Interpreter, Value, Int) -> Bool
+pub fn has_array_like_element(Interpreter, Value, Int64) -> Bool
 
 pub fn has_parameter_expressions(Array[@ast.Param]) -> Bool
 
@@ -295,9 +295,9 @@ pub fn set_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSym
 
 pub fn set_array_length_override(ArrayData, Int64) -> Unit
 
-pub fn set_array_like_element(Value, Int, Value) -> Unit
+pub fn set_array_like_element(Value, Int64, Value) -> Unit
 
-pub fn set_array_like_length(Value, Int) -> Unit
+pub fn set_array_like_length(Value, Int64) -> Unit
 
 pub fn set_array_named_prop(ArrayData, String, Value) -> Unit
 
@@ -337,11 +337,11 @@ pub fn test_integrity_sealed(Value) -> Value
 
 pub fn to_array_like_elements(Value) -> Array[Value] raise
 
-pub fn to_array_like_length(Value) -> Int raise
+pub fn to_array_like_length(Value) -> Int64 raise
 
-pub fn to_array_like_length_interp(Value, Interpreter) -> Int raise
+pub fn to_array_like_length_interp(Value, Interpreter) -> Int64 raise
 
-pub fn to_index(Value, interp? : Interpreter?) -> Int raise
+pub fn to_index(Value, interp? : Interpreter?) -> Int64 raise
 
 pub fn to_int32(Double) -> Int
 
@@ -668,7 +668,7 @@ pub fn Interpreter::run_timers(Self) -> Unit raise
 pub fn Interpreter::set_computed_property(Self, Value, Value, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::spread_iterable(Self, Value, @token.Loc) -> Array[Value] raise
-pub fn Interpreter::to_index(Self, Value) -> Int raise
+pub fn Interpreter::to_index(Self, Value) -> Int64 raise
 pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_object_literal_property_key(Self, Value) -> Value raise

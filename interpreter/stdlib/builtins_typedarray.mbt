@@ -483,6 +483,14 @@ fn make_typedarray_from_buffer(
 }
 
 ///|
+fn typedarray_index_to_int(index : Int64, message : String) -> Int raise Error {
+  if index > 0x7FFFFFFFL {
+    raise @errors.RangeError(message~)
+  }
+  index.to_int()
+}
+
+///|
 fn typedarray_to_array_like_length(
   val : Value,
   interp : Interpreter,
@@ -1016,7 +1024,7 @@ pub fn setup_typedarray_builtins(
       let target_offset = if args.length() > 1 {
         interp.to_index(args[1])
       } else {
-        0
+        0L
       }
       if typedarray_is_detached(data, realm_state) {
         raise @errors.TypeError(
@@ -1039,9 +1047,10 @@ pub fn setup_typedarray_builtins(
             Some(Value::Number(n)) => n.to_int()
             _ => 0
           }
-          if target_offset + src_len > ta_length {
+          if target_offset + src_len.to_int64() > ta_length.to_int64() {
             raise @errors.RangeError(message="Source is too large")
           }
+          let target_offset_int = target_offset.to_int()
           // Buffer all source elements first to handle overlapping ArrayBuffers
           let temp : Array[Double] = []
           for i = 0; i < src_len; i = i + 1 {
@@ -1052,20 +1061,31 @@ pub fn setup_typedarray_builtins(
             }
           }
           for i = 0; i < src_len; i = i + 1 {
-            typedarray_set_index(data, target_offset + i, temp[i], realm_state)
+            typedarray_set_index(
+              data,
+              target_offset_int + i,
+              temp[i],
+              realm_state,
+            )
           }
           Undefined
         }
         src => {
           let src_obj = to_object(src, interp)
           let src_len = @runtime.to_array_like_length_interp(src_obj, interp)
-          if target_offset + src_len > ta_length {
+          if target_offset + src_len > ta_length.to_int64() {
             raise @errors.RangeError(message="Source is too large")
           }
-          for i = 0; i < src_len; i = i + 1 {
+          let target_offset_int = target_offset.to_int()
+          for i = 0L; i < src_len; i = i + 1L {
             let val = @runtime.get_array_like_element_interp(interp, src_obj, i)
             let num = interp.to_number(val)
-            typedarray_set_index(data, target_offset + i, num, realm_state)
+            typedarray_set_index(
+              data,
+              target_offset_int + i.to_int(),
+              num,
+              realm_state,
+            )
           }
           Undefined
         }
@@ -2756,7 +2776,7 @@ pub fn setup_typedarray_builtins(
         Undefined | Null => {
           let array_like = to_object(source, interp)
           let len = @runtime.to_array_like_length_interp(array_like, interp)
-          for i = 0; i < len; i = i + 1 {
+          for i = 0L; i < len; i = i + 1L {
             source_values.push(
               interp.get_property(array_like, i.to_string(), loc),
             )
@@ -3056,7 +3076,10 @@ pub fn setup_typedarray_builtins(
             | Value::Null
             | Value::Undefined
             | Value::Symbol(_) => {
-              let length = interp.to_index(first)
+              let length = typedarray_index_to_int(
+                interp.to_index(first),
+                "Invalid typed array length",
+              )
               make_typedarray_object(
                 type_name,
                 length,
@@ -3102,12 +3125,10 @@ pub fn setup_typedarray_builtins(
                 match args[1] {
                   Undefined => 0
                   _ => {
-                    let n = interp.to_index(args[1])
-                    if n < 0 {
-                      raise @errors.RangeError(
-                        message="Start offset \{n} is outside the bounds of the buffer",
-                      )
-                    }
+                    let n = typedarray_index_to_int(
+                      interp.to_index(args[1]),
+                      "Start offset is outside the bounds of the buffer",
+                    )
                     n
                   }
                 }
@@ -3134,7 +3155,11 @@ pub fn setup_typedarray_builtins(
                     } else {
                       (buf_byte_length - byte_offset) / bpe
                     }
-                  _ => interp.to_index(args[2])
+                  _ =>
+                    typedarray_index_to_int(
+                      interp.to_index(args[2]),
+                      "Invalid typed array length",
+                    )
                 }
               } else if (buf_byte_length - byte_offset) % bpe != 0 {
                 raise @errors.RangeError(

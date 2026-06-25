@@ -2,15 +2,10 @@
 /// If `key` is a canonical array-index string — a non-negative integer with no
 /// redundant representation (e.g. "0" or "42", but not "01", "-0", or "1.0") —
 /// return that index, else `None`. Mirrors the partition test used throughout
-/// property enumeration. Indices beyond `Int` range are not represented here;
-/// the 64-bit array-length path uses its own `Int64` check.
-fn array_index_of_key(key : String) -> Int? {
-  let idx = @string.parse_int(key) catch { _ => -1 }
-  if idx >= 0 && idx.to_string() == key {
-    Some(idx)
-  } else {
-    None
-  }
+/// property enumeration, including sparse array indices beyond MoonBit `Int`
+/// range.
+fn array_index_of_key(key : String) -> Int64? {
+  array_index64_from_string(key)
 }
 
 ///|
@@ -27,9 +22,15 @@ pub fn sort_property_keys(props : Map[String, Value]) -> Array[String] {
     }
   })
   int_keys.sort_by(fn(a, b) {
-    let na = @string.parse_int(a) catch { _ => 0 }
-    let nb = @string.parse_int(b) catch { _ => 0 }
-    na - nb
+    let na = array_index_of_key(a).unwrap_or(0L)
+    let nb = array_index_of_key(b).unwrap_or(0L)
+    if na < nb {
+      -1
+    } else if na > nb {
+      1
+    } else {
+      0
+    }
   })
   [..int_keys, ..str_keys]
 }
@@ -997,86 +998,12 @@ pub fn Interpreter::array_define_own_property(
       if k == "length" {
         return self.array_set_length(arr, partial)
       }
-      // Is this an array index?
-      let idx = @string.parse_int(k) catch { _ => -1 }
-      let is_index = idx >= 0 && idx.to_string() == k
-      if is_index {
-        // Check length writable if we're extending. Compare against the
-        // logical length (override when sparse), not physical elements count.
-        let logical_len = match get_array_length_override(arr) {
-          Some(n64) => n64.to_int()
-          None => arr.elements.length()
-        }
-        if idx >= logical_len && !arr.length_writable {
-          return false
-        }
-        let had_index = idx < arr.elements.length() && !arr.holes.contains(idx)
-        if !had_index && !arr.extensible {
-          return false
-        }
-        // Grow elements to idx+1 with Undefined filler. Intermediate indices
-        // (old_length..idx) become spec-level holes; the target index `idx`
-        // is real and has its hole flag cleared below.
-        while arr.elements.length() < idx {
-          let pad_idx = arr.elements.length()
-          arr.elements.push(Undefined)
-          arr.holes[pad_idx] = ()
-        }
-        while arr.elements.length() <= idx {
-          arr.elements.push(Undefined)
-        }
-        match arr.bag.descriptors.get(k) {
-          Some(current) => {
-            if !current.configurable {
-              if !is_compatible_with_non_configurable(
-                  current,
-                  partial,
-                  arr.elements[idx],
-                ) {
-                return false
-              }
-            }
-            let merged = merge_partial_into(current, partial)
-            // Clear fields that become invalid after a descriptor-kind transition.
-            arr.bag.descriptors[k] = if !merged.is_accessor &&
-              current.is_accessor {
-              { ..merged, getter: None, setter: None }
-            } else if merged.is_accessor && !current.is_accessor {
-              { ..merged, writable: false }
-            } else {
-              merged
-            }
-          }
-          None =>
-            if had_index {
-              let current = {
-                writable: true,
-                enumerable: true,
-                configurable: true,
-                getter: None,
-                setter: None,
-                is_accessor: false,
-              }
-              arr.bag.descriptors[k] = merge_partial_into(current, partial)
-            } else {
-              arr.bag.descriptors[k] = complete_partial_for_new(partial)
-            }
-        }
-        arr.holes.remove(idx)
-        match partial.value {
-          Some(v) => arr.elements[idx] = v
-          None => ()
-        }
-        return true
-      }
-      // Check for large valid array index: integers in [2^31, 2^32-2] that
-      // parse_int can't handle. Use Double to detect them, then store in the
-      // bag (can't materialise elements for a 4-billion-slot array) while
-      // still updating the logical length override.
-      let large_idx64 : Int64? = try {
+      // Is this an array index? Parse through Int64 so large sparse indices
+      // never wrap through MoonBit Int or force dense materialization.
+      let index64 : Int64? = try {
         let n = @string.parse_double(k)
         let i64 = n.to_int64()
-        if n >= 2147483648.0 &&
+        if n >= 0.0 &&
           n == i64.to_double() &&
           i64 <= 4294967294L &&
           i64.to_string() == k {
@@ -1087,50 +1014,117 @@ pub fn Interpreter::array_define_own_property(
       } catch {
         _ => None
       }
-      match large_idx64 {
+      match index64 {
         Some(idx64) => {
-          let logical_len = match get_array_length_override(arr) {
+          let existing_override = get_array_length_override(arr)
+          let logical_len = match existing_override {
             Some(n64) => n64
             None => arr.elements.length().to_int64()
           }
           if idx64 >= logical_len && !arr.length_writable {
             return false
           }
-          let existing = ordinary_get_own_string_desc(arr.bag, k)
-          match existing {
-            None => {
-              if !arr.extensible {
-                return false
-              }
-              let full = complete_partial_for_new(partial)
-              apply_descriptor_to_bag(arr.bag, key, full, partial.value)
+          if idx64 <= ARRAY_DENSE_MATERIALIZE_LIMIT_I64 {
+            let idx = idx64.to_int()
+            let had_index = idx < arr.elements.length() &&
+              !arr.holes.contains(idx)
+            if !had_index && !arr.extensible {
+              return false
             }
-            Some(current) => {
-              if !current.configurable {
-                let cur_val = match arr.bag.properties.get(k) {
-                  Some(v) => v
-                  None => Undefined
+            // Grow elements to idx+1 with Undefined filler. Intermediate
+            // indices (old_length..idx) become spec-level holes; the target
+            // index `idx` is real and has its hole flag cleared below.
+            while arr.elements.length() < idx {
+              let pad_idx = arr.elements.length()
+              arr.elements.push(Undefined)
+              arr.holes[pad_idx] = ()
+            }
+            while arr.elements.length() <= idx {
+              arr.elements.push(Undefined)
+            }
+            match arr.bag.descriptors.get(k) {
+              Some(current) => {
+                if !current.configurable {
+                  if !is_compatible_with_non_configurable(
+                      current,
+                      partial,
+                      arr.elements[idx],
+                    ) {
+                    return false
+                  }
                 }
-                if !is_compatible_with_non_configurable(
-                    current, partial, cur_val,
-                  ) {
+                let merged = merge_partial_into(current, partial)
+                // Clear fields that become invalid after a descriptor-kind transition.
+                arr.bag.descriptors[k] = if !merged.is_accessor &&
+                  current.is_accessor {
+                  { ..merged, getter: None, setter: None }
+                } else if merged.is_accessor && !current.is_accessor {
+                  { ..merged, writable: false }
+                } else {
+                  merged
+                }
+              }
+              None =>
+                if had_index {
+                  let current = {
+                    writable: true,
+                    enumerable: true,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                    is_accessor: false,
+                  }
+                  arr.bag.descriptors[k] = merge_partial_into(current, partial)
+                } else {
+                  arr.bag.descriptors[k] = complete_partial_for_new(partial)
+                }
+            }
+            arr.holes.remove(idx)
+            match partial.value {
+              Some(v) => arr.elements[idx] = v
+              None => ()
+            }
+            let new_len = idx64 + 1L
+            if existing_override is Some(_) && new_len > logical_len {
+              set_array_length_override(arr, new_len)
+            }
+          } else {
+            let existing = ordinary_get_own_string_desc(arr.bag, k)
+            match existing {
+              None => {
+                if !arr.extensible {
                   return false
                 }
+                let full = complete_partial_for_new(partial)
+                apply_descriptor_to_bag(arr.bag, key, full, partial.value)
               }
-              let merged = merge_partial_into(current, partial)
-              let final_desc = if !merged.is_accessor && current.is_accessor {
-                { ..merged, getter: None, setter: None }
-              } else if merged.is_accessor && !current.is_accessor {
-                { ..merged, writable: false }
-              } else {
-                merged
+              Some(current) => {
+                if !current.configurable {
+                  let cur_val = match arr.bag.properties.get(k) {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                  if !is_compatible_with_non_configurable(
+                      current, partial, cur_val,
+                    ) {
+                    return false
+                  }
+                }
+                let merged = merge_partial_into(current, partial)
+                let final_desc = if !merged.is_accessor && current.is_accessor {
+                  { ..merged, getter: None, setter: None }
+                } else if merged.is_accessor && !current.is_accessor {
+                  { ..merged, writable: false }
+                } else {
+                  merged
+                }
+                apply_descriptor_to_bag(arr.bag, key, final_desc, partial.value)
               }
-              apply_descriptor_to_bag(arr.bag, key, final_desc, partial.value)
             }
-          }
-          let new_len = idx64 + 1L
-          if new_len > logical_len {
-            set_array_length_override(arr, new_len)
+            let new_len = idx64 + 1L
+            if new_len > logical_len {
+              set_array_length_override(arr, new_len)
+            }
           }
           return true
         }

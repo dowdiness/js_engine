@@ -1059,7 +1059,7 @@ fn Interpreter::call_value_impl(
               _ => {
                 // apply accepts any array-like object (including `arguments`).
                 let arg_len = to_array_like_length(arg_array)
-                for i in 0..<arg_len {
+                for i = 0L; i < arg_len; i = i + 1L {
                   let element = self.get_computed_property(
                     arg_array,
                     Number(i.to_double()),
