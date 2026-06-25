@@ -631,7 +631,7 @@
       "path": "interpreter/stdlib/builtins_array_init.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 7,
-      "fingerprint": "7:246:858223:29525",
+      "fingerprint": "7:244:64166:846671",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -667,7 +667,7 @@
       "path": "interpreter/stdlib/builtins_arraybuffer.mbt",
       "pattern_id": "representation-bag-field",
       "allowed_count": 5,
-      "fingerprint": "5:319:587816:806746",
+      "fingerprint": "5:314:517471:409805",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -702,8 +702,8 @@
     {
       "path": "interpreter/stdlib/builtins_arraybuffer.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 5,
-      "fingerprint": "5:310:721170:944215",
+      "allowed_count": 4,
+      "fingerprint": "4:251:267724:310919",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -712,7 +712,7 @@
       "path": "interpreter/stdlib/builtins_dataview.mbt",
       "pattern_id": "representation-bag-field",
       "allowed_count": 6,
-      "fingerprint": "6:386:749931:653485",
+      "fingerprint": "6:410:741187:930750",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -730,7 +730,7 @@
       "path": "interpreter/stdlib/builtins_dataview.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 22,
-      "fingerprint": "22:589:958548:104217",
+      "fingerprint": "22:587:164491:921363",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -747,8 +747,8 @@
     {
       "path": "interpreter/stdlib/builtins_dataview.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 6,
-      "fingerprint": "6:361:765337:292083",
+      "allowed_count": 5,
+      "fingerprint": "5:302:311891:658820",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -757,7 +757,7 @@
       "path": "interpreter/stdlib/builtins_date.mbt",
       "pattern_id": "representation-bag-field",
       "allowed_count": 7,
-      "fingerprint": "7:413:245455:717297",
+      "fingerprint": "7:425:330901:457008",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -811,7 +811,7 @@
       "path": "interpreter/stdlib/builtins_date.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 19,
-      "fingerprint": "19:758:897518:36653",
+      "fingerprint": "19:756:103461:853799",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -828,8 +828,8 @@
     {
       "path": "interpreter/stdlib/builtins_date.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 4,
-      "fingerprint": "4:227:950670:451123",
+      "allowed_count": 3,
+      "fingerprint": "3:168:497224:817860",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -890,9 +890,18 @@
     },
     {
       "path": "interpreter/stdlib/builtins_function.mbt",
-      "pattern_id": "representation-callable-field",
+      "pattern_id": "representation-bag-field",
       "allowed_count": 1,
-      "fingerprint": "1:31:16961:20881",
+      "fingerprint": "1:58:969031:20751",
+      "owner": "stdlib runtime operation migration",
+      "retire_by_stage": "Stage 7-12",
+      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
+    },
+    {
+      "path": "interpreter/stdlib/builtins_function.mbt",
+      "pattern_id": "representation-callable-field",
+      "allowed_count": 2,
+      "fingerprint": "2:62:33922:41762",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -909,8 +918,8 @@
     {
       "path": "interpreter/stdlib/builtins_function.mbt",
       "pattern_id": "runtime-callable-type",
-      "allowed_count": 18,
-      "fingerprint": "18:1191:761574:221197",
+      "allowed_count": 20,
+      "fingerprint": "20:1317:565454:633955",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -918,8 +927,17 @@
     {
       "path": "interpreter/stdlib/builtins_function.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 12,
-      "fingerprint": "12:396:681880:276283",
+      "allowed_count": 11,
+      "fingerprint": "11:371:502589:753889",
+      "owner": "stdlib runtime operation migration",
+      "retire_by_stage": "Stage 7-12",
+      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
+    },
+    {
+      "path": "interpreter/stdlib/builtins_function.mbt",
+      "pattern_id": "runtime-object-data-type",
+      "allowed_count": 1,
+      "fingerprint": "1:75:399531:724752",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -929,6 +947,15 @@
       "pattern_id": "runtime-prop-descriptor-type",
       "allowed_count": 4,
       "fingerprint": "4:218:915467:554183",
+      "owner": "stdlib runtime operation migration",
+      "retire_by_stage": "Stage 7-12",
+      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
+    },
+    {
+      "path": "interpreter/stdlib/builtins_function.mbt",
+      "pattern_id": "runtime-proxy-constructor",
+      "allowed_count": 1,
+      "fingerprint": "1:27:622954:862185",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -963,8 +990,8 @@
     {
       "path": "interpreter/stdlib/builtins_json.mbt",
       "pattern_id": "representation-array-fields",
-      "allowed_count": 8,
-      "fingerprint": "8:372:682521:678931",
+      "allowed_count": 4,
+      "fingerprint": "4:150:820419:99106",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -972,8 +999,8 @@
     {
       "path": "interpreter/stdlib/builtins_json.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 13,
-      "fingerprint": "13:653:618483:956589",
+      "allowed_count": 9,
+      "fingerprint": "9:511:706026:313950",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -999,8 +1026,8 @@
     {
       "path": "interpreter/stdlib/builtins_json.mbt",
       "pattern_id": "representation-proxy-fields",
-      "allowed_count": 1,
-      "fingerprint": "1:33:934989:959977",
+      "allowed_count": 2,
+      "fingerprint": "2:66:869975:919921",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1009,7 +1036,7 @@
       "path": "interpreter/stdlib/builtins_json.mbt",
       "pattern_id": "runtime-array-constructor",
       "allowed_count": 5,
-      "fingerprint": "5:130:463837:792181",
+      "fingerprint": "5:121:944530:838056",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1035,8 +1062,17 @@
     {
       "path": "interpreter/stdlib/builtins_json.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 13,
-      "fingerprint": "13:399:717565:687487",
+      "allowed_count": 11,
+      "fingerprint": "11:351:909359:323042",
+      "owner": "stdlib runtime operation migration",
+      "retire_by_stage": "Stage 7-12",
+      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
+    },
+    {
+      "path": "interpreter/stdlib/builtins_json.mbt",
+      "pattern_id": "runtime-partial-descriptor-type",
+      "allowed_count": 2,
+      "fingerprint": "2:136:759720:628004",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1053,8 +1089,8 @@
     {
       "path": "interpreter/stdlib/builtins_json.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 3,
-      "fingerprint": "3:176:698422:279614",
+      "allowed_count": 4,
+      "fingerprint": "4:240:676154:261981",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1062,8 +1098,8 @@
     {
       "path": "interpreter/stdlib/builtins_json.mbt",
       "pattern_id": "runtime-proxy-constructor",
-      "allowed_count": 1,
-      "fingerprint": "1:34:468537:900336",
+      "allowed_count": 2,
+      "fingerprint": "2:61:91488:762488",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1080,8 +1116,8 @@
     {
       "path": "interpreter/stdlib/builtins_map_set.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 3,
-      "fingerprint": "3:169:921546:190124",
+      "allowed_count": 8,
+      "fingerprint": "8:538:450548:149469",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1098,8 +1134,8 @@
     {
       "path": "interpreter/stdlib/builtins_map_set.mbt",
       "pattern_id": "representation-map-set-fields",
-      "allowed_count": 39,
-      "fingerprint": "39:1841:542037:43243",
+      "allowed_count": 59,
+      "fingerprint": "59:3026:283940:997568",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1109,15 +1145,6 @@
       "pattern_id": "representation-prototype-field",
       "allowed_count": 3,
       "fingerprint": "3:115:628534:23980",
-      "owner": "stdlib runtime operation migration",
-      "retire_by_stage": "Stage 7-12",
-      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
-    },
-    {
-      "path": "interpreter/stdlib/builtins_map_set.mbt",
-      "pattern_id": "runtime-callable-type",
-      "allowed_count": 2,
-      "fingerprint": "2:100:548667:760741",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1143,8 +1170,8 @@
     {
       "path": "interpreter/stdlib/builtins_map_set.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 24,
-      "fingerprint": "24:679:852329:406578",
+      "allowed_count": 18,
+      "fingerprint": "18:507:473894:350058",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1152,8 +1179,8 @@
     {
       "path": "interpreter/stdlib/builtins_map_set.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 6,
-      "fingerprint": "6:412:560111:484278",
+      "allowed_count": 7,
+      "fingerprint": "7:477:780451:270658",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1161,8 +1188,8 @@
     {
       "path": "interpreter/stdlib/builtins_map_set.mbt",
       "pattern_id": "runtime-set-constructor",
-      "allowed_count": 10,
-      "fingerprint": "10:445:20838:223413",
+      "allowed_count": 23,
+      "fingerprint": "23:726:635365:718554",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1170,8 +1197,8 @@
     {
       "path": "interpreter/stdlib/builtins_map_set.mbt",
       "pattern_id": "runtime-set-data-type",
-      "allowed_count": 5,
-      "fingerprint": "5:150:634053:300968",
+      "allowed_count": 13,
+      "fingerprint": "13:688:739166:854403",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1216,7 +1243,7 @@
       "path": "interpreter/stdlib/builtins_number.mbt",
       "pattern_id": "representation-bag-field",
       "allowed_count": 1,
-      "fingerprint": "1:54:884044:386814",
+      "fingerprint": "1:58:22992:716505",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1234,7 +1261,7 @@
       "path": "interpreter/stdlib/builtins_number.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 5,
-      "fingerprint": "5:144:406851:108859",
+      "fingerprint": "5:142:612797:926005",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1260,8 +1287,8 @@
     {
       "path": "interpreter/stdlib/builtins_object.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 58,
-      "fingerprint": "58:2744:724602:121636",
+      "allowed_count": 60,
+      "fingerprint": "60:2832:876846:983545",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1287,8 +1314,8 @@
     {
       "path": "interpreter/stdlib/builtins_object.mbt",
       "pattern_id": "representation-prototype-field",
-      "allowed_count": 13,
-      "fingerprint": "13:465:914604:509885",
+      "allowed_count": 15,
+      "fingerprint": "15:557:471399:248211",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1323,8 +1350,8 @@
     {
       "path": "interpreter/stdlib/builtins_object.mbt",
       "pattern_id": "runtime-map-constructor",
-      "allowed_count": 7,
-      "fingerprint": "7:296:532911:890070",
+      "allowed_count": 8,
+      "fingerprint": "8:336:232284:835361",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1333,7 +1360,7 @@
       "path": "interpreter/stdlib/builtins_object.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 38,
-      "fingerprint": "38:1123:318210:783232",
+      "fingerprint": "38:1121:524156:600345",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1386,8 +1413,8 @@
     {
       "path": "interpreter/stdlib/builtins_object.mbt",
       "pattern_id": "runtime-set-constructor",
-      "allowed_count": 7,
-      "fingerprint": "7:296:545182:612833",
+      "allowed_count": 8,
+      "fingerprint": "8:336:922970:96876",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1557,8 +1584,8 @@
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 7,
-      "fingerprint": "7:394:818315:907652",
+      "allowed_count": 5,
+      "fingerprint": "5:288:119964:199310",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1566,8 +1593,8 @@
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "representation-callable-field",
-      "allowed_count": 16,
-      "fingerprint": "16:542:92811:793907",
+      "allowed_count": 5,
+      "fingerprint": "5:147:119755:932653",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1583,9 +1610,18 @@
     },
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
+      "pattern_id": "representation-prototype-field",
+      "allowed_count": 1,
+      "fingerprint": "1:52:839509:757076",
+      "owner": "stdlib runtime operation migration",
+      "retire_by_stage": "Stage 7-12",
+      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
+    },
+    {
+      "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "runtime-callable-type",
-      "allowed_count": 5,
-      "fingerprint": "5:378:590565:573369",
+      "allowed_count": 1,
+      "fingerprint": "1:77:653782:215355",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1593,8 +1629,8 @@
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 38,
-      "fingerprint": "38:1136:719158:400382",
+      "allowed_count": 24,
+      "fingerprint": "24:695:512680:117283",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1602,8 +1638,8 @@
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "runtime-promise-constructor",
-      "allowed_count": 4,
-      "fingerprint": "4:159:827773:821944",
+      "allowed_count": 3,
+      "fingerprint": "3:117:721070:539613",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1620,17 +1656,8 @@
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 2,
-      "fingerprint": "2:120:188491:150519",
-      "owner": "stdlib runtime operation migration",
-      "retire_by_stage": "Stage 7-12",
-      "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
-    },
-    {
-      "path": "interpreter/stdlib/builtins_promise.mbt",
-      "pattern_id": "runtime-property-bag-type",
-      "allowed_count": 4,
-      "fingerprint": "4:160:873700:863305",
+      "allowed_count": 3,
+      "fingerprint": "3:194:69929:206306",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1747,7 +1774,7 @@
       "path": "interpreter/stdlib/builtins_reflect.mbt",
       "pattern_id": "runtime-array-constructor",
       "allowed_count": 4,
-      "fingerprint": "4:248:485093:845638",
+      "fingerprint": "4:279:241807:793917",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1755,8 +1782,8 @@
     {
       "path": "interpreter/stdlib/builtins_reflect.mbt",
       "pattern_id": "runtime-map-constructor",
-      "allowed_count": 3,
-      "fingerprint": "3:205:298592:590964",
+      "allowed_count": 4,
+      "fingerprint": "4:271:126803:706944",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1765,7 +1792,7 @@
       "path": "interpreter/stdlib/builtins_reflect.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 7,
-      "fingerprint": "7:371:319187:738791",
+      "fingerprint": "7:402:929816:176242",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1773,8 +1800,8 @@
     {
       "path": "interpreter/stdlib/builtins_reflect.mbt",
       "pattern_id": "runtime-promise-constructor",
-      "allowed_count": 3,
-      "fingerprint": "3:217:253771:613601",
+      "allowed_count": 4,
+      "fingerprint": "4:287:50944:92563",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1800,8 +1827,8 @@
     {
       "path": "interpreter/stdlib/builtins_reflect.mbt",
       "pattern_id": "runtime-set-constructor",
-      "allowed_count": 3,
-      "fingerprint": "3:205:430601:355713",
+      "allowed_count": 4,
+      "fingerprint": "4:271:387553:135912",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1917,8 +1944,8 @@
     {
       "path": "interpreter/stdlib/builtins_string.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 14,
-      "fingerprint": "14:842:593477:478696",
+      "allowed_count": 11,
+      "fingerprint": "11:672:507470:942240",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1944,8 +1971,8 @@
     {
       "path": "interpreter/stdlib/builtins_string.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 16,
-      "fingerprint": "16:386:775130:430617",
+      "allowed_count": 15,
+      "fingerprint": "15:363:768054:339838",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1954,7 +1981,7 @@
       "path": "interpreter/stdlib/builtins_symbol.mbt",
       "pattern_id": "representation-bag-field",
       "allowed_count": 4,
-      "fingerprint": "4:216:701041:327828",
+      "fingerprint": "4:232:256842:646559",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1972,7 +1999,7 @@
       "path": "interpreter/stdlib/builtins_symbol.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 7,
-      "fingerprint": "7:190:891255:240757",
+      "fingerprint": "7:188:97198:57870",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -2061,8 +2088,8 @@
     {
       "path": "interpreter/stdlib/builtins_typedarray.mbt",
       "pattern_id": "runtime-prop-descriptor-type",
-      "allowed_count": 11,
-      "fingerprint": "11:675:112969:823007",
+      "allowed_count": 9,
+      "fingerprint": "9:557:206080:556448",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -2125,7 +2152,7 @@
       "path": "interpreter/stdlib/builtins_weakmap_set.mbt",
       "pattern_id": "runtime-object-constructor",
       "allowed_count": 25,
-      "fingerprint": "25:1109:307148:109451",
+      "fingerprint": "25:853:927616:881598",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"

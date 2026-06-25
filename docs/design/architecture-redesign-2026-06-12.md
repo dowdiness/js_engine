@@ -12,6 +12,27 @@
 
 ---
 
+## Current Status — 2026-06-25
+
+This findings note still describes the redesign pressure and target direction,
+but the repo has moved beyond the original starting point:
+
+- Stage 0 guardrails are implemented and wired through `make architecture-audit`.
+- The representation-access inventory is current and classified, with 1294
+  classified access sites after the 2026-06-25 inventory refresh. That count is
+  debt visibility, not debt retirement.
+- The bytecode equivalence harness already exists and uses a shared
+  unsupported-kind vocabulary for unsupported diagnostics.
+- Bytecode has file-level IR/lowering/VM separation today. The target package
+  split remains a future boundary decision if file-level separation stops being
+  enough.
+
+For execution order and stop conditions, use the reconciled status section in
+[architecture-execution-plan-2026-06-12.md](architecture-execution-plan-2026-06-12.md)
+before treating any old recommendation as unstarted work.
+
+---
+
 ## 1. Change Pressures Driving Redesign
 
 The confirmed pressure is no longer mutable realm state. The current
@@ -242,7 +263,7 @@ facade / CLI -> chosen execution mode
 ## 6. Migration Strategy
 
 The authoritative staged migration is
-+[architecture-execution-plan-2026-06-12.md](architecture-execution-plan-2026-06-12.md).
+[architecture-execution-plan-2026-06-12.md](architecture-execution-plan-2026-06-12.md).
 This findings document records the rationale; the execution plan is the roadmap.
 If the two disagree, update the execution plan first and then adjust this
 summary.
@@ -281,16 +302,19 @@ Required checks:
 ```bash
 moon check
 moon test
-make architecture-state-audit
+make architecture-audit
 moon info
+moon fmt
 git diff --check
 ```
 
-Additional checks to add:
+Checks now available and expected:
 
-- Import-boundary scan.
-- Runtime-representation-access scan for compiler and stdlib.
-- Bytecode/tree-walker equivalence test matrix for supported constructs.
+- Import-boundary scan through `make architecture-audit`.
+- Runtime-representation-access scan for compiler and stdlib through
+  `make architecture-audit`.
+- Surface-taxonomy scan through `make architecture-audit`.
+- Bytecode/tree-walker equivalence tests for supported constructs.
 - Preparation-layer tests that run the same source through script, eval,
   Function-family constructors, and module entry points where applicable.
 
@@ -470,15 +494,21 @@ Unknowns:
 
 ## 12. Recommended Next Steps
 
-1. Add Stage 0 guardrails for import direction and representation access.
-2. Prototype a small preparation/static-semantics product with one low-risk
-   analysis currently duplicated by runtime and bytecode.
-3. Add tests that inspect the preparation result directly and compare execution
-   behavior before/after.
-4. Define the first runtime operation family to migrate bytecode away from
-   representation access.
-5. Freeze closure-conversion feature growth. Keep it as benchmark/research input
+1. Keep the Stage 0 inventories current. The 2026-06-25 baseline is:
+   `make architecture-audit` passes with 73 local imports, 2 allowlisted import
+   debts, 1294 classified representation-access sites, 13 generated-interface
+   packages, 597 public symbols, and 12 package-defaulted symbols.
+2. Use the existing bytecode equivalence harness as a migration gate. Any PR
+   touching bytecode semantics should add or update a tree-walker comparison,
+   unsupported-kind assertion, or host-output comparison.
+3. Freeze closure-conversion feature growth. Keep it as benchmark/research input
    until bytecode replaces its useful measurements, then remove or archive it.
+4. Advance the static-semantics preparation boundary with one small,
+   inspectable product at a time, starting from preparation inputs and one
+   low-risk shared analysis.
+5. Pick the next runtime-operation migration by audit-retirement value: prefer a
+   slice that removes concrete entries from
+   `scripts/architecture_representation_access.json`.
 6. Plan the builtin registry after the preparation and operation seams exist;
    avoid combining bootstrap redesign with compiler restructuring.
 
@@ -486,5 +516,5 @@ Unknowns:
 
 This note is based on the current worktree state, package manifests, generated
 interfaces, architecture documents, closure-conversion and bytecode notes,
-MoonBit outlines/analyze output, the architecture-state audit, and local
-`moon check` / `moon test` results on 2026-06-12.
+MoonBit outlines/analyze output, `make architecture-audit`, and local
+`moon check` results on 2026-06-25.
