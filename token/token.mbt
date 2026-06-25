@@ -141,11 +141,11 @@ pub(all) enum TokenKind {
   Dot
   Colon
   Question
-  // Template literals
-  NoSubTemplate(String)
-  TemplateHead(String)
-  TemplateMiddle(String)
-  TemplateTail(String)
+  // Template literals — (raw, cooked) where cooked is None for invalid escapes
+  NoSubTemplate(String, String?)
+  TemplateHead(String, String?)
+  TemplateMiddle(String, String?)
+  TemplateTail(String, String?)
   // Arrow
   Arrow
   // Spread/Rest

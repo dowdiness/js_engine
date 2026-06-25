@@ -480,14 +480,21 @@ fn freeze_template_array(value : Value) -> Unit {
 }
 
 ///|
-pub fn make_tagged_template_object(strings : Array[String]) -> Value {
+pub fn make_tagged_template_object(quasis : Array[(String, String?)]) -> Value {
   let raw_vals : Array[Value] = []
-  for s in strings {
-    raw_vals.push(String_(s))
+  let cooked_vals : Array[Value] = []
+  for q in quasis {
+    raw_vals.push(String_(q.0))
+    cooked_vals.push(
+      match q.1 {
+        Some(s) => String_(s)
+        None => Undefined
+      },
+    )
   }
   let raw_arr = make_array(raw_vals)
   freeze_template_array(raw_arr)
-  let template_obj = make_array(raw_vals.copy())
+  let template_obj = make_array(cooked_vals)
   match template_obj {
     Array(data) => {
       set_array_named_prop(data, "raw", raw_arr)
@@ -502,7 +509,7 @@ pub fn make_tagged_template_object(strings : Array[String]) -> Value {
 ///|
 fn tagged_template_cache_key(
   loc : @token.Loc,
-  strings : Array[String],
+  quasis : Array[(String, String?)],
 ) -> String {
   let buf = StringBuilder::new()
   buf.write_string(loc.line.to_string())
@@ -510,11 +517,11 @@ fn tagged_template_cache_key(
   buf.write_string(loc.col.to_string())
   buf.write_string(":")
   buf.write_string(loc.offset.to_string())
-  for s in strings {
+  for q in quasis {
     buf.write_string(":")
-    buf.write_string(s.length().to_string())
+    buf.write_string(q.0.length().to_string())
     buf.write_string(":")
-    buf.write_string(s)
+    buf.write_string(q.0)
   }
   buf.to_string()
 }
@@ -554,13 +561,13 @@ fn Interpreter::get_template_object_cache(self : Interpreter) -> ObjectData {
 pub fn Interpreter::get_cached_tagged_template_object(
   self : Interpreter,
   key : String,
-  strings : Array[String],
+  quasis : Array[(String, String?)],
 ) -> Value {
   let cache = self.get_template_object_cache()
   match cache.bag.properties.get(key) {
     Some(value) => value
     None => {
-      let value = make_tagged_template_object(strings)
+      let value = make_tagged_template_object(quasis)
       cache.bag.properties[key] = value
       value
     }
@@ -571,11 +578,11 @@ pub fn Interpreter::get_cached_tagged_template_object(
 fn Interpreter::get_tagged_template_object(
   self : Interpreter,
   loc : @token.Loc,
-  strings : Array[String],
+  quasis : Array[(String, String?)],
 ) -> Value {
   self.get_cached_tagged_template_object(
-    tagged_template_cache_key(loc, strings),
-    strings,
+    tagged_template_cache_key(loc, quasis),
+    quasis,
   )
 }
 
@@ -1510,10 +1517,19 @@ fn Interpreter::eval_expr(
       }
       self.eval_expr(ctx, right, env)
     }
-    TemplateLit(strings, exprs, _) => {
+    TemplateLit(quasis, exprs, _) => {
       let buf = StringBuilder::new()
-      for i = 0; i < strings.length(); i = i + 1 {
-        buf.write_string(strings[i])
+      for i = 0; i < quasis.length(); i = i + 1 {
+        // Validator ensures cooked is always Some for untagged templates
+        buf.write_string(
+          match quasis[i].1 {
+            Some(s) => s
+            None =>
+              fail(
+                "unreachable: untagged TemplateLit with invalid escape reached evaluator; early-error validator should have rejected it",
+              )
+          },
+        )
         if i < exprs.length() {
           let val = self.eval_expr(ctx, exprs[i], env)
           buf.write_string(to_js_string(val, interp=Some(self)))
@@ -1521,7 +1537,7 @@ fn Interpreter::eval_expr(
       }
       String_(buf.to_string())
     }
-    TaggedTemplate(tag_expr, strings, exprs, loc) => {
+    TaggedTemplate(tag_expr, quasis, exprs, loc) => {
       let (tag, this_val) = match tag_expr {
         Member(obj_expr, prop, member_loc) => {
           let obj = self.eval_expr(ctx, obj_expr, env)
@@ -1535,7 +1551,7 @@ fn Interpreter::eval_expr(
         _ => (self.eval_expr(ctx, tag_expr, env), Undefined)
       }
       // Build args: [templateObj, ...substitutions]
-      let args : Array[Value] = [self.get_tagged_template_object(loc, strings)]
+      let args : Array[Value] = [self.get_tagged_template_object(loc, quasis)]
       for e in exprs {
         args.push(self.eval_expr(ctx, e, env))
       }

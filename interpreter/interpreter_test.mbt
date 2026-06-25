@@ -1870,6 +1870,71 @@ test "template literal used in console.log" {
   json_inspect(output, content=["Hello, World!"])
 }
 
+///|
+test "template literal invalid legacy octal escape throws SyntaxError" {
+  expect_throw(
+    "`\\1`", "SyntaxError: Invalid escape sequence in template literal at line 1, col 1",
+  )
+}
+
+///|
+test "template literal invalid escape throws SyntaxError in strict mode" {
+  let src =
+    #|"use strict";
+    #|`\8`
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 2, col 1",
+  )
+}
+
+///|
+test "tagged template cooked is undefined for invalid escape" {
+  let src =
+    #|function tag(s) { return typeof s[0]; }
+    #|tag`\1`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "undefined", "cooked of invalid escape should be undefined",
+  )
+}
+
+///|
+test "tagged template raw preserves backslash for invalid escape" {
+  let src =
+    #|function tag(s) { return s.raw[0]; }
+    #|tag`\1`;
+  let (_, result) = run_js(src)
+  expect_value_string(result, "\\1", "raw should preserve literal \\1")
+}
+
+///|
+test "tagged template raw and cooked for valid escape" {
+  let src =
+    #|function tag(s) { return s[0] + '|' + s.raw[0]; }
+    #|tag`\n`;
+  let (_, result) = run_js(src)
+  expect_value_string(result, "\n|\\n", "cooked is newline, raw is backslash-n")
+}
+
+///|
+test "nested untagged template with invalid escape throws SyntaxError" {
+  let src =
+    #|`${`\1`}`
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 4",
+  )
+}
+
+///|
+test "untagged template with invalid escape inside tagged substitution throws SyntaxError" {
+  let src =
+    #|function tag(s) { return s[0]; }
+    #|tag`${`\1`}`
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 2, col 7",
+  )
+}
+
 // ====== Phase 2: Arrow Functions ======
 
 ///|

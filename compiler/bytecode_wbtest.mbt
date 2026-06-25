@@ -539,7 +539,7 @@ test "bytecode lowers tagged templates to template-object calls" {
     match instr {
       MakeTemplateObject(strings) => {
         saw_template_object = true
-        json_inspect(strings, content=["a", "b"])
+        json_inspect(strings, content=[["a", ["a"]], ["b", ["b"]]])
       }
       Call(2, _) => saw_call = true
       _ => ()

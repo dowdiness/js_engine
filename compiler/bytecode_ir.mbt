@@ -203,7 +203,7 @@ priv enum BytecodeInstr {
   DeleteProperty(String)
   DeleteComputed
   AppendTemplate(String)
-  MakeTemplateObject(Array[String])
+  MakeTemplateObject(Array[(String, String?)])
   MakeRegExp(String, String)
   SetFunctionName(String)
   UpdateName(String, @ast.UpdateOp, Bool, @token.Loc) // name, op, prefix, loc

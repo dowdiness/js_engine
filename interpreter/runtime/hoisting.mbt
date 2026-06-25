@@ -526,10 +526,20 @@ fn validate_block_early_errors_expr(
       validate_block_early_errors_expr(l, strict_context)
       validate_block_early_errors_expr(r, strict_context)
     }
-    TemplateLit(_, exprs, _) =>
+    TemplateLit(quasis, exprs, loc) => {
+      for q in quasis {
+        match q.1 {
+          None =>
+            raise @errors.SyntaxError(
+              message="Invalid escape sequence in template literal at line \{loc.line}, col \{loc.col}",
+            )
+          Some(_) => ()
+        }
+      }
       for e in exprs {
         validate_block_early_errors_expr(e, strict_context)
       }
+    }
     SpreadExpr(e, _) => validate_block_early_errors_expr(e, strict_context)
     DestructureAssign(pattern, rhs, _) => {
       validate_pattern_early_errors(pattern, strict_context, false)

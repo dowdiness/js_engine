@@ -125,7 +125,7 @@ pub(all) enum Expr {
   UpdateExpr(UpdateOp, Expr, Bool, @token.Loc)
   CompoundAssign(CompoundOp, Expr, Expr, @token.Loc)
   Comma(Expr, Expr, @token.Loc)
-  TemplateLit(Array[String], Array[Expr], @token.Loc)
+  TemplateLit(Array[(String, String?)], Array[Expr], @token.Loc) // quasis: (raw, cooked?)
   ArrowFunc(Array[String], Array[Stmt], @token.Loc, String?)
   ArrowFuncExt(Array[Param], String?, Array[Stmt], @token.Loc, String?) // params, rest_param, body, source_text
   SpreadExpr(Expr, @token.Loc)
@@ -142,7 +142,7 @@ pub(all) enum Expr {
   SuperMember(String, @token.Loc) // super.prop
   SuperComputedMember(Expr, @token.Loc) // super[expr]
   NewTargetExpr(@token.Loc) // new.target
-  TaggedTemplate(Expr, Array[String], Array[Expr], @token.Loc) // tag`str${expr}str`
+  TaggedTemplate(Expr, Array[(String, String?)], Array[Expr], @token.Loc) // tag, quasis (raw, cooked?), exprs
   // Generator expressions
   GeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc, String?) // name, params, body, source_text
   GeneratorExprExt(

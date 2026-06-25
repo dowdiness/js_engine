@@ -651,24 +651,24 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       }
       let tloc = self.peek().loc
       match self.peek_kind() {
-        NoSubTemplate(s) => {
+        NoSubTemplate(raw, cooked) => {
           let _ = self.advance()
-          expr = TaggedTemplate(expr, [s], [], tloc)
+          expr = TaggedTemplate(expr, [(raw, cooked)], [], tloc)
         }
-        TemplateHead(first_str) => {
+        TemplateHead(raw, cooked) => {
           let _ = self.advance()
-          let strings : Array[String] = [first_str]
+          let quasis : Array[(String, String?)] = [(raw, cooked)]
           let exprs : Array[@ast.Expr] = []
           while true {
             exprs.push(self.parse_expr())
             match self.peek_kind() {
-              TemplateMiddle(s) => {
+              TemplateMiddle(raw2, cooked2) => {
                 let _ = self.advance()
-                strings.push(s)
+                quasis.push((raw2, cooked2))
               }
-              TemplateTail(s) => {
+              TemplateTail(raw2, cooked2) => {
                 let _ = self.advance()
-                strings.push(s)
+                quasis.push((raw2, cooked2))
                 break
               }
               _ => {
@@ -679,7 +679,7 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
               }
             }
           }
-          expr = TaggedTemplate(expr, strings, exprs, tloc)
+          expr = TaggedTemplate(expr, quasis, exprs, tloc)
         }
         _ => ()
       }
@@ -845,25 +845,24 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     Function => self.parse_func_expr()
     Class => self.parse_class_expr()
     Super => self.parse_super_expr()
-    NoSubTemplate(s) => {
+    NoSubTemplate(raw, cooked) => {
       let _ = self.advance()
-      // Mark has_escape=true so template literals are never treated as directives
-      StringLit(s, true, @token.LexForm::LexNormal, tok.loc)
+      TemplateLit([(raw, cooked)], [], tok.loc)
     }
-    TemplateHead(first_str) => {
+    TemplateHead(raw, cooked) => {
       let _ = self.advance()
-      let strings : Array[String] = [first_str]
+      let quasis : Array[(String, String?)] = [(raw, cooked)]
       let exprs : Array[@ast.Expr] = []
       while true {
         exprs.push(self.parse_expr())
         match self.peek_kind() {
-          TemplateMiddle(s) => {
+          TemplateMiddle(raw2, cooked2) => {
             let _ = self.advance()
-            strings.push(s)
+            quasis.push((raw2, cooked2))
           }
-          TemplateTail(s) => {
+          TemplateTail(raw2, cooked2) => {
             let _ = self.advance()
-            strings.push(s)
+            quasis.push((raw2, cooked2))
             break
           }
           _ => {
@@ -874,7 +873,7 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
           }
         }
       }
-      TemplateLit(strings, exprs, tok.loc)
+      TemplateLit(quasis, exprs, tok.loc)
     }
     Regex(pattern, flags) => {
       let _ = self.advance()

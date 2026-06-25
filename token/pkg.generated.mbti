@@ -138,10 +138,10 @@ pub(all) enum TokenKind {
   Dot
   Colon
   Question
-  NoSubTemplate(String)
-  TemplateHead(String)
-  TemplateMiddle(String)
-  TemplateTail(String)
+  NoSubTemplate(String, String?)
+  TemplateHead(String, String?)
+  TemplateMiddle(String, String?)
+  TemplateTail(String, String?)
   Arrow
   DotDotDot
   Regex(String, String)

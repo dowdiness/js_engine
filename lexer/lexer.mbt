@@ -338,87 +338,153 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
     }
   }
 
-  fn scan_template_string() -> (String, Bool) raise Error {
-    let buf = StringBuilder::new()
+  // Returns (raw, cooked, has_expr).
+  // raw: verbatim template section with \r\n normalized to \n (TRV).
+  // cooked: escape-processed value; None when any escape is invalid (NotEscapeSequence).
+  fn scan_template_string() -> (String, String?, Bool) raise Error {
+    let cooked_buf = StringBuilder::new()
+    let raw_buf = StringBuilder::new()
+    let mut cooked_valid = true
     while offset < len {
       let tc = char_at(offset)
       if tc == '`' {
         offset += 1
         col += 1
-        return (buf.to_string(), false)
+        let cooked : String? = if cooked_valid {
+          Some(cooked_buf.to_string())
+        } else {
+          None
+        }
+        return (raw_buf.to_string(), cooked, false)
       }
       if tc == '$' && offset + 1 < len && char_at(offset + 1) == '{' {
         offset += 2
         col += 2
-        return (buf.to_string(), true)
+        let cooked : String? = if cooked_valid {
+          Some(cooked_buf.to_string())
+        } else {
+          None
+        }
+        return (raw_buf.to_string(), cooked, true)
       }
       if tc == '\\' && offset + 1 < len {
         offset += 1
         col += 1
         let esc = char_at(offset)
-        match esc {
-          'n' => buf.write_char('\n')
-          't' => buf.write_char('\t')
-          'r' => buf.write_char('\r')
-          'b' => write_code_point(buf, 8) // backspace
-          'v' => write_code_point(buf, 11) // vertical tab
-          'f' => write_code_point(buf, 12) // form feed
-          '0' => {
-            // \0 is NUL only when NOT followed by a decimal digit (ES spec)
-            if offset + 1 < len && is_digit(char_at(offset + 1)) {
-              raise @errors.SyntaxError(
-                message="Invalid escape sequence at line \{line}, col \{col}",
-              )
+        // LineContinuation (\<LTS>): TRV = \n, nothing in cooked
+        if is_line_terminator(esc) {
+          raw_buf.write_char('\n')
+          if esc == '\r' {
+            offset += 1
+            if offset < len && char_at(offset) == '\n' {
+              offset += 1
             }
-            write_code_point(buf, 0)
+          } else {
+            offset += 1
           }
-          '\\' => buf.write_char('\\')
-          '`' => buf.write_char('`')
-          '$' => buf.write_char('$')
+          line += 1
+          col = 1
+          continue
+        }
+        // All other escapes: backslash appears in raw
+        raw_buf.write_char('\\')
+        match esc {
+          'n' => {
+            raw_buf.write_char('n')
+            cooked_buf.write_char('\n')
+          }
+          't' => {
+            raw_buf.write_char('t')
+            cooked_buf.write_char('\t')
+          }
+          'r' => {
+            raw_buf.write_char('r')
+            cooked_buf.write_char('\r')
+          }
+          'b' => {
+            raw_buf.write_char('b')
+            write_code_point(cooked_buf, 8)
+          }
+          'v' => {
+            raw_buf.write_char('v')
+            write_code_point(cooked_buf, 11)
+          }
+          'f' => {
+            raw_buf.write_char('f')
+            write_code_point(cooked_buf, 12)
+          }
+          '0' => {
+            raw_buf.write_char('0')
+            if offset + 1 < len && is_digit(char_at(offset + 1)) {
+              // \0 + decimal digit: NotEscapeSequence (tagged: cooked=undefined)
+              cooked_valid = false
+            } else {
+              write_code_point(cooked_buf, 0)
+            }
+          }
+          '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' => {
+            // NotEscapeSequence: legacy octal (\1-\7) or \8, \9
+            raw_buf.write_char(esc)
+            cooked_valid = false
+          }
+          '\\' => {
+            raw_buf.write_char('\\')
+            cooked_buf.write_char('\\')
+          }
+          '`' => {
+            raw_buf.write_char('`')
+            cooked_buf.write_char('`')
+          }
+          '$' => {
+            raw_buf.write_char('$')
+            cooked_buf.write_char('$')
+          }
           'x' => {
-            // \xHH hex escape — parse exactly 2 hex digits
+            raw_buf.write_char('x')
             offset += 1
             col += 1
             if offset + 1 < len &&
               is_hex_digit(char_at(offset)) &&
               is_hex_digit(char_at(offset + 1)) {
+              raw_buf.write_char(char_at(offset))
+              raw_buf.write_char(char_at(offset + 1))
               let hex_str = String::make(1, char_at(offset)) +
                 String::make(1, char_at(offset + 1))
               let cp = parse_hex(hex_str).to_int()
-              buf.write_char(cp.unsafe_to_char())
+              cooked_buf.write_char(cp.unsafe_to_char())
               offset += 2
               col += 2
             } else {
-              raise @errors.SyntaxError(
-                message="Invalid hexadecimal escape sequence at line \{line}, col \{col}",
-              )
+              // Invalid \xHH: NotEscapeSequence (tagged: cooked=undefined)
+              cooked_valid = false
             }
             continue
           }
           'u' => {
-            offset += 1 // skip 'u'
+            raw_buf.write_char('u')
+            offset += 1
             col += 1
-            let cp = parse_unicode_escape()
-            write_code_point(buf, cp)
-            continue
-          }
-          // LineContinuation in template literal: \ followed by any LineTerminator
-          _ if is_line_terminator(esc) => {
-            if esc == '\r' {
-              offset += 1
-              if offset < len && char_at(offset) == '\n' {
-                offset += 1
+            let u_start = offset
+            try {
+              let cp = parse_unicode_escape()
+              for i = u_start; i < offset; i = i + 1 {
+                raw_buf.write_char(char_at(i))
               }
-            } else {
-              offset += 1
+              write_code_point(cooked_buf, cp)
+            } catch {
+              _ => {
+                for i = u_start; i < offset; i = i + 1 {
+                  raw_buf.write_char(char_at(i))
+                }
+                cooked_valid = false
+              }
             }
-            line += 1
-            col = 1
             continue
           }
           _ => {
-            buf.write_char('\\')
-            buf.write_char(esc)
+            // Identity escape: \q → q in cooked, \q in raw
+            raw_buf.write_char(esc)
+            cooked_buf.write_char(esc)
           }
         }
         advance_char(esc)
@@ -429,17 +495,20 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
           // \r\n counts as one line terminator; normalize to \n in the value
           if tc == '\r' {
             if offset + 1 < len && char_at(offset + 1) == '\n' {
-              offset += 1 // skip \r, \n will be written below
+              offset += 1
             }
-            buf.write_char('\n')
+            cooked_buf.write_char('\n')
+            raw_buf.write_char('\n')
           } else {
-            buf.write_char(tc)
+            cooked_buf.write_char(tc)
+            raw_buf.write_char(tc)
           }
           line += 1
           col = 1
         } else {
           col += 1
-          buf.write_char(tc)
+          cooked_buf.write_char(tc)
+          raw_buf.write_char(tc)
         }
         advance_char(tc)
       }
@@ -1212,15 +1281,25 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       let tloc = make_loc()
       offset += 1
       col += 1
-      let (text, has_expr) = scan_template_string()
+      let (raw, cooked, has_expr) = scan_template_string()
       if has_expr {
         template_depth_stack.push(1)
         tokens.push(
-          @token.Token(TemplateHead(text), tloc, "", end_offset=utf16_pos()),
+          @token.Token(
+            TemplateHead(raw, cooked),
+            tloc,
+            "",
+            end_offset=utf16_pos(),
+          ),
         )
       } else {
         tokens.push(
-          @token.Token(NoSubTemplate(text), tloc, "", end_offset=utf16_pos()),
+          @token.Token(
+            NoSubTemplate(raw, cooked),
+            tloc,
+            "",
+            end_offset=utf16_pos(),
+          ),
         )
       }
       continue
@@ -1464,15 +1543,25 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         let tloc = make_loc()
         offset += 1
         col += 1
-        let (text, has_expr) = scan_template_string()
+        let (raw, cooked, has_expr) = scan_template_string()
         if has_expr {
           template_depth_stack.push(1)
           tokens.push(
-            @token.Token(TemplateMiddle(text), tloc, "", end_offset=utf16_pos()),
+            @token.Token(
+              TemplateMiddle(raw, cooked),
+              tloc,
+              "",
+              end_offset=utf16_pos(),
+            ),
           )
         } else {
           tokens.push(
-            @token.Token(TemplateTail(text), tloc, "", end_offset=utf16_pos()),
+            @token.Token(
+              TemplateTail(raw, cooked),
+              tloc,
+              "",
+              end_offset=utf16_pos(),
+            ),
           )
         }
         continue

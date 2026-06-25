@@ -371,7 +371,9 @@ test "lex unicode escape extended in identifier" {
 ///|
 test "lex unicode escape in template literal" {
   let kinds = tok_kinds("`\\u0048i`")
-  inspect_kinds(kinds, content=["NoSubTemplate(\"Hi\")", "EOF"])
+  inspect_kinds(kinds, content=[
+    "NoSubTemplate(\"\\\\u0048i\", Some(\"Hi\"))", "EOF",
+  ])
 }
 
 ///|
