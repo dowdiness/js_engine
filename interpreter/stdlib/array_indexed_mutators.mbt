@@ -42,6 +42,9 @@ const ARRAY_MAX_SAFE_LENGTH : Double = 9007199254740991.0
 const ARRAY_MAX_SAFE_LENGTH_I64 = 9007199254740991L
 
 ///|
+const ARRAY_BELOW_MIN_RELATIVE_INDEX_I64 = -9007199254740992L
+
+///|
 const ARRAY_MAX_ARRAY_LENGTH_I64 = 4294967295L
 
 ///|
@@ -53,15 +56,15 @@ fn array_mutator_to_integer_index_from_number(n : Double) -> Int64 {
     0L
   } else if n.is_inf() {
     if n < 0.0 {
-      -ARRAY_MAX_SAFE_LENGTH_I64
+      ARRAY_BELOW_MIN_RELATIVE_INDEX_I64
     } else {
       ARRAY_MAX_SAFE_LENGTH_I64
     }
   } else {
     let sign = if n < 0.0 { -1.0 } else { 1.0 }
     let integer = n.abs().floor() * sign
-    if integer <= -ARRAY_MAX_SAFE_LENGTH {
-      -ARRAY_MAX_SAFE_LENGTH_I64
+    if integer < -ARRAY_MAX_SAFE_LENGTH {
+      ARRAY_BELOW_MIN_RELATIVE_INDEX_I64
     } else if integer >= ARRAY_MAX_SAFE_LENGTH {
       ARRAY_MAX_SAFE_LENGTH_I64
     } else {

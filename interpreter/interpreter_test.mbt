@@ -19155,6 +19155,23 @@ test "array includes uses Int64 ToLength and fromIndex near max safe integer" {
 }
 
 ///|
+test "array relative indices preserve negative infinity" {
+  let src =
+    #|var obj = { 0: "x", length: 9007199254740991 };
+    #|console.log(Array.prototype.at.call(obj, -Infinity));
+    #|console.log(Array.prototype.lastIndexOf.call(obj, "x", -Infinity));
+    #|console.log(Array.prototype.includes.call(obj, "x", -Infinity));
+    #|console.log(Array.prototype.at.call(obj, -9007199254740992));
+    #|try { Array.prototype.with.call(obj, -Infinity, "y"); console.log("ok"); }
+    #|catch (e) { console.log(e.name); }
+    #|
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "undefined", "-1", "true", "undefined", "RangeError",
+  ])
+}
+
+///|
 test "array slice copies sparse properties near max safe integer" {
   let src =
     #|var obj = {
