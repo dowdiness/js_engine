@@ -701,25 +701,6 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
 }
 
 ///|
-fn maybe_set_promise_constructor(value : Value, ctor : Value) -> Value {
-  match value {
-    Promise(data) => {
-      data.bag.properties["constructor"] = ctor
-      data.bag.descriptors["constructor"] = {
-        writable: true,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      value
-    }
-    _ => value
-  }
-}
-
-///|
 pub fn Interpreter::construct_value(
   self : Interpreter,
   ctor : Value,
@@ -1118,8 +1099,6 @@ fn Interpreter::construct_value_impl(
               }
               None => {
                 // No explicit constructor - if there's a super class, call super()
-                // Save the derived class constructor for new.target propagation
-                let derived_ctor = ctor
                 match super_ctor {
                   Some(sc) =>
                     match sc {
@@ -1181,9 +1160,7 @@ fn Interpreter::construct_value_impl(
                                       self.install_instance_fields(
                                         v, instance_fields,
                                       )
-                                      return maybe_set_promise_constructor(
-                                        v, derived_ctor,
-                                      )
+                                      return v
                                     }
                                   _ => ()
                                 }
@@ -1206,9 +1183,7 @@ fn Interpreter::construct_value_impl(
                               self.install_instance_fields(
                                 super_result, instance_fields,
                               )
-                              return maybe_set_promise_constructor(
-                                super_result, derived_ctor,
-                              )
+                              return super_result
                             }
                           }
                           Some(ConstructorOnlyCallable(_, super_func)) => {
@@ -1222,9 +1197,7 @@ fn Interpreter::construct_value_impl(
                               self.install_instance_fields(
                                 super_result, instance_fields,
                               )
-                              return maybe_set_promise_constructor(
-                                super_result, derived_ctor,
-                              )
+                              return super_result
                             }
                           }
                           Some(NativeCallable(_, _))
@@ -1247,9 +1220,7 @@ fn Interpreter::construct_value_impl(
                               self.install_instance_fields(
                                 super_result, instance_fields,
                               )
-                              return maybe_set_promise_constructor(
-                                super_result, derived_ctor,
-                              )
+                              return super_result
                             }
                           }
                           _ => ()
@@ -1276,7 +1247,7 @@ fn Interpreter::construct_value_impl(
               }
             }
           }
-          maybe_set_promise_constructor(result, ctor)
+          result
         }
         _ =>
           raise @errors.TypeError(
