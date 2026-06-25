@@ -302,11 +302,6 @@ fn setup_reflect_builtins(
       let value = if args.length() > 2 { args[2] } else { Undefined }
       // 4th argument is the Receiver; defaults to the target per spec.
       let receiver = if args.length() >= 4 { args[3] } else { target }
-      // Pre-flight target-side own-descriptor blockers run before delegating to
-      // set_property; see @runtime.reflect_set_preflight_blocks.
-      if @runtime.reflect_set_preflight_blocks(target, prop_key, key_str) {
-        return Value::Bool(false)
-      }
       let loc = @token.Loc::default()
       try {
         let _ = match prop_key {

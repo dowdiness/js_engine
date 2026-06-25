@@ -19,15 +19,13 @@
 ///   custom (3rd-argument) receiver. Aligning this with the internal
 ///   receiver-preserving walk (`get_property_from_prototype`) is a separate
 ///   behavior-preserving refactor, not this move.
-/// - `reflect_set_preflight_blocks` is a TARGET-side own-descriptor check
-///   (OrdinarySet §10.1.9.2 steps 1 / 3.a / 4) that Reflect.set performs before
-///   delegating to `Interpreter::set_property`. It is deliberately distinct from
-///   `set_property`'s internal RECEIVER-side blocker (`existing_receiver_desc_blocks`,
-///   step 3.e), which uses a different predicate (any-accessor vs getter-only).
-///   That Reflect.set patches `[[Set]]` externally with a target-side check
-///   `set_property` does not perform internally is a latent design smell; moving
-///   the check into `set_property` is behavior-changing for direct assignment and
-///   is tracked as a follow-up, NOT done here.
+/// - `reflect_set_preflight_blocks` (removed in #342): the target-side
+///   own-descriptor check (OrdinarySet §10.1.9.2 steps 1 / 3.a / 4) was
+///   redundant — `set_property` already raises TypeError in strict mode for
+///   getter-only and non-writable-data own descriptors, and Reflect.set
+///   delegates with `strict=true` and catches TypeError → Bool(false).
+///   The pre-flight was a no-op for non-Object targets (Array/Map/Set/Promise)
+///   and equivalent to the existing TypeError path for Object targets.
 
 ///|
 /// target receiver-aware `[[Get]]` backing for Reflect.get (§28.1.7). Argument
@@ -91,47 +89,5 @@ pub fn reflect_get_with_receiver(
         _ => interp.get_property(target, key_str, loc)
       }
     }
-  }
-}
-
-///|
-/// target-side own-descriptor pre-flight blocker for Reflect.set (§28.1.13 →
-/// OrdinarySet §10.1.9.2 steps 1 / 3.a / 4). Returns `true` when Reflect.set
-/// must short-circuit to `false` without delegating to
-/// `Interpreter::set_property` (own getter-only accessor, or own non-writable
-/// DATA property); `false` to proceed.
-///
-/// Pre-flight own-descriptor blockers (spec-safe): own accessor getter-
-/// only or own non-writable DATA → return false. The former `!extensible
-/// && !has(P)` short-circuits were wrong because an inherited setter can
-/// still run successfully on a non-extensible target (Codex Q6).
-///
-/// The non-writable check requires `setter is None` alongside
-/// `getter is None` — accessor descriptors default `writable=false`, so a
-/// setter-only accessor (getter=None, setter=Some(_), writable=false)
-/// would otherwise be preemptively rejected instead of invoking the
-/// setter through the dispatcher.
-///
-/// Relationship to the relocated source: the stdlib method's inline
-/// `return Value::Bool(false)` early-returns are consolidated here into a single
-/// boolean predicate over the own descriptor (the op returns the block decision,
-/// not the method's Value); the stdlib call site re-expresses the short-circuit
-/// as `if reflect_set_preflight_blocks(...) { return Value::Bool(false) }`.
-pub fn reflect_set_preflight_blocks(
-  target : Value,
-  prop_key : Value,
-  key_str : String,
-) -> Bool {
-  guard target is Object(data) else { return false }
-  let own_desc = match prop_key {
-    Symbol(sym) => data.bag.symbol_descriptors.get(sym.id)
-    _ => data.bag.descriptors.get(key_str)
-  }
-  match own_desc {
-    // Own getter-only accessor, or own non-writable data descriptor → block.
-    Some(desc) =>
-      (desc.getter is Some(_) && desc.setter is None) ||
-      (desc.getter is None && desc.setter is None && !desc.writable)
-    None => false
   }
 }
