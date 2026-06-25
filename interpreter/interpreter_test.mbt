@@ -1439,6 +1439,40 @@ test "Annex B __proto__ setter ignores primitive prototype values" {
 }
 
 ///|
+test "Annex B __proto__ setter updates Map and Set receivers" {
+  let src =
+    #|var mProto = { marker: 11 };
+    #|var m = new Map();
+    #|m.__proto__ = mProto;
+    #|console.log(Object.getPrototypeOf(m) === mProto);
+    #|console.log(m.marker);
+    #|console.log(JSON.stringify(Reflect.ownKeys(m)));
+    #|
+    #|var sProto = { marker: 22 };
+    #|var s = new Set();
+    #|s["__proto__"] = sProto;
+    #|console.log(Object.getPrototypeOf(s) === sProto);
+    #|console.log(s.marker);
+    #|console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|
+    #|var setter = Object.getOwnPropertyDescriptor(Object.prototype, "__proto__").set;
+    #|var directProto = { marker: 33 };
+    #|var direct = new Map();
+    #|console.log(setter.call(direct, directProto) === undefined);
+    #|console.log(Object.getPrototypeOf(direct) === directProto);
+    #|console.log(direct.marker);
+    #|
+    #|var unchanged = Object.getPrototypeOf(new Set());
+    #|var ignored = new Set();
+    #|ignored.__proto__ = 1;
+    #|console.log(Object.getPrototypeOf(ignored) === unchanged);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "11", "[]", "true", "22", "[]", "true", "true", "33", "true",
+  ])
+}
+
+///|
 test "comma expression" {
   let (_, result) = run_js("1, 2, 3")
   expect_value_string(result, "3", "comma expression result")
