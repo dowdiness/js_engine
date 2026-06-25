@@ -551,6 +551,21 @@ test "logical operators short-circuit" {
 }
 
 ///|
+test "array Symbol.iterator synthesis shadows Object prototype iterator" {
+  let src =
+    #|try {
+    #|  var called = false;
+    #|  Object.prototype[Symbol.iterator] = function() { called = true; return [][Symbol.iterator](); };
+    #|  for (var x of [1]) {}
+    #|  console.log(called);
+    #|} finally {
+    #|  delete Object.prototype[Symbol.iterator];
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["false"])
+}
+
+///|
 test "loose equality array inherits toPrimitive from Object prototype chain" {
   let src =
     #|try {
