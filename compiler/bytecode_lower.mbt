@@ -3472,37 +3472,51 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr_for_effect(left)
       self.compile_expr(right)
     }
-    TemplateLit(strings, exprs, _) => {
-      let first = if strings.length() > 0 { strings[0] } else { "" }
-      let _ = self.emit(LoadConst(Value::String_(first)))
+    TemplateLit(quasis, exprs, _) => {
+      let first_cooked = if quasis.length() > 0 {
+        match quasis[0].1 {
+          Some(s) => s
+          None => ""
+        }
+      } else {
+        ""
+      }
+      let _ = self.emit(LoadConst(Value::String_(first_cooked)))
       for i, expr in exprs {
         self.compile_expr(expr)
-        let tail = if i + 1 < strings.length() { strings[i + 1] } else { "" }
-        let _ = self.emit(AppendTemplate(tail))
+        let tail_cooked = if i + 1 < quasis.length() {
+          match quasis[i + 1].1 {
+            Some(s) => s
+            None => ""
+          }
+        } else {
+          ""
+        }
+        let _ = self.emit(AppendTemplate(tail_cooked))
       }
     }
-    TaggedTemplate(Member(obj, prop, member_loc), strings, exprs, loc) => {
+    TaggedTemplate(Member(obj, prop, member_loc), quasis, exprs, loc) => {
       self.compile_expr(obj)
       let _ = self.emit(PreparePropertyCall(prop, member_loc))
-      let _ = self.emit(MakeTemplateObject(strings))
+      let _ = self.emit(MakeTemplateObject(quasis))
       for expr in exprs {
         self.compile_expr(expr)
       }
       let _ = self.emit(CallWithReceiver(1 + exprs.length(), loc))
     }
-    TaggedTemplate(ComputedMember(obj, key, member_loc), strings, exprs, loc) => {
+    TaggedTemplate(ComputedMember(obj, key, member_loc), quasis, exprs, loc) => {
       self.compile_expr(obj)
       self.compile_expr(key)
       let _ = self.emit(PrepareComputedCall(member_loc))
-      let _ = self.emit(MakeTemplateObject(strings))
+      let _ = self.emit(MakeTemplateObject(quasis))
       for expr in exprs {
         self.compile_expr(expr)
       }
       let _ = self.emit(CallWithReceiver(1 + exprs.length(), loc))
     }
-    TaggedTemplate(tag, strings, exprs, loc) => {
+    TaggedTemplate(tag, quasis, exprs, loc) => {
       self.compile_expr(tag)
-      let _ = self.emit(MakeTemplateObject(strings))
+      let _ = self.emit(MakeTemplateObject(quasis))
       for expr in exprs {
         self.compile_expr(expr)
       }

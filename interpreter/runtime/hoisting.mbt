@@ -309,6 +309,23 @@ fn validate_pattern_early_errors(
 }
 
 ///|
+fn validate_params_defaults(
+  params : Array[@ast.Param],
+  strict_context : Bool,
+) -> Unit raise Error {
+  for p in params {
+    match p.default_val {
+      Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+      None => ()
+    }
+    match p.pattern {
+      Some(pat) => validate_pattern_early_errors(pat, strict_context, true)
+      None => ()
+    }
+  }
+}
+
+///|
 fn validate_strict_lex_form(
   form : @token.LexForm,
   loc : @token.Loc,
@@ -358,12 +375,13 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    FuncExprExt(_, _, _, body, _, _) => {
+    FuncExprExt(_, params, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
       )
       let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
       for stmt in body {
         validate_block_early_errors_stmt(stmt, child_strict)
       }
@@ -378,12 +396,13 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    ArrowFuncExt(_, _, body, _, _) => {
+    ArrowFuncExt(params, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
       )
       let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
       for stmt in body {
         validate_block_early_errors_stmt(stmt, child_strict)
       }
@@ -398,7 +417,20 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    GeneratorExprExt(_, _, _, body, _, _) => {
+    GeneratorExprExt(_, params, _, body, _, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    AsyncFuncExpr(_, _, body, _, _)
+    | AsyncArrowFunc(_, body, _, _)
+    | AsyncGeneratorExpr(_, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
@@ -408,17 +440,35 @@ fn validate_block_early_errors_expr(
         validate_block_early_errors_stmt(stmt, child_strict)
       }
     }
-    AsyncFuncExpr(_, _, body, _, _)
-    | AsyncFuncExprExt(_, _, _, body, _, _)
-    | AsyncArrowFunc(_, body, _, _)
-    | AsyncArrowFuncExt(_, _, body, _, _)
-    | AsyncGeneratorExpr(_, _, body, _, _)
-    | AsyncGeneratorExprExt(_, _, _, body, _, _) => {
+    AsyncFuncExprExt(_, params, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
       )
       let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    AsyncArrowFuncExt(params, _, body, _, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
+      for stmt in body {
+        validate_block_early_errors_stmt(stmt, child_strict)
+      }
+    }
+    AsyncGeneratorExprExt(_, params, _, body, _, _) => {
+      validate_block_statement_list_early_errors(
+        body,
+        include_function_decls_in_var_names=true,
+      )
+      let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
       for stmt in body {
         validate_block_early_errors_stmt(stmt, child_strict)
       }
@@ -526,10 +576,20 @@ fn validate_block_early_errors_expr(
       validate_block_early_errors_expr(l, strict_context)
       validate_block_early_errors_expr(r, strict_context)
     }
-    TemplateLit(_, exprs, _) =>
+    TemplateLit(quasis, exprs, loc) => {
+      for q in quasis {
+        match q.1 {
+          None =>
+            raise @errors.SyntaxError(
+              message="Invalid escape sequence in template literal at line \{loc.line}, col \{loc.col}",
+            )
+          Some(_) => ()
+        }
+      }
       for e in exprs {
         validate_block_early_errors_expr(e, strict_context)
       }
+    }
     SpreadExpr(e, _) => validate_block_early_errors_expr(e, strict_context)
     DestructureAssign(pattern, rhs, _) => {
       validate_pattern_early_errors(pattern, strict_context, false)
@@ -748,12 +808,13 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    FuncDeclExt(_, _, _, body, _, _) => {
+    FuncDeclExt(_, params, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
       )
       let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
       for inner in body {
         validate_block_early_errors_stmt(inner, child_strict)
       }
@@ -768,12 +829,13 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    GeneratorDeclExt(_, _, _, body, _, _) => {
+    GeneratorDeclExt(_, params, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
       )
       let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
       for inner in body {
         validate_block_early_errors_stmt(inner, child_strict)
       }
@@ -788,12 +850,13 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    AsyncFuncDeclExt(_, _, _, body, _, _) => {
+    AsyncFuncDeclExt(_, params, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
       )
       let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
       for inner in body {
         validate_block_early_errors_stmt(inner, child_strict)
       }
@@ -808,12 +871,13 @@ fn validate_block_early_errors_stmt(
         validate_block_early_errors_stmt(inner, child_strict)
       }
     }
-    AsyncGeneratorDeclExt(_, _, _, body, _, _) => {
+    AsyncGeneratorDeclExt(_, params, _, body, _, _) => {
       validate_block_statement_list_early_errors(
         body,
         include_function_decls_in_var_names=true,
       )
       let child_strict = is_function_strict(strict_context, body)
+      validate_params_defaults(params, child_strict)
       for inner in body {
         validate_block_early_errors_stmt(inner, child_strict)
       }

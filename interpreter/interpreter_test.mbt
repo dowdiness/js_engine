@@ -2116,6 +2116,149 @@ test "template literal used in console.log" {
   json_inspect(output, content=["Hello, World!"])
 }
 
+///|
+test "template literal invalid legacy octal escape throws SyntaxError" {
+  expect_throw(
+    "`\\1`", "SyntaxError: Invalid escape sequence in template literal at line 1, col 1",
+  )
+}
+
+///|
+test "template literal invalid escape throws SyntaxError in strict mode" {
+  let src =
+    #|"use strict";
+    #|`\8`
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 2, col 1",
+  )
+}
+
+///|
+test "invalid template in function parameter default throws SyntaxError" {
+  let src =
+    #|function f(a = `\1`) {}
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 16",
+  )
+}
+
+///|
+test "invalid template in arrow function parameter default throws SyntaxError" {
+  let src =
+    #|(a = `\1`) => a;
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 6",
+  )
+}
+
+///|
+test "invalid template in destructuring parameter default throws SyntaxError" {
+  let src =
+    #|function f({a = `\1`} = {}) {}
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 17",
+  )
+}
+
+///|
+test "tagged template cooked is undefined for invalid escape" {
+  let src =
+    #|function tag(s) { return typeof s[0]; }
+    #|tag`\1`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "undefined", "cooked of invalid escape should be undefined",
+  )
+}
+
+///|
+test "tagged template raw preserves backslash for invalid escape" {
+  let src =
+    #|function tag(s) { return s.raw[0]; }
+    #|tag`\1`;
+  let (_, result) = run_js(src)
+  expect_value_string(result, "\\1", "raw should preserve literal \\1")
+}
+
+///|
+test "tagged template raw and cooked for valid escape" {
+  let src =
+    #|function tag(s) { return s[0] + '|' + s.raw[0]; }
+    #|tag`\n`;
+  let (_, result) = run_js(src)
+  expect_value_string(result, "\n|\\n", "cooked is newline, raw is backslash-n")
+}
+
+///|
+test "tagged template raw preserves backslash in line continuation" {
+  let src =
+    #|function tag(s) { return s[0] + '|' + s.raw[0]; }
+    #|tag`a\
+    #|b`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "ab|a\\\nb", "cooked removes continuation, raw keeps backslash+newline",
+  )
+}
+
+///|
+test "tagged template raw preserves LS U+2028 in line continuation" {
+  // U+2028 (LS) is a line terminator but does NOT normalize to \n in raw
+  let src = "function tag(s) { return s[0] + '|' + s.raw[0]; }\ntag`a\\\u{2028}b`"
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "ab|a\\\u{2028}b", "raw: \\LS preserved as backslash+U+2028, not normalized to \\n",
+  )
+}
+
+///|
+test "nested untagged template with invalid escape throws SyntaxError" {
+  let src =
+    #|`${`\1`}`
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 1, col 4",
+  )
+}
+
+///|
+test "untagged template with invalid escape inside tagged substitution throws SyntaxError" {
+  let src =
+    #|function tag(s) { return s[0]; }
+    #|tag`${`\1`}`
+  expect_throw(
+    src, "SyntaxError: Invalid escape sequence in template literal at line 2, col 7",
+  )
+}
+
+///|
+test "tagged template invalid hex escape cooked undefined raw preserved" {
+  let src =
+    #|function tag(s) { return typeof s[0] + '|' + s.raw[0]; }
+    #|tag`\xZZ`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "undefined|\\xZZ", "\\xZZ: cooked undefined, raw preserves",
+  )
+}
+
+///|
+test "tagged template invalid unicode escape cooked undefined raw preserved" {
+  let src =
+    #|function tag(s) { return typeof s[0] + '|' + s.raw[0]; }
+    #|tag`\uZZZZ`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "undefined|\\uZZZZ", "\\uZZZZ: cooked undefined, raw preserves",
+  )
+}
+
+///|
+test "tagged template raw normalizes CRLF to LF" {
+  let src = "function tag(s) { return s.raw[0]; }\ntag`line1\r\nline2`"
+  let (_, result) = run_js(src)
+  expect_value_string(result, "line1\nline2", "raw: \\r\\n normalized to \\n")
+}
+
 // ====== Phase 2: Arrow Functions ======
 
 ///|
