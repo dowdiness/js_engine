@@ -135,7 +135,11 @@ pub fn get_proxy_trap(ProxyData, String, Interpreter) -> Value? raise
 
 pub fn get_set_proto(realm_state? : RealmState?) -> Value
 
+pub fn get_source_text(ObjectData) -> Value?
+
 pub fn get_string_proto(realm_state? : RealmState?) -> Value
+
+pub fn get_symbol_data(ObjectData) -> Value?
 
 pub fn get_symbol_proto(realm_state? : RealmState?) -> Value
 

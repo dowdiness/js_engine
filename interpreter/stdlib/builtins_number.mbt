@@ -432,11 +432,9 @@ fn setup_number_builtins(
       symbol_properties: {},
       descriptors: number_proto_descs,
       symbol_descriptors: {},
-      internal_slots: {
-        let m : Map[@runtime.InternalSlotKey, Value] = {}
-        m[@runtime.NumberData] = Value::Number(0.0)
-        m
-      },
+      internal_slots: Map::from_array([
+        (@runtime.NumberData, Value::Number(0.0)),
+      ]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -591,11 +589,9 @@ fn setup_number_builtins(
                 symbol_properties: {},
                 descriptors: {},
                 symbol_descriptors: {},
-                internal_slots: {
-                  let m : Map[@runtime.InternalSlotKey, Value] = {}
-                  m[@runtime.NumberData] = Value::Number(n)
-                  m
-                },
+                internal_slots: Map::from_array([
+                  (@runtime.NumberData, Value::Number(n)),
+                ]),
               },
               prototype: number_proto,
               callable: None,

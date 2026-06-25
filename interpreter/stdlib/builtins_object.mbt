@@ -696,11 +696,9 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
-                    internal_slots: {
-                      let m : Map[@runtime.InternalSlotKey, Value] = {}
-                      m[@runtime.NumberData] = Value::Number(n)
-                      m
-                    },
+                    internal_slots: Map::from_array([
+                      (@runtime.NumberData, Value::Number(n)),
+                    ]),
                   },
                   prototype: realm_state.get_number_proto(),
                   callable: None,
@@ -715,11 +713,9 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
-                    internal_slots: {
-                      let m : Map[@runtime.InternalSlotKey, Value] = {}
-                      m[@runtime.BooleanData] = Value::Bool(b)
-                      m
-                    },
+                    internal_slots: Map::from_array([
+                      (@runtime.BooleanData, Value::Bool(b)),
+                    ]),
                   },
                   prototype: realm_state.get_boolean_proto(),
                   callable: None,
@@ -761,11 +757,9 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: descs,
                     symbol_descriptors: {},
-                    internal_slots: {
-                      let m : Map[@runtime.InternalSlotKey, Value] = {}
-                      m[@runtime.StringData] = Value::String_(s)
-                      m
-                    },
+                    internal_slots: Map::from_array([
+                      (@runtime.StringData, Value::String_(s)),
+                    ]),
                   },
                   prototype: realm_state.get_string_proto(),
                   callable: None,
@@ -781,11 +775,9 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
-                    internal_slots: {
-                      let m : Map[@runtime.InternalSlotKey, Value] = {}
-                      m[@runtime.SymbolData] = raw_target
-                      m
-                    },
+                    internal_slots: Map::from_array([
+                      (@runtime.SymbolData, raw_target),
+                    ]),
                   },
                   prototype: realm_state.get_symbol_proto(),
                   callable: None,
@@ -1246,11 +1238,9 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: descs,
                   symbol_descriptors: {},
-                  internal_slots: {
-                    let m : Map[@runtime.InternalSlotKey, Value] = {}
-                    m[@runtime.StringData] = Value::String_(s)
-                    m
-                  },
+                  internal_slots: Map::from_array([
+                    (@runtime.StringData, Value::String_(s)),
+                  ]),
                 },
                 prototype: string_proto,
                 callable: None,
@@ -1270,11 +1260,9 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
-                  internal_slots: {
-                    let m : Map[@runtime.InternalSlotKey, Value] = {}
-                    m[@runtime.NumberData] = Value::Number(n)
-                    m
-                  },
+                  internal_slots: Map::from_array([
+                    (@runtime.NumberData, Value::Number(n)),
+                  ]),
                 },
                 prototype: number_proto,
                 callable: None,
@@ -1294,11 +1282,9 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
-                  internal_slots: {
-                    let m : Map[@runtime.InternalSlotKey, Value] = {}
-                    m[@runtime.BooleanData] = Value::Bool(b)
-                    m
-                  },
+                  internal_slots: Map::from_array([
+                    (@runtime.BooleanData, Value::Bool(b)),
+                  ]),
                 },
                 prototype: boolean_proto,
                 callable: None,
@@ -1318,11 +1304,7 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
-                  internal_slots: {
-                    let m : Map[@runtime.InternalSlotKey, Value] = {}
-                    m[@runtime.SymbolData] = val
-                    m
-                  },
+                  internal_slots: Map::from_array([(@runtime.SymbolData, val)]),
                 },
                 prototype: symbol_proto,
                 callable: None,

@@ -6,15 +6,13 @@ const MODULE_NAMESPACE_CACHE_CLASS = "ModuleNamespaceCache"
 
 ///|
 fn make_module_namespace_cache(ns_obj : Value) -> Value {
-  let slots : Map[InternalSlotKey, Value] = {}
-  slots[NamespaceObject] = ns_obj
   Object({
     bag: {
       properties: {},
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: slots,
+      internal_slots: Map::from_array([(NamespaceObject, ns_obj)]),
     },
     prototype: Null,
     callable: None,
@@ -29,16 +27,16 @@ fn make_module_namespace_cache_with_export(
   ns_obj : Value,
   export_value : Value,
 ) -> Value {
-  let slots : Map[InternalSlotKey, Value] = {}
-  slots[NamespaceObject] = ns_obj
-  slots[ExportValue] = export_value
   Object({
     bag: {
       properties: {},
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: slots,
+      internal_slots: Map::from_array([
+        (NamespaceObject, ns_obj),
+        (ExportValue, export_value),
+      ]),
     },
     prototype: Null,
     callable: None,
@@ -116,11 +114,7 @@ fn make_module_tdz_marker(export_name : String) -> Value {
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: {
-        let m : Map[InternalSlotKey, Value] = {}
-        m[ExportName] = String_(export_name)
-        m
-      },
+      internal_slots: Map::from_array([(ExportName, String_(export_name))]),
     },
     prototype: Null,
     callable: None,

@@ -39,6 +39,16 @@ pub fn get_boolean_data(data : ObjectData) -> Value? {
 }
 
 ///|
+pub fn get_symbol_data(data : ObjectData) -> Value? {
+  data.bag.internal_slots.get(SymbolData)
+}
+
+///|
+pub fn get_source_text(data : ObjectData) -> Value? {
+  data.bag.internal_slots.get(SourceText)
+}
+
+///|
 pub fn get_map_iterator_target(data : ObjectData, sym_id : Int) -> Value? {
   data.bag.symbol_properties.get(sym_id)
 }

@@ -161,14 +161,10 @@ pub fn make_arraybuffer_object(
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: {
-        let m : Map[@runtime.InternalSlotKey, Value] = {}
-        m[@runtime.ArrayBufferID] = Value::Number(id.to_double())
-        m[@runtime.ArrayBufferByteLength] = Value::Number(
-          byte_length.to_double(),
-        )
-        m
-      },
+      internal_slots: Map::from_array([
+        (@runtime.ArrayBufferID, Value::Number(id.to_double())),
+        (@runtime.ArrayBufferByteLength, Value::Number(byte_length.to_double())),
+      ]),
     },
     prototype: proto,
     callable: None,

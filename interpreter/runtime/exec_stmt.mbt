@@ -1632,11 +1632,7 @@ fn Interpreter::exec_stmt(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
-              internal_slots: {
-                let m : Map[InternalSlotKey, Value] = {}
-                m[PrimitiveValue] = String_(s)
-                m
-              },
+              internal_slots: Map::from_array([(PrimitiveValue, String_(s))]),
             },
             prototype: str_proto,
             callable: None,
@@ -1654,11 +1650,7 @@ fn Interpreter::exec_stmt(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
-              internal_slots: {
-                let m : Map[InternalSlotKey, Value] = {}
-                m[PrimitiveValue] = Number(n)
-                m
-              },
+              internal_slots: Map::from_array([(PrimitiveValue, Number(n))]),
             },
             prototype: num_proto,
             callable: None,
@@ -1676,11 +1668,7 @@ fn Interpreter::exec_stmt(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
-              internal_slots: {
-                let m : Map[InternalSlotKey, Value] = {}
-                m[PrimitiveValue] = Bool(b)
-                m
-              },
+              internal_slots: Map::from_array([(PrimitiveValue, Bool(b))]),
             },
             prototype: bool_proto,
             callable: None,

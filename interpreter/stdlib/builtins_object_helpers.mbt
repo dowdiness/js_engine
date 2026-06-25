@@ -45,11 +45,9 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           symbol_properties: {},
           descriptors: descs,
           symbol_descriptors: {},
-          internal_slots: {
-            let m : Map[@runtime.InternalSlotKey, Value] = {}
-            m[@runtime.StringData] = Value::String_(s)
-            m
-          },
+          internal_slots: Map::from_array([
+            (@runtime.StringData, Value::String_(s)),
+          ]),
         },
         prototype: string_proto,
         callable: None,
@@ -68,11 +66,9 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
-          internal_slots: {
-            let m : Map[@runtime.InternalSlotKey, Value] = {}
-            m[@runtime.NumberData] = Value::Number(n)
-            m
-          },
+          internal_slots: Map::from_array([
+            (@runtime.NumberData, Value::Number(n)),
+          ]),
         },
         prototype: number_proto,
         callable: None,
@@ -91,11 +87,9 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
-          internal_slots: {
-            let m : Map[@runtime.InternalSlotKey, Value] = {}
-            m[@runtime.BooleanData] = Value::Bool(b)
-            m
-          },
+          internal_slots: Map::from_array([
+            (@runtime.BooleanData, Value::Bool(b)),
+          ]),
         },
         prototype: boolean_proto,
         callable: None,
@@ -114,11 +108,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           symbol_properties: {},
           descriptors: {},
           symbol_descriptors: {},
-          internal_slots: {
-            let m : Map[@runtime.InternalSlotKey, Value] = {}
-            m[@runtime.SymbolData] = val
-            m
-          },
+          internal_slots: Map::from_array([(@runtime.SymbolData, val)]),
         },
         prototype: symbol_proto,
         callable: None,

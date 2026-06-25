@@ -715,11 +715,7 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: {
-        let m : Map[@runtime.InternalSlotKey, Value] = {}
-        m[@runtime.DateValue] = Value::Number(t)
-        m
-      },
+      internal_slots: Map::from_array([(@runtime.DateValue, Value::Number(t))]),
     },
     prototype: date_proto,
     callable: None,

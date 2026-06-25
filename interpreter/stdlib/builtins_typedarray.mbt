@@ -310,16 +310,14 @@ pub fn make_typedarray_object(
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: {
-        let m : Map[@runtime.InternalSlotKey, Value] = {}
-        m[@runtime.TypedArrayName] = Value::String_(type_name)
-        m[@runtime.ViewedArrayBuffer] = buffer
-        m[@runtime.ArrayBufferID] = Value::Number(buf_id.to_double())
-        m[@runtime.ByteOffset] = Value::Number(0.0)
-        m[@runtime.ByteLength] = Value::Number(byte_length.to_double())
-        m[@runtime.ArrayLength] = Value::Number(length.to_double())
-        m
-      },
+      internal_slots: Map::from_array([
+        (@runtime.TypedArrayName, Value::String_(type_name)),
+        (@runtime.ViewedArrayBuffer, buffer),
+        (@runtime.ArrayBufferID, Value::Number(buf_id.to_double())),
+        (@runtime.ByteOffset, Value::Number(0.0)),
+        (@runtime.ByteLength, Value::Number(byte_length.to_double())),
+        (@runtime.ArrayLength, Value::Number(length.to_double())),
+      ]),
     },
     prototype: proto,
     callable: None,
@@ -467,16 +465,14 @@ fn make_typedarray_from_buffer(
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: {
-        let m : Map[@runtime.InternalSlotKey, Value] = {}
-        m[@runtime.TypedArrayName] = Value::String_(type_name)
-        m[@runtime.ViewedArrayBuffer] = buffer
-        m[@runtime.ArrayBufferID] = Value::Number(buf_id.to_double())
-        m[@runtime.ByteOffset] = Value::Number(byte_offset.to_double())
-        m[@runtime.ByteLength] = Value::Number(byte_length.to_double())
-        m[@runtime.ArrayLength] = Value::Number(length.to_double())
-        m
-      },
+      internal_slots: Map::from_array([
+        (@runtime.TypedArrayName, Value::String_(type_name)),
+        (@runtime.ViewedArrayBuffer, buffer),
+        (@runtime.ArrayBufferID, Value::Number(buf_id.to_double())),
+        (@runtime.ByteOffset, Value::Number(byte_offset.to_double())),
+        (@runtime.ByteLength, Value::Number(byte_length.to_double())),
+        (@runtime.ArrayLength, Value::Number(length.to_double())),
+      ]),
     },
     prototype: proto,
     callable: None,
