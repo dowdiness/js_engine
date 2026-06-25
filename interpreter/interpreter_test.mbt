@@ -16507,6 +16507,52 @@ test "array dense assignment updates stale sparse length override" {
 }
 
 ///|
+test "array species result rejects CreateDataPropertyOrThrow" {
+  let src =
+    #|function attempt(label, thunk) {
+    #|  try { thunk(); console.log(label + ":ok"); }
+    #|  catch (e) { console.log(label + ":" + e.name); }
+    #|}
+    #|var source = [1];
+    #|source.constructor = {
+    #|  [Symbol.species]: function() { return Object.preventExtensions({}); }
+    #|};
+    #|attempt("map", function() { source.map(function(x) { return x; }); });
+    #|attempt("slice", function() { source.slice(0, 1); });
+    #|attempt("concat", function() { source.concat([2]); });
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "map:TypeError", "slice:TypeError", "concat:TypeError",
+  ])
+}
+
+///|
+test "array splice length overflow throws before species" {
+  let src =
+    #|var calls = [];
+    #|var array = [];
+    #|array.constructor = {};
+    #|Object.defineProperty(array.constructor, Symbol.species, {
+    #|  get: function() {
+    #|    calls.push("species");
+    #|    return function(n) { calls.push("ctor:" + n); return []; };
+    #|  }
+    #|});
+    #|var source = new Proxy(array, {
+    #|  get: function(t, k, r) {
+    #|    if (k === "length") { calls.push("length"); return 9007199254740991; }
+    #|    calls.push(String(k));
+    #|    return Reflect.get(t, k, r);
+    #|  }
+    #|});
+    #|try { Array.prototype.splice.call(source, 0, 0, "x"); console.log("ok"); }
+    #|catch (e) { console.log(e.name); }
+    #|console.log(calls.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError", "length"])
+}
+
+///|
 /// IteratorClose: iterator.return() called when for-of body throws (ForOfStmt)
 test "IteratorClose: body throw calls iterator return (ForOfStmt)" {
   let src =

@@ -575,18 +575,23 @@ pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
 }
 
 ///|
-/// CreateDataPropertyOrThrow(O, P, V) per ES spec 7.3.5
-/// Sets an indexed property on a species result value, using the fast path
-/// for plain Arrays and set_property for everything else.
+/// CreateDataPropertyOrThrow(O, P, V) per ES spec 7.3.5.
+/// Sets an indexed property on a species result value and throws if
+/// `[[DefineOwnProperty]]` rejects the creation.
 pub fn create_data_property_or_throw(
   interp : Interpreter,
   target : Value,
   index : Int64,
   value : Value,
 ) -> Unit raise {
-  match target {
+  let key = index.to_string()
+  let ok = match target {
     Array(data) =>
-      if index >= 0L && index <= ARRAY_DENSE_MATERIALIZE_LIMIT_I64 {
+      if index >= 0L &&
+        index <= ARRAY_DENSE_MATERIALIZE_LIMIT_I64 &&
+        data.extensible &&
+        data.length_writable &&
+        !data.bag.descriptors.contains(key) {
         let i = index.to_int()
         if i == data.elements.length() {
           data.elements.push(value)
@@ -603,22 +608,30 @@ pub fn create_data_property_or_throw(
           data.elements.push(value)
         }
         data.holes.remove(i)
+        match get_array_length_override(data) {
+          Some(len) if index + 1L > len =>
+            set_array_length_override(data, index + 1L)
+          _ => ()
+        }
+        true
       } else {
-        let _ = interp.define_own_property(
+        interp.define_own_property(
           target,
-          String_(index.to_string()),
+          String_(key),
           PartialDescriptor::data_default(value),
           @token.Loc::default(),
         )
       }
-    _ => {
-      let _ = interp.define_own_property(
+    _ =>
+      interp.define_own_property(
         target,
-        String_(index.to_string()),
+        String_(key),
         PartialDescriptor::data_default(value),
         @token.Loc::default(),
       )
-    }
+  }
+  if !ok {
+    raise @errors.TypeError(message="Cannot create data property")
   }
 }
 

@@ -850,6 +850,15 @@ fn array_splice_indexed_properties(
       d
     }
   }
+  let items_count = if args.length() > 2 {
+    (args.length() - 2).to_int64()
+  } else {
+    0L
+  }
+  let new_len = alen - del_count + items_count
+  if new_len > ARRAY_MAX_SAFE_LENGTH_I64 {
+    raise @errors.TypeError(message="Invalid array length")
+  }
   let removed = @runtime.array_species_create(interp, o, del_count)
   for i = 0L; i < del_count; i = i + 1L {
     if array_mutator_has_index(interp, o, start + i) {
@@ -865,11 +874,6 @@ fn array_splice_indexed_properties(
   let new_items : Array[Value] = []
   for i = 2; i < args.length(); i = i + 1 {
     new_items.push(args[i])
-  }
-  let items_count = new_items.length().to_int64()
-  let new_len = alen - del_count + items_count
-  if new_len > ARRAY_MAX_SAFE_LENGTH_I64 {
-    raise @errors.TypeError(message="Invalid array length")
   }
   if items_count < del_count {
     for i = start; i < alen - del_count; i = i + 1L {
