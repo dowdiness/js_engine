@@ -959,32 +959,9 @@ fn Interpreter::get_computed_property_impl(
                 }
               }
             }
-            _ => ()
-          }
-          // Handle Symbol.iterator default for arrays
-          let iterator_sym = well_known_symbols.iterator
-          if sym.id == iterator_sym.id {
-            let (override_getter, override_value) = get_array_iterator_override(
-              arr,
-              well_known_symbols~,
-            )
-            match override_getter {
-              Some(getter) => return self.call_value(getter, obj, [], loc)
-              None => ()
-            }
-            match override_value {
-              Some(v) => return v
-              None => ()
-            }
-            // Return default array iterator
-            return make_method_func(
-              name="[Symbol.iterator]",
-              length=0,
-              realm_state=Some(realm_state),
-              fn(_this_val, _args) {
-                realm_state.make_array_iterator_value(arr)
-              },
-            )
+            Null | Undefined => ()
+            proto_val =>
+              return self.get_computed_property(proto_val, Symbol(sym), loc)
           }
           return Undefined
         }
