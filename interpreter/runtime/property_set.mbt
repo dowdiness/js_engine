@@ -633,90 +633,14 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
   loc : @token.Loc,
   strict : Bool,
 ) -> Value? raise Error {
-  let mut current = proto
-  while true {
-    match current {
-      Object(proto_data) =>
-        match
-          self.check_inherited_string_property_value(
-            current,
-            proto_data.prototype,
-            receiver,
-            prop,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Array(proto_data) => {
-        let next_proto = get_array_prototype_override(proto_data).unwrap_or(
-          self.realm_state.get_array_proto(),
-        )
-        match
-          self.check_inherited_string_property_value(
-            current, next_proto, receiver, prop, value, loc, strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      }
-      Map(proto_data) =>
-        match
-          self.check_inherited_string_property_value(
-            current,
-            proto_data.prototype,
-            receiver,
-            prop,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Set(proto_data) =>
-        match
-          self.check_inherited_string_property_value(
-            current,
-            proto_data.prototype,
-            receiver,
-            prop,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Promise(proto_data) =>
-        match
-          self.check_inherited_string_property_value(
-            current,
-            self.promise_instance_prototype_for_set(proto_data),
-            receiver,
-            prop,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Proxy(_) =>
-        return Some(
-          self.set_property(current, prop, value, loc, strict~, receiver~),
-        )
-      _ => break
-    }
-  }
-  None
+  self.set_key_via_map_set_prototype_chain(
+    proto,
+    receiver,
+    String_(prop),
+    value,
+    loc,
+    strict,
+  )
 }
 
 ///|
@@ -731,24 +655,101 @@ fn Interpreter::promise_instance_prototype_for_set(
 }
 
 ///|
-priv enum InheritedStringSetResult {
+fn Interpreter::next_map_set_walk_prototype(
+  self : Interpreter,
+  current : Value,
+) -> Value? {
+  match current {
+    Object(data) => Some(data.prototype)
+    Array(data) =>
+      Some(
+        get_array_prototype_override(data).unwrap_or(
+          self.realm_state.get_array_proto(),
+        ),
+      )
+    Map(data) => Some(data.prototype)
+    Set(data) => Some(data.prototype)
+    Promise(data) => Some(self.promise_instance_prototype_for_set(data))
+    _ => None
+  }
+}
+
+///|
+priv enum InheritedSetResult {
   Handled(Value)
   Continue(Value)
   Stop
 }
 
 ///|
-fn Interpreter::check_inherited_string_property_value(
+fn Interpreter::set_key_via_map_set_prototype_chain(
+  self : Interpreter,
+  proto : Value,
+  receiver : Value,
+  prop_key : Value,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value? raise Error {
+  let mut current = proto
+  while true {
+    match self.next_map_set_walk_prototype(current) {
+      Some(next_proto) =>
+        match
+          self.check_inherited_property_value(
+            current, next_proto, receiver, prop_key, value, loc, strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      None =>
+        match current {
+          Proxy(_) =>
+            match prop_key {
+              String_(prop) =>
+                return Some(
+                  self.set_property(
+                    current,
+                    prop,
+                    value,
+                    loc,
+                    strict~,
+                    receiver~,
+                  ),
+                )
+              Symbol(_) =>
+                return Some(
+                  self.set_computed_property(
+                    current,
+                    prop_key,
+                    value,
+                    loc,
+                    strict~,
+                    receiver~,
+                  ),
+                )
+              _ => break
+            }
+          _ => break
+        }
+    }
+  }
+  None
+}
+
+///|
+fn Interpreter::check_inherited_property_value(
   self : Interpreter,
   owner : Value,
   next_proto : Value,
   receiver : Value,
-  prop : String,
+  prop_key : Value,
   value : Value,
   loc : @token.Loc,
   strict : Bool,
-) -> InheritedStringSetResult raise Error {
-  match self.get_own_property(owner, String_(prop)) {
+) -> InheritedSetResult raise Error {
+  match self.get_own_property(owner, prop_key) {
     Some((desc, _)) =>
       match desc.setter {
         Some(setter) => {
@@ -759,14 +760,14 @@ fn Interpreter::check_inherited_string_property_value(
           if desc.getter is Some(_) {
             if strict {
               raise @errors.TypeError(
-                message="Cannot set property \{prop} which has only a getter",
+                message=inherited_property_getter_only_message(prop_key),
               )
             }
             Handled(value)
           } else if !desc.writable {
             if strict {
               raise @errors.TypeError(
-                message="Cannot assign to read only property '\{prop}'",
+                message=inherited_property_readonly_message(prop_key),
               )
             }
             Handled(value)
@@ -775,6 +776,22 @@ fn Interpreter::check_inherited_string_property_value(
           }
       }
     None => Continue(next_proto)
+  }
+}
+
+///|
+fn inherited_property_getter_only_message(prop_key : Value) -> String {
+  match prop_key {
+    String_(prop) => "Cannot set property \{prop} which has only a getter"
+    _ => "Cannot set property which has only a getter"
+  }
+}
+
+///|
+fn inherited_property_readonly_message(prop_key : Value) -> String {
+  match prop_key {
+    String_(prop) => "Cannot assign to read only property '\{prop}'"
+    _ => "Cannot assign to read only property"
   }
 }
 
@@ -849,138 +866,14 @@ fn Interpreter::set_symbol_via_map_set_prototype_chain(
   loc : @token.Loc,
   strict : Bool,
 ) -> Value? raise Error {
-  let mut current = proto
-  while true {
-    match current {
-      Object(proto_data) =>
-        match
-          self.check_inherited_symbol_property_value(
-            current,
-            proto_data.prototype,
-            receiver,
-            sym,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Array(proto_data) => {
-        let next_proto = get_array_prototype_override(proto_data).unwrap_or(
-          self.realm_state.get_array_proto(),
-        )
-        match
-          self.check_inherited_symbol_property_value(
-            current, next_proto, receiver, sym, value, loc, strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      }
-      Map(proto_data) =>
-        match
-          self.check_inherited_symbol_property_value(
-            current,
-            proto_data.prototype,
-            receiver,
-            sym,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Set(proto_data) =>
-        match
-          self.check_inherited_symbol_property_value(
-            current,
-            proto_data.prototype,
-            receiver,
-            sym,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Promise(proto_data) =>
-        match
-          self.check_inherited_symbol_property_value(
-            current,
-            self.promise_instance_prototype_for_set(proto_data),
-            receiver,
-            sym,
-            value,
-            loc,
-            strict,
-          ) {
-          Handled(result) => return Some(result)
-          Continue(next) => current = next
-          Stop => break
-        }
-      Proxy(_) =>
-        return Some(
-          self.set_computed_property(
-            current,
-            Symbol(sym),
-            value,
-            loc,
-            strict~,
-            receiver~,
-          ),
-        )
-      _ => break
-    }
-  }
-  None
-}
-
-///|
-fn Interpreter::check_inherited_symbol_property_value(
-  self : Interpreter,
-  owner : Value,
-  next_proto : Value,
-  receiver : Value,
-  sym : SymbolData,
-  value : Value,
-  loc : @token.Loc,
-  strict : Bool,
-) -> InheritedStringSetResult raise Error {
-  match self.get_own_property(owner, Symbol(sym)) {
-    Some((desc, _)) =>
-      match desc.setter {
-        Some(setter) => {
-          let _ = self.call_value(setter, receiver, [value], loc)
-          Handled(value)
-        }
-        None =>
-          if desc.getter is Some(_) {
-            if strict {
-              raise @errors.TypeError(
-                message="Cannot set property which has only a getter",
-              )
-            }
-            Handled(value)
-          } else if !desc.writable {
-            if strict {
-              raise @errors.TypeError(
-                message="Cannot assign to read only property",
-              )
-            }
-            Handled(value)
-          } else {
-            Stop
-          }
-      }
-    None => Continue(next_proto)
-  }
+  self.set_key_via_map_set_prototype_chain(
+    proto,
+    receiver,
+    Symbol(sym),
+    value,
+    loc,
+    strict,
+  )
 }
 
 ///|
