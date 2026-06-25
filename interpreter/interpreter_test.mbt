@@ -467,11 +467,115 @@ test "loose equality null/undefined" {
 }
 
 ///|
+test "loose equality object valueOf returns primitive" {
+  let src =
+    #|console.log({valueOf: function() { return 1; }} == 1);
+    #|console.log({valueOf: function() { return "hello"; }} == "hello");
+    #|console.log(1 == {valueOf: function() { return 1; }});
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
+test "loose equality object valueOf called exactly once" {
+  let src =
+    #|var count = 0;
+    #|var obj = { valueOf: function() { count++; return 1; } };
+    #|var result = obj == 1;
+    #|console.log(result);
+    #|console.log(count);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "1"])
+}
+
+///|
+test "loose equality toPrimitive throw propagates" {
+  let src =
+    #|var obj = {};
+    #|obj[Symbol.toPrimitive] = function() { throw new Error("bang"); };
+    #|try { var r = (obj == 1); console.log("no throw"); } catch(e) { console.log("threw:" + e.message); }
+  let output = run_output(src)
+  json_inspect(output, content=["threw:bang"])
+}
+
+///|
+test "loose equality array own valueOf returns primitive" {
+  let src =
+    #|var a = [];
+    #|a.valueOf = function() { return 1; };
+    #|console.log(a == 1);
+    #|console.log(1 == a);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "loose equality array own toPrimitive symbol" {
+  let src =
+    #|var a = [];
+    #|a[Symbol.toPrimitive] = function() { return 1; };
+    #|console.log(a == 1);
+    #|console.log("1" == a);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "loose equality array toString fallback when valueOf returns object" {
+  let src =
+    #|var a = [];
+    #|a.valueOf = function() { return {}; };
+    #|a.toString = function() { return 1; };
+    #|console.log(a == 1);
+    #|console.log(1 == a);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "loose equality array no callable toString raises TypeError" {
+  let src =
+    #|var a = [];
+    #|a.toString = null;
+    #|try { var r = (a == ""); console.log("no throw"); } catch(e) { console.log("threw:" + e.constructor.name); }
+  let output = run_output(src)
+  json_inspect(output, content=["threw:TypeError"])
+}
+
+///|
 test "logical operators short-circuit" {
   let output = run_output(
     "console.log(false && 42); console.log(true || 42); console.log(0 || \"default\")",
   )
   json_inspect(output, content=["false", "true", "default"])
+}
+
+///|
+test "array Symbol.iterator synthesis shadows Object prototype iterator" {
+  let src =
+    #|try {
+    #|  var called = false;
+    #|  Object.prototype[Symbol.iterator] = function() { called = true; return [][Symbol.iterator](); };
+    #|  for (var x of [1]) {}
+    #|  console.log(called);
+    #|} finally {
+    #|  delete Object.prototype[Symbol.iterator];
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["false"])
+}
+
+///|
+test "loose equality array inherits toPrimitive from Object prototype chain" {
+  let src =
+    #|try {
+    #|  Object.prototype[Symbol.toPrimitive] = function() { return 1; };
+    #|  console.log([] == 1);
+    #|} finally {
+    #|  delete Object.prototype[Symbol.toPrimitive];
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
 }
 
 ///|

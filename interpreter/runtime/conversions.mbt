@@ -460,6 +460,79 @@ pub fn to_primitive_default(
 }
 
 ///|
+/// ToPrimitive(input, hint "default") for Array values.
+/// Arrays are objects per §7.2.14 steps 10-11 and must be coerced via
+/// ToPrimitive before comparison with a primitive operand.
+/// Uses the interpreter's symbol/string property lookup so own valueOf and
+/// @@toPrimitive hooks are honoured; falls back to to_js_string (join) for
+/// plain arrays that have neither hook.
+fn to_primitive_default_array(
+  arr_val : Value,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  let effective = resolve_effective_interp(interp)
+  match effective {
+    Some(ip) => {
+      // Step 1: Check @@toPrimitive via interpreter symbol-keyed lookup.
+      let to_prim_sym = ip.realm_state.well_known_symbols.to_primitive
+      let exotic_fn = ip.get_computed_property(
+        arr_val,
+        Symbol(to_prim_sym),
+        @token.Loc::default(),
+      )
+      match exotic_fn {
+        Undefined | Null => ()
+        _ => {
+          if !is_callable(exotic_fn) {
+            raise @errors.TypeError(
+              message="Symbol.toPrimitive is not a function",
+            )
+          }
+          let result = call_callable_direct(
+            exotic_fn,
+            arr_val,
+            [String_("default")],
+            interp=effective,
+          )
+          if is_js_object(result) {
+            raise @errors.TypeError(
+              message="Cannot convert object to primitive value",
+            )
+          }
+          return result
+        }
+      }
+      // Step 2: Try valueOf via interpreter (handles own + prototype chain).
+      let vo_fn = ip.get_property(arr_val, "valueOf", @token.Loc::default())
+      if is_callable(vo_fn) {
+        let result = call_callable_direct(vo_fn, arr_val, [], interp=effective)
+        if !is_js_object(result) {
+          return result
+        }
+      }
+      // Step 3: Try toString (may be user-overridden on the array or its prototype).
+      let ts_fn = ip.get_property(arr_val, "toString", @token.Loc::default())
+      if is_callable(ts_fn) {
+        let result = call_callable_direct(ts_fn, arr_val, [], interp=effective)
+        if is_js_object(result) {
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
+        }
+        return result
+      }
+      // Both methods exhausted without a primitive result (§7.1.1.1 step 3).
+      raise @errors.TypeError(
+        message="Cannot convert object to primitive value",
+      )
+    }
+    None => ()
+  }
+  // interp=None fallback: join elements directly (no context to dispatch JS methods).
+  String_(to_js_string(arr_val, interp~))
+}
+
+///|
 pub fn is_es_whitespace_cp(cp : Int) -> Bool {
   cp == 0x09 ||
   cp == 0x0A ||

@@ -2328,8 +2328,8 @@ pub fn eval_binary_op(
     // Equality
     (EqEqEq, l, r) => Bool(strict_equal(l, r))
     (NotEqEq, l, r) => Bool(!strict_equal(l, r))
-    (EqEq, l, r) => Bool(loose_equal(l, r))
-    (NotEq, l, r) => Bool(!loose_equal(l, r))
+    (EqEq, l, r) => Bool(loose_equal(l, r, interp~))
+    (NotEq, l, r) => Bool(!loose_equal(l, r, interp~))
     // Exponentiation
     (Exp, Number(a), Number(b)) => Number(@math.pow(a, b))
     (Exp, l, r) => Number(@math.pow(n(l), n(r)))
@@ -2528,8 +2528,12 @@ pub fn strict_equal(a : Value, b : Value) -> Bool {
 }
 
 ///|
-fn loose_equal(a : Value, b : Value) -> Bool {
-  // Abstract Equality Comparison Algorithm (ES spec 7.2.14)
+fn loose_equal(
+  a : Value,
+  b : Value,
+  interp? : Interpreter? = None,
+) -> Bool raise Error {
+  // Abstract Equality Comparison Algorithm (ES spec §7.2.14)
   match (a, b) {
     // Same type: use strict equality
     (Number(x), Number(y)) => x == y
@@ -2539,9 +2543,9 @@ fn loose_equal(a : Value, b : Value) -> Bool {
     (Undefined, Undefined) => true
     (Object(x), Object(y)) => physical_equal(x, y)
     (Array(x), Array(y)) => physical_equal(x, y)
-    (Symbol(x), Symbol(y)) => x.id == y.id // Symbols compare by identity only
-    (Promise(x), Promise(y)) => physical_equal(x, y) // Promises compare by reference
-    (Proxy(x), Proxy(y)) => physical_equal(x, y) // Proxies compare by reference
+    (Symbol(x), Symbol(y)) => x.id == y.id
+    (Promise(x), Promise(y)) => physical_equal(x, y)
+    (Proxy(x), Proxy(y)) => physical_equal(x, y)
     // null == undefined
     (Null, Undefined) | (Undefined, Null) => true
     // Number == String: convert string to number
@@ -2553,32 +2557,34 @@ fn loose_equal(a : Value, b : Value) -> Bool {
       let num = to_number(String_(s)) catch { _ => return false }
       num == n
     }
-    // Boolean == anything: convert boolean to number first
-    (Bool(bval), _) => loose_equal(Number(if bval { 1.0 } else { 0.0 }), b)
-    (_, Bool(bval)) => loose_equal(a, Number(if bval { 1.0 } else { 0.0 }))
-    // Object/Array == Number/String: try ToPrimitive
-    (Object(data), Number(_)) | (Object(data), String_(_)) => {
-      // Use ToPrimitive with "number" hint (default for ordinary objects)
-      let prim = to_primitive_number(a, data) catch {
-        _ => String_(a.to_string())
-      }
-      loose_equal(prim, b)
+    // Boolean == anything: convert boolean to number first (§7.2.14 step 9/10)
+    (Bool(bval), _) =>
+      loose_equal(Number(if bval { 1.0 } else { 0.0 }), b, interp~)
+    (_, Bool(bval)) =>
+      loose_equal(a, Number(if bval { 1.0 } else { 0.0 }), interp~)
+    // Object == primitive: ToPrimitive with hint "default" (§7.2.14 steps 10-11)
+    (Object(data), Number(_))
+    | (Object(data), String_(_))
+    | (Object(data), Symbol(_)) => {
+      let prim = to_primitive_default(a, data, interp~)
+      loose_equal(prim, b, interp~)
     }
-    (Number(_), Object(data)) | (String_(_), Object(data)) => {
-      let prim = to_primitive_number(b, data) catch {
-        _ => String_(b.to_string())
-      }
-      loose_equal(a, prim)
+    (Number(_), Object(data))
+    | (String_(_), Object(data))
+    | (Symbol(_), Object(data)) => {
+      let prim = to_primitive_default(b, data, interp~)
+      loose_equal(a, prim, interp~)
     }
-    (Array(_), Number(_)) | (Array(_), String_(_)) => {
-      let prim = String_(to_js_string(a)) catch { _ => String_(a.to_string()) }
-      loose_equal(prim, b)
+    // Array == primitive: ToPrimitive with hint "default" (§7.2.14 steps 10-11)
+    (Array(_), Number(_)) | (Array(_), String_(_)) | (Array(_), Symbol(_)) => {
+      let prim = to_primitive_default_array(a, interp~)
+      loose_equal(prim, b, interp~)
     }
-    (Number(_), Array(_)) | (String_(_), Array(_)) => {
-      let prim = String_(to_js_string(b)) catch { _ => String_(b.to_string()) }
-      loose_equal(a, prim)
+    (Number(_), Array(_)) | (String_(_), Array(_)) | (Symbol(_), Array(_)) => {
+      let prim = to_primitive_default_array(b, interp~)
+      loose_equal(a, prim, interp~)
     }
-    // Symbols don't coerce - any comparison with Symbol and different type is false
+    // Symbols don't coerce to other primitive types
     (Symbol(_), _) | (_, Symbol(_)) => false
     // Everything else is false
     _ => false
