@@ -311,12 +311,14 @@ pub fn make_typedarray_object(
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: {
-        "[[TypedArrayName]]": Value::String_(type_name),
-        "[[ViewedArrayBuffer]]": buffer,
-        "[[ArrayBufferID]]": Value::Number(buf_id.to_double()),
-        "[[ByteOffset]]": Value::Number(0.0),
-        "[[ByteLength]]": Value::Number(byte_length.to_double()),
-        "[[ArrayLength]]": Value::Number(length.to_double()),
+        let m : Map[@runtime.InternalSlotKey, Value] = {}
+        m[@runtime.TypedArrayName] = Value::String_(type_name)
+        m[@runtime.ViewedArrayBuffer] = buffer
+        m[@runtime.ArrayBufferID] = Value::Number(buf_id.to_double())
+        m[@runtime.ByteOffset] = Value::Number(0.0)
+        m[@runtime.ByteLength] = Value::Number(byte_length.to_double())
+        m[@runtime.ArrayLength] = Value::Number(length.to_double())
+        m
       },
     },
     prototype: proto,
@@ -466,12 +468,14 @@ fn make_typedarray_from_buffer(
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: {
-        "[[TypedArrayName]]": Value::String_(type_name),
-        "[[ViewedArrayBuffer]]": buffer,
-        "[[ArrayBufferID]]": Value::Number(buf_id.to_double()),
-        "[[ByteOffset]]": Value::Number(byte_offset.to_double()),
-        "[[ByteLength]]": Value::Number(byte_length.to_double()),
-        "[[ArrayLength]]": Value::Number(length.to_double()),
+        let m : Map[@runtime.InternalSlotKey, Value] = {}
+        m[@runtime.TypedArrayName] = Value::String_(type_name)
+        m[@runtime.ViewedArrayBuffer] = buffer
+        m[@runtime.ArrayBufferID] = Value::Number(buf_id.to_double())
+        m[@runtime.ByteOffset] = Value::Number(byte_offset.to_double())
+        m[@runtime.ByteLength] = Value::Number(byte_length.to_double())
+        m[@runtime.ArrayLength] = Value::Number(length.to_double())
+        m
       },
     },
     prototype: proto,

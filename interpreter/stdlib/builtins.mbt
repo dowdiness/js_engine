@@ -541,7 +541,11 @@ fn setup_builtins_with_realm_state_active(
         },
       },
       symbol_descriptors: {},
-      internal_slots: { "[[StringData]]": Value::String_("") },
+      internal_slots: {
+        let m : Map[@runtime.InternalSlotKey, Value] = {}
+        m[@runtime.StringData] = Value::String_("")
+        m
+      },
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -758,7 +762,11 @@ fn setup_builtins_with_realm_state_active(
                 symbol_properties: {},
                 descriptors: descs,
                 symbol_descriptors: {},
-                internal_slots: { "[[StringData]]": Value::String_(str) },
+                internal_slots: {
+                  let m : Map[@runtime.InternalSlotKey, Value] = {}
+                  m[@runtime.StringData] = Value::String_(str)
+                  m
+                },
               },
               prototype: string_proto,
               callable: None,
@@ -863,7 +871,11 @@ fn setup_builtins_with_realm_state_active(
       symbol_properties: {},
       descriptors: boolean_proto_descs,
       symbol_descriptors: {},
-      internal_slots: { "[[BooleanData]]": Value::Bool(false) },
+      internal_slots: {
+        let m : Map[@runtime.InternalSlotKey, Value] = {}
+        m[@runtime.BooleanData] = Value::Bool(false)
+        m
+      },
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -912,7 +924,11 @@ fn setup_builtins_with_realm_state_active(
                 symbol_properties: {},
                 descriptors: {},
                 symbol_descriptors: {},
-                internal_slots: { "[[BooleanData]]": Value::Bool(b) },
+                internal_slots: {
+                  let m : Map[@runtime.InternalSlotKey, Value] = {}
+                  m[@runtime.BooleanData] = Value::Bool(b)
+                  m
+                },
               },
               prototype: boolean_proto,
               callable: None,

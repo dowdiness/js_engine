@@ -259,7 +259,7 @@ fn validate_dataview_access(
       message="Method called on incompatible receiver: not a DataView",
     )
   }
-  let buf_id = match data.bag.internal_slots.get("[[ArrayBufferID]]") {
+  let buf_id = match data.bag.internal_slots.get(@runtime.ArrayBufferID) {
     Some(Value::Number(n)) => n.to_int()
     _ => raise @errors.TypeError(message="DataView access on invalid object")
   }
@@ -272,11 +272,11 @@ fn validate_dataview_access(
       message="Cannot perform DataView operation on a detached ArrayBuffer",
     )
   }
-  let dv_offset = match data.bag.internal_slots.get("[[ByteOffset]]") {
+  let dv_offset = match data.bag.internal_slots.get(@runtime.ByteOffset) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
-  let dv_byte_length = match data.bag.internal_slots.get("[[ByteLength]]") {
+  let dv_byte_length = match data.bag.internal_slots.get(@runtime.ByteLength) {
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
@@ -338,9 +338,9 @@ pub fn setup_dataview_builtins(
 
   // Getters: buffer, byteLength, byteOffset
   let dv_getter_props = [
-    ("buffer", "[[ViewedArrayBuffer]]"),
-    ("byteLength", "[[ByteLength]]"),
-    ("byteOffset", "[[ByteOffset]]"),
+    ("buffer", @runtime.ViewedArrayBuffer),
+    ("byteLength", @runtime.ByteLength),
+    ("byteOffset", @runtime.ByteOffset),
   ]
   for pair in dv_getter_props {
     let (getter_name, internal_slot) = pair
@@ -359,7 +359,7 @@ pub fn setup_dataview_builtins(
               if data.class_name == "DataView" {
                 if getter_name != "buffer" {
                   let buf_id = match
-                    data.bag.internal_slots.get("[[ArrayBufferID]]") {
+                    data.bag.internal_slots.get(@runtime.ArrayBufferID) {
                     Some(Value::Number(n)) => n.to_int()
                     _ =>
                       raise @errors.TypeError(
@@ -950,7 +950,8 @@ pub fn setup_dataview_builtins(
         }
         let buf_byte_length = match buffer {
           Object(buf_data) =>
-            match buf_data.bag.internal_slots.get("[[ArrayBufferByteLength]]") {
+            match
+              buf_data.bag.internal_slots.get(@runtime.ArrayBufferByteLength) {
               Some(Value::Number(n)) => n.to_int()
               _ => 0
             }
@@ -999,10 +1000,12 @@ pub fn setup_dataview_builtins(
             descriptors: {},
             symbol_descriptors: {},
             internal_slots: {
-              "[[ViewedArrayBuffer]]": buffer,
-              "[[ArrayBufferID]]": Value::Number(buf_id.to_double()),
-              "[[ByteOffset]]": Value::Number(byte_offset.to_double()),
-              "[[ByteLength]]": Value::Number(byte_length.to_double()),
+              let m : Map[@runtime.InternalSlotKey, Value] = {}
+              m[@runtime.ViewedArrayBuffer] = buffer
+              m[@runtime.ArrayBufferID] = Value::Number(buf_id.to_double())
+              m[@runtime.ByteOffset] = Value::Number(byte_offset.to_double())
+              m[@runtime.ByteLength] = Value::Number(byte_length.to_double())
+              m
             },
           },
           prototype: proto,

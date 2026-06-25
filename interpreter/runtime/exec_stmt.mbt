@@ -1632,7 +1632,11 @@ fn Interpreter::exec_stmt(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
-              internal_slots: { "[[PrimitiveValue]]": String_(s) },
+              internal_slots: {
+                let m : Map[InternalSlotKey, Value] = {}
+                m[PrimitiveValue] = String_(s)
+                m
+              },
             },
             prototype: str_proto,
             callable: None,
@@ -1650,7 +1654,11 @@ fn Interpreter::exec_stmt(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
-              internal_slots: { "[[PrimitiveValue]]": Number(n) },
+              internal_slots: {
+                let m : Map[InternalSlotKey, Value] = {}
+                m[PrimitiveValue] = Number(n)
+                m
+              },
             },
             prototype: num_proto,
             callable: None,
@@ -1668,7 +1676,11 @@ fn Interpreter::exec_stmt(
               symbol_properties: {},
               descriptors: {},
               symbol_descriptors: {},
-              internal_slots: { "[[PrimitiveValue]]": Bool(b) },
+              internal_slots: {
+                let m : Map[InternalSlotKey, Value] = {}
+                m[PrimitiveValue] = Bool(b)
+                m
+              },
             },
             prototype: bool_proto,
             callable: None,
@@ -1742,7 +1754,7 @@ pub fn collect_for_in_keys(
         // buffer makes every index invalid for [[GetOwnProperty]], so for-in
         // must skip them instead of yielding stale 0..length-1 keys.
         if is_typedarray_class(data.class_name) {
-          let ta_len = match data.bag.internal_slots.get("[[ArrayLength]]") {
+          let ta_len = match data.bag.internal_slots.get(ArrayLength) {
             Some(Number(n)) => n.to_int()
             _ => 0
           }

@@ -1902,7 +1902,7 @@ fn this_to_string_impl(
     Object(data) =>
       // Check if it's a boxed String wrapper object
       if data.class_name == "String" {
-        match data.bag.internal_slots.get("[[StringData]]") {
+        match data.bag.internal_slots.get(@runtime.StringData) {
           Some(Value::String_(s)) => s
           _ => @runtime.to_js_string(this_val, interp~)
         }

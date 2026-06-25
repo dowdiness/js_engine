@@ -696,7 +696,11 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
-                    internal_slots: { "[[NumberData]]": Value::Number(n) },
+                    internal_slots: {
+                      let m : Map[@runtime.InternalSlotKey, Value] = {}
+                      m[@runtime.NumberData] = Value::Number(n)
+                      m
+                    },
                   },
                   prototype: realm_state.get_number_proto(),
                   callable: None,
@@ -711,7 +715,11 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
-                    internal_slots: { "[[BooleanData]]": Value::Bool(b) },
+                    internal_slots: {
+                      let m : Map[@runtime.InternalSlotKey, Value] = {}
+                      m[@runtime.BooleanData] = Value::Bool(b)
+                      m
+                    },
                   },
                   prototype: realm_state.get_boolean_proto(),
                   callable: None,
@@ -753,7 +761,11 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: descs,
                     symbol_descriptors: {},
-                    internal_slots: { "[[StringData]]": Value::String_(s) },
+                    internal_slots: {
+                      let m : Map[@runtime.InternalSlotKey, Value] = {}
+                      m[@runtime.StringData] = Value::String_(s)
+                      m
+                    },
                   },
                   prototype: realm_state.get_string_proto(),
                   callable: None,
@@ -769,7 +781,11 @@ pub fn setup_object_builtins(
                     symbol_properties: {},
                     descriptors: {},
                     symbol_descriptors: {},
-                    internal_slots: { "[[SymbolData]]": raw_target },
+                    internal_slots: {
+                      let m : Map[@runtime.InternalSlotKey, Value] = {}
+                      m[@runtime.SymbolData] = raw_target
+                      m
+                    },
                   },
                   prototype: realm_state.get_symbol_proto(),
                   callable: None,
@@ -1230,7 +1246,11 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: descs,
                   symbol_descriptors: {},
-                  internal_slots: { "[[StringData]]": Value::String_(s) },
+                  internal_slots: {
+                    let m : Map[@runtime.InternalSlotKey, Value] = {}
+                    m[@runtime.StringData] = Value::String_(s)
+                    m
+                  },
                 },
                 prototype: string_proto,
                 callable: None,
@@ -1250,7 +1270,11 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
-                  internal_slots: { "[[NumberData]]": Value::Number(n) },
+                  internal_slots: {
+                    let m : Map[@runtime.InternalSlotKey, Value] = {}
+                    m[@runtime.NumberData] = Value::Number(n)
+                    m
+                  },
                 },
                 prototype: number_proto,
                 callable: None,
@@ -1270,7 +1294,11 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
-                  internal_slots: { "[[BooleanData]]": Value::Bool(b) },
+                  internal_slots: {
+                    let m : Map[@runtime.InternalSlotKey, Value] = {}
+                    m[@runtime.BooleanData] = Value::Bool(b)
+                    m
+                  },
                 },
                 prototype: boolean_proto,
                 callable: None,
@@ -1290,7 +1318,11 @@ pub fn setup_object_builtins(
                   symbol_properties: {},
                   descriptors: {},
                   symbol_descriptors: {},
-                  internal_slots: { "[[SymbolData]]": val },
+                  internal_slots: {
+                    let m : Map[@runtime.InternalSlotKey, Value] = {}
+                    m[@runtime.SymbolData] = val
+                    m
+                  },
                 },
                 prototype: symbol_proto,
                 callable: None,

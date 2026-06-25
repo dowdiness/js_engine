@@ -50,7 +50,7 @@ fn number_this_value(
     Value::Number(v) => v
     Object(data) =>
       if data.class_name == "Number" {
-        match data.bag.internal_slots.get("[[NumberData]]") {
+        match data.bag.internal_slots.get(@runtime.NumberData) {
           Some(Value::Number(v)) => v
           _ =>
             raise @errors.TypeError(
@@ -432,7 +432,11 @@ fn setup_number_builtins(
       symbol_properties: {},
       descriptors: number_proto_descs,
       symbol_descriptors: {},
-      internal_slots: { "[[NumberData]]": Value::Number(0.0) },
+      internal_slots: {
+        let m : Map[@runtime.InternalSlotKey, Value] = {}
+        m[@runtime.NumberData] = Value::Number(0.0)
+        m
+      },
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -587,7 +591,11 @@ fn setup_number_builtins(
                 symbol_properties: {},
                 descriptors: {},
                 symbol_descriptors: {},
-                internal_slots: { "[[NumberData]]": Value::Number(n) },
+                internal_slots: {
+                  let m : Map[@runtime.InternalSlotKey, Value] = {}
+                  m[@runtime.NumberData] = Value::Number(n)
+                  m
+                },
               },
               prototype: number_proto,
               callable: None,
