@@ -499,6 +499,28 @@ test "loose equality toPrimitive throw propagates" {
 }
 
 ///|
+test "loose equality array own valueOf returns primitive" {
+  let src =
+    #|var a = [];
+    #|a.valueOf = function() { return 1; };
+    #|console.log(a == 1);
+    #|console.log(1 == a);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "loose equality array own toPrimitive symbol" {
+  let src =
+    #|var a = [];
+    #|a[Symbol.toPrimitive] = function() { return 1; };
+    #|console.log(a == 1);
+    #|console.log("1" == a);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
 test "logical operators short-circuit" {
   let output = run_output(
     "console.log(false && 42); console.log(true || 42); console.log(0 || \"default\")",

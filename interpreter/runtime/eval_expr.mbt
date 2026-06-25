@@ -2579,12 +2579,13 @@ fn loose_equal(
       let prim = to_primitive_default(b, data, interp~)
       loose_equal(a, prim, interp~)
     }
-    (Array(_), Number(_)) | (Array(_), String_(_)) => {
-      let prim = String_(to_js_string(a, interp~))
+    // Array == primitive: ToPrimitive with hint "default" (§7.2.14 steps 10-11)
+    (Array(_), Number(_)) | (Array(_), String_(_)) | (Array(_), Symbol(_)) => {
+      let prim = to_primitive_default_array(a, interp~)
       loose_equal(prim, b, interp~)
     }
-    (Number(_), Array(_)) | (String_(_), Array(_)) => {
-      let prim = String_(to_js_string(b, interp~))
+    (Number(_), Array(_)) | (String_(_), Array(_)) | (Symbol(_), Array(_)) => {
+      let prim = to_primitive_default_array(b, interp~)
       loose_equal(a, prim, interp~)
     }
     // Symbols don't coerce to other primitive types
