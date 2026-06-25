@@ -1929,6 +1929,16 @@ test "tagged template raw preserves backslash in line continuation" {
 }
 
 ///|
+test "tagged template raw preserves LS U+2028 in line continuation" {
+  // U+2028 (LS) is a line terminator but does NOT normalize to \n in raw
+  let src = "function tag(s) { return s[0] + '|' + s.raw[0]; }\ntag`a\\\u{2028}b`"
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "ab|a\\\u{2028}b", "raw: \\LS preserved as backslash+U+2028, not normalized to \\n",
+  )
+}
+
+///|
 test "nested untagged template with invalid escape throws SyntaxError" {
   let src =
     #|`${`\1`}`

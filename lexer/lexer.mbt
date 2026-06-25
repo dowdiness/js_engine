@@ -371,17 +371,27 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
         offset += 1
         col += 1
         let esc = char_at(offset)
-        // LineContinuation (\<LTS>): cooked = "" (TV), raw = \ + \n (TRV §12.9.6.1)
+        // LineContinuation (\<LTS>): cooked = "" (TV), raw = \ + TRV(LTS) (§12.9.6.1)
+        // CR/LF/CRLF normalize to \n in raw; LS (U+2028) and PS (U+2029) are preserved.
         if is_line_terminator(esc) {
           raw_buf.write_char('\\')
-          raw_buf.write_char('\n')
-          if esc == '\r' {
-            offset += 1
-            if offset < len && char_at(offset) == '\n' {
+          match esc {
+            '\r' => {
+              raw_buf.write_char('\n')
+              offset += 1
+              if offset < len && char_at(offset) == '\n' {
+                offset += 1
+              }
+            }
+            '\n' => {
+              raw_buf.write_char('\n')
               offset += 1
             }
-          } else {
-            offset += 1
+            _ => {
+              // U+2028 (LS) or U+2029 (PS): preserved verbatim in raw per TRV
+              raw_buf.write_char(esc)
+              offset += 1
+            }
           }
           line += 1
           col = 1
