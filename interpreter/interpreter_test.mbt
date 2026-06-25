@@ -1259,6 +1259,7 @@ test "Reflect.ownKeys on Map/Set/Promise instances" {
 ///|
 test "Map/Set assignment respects inherited prototype property blockers" {
   let src =
+    #|try {
     #|Object.defineProperty(Map.prototype, "__t447_getter", {
     #|  get: function() { return 1; },
     #|  configurable: true
@@ -1319,10 +1320,59 @@ test "Map/Set assignment respects inherited prototype property blockers" {
     #|m3["__t447_setter"] = 10;
     #|console.log(seen);
     #|console.log(JSON.stringify(Reflect.ownKeys(m3)));
+    #|} finally {
+    #|  delete Map.prototype.__t447_getter;
+    #|  delete Set.prototype.__t447_data;
+    #|  delete Map.prototype.__t447_setter;
+    #|}
   let output = run_output(src)
   json_inspect(output, content=[
     "1", "[]", "1", "[]", "TypeError", "TypeError", "1", "[]", "1", "[]", "TypeError",
     "TypeError", "9", "[]", "10", "[]",
+  ])
+}
+
+///|
+test "Map/Set symbol Reflect.set respects target blockers before receiver landing" {
+  let src =
+    #|var mapSym = Symbol("map");
+    #|var setSym = Symbol("set");
+    #|var inheritedSym = Symbol("inherited");
+    #|var receiver = {};
+    #|
+    #|var m = new Map();
+    #|Object.defineProperty(m, mapSym, {
+    #|  get: function() { return 1; },
+    #|  configurable: true
+    #|});
+    #|console.log(Reflect.set(m, mapSym, 2, receiver));
+    #|console.log(receiver[mapSym]);
+    #|console.log(m[mapSym]);
+    #|
+    #|var s = new Set();
+    #|Object.defineProperty(s, setSym, {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: true
+    #|});
+    #|console.log(Reflect.set(s, setSym, 2, receiver));
+    #|console.log(receiver[setSym]);
+    #|console.log(s[setSym]);
+    #|
+    #|var proto = {};
+    #|Object.defineProperty(proto, inheritedSym, {
+    #|  get: function() { return 3; },
+    #|  configurable: true
+    #|});
+    #|class M extends Map {}
+    #|Object.setPrototypeOf(M.prototype, proto);
+    #|var m2 = new M();
+    #|console.log(Reflect.set(m2, inheritedSym, 4, receiver));
+    #|console.log(receiver[inheritedSym]);
+    #|console.log(m2[inheritedSym]);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "false", "undefined", "1", "false", "undefined", "1", "false", "undefined", "undefined",
   ])
 }
 

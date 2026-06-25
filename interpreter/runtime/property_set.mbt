@@ -577,120 +577,28 @@ pub fn Interpreter::set_property(
       data.bag.properties[prop] = value
       value
     }
-    Map(data) => {
-      let mut should_walk_proto = false
-      match data.bag.descriptors.get(prop) {
-        Some(desc) =>
-          match desc.setter {
-            Some(setter) => {
-              let _ = self.call_value(setter, receiver, [value], loc)
-              return value
-            }
-            None =>
-              if desc.getter is Some(_) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot set property \{prop} which has only a getter",
-                  )
-                }
-                return value
-              } else if !desc.writable {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot assign to read only property '\{prop}'",
-                  )
-                }
-                return value
-              }
-          }
-        None =>
-          if !data.bag.properties.contains(prop) {
-            should_walk_proto = true
-          }
-      }
-      if should_walk_proto {
-        match
-          self.set_string_via_map_set_prototype_chain(
-            data.prototype,
-            receiver,
-            prop,
-            value,
-            loc,
-            strict,
-          ) {
-          Some(result) => return result
-          None => ()
-        }
-      }
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(
-          receiver,
-          String_(prop),
-          value,
-          loc,
-          strict,
-        )
-      }
-      data.bag.properties[prop] = value
-      value
-    }
-    Set(data) => {
-      let mut should_walk_proto = false
-      match data.bag.descriptors.get(prop) {
-        Some(desc) =>
-          match desc.setter {
-            Some(setter) => {
-              let _ = self.call_value(setter, receiver, [value], loc)
-              return value
-            }
-            None =>
-              if desc.getter is Some(_) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot set property \{prop} which has only a getter",
-                  )
-                }
-                return value
-              } else if !desc.writable {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot assign to read only property '\{prop}'",
-                  )
-                }
-                return value
-              }
-          }
-        None =>
-          if !data.bag.properties.contains(prop) {
-            should_walk_proto = true
-          }
-      }
-      if should_walk_proto {
-        match
-          self.set_string_via_map_set_prototype_chain(
-            data.prototype,
-            receiver,
-            prop,
-            value,
-            loc,
-            strict,
-          ) {
-          Some(result) => return result
-          None => ()
-        }
-      }
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(
-          receiver,
-          String_(prop),
-          value,
-          loc,
-          strict,
-        )
-      }
-      data.bag.properties[prop] = value
-      value
-    }
+    Map(data) =>
+      self.set_string_on_map_set_expando(
+        obj,
+        receiver,
+        data.bag,
+        data.prototype,
+        prop,
+        value,
+        loc,
+        strict,
+      )
+    Set(data) =>
+      self.set_string_on_map_set_expando(
+        obj,
+        receiver,
+        data.bag,
+        data.prototype,
+        prop,
+        value,
+        loc,
+        strict,
+      )
     Null =>
       raise @errors.TypeError(
         message="Cannot set properties of null (setting '\{prop}')",
@@ -917,6 +825,214 @@ fn Interpreter::set_string_on_map_set_expando(
     )
   }
   bag.properties[prop] = value
+  value
+}
+
+///|
+fn Interpreter::set_symbol_via_map_set_prototype_chain(
+  self : Interpreter,
+  proto : Value,
+  receiver : Value,
+  sym : SymbolData,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value? raise Error {
+  let mut current = proto
+  while true {
+    match current {
+      Object(proto_data) =>
+        match
+          self.check_inherited_symbol_property_value(
+            current,
+            proto_data.prototype,
+            receiver,
+            sym,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Array(proto_data) => {
+        let next_proto = get_array_prototype_override(proto_data).unwrap_or(
+          self.realm_state.get_array_proto(),
+        )
+        match
+          self.check_inherited_symbol_property_value(
+            current, next_proto, receiver, sym, value, loc, strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      }
+      Map(proto_data) =>
+        match
+          self.check_inherited_symbol_property_value(
+            current,
+            proto_data.prototype,
+            receiver,
+            sym,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Set(proto_data) =>
+        match
+          self.check_inherited_symbol_property_value(
+            current,
+            proto_data.prototype,
+            receiver,
+            sym,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Promise(proto_data) =>
+        match
+          self.check_inherited_symbol_property_value(
+            current,
+            proto_data.prototype,
+            receiver,
+            sym,
+            value,
+            loc,
+            strict,
+          ) {
+          Handled(result) => return Some(result)
+          Continue(next) => current = next
+          Stop => break
+        }
+      Proxy(_) =>
+        return Some(
+          self.set_computed_property(
+            current,
+            Symbol(sym),
+            value,
+            loc,
+            strict~,
+            receiver~,
+          ),
+        )
+      _ => break
+    }
+  }
+  None
+}
+
+///|
+fn Interpreter::check_inherited_symbol_property_value(
+  self : Interpreter,
+  owner : Value,
+  next_proto : Value,
+  receiver : Value,
+  sym : SymbolData,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> InheritedStringSetResult raise Error {
+  match self.get_own_property(owner, Symbol(sym)) {
+    Some((desc, _)) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          Handled(value)
+        }
+        None =>
+          if desc.getter is Some(_) {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot set property which has only a getter",
+              )
+            }
+            Handled(value)
+          } else if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property",
+              )
+            }
+            Handled(value)
+          } else {
+            Stop
+          }
+      }
+    None => Continue(next_proto)
+  }
+}
+
+///|
+fn Interpreter::set_symbol_on_map_set_expando(
+  self : Interpreter,
+  obj : Value,
+  receiver : Value,
+  bag : PropertyBag,
+  proto : Value,
+  sym : SymbolData,
+  value : Value,
+  loc : @token.Loc,
+  strict : Bool,
+) -> Value raise Error {
+  let mut should_walk_proto = false
+  match bag.symbol_descriptors.get(sym.id) {
+    Some(desc) =>
+      match desc.setter {
+        Some(setter) => {
+          let _ = self.call_value(setter, receiver, [value], loc)
+          return value
+        }
+        None =>
+          if desc.getter is Some(_) {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot set property which has only a getter",
+              )
+            }
+            return value
+          } else if !desc.writable {
+            if strict {
+              raise @errors.TypeError(
+                message="Cannot assign to read only property",
+              )
+            }
+            return value
+          }
+      }
+    None =>
+      if !bag.symbol_properties.contains(sym.id) {
+        should_walk_proto = true
+      }
+  }
+  if should_walk_proto {
+    match
+      self.set_symbol_via_map_set_prototype_chain(
+        proto, receiver, sym, value, loc, strict,
+      ) {
+      Some(result) => return result
+      None => ()
+    }
+  }
+  if !strict_equal(obj, receiver) {
+    return self.define_value_on_receiver(
+      receiver,
+      Symbol(sym),
+      value,
+      loc,
+      strict,
+    )
+  }
+  bag.symbol_properties[sym.id] = value
   value
 }
 
@@ -1711,15 +1827,17 @@ pub fn Interpreter::set_computed_property(
       }
     Map(data) =>
       match key {
-        Symbol(sym) => {
-          if !strict_equal(obj, receiver) {
-            return self.define_value_on_receiver(
-              receiver, key, value, loc, strict,
-            )
-          }
-          data.bag.symbol_properties[sym.id] = value
-          value
-        }
+        Symbol(sym) =>
+          self.set_symbol_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            sym,
+            value,
+            loc,
+            strict,
+          )
         _ => {
           let prop = to_js_string(key, interp=Some(self))
           self.set_string_on_map_set_expando(
@@ -1736,15 +1854,17 @@ pub fn Interpreter::set_computed_property(
       }
     Set(data) =>
       match key {
-        Symbol(sym) => {
-          if !strict_equal(obj, receiver) {
-            return self.define_value_on_receiver(
-              receiver, key, value, loc, strict,
-            )
-          }
-          data.bag.symbol_properties[sym.id] = value
-          value
-        }
+        Symbol(sym) =>
+          self.set_symbol_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            data.prototype,
+            sym,
+            value,
+            loc,
+            strict,
+          )
         _ => {
           let prop = to_js_string(key, interp=Some(self))
           self.set_string_on_map_set_expando(
