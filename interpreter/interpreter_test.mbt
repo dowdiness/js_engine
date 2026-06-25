@@ -521,6 +521,18 @@ test "loose equality array own toPrimitive symbol" {
 }
 
 ///|
+test "loose equality array toString fallback when valueOf returns object" {
+  let src =
+    #|var a = [];
+    #|a.valueOf = function() { return {}; };
+    #|a.toString = function() { return 1; };
+    #|console.log(a == 1);
+    #|console.log(1 == a);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
 test "logical operators short-circuit" {
   let output = run_output(
     "console.log(false && 42); console.log(true || 42); console.log(0 || \"default\")",

@@ -510,10 +510,21 @@ fn to_primitive_default_array(
           return result
         }
       }
+      // Step 3: Try toString (may be user-overridden on the array or its prototype).
+      let ts_fn = ip.get_property(arr_val, "toString", @token.Loc::default())
+      if is_callable(ts_fn) {
+        let result = call_callable_direct(ts_fn, arr_val, [], interp=effective)
+        if is_js_object(result) {
+          raise @errors.TypeError(
+            message="Cannot convert object to primitive value",
+          )
+        }
+        return result
+      }
     }
     None => ()
   }
-  // Step 3: Fall back to array join (correct for plain arrays, interp=None).
+  // interp=None fallback: join elements directly.
   String_(to_js_string(arr_val, interp~))
 }
 
