@@ -538,11 +538,17 @@ pub fn setup_arraybuffer_builtins(
             message="Constructor ArrayBuffer requires 'new'",
           )
         }
-        let byte_length = if args.length() > 0 {
+        let byte_length64 = if args.length() > 0 {
           interp.to_index(args[0])
         } else {
-          0
+          0L
         }
+        if byte_length64 > MAX_ARRAYBUFFER_BYTE_LENGTH.to_int64() {
+          raise @errors.RangeError(
+            message="ArrayBuffer allocation size is too large",
+          )
+        }
+        let byte_length = byte_length64.to_int()
         let loc = @token.Loc::default()
         let proto = match context.new_target() {
           Some(new_target) => {

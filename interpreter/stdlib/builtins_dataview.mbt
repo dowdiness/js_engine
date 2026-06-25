@@ -250,7 +250,7 @@ fn get_little_endian(args : Array[Value], arg_index : Int) -> Bool {
 /// Helper to validate DataView access.
 fn validate_dataview_access(
   data : ObjectData,
-  byte_offset : Int,
+  byte_offset : Int64,
   element_size : Int,
   realm_state : @runtime.RealmState,
 ) -> (Array[Int], Int) raise Error {
@@ -280,7 +280,9 @@ fn validate_dataview_access(
     Some(Value::Number(n)) => n.to_int()
     _ => 0
   }
-  if byte_offset < 0 || byte_offset + element_size > dv_byte_length {
+  let element_size64 = element_size.to_int64()
+  let dv_byte_length64 = dv_byte_length.to_int64()
+  if byte_offset < 0L || byte_offset + element_size64 > dv_byte_length64 {
     raise @errors.RangeError(
       message="Offset is outside the bounds of the DataView",
     )
@@ -292,7 +294,7 @@ fn validate_dataview_access(
         message="Cannot perform DataView operation on a detached ArrayBuffer",
       )
   }
-  (bytes, dv_offset + byte_offset)
+  (bytes, (dv_offset.to_int64() + byte_offset).to_int())
 }
 
 ///|
@@ -937,11 +939,11 @@ pub fn setup_dataview_builtins(
         )
         let byte_offset = if args.length() > 1 {
           match args[1] {
-            Undefined => 0
+            Undefined => 0L
             _ => interp.to_index(args[1])
           }
         } else {
-          0
+          0L
         }
         if is_arraybuffer_state_detached(storage_state, buf_id) {
           raise @errors.TypeError(
@@ -957,24 +959,25 @@ pub fn setup_dataview_builtins(
             }
           _ => 0
         }
-        if byte_offset > buf_byte_length {
+        let buf_byte_length64 = buf_byte_length.to_int64()
+        if byte_offset > buf_byte_length64 {
           raise @errors.RangeError(
             message="Start offset \{byte_offset} is outside the bounds of the buffer",
           )
         }
         let byte_length = if args.length() > 2 {
           match args[2] {
-            Undefined => buf_byte_length - byte_offset
+            Undefined => buf_byte_length64 - byte_offset
             _ => {
               let n = interp.to_index(args[2])
-              if byte_offset + n > buf_byte_length {
+              if byte_offset + n > buf_byte_length64 {
                 raise @errors.RangeError(message="Invalid DataView length \{n}")
               }
               n
             }
           }
         } else {
-          buf_byte_length - byte_offset
+          buf_byte_length64 - byte_offset
         }
         let loc = @token.Loc::default()
         let proto = match context.new_target() {

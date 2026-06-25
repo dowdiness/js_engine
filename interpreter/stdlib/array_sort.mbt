@@ -109,16 +109,16 @@ fn array_sort_indexed_properties(
   let elements : Array[Value] = []
   // SortIndexedProperties(..., skip-holes): only values for indices where
   // HasProperty is true enter the sortable list. Holes are deleted later.
-  for i = 0; i < len; i = i + 1 {
+  for i = 0L; i < len; i = i + 1L {
     if array_mutator_has_index(interp, o, i) {
       elements.push(@runtime.get_array_like_element_interp(interp, o, i))
     }
   }
   array_sort_values(interp, elements, comparefn)
   for i = 0; i < elements.length(); i = i + 1 {
-    array_mutator_set_index(interp, o, i, elements[i])
+    array_mutator_set_index(interp, o, i.to_int64(), elements[i])
   }
-  for i = elements.length(); i < len; i = i + 1 {
+  for i = elements.length().to_int64(); i < len; i = i + 1L {
     array_mutator_delete_index(interp, o, i)
   }
   o

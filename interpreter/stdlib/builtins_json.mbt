@@ -510,7 +510,7 @@ fn json_internalize(
       // Array branch: ? ToLength(? Get(val, "length")), then for each index:
       // delete or CreateDataProperty via [[DefineOwnProperty]].
       let len = @runtime.to_array_like_length_interp(val, interp)
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         let idx = i.to_string()
         let new_val = json_internalize(val, idx, reviver, interp)
         match new_val {

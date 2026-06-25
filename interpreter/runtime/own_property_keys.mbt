@@ -11,10 +11,8 @@
 /// keys in insertion order, then symbol keys in insertion order; Array holes
 /// are omitted everywhere (§10.4.2.1).
 ///
-/// Known limitation (pre-existing, out of scope for the #336 unification):
-/// Array index keys beyond `Int` range (≥ 2^31, stored on the bag rather than
-/// in `elements`) are emitted among the trailing string keys, after "length",
-/// instead of merged into the ascending integer-index run.
+/// Sparse Array index keys stored on the bag are merged into the ascending
+/// integer-index run before the exotic "length" key.
 
 ///|
 /// Append the own symbol keys of a property bag (resolved id -> SymbolData) to
@@ -56,11 +54,19 @@ fn append_array_own_keys(
       keys.push(Value::String_(i.to_string()))
     }
   }
-  keys.push(Value::String_("length"))
-  for prop_name in sort_property_keys(data.bag.properties) {
+  let sorted_bag_keys = sort_property_keys(data.bag.properties)
+  for prop_name in sorted_bag_keys {
     match array_index_of_key(prop_name) {
-      Some(idx) if idx < element_len => continue
-      _ => keys.push(Value::String_(prop_name))
+      Some(idx) if idx >= element_len.to_int64() =>
+        keys.push(Value::String_(prop_name))
+      _ => ()
+    }
+  }
+  keys.push(Value::String_("length"))
+  for prop_name in sorted_bag_keys {
+    match array_index_of_key(prop_name) {
+      Some(_) => ()
+      None => keys.push(Value::String_(prop_name))
     }
   }
   append_resolved_symbol_keys(keys, data.bag.symbol_properties, sym_state)

@@ -1,4 +1,19 @@
 ///|
+const JS_MAX_SAFE_INTEGER_I64 = 9007199254740991L
+
+///|
+const JS_MAX_SAFE_INTEGER_DOUBLE = 9007199254740991.0
+
+///|
+const JS_MAX_SAFE_INTEGER_EXCLUSIVE_DOUBLE = 9007199254740992.0
+
+///|
+const JS_MAX_ARRAY_LENGTH_I64 = 4294967295L
+
+///|
+const ARRAY_DENSE_MATERIALIZE_LIMIT_I64 = 10000000L
+
+///|
 /// Classification of an array-indexed lookup per ES2024 §10.1.5
 /// OrdinaryGetOwnProperty. `Present` subsumes both "dense element, no
 /// descriptor" and "own data descriptor" — data descriptors store
@@ -62,6 +77,36 @@ fn array_index_lookup_result(data : ArrayData, i : Int) -> ArrayIndexHit {
 }
 
 ///|
+fn array_index_lookup_result64(
+  data : ArrayData,
+  index : Int64,
+) -> ArrayIndexHit {
+  if index < 0L {
+    return OutOfRange
+  }
+  if index <= 0x7FFFFFFFL {
+    return array_index_lookup_result(data, index.to_int())
+  }
+  let key = index.to_string()
+  match data.bag.descriptors.get(key) {
+    Some(desc) =>
+      if desc.is_accessor {
+        OwnAccessor(desc.getter)
+      } else {
+        match data.bag.properties.get(key) {
+          Some(v) => Present(v)
+          None => OutOfRange
+        }
+      }
+    None =>
+      match data.bag.properties.get(key) {
+        Some(v) => Present(v)
+        None => OutOfRange
+      }
+  }
+}
+
+///|
 pub fn flatten_array_val(
   elements : Array[Value],
   depth : Int,
@@ -81,14 +126,14 @@ pub fn flatten_array_val(
 }
 
 ///|
-fn array_sparse_own_length_as_int(data : ArrayData) -> Int {
-  let mut observed = data.elements.length()
+fn array_sparse_own_length(data : ArrayData) -> Int64 {
+  let mut observed = data.elements.length().to_int64()
   let include_key = fn(key : String) -> Unit {
     match array_index64_from_string(key) {
-      Some(idx64) if idx64 < 0x7FFFFFFFL => {
+      Some(idx64) => {
         let len64 = idx64 + 1L
-        if len64 > observed.to_int64() {
-          observed = len64.to_int()
+        if len64 > observed {
+          observed = len64
         }
       }
       _ => ()
@@ -100,17 +145,17 @@ fn array_sparse_own_length_as_int(data : ArrayData) -> Int {
 }
 
 ///|
-fn array_logical_length_as_int(data : ArrayData) -> Int {
-  let observed = array_sparse_own_length_as_int(data)
+fn array_logical_length(data : ArrayData) -> Int64 {
+  let observed = array_sparse_own_length(data)
   match get_array_length_override(data) {
-    Some(n64) => if n64 <= 0x7FFFFFFFL { n64.to_int() } else { observed }
+    Some(n64) => n64
     None => observed
   }
 }
 
 ///|
 /// ToLength: Get length from any value as per ECMAScript spec (array-like objects)
-pub fn to_array_like_length(val : Value) -> Int raise {
+pub fn to_array_like_length(val : Value) -> Int64 raise {
   match val {
     Null =>
       raise @errors.TypeError(
@@ -120,7 +165,7 @@ pub fn to_array_like_length(val : Value) -> Int raise {
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Array(data) => array_logical_length_as_int(data)
+    Array(data) => array_logical_length(data)
     Object(data) => {
       // Check for getter-based length first, then fall back to properties
       let length_val : Value? = match data.bag.properties.get("length") {
@@ -145,8 +190,8 @@ pub fn to_array_like_length(val : Value) -> Int raise {
       }
       to_length_from_value(length_val)
     }
-    String_(s) => s.length()
-    _ => 0
+    String_(s) => s.length().to_int64()
+    _ => 0L
   }
 }
 
@@ -155,7 +200,7 @@ pub fn to_array_like_length(val : Value) -> Int raise {
 pub fn to_array_like_length_interp(
   val : Value,
   interp : Interpreter,
-) -> Int raise {
+) -> Int64 raise {
   match val {
     Null =>
       raise @errors.TypeError(
@@ -165,8 +210,8 @@ pub fn to_array_like_length_interp(
       raise @errors.TypeError(
         message="Cannot convert undefined or null to object",
       )
-    Array(data) => array_logical_length_as_int(data)
-    String_(s) => s.length()
+    Array(data) => array_logical_length(data)
+    String_(s) => s.length().to_int64()
     _ => {
       // Use interpreter's get_property to properly handle getters and prototype chains
       let length_val = interp.get_property(val, "length", @token.Loc::default())
@@ -176,49 +221,37 @@ pub fn to_array_like_length_interp(
 }
 
 ///|
-fn to_length_from_value(v : Value?, interp? : Interpreter? = None) -> Int raise {
+fn to_length_number(n : Double) -> Int64 {
+  if n.is_nan() || n <= 0.0 {
+    0L
+  } else if n.is_inf() || n >= JS_MAX_SAFE_INTEGER_DOUBLE {
+    JS_MAX_SAFE_INTEGER_I64
+  } else {
+    n.floor().to_int64()
+  }
+}
+
+///|
+fn to_length_from_value(
+  v : Value?,
+  interp? : Interpreter? = None,
+) -> Int64 raise {
   match v {
-    Some(Number(n)) => {
-      let len = n.to_int()
-      if len < 0 {
-        0
-      } else {
-        len
-      }
-    }
-    Some(v) => {
-      let n = to_number(v, interp~)
-      if n.is_nan() {
-        0
-      } else if n.is_inf() {
-        if n > 0.0 {
-          0x7FFFFFFF
-        } else {
-          0
-        }
-      } else {
-        let i = n.to_int()
-        if i < 0 {
-          0
-        } else {
-          i
-        }
-      }
-    }
-    None => 0
+    Some(Number(n)) => to_length_number(n)
+    Some(v) => to_length_number(to_number(v, interp~))
+    None => 0L
   }
 }
 
 ///|
 /// Get indexed element from array-like value
-pub fn get_array_like_element(val : Value, index : Int) -> Value {
+pub fn get_array_like_element(val : Value, index : Int64) -> Value {
   let key = index.to_string()
   match val {
     Array(data) =>
-      if index >= 0 && index < data.elements.length() {
-        data.elements[index]
-      } else {
-        Undefined
+      match array_index_lookup_result64(data, index) {
+        Present(v) => v
+        _ => Undefined
       }
     Object(data) => {
       // Check for accessor descriptor (getter) on own property first
@@ -275,9 +308,10 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
     }
     String_(s) => {
       let chars = s.to_array()
-      if index >= 0 && index < chars.length() {
+      if index >= 0L && index <= 0x7FFFFFFFL && index.to_int() < chars.length() {
+        let i = index.to_int()
         let buf = StringBuilder::new()
-        buf.write_char(chars[index])
+        buf.write_char(chars[i])
         String_(buf.to_string())
       } else {
         Undefined
@@ -292,11 +326,11 @@ pub fn get_array_like_element(val : Value, index : Int) -> Value {
 pub fn get_array_like_element_interp(
   interp : Interpreter,
   val : Value,
-  index : Int,
+  index : Int64,
 ) -> Value raise {
   match val {
     Array(data) =>
-      match array_index_lookup_result(data, index) {
+      match array_index_lookup_result64(data, index) {
         Present(v) => v
         OwnAccessor(Some(getter)) =>
           interp.call_value(getter, val, [], @token.Loc::default())
@@ -325,7 +359,7 @@ fn proto_chain_has_index(
   interp : Interpreter,
   proto : Value,
   key : String,
-  index : Int,
+  index : Int64,
 ) -> Bool {
   let mut current = proto
   while true {
@@ -340,7 +374,7 @@ fn proto_chain_has_index(
         }
       }
       Array(arr_data) =>
-        match array_index_lookup_result(arr_data, index) {
+        match array_index_lookup_result64(arr_data, index) {
           Present(_) | OwnAccessor(_) => return true
           Hole | OutOfRange =>
             // Array-as-prototype: continue walking via the array's own
@@ -360,12 +394,12 @@ fn proto_chain_has_index(
 pub fn has_array_like_element(
   interp : Interpreter,
   val : Value,
-  index : Int,
+  index : Int64,
 ) -> Bool {
   let key = index.to_string()
   match val {
     Array(data) =>
-      match array_index_lookup_result(data, index) {
+      match array_index_lookup_result64(data, index) {
         Present(_) | OwnAccessor(_) => true
         Hole | OutOfRange => {
           let proto = get_array_prototype(interp.realm_state, data)
@@ -400,7 +434,7 @@ pub fn has_array_like_element(
             // as a prototype only owns its dense slots; missing indices
             // must fall through to the next prototype (typically
             // Array.prototype, then Object.prototype).
-            match array_index_lookup_result(arr_data, index) {
+            match array_index_lookup_result64(arr_data, index) {
               Present(_) | OwnAccessor(_) => return true
               Hole | OutOfRange =>
                 current = get_array_prototype(interp.realm_state, arr_data)
@@ -410,7 +444,9 @@ pub fn has_array_like_element(
       }
       false
     }
-    String_(s) => index >= 0 && index < s.length()
+    String_(s) =>
+      index >= 0L && index <= 0x7FFFFFFFL && index.to_int() < s.length()
+    Proxy(_) => interp.has_property(val, key) catch { _ => false }
     _ => false
   }
 }
@@ -488,13 +524,22 @@ fn cleanup_sparse_array_indices_above_length(
 
 ///|
 /// Set indexed element on array-like value
-pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
+pub fn set_array_like_element(
+  val : Value,
+  index : Int64,
+  value : Value,
+) -> Unit {
   let key = index.to_string()
   match val {
     Array(data) =>
-      if index >= 0 && index < data.elements.length() {
-        data.elements[index] = value
-        data.holes.remove(index)
+      if index >= 0L &&
+        index <= 0x7FFFFFFFL &&
+        index.to_int() < data.elements.length() {
+        let i = index.to_int()
+        data.elements[i] = value
+        data.holes.remove(i)
+      } else if index >= 0L {
+        data.bag.properties[key] = value
       }
     Object(data) => data.bag.properties[key] = value
     _ => ()
@@ -503,14 +548,17 @@ pub fn set_array_like_element(val : Value, index : Int, value : Value) -> Unit {
 
 ///|
 /// Set the length property on an array-like value
-pub fn set_array_like_length(val : Value, len : Int) -> Unit {
+pub fn set_array_like_length(val : Value, len : Int64) -> Unit {
   match val {
-    Array(data) =>
-      while data.elements.length() < len {
-        let new_idx = data.elements.length()
-        data.elements.push(Undefined)
-        data.holes[new_idx] = ()
+    Array(data) => {
+      if len > data.elements.length().to_int64() {
+        set_array_length_override(data, len)
+      } else {
+        data.elements.truncate(len.to_int())
+        clear_array_length_override(data)
       }
+      cleanup_holes_above_length(data.holes, len)
+    }
     Object(data) => data.bag.properties["length"] = Number(len.to_double())
     _ => ()
   }
@@ -533,34 +581,42 @@ pub fn delete_array_like_element(val : Value, index : Int) -> Unit {
 pub fn create_data_property_or_throw(
   interp : Interpreter,
   target : Value,
-  index : Int,
+  index : Int64,
   value : Value,
 ) -> Unit raise {
   match target {
-    Array(data) => {
-      if index == data.elements.length() {
-        data.elements.push(value)
-      } else if index >= 0 && index < data.elements.length() {
-        data.elements[index] = value
-      } else {
-        // Sparse case: pad with Undefined up to index (these are holes),
-        // then set value at the target index (not a hole).
-        while data.elements.length() < index {
-          let pad_idx = data.elements.length()
-          data.elements.push(Undefined)
-          data.holes[pad_idx] = ()
+    Array(data) =>
+      if index >= 0L && index <= ARRAY_DENSE_MATERIALIZE_LIMIT_I64 {
+        let i = index.to_int()
+        if i == data.elements.length() {
+          data.elements.push(value)
+        } else if i >= 0 && i < data.elements.length() {
+          data.elements[i] = value
+        } else {
+          // Sparse case: pad with Undefined up to index (these are holes),
+          // then set value at the target index (not a hole).
+          while data.elements.length() < i {
+            let pad_idx = data.elements.length()
+            data.elements.push(Undefined)
+            data.holes[pad_idx] = ()
+          }
+          data.elements.push(value)
         }
-        data.elements.push(value)
+        data.holes.remove(i)
+      } else {
+        let _ = interp.define_own_property(
+          target,
+          String_(index.to_string()),
+          PartialDescriptor::data_default(value),
+          @token.Loc::default(),
+        )
       }
-      data.holes.remove(index)
-    }
     _ => {
-      let _ = interp.set_property(
+      let _ = interp.define_own_property(
         target,
-        index.to_string(),
-        value,
+        String_(index.to_string()),
+        PartialDescriptor::data_default(value),
         @token.Loc::default(),
-        strict=true,
       )
     }
   }
@@ -574,15 +630,35 @@ pub fn create_data_property_or_throw(
 pub fn array_species_create(
   interp : Interpreter,
   original : Value,
-  len : Int,
+  len : Int64,
 ) -> Value raise Error {
-  // Step 1: If originalArray is not an Array, return a plain array
-  let is_array = match original {
-    Array(_) => true
-    Object(data) => data.class_name == "Array"
-    _ => false
+  // Step 1: If originalArray is not an Array, return a plain array.
+  // IsArray unwraps proxies, so ArraySpeciesCreate must do the same before
+  // deciding whether to consult constructor/@@species.
+  let mut array_probe = original
+  let mut is_array = false
+  while true {
+    match array_probe {
+      Array(_) => {
+        is_array = true
+        break
+      }
+      Object(data) => {
+        is_array = data.class_name == "Array"
+        break
+      }
+      Proxy(proxy_data) =>
+        match proxy_data.target {
+          Some(target) => array_probe = target
+          None => break
+        }
+      _ => break
+    }
   }
   if !is_array {
+    if len > JS_MAX_ARRAY_LENGTH_I64 {
+      raise @errors.RangeError(message="Invalid array length")
+    }
     return make_array([])
   }
   let loc = @token.Loc::default()
@@ -604,6 +680,9 @@ pub fn array_species_create(
   }
   // Step 5: If C is undefined, return plain array
   if species is Undefined {
+    if len > JS_MAX_ARRAY_LENGTH_I64 {
+      raise @errors.RangeError(message="Invalid array length")
+    }
     return make_array([])
   }
   // Step 6: If IsConstructor(C) is false, throw TypeError
@@ -619,7 +698,7 @@ pub fn array_species_create(
 pub fn to_array_like_elements(val : Value) -> Array[Value] raise {
   let len = to_array_like_length(val)
   let result : Array[Value] = []
-  for i = 0; i < len; i = i + 1 {
+  for i = 0L; i < len; i = i + 1L {
     result.push(get_array_like_element(val, i))
   }
   result

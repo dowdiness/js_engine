@@ -96,6 +96,21 @@ fn Interpreter::set_array_sparse_index64(
 }
 
 ///|
+fn update_array_length_after_dense_index_write(
+  data : ArrayData,
+  new_len : Int64,
+  logical_len64 : Int64,
+) -> Unit {
+  if new_len > logical_len64 &&
+    (
+      get_array_length_override(data) is Some(_) ||
+      new_len > data.elements.length().to_int64()
+    ) {
+    set_array_length_override(data, new_len)
+  }
+}
+
+///|
 /// Stage B.1 [[Set]] dispatcher.
 ///
 /// `receiver` threads through the prototype chain and proxy fallbacks per
@@ -425,11 +440,11 @@ pub fn Interpreter::set_property(
           } else {
             set_array_named_prop(data, prop, value)
           }
-          let new_len = i.to_int64() + 1L
-          if new_len > logical_len64 &&
-            new_len > data.elements.length().to_int64() {
-            set_array_length_override(data, new_len)
-          }
+          update_array_length_after_dense_index_write(
+            data,
+            i.to_int64() + 1L,
+            logical_len64,
+          )
         } else {
           match array_index64_from_string(prop) {
             Some(idx64) =>
@@ -1890,11 +1905,11 @@ pub fn Interpreter::set_computed_property(
             } else {
               set_array_named_prop(data, prop, value)
             }
-            let new_len = i.to_int64() + 1L
-            if new_len > logical_len64 &&
-              new_len > data.elements.length().to_int64() {
-              set_array_length_override(data, new_len)
-            }
+            update_array_length_after_dense_index_write(
+              data,
+              i.to_int64() + 1L,
+              logical_len64,
+            )
           } else {
             // Non-integer numeric key (e.g., 1.1, -0.5): delegate to set_property
             // to enforce descriptor, extensibility, and prototype-chain checks.
@@ -2022,11 +2037,11 @@ pub fn Interpreter::set_computed_property(
                     } else {
                       set_array_named_prop(data, prop, value)
                     }
-                    let new_len = idx.to_int64() + 1L
-                    if new_len > logical_len64 &&
-                      new_len > data.elements.length().to_int64() {
-                      set_array_length_override(data, new_len)
-                    }
+                    update_array_length_after_dense_index_write(
+                      data,
+                      idx.to_int64() + 1L,
+                      logical_len64,
+                    )
                     handled = true
                   }
                 }

@@ -2,7 +2,7 @@
 fn array_mutator_set_index(
   interp : Interpreter,
   o : Value,
-  index : Int,
+  index : Int64,
   value : Value,
 ) -> Unit raise Error {
   array_mutator_set_property_key(interp, o, index.to_string(), value)
@@ -12,7 +12,7 @@ fn array_mutator_set_index(
 fn array_mutator_delete_index(
   interp : Interpreter,
   o : Value,
-  index : Int,
+  index : Int64,
 ) -> Unit raise Error {
   array_mutator_delete_property_key(interp, o, index.to_string())
 }
@@ -21,7 +21,7 @@ fn array_mutator_delete_index(
 fn array_mutator_has_index(
   interp : Interpreter,
   o : Value,
-  index : Int,
+  index : Int64,
 ) -> Bool raise Error {
   interp.has_property(o, index.to_string())
 }
@@ -30,13 +30,76 @@ fn array_mutator_has_index(
 fn array_mutator_set_length(
   interp : Interpreter,
   o : Value,
-  len : Int,
+  len : Int64,
 ) -> Unit raise Error {
   array_mutator_set_length_number(interp, o, len.to_double())
 }
 
 ///|
 const ARRAY_MAX_SAFE_LENGTH : Double = 9007199254740991.0
+
+///|
+const ARRAY_MAX_SAFE_LENGTH_I64 = 9007199254740991L
+
+///|
+const ARRAY_MAX_ARRAY_LENGTH_I64 = 4294967295L
+
+///|
+const ARRAY_DENSE_MATERIALIZE_LIMIT_I64 = 10000000L
+
+///|
+fn array_mutator_to_integer_index_from_number(n : Double) -> Int64 {
+  if n.is_nan() || n == 0.0 {
+    0L
+  } else if n.is_inf() {
+    if n < 0.0 {
+      -ARRAY_MAX_SAFE_LENGTH_I64
+    } else {
+      ARRAY_MAX_SAFE_LENGTH_I64
+    }
+  } else {
+    let sign = if n < 0.0 { -1.0 } else { 1.0 }
+    let integer = n.abs().floor() * sign
+    if integer <= -ARRAY_MAX_SAFE_LENGTH {
+      -ARRAY_MAX_SAFE_LENGTH_I64
+    } else if integer >= ARRAY_MAX_SAFE_LENGTH {
+      ARRAY_MAX_SAFE_LENGTH_I64
+    } else {
+      integer.to_int64()
+    }
+  }
+}
+
+///|
+fn array_mutator_to_integer_index(
+  interp : Interpreter,
+  val : Value,
+) -> Int64 raise Error {
+  array_mutator_to_integer_index_from_number(interp.to_number(val))
+}
+
+///|
+fn array_mutator_relative_index64(index : Int64, len : Int64) -> Int64 {
+  if index < 0L {
+    let from_end = len + index
+    if from_end < 0L {
+      0L
+    } else {
+      from_end
+    }
+  } else if index > len {
+    len
+  } else {
+    index
+  }
+}
+
+///|
+fn array_mutator_require_array_create_length(len : Int64) -> Unit raise Error {
+  if len > ARRAY_MAX_ARRAY_LENGTH_I64 {
+    raise @errors.RangeError(message="Invalid array length")
+  }
+}
 
 ///|
 fn array_mutator_array_index64_from_key(key : String) -> Int64? {
@@ -421,9 +484,9 @@ fn array_reverse_indexed_properties(
   // ES2024 §23.1.3.28: query lower/upper presence separately, then use
   // Set/DeletePropertyOrThrow so explicit undefined and holes swap correctly.
   let len = @runtime.to_array_like_length_interp(o, interp)
-  let middle = len / 2
-  for lower = 0; lower < middle; lower = lower + 1 {
-    let upper = len - lower - 1
+  let middle = len / 2L
+  for lower = 0L; lower < middle; lower = lower + 1L {
+    let upper = len - lower - 1L
     let lower_exists = array_mutator_has_index(interp, o, lower)
     let lower_value = if lower_exists {
       Some(@runtime.get_array_like_element_interp(interp, o, lower))
@@ -465,19 +528,29 @@ fn array_copy_within_indexed_properties(
   // delete the target instead of materializing undefined.
   let len = @runtime.to_array_like_length_interp(o, interp)
   let mut to = if args.length() > 0 {
-    array_mutator_relative_index(interp.to_number(args[0]).to_int(), len)
+    array_mutator_relative_index64(
+      array_mutator_to_integer_index(interp, args[0]),
+      len,
+    )
   } else {
-    0
+    0L
   }
   let mut from = if args.length() > 1 {
-    array_mutator_relative_index(interp.to_number(args[1]).to_int(), len)
+    array_mutator_relative_index64(
+      array_mutator_to_integer_index(interp, args[1]),
+      len,
+    )
   } else {
-    0
+    0L
   }
   let final_index = if args.length() > 2 {
     match args[2] {
       Undefined => len
-      _ => array_mutator_relative_index(interp.to_number(args[2]).to_int(), len)
+      _ =>
+        array_mutator_relative_index64(
+          array_mutator_to_integer_index(interp, args[2]),
+          len,
+        )
     }
   } else {
     len
@@ -490,13 +563,13 @@ fn array_copy_within_indexed_properties(
   if count <= 0 {
     return o
   }
-  let mut direction = 1
+  let mut direction = 1L
   if from < to && to < from + count {
-    direction = -1
-    from = from + count - 1
-    to = to + count - 1
+    direction = -1L
+    from = from + count - 1L
+    to = to + count - 1L
   }
-  while count > 0 {
+  while count > 0L {
     if array_mutator_has_index(interp, o, from) {
       let from_value = @runtime.get_array_like_element_interp(interp, o, from)
       array_mutator_set_index(interp, o, to, from_value)
@@ -505,7 +578,7 @@ fn array_copy_within_indexed_properties(
     }
     from = from + direction
     to = to + direction
-    count = count - 1
+    count = count - 1L
   }
   o
 }
@@ -521,19 +594,26 @@ fn array_fill_indexed_properties(
   let fill_value = if args.length() > 0 { args[0] } else { Undefined }
   let len = @runtime.to_array_like_length_interp(o, interp)
   let start = if args.length() > 1 {
-    array_mutator_relative_index(interp.to_number(args[1]).to_int(), len)
+    array_mutator_relative_index64(
+      array_mutator_to_integer_index(interp, args[1]),
+      len,
+    )
   } else {
-    0
+    0L
   }
   let final_index = if args.length() > 2 {
     match args[2] {
       Undefined => len
-      _ => array_mutator_relative_index(interp.to_number(args[2]).to_int(), len)
+      _ =>
+        array_mutator_relative_index64(
+          array_mutator_to_integer_index(interp, args[2]),
+          len,
+        )
     }
   } else {
     len
   }
-  for k = start; k < final_index; k = k + 1 {
+  for k = start; k < final_index; k = k + 1L {
     array_mutator_set_index(interp, o, k, fill_value)
   }
   o
@@ -743,36 +823,35 @@ fn array_splice_indexed_properties(
 ) -> Value raise Error {
   let alen = @runtime.to_array_like_length_interp(o, interp)
   let mut start = if args.length() > 0 {
-    interp.to_number(args[0]).to_int()
+    array_mutator_to_integer_index(interp, args[0])
   } else {
-    0
+    0L
   }
-  if start < 0 {
+  if start < 0L {
     start = alen + start
-    if start < 0 {
-      start = 0
+    if start < 0L {
+      start = 0L
     }
   }
   if start > alen {
     start = alen
   }
-  let del_count = if args.length() > 1 {
-    let d_num = interp.to_number(args[1])
-    if d_num.is_inf() || d_num >= (alen - start).to_double() {
+  let del_count = if args.length() == 0 {
+    0L
+  } else if args.length() == 1 {
+    alen - start
+  } else {
+    let d = array_mutator_to_integer_index(interp, args[1])
+    if d < 0L {
+      0L
+    } else if d > alen - start {
       alen - start
     } else {
-      let d = d_num.to_int()
-      if d < 0 {
-        0
-      } else {
-        d
-      }
+      d
     }
-  } else {
-    alen - start
   }
   let removed = @runtime.array_species_create(interp, o, del_count)
-  for i = 0; i < del_count; i = i + 1 {
+  for i = 0L; i < del_count; i = i + 1L {
     if array_mutator_has_index(interp, o, start + i) {
       @runtime.create_data_property_or_throw(
         interp,
@@ -787,10 +866,13 @@ fn array_splice_indexed_properties(
   for i = 2; i < args.length(); i = i + 1 {
     new_items.push(args[i])
   }
-  let items_count = new_items.length()
+  let items_count = new_items.length().to_int64()
   let new_len = alen - del_count + items_count
+  if new_len > ARRAY_MAX_SAFE_LENGTH_I64 {
+    raise @errors.TypeError(message="Invalid array length")
+  }
   if items_count < del_count {
-    for i = start; i < alen - del_count; i = i + 1 {
+    for i = start; i < alen - del_count; i = i + 1L {
       let from = i + del_count
       let to = i + items_count
       if array_mutator_has_index(interp, o, from) {
@@ -800,13 +882,13 @@ fn array_splice_indexed_properties(
         array_mutator_delete_index(interp, o, to)
       }
     }
-    for i = alen; i > new_len; i = i - 1 {
-      array_mutator_delete_index(interp, o, i - 1)
+    for i = alen; i > new_len; i = i - 1L {
+      array_mutator_delete_index(interp, o, i - 1L)
     }
   } else if items_count > del_count {
-    for i = alen - del_count; i > start; i = i - 1 {
-      let from = i + del_count - 1
-      let to = i + items_count - 1
+    for i = alen - del_count; i > start; i = i - 1L {
+      let from = i + del_count - 1L
+      let to = i + items_count - 1L
       if array_mutator_has_index(interp, o, from) {
         let from_value = @runtime.get_array_like_element_interp(interp, o, from)
         array_mutator_set_index(interp, o, to, from_value)
@@ -815,8 +897,8 @@ fn array_splice_indexed_properties(
       }
     }
   }
-  for i = 0; i < items_count; i = i + 1 {
-    array_mutator_set_index(interp, o, start + i, new_items[i])
+  for i = 0; i < new_items.length(); i = i + 1 {
+    array_mutator_set_index(interp, o, start + i.to_int64(), new_items[i])
   }
   array_mutator_set_length(interp, o, new_len)
   removed

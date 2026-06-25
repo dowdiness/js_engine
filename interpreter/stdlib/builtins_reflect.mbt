@@ -15,7 +15,7 @@ pub fn create_list_from_array_like(
   }
   let len = @runtime.to_array_like_length_interp(val, interp)
   let result : Array[Value] = []
-  for i = 0; i < len; i = i + 1 {
+  for i = 0L; i < len; i = i + 1L {
     result.push(@runtime.get_array_like_element_interp(interp, val, i))
   }
   result

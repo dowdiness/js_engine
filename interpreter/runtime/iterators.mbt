@@ -120,7 +120,7 @@ fn array_iterator_type_error() -> Value raise Error {
 ///|
 fn array_iterator_result_value(
   kind : ArrayIteratorKind,
-  current : Int,
+  current : Int64,
   target : Value,
   interp : Interpreter,
 ) -> Value raise Error {
@@ -153,7 +153,7 @@ fn array_iterator_next(
         ) {
         (Some(Number(n)), Some(target), Some(kind_value)) =>
           match array_iterator_kind_from_slot_value(kind_value) {
-            Some(kind) => (n.to_int(), target, kind)
+            Some(kind) => (n.to_int64(), target, kind)
             None => return array_iterator_type_error()
           }
         _ => return array_iterator_type_error()
@@ -167,7 +167,7 @@ fn array_iterator_next(
         return make_iterator_result_object(Undefined, true)
       }
       data.bag.symbol_properties[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(
-        (current + 1).to_double(),
+        (current + 1L).to_double(),
       )
       let value = array_iterator_result_value(kind, current, target, interp)
       make_iterator_result_object(value, false)

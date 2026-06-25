@@ -447,3 +447,35 @@ test "to_js_string - symbol raises TypeError" {
     fail("expected TypeError when converting Symbol to string")
   }
 }
+
+///|
+test "to_index keeps max-safe index as Int64" {
+  let idx = to_index(Number(9007199254740991.0))
+  guard idx == 9007199254740991L else {
+    fail("expected max-safe index, got " + idx.to_string())
+  }
+}
+
+///|
+test "to_index rejects values at 2^53" {
+  let raised = try {
+    let _ = to_index(Number(9007199254740992.0))
+    false
+  } catch {
+    @errors.RangeError(_) => true
+    _ => false
+  }
+  guard raised else { fail("expected RangeError for 2^53 index") }
+}
+
+///|
+test "to_index rejects negative indexes" {
+  let raised = try {
+    let _ = to_index(Number(-1.0))
+    false
+  } catch {
+    @errors.RangeError(_) => true
+    _ => false
+  }
+  guard raised else { fail("expected RangeError for negative index") }
+}

@@ -1000,9 +1000,9 @@ pub fn Interpreter::to_primitive_default(
 /// ECMAScript ToIndex: converts a value to a non-negative integer index.
 /// Throws RangeError for negative values or values >= 2^53.
 /// Returns 0 for undefined.
-pub fn to_index(val : Value, interp? : Interpreter? = None) -> Int raise {
+pub fn to_index(val : Value, interp? : Interpreter? = None) -> Int64 raise {
   match val {
-    Undefined => 0
+    Undefined => 0L
     _ => {
       let n = to_number(val, interp~)
       let integer_index = if n.is_nan() || n == 0.0 {
@@ -1015,10 +1015,10 @@ pub fn to_index(val : Value, interp? : Interpreter? = None) -> Int raise {
       }
       if integer_index.is_inf() ||
         integer_index < 0.0 ||
-        integer_index >= 9007199254740992.0 {
+        integer_index >= JS_MAX_SAFE_INTEGER_EXCLUSIVE_DOUBLE {
         raise @errors.RangeError(message="Invalid index")
       }
-      integer_index.to_int()
+      integer_index.to_int64()
     }
   }
 }
@@ -1028,7 +1028,7 @@ pub fn to_index(val : Value, interp? : Interpreter? = None) -> Int raise {
 pub fn Interpreter::to_index(
   self : Interpreter,
   val : Value,
-) -> Int raise Error {
+) -> Int64 raise Error {
   to_index(val, interp=Some(self))
 }
 

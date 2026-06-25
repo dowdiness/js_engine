@@ -66,7 +66,7 @@ fn setup_array_builtins(
         ","
       }
       let parts : Array[String] = []
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         let v = @runtime.get_array_like_element_interp(interp, o, i)
         match v {
           Null | Undefined => parts.push("")
@@ -82,26 +82,26 @@ fn setup_array_builtins(
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
-      if len == 0 {
+      if len == 0L {
         return Value::Number(-1.0)
       }
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let from_idx = if args.length() > 1 {
-        interp.to_number(args[1]).to_int()
+        array_mutator_to_integer_index(interp, args[1])
       } else {
-        0
+        0L
       }
-      let start = if from_idx < 0 {
+      let start = if from_idx < 0L {
         let s = len + from_idx
-        if s < 0 {
-          0
+        if s < 0L {
+          0L
         } else {
           s
         }
       } else {
         from_idx
       }
-      for i = start; i < len; i = i + 1 {
+      for i = start; i < len; i = i + 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           if strict_equal_val(
               @runtime.get_array_like_element_interp(interp, o, i),
@@ -120,23 +120,23 @@ fn setup_array_builtins(
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
-      if len == 0 {
+      if len == 0L {
         return Value::Number(-1.0)
       }
       let search = if args.length() > 0 { args[0] } else { Undefined }
       let start = if args.length() > 1 {
-        interp.to_number(args[1]).to_int()
+        array_mutator_to_integer_index(interp, args[1])
       } else {
-        len - 1
+        len - 1L
       }
-      let from = if start < 0 {
+      let from = if start < 0L {
         len + start
       } else if start >= len {
-        len - 1
+        len - 1L
       } else {
         start
       }
-      for i = from; i >= 0; i = i - 1 {
+      for i = from; i >= 0L; i = i - 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           if strict_equal_val(
               @runtime.get_array_like_element_interp(interp, o, i),
@@ -156,23 +156,23 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       // §22.1.3.11 step 3: ToInteger(fromIndex) is NOT called when len is 0.
-      guard len != 0 else { return Value::Bool(false) }
+      guard len != 0L else { return Value::Bool(false) }
       let (search, from_idx) = match args {
-        [s, fi, ..] => (s, interp.to_number(fi).to_int())
-        [s] => (s, 0)
-        [] => (Undefined, 0)
+        [s, fi, ..] => (s, array_mutator_to_integer_index(interp, fi))
+        [s] => (s, 0L)
+        [] => (Undefined, 0L)
       }
-      let start = if from_idx < 0 {
+      let start = if from_idx < 0L {
         let s = len + from_idx
-        if s < 0 {
-          0
+        if s < 0L {
+          0L
         } else {
           s
         }
       } else {
         from_idx
       }
-      for i in start..<len {
+      for i = start; i < len; i = i + 1L {
         if same_value_zero(
             @runtime.get_array_like_element_interp(interp, o, i),
             search,
@@ -190,14 +190,14 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let alen = @runtime.to_array_like_length_interp(o, interp)
       let mut start = if args.length() > 0 {
-        interp.to_number(args[0]).to_int()
+        array_mutator_to_integer_index(interp, args[0])
       } else {
-        0
+        0L
       }
       let mut end = if args.length() > 1 {
         match args[1] {
           Undefined => alen
-          _ => interp.to_number(args[1]).to_int()
+          _ => array_mutator_to_integer_index(interp, args[1])
         }
       } else {
         alen
@@ -217,10 +217,10 @@ fn setup_array_builtins(
       if end > alen {
         end = alen
       }
-      let count = if end > start { end - start } else { 0 }
+      let count = if end > start { end - start } else { 0L }
       let a = @runtime.array_species_create(interp, o, count)
-      let mut n = 0
-      for i = start; i < end; i = i + 1 {
+      let mut n = 0L
+      for i = start; i < end; i = i + 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           @runtime.create_data_property_or_throw(
             interp,
@@ -229,7 +229,7 @@ fn setup_array_builtins(
             @runtime.get_array_like_element_interp(interp, o, i),
           )
         }
-        n += 1
+        n += 1L
       }
       @runtime.set_array_like_length(a, n)
       a
@@ -240,8 +240,8 @@ fn setup_array_builtins(
     length=1,
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
-      let a = @runtime.array_species_create(interp, o, 0)
-      let mut n = 0
+      let a = @runtime.array_species_create(interp, o, 0L)
+      let mut n = 0L
       let concat_sym_id = interp.realm_state.well_known_symbols.is_concat_spreadable.id
       // Process this value and each argument per ES2015 concat spec
       let items : Array[Value] = [o]
@@ -292,7 +292,7 @@ fn setup_array_builtins(
         }
         if spreadable {
           let len = @runtime.to_array_like_length_interp(item, interp)
-          for i = 0; i < len; i = i + 1 {
+          for i = 0L; i < len; i = i + 1L {
             if @runtime.has_array_like_element(interp, item, i) {
               @runtime.create_data_property_or_throw(
                 interp,
@@ -357,12 +357,12 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       let idx = if args.length() > 0 {
-        interp.to_number(args[0]).to_int()
+        array_mutator_to_integer_index(interp, args[0])
       } else {
-        0
+        0L
       }
-      let actual_idx = if idx < 0 { len + idx } else { idx }
-      if actual_idx >= 0 && actual_idx < len {
+      let actual_idx = if idx < 0L { len + idx } else { idx }
+      if actual_idx >= 0L && actual_idx < len {
         @runtime.get_array_like_element_interp(interp, o, actual_idx)
       } else {
         Undefined
@@ -376,7 +376,7 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       let parts : Array[String] = []
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         let v = @runtime.get_array_like_element_interp(interp, o, i)
         match v {
           Null | Undefined => parts.push("")
@@ -415,7 +415,7 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           let _ = interp.call_value(
             callback,
@@ -447,7 +447,7 @@ fn setup_array_builtins(
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
       let a = @runtime.array_species_create(interp, o, len)
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
@@ -480,9 +480,9 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      let a = @runtime.array_species_create(interp, o, 0)
-      let mut to = 0
-      for i = 0; i < len; i = i + 1 {
+      let a = @runtime.array_species_create(interp, o, 0L)
+      let mut to = 0L
+      for i = 0L; i < len; i = i + 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           let el = @runtime.get_array_like_element_interp(interp, o, i)
           let val = interp.call_value(
@@ -493,7 +493,7 @@ fn setup_array_builtins(
           )
           if @runtime.is_truthy(val) {
             @runtime.create_data_property_or_throw(interp, a, to, el)
-            to += 1
+            to += 1L
           }
         }
       }
@@ -514,7 +514,7 @@ fn setup_array_builtins(
       }
       let loc = @token.Loc::default()
       let mut acc : Value = Undefined
-      let mut k = 0
+      let mut k = 0L
       if args.length() > 1 {
         acc = args[1]
       } else {
@@ -523,11 +523,11 @@ fn setup_array_builtins(
         while k < len {
           if @runtime.has_array_like_element(interp, o, k) {
             acc = @runtime.get_array_like_element_interp(interp, o, k)
-            k = k + 1
+            k = k + 1L
             k_present = true
             break
           }
-          k = k + 1
+          k = k + 1L
         }
         if !k_present {
           raise @errors.TypeError(
@@ -549,7 +549,7 @@ fn setup_array_builtins(
             loc,
           )
         }
-        k = k + 1
+        k = k + 1L
       }
       acc
     },
@@ -568,20 +568,20 @@ fn setup_array_builtins(
       }
       let loc = @token.Loc::default()
       let mut acc : Value = Undefined
-      let mut k = len - 1
+      let mut k = len - 1L
       if args.length() > 1 {
         acc = args[1]
       } else {
         // Per spec: find last present element as initial value (searching right to left)
         let mut k_present = false
-        while k >= 0 {
+        while k >= 0L {
           if @runtime.has_array_like_element(interp, o, k) {
             acc = @runtime.get_array_like_element_interp(interp, o, k)
-            k = k - 1
+            k = k - 1L
             k_present = true
             break
           }
-          k = k - 1
+          k = k - 1L
         }
         if !k_present {
           raise @errors.TypeError(
@@ -589,7 +589,7 @@ fn setup_array_builtins(
           )
         }
       }
-      while k >= 0 {
+      while k >= 0L {
         if @runtime.has_array_like_element(interp, o, k) {
           acc = interp.call_value(
             callback,
@@ -603,7 +603,7 @@ fn setup_array_builtins(
             loc,
           )
         }
-        k = k - 1
+        k = k - 1L
       }
       acc
     },
@@ -622,7 +622,7 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -651,7 +651,7 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -680,7 +680,7 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      for i = len - 1; i >= 0; i = i - 1 {
+      for i = len - 1L; i >= 0L; i = i - 1L {
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -709,7 +709,7 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      for i = len - 1; i >= 0; i = i - 1 {
+      for i = len - 1L; i >= 0L; i = i - 1L {
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -738,7 +738,7 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
@@ -772,7 +772,7 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         if @runtime.has_array_like_element(interp, o, i) {
           let val = interp.call_value(
             callback,
@@ -817,11 +817,11 @@ fn setup_array_builtins(
       let elements = @runtime.to_array_like_elements(o)
       let flat_result : Array[Value] = []
       @runtime.flatten_array_val(elements, depth, flat_result)
-      let a = @runtime.array_species_create(interp, o, 0)
+      let a = @runtime.array_species_create(interp, o, 0L)
       for i, val in flat_result {
-        @runtime.create_data_property_or_throw(interp, a, i, val)
+        @runtime.create_data_property_or_throw(interp, a, i.to_int64(), val)
       }
-      @runtime.set_array_like_length(a, flat_result.length())
+      @runtime.set_array_like_length(a, flat_result.length().to_int64())
       a
     },
   )
@@ -839,9 +839,9 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 1 { args[1] } else { Undefined }
       let loc = @token.Loc::default()
-      let a = @runtime.array_species_create(interp, o, 0)
-      let mut n = 0
-      for i = 0; i < len; i = i + 1 {
+      let a = @runtime.array_species_create(interp, o, 0L)
+      let mut n = 0L
+      for i = 0L; i < len; i = i + 1L {
         let el = @runtime.get_array_like_element_interp(interp, o, i)
         let val = interp.call_value(
           callback,
@@ -853,11 +853,11 @@ fn setup_array_builtins(
           Array(inner) =>
             for item in inner.elements {
               @runtime.create_data_property_or_throw(interp, a, n, item)
-              n += 1
+              n += 1L
             }
           _ => {
             @runtime.create_data_property_or_throw(interp, a, n, val)
-            n += 1
+            n += 1L
           }
         }
       }
@@ -890,8 +890,9 @@ fn setup_array_builtins(
     fn(interp, this_val, _args) raise {
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
+      array_mutator_require_array_create_length(len)
       let result : Array[Value] = []
-      for i = len - 1; i >= 0; i = i - 1 {
+      for i = len - 1L; i >= 0L; i = i - 1L {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
       @runtime.make_array(result)
@@ -916,8 +917,9 @@ fn setup_array_builtins(
       }
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
+      array_mutator_require_array_create_length(len)
       let result : Array[Value] = []
-      for i in 0..<len {
+      for i = 0L; i < len; i = i + 1L {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
       if args.length() > 0 {
@@ -1025,23 +1027,23 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let len = @runtime.to_array_like_length_interp(o, interp)
       let mut start = if args.length() > 0 {
-        interp.to_number(args[0]).to_int()
+        array_mutator_to_integer_index(interp, args[0])
       } else {
-        0
+        0L
       }
-      if start < 0 {
+      if start < 0L {
         start = len + start
-        if start < 0 {
-          start = 0
+        if start < 0L {
+          start = 0L
         }
       }
       if start > len {
         start = len
       }
       let del_count = if args.length() > 1 {
-        let d = interp.to_number(args[1]).to_int()
-        if d < 0 {
-          0
+        let d = array_mutator_to_integer_index(interp, args[1])
+        if d < 0L {
+          0L
         } else if d > len - start {
           len - start
         } else {
@@ -1050,14 +1052,24 @@ fn setup_array_builtins(
       } else {
         len - start
       }
+      let insert_count = if args.length() > 2 {
+        (args.length() - 2).to_int64()
+      } else {
+        0L
+      }
+      let new_len = len - del_count + insert_count
+      if new_len > ARRAY_MAX_SAFE_LENGTH_I64 {
+        raise @errors.TypeError(message="Invalid array length")
+      }
+      array_mutator_require_array_create_length(new_len)
       let result : Array[Value] = []
-      for i = 0; i < start; i = i + 1 {
+      for i = 0L; i < start; i = i + 1L {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
       for i = 2; i < args.length(); i = i + 1 {
         result.push(args[i])
       }
-      for i = start + del_count; i < len; i = i + 1 {
+      for i = start + del_count; i < len; i = i + 1L {
         result.push(@runtime.get_array_like_element_interp(interp, o, i))
       }
       @runtime.make_array(result)
@@ -1069,18 +1081,19 @@ fn setup_array_builtins(
     fn(interp, this_val, args) raise {
       let o = to_object(this_val, interp)
       let idx = if args.length() > 0 {
-        interp.to_number(args[0]).to_int()
+        array_mutator_to_integer_index(interp, args[0])
       } else {
-        0
+        0L
       }
       let value = if args.length() > 1 { args[1] } else { Undefined }
       let len = @runtime.to_array_like_length_interp(o, interp)
-      let actual_idx = if idx < 0 { len + idx } else { idx }
-      if actual_idx < 0 || actual_idx >= len {
+      let actual_idx = if idx < 0L { len + idx } else { idx }
+      if actual_idx < 0L || actual_idx >= len {
         raise @errors.RangeError(message="Invalid index")
       }
+      array_mutator_require_array_create_length(len)
       let result : Array[Value] = []
-      for i = 0; i < len; i = i + 1 {
+      for i = 0L; i < len; i = i + 1L {
         if i == actual_idx {
           result.push(value)
         } else {
@@ -1237,7 +1250,7 @@ fn setup_array_builtins(
         }
         let iterator = interp.call_value(iterator_method, source, [], loc)
         let next_method = interp.get_iterator_next_method(iterator, loc)
-        let mut k = 0
+        let mut k = 0L
         while true {
           let iter_result = match
             interp.iterator_step_result(iterator, next_method, loc) {
@@ -1263,7 +1276,7 @@ fn setup_array_builtins(
             None => value
           }
           elements.push(mapped)
-          k = k + 1
+          k = k + 1L
         }
       }
       if !used_iterator {
@@ -1304,7 +1317,7 @@ fn setup_array_builtins(
           _ => {
             let o = to_object(source, interp)
             let len = @runtime.to_array_like_length_interp(o, interp)
-            for i = 0; i < len; i = i + 1 {
+            for i = 0L; i < len; i = i + 1L {
               let el = interp.get_property(o, i.to_string(), loc)
               let mapped = match map_fn {
                 Some(fn_val) =>
@@ -1401,7 +1414,8 @@ fn setup_array_builtins(
                 // avoid OOM for pathological inputs; lengths above the cap are
                 // tracked in ArrayData.bag so arr.length still
                 // reports the correct value.
-                let elements : Array[Value] = if len64 <= 10000000L {
+                let elements : Array[Value] = if len64 <=
+                  ARRAY_DENSE_MATERIALIZE_LIMIT_I64 {
                   Array::make(len64.to_int(), Undefined)
                 } else {
                   []

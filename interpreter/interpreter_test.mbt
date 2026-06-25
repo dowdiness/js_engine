@@ -16457,6 +16457,56 @@ test "B.2: Array length set huge via defineProperty stays sparse" {
 }
 
 ///|
+test "array defineProperty sparse Int64 index stays sparse" {
+  let src =
+    #|var arr = [];
+    #|console.log(Reflect.defineProperty(arr, "2147483647", { value: "tail", configurable: true }));
+    #|console.log(arr.length);
+    #|console.log(arr["2147483647"]);
+    #|console.log(arr[0]);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "2147483648", "tail", "undefined"])
+}
+
+///|
+test "array defineProperty below non-writable Int64 length succeeds" {
+  let src =
+    #|var arr = [];
+    #|Object.defineProperty(arr, "length", { value: 3000000000 });
+    #|Object.defineProperty(arr, "length", { writable: false });
+    #|console.log(Reflect.defineProperty(arr, "0", { value: 1, configurable: true }));
+    #|console.log(arr[0]);
+    #|console.log(arr.length);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "1", "3000000000"])
+}
+
+///|
+test "array ownKeys orders sparse Int64 index before length" {
+  let src =
+    #|var arr = [];
+    #|arr[0] = "zero";
+    #|Reflect.defineProperty(arr, "2147483648", { value: "tail", configurable: true });
+    #|arr.name = "named";
+    #|console.log(Reflect.ownKeys(arr).join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=["0|2147483648|length|name"])
+}
+
+///|
+test "array dense assignment updates stale sparse length override" {
+  let src =
+    #|var arr = [];
+    #|Object.defineProperty(arr, "length", { value: 150000 });
+    #|arr[99999] = 1;
+    #|arr[150000] = 2;
+    #|console.log(arr.length);
+    #|console.log(arr[150000]);
+  let output = run_output(src)
+  json_inspect(output, content=["150001", "2"])
+}
+
+///|
 /// IteratorClose: iterator.return() called when for-of body throws (ForOfStmt)
 test "IteratorClose: body throw calls iterator return (ForOfStmt)" {
   let src =
@@ -19042,4 +19092,51 @@ test "Object.setPrototypeOf handles Map, Set, and Promise receivers (#452)" {
     "true", "true", "true", "true", "true", "true", "true", "TypeError", "TypeError",
     "true", "undefined", "true", "undefined", "true", "true",
   ])
+}
+
+///|
+test "array includes uses Int64 ToLength and fromIndex near max safe integer" {
+  let src =
+    #|var obj = {
+    #|  "9007199254740990": "needle",
+    #|  length: 9007199254740991
+    #|};
+    #|console.log(Array.prototype.includes.call(obj, "needle", 9007199254740990));
+    #|console.log(Array.prototype.includes.call(obj, "missing", 9007199254740990));
+    #|
+  let output = run_output(src)
+  json_inspect(output, content=["true", "false"])
+}
+
+///|
+test "array slice copies sparse properties near max safe integer" {
+  let src =
+    #|var obj = {
+    #|  "9007199254740989": "a",
+    #|  "9007199254740990": "b",
+    #|  length: 9007199254740993
+    #|};
+    #|var result = Array.prototype.slice.call(obj, 9007199254740989);
+    #|console.log(result.length);
+    #|console.log(result[0] + "," + result[1]);
+    #|
+  let output = run_output(src)
+  json_inspect(output, content=["2", "a,b"])
+}
+
+///|
+test "array toSpliced clamps ToLength before copying high sparse tail" {
+  let src =
+    #|var obj = {
+    #|  "9007199254740989": "a",
+    #|  "9007199254740990": "b",
+    #|  "9007199254740991": "ignored",
+    #|  length: 9007199254741012
+    #|};
+    #|var result = Array.prototype.toSpliced.call(obj, 0, 9007199254740989);
+    #|console.log(result.length);
+    #|console.log(result[0] + "," + result[1]);
+    #|
+  let output = run_output(src)
+  json_inspect(output, content=["2", "a,b"])
 }
