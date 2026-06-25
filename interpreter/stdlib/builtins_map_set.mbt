@@ -28,10 +28,7 @@ fn get_map_lookup_prototype(
   data : MapData,
   realm_state : @runtime.RealmState,
 ) -> Value {
-  match data.prototype {
-    Null => realm_state.get_map_proto()
-    proto => proto
-  }
+  data.prototype.unwrap_or_else(fn() { realm_state.get_map_proto() })
 }
 
 ///|
@@ -39,10 +36,7 @@ fn get_set_lookup_prototype(
   data : SetData,
   realm_state : @runtime.RealmState,
 ) -> Value {
-  match data.prototype {
-    Null => realm_state.get_set_proto()
-    proto => proto
-  }
+  data.prototype.unwrap_or_else(fn() { realm_state.get_set_proto() })
 }
 
 ///|
@@ -716,7 +710,7 @@ fn setup_map_builtins(
         )
       }
       let new_map : Value = Value::Map(
-        @runtime.MapData([], prototype=map_proto),
+        @runtime.MapData([], prototype=Some(map_proto)),
       )
       let loc = @token.Loc::default()
 
@@ -895,7 +889,7 @@ fn setup_map_builtins(
           for i, key in group_keys {
             entries.push((key, @runtime.make_array(group_arrays[i])))
           }
-          Value::Map(@runtime.MapData(entries, prototype=map_proto))
+          Value::Map(@runtime.MapData(entries, prototype=Some(map_proto)))
         },
       )
       ctor_data.bag.descriptors["groupBy"] = {
@@ -1267,7 +1261,10 @@ fn setup_set_builtins(
         }
       }
       Value::Set(
-        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+        @runtime.SetData(
+          result_values,
+          prototype=Some(realm_state.get_set_proto()),
+        ),
       )
     },
   )
@@ -1350,7 +1347,10 @@ fn setup_set_builtins(
         }
       }
       Value::Set(
-        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+        @runtime.SetData(
+          result_values,
+          prototype=Some(realm_state.get_set_proto()),
+        ),
       )
     },
   )
@@ -1442,7 +1442,10 @@ fn setup_set_builtins(
         }
       }
       Value::Set(
-        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+        @runtime.SetData(
+          result_values,
+          prototype=Some(realm_state.get_set_proto()),
+        ),
       )
     },
   )
@@ -1509,7 +1512,10 @@ fn setup_set_builtins(
         }
       }
       Value::Set(
-        @runtime.SetData(result_values, prototype=realm_state.get_set_proto()),
+        @runtime.SetData(
+          result_values,
+          prototype=Some(realm_state.get_set_proto()),
+        ),
       )
     },
   )
@@ -1777,7 +1783,7 @@ fn setup_set_builtins(
         )
       }
       let new_set : Value = Value::Set(
-        @runtime.SetData([], prototype=set_proto),
+        @runtime.SetData([], prototype=Some(set_proto)),
       )
       let loc = @token.Loc::default()
 

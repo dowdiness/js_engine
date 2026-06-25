@@ -775,18 +775,12 @@ pub fn Interpreter::has_property(
 
 ///|
 fn map_target_prototype(realm_state : RealmState, data : MapData) -> Value {
-  match data.prototype {
-    Null => realm_state.get_map_proto()
-    proto => proto
-  }
+  data.prototype.unwrap_or_else(fn() { realm_state.get_map_proto() })
 }
 
 ///|
 fn set_target_prototype(realm_state : RealmState, data : SetData) -> Value {
-  match data.prototype {
-    Null => realm_state.get_set_proto()
-    proto => proto
-  }
+  data.prototype.unwrap_or_else(fn() { realm_state.get_set_proto() })
 }
 
 ///|
@@ -794,10 +788,7 @@ fn promise_target_prototype(
   realm_state : RealmState,
   data : PromiseData,
 ) -> Value {
-  match data.prototype {
-    Null => realm_state.get_promise_proto()
-    proto => proto
-  }
+  data.prototype.unwrap_or_else(fn() { realm_state.get_promise_proto() })
 }
 
 ///|

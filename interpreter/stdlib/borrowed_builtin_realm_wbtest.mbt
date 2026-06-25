@@ -212,12 +212,12 @@ test "borrowed Object.getPrototypeOf uses target prototype for object exotics" {
     ),
     (
       "Map exotic",
-      Map(MapData([], prototype=realm_b.realm_state.get_map_proto())),
+      Map(MapData([], prototype=Some(realm_b.realm_state.get_map_proto()))),
       realm_b.realm_state.get_map_proto(),
     ),
     (
       "Set exotic",
-      Set(SetData([], prototype=realm_b.realm_state.get_set_proto())),
+      Set(SetData([], prototype=Some(realm_b.realm_state.get_set_proto()))),
       realm_b.realm_state.get_set_proto(),
     ),
     (

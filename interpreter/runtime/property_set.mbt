@@ -582,7 +582,7 @@ pub fn Interpreter::set_property(
         obj,
         receiver,
         data.bag,
-        data.prototype,
+        data.prototype.unwrap_or_else(fn() { self.realm_state.get_map_proto() }),
         prop,
         value,
         loc,
@@ -593,7 +593,7 @@ pub fn Interpreter::set_property(
         obj,
         receiver,
         data.bag,
-        data.prototype,
+        data.prototype.unwrap_or_else(fn() { self.realm_state.get_set_proto() }),
         prop,
         value,
         loc,
@@ -648,10 +648,7 @@ fn Interpreter::promise_instance_prototype_for_set(
   self : Interpreter,
   data : PromiseData,
 ) -> Value {
-  match data.prototype {
-    Null => self.realm_state.get_promise_proto()
-    proto => proto
-  }
+  data.prototype.unwrap_or_else(fn() { self.realm_state.get_promise_proto() })
 }
 
 ///|
@@ -667,8 +664,14 @@ fn Interpreter::next_map_set_walk_prototype(
           self.realm_state.get_array_proto(),
         ),
       )
-    Map(data) => Some(data.prototype)
-    Set(data) => Some(data.prototype)
+    Map(data) =>
+      Some(
+        data.prototype.unwrap_or_else(fn() { self.realm_state.get_map_proto() }),
+      )
+    Set(data) =>
+      Some(
+        data.prototype.unwrap_or_else(fn() { self.realm_state.get_set_proto() }),
+      )
     Promise(data) => Some(self.promise_instance_prototype_for_set(data))
     _ => None
   }
@@ -1729,14 +1732,17 @@ pub fn Interpreter::set_computed_property(
           value
         }
       }
-    Map(data) =>
+    Map(data) => {
+      let map_proto = data.prototype.unwrap_or_else(fn() {
+        self.realm_state.get_map_proto()
+      })
       match key {
         Symbol(sym) =>
           self.set_symbol_on_map_set_expando(
             obj,
             receiver,
             data.bag,
-            data.prototype,
+            map_proto,
             sym,
             value,
             loc,
@@ -1748,7 +1754,7 @@ pub fn Interpreter::set_computed_property(
             obj,
             receiver,
             data.bag,
-            data.prototype,
+            map_proto,
             prop,
             value,
             loc,
@@ -1756,14 +1762,18 @@ pub fn Interpreter::set_computed_property(
           )
         }
       }
-    Set(data) =>
+    }
+    Set(data) => {
+      let set_proto = data.prototype.unwrap_or_else(fn() {
+        self.realm_state.get_set_proto()
+      })
       match key {
         Symbol(sym) =>
           self.set_symbol_on_map_set_expando(
             obj,
             receiver,
             data.bag,
-            data.prototype,
+            set_proto,
             sym,
             value,
             loc,
@@ -1775,7 +1785,7 @@ pub fn Interpreter::set_computed_property(
             obj,
             receiver,
             data.bag,
-            data.prototype,
+            set_proto,
             prop,
             value,
             loc,
@@ -1783,6 +1793,7 @@ pub fn Interpreter::set_computed_property(
           )
         }
       }
+    }
     Array(data) => {
       if !strict_equal(obj, receiver) {
         return self.define_value_on_receiver(receiver, key, value, loc, strict)

@@ -314,7 +314,8 @@ pub(all) struct MapData {
   entries : Array[(Value, Value)] // Array of (key, value) pairs
   entry_ids : Array[Int] // Stable record identities for live-iteration semantics
   mut next_entry_id : Int
-  mut prototype : Value
+  // None = use realm's Map.prototype; Some(Null) = explicit null; Some(v) = override
+  mut prototype : Value?
   // Expando properties: stores instance fields from subclasses (class D extends Map)
   bag : PropertyBag
 }
@@ -323,7 +324,7 @@ pub(all) struct MapData {
 /// Construct MapData with entries and an empty property bag (no expando properties).
 pub fn MapData::MapData(
   entries : Array[(Value, Value)],
-  prototype? : Value = Null,
+  prototype? : Value? = None,
 ) -> MapData {
   let entry_ids : Array[Int] = []
   for i in 0..<entries.length() {
@@ -354,7 +355,8 @@ pub(all) struct SetData {
   // a nested for..of that exhausts inside a forEach body checks iteration_depth>0
   // to avoid compacting while the forEach cursor is still walking.
   mut iteration_depth : Int
-  mut prototype : Value
+  // None = use realm's Set.prototype; Some(Null) = explicit null; Some(v) = override
+  mut prototype : Value?
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
 }
@@ -363,7 +365,7 @@ pub(all) struct SetData {
 /// Construct SetData with values and an empty property bag (no expando properties).
 pub fn SetData::SetData(
   values : Array[Value],
-  prototype? : Value = Null,
+  prototype? : Value? = None,
 ) -> SetData {
   {
     values,
@@ -419,7 +421,8 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction] // Called when rejected
   mut is_handled : Bool // Whether .catch or second arg to .then was provided
   bag : PropertyBag
-  mut prototype : Value // [[Prototype]] for promise instance
+  // None = use realm's Promise.prototype; Some(Null) = explicit null; Some(v) = override
+  mut prototype : Value?
 }
 
 ///|
@@ -432,7 +435,7 @@ pub fn new_promise_data() -> PromiseData {
     reject_reactions: [],
     is_handled: false,
     bag: PropertyBag(),
-    prototype: Null,
+    prototype: None,
   }
 }
 

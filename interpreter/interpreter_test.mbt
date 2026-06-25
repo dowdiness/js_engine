@@ -18973,3 +18973,73 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
     "true", "true", "false", "false", "true", "false",
   ])
 }
+
+///|
+// Positive control: Array null prototype detaches the chain. Oracle for #452.
+test "Object.setPrototypeOf(array, null) detaches array prototype chain" {
+  let output = run_output(
+    (
+      #|var arr = [];
+      #|Object.setPrototypeOf(arr, null);
+      #|console.log(Object.getPrototypeOf(arr) === null);
+      #|console.log(typeof arr.map);
+    ),
+  )
+  json_inspect(output, content=["true", "undefined"])
+}
+
+///|
+// Object.setPrototypeOf must update the internal prototype slot for Map, Set,
+// and Promise receivers (#452). It must also accept any object-typed value as
+// the proto argument, not only Object(_) / Proxy(_) / Null \u2014 aligning with the
+// broader validation already used by Object.create (issue #452).
+test "Object.setPrototypeOf handles Map, Set, and Promise receivers (#452)" {
+  let src =
+    #|// Map receiver: prototype slot updated, readable back via getPrototypeOf
+    #|var mapProto = { mapMethod: true };
+    #|var m = new Map();
+    #|Object.setPrototypeOf(m, mapProto);
+    #|console.log(Object.getPrototypeOf(m) === mapProto);
+    #|console.log(m.mapMethod);
+    #|// Set receiver
+    #|var setProto = { setMethod: true };
+    #|var s = new Set();
+    #|Object.setPrototypeOf(s, setProto);
+    #|console.log(Object.getPrototypeOf(s) === setProto);
+    #|console.log(s.setMethod);
+    #|// Promise receiver
+    #|var pProto = { promiseMethod: true };
+    #|var p = Promise.resolve(1);
+    #|Object.setPrototypeOf(p, pProto);
+    #|console.log(Object.getPrototypeOf(p) === pProto);
+    #|console.log(p.promiseMethod);
+    #|// Object.setPrototypeOf returns the object itself (\u00A720.1.2.22 step 5)
+    #|var s2 = new Set();
+    #|console.log(Object.setPrototypeOf(s2, {}) === s2);
+    #|// Invalid primitive proto still throws (on any receiver)
+    #|try { Object.setPrototypeOf({}, 42); } catch(e) { console.log(e.name); }
+    #|try { Object.setPrototypeOf({}, "x"); } catch(e) { console.log(e.name); }
+    #|// null proto detaches the chain (acceptance criterion from badge track)
+    #|var m2 = new Map();
+    #|Object.setPrototypeOf(m2, null);
+    #|console.log(Object.getPrototypeOf(m2) === null);
+    #|console.log(typeof m2.has);
+    #|var s3 = new Set();
+    #|s3.__proto__ = null;
+    #|console.log(Object.getPrototypeOf(s3) === null);
+    #|console.log(typeof s3.has);
+    #|// Object-valued proto: Array, Map, Set used as the *prototype argument*
+    #|var arr = [];
+    #|var o1 = {};
+    #|Object.setPrototypeOf(o1, arr);
+    #|console.log(Object.getPrototypeOf(o1) === arr);
+    #|var mapAsProto = new Map();
+    #|var o2 = {};
+    #|Object.setPrototypeOf(o2, mapAsProto);
+    #|console.log(Object.getPrototypeOf(o2) === mapAsProto);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "TypeError", "TypeError",
+    "true", "undefined", "true", "undefined", "true", "true",
+  ])
+}

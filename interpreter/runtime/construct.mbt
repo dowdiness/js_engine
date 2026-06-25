@@ -64,9 +64,9 @@ fn set_derived_instance_prototype(
       match super_result {
         Object(data) => data.prototype = proto
         Array(data) => set_array_prototype_override(data, proto)
-        Map(data) => data.prototype = proto
-        Set(data) => data.prototype = proto
-        Promise(data) => data.prototype = proto
+        Map(data) => data.prototype = Some(proto)
+        Set(data) => data.prototype = Some(proto)
+        Promise(data) => data.prototype = Some(proto)
         _ => ()
       }
     None => ()
