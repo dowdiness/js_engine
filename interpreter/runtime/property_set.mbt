@@ -698,7 +698,7 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
         match
           self.check_inherited_string_property_value(
             current,
-            proto_data.prototype,
+            self.promise_instance_prototype_for_set(proto_data),
             receiver,
             prop,
             value,
@@ -717,6 +717,17 @@ fn Interpreter::set_string_via_map_set_prototype_chain(
     }
   }
   None
+}
+
+///|
+fn Interpreter::promise_instance_prototype_for_set(
+  self : Interpreter,
+  data : PromiseData,
+) -> Value {
+  match data.prototype {
+    Null => self.realm_state.get_promise_proto()
+    proto => proto
+  }
 }
 
 ///|
@@ -903,7 +914,7 @@ fn Interpreter::set_symbol_via_map_set_prototype_chain(
         match
           self.check_inherited_symbol_property_value(
             current,
-            proto_data.prototype,
+            self.promise_instance_prototype_for_set(proto_data),
             receiver,
             sym,
             value,

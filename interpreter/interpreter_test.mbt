@@ -1416,6 +1416,49 @@ test "Map/Set assignment stops at inherited array own descriptors" {
 }
 
 ///|
+test "Map/Set assignment walks Promise prototype fallback" {
+  let src =
+    #|try {
+    #|  var hits = [];
+    #|  Object.defineProperty(Promise.prototype, "__t449_promise_setter", {
+    #|    set: function(v) { hits.push(this === activeMap ? "map:" + v : "bad"); },
+    #|    configurable: true
+    #|  });
+    #|  Object.defineProperty(Promise.prototype, "__t449_promise_blocker", {
+    #|    get: function() { return 5; },
+    #|    configurable: true
+    #|  });
+    #|  var promiseProto = Promise.resolve(0);
+    #|  class M extends Map {}
+    #|  Object.setPrototypeOf(M.prototype, Object.create(promiseProto));
+    #|  var activeMap = new M();
+    #|  activeMap.__t449_promise_setter = 7;
+    #|  console.log(JSON.stringify(hits));
+    #|  console.log(JSON.stringify(Reflect.ownKeys(activeMap)));
+    #|
+    #|  class S extends Set {}
+    #|  Object.setPrototypeOf(S.prototype, Object.create(promiseProto));
+    #|  var s = new S();
+    #|  s.__t449_promise_blocker = 9;
+    #|  console.log(JSON.stringify(Reflect.ownKeys(s)));
+    #|  try {
+    #|    (function() {
+    #|      "use strict";
+    #|      var strictSet = new S();
+    #|      strictSet.__t449_promise_blocker = 10;
+    #|    })();
+    #|  } catch (e) {
+    #|    console.log(e.name);
+    #|  }
+    #|} finally {
+    #|  delete Promise.prototype.__t449_promise_setter;
+    #|  delete Promise.prototype.__t449_promise_blocker;
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["[\"map:7\"]", "[]", "[]", "TypeError"])
+}
+
+///|
 test "Annex B __proto__ setter ignores primitive prototype values" {
   let src =
     #|var obj = {};
