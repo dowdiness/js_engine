@@ -1935,6 +1935,35 @@ test "untagged template with invalid escape inside tagged substitution throws Sy
   )
 }
 
+///|
+test "tagged template invalid hex escape cooked undefined raw preserved" {
+  let src =
+    #|function tag(s) { return typeof s[0] + '|' + s.raw[0]; }
+    #|tag`\xZZ`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "undefined|\\xZZ", "\\xZZ: cooked undefined, raw preserves",
+  )
+}
+
+///|
+test "tagged template invalid unicode escape cooked undefined raw preserved" {
+  let src =
+    #|function tag(s) { return typeof s[0] + '|' + s.raw[0]; }
+    #|tag`\uZZZZ`;
+  let (_, result) = run_js(src)
+  expect_value_string(
+    result, "undefined|\\uZZZZ", "\\uZZZZ: cooked undefined, raw preserves",
+  )
+}
+
+///|
+test "tagged template raw normalizes CRLF to LF" {
+  let src = "function tag(s) { return s.raw[0]; }\ntag`line1\r\nline2`"
+  let (_, result) = run_js(src)
+  expect_value_string(result, "line1\nline2", "raw: \\r\\n normalized to \\n")
+}
+
 // ====== Phase 2: Arrow Functions ======
 
 ///|
