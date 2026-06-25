@@ -682,10 +682,10 @@ pub(all) struct MapData {
   entries : Array[(Value, Value)]
   entry_ids : Array[Int]
   mut next_entry_id : Int
-  mut prototype : Value
+  mut prototype : Value?
   bag : PropertyBag
 }
-pub fn MapData::MapData(Array[(Value, Value)], prototype? : Value) -> Self
+pub fn MapData::MapData(Array[(Value, Value)], prototype? : Value?) -> Self
 
 pub(all) struct Microtask {
   callback : Value
@@ -727,7 +727,7 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction]
   mut is_handled : Bool
   bag : PropertyBag
-  mut prototype : Value
+  mut prototype : Value?
 }
 
 pub(all) struct PromiseReaction {
@@ -854,10 +854,10 @@ pub(all) struct SetData {
   values : Array[Value]
   mut tombstones : @set.Set[Int]?
   mut iteration_depth : Int
-  mut prototype : Value
+  mut prototype : Value?
   bag : PropertyBag
 }
-pub fn SetData::SetData(Array[Value], prototype? : Value) -> Self
+pub fn SetData::SetData(Array[Value], prototype? : Value?) -> Self
 pub fn SetData::effective_size(Self) -> Int
 
 pub(all) enum Signal {

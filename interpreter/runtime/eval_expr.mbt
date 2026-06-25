@@ -156,9 +156,9 @@ fn apply_super_return_prototype(super_result : Value, this_val : Value) -> Unit 
       match super_result {
         Object(data) => data.prototype = proto
         Array(data) => set_array_prototype_override(data, proto)
-        Map(data) => data.prototype = proto
-        Set(data) => data.prototype = proto
-        Promise(data) => data.prototype = proto
+        Map(data) => data.prototype = Some(proto)
+        Set(data) => data.prototype = Some(proto)
+        Promise(data) => data.prototype = Some(proto)
         _ => ()
       }
     None => ()
@@ -2463,20 +2463,13 @@ pub fn instanceof_prototype_chain(
         None => interp.realm_state.get_array_proto()
       }
     Map(data) =>
-      match data.prototype {
-        Null => interp.realm_state.get_map_proto()
-        proto => proto
-      }
+      data.prototype.unwrap_or_else(fn() { interp.realm_state.get_map_proto() })
     Set(data) =>
-      match data.prototype {
-        Null => interp.realm_state.get_set_proto()
-        proto => proto
-      }
+      data.prototype.unwrap_or_else(fn() { interp.realm_state.get_set_proto() })
     Promise(data) =>
-      match data.prototype {
-        Null => interp.realm_state.get_promise_proto()
-        proto => proto
-      }
+      data.prototype.unwrap_or_else(fn() {
+        interp.realm_state.get_promise_proto()
+      })
     // Invoke the [[GetPrototypeOf]] trap so Proxy handler can intercept
     Proxy(proxy_data) => proxy_get_prototype_of(interp, proxy_data)
     // Primitive values are never instances

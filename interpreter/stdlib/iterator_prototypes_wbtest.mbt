@@ -146,7 +146,7 @@ test "map and set method lookup uses active realm state without rehoming direct 
     _ => ()
   }
   match map_data.prototype {
-    Null => ()
+    None => ()
     _ => fail("direct MapData lookup should not mutate prototype")
   }
   match get_map_method(map_data, "entries", shifted_realm) {
@@ -154,7 +154,7 @@ test "map and set method lookup uses active realm state without rehoming direct 
     _ => ()
   }
   match map_data.prototype {
-    Null => ()
+    None => ()
     _ => fail("shifted direct MapData lookup should not mutate prototype")
   }
   match default_realm.map_prototype.val {
@@ -167,7 +167,10 @@ test "map and set method lookup uses active realm state without rehoming direct 
         extensible: true,
         arraybuffer_state: None,
       })
-      let derived_map_data = @runtime.MapData([], prototype=derived_map_proto)
+      let derived_map_data = @runtime.MapData(
+        [],
+        prototype=Some(derived_map_proto),
+      )
       match get_map_method(derived_map_data, "entries", default_realm) {
         Undefined => fail("expected inherited Map.prototype.entries method")
         _ => ()
@@ -183,7 +186,7 @@ test "map and set method lookup uses active realm state without rehoming direct 
     _ => ()
   }
   match set_data.prototype {
-    Null => ()
+    None => ()
     _ => fail("direct SetData lookup should not mutate prototype")
   }
   match get_set_method(set_data, "values", shifted_realm) {
@@ -191,7 +194,7 @@ test "map and set method lookup uses active realm state without rehoming direct 
     _ => ()
   }
   match set_data.prototype {
-    Null => ()
+    None => ()
     _ => fail("shifted direct SetData lookup should not mutate prototype")
   }
   match default_realm.set_prototype.val {
@@ -204,7 +207,10 @@ test "map and set method lookup uses active realm state without rehoming direct 
         extensible: true,
         arraybuffer_state: None,
       })
-      let derived_set_data = @runtime.SetData([], prototype=derived_set_proto)
+      let derived_set_data = @runtime.SetData(
+        [],
+        prototype=Some(derived_set_proto),
+      )
       match get_set_method(derived_set_data, "values", default_realm) {
         Undefined => fail("expected inherited Set.prototype.values method")
         _ => ()

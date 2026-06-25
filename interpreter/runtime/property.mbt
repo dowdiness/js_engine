@@ -221,10 +221,9 @@ fn Interpreter::get_property_impl(
         Some(v) => return v
         None => ()
       }
-      let proto = match data.prototype {
-        Null => self.realm_state.get_map_proto()
-        proto => proto
-      }
+      let proto = data.prototype.unwrap_or_else(fn() {
+        self.realm_state.get_map_proto()
+      })
       self.get_property_from_prototype(obj, proto, prop, loc)
     }
     Set(data) => {
@@ -241,10 +240,9 @@ fn Interpreter::get_property_impl(
         Some(v) => return v
         None => ()
       }
-      let proto = match data.prototype {
-        Null => self.realm_state.get_set_proto()
-        proto => proto
-      }
+      let proto = data.prototype.unwrap_or_else(fn() {
+        self.realm_state.get_set_proto()
+      })
       self.get_property_from_prototype(obj, proto, prop, loc)
     }
     Promise(data) => {
@@ -261,10 +259,9 @@ fn Interpreter::get_property_impl(
         Some(v) => return v
         None => ()
       }
-      let proto = match data.prototype {
-        Null => self.realm_state.get_promise_proto()
-        proto => proto
-      }
+      let proto = data.prototype.unwrap_or_else(fn() {
+        self.realm_state.get_promise_proto()
+      })
       self.get_property_from_prototype(obj, proto, prop, loc)
     }
     Null =>
@@ -1031,10 +1028,9 @@ fn Interpreter::get_computed_property_impl(
             Some(v) => return v
             None => ()
           }
-          let proto = match data.prototype {
-            Null => self.realm_state.get_promise_proto()
-            proto => proto
-          }
+          let proto = data.prototype.unwrap_or_else(fn() {
+            self.realm_state.get_promise_proto()
+          })
           return self.get_symbol_property_from_prototype(obj, proto, sym, loc)
         }
         Symbol(_) => {

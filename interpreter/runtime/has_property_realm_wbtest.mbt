@@ -14,7 +14,7 @@ test "has_property_key uses target Map prototype, not active callee realm" {
     interp.realm_state,
     FunctionRealmProtos(map_proto=Some(active_proto)),
   )
-  let target = Map(MapData([], prototype=target_proto))
+  let target = Map(MapData([], prototype=Some(target_proto)))
   assert_true(interp.has_property_key(target, String_("marker")))
 }
 
@@ -27,7 +27,7 @@ test "has_property_key uses target Set prototype, not active callee realm" {
     interp.realm_state,
     FunctionRealmProtos(set_proto=Some(active_proto)),
   )
-  let target = Set(SetData([], prototype=target_proto))
+  let target = Set(SetData([], prototype=Some(target_proto)))
   assert_true(interp.has_property_key(target, String_("marker")))
 }
 

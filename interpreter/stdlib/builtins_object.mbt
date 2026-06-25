@@ -14,10 +14,7 @@ fn promise_instance_prototype(
   interp : Interpreter,
   data : PromiseData,
 ) -> Value {
-  match data.prototype {
-    Null => interp.realm_state.get_promise_proto()
-    proto => proto
-  }
+  data.prototype.unwrap_or_else(fn() { interp.realm_state.get_promise_proto() })
 }
 
 ///|
@@ -517,15 +514,13 @@ pub fn setup_object_builtins(
         Symbol(_) =>
           @runtime.get_symbol_proto(realm_state=Some(interp.realm_state))
         Map(data) =>
-          match data.prototype {
-            Null => interp.realm_state.get_map_proto()
-            proto => proto
-          }
+          data.prototype.unwrap_or_else(fn() {
+            interp.realm_state.get_map_proto()
+          })
         Set(data) =>
-          match data.prototype {
-            Null => interp.realm_state.get_set_proto()
-            proto => proto
-          }
+          data.prototype.unwrap_or_else(fn() {
+            interp.realm_state.get_set_proto()
+          })
         Promise(data) => promise_instance_prototype(interp, data)
         _ => interp.realm_state.get_obj_proto()
       }
@@ -551,8 +546,8 @@ pub fn setup_object_builtins(
           data.prototype = proto
         }
         Array(data) => @runtime.set_array_prototype_override(data, proto)
-        Map(data) => data.prototype = proto
-        Set(data) => data.prototype = proto
+        Map(data) => data.prototype = Some(proto)
+        Set(data) => data.prototype = Some(proto)
         Value::Proxy(proxy_data) => {
           let success = @runtime.proxy_set_prototype_of(
             interp, proxy_data, proto,
@@ -1061,15 +1056,13 @@ pub fn setup_object_builtins(
                     realm_state=Some(interp.realm_state),
                   )
                 Map(data) =>
-                  match data.prototype {
-                    Null => interp.realm_state.get_map_proto()
-                    proto => proto
-                  }
+                  data.prototype.unwrap_or_else(fn() {
+                    interp.realm_state.get_map_proto()
+                  })
                 Set(data) =>
-                  match data.prototype {
-                    Null => interp.realm_state.get_set_proto()
-                    proto => proto
-                  }
+                  data.prototype.unwrap_or_else(fn() {
+                    interp.realm_state.get_set_proto()
+                  })
                 Promise(data) => promise_instance_prototype(interp, data)
                 Value::Proxy(proxy_data) =>
                   @runtime.proxy_get_prototype_of(interp, proxy_data)
@@ -1149,9 +1142,9 @@ pub fn setup_object_builtins(
                   }
                 Array(data) =>
                   @runtime.set_array_prototype_override(data, proto)
-                Map(data) => data.prototype = proto
-                Set(data) => data.prototype = proto
-                Promise(data) => data.prototype = proto
+                Map(data) => data.prototype = Some(proto)
+                Set(data) => data.prototype = Some(proto)
+                Promise(data) => data.prototype = Some(proto)
                 _ => ()
               }
               obj

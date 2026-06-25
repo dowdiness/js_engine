@@ -1188,7 +1188,7 @@ pub fn setup_promise(
         // Create new promise
         let promise_data = @runtime.new_promise_data()
         if @runtime.is_object_value(new_target_proto) {
-          promise_data.prototype = new_target_proto
+          promise_data.prototype = Some(new_target_proto)
         }
         let promise = Value::Promise(promise_data)
 

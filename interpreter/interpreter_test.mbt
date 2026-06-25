@@ -18975,6 +18975,20 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
 }
 
 ///|
+// Positive control: Array null prototype detaches the chain. Oracle for #452.
+test "Object.setPrototypeOf(array, null) detaches array prototype chain" {
+  let output = run_output(
+    (
+      #|var arr = [];
+      #|Object.setPrototypeOf(arr, null);
+      #|console.log(Object.getPrototypeOf(arr) === null);
+      #|console.log(typeof arr.map);
+    ),
+  )
+  json_inspect(output, content=["true", "undefined"])
+}
+
+///|
 // Object.setPrototypeOf must update the internal prototype slot for Map, Set,
 // and Promise receivers (#452). It must also accept any object-typed value as
 // the proto argument, not only Object(_) / Proxy(_) / Null \u2014 aligning with the
@@ -19005,6 +19019,15 @@ test "Object.setPrototypeOf handles Map, Set, and Promise receivers (#452)" {
     #|// Invalid primitive proto still throws (on any receiver)
     #|try { Object.setPrototypeOf({}, 42); } catch(e) { console.log(e.name); }
     #|try { Object.setPrototypeOf({}, "x"); } catch(e) { console.log(e.name); }
+    #|// null proto detaches the chain (acceptance criterion from badge track)
+    #|var m2 = new Map();
+    #|Object.setPrototypeOf(m2, null);
+    #|console.log(Object.getPrototypeOf(m2) === null);
+    #|console.log(typeof m2.has);
+    #|var s3 = new Set();
+    #|s3.__proto__ = null;
+    #|console.log(Object.getPrototypeOf(s3) === null);
+    #|console.log(typeof s3.has);
     #|// Object-valued proto: Array, Map, Set used as the *prototype argument*
     #|var arr = [];
     #|var o1 = {};
@@ -19017,6 +19040,6 @@ test "Object.setPrototypeOf handles Map, Set, and Promise receivers (#452)" {
   let output = run_output(src)
   json_inspect(output, content=[
     "true", "true", "true", "true", "true", "true", "true", "TypeError", "TypeError",
-    "true", "true",
+    "true", "undefined", "true", "undefined", "true", "true",
   ])
 }
