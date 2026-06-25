@@ -16683,6 +16683,44 @@ test "TypedArray Set receiver and prototype numeric semantics" {
 }
 
 ///|
+/// Map/Set instances use a collection-specific prototype walk before writing
+/// expandos. If that walk sees a TypedArray with an own integer-index
+/// descriptor, it must stop there and land on the collection receiver instead
+/// of continuing to a higher setter.
+test "Map and Set prototype Set walk stops at TypedArray integer index" {
+  let src =
+    #|const log = [];
+    #|const blocker = {};
+    #|Object.defineProperty(blocker, "0", {
+    #|  set(v) { log.push("setter:" + v); }
+    #|});
+    #|
+    #|const mapProtoStop = new Uint8Array([7]);
+    #|Object.setPrototypeOf(mapProtoStop, blocker);
+    #|class M extends Map {}
+    #|Object.setPrototypeOf(M.prototype, mapProtoStop);
+    #|const m = new M();
+    #|m[0] = 42;
+    #|console.log(log.length);
+    #|console.log(m[0]);
+    #|console.log(mapProtoStop[0]);
+    #|console.log(Object.getOwnPropertyDescriptor(m, "0").value);
+    #|
+    #|const setProtoStop = new Uint8Array([8]);
+    #|Object.setPrototypeOf(setProtoStop, blocker);
+    #|class S extends Set {}
+    #|Object.setPrototypeOf(S.prototype, setProtoStop);
+    #|const s = new S();
+    #|s[0] = 43;
+    #|console.log(log.length);
+    #|console.log(s[0]);
+    #|console.log(setProtoStop[0]);
+    #|console.log(Object.getOwnPropertyDescriptor(s, "0").value);
+  let output = run_output(src)
+  json_inspect(output, content=["0", "42", "7", "42", "0", "43", "8", "43"])
+}
+
+///|
 /// §10.4.5.2 [[HasProperty]]: canonical numeric index strings are handled by
 /// IntegerIndexedExoticObject before falling through to OrdinaryHasProperty.
 test "TypedArray Reflect.has numeric keys bypass prototype chain" {

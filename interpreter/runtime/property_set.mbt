@@ -829,8 +829,8 @@ fn Interpreter::check_inherited_string_property_value(
   loc : @token.Loc,
   strict : Bool,
 ) -> InheritedStringSetResult raise Error {
-  match ordinary_get_own_property(owner, String_(prop)) {
-    Some(desc) =>
+  match self.get_own_property(owner, String_(prop)) {
+    Some((desc, _)) =>
       match desc.setter {
         Some(setter) => {
           let _ = self.call_value(setter, receiver, [value], loc)
