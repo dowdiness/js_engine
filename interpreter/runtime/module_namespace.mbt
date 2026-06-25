@@ -2,22 +2,17 @@
 const MODULE_NAMESPACE_OBJECT_KEY = "[[NamespaceObject]]"
 
 ///|
-const MODULE_NAMESPACE_EXPORT_VALUE_KEY = "[[ExportValue]]"
-
-///|
 const MODULE_NAMESPACE_CACHE_CLASS = "ModuleNamespaceCache"
 
 ///|
 fn make_module_namespace_cache(ns_obj : Value) -> Value {
-  let slots : Map[String, Value] = {}
-  slots[MODULE_NAMESPACE_OBJECT_KEY] = ns_obj
   Object({
     bag: {
       properties: {},
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: slots,
+      internal_slots: Map::from_array([(NamespaceObject, ns_obj)]),
     },
     prototype: Null,
     callable: None,
@@ -32,16 +27,16 @@ fn make_module_namespace_cache_with_export(
   ns_obj : Value,
   export_value : Value,
 ) -> Value {
-  let slots : Map[String, Value] = {}
-  slots[MODULE_NAMESPACE_OBJECT_KEY] = ns_obj
-  slots[MODULE_NAMESPACE_EXPORT_VALUE_KEY] = export_value
   Object({
     bag: {
       properties: {},
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: slots,
+      internal_slots: Map::from_array([
+        (NamespaceObject, ns_obj),
+        (ExportValue, export_value),
+      ]),
     },
     prototype: Null,
     callable: None,
@@ -55,7 +50,7 @@ fn make_module_namespace_cache_with_export(
 fn module_namespace_cached_value(value : Value) -> Value? {
   match value {
     Object(data) if data.class_name == MODULE_NAMESPACE_CACHE_CLASS =>
-      data.bag.internal_slots.get(MODULE_NAMESPACE_OBJECT_KEY)
+      data.bag.internal_slots.get(NamespaceObject)
     _ => None
   }
 }
@@ -64,7 +59,7 @@ fn module_namespace_cached_value(value : Value) -> Value? {
 fn module_namespace_public_export_value(value : Value) -> Value? {
   match value {
     Object(data) if data.class_name == MODULE_NAMESPACE_CACHE_CLASS =>
-      data.bag.internal_slots.get(MODULE_NAMESPACE_EXPORT_VALUE_KEY)
+      data.bag.internal_slots.get(ExportValue)
     _ => None
   }
 }
@@ -119,7 +114,7 @@ fn make_module_tdz_marker(export_name : String) -> Value {
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: { "[[ExportName]]": String_(export_name) },
+      internal_slots: Map::from_array([(ExportName, String_(export_name))]),
     },
     prototype: Null,
     callable: None,
@@ -185,7 +180,7 @@ fn resolve_module_export_value(value : Value) -> Value raise Error {
   }
   match value {
     Object(data) if data.class_name == "ModuleTDZ" => {
-      let export_name = match data.bag.internal_slots.get("[[ExportName]]") {
+      let export_name = match data.bag.internal_slots.get(ExportName) {
         Some(String_(name)) => name
         _ => "export"
       }

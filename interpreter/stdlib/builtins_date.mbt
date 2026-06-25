@@ -681,7 +681,7 @@ fn get_date_value(this_val : Value) -> Double raise Error {
   match this_val {
     Object(data) =>
       if data.class_name == "Date" {
-        match data.bag.internal_slots.get("[[DateValue]]") {
+        match data.bag.internal_slots.get(@runtime.DateValue) {
           Some(Value::Number(v)) => v
           _ => 0.0 / 0.0
         }
@@ -698,7 +698,7 @@ fn set_date_value(this_val : Value, v : Double) -> Unit raise Error {
   match this_val {
     Object(data) =>
       if data.class_name == "Date" {
-        data.bag.internal_slots["[[DateValue]]"] = Value::Number(v)
+        data.bag.internal_slots[@runtime.DateValue] = Value::Number(v)
       } else {
         raise @errors.TypeError(message="this is not a Date object")
       }
@@ -715,7 +715,7 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
       symbol_properties: {},
       descriptors: {},
       symbol_descriptors: {},
-      internal_slots: { "[[DateValue]]": Value::Number(t) },
+      internal_slots: Map::from_array([(@runtime.DateValue, Value::Number(t))]),
     },
     prototype: date_proto,
     callable: None,
@@ -1751,7 +1751,7 @@ pub fn setup_date_builtins(
         is_accessor: false,
       }
       // Also store [[DateValue]] on proto for "Invalid Date" default
-      data.bag.internal_slots["[[DateValue]]"] = Value::Number(0.0 / 0.0)
+      data.bag.internal_slots[@runtime.DateValue] = Value::Number(0.0 / 0.0)
     }
     _ => ()
   }

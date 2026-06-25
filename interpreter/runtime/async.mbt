@@ -18,9 +18,9 @@ fn Interpreter::make_async_function(
     Some(n) => n
     None => ""
   }
-  let internal_slots : Map[String, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = {}
   match source_text {
-    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
   }
   let nf_desc : PropDescriptor = {
@@ -88,9 +88,9 @@ fn Interpreter::make_async_function_ext(
     Some(n) => n
     None => ""
   }
-  let internal_slots : Map[String, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = {}
   match source_text {
-    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
   }
   let nf_desc : PropDescriptor = {
@@ -503,9 +503,9 @@ fn make_async_gen_function_inner(
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
   fn_props["length"] = Number(func_length.to_double())
-  let internal_slots : Map[String, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = {}
   match source_text {
-    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
   }
   let nf_desc : PropDescriptor = {

@@ -380,9 +380,9 @@ fn Interpreter::make_generator_function(
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
   fn_props["length"] = Number(params.length().to_double())
-  let internal_slots : Map[String, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = {}
   match source_text {
-    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
   }
   let nf_desc : PropDescriptor = {
@@ -480,9 +480,9 @@ fn Interpreter::make_generator_function_ext(
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
   fn_props["length"] = Number(expected_arg_count.to_double())
-  let internal_slots : Map[String, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = {}
   match source_text {
-    Some(text) => internal_slots["[[SourceText]]"] = String_(text)
+    Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
   }
   let nf_desc : PropDescriptor = {

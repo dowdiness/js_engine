@@ -20,7 +20,7 @@ fn callable_source_text(data : @runtime.ObjectData) -> String? {
     Some(ClassConstructor({ source_text, .. })) => source_text
     Some(InterpreterCallable(_, _))
     | Some(InterpreterCallableWithContext(_, _)) =>
-      match data.bag.internal_slots.get("[[SourceText]]") {
+      match data.bag.internal_slots.get(@runtime.SourceText) {
         Some(String_(text)) => Some(text)
         _ => None
       }

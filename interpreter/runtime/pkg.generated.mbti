@@ -135,7 +135,11 @@ pub fn get_proxy_trap(ProxyData, String, Interpreter) -> Value? raise
 
 pub fn get_set_proto(realm_state? : RealmState?) -> Value
 
+pub fn get_source_text(ObjectData) -> Value?
+
 pub fn get_string_proto(realm_state? : RealmState?) -> Value
+
+pub fn get_symbol_data(ObjectData) -> Value?
 
 pub fn get_symbol_proto(realm_state? : RealmState?) -> Value
 
@@ -579,6 +583,26 @@ pub(all) struct HostEnv {
   module_loader : ModuleLoader?
 }
 
+pub(all) enum InternalSlotKey {
+  StringData
+  NumberData
+  BooleanData
+  SymbolData
+  PrimitiveValue
+  ArrayLength
+  TypedArrayName
+  ViewedArrayBuffer
+  ArrayBufferID
+  ByteOffset
+  ByteLength
+  ArrayBufferByteLength
+  DateValue
+  ExportName
+  NamespaceObject
+  ExportValue
+  SourceText
+} derive(Eq, Hash, @debug.Debug)
+
 pub(all) struct Interpreter {
   host : HostEnv
   global : Environment
@@ -738,7 +762,7 @@ pub(all) struct PropertyBag {
   symbol_properties : Map[Int, Value]
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor]
-  internal_slots : Map[String, Value]
+  internal_slots : Map[InternalSlotKey, Value]
 }
 pub fn PropertyBag::PropertyBag() -> Self
 
