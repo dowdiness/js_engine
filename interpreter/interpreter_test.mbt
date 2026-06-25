@@ -467,6 +467,38 @@ test "loose equality null/undefined" {
 }
 
 ///|
+test "loose equality object valueOf returns primitive" {
+  let src =
+    #|console.log({valueOf: function() { return 1; }} == 1);
+    #|console.log({valueOf: function() { return "hello"; }} == "hello");
+    #|console.log(1 == {valueOf: function() { return 1; }});
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
+test "loose equality object valueOf called exactly once" {
+  let src =
+    #|var count = 0;
+    #|var obj = { valueOf: function() { count++; return 1; } };
+    #|var result = obj == 1;
+    #|console.log(result);
+    #|console.log(count);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "1"])
+}
+
+///|
+test "loose equality toPrimitive throw propagates" {
+  let src =
+    #|var obj = {};
+    #|obj[Symbol.toPrimitive] = function() { throw new Error("bang"); };
+    #|try { var r = (obj == 1); console.log("no throw"); } catch(e) { console.log("threw:" + e.message); }
+  let output = run_output(src)
+  json_inspect(output, content=["threw:bang"])
+}
+
+///|
 test "logical operators short-circuit" {
   let output = run_output(
     "console.log(false && 42); console.log(true || 42); console.log(0 || \"default\")",
