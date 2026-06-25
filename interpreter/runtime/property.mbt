@@ -959,7 +959,9 @@ fn Interpreter::get_computed_property_impl(
                 }
               }
             }
-            _ => ()
+            Null | Undefined => ()
+            proto_val =>
+              return self.get_computed_property(proto_val, Symbol(sym), loc)
           }
           return Undefined
         }
