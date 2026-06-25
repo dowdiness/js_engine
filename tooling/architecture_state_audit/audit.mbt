@@ -297,7 +297,7 @@ fn render_report(
     }
     stderr_lines.push("")
     stderr_lines.push(
-      "Classify intentionally retained state in CLASSIFIED_MUTABLE_STATE, or move it behind Interpreter/HostEnv/RealmState ownership.",
+      "Classify intentionally retained state in CLASSIFIED_MUTABLE_STATE, or move it behind Interpreter/HostEnv/RealmState/ExecContext ownership or another explicit state record.",
     )
     (stdout_lines, stderr_lines, 1)
   } else {

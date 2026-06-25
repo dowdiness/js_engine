@@ -97,6 +97,7 @@ pub(all) struct Interpreter {
   generator_objects : Map[Int, GeneratorObject] // live generator instances keyed by ID
   gen_id_counter : Ref[Int] // monotonically increasing ID for new generator instances
   // Compatibility access to realm_state.symbols for existing runtime/stdlib code.
+  // This is an alias, not a second symbol-state owner.
   symbols : SymbolState
   // Stdlib dispatch hooks — populated by the wiring layer in the root package
   mut stdlib_hooks : StdlibHooks
@@ -105,7 +106,9 @@ pub(all) struct Interpreter {
   // SyntaxError if its var names conflict with this frame's parameter-scope
   // names (and non-arrow `arguments`). Reset to false on every function entry
   // so nested IIFEs / arrows / recursive calls don't inherit the outer frame's
-  // default-eval state.
+  // default-eval state. This is Interpreter-owned transient frame state;
+  // future per-evaluation facts should prefer ExecContext or a named frame
+  // record over module-level mutable state.
   mut in_nonarrow_param_default_eval : Bool
   mut param_default_eval_var_conflicts : @set.Set[String]?
 }

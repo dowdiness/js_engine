@@ -24,7 +24,7 @@ Confirmed current state:
   boundary audit, representation-access audit, and surface-taxonomy audit.
 - The architecture audit currently passes after refreshing the representation
   inventory: 73 local imports, 2 allowlisted import debts, 1294 classified
-  representation-access sites, 13 generated-interface packages, 597 public
+  representation-access sites, 13 generated-interface packages, 600 public
   symbols, and 12 package-defaulted symbols.
 - The representation-access count is a **classified debt baseline**, not a
   resolved boundary. It should shrink as Stages 7-12 replace direct
@@ -955,24 +955,20 @@ Completed or present baseline:
    Stage 7 remains incomplete until the relevant direct representation access is
    retired from the audit inventory.
 
-Recommended next PR-sized slices from this baseline:
+Canonical sequence tracker: [#392](https://github.com/dowdiness/js_engine/issues/392).
+Use that issue for PR order and boundary intent; keep detailed design here.
 
-1. **Keep tracking current.** Update stale architecture issue/doc text whenever
-   an audit or harness milestone is already present. Do not open duplicate
-   tracking issues when an existing tracker can be updated.
-2. **Closure-conversion label/freeze.** Ensure docs, CLI help, tests, and
-   benchmarks consistently mark closure conversion as legacy experimental; no
-   semantic changes.
-3. **Static-semantics preparation seed.** Advance #331/#332-style preparation
-   work: make preparation inputs explicit and keep products pure/inspectable.
-4. **Early-error preparation slice.** Move one validation family only after
-   source-location and error-ordering tests are in place.
-5. **Declaration-facts slice.** Extract pure declaration/name collection while
-   leaving environment mutation in runtime.
-6. **Next runtime-operation retirement slice.** Choose one operation family whose
-   migration can remove concrete entries from
-   `scripts/architecture_representation_access.json`; the audit should shrink or
-   the PR should explain why it does not.
+Current PR-sized sequence from this baseline:
+
+1. **PR1 — #245 state ownership audit.** Verify mutable runtime and stdlib
+   state remains owned by explicit interpreter, realm, host, environment,
+   execution-context, or feature records. The state audit inventory should stay
+   empty.
+2. **PR2 — #307 Int64 length/index migration.** Move `ToLength`/`ToIndex` and
+   related length/index semantics to a spec-sized representation after the state
+   ownership audit lands.
+3. **PR3 — #439 typed environment markers.** Conditional follow-up only if
+   marker pressure grows enough that string marker keys become active debt.
 
 Each PR should include:
 

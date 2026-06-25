@@ -30,6 +30,7 @@ lag the code. Start with [design/README.md](design/README.md) for the design-fol
 - [SELF_HOST_JS_RESEARCH.md](design/SELF_HOST_JS_RESEARCH.md) — self-hosting analysis (compiling the engine to JS)
 - [architecture-redesign-2026-06-12.md](design/architecture-redesign-2026-06-12.md) — current first-principles architecture redesign findings
 - [architecture-execution-plan-2026-06-12.md](design/architecture-execution-plan-2026-06-12.md) — staged execution contract for the current redesign
+- [runtime-state-ownership-audit-2026-06-25.md](design/runtime-state-ownership-audit-2026-06-25.md) — concrete runtime/stdlib mutable-state owner map for #245
 - [architecture-stage0-implementation-spec-2026-06-12.md](design/architecture-stage0-implementation-spec-2026-06-12.md) — concrete Stage 0 guardrail/inventory implementation specs
 - [architecture-redesign-2026-05-19.md](design/architecture-redesign-2026-05-19.md) — migration record for realm state ownership, runtime surface control, and execution boundaries
 - [architecture-redesign-2026-04-17-probes.md](design/architecture-redesign-2026-04-17-probes.md) — exploratory sizing probes for earlier restructuring work
