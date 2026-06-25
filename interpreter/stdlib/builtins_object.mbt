@@ -1107,7 +1107,13 @@ pub fn setup_object_builtins(
                 _ => ()
               }
               match proto {
-                Object(_) | Proxy(_) | Null => ()
+                Object(_)
+                | Array(_)
+                | Map(_)
+                | Set(_)
+                | Promise(_)
+                | Proxy(_)
+                | Null => ()
                 _ =>
                   raise @errors.TypeError(
                     message="Object prototype may only be an Object or null",
@@ -1143,6 +1149,9 @@ pub fn setup_object_builtins(
                   }
                 Array(data) =>
                   @runtime.set_array_prototype_override(data, proto)
+                Map(data) => data.prototype = proto
+                Set(data) => data.prototype = proto
+                Promise(data) => data.prototype = proto
                 _ => ()
               }
               obj
