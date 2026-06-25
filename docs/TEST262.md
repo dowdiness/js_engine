@@ -302,15 +302,17 @@ python3 scripts/test262_feature_gap.py --ext-config /path/to/external-config.ini
 make test262-feature-gap EXT_CONFIG=/path/to/external-config.ini
 ```
 
-The script parses the `[features]` section of the external config (an INI-style
-file where each line inside `[features]` is a supported feature name) and
-compares it against `scripts/test262_skip_metadata.json`.  It produces a
-Markdown report with three sections:
+The script parses the `[features]` section of the external config.  It handles
+both bare feature tokens (external config runs those tests) and `feature=skip`
+entries (external config explicitly skips those tests), then compares against
+`scripts/test262_skip_metadata.json`.  It produces a Markdown report with these
+sections:
 
 - **Features we skip that the external config runs** — implementation gaps;
   highest planning value.
-- **Features both configs skip** — features not listed as supported by either
-  side.
+- **Features we skip that the external config does not run** — split into two
+  sub-sections: features explicitly skipped by both configs (`feature=skip`
+  entries), and features we skip that aren't mentioned in the external config.
 - **Features the external config runs that we also run** — no gap; included for
   completeness.
 
