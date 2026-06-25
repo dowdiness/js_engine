@@ -1,4 +1,4 @@
-.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report unicode-tables unicode-tables-mbt clean
+.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 
@@ -184,6 +184,18 @@ test262-skip-report:
 	python3 scripts/test262_skip_report.py \
 		--metadata scripts/test262_skip_metadata.json \
 		--output docs/test262-skip-report.md
+
+# Compare this repo's skip metadata against an external Test262 feature config.
+# Pass EXT_CONFIG=/path/to/config.ini; output goes to docs/test262-feature-gap.md.
+# This is a planning signal only — it does not run tests or report pass rates.
+test262-feature-gap:
+	python3 scripts/test262_feature_gap.py \
+		--ext-config $(EXT_CONFIG) \
+		--output docs/test262-feature-gap.md
+
+# Run Python unit tests for the feature-gap comparison script.
+test262-feature-gap-test:
+	python3 -m unittest scripts/test_test262_feature_gap.py -v
 
 # Regenerate lexer/unicode_id.mbt from DerivedCoreProperties.txt.
 # Pass UNICODE_VERSION=X.Y.Z to target a specific Unicode release (default: 17.0.0).
