@@ -533,6 +533,16 @@ test "loose equality array toString fallback when valueOf returns object" {
 }
 
 ///|
+test "loose equality array no callable toString raises TypeError" {
+  let src =
+    #|var a = [];
+    #|a.toString = null;
+    #|try { var r = (a == ""); console.log("no throw"); } catch(e) { console.log("threw:" + e.constructor.name); }
+  let output = run_output(src)
+  json_inspect(output, content=["threw:TypeError"])
+}
+
+///|
 test "logical operators short-circuit" {
   let output = run_output(
     "console.log(false && 42); console.log(true || 42); console.log(0 || \"default\")",

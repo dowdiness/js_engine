@@ -521,10 +521,14 @@ fn to_primitive_default_array(
         }
         return result
       }
+      // Both methods exhausted without a primitive result (§7.1.1.1 step 3).
+      raise @errors.TypeError(
+        message="Cannot convert object to primitive value",
+      )
     }
     None => ()
   }
-  // interp=None fallback: join elements directly.
+  // interp=None fallback: join elements directly (no context to dispatch JS methods).
   String_(to_js_string(arr_val, interp~))
 }
 
