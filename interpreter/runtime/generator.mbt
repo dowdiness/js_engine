@@ -106,40 +106,82 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 }
 
 ///|
-/// Returns true if `c` is a JavaScript identifier character (word char or $).
-fn is_js_id_char(c : Char) -> Bool {
-  (c >= 'a' && c <= 'z') ||
-  (c >= 'A' && c <= 'Z') ||
-  (c >= '0' && c <= '9') ||
-  c == '_' ||
-  c == '$'
+/// §20.2.1.1.1 step 17a: Returns true if expr contains a YieldExpression at
+/// any level, stopping at nested function boundaries (which have their own
+/// generator context and may use yield freely).
+fn expr_contains_yield(expr : @ast.Expr) -> Bool {
+  match expr {
+    YieldExpr(_, _, _) => true
+    Binary(_, a, b, _) => expr_contains_yield(a) || expr_contains_yield(b)
+    Unary(_, e, _)
+    | UpdateExpr(_, e, _, _)
+    | Grouping(e, _)
+    | SpreadExpr(e, _) => expr_contains_yield(e)
+    Assign(_, e, _) => expr_contains_yield(e)
+    MemberAssign(obj, _, val, _) =>
+      expr_contains_yield(obj) || expr_contains_yield(val)
+    ComputedAssign(obj, key, val, _) =>
+      expr_contains_yield(obj) ||
+      expr_contains_yield(key) ||
+      expr_contains_yield(val)
+    CompoundAssign(_, a, b, _)
+    | Comma(a, b, _)
+    | WebCompatCallAssign(a, b, _) =>
+      expr_contains_yield(a) || expr_contains_yield(b)
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
+      expr_contains_yield(obj)
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) =>
+      expr_contains_yield(obj) || expr_contains_yield(key)
+    SuperComputedMember(e, _) => expr_contains_yield(e)
+    Ternary(cond, t, f, _) =>
+      expr_contains_yield(cond) ||
+      expr_contains_yield(t) ||
+      expr_contains_yield(f)
+    Call(f, args, _) | NewExpr(f, args, _) | OptionalCall(f, args, _) =>
+      expr_contains_yield(f) ||
+      args.iter().any(fn(a) { expr_contains_yield(a) })
+    SuperCall(args, _) => args.iter().any(fn(a) { expr_contains_yield(a) })
+    ArrayLit(elems, _) => elems.iter().any(fn(e) { expr_contains_yield(e) })
+    ObjectLit(props, _) =>
+      props
+      .iter()
+      .any(fn(p) { expr_contains_yield(p.key) || expr_contains_yield(p.value) })
+    TemplateLit(_, exprs, _) =>
+      exprs.iter().any(fn(e) { expr_contains_yield(e) })
+    TaggedTemplate(tag, _, exprs, _) =>
+      expr_contains_yield(tag) ||
+      exprs.iter().any(fn(e) { expr_contains_yield(e) })
+    DestructureAssign(_, rhs, _) => expr_contains_yield(rhs)
+    // Nested function boundaries — yield inside is not the outer generator's
+    FuncExpr(_, _, _, _, _)
+    | FuncExprExt(_, _, _, _, _, _)
+    | GeneratorExpr(_, _, _, _, _)
+    | GeneratorExprExt(_, _, _, _, _, _)
+    | AsyncFuncExpr(_, _, _, _, _)
+    | AsyncFuncExprExt(_, _, _, _, _, _)
+    | AsyncArrowFunc(_, _, _, _)
+    | AsyncArrowFuncExt(_, _, _, _, _)
+    | AsyncGeneratorExpr(_, _, _, _, _)
+    | AsyncGeneratorExprExt(_, _, _, _, _, _)
+    | ArrowFunc(_, _, _, _)
+    | ArrowFuncExt(_, _, _, _, _)
+    | ClassExpr(_, _, _, _, _) => false
+    _ => false
+  }
 }
 
 ///|
-/// §20.2.1.1.1 step 17a: Returns true if the params source text contains `yield`
-/// as a standalone keyword (not part of a longer identifier like `yield_value`).
-/// The parser does not push generator context for params, so `yield` in defaults
-/// is parsed as an identifier — we must check the raw source text instead.
-fn params_str_has_yield_keyword(s : String) -> Bool {
-  let chars = s.to_array()
-  let n = chars.length()
-  let mut i = 0
-  while i < n {
-    if i + 5 <= n &&
-      chars[i] == 'y' &&
-      chars[i + 1] == 'i' &&
-      chars[i + 2] == 'e' &&
-      chars[i + 3] == 'l' &&
-      chars[i + 4] == 'd' {
-      let before_ok = i == 0 || !is_js_id_char(chars[i - 1])
-      let after_ok = i + 5 == n || !is_js_id_char(chars[i + 5])
-      if before_ok && after_ok {
-        return true
-      }
+fn params_contain_yield(params : Array[@ast.Param]) -> Bool {
+  params
+  .iter()
+  .any(fn(p) {
+    match p.default_val {
+      Some(expr) => expr_contains_yield(expr)
+      None => false
     }
-    i = i + 1
-  }
-  false
+  })
 }
 
 ///|
@@ -296,14 +338,6 @@ pub fn setup_generator_function_constructor(
         }
       }
       let params_str = param_parts.join(",")
-      // §20.2.1.1.1 step 17a: generator params must not contain YieldExpression.
-      // The parser treats `yield` as an identifier in params (not in generator
-      // context), so check the raw params source text for the yield keyword.
-      if params_str_has_yield_keyword(params_str) {
-        raise @errors.SyntaxError(
-          message="Generator function parameters may not contain yield expressions",
-        )
-      }
       let source = "function* anonymous(" +
         params_str +
         "\n) {\n" +
@@ -327,6 +361,14 @@ pub fn setup_generator_function_constructor(
             )
           }
           GeneratorDeclExt(_, params, rest_param, body, _, source_text) => {
+            // §20.2.1.1.1 step 17a: YieldExpression in generator params → SyntaxError.
+            // The parser now enters generator context for params, so `yield` in
+            // default values is parsed as YieldExpr and caught here via AST walk.
+            if params_contain_yield(params) {
+              raise @errors.SyntaxError(
+                message="Generator function parameters may not contain yield expressions",
+              )
+            }
             let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params_ext(params, rest_param, body)
             interp.validate_block_early_errors(body, body_strict)

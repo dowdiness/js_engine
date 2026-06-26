@@ -175,6 +175,11 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
   let _ = self.expect(Star) // consume *
   let name = self.expect_ident()
   let saved_pos = self.pos
+  // §15.5.1: params and body share generator context so that `yield` in
+  // default-parameter expressions is parsed as YieldExpression, enabling
+  // the §20.2.1.1.1 step 17a Contains check via the AST.
+  self.push_generator_context(true)
+  self.push_async_context(false)
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
       if msg == "REST_PARAM_FOUND" ||
@@ -182,8 +187,7 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
         let (ext_params, rest_param) = self.parse_params_ext()
-        self.push_generator_context(true)
-        self.push_async_context(false)
+        // Context already pushed; parse body within the same context.
         let body = self.parse_block_body()
         self.pop_async_context()
         self.pop_generator_context()
@@ -196,12 +200,16 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
           self.consume_source_text(tok.loc.offset),
         )
       } else {
+        self.pop_async_context()
+        self.pop_generator_context()
         raise @errors.SyntaxError(message=msg)
       }
-    e => raise e
+    e => {
+      self.pop_async_context()
+      self.pop_generator_context()
+      raise e
+    }
   }
-  self.push_generator_context(true)
-  self.push_async_context(false)
   let body = self.parse_block_body()
   self.pop_async_context()
   self.pop_generator_context()
