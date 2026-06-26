@@ -1,118 +1,17 @@
 ///|
 pub fn get_array_method(
-  data : ArrayData,
-  prop : String,
-  realm_state : @runtime.RealmState,
+  _data : ArrayData,
+  _prop : String,
+  _realm_state : @runtime.RealmState,
 ) -> Value {
-  match prop {
-    "push" | "pop" | "shift" | "unshift" => Undefined // Delegated to Array.prototype (overrides and indexed [[Set]]/[[Get]]/[[Delete]])
-    "join" => {
-      let arr = data
-      @runtime.make_native_func(name="join", realm_state=Some(realm_state), fn(
-        args,
-      ) {
-        let sep = if args.length() > 0 {
-          match args[0] {
-            Undefined => ","
-            v => v.to_string()
-          }
-        } else {
-          ","
-        }
-        let parts : Array[String] = arr.elements.map(fn(v) {
-          match v {
-            Null | Undefined => ""
-            _ => v.to_string()
-          }
-        })
-        Value::String_(parts.join(sep))
-      })
-    }
-    "indexOf" | "lastIndexOf" => Undefined // Delegated to Array.prototype (hole handling)
-    "includes" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="includes",
-        realm_state=Some(realm_state),
-        fn(interp, _this_val, args) raise {
-          let search = if args.length() > 0 { args[0] } else { Undefined }
-          let from_idx = if args.length() > 1 {
-            interp.to_number(args[1]).to_int()
-          } else {
-            0
-          }
-          let len = arr.elements.length()
-          let start = if from_idx < 0 {
-            let s = len + from_idx
-            if s < 0 {
-              0
-            } else {
-              s
-            }
-          } else {
-            from_idx
-          }
-          for i = start; i < len; i = i + 1 {
-            if same_value_zero(arr.elements[i], search) {
-              return Value::Bool(true)
-            }
-          }
-          Value::Bool(false)
-        },
-      )
-    }
-    "slice" | "concat" => Undefined // Delegated to Array.prototype (species support)
-    "reverse" | "fill" => Undefined // Delegated to Array.prototype (indexed [[Set]]/[[Delete]] + length-writable)
-    "toString" => {
-      let arr = data
-      @runtime.make_native_func(
-        name="toString",
-        realm_state=Some(realm_state),
-        fn(_args) {
-          let parts : Array[String] = arr.elements.map(fn(v) {
-            match v {
-              Null | Undefined => ""
-              _ => v.to_string()
-            }
-          })
-          Value::String_(parts.join(","))
-        },
-      )
-    }
-    "at" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="at",
-        realm_state=Some(realm_state),
-        fn(interp, _this_val, args) raise {
-          // Array.prototype.at() - access element at index (supports negative)
-          let idx = if args.length() > 0 {
-            interp.to_number(args[0]).to_int()
-          } else {
-            0
-          }
-          let len = arr.elements.length()
-          let actual_idx = if idx < 0 { len + idx } else { idx }
-          if actual_idx >= 0 && actual_idx < len {
-            arr.elements[actual_idx]
-          } else {
-            Undefined
-          }
-        },
-      )
-    }
-    "copyWithin" | "sort" => Undefined // Delegated to Array.prototype (indexed [[Set]]/[[Delete]] + length-writable)
-    "entries" | "keys" | "values" => Undefined // Delegated to Array.prototype (iterator method overrides)
-    "splice" => Undefined // Delegated to Array.prototype (species support)
-    _ => Undefined
-  }
+  Undefined // All methods delegated to Array.prototype
 }
 
 ///|
 pub fn get_array_method_with_interp(
-  data : ArrayData,
+  _data : ArrayData,
   prop : String,
-  realm_state : @runtime.RealmState,
+  _realm_state : @runtime.RealmState,
 ) -> Value {
   match prop {
     "join" | "toString" => Undefined // Delegated to Array.prototype (live join)
@@ -126,7 +25,7 @@ pub fn get_array_method_with_interp(
     "toReversed" | "toSorted" | "toSpliced" | "with" => Undefined // Delegated to Array.prototype (copy-by-value methods)
     "flat" | "flatMap" => Undefined // Delegated to Array.prototype (species support)
     "concat" => Undefined // Delegated to Array.prototype (species support)
-    _ => get_array_method(data, prop, realm_state)
+    _ => Undefined
   }
 }
 
