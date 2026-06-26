@@ -1758,6 +1758,67 @@ fn Interpreter::hoist_declarations(
   param_source? : Environment? = None,
 ) -> Unit raise Error {
   let is_global = physical_equal(env, _self.global)
+  // §15.1.11 GlobalDeclarationInstantiation pre-check: verify all declarations
+  // are definable before creating any bindings (spec steps 9-12). This ensures
+  // TypeError is thrown atomically with no partial binding creation.
+  if is_global {
+    match _self.global_this {
+      Object(data) => {
+        let declared_function_names : @set.Set[String] = @set.Set::default()
+        // Steps 9-10: CanDeclareGlobalFunction for each function declaration
+        for pre_stmt in stmts {
+          let fname : String? = match pre_stmt {
+            FuncDecl(name, _, _, _, _) => Some(name)
+            FuncDeclExt(name, _, _, _, _, _) => Some(name)
+            GeneratorDecl(name, _, _, _, _) => Some(name)
+            GeneratorDeclExt(name, _, _, _, _, _) => Some(name)
+            AsyncFuncDecl(name, _, _, _, _) => Some(name)
+            AsyncFuncDeclExt(name, _, _, _, _, _) => Some(name)
+            AsyncGeneratorDecl(name, _, _, _, _) => Some(name)
+            AsyncGeneratorDeclExt(name, _, _, _, _, _) => Some(name)
+            _ => None
+          }
+          match fname {
+            Some(name) =>
+              if !declared_function_names.contains(name) {
+                // §9.1.1.4.16 CanDeclareGlobalFunction
+                let definable = match data.bag.descriptors.get(name) {
+                  None => data.extensible
+                  Some(desc) =>
+                    desc.configurable ||
+                    (!desc.is_accessor && desc.writable && desc.enumerable)
+                }
+                if !definable {
+                  raise @errors.TypeError(
+                    message="Cannot declare global function '\{name}': property is non-configurable",
+                  )
+                }
+                declared_function_names.add(name) |> ignore
+              }
+            None => ()
+          }
+        }
+        // Steps 11-12: CanDeclareGlobalVar for each var declaration
+        for pre_stmt in stmts {
+          match pre_stmt {
+            VarDecl(VarKind, name, _, _) =>
+              if !declared_function_names.contains(name) {
+                // §9.1.1.4.15 CanDeclareGlobalVar
+                let definable = data.bag.descriptors.contains(name) ||
+                  data.extensible
+                if !definable {
+                  raise @errors.TypeError(
+                    message="Cannot declare global var '\{name}': global object is non-extensible",
+                  )
+                }
+              }
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
   for stmt in stmts {
     match stmt {
       VarDecl(VarKind, name, _, _) =>
