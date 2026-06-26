@@ -62,24 +62,7 @@ pub fn get_array_method(
       )
     }
     "slice" | "concat" => Undefined // Delegated to Array.prototype (species support)
-    "reverse" => {
-      let arr = data
-      @runtime.make_native_func(name="reverse", realm_state=Some(realm_state), fn(
-        _args,
-      ) {
-        array_direct_reverse(arr)
-      })
-    }
-    "fill" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="fill",
-        realm_state=Some(realm_state),
-        fn(interp, _this_val, args) raise {
-          array_direct_fill(arr, args, interp=Some(interp))
-        },
-      )
-    }
+    "reverse" | "fill" => Undefined // Delegated to Array.prototype (indexed [[Set]]/[[Delete]] + length-writable)
     "toString" => {
       let arr = data
       @runtime.make_native_func(
@@ -118,26 +101,9 @@ pub fn get_array_method(
         },
       )
     }
-    "copyWithin" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="copyWithin",
-        realm_state=Some(realm_state),
-        fn(interp, _this_val, args) raise {
-          array_direct_copy_within(arr, args, interp=Some(interp))
-        },
-      )
-    }
+    "copyWithin" | "sort" => Undefined // Delegated to Array.prototype (indexed [[Set]]/[[Delete]] + length-writable)
     "entries" | "keys" | "values" => Undefined // Delegated to Array.prototype (iterator method overrides)
     "splice" => Undefined // Delegated to Array.prototype (species support)
-    "sort" => {
-      let arr = data
-      @runtime.make_native_func(name="sort", realm_state=Some(realm_state), fn(
-        _args,
-      ) {
-        array_direct_sort_default(arr)
-      })
-    }
     _ => Undefined
   }
 }
@@ -156,58 +122,9 @@ pub fn get_array_method_with_interp(
     "find" | "findIndex" | "findLast" | "findLastIndex" => Undefined // Delegated to Array.prototype
     "every" | "some" => Undefined // Delegated to Array.prototype
     "shift" | "unshift" => Undefined // Delegated to Array.prototype (overrides and indexed mutation semantics)
-    "reverse" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="reverse",
-        length=0,
-        realm_state=Some(realm_state),
-        fn(interp, this_val, _args) raise {
-          let _ = this_val
-          array_reverse_indexed_properties(interp, Value::Array(arr))
-        },
-      )
-    }
-    "fill" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="fill",
-        length=1,
-        realm_state=Some(realm_state),
-        fn(interp, this_val, args) raise {
-          let _ = this_val
-          array_fill_indexed_properties(interp, Value::Array(arr), args)
-        },
-      )
-    }
-    "copyWithin" => {
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="copyWithin",
-        length=2,
-        realm_state=Some(realm_state),
-        fn(interp, this_val, args) raise {
-          let _ = this_val
-          array_copy_within_indexed_properties(interp, Value::Array(arr), args)
-        },
-      )
-    }
+    "reverse" | "fill" | "copyWithin" | "sort" => Undefined // Delegated to Array.prototype (indexed [[Set]]/[[Delete]] + length-writable)
     "toReversed" | "toSorted" | "toSpliced" | "with" => Undefined // Delegated to Array.prototype (copy-by-value methods)
     "flat" | "flatMap" => Undefined // Delegated to Array.prototype (species support)
-    "sort" => {
-      // Sort with optional compareFn needs InterpreterCallable
-      let arr = data
-      @runtime.make_interp_method_func(
-        name="sort",
-        length=1,
-        realm_state=Some(realm_state),
-        fn(interp, this_val, args) raise {
-          let _ = this_val
-          let comparefn = array_sort_validate_comparefn(args)
-          array_sort_indexed_properties(interp, Value::Array(arr), comparefn)
-        },
-      )
-    }
     "concat" => Undefined // Delegated to Array.prototype (species support)
     _ => get_array_method(data, prop, realm_state)
   }
