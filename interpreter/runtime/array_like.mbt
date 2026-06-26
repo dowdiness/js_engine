@@ -677,19 +677,22 @@ pub fn array_species_create(
   let loc = @token.Loc::default()
   // Step 2: Get C = Get(originalArray, "constructor")
   let c = interp.get_property(original, "constructor", loc)
-  // Step 4: If Type(C) is Object, set C = Get(C, @@species)
+  // Steps 4-5: If Type(C) is Object, set C = C[@@species]; if null/undefined use default.
+  // If Type(C) is not Object and not undefined, preserve C so step 6 (IsConstructor check)
+  // throws TypeError — e.g. when a.constructor is set to null, a number, or a string.
   let species : Value = match c {
-    Object(_) => {
-      let species_sym = interp.realm_state.well_known_symbols.species
-      let s = interp.get_computed_property(c, Symbol(species_sym), loc)
-      // If species is null or undefined, use default
-      match s {
-        Null | Undefined => Undefined
-        _ => s
-      }
-    }
     Undefined => Undefined
-    _ => Undefined
+    _ =>
+      if is_object_value(c) {
+        let species_sym = interp.realm_state.well_known_symbols.species
+        let s = interp.get_computed_property(c, Symbol(species_sym), loc)
+        match s {
+          Null | Undefined => Undefined
+          _ => s
+        }
+      } else {
+        c
+      }
   }
   // Step 5: If C is undefined, return plain array
   if species is Undefined {
