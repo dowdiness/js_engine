@@ -613,6 +613,8 @@ fn create_generator_instance(
   strict : Bool,
   closure : Environment,
   func_prototype : Value,
+  is_arrow? : Bool = false,
+  callee? : Value = Undefined,
 ) -> Value raise Error {
   // Per spec, FunctionDeclarationInstantiation runs eagerly when generator is called,
   // NOT when .next() is called. This means parameter binding errors throw immediately.
@@ -626,38 +628,57 @@ fn create_generator_instance(
   // generator body executes in (body_env when split, func_env otherwise).
   let func_env = Environment::new(parent=Some(closure))
   func_env.is_var_scope = true
-  func_env.def("this", this_val, LetBinding)
+  // Arrow functions don't rebind `this` (use closure's lexical this).
+  if !is_arrow {
+    let effective_this = if !strict {
+      match this_val {
+        Undefined | Null => interp.global_this
+        _ => this_val
+      }
+    } else {
+      this_val
+    }
+    func_env.def("this", effective_this, LetBinding)
+  }
   func_env.def("<new.target>", Undefined, LetBinding)
   let has_arguments_param = match params_ext {
     Some(pext) => ext_params_include_arguments(pext, rest_param)
     None => params_include_arguments(params, rest_param)
   }
-  if !has_arguments_param {
+  // Arrow functions don't create own `arguments` (fall through to closure).
+  if !is_arrow && !has_arguments_param {
     // Create arguments object before binding params so default value
     // evaluation can reference it (ES2026 §10.2.11 step 20).
-    let args_props : Map[String, Value] = {}
-    for i = 0; i < args.length(); i = i + 1 {
-      args_props[i.to_string()] = args[i]
+    let args_obj = match (params_ext, strict) {
+      (None, false) =>
+        // Sloppy mode + simple params: mapped arguments with live param bindings.
+        make_arguments_object(
+          interp.realm_state,
+          interp.realm_state.well_known_symbols,
+          args,
+          callee,
+          false,
+          mapped_names=params,
+          mapped_env=Some(func_env),
+        )
+      _ => {
+        // Strict mode or complex params: unmapped arguments object.
+        let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
+          Some(func_env.get("[[ThrowTypeError]]"))
+        } else {
+          None
+        }
+        make_arguments_object(
+          interp.realm_state,
+          interp.realm_state.well_known_symbols,
+          args,
+          callee,
+          strict,
+          throw_type_error=tte_val,
+        )
+      }
     }
-    args_props["length"] = Number(args.length().to_double())
-    func_env.def(
-      "arguments",
-      Object({
-        bag: {
-          properties: args_props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-        },
-        prototype: Null,
-        callable: None,
-        class_name: "Arguments",
-        extensible: true,
-        arraybuffer_state: None,
-      }),
-      VarBinding,
-    )
+    func_env.def("arguments", args_obj, VarBinding)
   }
   // Bind parameters eagerly
   // §19.2.1.3 gate (#A.6): generator / async / async-gen functions are
@@ -677,6 +698,16 @@ fn create_generator_instance(
           rest_param,
           implicit_arguments=true,
         )
+        // §10.2.11 step 21: pre-declare all simple-named params as TDZ so
+        // that self- and forward-referring defaults throw ReferenceError.
+        for p in pext {
+          guard !p.is_rest_pattern && p.pattern is None else { continue }
+          func_env.def_param_tdz(p.name)
+        }
+        match rest_param {
+          Some(rp) => func_env.def_param_tdz(rp)
+          None => ()
+        }
         let mut effective_count = 0
         for i = 0; i < pext.length(); i = i + 1 {
           let param = pext[i]
@@ -709,7 +740,7 @@ fn create_generator_instance(
           match param.pattern {
             Some(pat) =>
               interp.bind_pattern(pat, val, func_env, LetBinding, ctx=setup_ctx)
-            None => func_env.def_parameter(param.name, val)
+            None => func_env.initialize(param.name, val)
           }
           effective_count = effective_count + 1
         }
@@ -739,7 +770,7 @@ fn create_generator_instance(
               }
             }
             if !bound_rest_pattern {
-              func_env.def_parameter(rp, rest_val)
+              func_env.initialize(rp, rest_val)
             }
           }
           None => ()
