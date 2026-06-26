@@ -126,7 +126,14 @@ fn Interpreter::bind_pattern(
             }
             self.bind_pattern(pat, val, env, bk, ctx~) catch {
               e => {
-                if !iter_done {
+                if e is YieldSignal(_) {
+                  if !iter_done {
+                    match ctx.current_generator {
+                      Some(g) => g.dstr_iterator_stack.push(iterator)
+                      None => ()
+                    }
+                  }
+                } else if !iter_done {
                   self.iterator_close(iterator, loc_dstr) catch {
                     _ => ()
                   }
@@ -381,7 +388,14 @@ fn Interpreter::assign_pattern(
                 // Phase 1: evaluate lref (may throw before any iterator call)
                 let lref = self.eval_lref_of_expr(ctx, expr, env) catch {
                   e => {
-                    if !iter_done_a {
+                    if e is YieldSignal(_) {
+                      if !iter_done_a {
+                        match ctx.current_generator {
+                          Some(g) => g.dstr_iterator_stack.push(iterator_a)
+                          None => ()
+                        }
+                      }
+                    } else if !iter_done_a {
                       self.iterator_close(iterator_a, loc_dstr) catch {
                         _ => ()
                       }
@@ -417,7 +431,15 @@ fn Interpreter::assign_pattern(
                     if val is Undefined {
                       self.eval_expr(ctx, default_expr, env) catch {
                         e => {
-                          if !iter_done_a {
+                          if e is YieldSignal(_) {
+                            if !iter_done_a {
+                              match ctx.current_generator {
+                                Some(g) =>
+                                  g.dstr_iterator_stack.push(iterator_a)
+                                None => ()
+                              }
+                            }
+                          } else if !iter_done_a {
                             self.iterator_close(iterator_a, loc_dstr) catch {
                               _ => ()
                             }
@@ -433,7 +455,7 @@ fn Interpreter::assign_pattern(
                 // Phase 4: assign via the pre-evaluated lref
                 self.put_lref(ctx, lref, final_val, env) catch {
                   e => {
-                    if !iter_done_a {
+                    if !iter_done_a && !(e is YieldSignal(_)) {
                       self.iterator_close(iterator_a, loc_dstr) catch {
                         _ => ()
                       }
@@ -460,7 +482,14 @@ fn Interpreter::assign_pattern(
                 }
                 self.assign_pattern(ctx, pat, val, env) catch {
                   e => {
-                    if !iter_done_a {
+                    if e is YieldSignal(_) {
+                      if !iter_done_a {
+                        match ctx.current_generator {
+                          Some(g) => g.dstr_iterator_stack.push(iterator_a)
+                          None => ()
+                        }
+                      }
+                    } else if !iter_done_a {
                       self.iterator_close(iterator_a, loc_dstr) catch {
                         _ => ()
                       }
@@ -488,7 +517,14 @@ fn Interpreter::assign_pattern(
           // Pre-evaluate lref before consuming rest values from iterator
           let lref = self.eval_lref_of_expr(ctx, expr, env) catch {
             e => {
-              if !iter_done_a {
+              if e is YieldSignal(_) {
+                if !iter_done_a {
+                  match ctx.current_generator {
+                    Some(g) => g.dstr_iterator_stack.push(iterator_a)
+                    None => ()
+                  }
+                }
+              } else if !iter_done_a {
                 self.iterator_close(iterator_a, loc_dstr) catch {
                   _ => ()
                 }
@@ -520,7 +556,7 @@ fn Interpreter::assign_pattern(
           }
           self.put_lref(ctx, lref, make_array(rest_elements), env) catch {
             e => {
-              if !iter_done_a {
+              if !iter_done_a && !(e is YieldSignal(_)) {
                 self.iterator_close(iterator_a, loc_dstr) catch {
                   _ => ()
                 }

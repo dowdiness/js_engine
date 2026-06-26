@@ -62,6 +62,10 @@ pub(all) struct GeneratorObject {
   for_of_iterator_stack : Array[Value]
   for_of_next_stack : Array[Value]
   mut for_of_resume : Bool // true if resuming inside for-of
+  // Inner iterators saved when YieldSignal escapes array destructuring inside for-of.
+  // On abrupt resume (ReturnAction/ThrowAction), these are closed directly without
+  // re-running assign_pattern (which would call iterator.next() again).
+  dstr_iterator_stack : Array[Value]
   // yield* delegation state
   mut delegate_iterator : Value // the delegate iterator (or Undefined if not delegating)
   mut delegate_next : Value // the delegate's next method
@@ -87,6 +91,7 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.for_of_iterator_stack.clear()
   gen.for_of_next_stack.clear()
   gen.for_of_resume = false
+  gen.dstr_iterator_stack.clear()
   gen.loop_env_stack.clear()
   gen.loop_yield_base_stack.clear()
   gen.yield_resume_values.clear()
@@ -852,6 +857,7 @@ fn create_generator_instance(
       for_of_iterator_stack: [],
       for_of_next_stack: [],
       for_of_resume: false,
+      dstr_iterator_stack: [],
       delegate_iterator: Undefined,
       delegate_next: Undefined,
       delegating: false,
