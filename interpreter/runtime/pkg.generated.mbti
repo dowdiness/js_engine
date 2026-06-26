@@ -476,6 +476,7 @@ pub fn Environment::assign(Self, String, Value) -> Unit raise
 pub fn Environment::assign_var(Self, String, Value) -> Unit raise
 pub fn Environment::def(Self, String, Value, BindingKind) -> Unit raise
 pub fn Environment::def_builtin(Self, String, Value) -> Unit
+pub fn Environment::def_param_tdz(Self, String) -> Unit raise
 pub fn Environment::def_parameter(Self, String, Value) -> Unit raise
 pub fn Environment::def_tdz(Self, String, BindingKind) -> Unit raise
 pub fn Environment::find_var_env(Self) -> Self

@@ -1382,6 +1382,7 @@ fn Interpreter::eval_expr(
         strict,
         env,
         source_text~,
+        is_arrow=true,
       )
     }
     AsyncArrowFuncExt(params, rest_param, body, _, source_text) => {
@@ -1401,6 +1402,7 @@ fn Interpreter::eval_expr(
         strict,
         env,
         source_text~,
+        is_arrow=true,
       )
     }
     AsyncGeneratorExpr(name, params, body, _, source_text) => {

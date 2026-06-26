@@ -171,6 +171,28 @@ pub fn Environment::def_parameter(
 }
 
 ///|
+/// Define an uninitialized parameter TDZ binding. Used by the parameter
+/// pre-pass (§10.2.11 step 21) so self/forward-referring defaults throw
+/// ReferenceError rather than resolving the outer scope's binding.
+pub fn Environment::def_param_tdz(
+  self : Environment,
+  name : String,
+) -> Unit raise Error {
+  if self.bindings.contains(name) {
+    raise @errors.SyntaxError(
+      message="Identifier '\{name}' has already been declared",
+    )
+  }
+  self.bindings[name] = {
+    value: Undefined,
+    kind: LetBinding,
+    initialized: false,
+    annex_b_hoisted: false,
+    is_parameter: true,
+  }
+}
+
+///|
 /// Define a TDZ binding (let/const before initialization)
 pub fn Environment::def_tdz(
   self : Environment,

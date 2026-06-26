@@ -14,6 +14,7 @@ fn Interpreter::make_async_function(
   closure : Environment,
   has_name_binding? : Bool = false,
   source_text? : String? = None,
+  is_arrow? : Bool = false,
 ) -> Value {
   let func_name = match name {
     Some(n) => n
@@ -51,6 +52,8 @@ fn Interpreter::make_async_function(
   } else {
     closure
   }
+  // Self-reference cell for arguments.callee (sloppy mapped arguments).
+  let self_val : Array[Value] = [Undefined]
   let async_func = stamp_function_realm(
     Object({
       bag: {
@@ -81,6 +84,8 @@ fn Interpreter::make_async_function(
             body,
             strict,
             effective_closure,
+            is_arrow~,
+            callee=self_val[0],
           )
         }),
       ),
@@ -90,6 +95,7 @@ fn Interpreter::make_async_function(
     }),
     realm_state=Some(self.realm_state),
   )
+  self_val[0] = async_func
   if has_name_binding {
     match name {
       Some(n) =>
@@ -114,6 +120,7 @@ fn Interpreter::make_async_function_ext(
   closure : Environment,
   has_name_binding? : Bool = false,
   source_text? : String? = None,
+  is_arrow? : Bool = false,
 ) -> Value {
   let func_name = match name {
     Some(n) => n
@@ -152,6 +159,8 @@ fn Interpreter::make_async_function_ext(
   } else {
     closure
   }
+  // Self-reference cell for arguments.callee (sloppy mapped arguments).
+  let self_val_ext : Array[Value] = [Undefined]
   let async_func = stamp_function_realm(
     Object({
       bag: {
@@ -182,6 +191,8 @@ fn Interpreter::make_async_function_ext(
             body,
             strict,
             effective_closure,
+            is_arrow~,
+            callee=self_val_ext[0],
           )
         }),
       ),
@@ -191,6 +202,7 @@ fn Interpreter::make_async_function_ext(
     }),
     realm_state=Some(self.realm_state),
   )
+  self_val_ext[0] = async_func
   if has_name_binding {
     match name {
       Some(n) =>
@@ -218,6 +230,8 @@ fn run_async_body(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  is_arrow? : Bool = false,
+  callee? : Value = Undefined,
 ) -> Value {
   let promise_data = new_promise_data()
   let promise_val = Promise(promise_data)
@@ -239,8 +253,19 @@ fn run_async_body(
     arraybuffer_state: None,
   })
   let gen_val = create_generator_instance(
-    ip, this_val, args, name, params, params_ext, rest_param, body, strict, closure,
+    ip,
+    this_val,
+    args,
+    name,
+    params,
+    params_ext,
+    rest_param,
+    body,
+    strict,
+    closure,
     func_proto,
+    is_arrow~,
+    callee~,
   ) catch {
     JsException(e) => {
       // Parameter binding error rejects the promise
@@ -250,7 +275,7 @@ fn run_async_body(
       return promise_val
     }
     e => {
-      let err_val = String_(e.to_string())
+      let err_val = js_error_to_value_with_env(e, Some(ip.global))
       let _ = ip.call_value(
         reject_fn,
         Undefined,

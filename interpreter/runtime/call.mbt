@@ -215,6 +215,16 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
     implicit_arguments=!is_arrow,
   )
   let result : Signal = try {
+    // §10.2.11 step 21: pre-declare all simple-named params as TDZ so that
+    // self- and forward-referring defaults throw ReferenceError.
+    for p in data.params {
+      guard !p.is_rest_pattern && p.pattern is None else { continue }
+      param_env.def_param_tdz(p.name)
+    }
+    match data.rest_param {
+      Some(rp) => param_env.def_param_tdz(rp)
+      None => ()
+    }
     // Bind params with defaults
     let mut effective_param_count = 0
     for i = 0; i < data.params.length(); i = i + 1 {
@@ -256,7 +266,7 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
       match param.pattern {
         Some(pat) =>
           self.bind_pattern(pat, val, param_env, LetBinding, ctx=func_ctx)
-        None => param_env.def_parameter(param.name, val)
+        None => param_env.initialize(param.name, val)
       }
       effective_param_count = effective_param_count + 1
     }
@@ -287,7 +297,7 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
           }
         }
         if !bound_rest_pattern {
-          param_env.def_parameter(rest_name, rest_val)
+          param_env.initialize(rest_name, rest_val)
         }
       }
       None => ()
