@@ -108,7 +108,7 @@ pub fn Interpreter::update_compiled_name(
       )
     }
   } else {
-    env.assign(name, next_value)
+    env.assign_with_strict(name, next_value, ctx.strict)
   }
   if prefix {
     next_value

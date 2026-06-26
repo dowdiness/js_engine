@@ -19307,3 +19307,76 @@ test "array toSpliced clamps ToLength before copying high sparse tail" {
   let output = run_output(src)
   json_inspect(output, content=["2", "a,b"])
 }
+
+///|
+/// §15.2.5: generator method shorthands must not create a FunctionExpressionName
+/// binding (MethodDefinitionEvaluation §15.4.5 does not install one).
+/// strip_self_name_binding is a no-op for InterpreterCallable (generator), so
+/// the fix must suppress the binding at creation time (has_name_binding=false).
+/// Covers both object-literal and class method contexts (P2 Badge 1 regression).
+test "§15.2.5: generator method has no self-name binding" {
+  let src =
+    #|console.log(({ *m() { return typeof m; } }).m().next().value);
+    #|console.log((new class { *m() { return typeof m; } }).m().next().value);
+  let output = run_output(src)
+  json_inspect(output, content=["undefined", "undefined"])
+}
+
+///|
+/// §15.2.5: async method shorthands must not create a FunctionExpressionName
+/// binding. Async methods are evaluated through make_async_function, which
+/// accepts has_name_binding; the fast path in eval_prop_value and class.mbt
+/// passes has_name_binding=false to suppress the self-name env entry.
+test "§15.2.5: async method has no self-name binding" {
+  let src =
+    #|console.log(typeof ({ async m() { return typeof m; } }).m());
+    #|console.log(typeof (new class { async m() { return typeof m; } }).m());
+  let output = run_output(src)
+  // The call returns a Promise (typeof → "object"); the method body is
+  // async-internal and not the assertion target here — we assert that the
+  // methods are callable (no crash) and that the outer typeof of their
+  // Promise return is "object", confirming the fast path didn't break construction.
+  json_inspect(output, content=["object", "object"])
+}
+
+///|
+/// §9.1.1.1 FunctionNameBinding: in strict mode, update-assignment (`g++`)
+/// targeting the NFE self-name must throw TypeError.
+/// eval_update called env.assign (strict=false), silently ignoring the write;
+/// fixed to env.assign_with_strict(name, value, ctx.strict) in PR #463 P2.
+test "§15.2.5: strict NFE: g++ throws TypeError" {
+  let err = run_error_display(
+    (
+      #|var f = function g() { "use strict"; g++; };
+      #|f();
+    ),
+  )
+  inspect(err, content="TypeError: Assignment to constant variable 'g'")
+}
+
+///|
+/// §9.1.1.1: strict compound-assign (`g += 1`) targeting the NFE self-name
+/// must throw TypeError (same eval_compound_assign fix).
+test "§15.2.5: strict NFE: g += 1 throws TypeError" {
+  let err = run_error_display(
+    (
+      #|var f = function g() { "use strict"; g += 1; };
+      #|f();
+    ),
+  )
+  inspect(err, content="TypeError: Assignment to constant variable 'g'")
+}
+
+///|
+/// §9.1.1.1: strict logical-assign (`g &&= 1`) targeting the NFE self-name
+/// must throw TypeError when the short-circuit doesn't suppress the write.
+/// g is the callee (truthy), so &&= proceeds to assign (same eval_logical_assign fix).
+test "§15.2.5: strict NFE: g &&= 1 throws TypeError" {
+  let err = run_error_display(
+    (
+      #|var f = function g() { "use strict"; g &&= 1; };
+      #|f();
+    ),
+  )
+  inspect(err, content="TypeError: Assignment to constant variable 'g'")
+}

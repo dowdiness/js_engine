@@ -2463,6 +2463,20 @@ test "bytecode named function expressions throw TypeError on reassignment in str
 }
 
 ///|
+test "bytecode named function expressions throw TypeError on update in strict mode" {
+  // Strict: update-assign (g++) to NFE self-name must throw TypeError.
+  // update_compiled_name called env.assign (strict=false); fixed to assign_with_strict.
+  let src =
+    #|"use strict";
+    #|var f = function g() { g++; };
+    #|f();
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Assignment to constant variable 'g'",
+  )
+}
+
+///|
 test "bytecode nested closures capture named function expression self binding" {
   let src =
     #|var f = function g() {

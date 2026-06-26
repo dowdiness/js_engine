@@ -410,6 +410,78 @@ fn Interpreter::eval_prop_value(
         }
         return make_func_ext(func_data)
       }
+      // Generator/async methods: fast path with has_name_binding=false.
+      // strip_self_name_binding is a no-op for InterpreterCallable, so we
+      // must suppress the binding at creation time (§15.2.5 does not apply
+      // to MethodDefinitionEvaluation).
+      GeneratorExpr(name, params, body, _, source_text) => {
+        validate_function_signature(ctx.strict, None, params, body)
+        let strict = is_function_strict(ctx.strict, body)
+        return self.make_generator_function(
+          name,
+          params,
+          None,
+          body,
+          strict,
+          method_env,
+          has_name_binding=false,
+          source_text~,
+        )
+      }
+      GeneratorExprExt(name, params, rest_param, body, _, source_text) => {
+        validate_function_signature_ext(
+          ctx.strict,
+          None,
+          params,
+          rest_param,
+          body,
+        )
+        let strict = is_function_strict(ctx.strict, body)
+        return self.make_generator_function_ext(
+          name,
+          params,
+          rest_param,
+          body,
+          strict,
+          method_env,
+          has_name_binding=false,
+          source_text~,
+        )
+      }
+      AsyncFuncExpr(name, params, body, _, source_text) => {
+        validate_function_signature(ctx.strict, None, params, body)
+        let strict = is_function_strict(ctx.strict, body)
+        return self.make_async_function(
+          name,
+          params,
+          None,
+          body,
+          strict,
+          method_env,
+          has_name_binding=false,
+          source_text~,
+        )
+      }
+      AsyncFuncExprExt(name, params, rest_param, body, _, source_text) => {
+        validate_function_signature_ext(
+          ctx.strict,
+          None,
+          params,
+          rest_param,
+          body,
+        )
+        let strict = is_function_strict(ctx.strict, body)
+        return self.make_async_function_ext(
+          name,
+          params,
+          rest_param,
+          body,
+          strict,
+          method_env,
+          has_name_binding=false,
+          source_text~,
+        )
+      }
       _ => ()
     }
   }

@@ -117,7 +117,7 @@ fn Interpreter::eval_update(
           )
         }
       } else {
-        env.assign(name, new_val)
+        env.assign_with_strict(name, new_val, ctx.strict)
       }
       if prefix {
         new_val
@@ -219,7 +219,7 @@ fn Interpreter::eval_compound_assign(
         }
         return result
       }
-      env.assign(name, result)
+      env.assign_with_strict(name, result, ctx.strict)
       result
     }
     Member(obj_expr, prop, mloc) => {
@@ -319,7 +319,7 @@ fn Interpreter::eval_logical_assign(
           }
           return rhs
         }
-        env.assign(name, rhs)
+        env.assign_with_strict(name, rhs, ctx.strict)
         rhs
       } else {
         current
