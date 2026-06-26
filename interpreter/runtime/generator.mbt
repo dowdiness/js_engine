@@ -106,6 +106,43 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 }
 
 ///|
+/// Returns true if `c` is a JavaScript identifier character (word char or $).
+fn is_js_id_char(c : Char) -> Bool {
+  (c >= 'a' && c <= 'z') ||
+  (c >= 'A' && c <= 'Z') ||
+  (c >= '0' && c <= '9') ||
+  c == '_' ||
+  c == '$'
+}
+
+///|
+/// §20.2.1.1.1 step 17a: Returns true if the params source text contains `yield`
+/// as a standalone keyword (not part of a longer identifier like `yield_value`).
+/// The parser does not push generator context for params, so `yield` in defaults
+/// is parsed as an identifier — we must check the raw source text instead.
+fn params_str_has_yield_keyword(s : String) -> Bool {
+  let chars = s.to_array()
+  let n = chars.length()
+  let mut i = 0
+  while i < n {
+    if i + 5 <= n &&
+      chars[i] == 'y' &&
+      chars[i + 1] == 'i' &&
+      chars[i + 2] == 'e' &&
+      chars[i + 3] == 'l' &&
+      chars[i + 4] == 'd' {
+      let before_ok = i == 0 || !is_js_id_char(chars[i - 1])
+      let after_ok = i + 5 == n || !is_js_id_char(chars[i + 5])
+      if before_ok && after_ok {
+        return true
+      }
+    }
+    i = i + 1
+  }
+  false
+}
+
+///|
 /// Set up the GeneratorFunction constructor on the given interpreter.
 /// GeneratorFunction("a", "yield a") creates a generator function,
 /// analogous to Function("a", "return a") for regular functions.
@@ -240,25 +277,33 @@ pub fn setup_generator_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(interp, _this, args) raise {
-      // Last arg is body, previous args are parameter names. With no
-      // arguments, the synthesized body and parameter list are both empty.
-      let body_str = if args.length() == 0 {
-        ""
-      } else {
-        match args[args.length() - 1] {
-          String_(s) => s
-          _ => args[args.length() - 1].to_string()
-        }
-      }
+      // §20.2.1.1.1: coerce params first (step 5a), body last (step 6).
+      // Last arg is body, previous args are parameter names.
       let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
       let param_parts : Array[String] = []
       for i = 0; i < param_count; i = i + 1 {
         match args[i] {
           String_(s) => param_parts.push(s)
-          _ => param_parts.push(args[i].to_string())
+          _ => param_parts.push(interp.to_js_string(args[i]))
+        }
+      }
+      let body_str = if args.length() == 0 {
+        ""
+      } else {
+        match args[args.length() - 1] {
+          String_(s) => s
+          _ => interp.to_js_string(args[args.length() - 1])
         }
       }
       let params_str = param_parts.join(",")
+      // §20.2.1.1.1 step 17a: generator params must not contain YieldExpression.
+      // The parser treats `yield` as an identifier in params (not in generator
+      // context), so check the raw params source text for the yield keyword.
+      if params_str_has_yield_keyword(params_str) {
+        raise @errors.SyntaxError(
+          message="Generator function parameters may not contain yield expressions",
+        )
+      }
       let source = "function* anonymous(" +
         params_str +
         "\n) {\n" +

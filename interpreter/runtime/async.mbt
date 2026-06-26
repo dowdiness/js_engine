@@ -853,6 +853,15 @@ pub fn setup_async_function_constructor(
     }
     _ => ()
   }
+  // §27.7.2: %AsyncFunction%.[[Prototype]] is the intrinsic %Function% constructor.
+  let func_ctor = match env.bindings.get("Function") {
+    Some(binding) => binding.value
+    None => Null
+  }
+  match async_func_ctor {
+    Object(data) => data.prototype = func_ctor
+    _ => ()
+  }
   // Note: AsyncFunction is NOT a global property per spec (section 19).
   // It is only reachable via (async function(){}).constructor.
   // We store it as an internal binding so async functions get the right prototype.

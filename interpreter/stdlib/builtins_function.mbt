@@ -422,9 +422,22 @@ fn setup_function_builtins(
         if prog.stmts.length() > 0 {
           match prog.stmts[0] {
             FuncDecl(_, params, body, _, _) => {
+              // §20.2.1.1.1 step 27a: create .prototype object inheriting from Object.prototype.
+              let object_proto = @runtime.get_obj_proto(
+                realm_state=Some(realm_state),
+              )
+              let proto = Value::Object({
+                bag: @runtime.PropertyBag(),
+                prototype: object_proto,
+                callable: None,
+                class_name: "Object",
+                extensible: true,
+                arraybuffer_state: None,
+              })
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
               fn_props["name"] = Value::String_("anonymous")
+              fn_props["prototype"] = proto
               // Validate static early errors against the function's strict context.
               let body_strict = @static_semantics.has_use_strict(body)
               @runtime.validate_function_constructor_params(
@@ -434,12 +447,23 @@ fn setup_function_builtins(
                 body,
               )
               interp.validate_block_early_errors(body, body_strict)
-              return @runtime.stamp_function_realm(
+              let result = @runtime.stamp_function_realm(
                 Value::Object({
                   bag: {
                     properties: fn_props,
                     symbol_properties: {},
-                    descriptors: { "length": nf_desc, "name": nf_desc },
+                    descriptors: {
+                      "length": nf_desc,
+                      "name": nf_desc,
+                      "prototype": {
+                        writable: true,
+                        enumerable: false,
+                        configurable: false,
+                        getter: None,
+                        setter: None,
+                        is_accessor: false,
+                      },
+                    },
                     symbol_descriptors: {},
                     internal_slots: {},
                   },
@@ -463,24 +487,62 @@ fn setup_function_builtins(
                 }),
                 realm_state=Some(realm_state),
               )
+              match proto {
+                Object(proto_data) => {
+                  proto_data.bag.properties["constructor"] = result
+                  proto_data.bag.descriptors["constructor"] = {
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                    is_accessor: false,
+                  }
+                }
+                _ => ()
+              }
+              return result
             }
             FuncDeclExt(_, params, rest_param, body, _, _) => {
+              let object_proto = @runtime.get_obj_proto(
+                realm_state=Some(realm_state),
+              )
+              let proto = Value::Object({
+                bag: @runtime.PropertyBag(),
+                prototype: object_proto,
+                callable: None,
+                class_name: "Object",
+                extensible: true,
+                arraybuffer_state: None,
+              })
               let fn_props : Map[String, Value] = {}
               let fn_length = expected_argument_count_ext(params)
               fn_props["length"] = Value::Number(fn_length.to_double())
               fn_props["name"] = Value::String_("anonymous")
+              fn_props["prototype"] = proto
               // Validate static early errors against the function's strict context.
               let body_strict = @static_semantics.has_use_strict(body)
               @runtime.validate_function_constructor_params_ext(
                 params, rest_param, body,
               )
               interp.validate_block_early_errors(body, body_strict)
-              return @runtime.stamp_function_realm(
+              let result = @runtime.stamp_function_realm(
                 Value::Object({
                   bag: {
                     properties: fn_props,
                     symbol_properties: {},
-                    descriptors: { "length": nf_desc, "name": nf_desc },
+                    descriptors: {
+                      "length": nf_desc,
+                      "name": nf_desc,
+                      "prototype": {
+                        writable: true,
+                        enumerable: false,
+                        configurable: false,
+                        getter: None,
+                        setter: None,
+                        is_accessor: false,
+                      },
+                    },
                     symbol_descriptors: {},
                     internal_slots: {},
                   },
@@ -504,20 +566,58 @@ fn setup_function_builtins(
                 }),
                 realm_state=Some(realm_state),
               )
+              match proto {
+                Object(proto_data) => {
+                  proto_data.bag.properties["constructor"] = result
+                  proto_data.bag.descriptors["constructor"] = {
+                    writable: true,
+                    enumerable: false,
+                    configurable: true,
+                    getter: None,
+                    setter: None,
+                    is_accessor: false,
+                  }
+                }
+                _ => ()
+              }
+              return result
             }
             _ => ()
           }
         }
-        // Fallback: empty function
-        @runtime.stamp_function_realm(
+        // Fallback: empty function (defensive — synthesized source always parses)
+        let fb_object_proto = @runtime.get_obj_proto(
+          realm_state=Some(realm_state),
+        )
+        let fb_proto = Value::Object({
+          bag: @runtime.PropertyBag(),
+          prototype: fb_object_proto,
+          callable: None,
+          class_name: "Object",
+          extensible: true,
+          arraybuffer_state: None,
+        })
+        let fb_result = @runtime.stamp_function_realm(
           Value::Object({
             bag: {
               properties: {
                 "length": Value::Number(0.0),
                 "name": Value::String_("anonymous"),
+                "prototype": fb_proto,
               },
               symbol_properties: {},
-              descriptors: { "length": nf_desc, "name": nf_desc },
+              descriptors: {
+                "length": nf_desc,
+                "name": nf_desc,
+                "prototype": {
+                  writable: true,
+                  enumerable: false,
+                  configurable: false,
+                  getter: None,
+                  setter: None,
+                  is_accessor: false,
+                },
+              },
               symbol_descriptors: {},
               internal_slots: {},
             },
@@ -529,6 +629,21 @@ fn setup_function_builtins(
           }),
           realm_state=Some(realm_state),
         )
+        match fb_proto {
+          Object(fb_proto_data) => {
+            fb_proto_data.bag.properties["constructor"] = fb_result
+            fb_proto_data.bag.descriptors["constructor"] = {
+              writable: true,
+              enumerable: false,
+              configurable: true,
+              getter: None,
+              setter: None,
+              is_accessor: false,
+            }
+          }
+          _ => ()
+        }
+        fb_result
       }),
     ),
     class_name: "Function",
