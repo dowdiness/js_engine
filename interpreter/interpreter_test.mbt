@@ -19380,3 +19380,57 @@ test "§15.2.5: strict NFE: g &&= 1 throws TypeError" {
   )
   inspect(err, content="TypeError: Assignment to constant variable 'g'")
 }
+
+///|
+/// §9.1.1.1: `new (function G(){...})()` goes through construct_value.
+/// construct.mbt was using LetBinding for the self-name, making it mutable;
+/// switched to FunctionNameBinding so strict writes inside a constructing NFE throw.
+test "§15.2.5: strict NFE via new: G = 1 throws TypeError" {
+  let err = run_error_display(
+    (
+      #|new (function G() { "use strict"; G = 1; })();
+    ),
+  )
+  inspect(err, content="TypeError: Assignment to constant variable 'G'")
+}
+
+///|
+/// §9.1.1.1: strict destructuring assignment `[g] = [1]` targeting the NFE
+/// self-name must throw TypeError. assign_pattern called env.assign (strict=false);
+/// fixed to env.assign_with_strict.
+test "§15.2.5: strict NFE: [g] = [1] throws TypeError" {
+  let err = run_error_display(
+    (
+      #|var f = function g() { "use strict"; [g] = [1]; };
+      #|f();
+    ),
+  )
+  inspect(err, content="TypeError: Assignment to constant variable 'g'")
+}
+
+///|
+/// §9.1.1.1: strict for-in identifier assignment `for (g in obj)` targeting
+/// the NFE self-name must throw TypeError. exec_stmt.mbt called env.assign
+/// (strict=false); fixed to env.assign_with_strict.
+test "§15.2.5: strict NFE: for (g in obj) throws TypeError" {
+  let err = run_error_display(
+    (
+      #|var f = function g() { "use strict"; for (g in {a:1}) {} };
+      #|f();
+    ),
+  )
+  inspect(err, content="TypeError: Assignment to constant variable 'g'")
+}
+
+///|
+/// §9.1.1.1: strict for-of identifier assignment `for (g of [1])` targeting
+/// the NFE self-name must throw TypeError (same exec_stmt.mbt fix as for-in).
+test "§15.2.5: strict NFE: for (g of [1]) throws TypeError" {
+  let err = run_error_display(
+    (
+      #|var f = function g() { "use strict"; for (g of [1]) {} };
+      #|f();
+    ),
+  )
+  inspect(err, content="TypeError: Assignment to constant variable 'g'")
+}

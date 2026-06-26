@@ -670,7 +670,7 @@ fn Interpreter::exec_stmt(
             body_env.def(name, String_(key), bk)
           }
           None =>
-            env.assign(name, String_(key)) catch {
+            env.assign_with_strict(name, String_(key), ctx.strict) catch {
               @errors.ReferenceError(_) =>
                 if !ctx.strict {
                   self.global.def(name, String_(key), VarBinding)
@@ -880,7 +880,7 @@ fn Interpreter::exec_stmt(
             body_env.def(name, value, bk)
           }
           None =>
-            env.assign(name, value) catch {
+            env.assign_with_strict(name, value, ctx.strict) catch {
               e => {
                 close_iterator(self, iterator, loc) catch {
                   _ => ()
