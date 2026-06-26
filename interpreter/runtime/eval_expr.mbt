@@ -482,6 +482,40 @@ fn Interpreter::eval_prop_value(
           source_text~,
         )
       }
+      AsyncGeneratorExpr(name, params, body, _, source_text) => {
+        validate_function_signature(ctx.strict, None, params, body)
+        let strict = is_function_strict(ctx.strict, body)
+        return self.make_async_generator_function(
+          name,
+          params,
+          None,
+          body,
+          strict,
+          method_env,
+          has_name_binding=false,
+          source_text~,
+        )
+      }
+      AsyncGeneratorExprExt(name, params, rest_param, body, _, source_text) => {
+        validate_function_signature_ext(
+          ctx.strict,
+          None,
+          params,
+          rest_param,
+          body,
+        )
+        let strict = is_function_strict(ctx.strict, body)
+        return self.make_async_generator_function_ext(
+          name,
+          params,
+          rest_param,
+          body,
+          strict,
+          method_env,
+          has_name_binding=false,
+          source_text~,
+        )
+      }
       _ => ()
     }
   }
@@ -1379,6 +1413,7 @@ fn Interpreter::eval_expr(
         body,
         strict,
         env,
+        has_name_binding=name is Some(_),
         source_text~,
       )
     }
@@ -1398,6 +1433,7 @@ fn Interpreter::eval_expr(
         body,
         strict,
         env,
+        has_name_binding=name is Some(_),
         source_text~,
       )
     }

@@ -19434,3 +19434,39 @@ test "§15.2.5: strict NFE: for (g of [1]) throws TypeError" {
   )
   inspect(err, content="TypeError: Assignment to constant variable 'g'")
 }
+
+///|
+/// §15.2.5: named async generator expression gets a FunctionNameBinding env.
+/// make_async_gen_function_inner previously had no has_name_binding support;
+/// the self-name was unbound inside the body (yield typeof g → "undefined").
+test "§15.2.5: named async generator expression self-name is visible" {
+  let src =
+    #|var f = async function* g() { yield typeof g; };
+    #|f().next().then(r => console.log(r.value));
+  let output = run_output_async(src)
+  json_inspect(output, content=["function"])
+}
+
+///|
+/// §9.1.1.1: strict write to async generator NFE self-name must reject with TypeError.
+/// Async generators surface body errors as rejected Promises from .next().
+test "§15.2.5: strict async generator NFE: g = 1 rejects with TypeError" {
+  let src =
+    #|var f = async function* g() { "use strict"; g = 1; };
+    #|f().next().catch(e => console.log(e.name + ': ' + e.message));
+  let output = run_output_async(src)
+  json_inspect(output, content=[
+    "TypeError: Assignment to constant variable 'g'",
+  ])
+}
+
+///|
+/// §15.2.5: async generator method shorthands must not create a self-name binding.
+/// fast path in eval_prop_value/class.mbt passes has_name_binding=false.
+test "§15.2.5: async generator method has no self-name binding" {
+  let src =
+    #|({ async *m() { yield typeof m; } }).m().next().then(r => console.log(r.value));
+    #|(new class { async *m() { yield typeof m; } }).m().next().then(r => console.log(r.value));
+  let output = run_output_async(src)
+  json_inspect(output, content=["undefined", "undefined"])
+}

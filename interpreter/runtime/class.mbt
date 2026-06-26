@@ -336,6 +336,43 @@ fn Interpreter::create_class(
               source_text=method_source_text,
             )
           }
+          AsyncGeneratorExpr(fn_name, params, body, _, method_source_text) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature(true, fn_name, params, strict_body)
+            self.make_async_generator_function(
+              fn_name,
+              params,
+              None,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
+          AsyncGeneratorExprExt(
+            fn_name,
+            params,
+            rest,
+            body,
+            _,
+            method_source_text
+          ) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature_ext(
+              true, fn_name, params, rest, strict_body,
+            )
+            self.make_async_generator_function_ext(
+              fn_name,
+              params,
+              rest,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
           _ => self.eval_expr(class_ctx, m.value, method_closure)
         }
         // Handle getter/setter vs regular method
