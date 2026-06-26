@@ -16,26 +16,6 @@ Before starting a task:
 
 ## High-priority conformance tasks
 
-### Array internals post-Stage-C audit
-
-**Source:** Stage C moved array named/symbol/length/indexed-descriptor state into
-`ArrayData.bag`; older direct Array fast paths may now duplicate or bypass the
-canonical prototype/property paths. Historical progress is recorded in
-[archive/agent-todo-history.md](archive/agent-todo-history.md#cluster-1--array-internals-post-stage-c-audit).
-
-**Goal:** Remove or justify remaining direct Array hooks one cohort at a time.
-
-**Next slices:**
-
-- Enumerate remaining direct fast paths in `interpreter/stdlib/builtins_array.mbt`.
-- For each path, identify the exact test262 cohort or unit behavior it protects.
-- Prefer one PR per method family. Non-mutating read paths are safest; mutating
-  methods need length-writable and sparse-array checks preserved.
-- Keep iterator semantics separate from mutator semantics.
-
-**Validation:** targeted Array test262 filters, `moon test`, and a focused diff
-review for sparse-array/prototype/descriptor behavior.
-
 ### Algorithmic timeouts
 
 **Required skill:** `moonbit-perf-investigation`.
