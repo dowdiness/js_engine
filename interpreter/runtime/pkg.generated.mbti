@@ -567,6 +567,7 @@ pub(all) struct GeneratorObject {
   for_of_iterator_stack : Array[Value]
   for_of_next_stack : Array[Value]
   mut for_of_resume : Bool
+  dstr_iterator_stack : Array[Value]
   mut delegate_iterator : Value
   mut delegate_next : Value
   mut delegating : Bool

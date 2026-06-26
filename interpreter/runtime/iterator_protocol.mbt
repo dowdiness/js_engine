@@ -1,5 +1,7 @@
 ///|
-/// Return an iterator's `next` method using the spec `[[Get]]` path.
+/// Return an iterator's `next` method using the spec §7.4.1 `[[Get]]` path.
+/// Per spec, callability is NOT checked here — GetIterator only gets the property.
+/// The TypeError fires later in IteratorNext when Call(nextMethod, ...) is attempted.
 pub fn Interpreter::get_iterator_next_method(
   self : Interpreter,
   iterator : Value,
@@ -8,11 +10,7 @@ pub fn Interpreter::get_iterator_next_method(
   if !is_object_value(iterator) {
     raise @errors.TypeError(message="Iterator is not an object")
   }
-  let next_method = self.get_property(iterator, "next", loc)
-  if !is_callable(next_method) {
-    raise @errors.TypeError(message="iterator.next is not a function")
-  }
-  next_method
+  self.get_property(iterator, "next", loc)
 }
 
 ///|
