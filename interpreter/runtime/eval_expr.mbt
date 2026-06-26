@@ -1207,6 +1207,7 @@ fn Interpreter::eval_expr(
         body,
         strict,
         env,
+        has_name_binding=name is Some(_),
         source_text~,
       )
     }
@@ -1226,6 +1227,7 @@ fn Interpreter::eval_expr(
         body,
         strict,
         env,
+        has_name_binding=name is Some(_),
         source_text~,
       )
     }
@@ -1239,6 +1241,7 @@ fn Interpreter::eval_expr(
         body,
         strict,
         env,
+        has_name_binding=name is Some(_),
         source_text~,
       )
     }
@@ -1258,6 +1261,7 @@ fn Interpreter::eval_expr(
         body,
         strict,
         env,
+        has_name_binding=name is Some(_),
         source_text~,
       )
     }

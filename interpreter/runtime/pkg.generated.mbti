@@ -414,6 +414,7 @@ pub(all) enum BindingKind {
   LetBinding
   ConstBinding
   VarBinding
+  FunctionNameBinding
 } derive(Eq, @debug.Debug)
 pub impl Show for BindingKind
 

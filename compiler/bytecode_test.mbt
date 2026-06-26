@@ -2441,11 +2441,12 @@ test "bytecode named function expressions bind self name inside function only" {
 
 ///|
 test "bytecode named function expressions do not overwrite outer bindings" {
+  // Non-strict: assignment to NFE self-name is silently ignored; outer binding unchanged.
   let src =
     #|var g = "outer";
-    #|var f = function g() { g = "inner"; return g; };
+    #|var f = function g() { g = "inner"; return typeof g; };
     #|f() + "," + g;
-  inspect(bytecode_compare(src), content="value:inner,outer")
+  inspect(bytecode_compare(src), content="value:function,outer")
 }
 
 ///|
