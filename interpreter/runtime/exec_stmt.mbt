@@ -72,6 +72,42 @@ fn Interpreter::bind_function_decl_value(
 const FOR_OF_RESUME_VALUE_BINDING = "[[ForOfResumeValue]]"
 
 ///|
+/// Collect all binding names from a pattern (IdentPat leaves only).
+/// Used to build the TDZ environment for let/const for-of ForDeclaration
+/// per spec §14.7.5.12 step 2 (ForIn/OfHeadEvaluation TDZnames).
+fn collect_pattern_tdz_names(
+  pattern : @ast.Pattern,
+  names : Array[String],
+) -> Unit {
+  match pattern {
+    IdentPat(name) => names.push(name)
+    DefaultPat(inner, _) => collect_pattern_tdz_names(inner, names)
+    AssignTarget(_) => ()
+    ArrayPat(elements, rest) => {
+      for elem in elements {
+        match elem {
+          Some(pat) => collect_pattern_tdz_names(pat, names)
+          None => ()
+        }
+      }
+      match rest {
+        Some(pat) => collect_pattern_tdz_names(pat, names)
+        None => ()
+      }
+    }
+    ObjectPat(props, rest) => {
+      for prop in props {
+        collect_pattern_tdz_names(prop.value, names)
+      }
+      match rest {
+        Some(pat) => collect_pattern_tdz_names(pat, names)
+        None => ()
+      }
+    }
+  }
+}
+
+///|
 fn save_for_of_resume_state(
   gen_opt : GeneratorObject?,
   iterator : Value,
@@ -1006,7 +1042,28 @@ fn Interpreter::exec_stmt(
       let (iterator, next_method) : (Value, Value) = if resuming_for_of {
         restore_for_of_resume_state(gen_opt)
       } else {
-        let iterable = self.eval_expr(ctx, iterable_expr, env)
+        // Per spec §14.7.5.12 ForIn/OfHeadEvaluation step 2: for let/const
+        // ForDeclaration, create a TDZ env with the binding names before
+        // evaluating the iterable expression. Functions created in the iterable
+        // expression that reference these names will see them as uninitialized
+        // (ReferenceError on access) rather than seeing the outer binding.
+        let iterable_eval_env = match var_kind {
+          Some(LetKind | ConstKind) => {
+            let tdz_env = Environment::new(parent=Some(env))
+            let bk : BindingKind = match var_kind {
+              Some(LetKind) => LetBinding
+              _ => ConstBinding
+            }
+            let tdz_names : Array[String] = []
+            collect_pattern_tdz_names(pattern, tdz_names)
+            for tdz_name in tdz_names {
+              tdz_env.def_tdz(tdz_name, bk)
+            }
+            tdz_env
+          }
+          _ => env
+        }
+        let iterable = self.eval_expr(ctx, iterable_expr, iterable_eval_env)
 
         // Try to get the iterator via Symbol.iterator protocol
         let iterator_sym = self.realm_state.well_known_symbols.iterator
