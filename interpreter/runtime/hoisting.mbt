@@ -1095,6 +1095,102 @@ fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error 
 }
 
 ///|
+/// Read-only mirror of hoist_var_declarations_from_stmt — walks the same
+/// VarScopedDeclarations tree and invokes on_name for every var-scoped binding
+/// without creating any bindings. Does not recurse into function/class/generator/
+/// async-function bodies (separate var scopes per ES §8.2.4).
+fn walk_var_scoped_names(
+  stmt : @ast.Stmt,
+  on_name : (String) -> Unit raise Error,
+) -> Unit raise Error {
+  match stmt {
+    VarDecl(VarKind, name, _, _) => on_name(name)
+    DestructureDecl(VarKind, pattern, _, _) =>
+      walk_pattern_idents(pattern, on_name)
+    StmtList(inner_stmts, _) =>
+      for inner in inner_stmts {
+        walk_var_scoped_names(inner, on_name)
+      }
+    Block(inner_stmts, _) =>
+      for inner in inner_stmts {
+        walk_var_scoped_names(inner, on_name)
+      }
+    IfStmt(_, then_branch, else_branch, _) => {
+      walk_var_scoped_names(then_branch, on_name)
+      match else_branch {
+        Some(eb) => walk_var_scoped_names(eb, on_name)
+        None => ()
+      }
+    }
+    WhileStmt(_, body, _) => walk_var_scoped_names(body, on_name)
+    DoWhileStmt(body, _, _) => walk_var_scoped_names(body, on_name)
+    ForStmt(init, _, _, body, _) => {
+      match init {
+        Some(init_stmt) => walk_var_scoped_names(init_stmt, on_name)
+        None => ()
+      }
+      walk_var_scoped_names(body, on_name)
+    }
+    ForInStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) {
+        on_name(name)
+      }
+      walk_var_scoped_names(body, on_name)
+    }
+    ForOfStmt(kind, name, _, body, _) => {
+      if kind == Some(VarKind) {
+        on_name(name)
+      }
+      walk_var_scoped_names(body, on_name)
+    }
+    ForInStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        walk_pattern_idents(pattern, on_name)
+      }
+      walk_var_scoped_names(body, on_name)
+    }
+    ForOfStmtPat(kind, pattern, _, body, _) => {
+      if kind == Some(VarKind) {
+        walk_pattern_idents(pattern, on_name)
+      }
+      walk_var_scoped_names(body, on_name)
+    }
+    ForInExpr(_, _, body, _) => walk_var_scoped_names(body, on_name)
+    ForOfExpr(_, _, body, _) => walk_var_scoped_names(body, on_name)
+    LabeledStmt(_, inner, _) => walk_var_scoped_names(inner, on_name)
+    SwitchStmt(_, cases, _) =>
+      for case_ in cases {
+        for inner in case_.body {
+          walk_var_scoped_names(inner, on_name)
+        }
+      }
+    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+      for inner in try_body {
+        walk_var_scoped_names(inner, on_name)
+      }
+      match catch_body {
+        Some(cb) =>
+          for inner in cb {
+            walk_var_scoped_names(inner, on_name)
+          }
+        None => ()
+      }
+      match finally_body {
+        Some(fb) =>
+          for inner in fb {
+            walk_var_scoped_names(inner, on_name)
+          }
+        None => ()
+      }
+    }
+    WithStmt(_, body, _) => walk_var_scoped_names(body, on_name)
+    ExportNamedDecl(Some(decl), _, _, _, _) =>
+      walk_var_scoped_names(decl, on_name)
+    _ => ()
+  }
+}
+
+///|
 fn hoist_var_declarations_from_stmt(
   stmt : @ast.Stmt,
   env : Environment,
@@ -1798,22 +1894,22 @@ fn Interpreter::hoist_declarations(
             None => ()
           }
         }
-        // Steps 11-12: CanDeclareGlobalVar for each var declaration
+        // Steps 11-12: CanDeclareGlobalVar for all var-scoped names. Uses the
+        // same recursive VarScopedDeclarations walk as the actual hoist so that
+        // nested vars (inside blocks, ifs, loops, switch, try-catch) are checked.
         for pre_stmt in stmts {
-          match pre_stmt {
-            VarDecl(VarKind, name, _, _) =>
-              if !declared_function_names.contains(name) {
-                // §9.1.1.4.15 CanDeclareGlobalVar
-                let definable = data.bag.descriptors.contains(name) ||
-                  data.extensible
-                if !definable {
-                  raise @errors.TypeError(
-                    message="Cannot declare global var '\{name}': global object is non-extensible",
-                  )
-                }
+          walk_var_scoped_names(pre_stmt, name => {
+            if !declared_function_names.contains(name) {
+              // §9.1.1.4.15 CanDeclareGlobalVar
+              let definable = data.bag.descriptors.contains(name) ||
+                data.extensible
+              if !definable {
+                raise @errors.TypeError(
+                  message="Cannot declare global var '\{name}': global object is non-extensible",
+                )
               }
-            _ => ()
-          }
+            }
+          })
         }
       }
       _ => ()
