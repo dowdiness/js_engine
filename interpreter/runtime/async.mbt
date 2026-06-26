@@ -12,6 +12,7 @@ fn Interpreter::make_async_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  has_name_binding? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let func_name = match name {
@@ -32,7 +33,25 @@ fn Interpreter::make_async_function(
     is_accessor: false,
   }
   let async_proto = get_function_prototype(self)
-  stamp_function_realm(
+  let effective_closure : Environment = if has_name_binding {
+    match name {
+      Some(n) => {
+        let ne = Environment::new(parent=Some(closure))
+        ne.bindings[n] = {
+          value: Undefined,
+          kind: FunctionNameBinding,
+          initialized: true,
+          annex_b_hoisted: false,
+          is_parameter: false,
+        }
+        ne
+      }
+      None => closure
+    }
+  } else {
+    closure
+  }
+  let async_func = stamp_function_realm(
     Object({
       bag: {
         properties: {
@@ -61,7 +80,7 @@ fn Interpreter::make_async_function(
             rest_param,
             body,
             strict,
-            closure,
+            effective_closure,
           )
         }),
       ),
@@ -71,6 +90,17 @@ fn Interpreter::make_async_function(
     }),
     realm_state=Some(self.realm_state),
   )
+  if has_name_binding {
+    match name {
+      Some(n) =>
+        match effective_closure.bindings.get(n) {
+          Some(b) => b.value = async_func
+          None => ()
+        }
+      None => ()
+    }
+  }
+  async_func
 }
 
 ///|
@@ -82,6 +112,7 @@ fn Interpreter::make_async_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  has_name_binding? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let func_name = match name {
@@ -103,7 +134,25 @@ fn Interpreter::make_async_function_ext(
   }
   let async_proto = get_function_prototype(self)
   let func_length = expected_argument_count_ext(params)
-  stamp_function_realm(
+  let effective_closure : Environment = if has_name_binding {
+    match name {
+      Some(n) => {
+        let ne = Environment::new(parent=Some(closure))
+        ne.bindings[n] = {
+          value: Undefined,
+          kind: FunctionNameBinding,
+          initialized: true,
+          annex_b_hoisted: false,
+          is_parameter: false,
+        }
+        ne
+      }
+      None => closure
+    }
+  } else {
+    closure
+  }
+  let async_func = stamp_function_realm(
     Object({
       bag: {
         properties: {
@@ -132,7 +181,7 @@ fn Interpreter::make_async_function_ext(
             rest_param,
             body,
             strict,
-            closure,
+            effective_closure,
           )
         }),
       ),
@@ -142,6 +191,17 @@ fn Interpreter::make_async_function_ext(
     }),
     realm_state=Some(self.realm_state),
   )
+  if has_name_binding {
+    match name {
+      Some(n) =>
+        match effective_closure.bindings.get(n) {
+          Some(b) => b.value = async_func
+          None => ()
+        }
+      None => ()
+    }
+  }
+  async_func
 }
 
 ///|
@@ -417,6 +477,7 @@ fn Interpreter::make_async_generator_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  has_name_binding? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
@@ -428,6 +489,7 @@ fn Interpreter::make_async_generator_function(
     body,
     strict,
     closure,
+    has_name_binding,
     source_text,
   )
 }
@@ -442,6 +504,7 @@ fn Interpreter::make_async_generator_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  has_name_binding? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
@@ -453,6 +516,7 @@ fn Interpreter::make_async_generator_function_ext(
     body,
     strict,
     closure,
+    has_name_binding,
     source_text,
   )
 }
@@ -469,6 +533,7 @@ fn make_async_gen_function_inner(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  has_name_binding : Bool,
   source_text : String?,
 ) -> Value {
   // Use the shared %AsyncGeneratorPrototype% singleton (set up during interpreter init).
@@ -516,7 +581,25 @@ fn make_async_gen_function_inner(
     setter: None,
     is_accessor: false,
   }
-  stamp_function_realm(
+  let effective_closure : Environment = if has_name_binding {
+    match name {
+      Some(n) => {
+        let ne = Environment::new(parent=Some(closure))
+        ne.bindings[n] = {
+          value: Undefined,
+          kind: FunctionNameBinding,
+          initialized: true,
+          annex_b_hoisted: false,
+          is_parameter: false,
+        }
+        ne
+      }
+      None => closure
+    }
+  } else {
+    closure
+  }
+  let async_gen_func = stamp_function_realm(
     Object({
       bag: {
         properties: fn_props,
@@ -541,7 +624,7 @@ fn make_async_gen_function_inner(
         InterpreterCallable(func_name, fn(ip, this_val, args) raise {
           create_generator_instance(
             ip, this_val, args, name, params, params_ext, rest_param, body, strict,
-            closure, func_prototype,
+            effective_closure, func_prototype,
           )
         }),
       ),
@@ -551,6 +634,17 @@ fn make_async_gen_function_inner(
     }),
     realm_state=Some(interp.realm_state),
   )
+  if has_name_binding {
+    match name {
+      Some(n) =>
+        match effective_closure.bindings.get(n) {
+          Some(b) => b.value = async_gen_func
+          None => ()
+        }
+      None => ()
+    }
+  }
+  async_gen_func
 }
 
 ///|

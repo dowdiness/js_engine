@@ -273,6 +273,106 @@ fn Interpreter::create_class(
             }
             make_func_ext(func_data)
           }
+          // Generator/async methods: fast path with has_name_binding=false.
+          // Class MethodDefinitionEvaluation must not create a FunctionExpressionName
+          // binding; generator/async can't be stripped post-hoc so suppress at creation.
+          GeneratorExpr(fn_name, params, body, _, method_source_text) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature(true, fn_name, params, strict_body)
+            self.make_generator_function(
+              fn_name,
+              params,
+              None,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
+          GeneratorExprExt(fn_name, params, rest, body, _, method_source_text) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature_ext(
+              true, fn_name, params, rest, strict_body,
+            )
+            self.make_generator_function_ext(
+              fn_name,
+              params,
+              rest,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
+          AsyncFuncExpr(fn_name, params, body, _, method_source_text) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature(true, fn_name, params, strict_body)
+            self.make_async_function(
+              fn_name,
+              params,
+              None,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
+          AsyncFuncExprExt(fn_name, params, rest, body, _, method_source_text) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature_ext(
+              true, fn_name, params, rest, strict_body,
+            )
+            self.make_async_function_ext(
+              fn_name,
+              params,
+              rest,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
+          AsyncGeneratorExpr(fn_name, params, body, _, method_source_text) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature(true, fn_name, params, strict_body)
+            self.make_async_generator_function(
+              fn_name,
+              params,
+              None,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
+          AsyncGeneratorExprExt(
+            fn_name,
+            params,
+            rest,
+            body,
+            _,
+            method_source_text
+          ) => {
+            let strict_body = ensure_strict_body(body)
+            validate_function_signature_ext(
+              true, fn_name, params, rest, strict_body,
+            )
+            self.make_async_generator_function_ext(
+              fn_name,
+              params,
+              rest,
+              strict_body,
+              true,
+              method_closure,
+              has_name_binding=false,
+              source_text=method_source_text,
+            )
+          }
           _ => self.eval_expr(class_ctx, m.value, method_closure)
         }
         // Handle getter/setter vs regular method

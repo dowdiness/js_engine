@@ -349,6 +349,7 @@ fn Interpreter::make_generator_function(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  has_name_binding? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let interp = self
@@ -393,7 +394,25 @@ fn Interpreter::make_generator_function(
     setter: None,
     is_accessor: false,
   }
-  stamp_function_realm(
+  let effective_closure : Environment = if has_name_binding {
+    match name {
+      Some(n) => {
+        let ne = Environment::new(parent=Some(closure))
+        ne.bindings[n] = {
+          value: Undefined,
+          kind: FunctionNameBinding,
+          initialized: true,
+          annex_b_hoisted: false,
+          is_parameter: false,
+        }
+        ne
+      }
+      None => closure
+    }
+  } else {
+    closure
+  }
+  let gen_func = stamp_function_realm(
     Object({
       bag: {
         properties: fn_props,
@@ -426,7 +445,7 @@ fn Interpreter::make_generator_function(
             rest_param,
             body,
             strict,
-            closure,
+            effective_closure,
             func_prototype,
           )
         }),
@@ -437,6 +456,17 @@ fn Interpreter::make_generator_function(
     }),
     realm_state=Some(self.realm_state),
   )
+  if has_name_binding {
+    match name {
+      Some(n) =>
+        match effective_closure.bindings.get(n) {
+          Some(b) => b.value = gen_func
+          None => ()
+        }
+      None => ()
+    }
+  }
+  gen_func
 }
 
 ///|
@@ -449,6 +479,7 @@ fn Interpreter::make_generator_function_ext(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  has_name_binding? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let interp = self
@@ -493,7 +524,25 @@ fn Interpreter::make_generator_function_ext(
     setter: None,
     is_accessor: false,
   }
-  stamp_function_realm(
+  let effective_closure : Environment = if has_name_binding {
+    match name {
+      Some(n) => {
+        let ne = Environment::new(parent=Some(closure))
+        ne.bindings[n] = {
+          value: Undefined,
+          kind: FunctionNameBinding,
+          initialized: true,
+          annex_b_hoisted: false,
+          is_parameter: false,
+        }
+        ne
+      }
+      None => closure
+    }
+  } else {
+    closure
+  }
+  let gen_func = stamp_function_realm(
     Object({
       bag: {
         properties: fn_props,
@@ -526,7 +575,7 @@ fn Interpreter::make_generator_function_ext(
             rest_param,
             body,
             strict,
-            closure,
+            effective_closure,
             func_prototype,
           )
         }),
@@ -537,6 +586,17 @@ fn Interpreter::make_generator_function_ext(
     }),
     realm_state=Some(self.realm_state),
   )
+  if has_name_binding {
+    match name {
+      Some(n) =>
+        match effective_closure.bindings.get(n) {
+          Some(b) => b.value = gen_func
+          None => ()
+        }
+      None => ()
+    }
+  }
+  gen_func
 }
 
 ///|

@@ -290,7 +290,7 @@ fn Interpreter::assign_pattern(
 ) -> Unit raise Error {
   match pattern {
     IdentPat(name) =>
-      env.assign(name, value) catch {
+      env.assign_with_strict(name, value, ctx.strict) catch {
         @errors.ReferenceError(message~) =>
           if !ctx.strict && message == "\{name} is not defined" {
             // Sloppy mode: implicit global creation for unbound names only.
@@ -673,7 +673,7 @@ fn Interpreter::assign_to_expr(
 ) -> Unit raise Error {
   match expr {
     Ident(name, _) =>
-      env.assign(name, value) catch {
+      env.assign_with_strict(name, value, ctx.strict) catch {
         @errors.ReferenceError(message~) =>
           if !ctx.strict && message == "\{name} is not defined" {
             // Sloppy mode: implicit global creation for unbound names only.
@@ -786,7 +786,7 @@ fn Interpreter::put_lref(
 ) -> Unit raise Error {
   match lref {
     IdentLRef(name) =>
-      env.assign(name, value) catch {
+      env.assign_with_strict(name, value, ctx.strict) catch {
         @errors.ReferenceError(_) =>
           if !ctx.strict {
             self.global.def(name, value, VarBinding)

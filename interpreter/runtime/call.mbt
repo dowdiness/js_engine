@@ -872,7 +872,7 @@ fn Interpreter::call_value_impl(
               match data.name {
                 Some(name) =>
                   if !func_env.bindings.contains(name) {
-                    func_env.def(name, callee, LetBinding)
+                    func_env.def(name, callee, FunctionNameBinding)
                   }
                 None => ()
               }
@@ -951,7 +951,7 @@ fn Interpreter::call_value_impl(
             match data.name {
               Some(name) => {
                 let ne = Environment::new(parent=Some(data.closure))
-                ne.def(name, callee, LetBinding)
+                ne.def(name, callee, FunctionNameBinding)
                 ne
               }
               None => data.closure

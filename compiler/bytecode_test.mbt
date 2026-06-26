@@ -2441,11 +2441,39 @@ test "bytecode named function expressions bind self name inside function only" {
 
 ///|
 test "bytecode named function expressions do not overwrite outer bindings" {
+  // Non-strict: assignment to NFE self-name is silently ignored; outer binding unchanged.
   let src =
     #|var g = "outer";
-    #|var f = function g() { g = "inner"; return g; };
+    #|var f = function g() { g = "inner"; return typeof g; };
     #|f() + "," + g;
-  inspect(bytecode_compare(src), content="value:inner,outer")
+  inspect(bytecode_compare(src), content="value:function,outer")
+}
+
+///|
+test "bytecode named function expressions throw TypeError on reassignment in strict mode" {
+  // Strict: assignment to NFE self-name must throw TypeError (S=false, §9.1.1.1)
+  let src =
+    #|"use strict";
+    #|var f = function g() { g = 1; return g; };
+    #|f();
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Assignment to constant variable 'g'",
+  )
+}
+
+///|
+test "bytecode named function expressions throw TypeError on update in strict mode" {
+  // Strict: update-assign (g++) to NFE self-name must throw TypeError.
+  // update_compiled_name called env.assign (strict=false); fixed to assign_with_strict.
+  let src =
+    #|"use strict";
+    #|var f = function g() { g++; };
+    #|f();
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Assignment to constant variable 'g'",
+  )
 }
 
 ///|

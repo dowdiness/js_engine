@@ -3,6 +3,10 @@ pub(all) enum BindingKind {
   LetBinding
   ConstBinding
   VarBinding
+  // §9.1.1.1 CreateImmutableBinding(N, false): immutable but S=false means
+  // TypeError only in strict mode; non-strict assignment is silently ignored.
+  // Used for named function expression self-name bindings per §14.1.22.
+  FunctionNameBinding
 } derive(Debug, Eq)
 
 ///|
@@ -426,7 +430,7 @@ fn Environment::assign_with_strict(
     None => ()
   }
   match self.bindings.get(name) {
-    Some(binding) => assign_binding_value(binding, name, value)
+    Some(binding) => assign_binding_value(binding, name, value, strict)
     None =>
       match self.parent {
         Some(parent) => parent.assign_with_strict(name, value, strict)
@@ -457,7 +461,7 @@ fn Environment::assign_resolved(
     None => ()
   }
   match self.bindings.get(name) {
-    Some(binding) => assign_binding_value(binding, name, value)
+    Some(binding) => assign_binding_value(binding, name, value, strict)
     None => raise @errors.ReferenceError(message="\{name} is not defined")
   }
 }
@@ -467,6 +471,7 @@ fn assign_binding_value(
   binding : Binding,
   name : String,
   value : Value,
+  strict : Bool,
 ) -> Unit raise Error {
   if !binding.initialized {
     raise @errors.ReferenceError(
@@ -474,6 +479,13 @@ fn assign_binding_value(
     )
   } else if binding.kind == ConstBinding {
     raise @errors.TypeError(message="Assignment to constant variable '\{name}'")
+  } else if binding.kind == FunctionNameBinding {
+    if strict {
+      raise @errors.TypeError(
+        message="Assignment to constant variable '\{name}'",
+      )
+    }
+    // Non-strict: silently ignore per §9.1.1.1 CreateImmutableBinding(N, false)
   } else {
     binding.value = value
   }

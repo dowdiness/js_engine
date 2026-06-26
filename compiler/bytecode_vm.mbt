@@ -292,7 +292,7 @@ fn make_named_bytecode_func(
 ) -> Value raise Error {
   let self_name_env = Environment::new(parent=Some(closure))
   let func = make_bytecode_func(func_def, self_name_env, enclosing_ctx)
-  self_name_env.def(name, func, LetBinding)
+  self_name_env.def(name, func, FunctionNameBinding)
   func
 }
 
@@ -342,7 +342,11 @@ fn BytecodeFrame::bind_call_self_name(self : BytecodeFrame) -> Unit raise Error 
     match self.func_def.name {
       Some(name) =>
         if !self.env.bindings.contains(name) {
-          self.env.def(name, self.env.get("[[BytecodeCallee]]"), LetBinding)
+          self.env.def(
+            name,
+            self.env.get("[[BytecodeCallee]]"),
+            FunctionNameBinding,
+          )
         }
       None => ()
     }
