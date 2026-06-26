@@ -11,11 +11,13 @@ Usage:
 
 Always reads from a completed main-branch CI run — never from a PR branch run,
 which can diverge from main before merging and produce outlier counts.
+
+When to run: after any batch of PRs that recovers more than ~100 tests, so the
+floor tracks actual progress rather than drifting far below it.
 """
 import argparse, json, pathlib, subprocess, sys, tempfile
 from datetime import date
 
-REPO = "dowdiness/js_engine"
 WORKFLOW = "test262.yml"
 ARTIFACT = "test262-combined-report"
 BASELINE_PATH = pathlib.Path(__file__).parent.parent / "test262-baseline.json"
@@ -29,10 +31,19 @@ def gh(*args):
     return result.stdout.strip()
 
 
-def find_latest_main_run():
+def get_repo():
+    repo = gh("repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner")
+    if not repo:
+        print("Could not determine repo from 'gh repo view'. "
+              "Are you in a git repo with a GitHub remote?", file=sys.stderr)
+        sys.exit(1)
+    return repo
+
+
+def find_latest_main_run(repo):
     run_id = gh(
         "api", "--method", "GET",
-        f"repos/{REPO}/actions/workflows/{WORKFLOW}/runs",
+        f"repos/{repo}/actions/workflows/{WORKFLOW}/runs",
         "-f", "branch=main", "-f", "status=success", "-f", "per_page=1",
         "--jq", ".workflow_runs[0].id",
     )
@@ -42,8 +53,8 @@ def find_latest_main_run():
     return run_id
 
 
-def download_summary(run_id, tmpdir):
-    gh("run", "download", run_id, "--repo", REPO,
+def download_summary(run_id, repo, tmpdir):
+    gh("run", "download", run_id, "--repo", repo,
        "--name", ARTIFACT, "--dir", tmpdir)
     path = pathlib.Path(tmpdir) / "test262-summary.json"
     if not path.exists():
@@ -64,11 +75,12 @@ def main():
                         help="Print proposed changes without writing")
     args = parser.parse_args()
 
-    run_id = args.run_id or find_latest_main_run()
-    print(f"CI run: {run_id}  (buffer: {args.buffer})")
+    repo = get_repo()
+    run_id = args.run_id or find_latest_main_run(repo)
+    print(f"Repo: {repo}  CI run: {run_id}  (buffer: {args.buffer})")
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        summary = download_summary(run_id, tmpdir)
+        summary = download_summary(run_id, repo, tmpdir)
 
     actuals = {
         "non-strict": summary["modes"]["non-strict"]["passed"],
