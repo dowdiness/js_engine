@@ -1878,7 +1878,8 @@ fn Interpreter::hoist_declarations(
             Some(name) =>
               if !declared_function_names.contains(name) {
                 // §9.1.1.4.16 CanDeclareGlobalFunction
-                let definable = match data.bag.descriptors.get(name) {
+                let definable = match
+                  ordinary_get_own_string_desc(data.bag, name) {
                   None => data.extensible
                   Some(desc) =>
                     desc.configurable ||
@@ -1901,7 +1902,8 @@ fn Interpreter::hoist_declarations(
           walk_var_scoped_names(pre_stmt, name => {
             if !declared_function_names.contains(name) {
               // §9.1.1.4.15 CanDeclareGlobalVar
-              let definable = data.bag.descriptors.contains(name) ||
+              let definable = ordinary_get_own_string_desc(data.bag, name)
+                is Some(_) ||
                 data.extensible
               if !definable {
                 raise @errors.TypeError(
