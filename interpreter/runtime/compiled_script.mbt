@@ -69,7 +69,7 @@ pub fn Interpreter::assign_compiled_name(
     }
     return value
   }
-  env.assign(name, value) catch {
+  env.assign_with_strict(name, value, ctx.strict) catch {
     @errors.ReferenceError(_) =>
       if !ctx.strict {
         self.global.def(name, value, VarBinding)

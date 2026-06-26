@@ -2450,6 +2450,19 @@ test "bytecode named function expressions do not overwrite outer bindings" {
 }
 
 ///|
+test "bytecode named function expressions throw TypeError on reassignment in strict mode" {
+  // Strict: assignment to NFE self-name must throw TypeError (S=false, §9.1.1.1)
+  let src =
+    #|"use strict";
+    #|var f = function g() { g = 1; return g; };
+    #|f();
+  inspect(
+    bytecode_compare(src),
+    content="throw:TypeError: Assignment to constant variable 'g'",
+  )
+}
+
+///|
 test "bytecode nested closures capture named function expression self binding" {
   let src =
     #|var f = function g() {
