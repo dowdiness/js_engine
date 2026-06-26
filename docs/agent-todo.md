@@ -40,7 +40,7 @@ review for sparse-array/prototype/descriptor behavior.
 
 **Source:** April TypeError drill, deferred past Stage C. Verified 2026-06-26.
 
-**Failures (6 total — 3 files × 2 modes):**
+**Failures (strict: 3, sloppy: 3):**
 - `language/global-code/script-decl-var-err.js` — `CanDeclareGlobalVar` on non-extensible global
 - `language/global-code/script-decl-func-err-non-extensible.js` — `CanDeclareGlobalFunction` on non-extensible global
 - `language/global-code/script-decl-func-err-non-configurable.js` — `CanDeclareGlobalFunction` where property is non-configurable
@@ -53,7 +53,7 @@ review for sparse-array/prototype/descriptor behavior.
 
 **Source:** April TypeError drill, deferred past Stage C. Verified 2026-06-26.
 
-**Failures (10 total — 5 methods × 2 modes):**
+**Failures (strict: 5, sloppy: 5):**
 - `built-ins/Array/prototype/{map,splice,slice,filter,concat}/create-ctor-non-object.js`
 
 **Spec:** ES2024 §23.1.3.19 ArraySpeciesCreate step 5 (`Let C be Get(originalArray, "constructor")`), step 7 (skip @@species if C is not an Object), step 9 (`If IsConstructor(C) is false, throw TypeError`) — when `a.constructor` is set to `null`/number/string/boolean, steps 7-8 don't fire so it falls to step 9 which should throw.
