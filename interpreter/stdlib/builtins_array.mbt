@@ -10,23 +10,10 @@ pub fn get_array_method(
 ///|
 pub fn get_array_method_with_interp(
   _data : ArrayData,
-  prop : String,
+  _prop : String,
   _realm_state : @runtime.RealmState,
 ) -> Value {
-  match prop {
-    "join" | "toString" => Undefined // Delegated to Array.prototype (live join)
-    "includes" | "at" => Undefined // Delegated to Array.prototype (live indexed properties)
-    "forEach" | "map" | "filter" => Undefined // Delegated to Array.prototype
-    "reduce" | "reduceRight" => Undefined // Delegated to Array.prototype
-    "find" | "findIndex" | "findLast" | "findLastIndex" => Undefined // Delegated to Array.prototype
-    "every" | "some" => Undefined // Delegated to Array.prototype
-    "shift" | "unshift" => Undefined // Delegated to Array.prototype (overrides and indexed mutation semantics)
-    "reverse" | "fill" | "copyWithin" | "sort" => Undefined // Delegated to Array.prototype (indexed [[Set]]/[[Delete]] + length-writable)
-    "toReversed" | "toSorted" | "toSpliced" | "with" => Undefined // Delegated to Array.prototype (copy-by-value methods)
-    "flat" | "flatMap" => Undefined // Delegated to Array.prototype (species support)
-    "concat" => Undefined // Delegated to Array.prototype (species support)
-    _ => Undefined
-  }
+  Undefined // All methods delegated to Array.prototype
 }
 
 ///|
