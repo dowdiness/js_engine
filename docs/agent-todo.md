@@ -36,18 +36,29 @@ canonical prototype/property paths. Historical progress is recorded in
 **Validation:** targeted Array test262 filters, `moon test`, and a focused diff
 review for sparse-array/prototype/descriptor behavior.
 
-### Strict-mode TypeError residual re-triage
+### Cluster 8: GlobalDeclarationInstantiation TypeError on non-extensible/non-configurable global (#464)
 
-**Source:** The April TypeError drill deferred a residual cluster until after
-Stage C. Stage C is done, so the failures should be reclassified from scratch.
+**Source:** April TypeError drill, deferred past Stage C. Verified 2026-06-26.
 
-**Goal:** Find one small, spec-anchored TypeError bundle similar to PRs #70/#71.
+**Failures (6 total — 3 files × 2 modes):**
+- `language/global-code/script-decl-var-err.js` — `CanDeclareGlobalVar` on non-extensible global
+- `language/global-code/script-decl-func-err-non-extensible.js` — `CanDeclareGlobalFunction` on non-extensible global
+- `language/global-code/script-decl-func-err-non-configurable.js` — `CanDeclareGlobalFunction` where property is non-configurable
 
-**Steps:**
+**Spec:** ES2024 §15.1.11 GlobalDeclarationInstantiation steps 9-12 (checks `CanDeclareGlobalFunction`/`CanDeclareGlobalVar`); §9.1.1.4.15-16 for the predicate implementations.
 
-1. Re-run the original strict-mode TypeError filters from the archived notes.
-2. Sample 5–10 failing tests and group by shared spec step.
-3. Split into a quick-win bundle and a deferred set if the causes diverge.
+**Filter:** `make test262-filter FILTER=language/global-code/script-decl-var-err` and `…func-err`
+
+### Cluster 9: ArraySpeciesCreate TypeError when `.constructor` is a non-object primitive (#465)
+
+**Source:** April TypeError drill, deferred past Stage C. Verified 2026-06-26.
+
+**Failures (10 total — 5 methods × 2 modes):**
+- `built-ins/Array/prototype/{map,splice,slice,filter,concat}/create-ctor-non-object.js`
+
+**Spec:** ES2024 §23.1.3.19 ArraySpeciesCreate step 5 (`Let C be Get(originalArray, "constructor")`), step 7 (skip @@species if C is not an Object), step 9 (`If IsConstructor(C) is false, throw TypeError`) — when `a.constructor` is set to `null`/number/string/boolean, steps 7-8 don't fire so it falls to step 9 which should throw.
+
+**Filter:** `make test262-filter FILTER=built-ins/Array/prototype/map/create-ctor-non-object`
 
 ### Algorithmic timeouts
 
