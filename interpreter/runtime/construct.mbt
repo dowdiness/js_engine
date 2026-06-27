@@ -631,6 +631,16 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
     ),
     VarBinding,
   )
+  // §10.2.11 step 21: pre-declare all simple-named params as TDZ so that
+  // self- and forward-referring defaults throw ReferenceError.
+  for p in params {
+    guard !p.is_rest_pattern && p.pattern is None else { continue }
+    param_env.def_param_tdz(p.name)
+  }
+  match rest_param {
+    Some(rp) => param_env.def_param_tdz(rp)
+    None => ()
+  }
   let mut effective_param_count = 0
   for i = 0; i < params.length(); i = i + 1 {
     let param = params[i]
@@ -653,7 +663,7 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
     }
     match param.pattern {
       Some(pat) => self.bind_pattern(pat, val, param_env, LetBinding, ctx~)
-      None => param_env.def_parameter(param.name, val)
+      None => param_env.initialize(param.name, val)
     }
     effective_param_count += 1
   }
@@ -677,7 +687,7 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
         }
       }
       if !bound_rest_pattern {
-        param_env.def_parameter(rest_name, rest_val)
+        param_env.initialize(rest_name, rest_val)
       }
     }
     None => ()

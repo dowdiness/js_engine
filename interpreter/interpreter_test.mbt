@@ -19652,3 +19652,54 @@ test "§15.7.5.1: base ctor param-default resolves super.prop via direct new" {
   )
   json_inspect(output, content=["function"])
 }
+
+///|
+/// §10.2.11 step 21: forward-referring class constructor default must throw
+/// ReferenceError when the referenced param is still in TDZ. Tested via
+/// SuperCall path (D calls super() → B, where B has `constructor(x=y, y=1)`).
+test "panic §10.2.11: forward-ref class ctor default throws ReferenceError via super()" {
+  let _ = run_output(
+    (
+      #|class B { constructor(x = y, y = 1) {} }
+      #|class D extends B { constructor() { super(); } }
+      #|new D();
+    ),
+  )
+}
+
+///|
+/// §10.2.11 step 21: backward-referring class constructor default is fine;
+/// `y = x + 1` evaluates after x is initialized. Tested via SuperCall path.
+test "§10.2.11: backward-ref class ctor default works via super()" {
+  let output = run_output(
+    (
+      #|class B { constructor(x = 10, y = x + 1) { this.y = y; } }
+      #|class D extends B { constructor() { super(); } }
+      #|console.log(new D().y);
+    ),
+  )
+  json_inspect(output, content=["11"])
+}
+
+///|
+/// §10.2.11 step 21: same forward-reference check via direct construction path.
+test "panic §10.2.11: forward-ref class ctor default throws ReferenceError via new" {
+  let _ = run_output(
+    (
+      #|class B { constructor(x = y, y = 1) {} }
+      #|new B();
+    ),
+  )
+}
+
+///|
+/// §10.2.11 step 21: same backward-reference check via direct construction path.
+test "§10.2.11: backward-ref class ctor default works via direct new" {
+  let output = run_output(
+    (
+      #|class B { constructor(x = 10, y = x + 1) { this.y = y; } }
+      #|console.log(new B().y);
+    ),
+  )
+  json_inspect(output, content=["11"])
+}
