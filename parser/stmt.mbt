@@ -186,9 +186,21 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
         msg == "DEFAULT_PARAM_FOUND" ||
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
-        let (ext_params, rest_param) = self.parse_params_ext()
-        // Context already pushed; parse body within the same context.
-        let body = self.parse_block_body()
+        // Wrap each inner call so cleanup runs even if parsing fails.
+        let (ext_params, rest_param) = self.parse_params_ext() catch {
+          e => {
+            self.pop_async_context()
+            self.pop_generator_context()
+            raise e
+          }
+        }
+        let body = self.parse_block_body() catch {
+          e => {
+            self.pop_async_context()
+            self.pop_generator_context()
+            raise e
+          }
+        }
         self.pop_async_context()
         self.pop_generator_context()
         return GeneratorDeclExt(
@@ -210,7 +222,13 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
       raise e
     }
   }
-  let body = self.parse_block_body()
+  let body = self.parse_block_body() catch {
+    e => {
+      self.pop_async_context()
+      self.pop_generator_context()
+      raise e
+    }
+  }
   self.pop_async_context()
   self.pop_generator_context()
   GeneratorDecl(
@@ -1008,7 +1026,15 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
         }
         (name, tok.lex_form, tok.loc, None)
       }
-      _ => (self.expect_ident(), @token.LexForm::LexNormal, key_start_loc, None)
+      // §12.2.6: LiteralPropertyName = IdentifierName, so any keyword (including
+      // `yield` in generator context) is valid as an object binding property key.
+      _ =>
+        (
+          self.expect_ident_name(),
+          @token.LexForm::LexNormal,
+          key_start_loc,
+          None,
+        )
     }
     let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
       // { key: pattern } or { [expr]: pattern }

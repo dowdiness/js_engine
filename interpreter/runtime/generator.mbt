@@ -173,14 +173,69 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
 }
 
 ///|
+// Walk a binding pattern for yield expressions in default values and computed
+// property keys. Property name strings (e.g. the "yield" in {yield: x}) are
+// not expressions and are intentionally not flagged here.
+fn pattern_contains_yield(pat : @ast.Pattern) -> Bool {
+  match pat {
+    IdentPat(_) => false
+    DefaultPat(inner, default_expr) =>
+      pattern_contains_yield(inner) || expr_contains_yield(default_expr)
+    ArrayPat(elements, rest) => {
+      let elems_yield = elements
+        .iter()
+        .any(fn(e) {
+          match e {
+            Some(p) => pattern_contains_yield(p)
+            None => false
+          }
+        })
+      let rest_yield = match rest {
+        Some(r) => pattern_contains_yield(r)
+        None => false
+      }
+      elems_yield || rest_yield
+    }
+    AssignTarget(e) => expr_contains_yield(e)
+    ObjectPat(props, rest) => {
+      let props_yield = props
+        .iter()
+        .any(fn(prop) {
+          // Check computed key expression (e.g. {[yield]: x}), shorthand or
+          // keyed default (e.g. {x = yield} or {a: b = yield}), and nested pat.
+          let computed_yield = match prop.computed_key {
+            Some(e) => expr_contains_yield(e)
+            None => false
+          }
+          let default_yield = match prop.default_val {
+            Some(e) => expr_contains_yield(e)
+            None => false
+          }
+          computed_yield || default_yield || pattern_contains_yield(prop.value)
+        })
+      let rest_yield = match rest {
+        Some(r) => pattern_contains_yield(r)
+        None => false
+      }
+      props_yield || rest_yield
+    }
+  }
+}
+
+///|
 fn params_contain_yield(params : Array[@ast.Param]) -> Bool {
   params
   .iter()
   .any(fn(p) {
-    match p.default_val {
+    let default_has_yield = match p.default_val {
       Some(expr) => expr_contains_yield(expr)
       None => false
     }
+    let pattern_has_yield = match p.pattern {
+      Some(pat) => pattern_contains_yield(pat)
+      None => false
+    }
+    default_has_yield || pattern_has_yield
   })
 }
 

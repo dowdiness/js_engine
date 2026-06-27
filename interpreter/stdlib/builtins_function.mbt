@@ -9,6 +9,42 @@ fn func_kind_prefix(class_name : String) -> String {
 }
 
 ///|
+// §20.2.1.1.1 step 27a: create a .prototype object that inherits from
+// Object.prototype. Extracted so all three Function-constructor return paths
+// stay consistent if the construction ever changes.
+fn make_function_prototype(realm_state : @runtime.RealmState) -> Value {
+  let object_proto = @runtime.get_obj_proto(realm_state=Some(realm_state))
+  Value::Object({
+    bag: @runtime.PropertyBag(),
+    prototype: object_proto,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
+// §20.2.1.1.1 step 27a: wire result.prototype.constructor = result so the
+// constructed function's prototype correctly back-references the function.
+fn wire_constructor_to_prototype(proto : Value, result : Value) -> Unit {
+  match proto {
+    Object(proto_data) => {
+      proto_data.bag.properties["constructor"] = result
+      proto_data.bag.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
 /// ES262 §10.2.4 ExpectedArgumentCount for extended parameter lists:
 /// count parameters before the first default initializer or rest parameter.
 fn callable_source_text(data : @runtime.ObjectData) -> String? {
@@ -422,18 +458,7 @@ fn setup_function_builtins(
         if prog.stmts.length() > 0 {
           match prog.stmts[0] {
             FuncDecl(_, params, body, _, _) => {
-              // §20.2.1.1.1 step 27a: create .prototype object inheriting from Object.prototype.
-              let object_proto = @runtime.get_obj_proto(
-                realm_state=Some(realm_state),
-              )
-              let proto = Value::Object({
-                bag: @runtime.PropertyBag(),
-                prototype: object_proto,
-                callable: None,
-                class_name: "Object",
-                extensible: true,
-                arraybuffer_state: None,
-              })
+              let proto = make_function_prototype(realm_state)
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
               fn_props["name"] = Value::String_("anonymous")
@@ -487,34 +512,11 @@ fn setup_function_builtins(
                 }),
                 realm_state=Some(realm_state),
               )
-              match proto {
-                Object(proto_data) => {
-                  proto_data.bag.properties["constructor"] = result
-                  proto_data.bag.descriptors["constructor"] = {
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                    is_accessor: false,
-                  }
-                }
-                _ => ()
-              }
+              wire_constructor_to_prototype(proto, result)
               return result
             }
             FuncDeclExt(_, params, rest_param, body, _, _) => {
-              let object_proto = @runtime.get_obj_proto(
-                realm_state=Some(realm_state),
-              )
-              let proto = Value::Object({
-                bag: @runtime.PropertyBag(),
-                prototype: object_proto,
-                callable: None,
-                class_name: "Object",
-                extensible: true,
-                arraybuffer_state: None,
-              })
+              let proto = make_function_prototype(realm_state)
               let fn_props : Map[String, Value] = {}
               let fn_length = expected_argument_count_ext(params)
               fn_props["length"] = Value::Number(fn_length.to_double())
@@ -566,37 +568,14 @@ fn setup_function_builtins(
                 }),
                 realm_state=Some(realm_state),
               )
-              match proto {
-                Object(proto_data) => {
-                  proto_data.bag.properties["constructor"] = result
-                  proto_data.bag.descriptors["constructor"] = {
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                    getter: None,
-                    setter: None,
-                    is_accessor: false,
-                  }
-                }
-                _ => ()
-              }
+              wire_constructor_to_prototype(proto, result)
               return result
             }
             _ => ()
           }
         }
         // Fallback: empty function (defensive — synthesized source always parses)
-        let fb_object_proto = @runtime.get_obj_proto(
-          realm_state=Some(realm_state),
-        )
-        let fb_proto = Value::Object({
-          bag: @runtime.PropertyBag(),
-          prototype: fb_object_proto,
-          callable: None,
-          class_name: "Object",
-          extensible: true,
-          arraybuffer_state: None,
-        })
+        let fb_proto = make_function_prototype(realm_state)
         let fb_result = @runtime.stamp_function_realm(
           Value::Object({
             bag: {
@@ -629,20 +608,7 @@ fn setup_function_builtins(
           }),
           realm_state=Some(realm_state),
         )
-        match fb_proto {
-          Object(fb_proto_data) => {
-            fb_proto_data.bag.properties["constructor"] = fb_result
-            fb_proto_data.bag.descriptors["constructor"] = {
-              writable: true,
-              enumerable: false,
-              configurable: true,
-              getter: None,
-              setter: None,
-              is_accessor: false,
-            }
-          }
-          _ => ()
-        }
+        wire_constructor_to_prototype(fb_proto, fb_result)
         fb_result
       }),
     ),
