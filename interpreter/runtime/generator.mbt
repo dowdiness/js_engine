@@ -153,7 +153,15 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
     TaggedTemplate(tag, _, exprs, _) =>
       expr_contains_yield(tag) ||
       exprs.iter().any(fn(e) { expr_contains_yield(e) })
-    DestructureAssign(_, rhs, _) => expr_contains_yield(rhs)
+    // DestructureAssign LHS pattern can contain computed keys or defaults with
+    // yield expressions ({[yield]: a} = {}, {a = yield} = {}) — scan both sides.
+    DestructureAssign(pat, rhs, _) =>
+      pattern_contains_yield(pat) || expr_contains_yield(rhs)
+    // Arrow params (including defaults) are evaluated in the enclosing scope,
+    // so ArrowFuncExt/AsyncArrowFuncExt are NOT full boundaries for yield.
+    // Simple ArrowFunc/AsyncArrowFunc have no defaults, so false is safe.
+    ArrowFuncExt(params, _, _, _, _) | AsyncArrowFuncExt(params, _, _, _, _) =>
+      params_contain_yield(params)
     // Nested function boundaries — yield inside is not the outer generator's
     FuncExpr(_, _, _, _, _)
     | FuncExprExt(_, _, _, _, _, _)
@@ -162,11 +170,9 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
     | AsyncFuncExpr(_, _, _, _, _)
     | AsyncFuncExprExt(_, _, _, _, _, _)
     | AsyncArrowFunc(_, _, _, _)
-    | AsyncArrowFuncExt(_, _, _, _, _)
     | AsyncGeneratorExpr(_, _, _, _, _)
     | AsyncGeneratorExprExt(_, _, _, _, _, _)
-    | ArrowFunc(_, _, _, _)
-    | ArrowFuncExt(_, _, _, _, _) => false
+    | ArrowFunc(_, _, _, _) => false
     // Class is NOT a full boundary: heritage and computed member keys are
     // evaluated in the surrounding scope (ES §15.7.1 ClassElementName).
     ClassExpr(_, superclass, members, _, _) => {
