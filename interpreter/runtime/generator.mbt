@@ -166,8 +166,24 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
     | AsyncGeneratorExpr(_, _, _, _, _)
     | AsyncGeneratorExprExt(_, _, _, _, _, _)
     | ArrowFunc(_, _, _, _)
-    | ArrowFuncExt(_, _, _, _, _)
-    | ClassExpr(_, _, _, _, _) => false
+    | ArrowFuncExt(_, _, _, _, _) => false
+    // Class is NOT a full boundary: heritage and computed member keys are
+    // evaluated in the surrounding scope (ES §15.7.1 ClassElementName).
+    ClassExpr(_, superclass, members, _, _) => {
+      let heritage = match superclass {
+        Some(e) => expr_contains_yield(e)
+        None => false
+      }
+      let computed = members
+        .iter()
+        .any(fn(m) {
+          match m {
+            Method(cm) => cm.computed && expr_contains_yield(cm.key)
+            Field(cf) => cf.computed && expr_contains_yield(cf.key)
+          }
+        })
+      heritage || computed
+    }
     _ => false
   }
 }

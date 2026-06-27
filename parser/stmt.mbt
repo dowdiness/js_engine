@@ -1026,15 +1026,18 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
         }
         (name, tok.lex_form, tok.loc, None)
       }
-      // §12.2.6: LiteralPropertyName = IdentifierName, so any keyword (including
-      // `yield` in generator context) is valid as an object binding property key.
-      _ =>
-        (
-          self.expect_ident_name(),
-          @token.LexForm::LexNormal,
-          key_start_loc,
-          None,
-        )
+      // §12.2.6: LiteralPropertyName = IdentifierName, so keywords are valid as
+      // property keys when a colon follows ({yield: x}).  Without a colon the key
+      // is also the BindingIdentifier — enforce IdentifierReference rules there.
+      _ => {
+        let next_is_colon = self.peek_kind_at(1) == Colon
+        let key_str = if next_is_colon {
+          self.expect_ident_name()
+        } else {
+          self.expect_ident()
+        }
+        (key_str, @token.LexForm::LexNormal, key_start_loc, None)
+      }
     }
     let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
       // { key: pattern } or { [expr]: pattern }
