@@ -633,13 +633,23 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
   )
   // §10.2.11 step 21: pre-declare all simple-named params as TDZ so that
   // self- and forward-referring defaults throw ReferenceError.
+  let mut has_rest_pattern_param = false
   for p in params {
-    guard !p.is_rest_pattern && p.pattern is None else { continue }
+    if p.is_rest_pattern {
+      has_rest_pattern_param = true
+      continue
+    }
+    guard p.pattern is None else { continue }
     param_env.def_param_tdz(p.name)
   }
-  match rest_param {
-    Some(rp) => param_env.def_param_tdz(rp)
-    None => ()
+  // Only pre-declare the rest param if it's a simple name (e.g. ...rest).
+  // For destructuring rest (...[a], ...{b}), rest_param holds the synthetic
+  // "$rest" name — that name is never user-visible, so skip TDZ for it.
+  if !has_rest_pattern_param {
+    match rest_param {
+      Some(rp) => param_env.def_param_tdz(rp)
+      None => ()
+    }
   }
   let mut effective_param_count = 0
   for i = 0; i < params.length(); i = i + 1 {

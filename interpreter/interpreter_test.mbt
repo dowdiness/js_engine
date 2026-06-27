@@ -19703,3 +19703,18 @@ test "§10.2.11: backward-ref class ctor default works via direct new" {
   )
   json_inspect(output, content=["11"])
 }
+
+///|
+/// §10.2.11: destructuring rest params use a synthetic "$rest" name that must
+/// NOT be TDZ-pre-declared. Pre-declaring "$rest" would conflict when a
+/// regular param is also named "$rest", and would create a spurious TDZ
+/// binding the user never wrote.
+test "§10.2.11: class ctor with destructuring rest param does not create spurious TDZ" {
+  let output = run_output(
+    (
+      #|class B { constructor(...[a]) { this.a = a; } }
+      #|console.log(new B(42).a);
+    ),
+  )
+  json_inspect(output, content=["42"])
+}
