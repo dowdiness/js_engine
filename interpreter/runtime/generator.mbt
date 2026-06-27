@@ -1563,3 +1563,61 @@ fn get_optional_method(obj : Value, name : String) -> Value? raise Error {
     _ => None
   }
 }
+
+///|
+/// On abrupt generator resume (ReturnAction/ThrowAction) while a destructuring
+/// iterator is stacked, close iterators per §7.4.9 and propagate the
+/// appropriate completion signal.  The for-of caller additionally closes its
+/// own outer iterator *before* calling this helper.
+///
+/// Close order: innermost-first (index 0 = first pushed = innermost level),
+/// matching the non-generator spec flow where each nested pattern closes its
+/// own iterator before the containing pattern does.
+fn Interpreter::close_dstr_stack_on_abrupt_resume(
+  self : Interpreter,
+  g : GeneratorObject,
+  loc : @token.Loc,
+) -> Unit raise Error {
+  guard g.dstr_iterator_stack.length() > 0 else { return }
+  // Only abrupt completions need to close iterators.
+  let action = g.resume_action
+  guard action is (ReturnAction(_) | ThrowAction(_)) else { return }
+  g.resume_action = NextAction
+  // Snapshot in push order (index 0 = innermost); drain the stack so stale
+  // refs don't linger if a close raises.
+  let n = g.dstr_iterator_stack.length()
+  let iters : Array[Value] = []
+  for i = 0; i < n; i = i + 1 {
+    iters.push(g.dstr_iterator_stack[i])
+  }
+  while g.dstr_iterator_stack.length() > 0 {
+    let _ = g.dstr_iterator_stack.pop()
+  }
+  match action {
+    ReturnAction(v) => {
+      // §7.4.9 step 8: a close error replaces the return completion.
+      // Continue closing remaining iterators even after an error.
+      // First error wins: once a completion is abrupt, later close errors are
+      // discarded (§7.4.9 step 4 in subsequent levels).
+      let mut close_err : Error? = None
+      for iter in iters {
+        self.iterator_close(iter, loc) catch {
+          e => if close_err is None { close_err = Some(e) }
+        }
+      }
+      match close_err {
+        Some(e) => raise e
+        None => raise GeneratorReturnSignal(v)
+      }
+    }
+    ThrowAction(e) => {
+      for iter in iters {
+        self.iterator_close(iter, loc) catch {
+          _ => ()
+        }
+      }
+      raise JsException(e)
+    }
+    NextAction => () // unreachable: guard above excludes NextAction
+  }
+}

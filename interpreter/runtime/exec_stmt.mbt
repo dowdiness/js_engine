@@ -1146,7 +1146,13 @@ fn Interpreter::exec_stmt(
                     save_for_of_resume_state(
                       gen_opt, iterator, next_method, body_env, binding_yield_base,
                     )
+                  } else if e is GeneratorReturnSignal(_) {
+                    // §7.4.9: return completion — outer loop close error replaces it
+                    close_iterator(self, iterator, loc) catch {
+                      close_err => raise close_err
+                    }
                   } else {
+                    // Throw completion — outer close error discarded (§7.4.9 step 4)
                     close_iterator(self, iterator, loc) catch {
                       _ => ()
                     }
@@ -1155,37 +1161,13 @@ fn Interpreter::exec_stmt(
                 }
               }
             }
-            None => {
-              // Bug fix: on abrupt resume (return/throw) with a saved inner dstr
-              // iterator, call IteratorClose directly — re-running assign_pattern
-              // would call iterator.next() again, inflating the step count.
-              match gen_opt {
-                Some(g) if g.dstr_iterator_stack.length() > 0 =>
-                  match g.resume_action {
-                    ReturnAction(v) => {
-                      let inner_iter = g.dstr_iterator_stack.pop().unwrap()
-                      g.resume_action = NextAction
-                      close_iterator(self, iterator, loc) catch {
-                        _ => ()
-                      }
-                      self.iterator_close(inner_iter, loc) // §7.4.6 step 8: error replaces return
-                      raise GeneratorReturnSignal(v)
-                    }
-                    ThrowAction(e) => {
-                      let inner_iter = g.dstr_iterator_stack.pop().unwrap()
-                      g.resume_action = NextAction
-                      close_iterator(self, iterator, loc) catch {
-                        _ => ()
-                      }
-                      self.iterator_close(inner_iter, loc) catch {
-                        _ => ()
-                      }
-                      raise JsException(e)
-                    }
-                    NextAction => ()
-                  }
-                _ => ()
-              }
+            None =>
+              // No exec_stmt-level guard here: the guard lives inside
+              // assign_pattern's ArrayPat branch (destructuring.mbt).  On abrupt
+              // resume with a stacked dstr iterator, assign_pattern raises from
+              // within, which propagates here and triggers the catch block below —
+              // closing the outer for-of iterator in the right order (inner first,
+              // then outer), mirroring how the Some(kind) → bind_pattern arm works.
               self.assign_pattern(ctx, pattern, value, env) catch {
                 e => {
                   if e is YieldSignal(_) {
@@ -1193,7 +1175,13 @@ fn Interpreter::exec_stmt(
                     save_for_of_resume_state(
                       gen_opt, iterator, next_method, body_env, binding_yield_base,
                     )
+                  } else if e is GeneratorReturnSignal(_) {
+                    // §7.4.9: return completion — outer loop close error replaces it
+                    close_iterator(self, iterator, loc) catch {
+                      close_err => raise close_err
+                    }
                   } else {
+                    // Throw completion — outer close error discarded (§7.4.9 step 4)
                     close_iterator(self, iterator, loc) catch {
                       _ => ()
                     }
@@ -1201,7 +1189,6 @@ fn Interpreter::exec_stmt(
                   raise e
                 }
               }
-            }
           }
         }
         let body_yield_base = match gen_opt {
