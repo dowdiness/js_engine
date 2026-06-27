@@ -872,11 +872,7 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
       let classifier = @path_utils.join_path(
         repo_root, "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
       )
-      let classifier_flags = if config.format == "readme" {
-        ["--compact"]
-      } else {
-        ["--markdown"]
-      }
+      let classifier_flags = ["--markdown"]
       let capture = collect_process_args(
         classifier,
         [
