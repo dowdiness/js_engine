@@ -1753,16 +1753,30 @@ fn Parser::parse_async_func_body(
   loc : @token.Loc,
 ) -> @ast.Expr raise Error {
   let saved_pos = self.pos
+  // Push context before params so nested async-function params are isolated
+  // from any outer generator's context (mirrors fix in parse_func_expr).
+  self.push_generator_context(is_generator)
+  self.push_async_context(true)
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
       if msg == "REST_PARAM_FOUND" ||
         msg == "DEFAULT_PARAM_FOUND" ||
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
-        let (ext_params, rest_param) = self.parse_params_ext()
-        self.push_generator_context(is_generator)
-        self.push_async_context(true)
-        let body = self.parse_block_body()
+        let (ext_params, rest_param) = self.parse_params_ext() catch {
+          e => {
+            self.pop_async_context()
+            self.pop_generator_context()
+            raise e
+          }
+        }
+        let body = self.parse_block_body() catch {
+          e => {
+            self.pop_async_context()
+            self.pop_generator_context()
+            raise e
+          }
+        }
         self.pop_async_context()
         self.pop_generator_context()
         return if is_generator {
@@ -1785,13 +1799,23 @@ fn Parser::parse_async_func_body(
           )
         }
       } else {
+        self.pop_async_context()
+        self.pop_generator_context()
         raise @errors.SyntaxError(message=msg)
       }
-    e => raise e
+    e => {
+      self.pop_async_context()
+      self.pop_generator_context()
+      raise e
+    }
   }
-  self.push_generator_context(is_generator)
-  self.push_async_context(true)
-  let body = self.parse_block_body()
+  let body = self.parse_block_body() catch {
+    e => {
+      self.pop_async_context()
+      self.pop_generator_context()
+      raise e
+    }
+  }
   self.pop_async_context()
   self.pop_generator_context()
   if is_generator {
