@@ -804,13 +804,29 @@ fn find_results(artifact_dir : String) -> (String, String) raise {
 
 ///|
 fn validate_report_format(format : String) -> Unit raise {
-  if format != "table" && format != "changelog" {
+  if format != "table" && format != "changelog" && format != "readme" {
     fail(
       "error: argument --format: invalid choice: '" +
       format +
-      "' (choose from 'table', 'changelog')",
+      "' (choose from 'table', 'changelog', 'readme')",
     )
   }
+}
+
+///|
+fn render_readme_header(run : RunInfo) -> String {
+  let sha = prefix(run.sha, 7)
+  let date = prefix(run.created_at, 10)
+  "Test262 conformance by edition — CI run [" +
+  run.id.to_string() +
+  "](" +
+  run.url +
+  "), tip `" +
+  sha +
+  "`, " +
+  date +
+  ". P/E = passed ÷ executed (excludes skipped tests). " +
+  "Refresh: `make test262-report ARGS=\"--format=readme\"`."
 }
 
 ///|
@@ -840,10 +856,14 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
     }
     stdout = if config.format == "changelog" {
       render_changelog(run, strict, nonstrict, baseline) + "\n"
+    } else if config.format == "readme" {
+      render_readme_header(run) + "\n"
     } else {
       render_report(run, strict, nonstrict, baseline) + "\n"
     }
-    if config.format == "table" && config.with_editions {
+    let needs_classifier = (config.format == "table" && config.with_editions) ||
+      config.format == "readme"
+    if needs_classifier {
       stdout += "\n"
       let repo_root = match config.repo_root {
         Some(root) => root
@@ -852,10 +872,15 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
       let classifier = @path_utils.join_path(
         repo_root, "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
       )
+      let classifier_flags = if config.format == "readme" {
+        ["--compact"]
+      } else {
+        ["--markdown"]
+      }
       let capture = collect_process_args(
         classifier,
         [
-          "--markdown",
+          ..classifier_flags,
           "--test262-root",
           @path_utils.join_path(repo_root, "test262"),
           strict_path,

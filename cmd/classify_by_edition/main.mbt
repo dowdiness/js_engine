@@ -66,6 +66,10 @@ fn main {
       ),
       @argparse.FlagArg("show-unmapped", about="Print unmapped features seen"),
       @argparse.FlagArg("list-failures", about="Per-edition failure breakdown"),
+      @argparse.FlagArg(
+        "compact",
+        about="Emit a compact 3-column table combining strict and non-strict modes",
+      ),
     ],
     options=[
       @argparse.OptionArg(
@@ -116,6 +120,7 @@ fn main {
     edition_filter=optional_value(matches.values, "edition"),
     top=parse_top(first_value(matches.values, "top", "15")),
     json_output=first_value(matches.values, "json-output", ""),
+    compact=flag_value(matches.flags, "compact"),
   ) catch {
     err => {
       eprintln("Error: \{err}")

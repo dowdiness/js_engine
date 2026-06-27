@@ -53,7 +53,31 @@ The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
 
 Core ES5 plus selected ES6+ features: `let` / `const` / `var`, arrow functions, closures, classes, `for` / `while` / `for-in` / `for-of`, `try` / `catch` / `finally`, template literals, destructuring, spread / rest, ES Modules, Promises + microtasks, `setTimeout` / `setInterval`, ES6 Proxy (13 traps) + Reflect API (13 methods), TypedArrays (9 types), ArrayBuffer, DataView, RegExp, JSON, Map / Set / WeakMap / WeakSet, generators, Symbols.
 
-For current conformance per category, see [docs/supported-features.md](docs/supported-features.md).
+For the full per-category breakdown, see [docs/supported-features.md](docs/supported-features.md).
+
+## Conformance
+
+<!-- Refresh: make test262-report ARGS="--format=readme" -->
+
+Test262 conformance by edition — CI run [28279305916](https://github.com/dowdiness/js_engine/actions/runs/28279305916), tip `39c6bc1`, 2026-06-27. P/E = passed ÷ executed (excludes skipped tests). Refresh: `make test262-report ARGS="--format=readme"`.
+
+| Edition | Strict P/E | Non-strict P/E |
+|---|---:|---:|
+| Pre-ES2015 (baseline) | 97.8% | 96.7% |
+| ES2015 | 97.7% | 97.5% |
+| ES2016 | 100.0% | 100.0% |
+| ES2017 | 99.2% | 99.3% |
+| ES2018 | 95.7% | 95.7% |
+| ES2019 | 82.8% | 82.7% |
+| ES2020 | 98.4% | 98.9% |
+| ES2021 | 95.6% | 95.3% |
+| ES2022 | 99.3% | 99.2% |
+| ES2023 | 98.6% | 98.6% |
+| ES2024 | 52.4% | 52.7% |
+| ES2025 | 80.2% | 80.1% |
+| Annex B | 82.3% | 83.8% |
+| Stage 3 | 50.0% | 9.7% |
+| **Total** | **96.9%** | **95.7%** |
 
 ## Package Structure
 

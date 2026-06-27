@@ -608,6 +608,105 @@ fn classify_result_records(
 }
 
 ///|
+fn sorted_compact_keys(
+  strict_buckets : Map[String, EditionBucket],
+  nonstrict_buckets : Map[String, EditionBucket],
+) -> Array[String] {
+  let seen : Map[String, Bool] = {}
+  let keys : Array[String] = []
+  for key, _ in strict_buckets {
+    guard !seen.contains(key) else { continue }
+    seen[key] = true
+    keys.push(key)
+  }
+  for key, _ in nonstrict_buckets {
+    guard !seen.contains(key) else { continue }
+    seen[key] = true
+    keys.push(key)
+  }
+  keys.sort_by(fn(a, b) {
+    let by_rank = edition_rank(a).compare(edition_rank(b))
+    if by_rank != 0 {
+      by_rank
+    } else {
+      a.compare(b)
+    }
+  })
+  keys
+}
+
+///|
+fn compact_pct(
+  buckets : Map[String, EditionBucket],
+  edition : String,
+) -> String {
+  match buckets.get(edition) {
+    None => "—"
+    Some(bucket) =>
+      if bucket_executed(bucket) == 0 {
+        "—"
+      } else {
+        bucket_passed_over_executed(bucket) + "%"
+      }
+  }
+}
+
+///|
+fn render_compact_classify_table(
+  strict_buckets : Map[String, EditionBucket],
+  nonstrict_buckets : Map[String, EditionBucket],
+) -> Array[String] {
+  let lines : Array[String] = [
+    "| Edition | Strict P/E | Non-strict P/E |", "|---|---:|---:|",
+  ]
+  let mut strict_totals = empty_bucket()
+  let mut nonstrict_totals = empty_bucket()
+  for _, bucket in strict_buckets {
+    if bucket.total > 0 {
+      strict_totals = bucket_add(strict_totals, bucket)
+    }
+  }
+  for _, bucket in nonstrict_buckets {
+    if bucket.total > 0 {
+      nonstrict_totals = bucket_add(nonstrict_totals, bucket)
+    }
+  }
+  for edition in sorted_compact_keys(strict_buckets, nonstrict_buckets) {
+    let s_bucket = match strict_buckets.get(edition) {
+      Some(b) => b
+      None => empty_bucket()
+    }
+    let n_bucket = match nonstrict_buckets.get(edition) {
+      Some(b) => b
+      None => empty_bucket()
+    }
+    // Skip editions with no tests discovered in either mode
+    guard s_bucket.total > 0 || n_bucket.total > 0 else { continue }
+    // Skip editions fully skipped in both modes
+    guard bucket_executed(s_bucket) > 0 || bucket_executed(n_bucket) > 0 else {
+      continue
+    }
+    lines.push(
+      "| " +
+      edition +
+      " | " +
+      compact_pct(strict_buckets, edition) +
+      " | " +
+      compact_pct(nonstrict_buckets, edition) +
+      " |",
+    )
+  }
+  lines.push(
+    "| **Total** | **" +
+    bucket_passed_over_executed(strict_totals) +
+    "%** | **" +
+    bucket_passed_over_executed(nonstrict_totals) +
+    "%** |",
+  )
+  lines
+}
+
+///|
 fn sorted_edition_keys(buckets : Map[String, EditionBucket]) -> Array[String] {
   let keys : Array[String] = []
   for key, _ in buckets {
@@ -1009,32 +1108,61 @@ pub fn run_classify_by_edition(
   edition_filter? : String? = None,
   top? : Int = 15,
   json_output? : String = "",
+  compact? : Bool = false,
 ) -> ToolRun raise {
   let all_unmapped : Map[String, Int] = {}
   let stdout_lines : Array[String] = []
   let failure_sections : Array[Array[String]] = []
   let mode_editions : Map[String, Json] = {}
-  for result_path in result_paths {
-    let data = load_result_file(result_path)
-    let (buckets, unmapped) = classify_result_records(
-      data.results,
-      test262_root,
-    )
-    if json_output != "" {
-      mode_editions[data.mode] = editions_json(buckets)
+  if compact {
+    let mode_buckets : Map[String, Map[String, EditionBucket]] = {}
+    for result_path in result_paths {
+      let data = load_result_file(result_path)
+      let (buckets, unmapped) = classify_result_records(
+        data.results,
+        test262_root,
+      )
+      mode_buckets[data.mode] = buckets
+      for feature, count in unmapped {
+        all_unmapped[feature] = map_get_count(all_unmapped, feature) + count
+      }
+    }
+    let strict_buckets = match mode_buckets.get("strict") {
+      Some(b) => b
+      None => {}
+    }
+    let nonstrict_buckets = match mode_buckets.get("non-strict") {
+      Some(b) => b
+      None => {}
     }
     append_section(
       stdout_lines,
-      render_classify_table(data.mode, buckets),
-      leading_blank=stdout_lines.length() > 0,
+      render_compact_classify_table(strict_buckets, nonstrict_buckets),
+      leading_blank=false,
     )
-    if list_failures {
-      failure_sections.push(
-        render_failure_analysis(data.mode, buckets, edition_filter, top),
+  } else {
+    for result_path in result_paths {
+      let data = load_result_file(result_path)
+      let (buckets, unmapped) = classify_result_records(
+        data.results,
+        test262_root,
       )
-    }
-    for feature, count in unmapped {
-      all_unmapped[feature] = map_get_count(all_unmapped, feature) + count
+      if json_output != "" {
+        mode_editions[data.mode] = editions_json(buckets)
+      }
+      append_section(
+        stdout_lines,
+        render_classify_table(data.mode, buckets),
+        leading_blank=stdout_lines.length() > 0,
+      )
+      if list_failures {
+        failure_sections.push(
+          render_failure_analysis(data.mode, buckets, edition_filter, top),
+        )
+      }
+      for feature, count in unmapped {
+        all_unmapped[feature] = map_get_count(all_unmapped, feature) + count
+      }
     }
   }
   if list_failures {

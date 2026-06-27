@@ -42,14 +42,14 @@ fn argv0(args : Array[String]) -> String {
 
 ///|
 fn is_report_format(value : String) -> Bool {
-  value == "table" || value == "changelog"
+  value == "table" || value == "changelog" || value == "readme"
 }
 
 ///|
 fn invalid_format_message(value : String) -> String {
   "error: argument --format: invalid choice: '" +
   value +
-  "' (choose from 'table', 'changelog')"
+  "' (choose from 'table', 'changelog', 'readme')"
 }
 
 ///|
@@ -107,7 +107,7 @@ async fn main {
       @argparse.OptionArg(
         "format",
         default_values=["table"],
-        about="table (markdown headline + per-mode table) or changelog (prose bullets). Default: table.",
+        about="table (markdown headline + per-mode table), changelog (prose bullets), or readme (compact per-edition table for README). Default: table.",
       ),
       @argparse.OptionArg(
         "baseline",
