@@ -19718,3 +19718,31 @@ test "§10.2.11: class ctor with destructuring rest param does not create spurio
   )
   json_inspect(output, content=["42"])
 }
+
+///|
+/// §10.2.11: bound names from destructuring params must be in TDZ during
+/// earlier defaults. x = y should throw ReferenceError because {y} declares y
+/// as a TDZ binding before the binding loop starts; without this pre-pass the
+/// outer `let y = 1` would be read instead.
+test "panic §10.2.11: forward-ref to destructuring param bound name throws ReferenceError" {
+  let _ = run_output(
+    (
+      #|let y = 1;
+      #|class B { constructor(x = y, {y}) {} }
+      #|new B({y: 2});
+    ),
+  )
+}
+
+///|
+/// §10.2.11: a backward reference from a later default to a destructuring
+/// param's bound name works once the earlier param has been bound.
+test "§10.2.11: backward-ref to destructuring param bound name works" {
+  let output = run_output(
+    (
+      #|class B { constructor({x}, y = x) { this.y = y; } }
+      #|console.log(new B({x: 5}).y);
+    ),
+  )
+  json_inspect(output, content=["5"])
+}

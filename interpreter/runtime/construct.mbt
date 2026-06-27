@@ -631,20 +631,30 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
     ),
     VarBinding,
   )
-  // §10.2.11 step 21: pre-declare all simple-named params as TDZ so that
+  // §10.2.11 step 21: pre-declare all param BoundNames as TDZ so that
   // self- and forward-referring defaults throw ReferenceError.
   let mut has_rest_pattern_param = false
   for p in params {
     if p.is_rest_pattern {
       has_rest_pattern_param = true
+      // Declare bound names from the rest destructuring pattern (...[a] → a),
+      // but NOT the synthetic "$rest" name stored in rest_param.
+      match p.pattern {
+        Some(pat) =>
+          walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+        None => ()
+      }
       continue
     }
-    guard p.pattern is None else { continue }
-    param_env.def_param_tdz(p.name)
+    match p.pattern {
+      Some(pat) =>
+        // Destructuring param: pre-declare all bound names (e.g. {y} → y).
+        walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+      None => param_env.def_param_tdz(p.name)
+    }
   }
-  // Only pre-declare the rest param if it's a simple name (e.g. ...rest).
-  // For destructuring rest (...[a], ...{b}), rest_param holds the synthetic
-  // "$rest" name — that name is never user-visible, so skip TDZ for it.
+  // Simple named rest (e.g. ...rest): pre-declare the user name.
+  // Destructuring rest (...[a]): bound names declared above via walk_pattern_idents.
   if !has_rest_pattern_param {
     match rest_param {
       Some(rp) => param_env.def_param_tdz(rp)
