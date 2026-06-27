@@ -631,6 +631,36 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
     ),
     VarBinding,
   )
+  // §10.2.11 step 21: pre-declare all param BoundNames as TDZ so that
+  // self- and forward-referring defaults throw ReferenceError.
+  let mut has_rest_pattern_param = false
+  for p in params {
+    if p.is_rest_pattern {
+      has_rest_pattern_param = true
+      // Declare bound names from the rest destructuring pattern (...[a] → a),
+      // but NOT the synthetic "$rest" name stored in rest_param.
+      match p.pattern {
+        Some(pat) =>
+          walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+        None => ()
+      }
+      continue
+    }
+    match p.pattern {
+      Some(pat) =>
+        // Destructuring param: pre-declare all bound names (e.g. {y} → y).
+        walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+      None => param_env.def_param_tdz(p.name)
+    }
+  }
+  // Simple named rest (e.g. ...rest): pre-declare the user name.
+  // Destructuring rest (...[a]): bound names declared above via walk_pattern_idents.
+  if !has_rest_pattern_param {
+    match rest_param {
+      Some(rp) => param_env.def_param_tdz(rp)
+      None => ()
+    }
+  }
   let mut effective_param_count = 0
   for i = 0; i < params.length(); i = i + 1 {
     let param = params[i]
@@ -653,7 +683,7 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
     }
     match param.pattern {
       Some(pat) => self.bind_pattern(pat, val, param_env, LetBinding, ctx~)
-      None => param_env.def_parameter(param.name, val)
+      None => param_env.initialize(param.name, val)
     }
     effective_param_count += 1
   }
@@ -677,7 +707,7 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
         }
       }
       if !bound_rest_pattern {
-        param_env.def_parameter(rest_name, rest_val)
+        param_env.initialize(rest_name, rest_val)
       }
     }
     None => ()
