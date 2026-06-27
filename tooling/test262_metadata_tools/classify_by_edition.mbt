@@ -1122,7 +1122,16 @@ pub fn run_classify_by_edition(
         data.results,
         test262_root,
       )
-      mode_buckets[data.mode] = buckets
+      match mode_buckets.get(data.mode) {
+        None => mode_buckets[data.mode] = buckets
+        Some(existing) =>
+          for edition, bucket in buckets {
+            existing[edition] = match existing.get(edition) {
+              Some(e) => bucket_add(e, bucket)
+              None => bucket
+            }
+          }
+      }
       for feature, count in unmapped {
         all_unmapped[feature] = map_get_count(all_unmapped, feature) + count
       }
