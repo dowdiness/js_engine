@@ -78,10 +78,7 @@ pub fn JsError::format(self : JsError) -> String noraise {
 /// constructors are individually promoted to `Error` and MoonBit does not
 /// support catching a suberror parent type as a single pattern.
 pub fn format_if_js_error(err : Error) -> String? noraise {
-  match name_message_if_js_error(err) {
-    Some((name, msg)) => Some(name + ": " + msg)
-    None => None
-  }
+  name_message_if_js_error(err).map(fn(pair) { pair.0 + ": " + pair.1 })
 }
 
 ///|
