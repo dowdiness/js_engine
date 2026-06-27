@@ -76,6 +76,21 @@ fn Interpreter::bind_pattern(
       }
       // Always use iterator protocol per spec (ArrayBindingPattern uses GetIterator)
       let loc_dstr = @token.Loc::default()
+      // On generator resume with a stacked dstr iterator: abrupt resumes close
+      // and signal; normal (NextAction) resumes drain stale entries without
+      // calling return() — the replay creates fresh iterators.
+      match ctx.current_generator {
+        Some(g) if g.dstr_iterator_stack.length() > 0 =>
+          match g.resume_action {
+            ReturnAction(_) | ThrowAction(_) =>
+              self.close_dstr_stack_on_abrupt_resume(g, loc_dstr)
+            NextAction =>
+              while g.dstr_iterator_stack.length() > 0 {
+                let _ = g.dstr_iterator_stack.pop()
+              }
+          }
+        _ => ()
+      }
       let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
       let iterator_method_dstr = self.get_computed_property(
         value,
@@ -337,6 +352,21 @@ fn Interpreter::assign_pattern(
       }
       // Always use iterator protocol per spec (ArrayAssignmentPattern uses GetIterator)
       let loc_dstr = @token.Loc::default()
+      // On generator resume with a stacked dstr iterator: abrupt resumes close
+      // and signal; normal (NextAction) resumes drain stale entries without
+      // calling return() — the replay creates fresh iterators.
+      match ctx.current_generator {
+        Some(g) if g.dstr_iterator_stack.length() > 0 =>
+          match g.resume_action {
+            ReturnAction(_) | ThrowAction(_) =>
+              self.close_dstr_stack_on_abrupt_resume(g, loc_dstr)
+            NextAction =>
+              while g.dstr_iterator_stack.length() > 0 {
+                let _ = g.dstr_iterator_stack.pop()
+              }
+          }
+        _ => ()
+      }
       let iterator_sym_dstr = self.realm_state.well_known_symbols.iterator
       let iterator_method_dstr = self.get_computed_property(
         value,
