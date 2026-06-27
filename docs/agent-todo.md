@@ -77,17 +77,6 @@ Known remaining RegExp issues include:
 Work one cohort at a time and verify against the exact spec algorithm for that
 RegExp method or accessor.
 
-### Dynamic constructor coercion gaps
-
-Shared gaps across `Function`, `GeneratorFunction`, and `AsyncFunction`:
-
-- Use ES `ToString` rather than MoonBit `.to_string()` for parameter/body
-  coercion.
-- Preserve left-to-right coercion order: parameters first, body last.
-- Check constructor `[[Prototype]]` inheritance for Generator/AsyncFunction
-  constructors.
-- Ensure engine errors converted to JS values get the correct prototype chain.
-
 ### Class-private fields/methods
 
 Large skipped-feature bucket. Split before implementation:
