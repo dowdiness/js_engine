@@ -2051,8 +2051,14 @@ fn Interpreter::eval_expr(
                   self.install_instance_fields(this_val, super_instance_fields)
                 }
               }
-              // Bind parameters and execute constructor body
-              match ctor_fn {
+              // Bind parameters and execute constructor body; resolve the 'this'
+              // to propagate to the calling env.
+              // §15.7.5.1 derived constructor return rule: after the body returns
+              // normally or with a non-object value, call_env.this is authoritative —
+              // the inner SuperCall may have updated it to an object returned by the
+              // grand-superclass. For implicit constructors (None) there is no body,
+              // so use the pending instance directly.
+              let resolved_this = match ctor_fn {
                 Some((ctor_params, rest_param, ctor_body)) => {
                   let super_ctor_ctx : ExecContext = {
                     strict: true,
@@ -2089,11 +2095,14 @@ fn Interpreter::eval_expr(
                       }
                     _ => ()
                   }
+                  // The inner SuperCall may have updated call_env.this (e.g. grand-super
+                  // returned an object); use that as the resolved 'this' for the caller.
+                  eval_this_value(call_env)
                 }
-                None => ()
+                None => this_val
               }
               // Initialize 'this' in the calling env (may be TDZ for derived classes)
-              env.initialize_in_chain("this", this_val)
+              env.initialize_in_chain("this", resolved_this)
               // Apply calling class's instance fields after super() establishes this
               if env.has("[[InitInstanceFields]]") {
                 let init_fn = env.get("[[InitInstanceFields]]")

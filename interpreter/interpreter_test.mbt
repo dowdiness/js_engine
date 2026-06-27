@@ -19507,3 +19507,35 @@ test "§10.2.11: multi-level derived chain constructs successfully" {
   )
   json_inspect(output, content=["1"])
 }
+
+///|
+/// P3: grand-superclass object return propagates through intermediate derived
+/// constructor. class A { constructor(){ return {a:1} } } class B extends A
+/// { constructor(){ super() } } class D extends B { constructor(){ super() } }
+/// → new D() is {a:1}, so .a === 1.
+test "§15.7.5.1: grand-superclass object return propagates through chain" {
+  let output = run_output(
+    (
+      #|class A { constructor() { return { a: 1 }; } }
+      #|class B extends A { constructor() { super(); } }
+      #|class D extends B { constructor() { super(); } }
+      #|console.log(new D().a);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
+
+///|
+/// Regression: implicit derived constructor (no explicit body) must still
+/// construct without throwing after the resolved_this restructure.
+test "§15.7.5.1: implicit-ctor derived chain constructs successfully" {
+  let output = run_output(
+    (
+      #|class X {}
+      #|class A extends X {}
+      #|class B extends A { constructor() { super(); this.y = 2; } }
+      #|console.log(new B().y);
+    ),
+  )
+  json_inspect(output, content=["2"])
+}
