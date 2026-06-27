@@ -65,6 +65,14 @@ make test262-report ARGS="--format=changelog --run <run-id>"
 
 If any number in the CHANGELOG differs from this output, amend the CHANGELOG in a follow-up commit (do **not** retag; the tag annotation is allowed to be one point stale, but the CHANGELOG file is not).
 
+Also refresh the README conformance table from the same run:
+
+```bash
+make test262-report ARGS="--format=readme --run <run-id>"
+```
+
+Paste the output into `README.mbt.md` under the `## Conformance` section, replacing the old block.
+
 ## 6. Publish to mooncakes
 
 The GitHub release is **not** the publish — mooncakes is a separate step, and it is the one that's easy to forget (v0.3.0 shipped on GitHub on 2026-06-09 while mooncakes sat at 0.2.3 until the next day). A mooncakes version is permanently immutable once published: no re-publish, only yank-and-bump.
