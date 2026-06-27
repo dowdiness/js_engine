@@ -2066,8 +2066,12 @@ fn Interpreter::eval_super_dispatch(
               }
             }
             None => {
-              // Super is a base class: `this` is live, install fields immediately
+              // Super is a base class: `this` is live, install fields immediately.
+              // [[SuperPrototype]] is needed for super.prop in param defaults: the
+              // constructor closure is the outer lexical env (not instance_method_env),
+              // so [[SuperPrototype]] is not in the parent chain.
               call_env.def_builtin("this", this_val)
+              call_env.def_builtin("[[SuperPrototype]]", super_proto)
               self.install_instance_fields(this_val, super_instance_fields)
             }
           }

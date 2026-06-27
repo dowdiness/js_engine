@@ -19615,3 +19615,40 @@ test "§15.7.5.1: object return propagates through implicit-ctor chain" {
   )
   json_inspect(output, content=["true"])
 }
+
+///|
+/// §10.2.11 / §15.7.5.1: a base-class super's param default can reference
+/// super.prop; [[SuperPrototype]] must be installed in call_env even when the
+/// super has no superclass of its own (_super_ctor = None). The constructor
+/// closure is the outer lexical env, not instance_method_env, so [[SuperPrototype]]
+/// is not in the parent chain and must be explicitly installed.
+/// SuperCall path: D calls super() → B; B's default reads super.toString
+/// (B has no extends → [[SuperPrototype]] = Object.prototype).
+test "§15.7.5.1: base super param-default resolves super.prop via SuperCall" {
+  let output = run_output(
+    (
+      #|class B {
+      #|  constructor(x = super.toString) { this.t = typeof x; }
+      #|}
+      #|class D extends B { constructor() { super(); } }
+      #|console.log(new D().t);
+    ),
+  )
+  json_inspect(output, content=["function"])
+}
+
+///|
+/// Parity: same super.prop default works when B is constructed directly.
+/// Direct-construction path (construct.mbt None arm) must also bind
+/// [[SuperPrototype]] so that both paths stay in sync.
+test "§15.7.5.1: base ctor param-default resolves super.prop via direct new" {
+  let output = run_output(
+    (
+      #|class B {
+      #|  constructor(x = super.toString) { this.t = typeof x; }
+      #|}
+      #|console.log(new B().t);
+    ),
+  )
+  json_inspect(output, content=["function"])
+}
