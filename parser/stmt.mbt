@@ -194,6 +194,13 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
             raise e
           }
         }
+        if params_contain_yield(ext_params) {
+          self.pop_async_context()
+          self.pop_generator_context()
+          raise @errors.SyntaxError(
+            message="Generator formal parameters may not contain yield expressions",
+          )
+        }
         let body = self.parse_block_body() catch {
           e => {
             self.pop_async_context()

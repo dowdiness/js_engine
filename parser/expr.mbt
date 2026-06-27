@@ -1467,6 +1467,13 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
                 raise e
               }
             }
+            if obj_is_async && params_contain_await(ext_params) {
+              self.pop_async_context()
+              self.pop_generator_context()
+              raise @errors.SyntaxError(
+                message="Async method formal parameters may not contain await expressions",
+              )
+            }
             let body = self.parse_block_body() catch {
               e => {
                 self.pop_async_context()
@@ -1769,6 +1776,14 @@ fn Parser::parse_async_func_body(
             self.pop_generator_context()
             raise e
           }
+        }
+        if params_contain_await(ext_params) ||
+          (is_generator && params_contain_yield(ext_params)) {
+          self.pop_async_context()
+          self.pop_generator_context()
+          raise @errors.SyntaxError(
+            message="Async formal parameters may not contain await/yield expressions",
+          )
         }
         let body = self.parse_block_body() catch {
           e => {
