@@ -1986,204 +1986,8 @@ fn Interpreter::eval_expr(
       class_val
     }
     SuperCall(arg_exprs, loc) => {
-      // super(args) - call the parent constructor
-      // Get the [[HomeObject]] from the current environment
-      let super_ctor = env.get("[[SuperConstructor]]")
-      // Use [[PendingThis]] if 'this' is in TDZ (derived class before super())
-      let this_val = if env.has("[[PendingThis]]") {
-        env.get("[[PendingThis]]")
-      } else {
-        env.get("this")
-      }
-      let super_new_target = env.get("<new.target>") catch { _ => Undefined }
       let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-      // Call the super constructor
-      match super_ctor {
-        Object(data) =>
-          match data.callable {
-            Some(
-              ClassConstructor(
-                {
-                  super_ctor: _super_ctor,
-                  instance_fields: super_instance_fields,
-                  ctor_fn,
-                  closure: ctor_closure,
-                  super_proto,
-                  ..,
-                }
-              )
-            ) => {
-              // Create new environment for the super constructor body
-              let call_env = Environment::new(parent=Some(ctor_closure))
-              call_env.def_builtin("this", this_val)
-              // §10.2.2 step 4: new.target in super constructor = derived class's new.target
-              call_env.def(
-                "<new.target>",
-                env.get("<new.target>") catch {
-                  _ => Undefined
-                },
-                LetBinding,
-              )
-              // Set up super chain and handle super's own instance fields
-              match _super_ctor {
-                Some(grand_super) => {
-                  call_env.def_builtin("[[SuperConstructor]]", grand_super)
-                  call_env.def_builtin("[[SuperPrototype]]", super_proto)
-                  // Super is also derived: defer its fields until its own super() returns
-                  if super_instance_fields.length() > 0 {
-                    call_env.def_builtin(
-                      "[[InitInstanceFields]]",
-                      make_instance_fields_init(
-                        super_instance_fields,
-                        self.realm_state,
-                      ),
-                    )
-                  }
-                }
-                None =>
-                  // Super is a base class: initialize its fields before its body
-                  self.install_instance_fields(this_val, super_instance_fields)
-              }
-              // Bind parameters and execute constructor body
-              match ctor_fn {
-                Some((ctor_params, _rest_param, ctor_body)) => {
-                  for i = 0; i < ctor_params.length(); i = i + 1 {
-                    let val : Value = if i < args.length() {
-                      args[i]
-                    } else {
-                      Undefined
-                    }
-                    call_env.def_parameter(ctor_params[i].name, val)
-                  }
-                  let tte : Value? = if call_env.has("[[ThrowTypeError]]") {
-                    Some(call_env.get("[[ThrowTypeError]]"))
-                  } else {
-                    None
-                  }
-                  call_env.def(
-                    "arguments",
-                    make_arguments_object(
-                      self.realm_state,
-                      self.realm_state.well_known_symbols,
-                      args,
-                      super_ctor,
-                      true,
-                      throw_type_error=tte,
-                    ),
-                    VarBinding,
-                  )
-                  self.hoist_declarations(ctor_body, call_env, strict=true)
-                  hoist_block_tdz(ctor_body, call_env)
-                  let super_ctor_ctx : ExecContext = {
-                    strict: true,
-                    current_generator: None,
-                  }
-                  let exec_result = self.exec_stmts(
-                    super_ctor_ctx, ctor_body, call_env,
-                  )
-                  // If super constructor returns an object, use it as the new 'this'
-                  match exec_result {
-                    ReturnSignal(v) =>
-                      match v {
-                        Object(_)
-                        | Array(_)
-                        | Map(_)
-                        | Set(_)
-                        | Promise(_)
-                        | Proxy(_) => {
-                          // Initialize 'this' (may be in TDZ for derived classes).
-                          // Walk the chain: with the §10.2.11 param/body env
-                          // split, 'this' lives on the caller's param env,
-                          // not its body env.
-                          env.initialize_in_chain("this", v)
-                          // Apply calling class's instance fields to the override object
-                          if env.has("[[InitInstanceFields]]") {
-                            let init_fn = env.get("[[InitInstanceFields]]")
-                            let _ = self.call_value(init_fn, v, [], loc)
-                          }
-                          return v
-                        }
-                        _ => ()
-                      }
-                    _ => ()
-                  }
-                }
-                None => ()
-              }
-              // Initialize 'this' in the calling env (may be TDZ for derived classes)
-              env.initialize_in_chain("this", this_val)
-              // Apply calling class's instance fields after super() establishes this
-              if env.has("[[InitInstanceFields]]") {
-                let init_fn = env.get("[[InitInstanceFields]]")
-                let actual_this = env.get("this")
-                let _ = self.call_value(init_fn, actual_this, [], loc)
-              }
-              env.get("this")
-            }
-            Some(callable) => {
-              // Support non-class constructible supers (e.g. built-in constructors like Error).
-              // Use constructor semantics (`new`) instead of plain call.
-              let align_builtin_super_result = match callable {
-                NativeCallable(_, _)
-                | NativeCallableWithContext(_, _)
-                | InterpreterCallable(_, _)
-                | InterpreterCallableWithContext(_, _)
-                | ConstructorOnlyCallable(_, _) => true
-                _ => false
-              }
-              let super_result = self.construct_value(
-                super_ctor,
-                args,
-                loc,
-                new_target=Some(super_new_target),
-              )
-              match super_result {
-                Object(_)
-                | Array(_)
-                | Map(_)
-                | Set(_)
-                | Promise(_)
-                | Proxy(_) => {
-                  if align_builtin_super_result {
-                    apply_super_return_prototype(super_result, this_val)
-                  }
-                  env.initialize_in_chain("this", super_result)
-                  if env.has("[[InitInstanceFields]]") {
-                    let init_fn = env.get("[[InitInstanceFields]]")
-                    let _ = self.call_value(init_fn, super_result, [], loc)
-                  }
-                  super_result
-                }
-                _ => {
-                  env.initialize_in_chain("this", this_val)
-                  if env.has("[[InitInstanceFields]]") {
-                    let init_fn = env.get("[[InitInstanceFields]]")
-                    let _ = self.call_value(init_fn, this_val, [], loc)
-                  }
-                  env.get("this")
-                }
-              }
-            }
-            _ =>
-              raise @errors.ReferenceError(
-                message=format_loc_context(
-                  "super() called but [[SuperConstructor]] is not a constructor",
-                  loc,
-                ),
-              )
-          }
-        Null =>
-          // `extends null`: super() attempts Construct(null, ...) → TypeError
-          raise @errors.TypeError(
-            message=format_loc_context("null is not a constructor", loc),
-          )
-        _ =>
-          raise @errors.ReferenceError(
-            message=format_loc_context(
-              "super() called but no [[SuperConstructor]] in scope", loc,
-            ),
-          )
-      }
+      self.eval_super_dispatch(args, env, loc)
     }
     SuperMember(prop, loc) => self.eval_super_property(env, prop, loc)
     SuperComputedMember(key_expr, loc) => {
@@ -2194,6 +1998,202 @@ fn Interpreter::eval_expr(
       self.eval_super_computed_property(env, key, loc)
     }
     NewTargetExpr(_) => eval_new_target_value(env)
+  }
+}
+
+///|
+// Dispatch a super() call. Reads [[SuperConstructor]], [[PendingThis]]/this, and
+// <new.target> from `env`, runs the selected constructor, updates env.this, applies
+// env.[[InitInstanceFields]], and returns the resolved this value. Calls itself
+// recursively for implicit derived constructors (None ctor_fn, Some _super_ctor).
+fn Interpreter::eval_super_dispatch(
+  self : Interpreter,
+  args : Array[Value],
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let super_ctor = env.get("[[SuperConstructor]]")
+  let this_val = if env.has("[[PendingThis]]") {
+    env.get("[[PendingThis]]")
+  } else {
+    env.get("this")
+  }
+  let super_new_target = env.get("<new.target>") catch { _ => Undefined }
+  match super_ctor {
+    Object(data) =>
+      match data.callable {
+        Some(
+          ClassConstructor(
+            {
+              super_ctor: _super_ctor,
+              instance_fields: super_instance_fields,
+              ctor_fn,
+              closure: ctor_closure,
+              super_proto,
+              ..,
+            }
+          )
+        ) => {
+          let call_env = Environment::new(parent=Some(ctor_closure))
+          // §10.2.2 step 4: new.target in super constructor = derived class's new.target
+          call_env.def(
+            "<new.target>",
+            env.get("<new.target>") catch {
+              _ => Undefined
+            },
+            LetBinding,
+          )
+          // Mirror construct.mbt: derived super keeps `this` in TDZ until its
+          // own super() call completes; base super gets a live `this` immediately.
+          match _super_ctor {
+            Some(grand_super) => {
+              // §10.2.11 / §15.7.5.1: `this` is TDZ in derived constructors
+              // until super() returns. Store the pending instance in [[PendingThis]]
+              // so the inner SuperCall handler can find it.
+              call_env.def_tdz("this", LetBinding)
+              call_env.def_builtin("[[PendingThis]]", this_val)
+              call_env.def_builtin("[[SuperConstructor]]", grand_super)
+              call_env.def_builtin("[[SuperPrototype]]", super_proto)
+              // Super is also derived: defer its fields until its own super() returns
+              if super_instance_fields.length() > 0 {
+                call_env.def_builtin(
+                  "[[InitInstanceFields]]",
+                  make_instance_fields_init(
+                    super_instance_fields,
+                    self.realm_state,
+                  ),
+                )
+              }
+            }
+            None => {
+              // Super is a base class: `this` is live, install fields immediately.
+              // [[SuperPrototype]] is needed for super.prop in param defaults: the
+              // constructor closure is the outer lexical env (not instance_method_env),
+              // so [[SuperPrototype]] is not in the parent chain.
+              call_env.def_builtin("this", this_val)
+              call_env.def_builtin("[[SuperPrototype]]", super_proto)
+              self.install_instance_fields(this_val, super_instance_fields)
+            }
+          }
+          // §15.7.5.1 derived constructor return rule: after the body returns
+          // normally or with a non-object value, call_env.this is authoritative.
+          let resolved_this = match ctor_fn {
+            Some((ctor_params, rest_param, ctor_body)) => {
+              let super_ctor_ctx : ExecContext = {
+                strict: true,
+                current_generator: None,
+              }
+              let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
+                ctor_params, rest_param, ctor_body, super_ctor, args, call_env, super_ctor_ctx,
+              )
+              raise_if_break_continue(exec_result)
+              match exec_result {
+                ReturnSignal(v) =>
+                  match v {
+                    Object(_)
+                    | Array(_)
+                    | Map(_)
+                    | Set(_)
+                    | Promise(_)
+                    | Proxy(_) => {
+                      env.initialize_in_chain("this", v)
+                      if env.has("[[InitInstanceFields]]") {
+                        let init_fn = env.get("[[InitInstanceFields]]")
+                        let _ = self.call_value(init_fn, v, [], loc)
+                      }
+                      return v
+                    }
+                    // §15.7.5.1: undefined is the sentinel for "use the bound this"
+                    Undefined => ()
+                    // §15.7.5.1: derived constructors may only return object or undefined
+                    _ =>
+                      if _super_ctor is Some(_) {
+                        raise @errors.TypeError(
+                          message="Derived constructors may only return object or undefined",
+                        )
+                      }
+                  }
+                _ => ()
+              }
+              // The inner SuperCall may have updated call_env.this (e.g. grand-super
+              // returned an object); use that as the resolved 'this' for the caller.
+              eval_this_value(call_env)
+            }
+            // Implicit constructor: forward args up the chain for derived classes;
+            // for base classes the pending instance is already established.
+            None =>
+              match _super_ctor {
+                None => this_val
+                Some(_) => self.eval_super_dispatch(args, call_env, loc)
+              }
+          }
+          // Initialize 'this' in the calling env (may be TDZ for derived classes)
+          env.initialize_in_chain("this", resolved_this)
+          // Apply calling class's instance fields after super() establishes this
+          if env.has("[[InitInstanceFields]]") {
+            let init_fn = env.get("[[InitInstanceFields]]")
+            let actual_this = env.get("this")
+            let _ = self.call_value(init_fn, actual_this, [], loc)
+          }
+          env.get("this")
+        }
+        Some(callable) => {
+          // Support non-class constructible supers (e.g. built-in constructors like Error).
+          // Use constructor semantics (`new`) instead of plain call.
+          let align_builtin_super_result = match callable {
+            NativeCallable(_, _)
+            | NativeCallableWithContext(_, _)
+            | InterpreterCallable(_, _)
+            | InterpreterCallableWithContext(_, _)
+            | ConstructorOnlyCallable(_, _) => true
+            _ => false
+          }
+          let super_result = self.construct_value(
+            super_ctor,
+            args,
+            loc,
+            new_target=Some(super_new_target),
+          )
+          match super_result {
+            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+              if align_builtin_super_result {
+                apply_super_return_prototype(super_result, this_val)
+              }
+              env.initialize_in_chain("this", super_result)
+              if env.has("[[InitInstanceFields]]") {
+                let init_fn = env.get("[[InitInstanceFields]]")
+                let _ = self.call_value(init_fn, super_result, [], loc)
+              }
+              super_result
+            }
+            _ => {
+              env.initialize_in_chain("this", this_val)
+              if env.has("[[InitInstanceFields]]") {
+                let init_fn = env.get("[[InitInstanceFields]]")
+                let _ = self.call_value(init_fn, this_val, [], loc)
+              }
+              env.get("this")
+            }
+          }
+        }
+        _ =>
+          raise @errors.ReferenceError(
+            message=format_loc_context(
+              "super() called but [[SuperConstructor]] is not a constructor", loc,
+            ),
+          )
+      }
+    Null =>
+      // `extends null`: super() attempts Construct(null, ...) → TypeError
+      raise @errors.TypeError(
+        message=format_loc_context("null is not a constructor", loc),
+      )
+    _ =>
+      raise @errors.ReferenceError(
+        message=format_loc_context(
+          "super() called but no [[SuperConstructor]] in scope", loc,
+        ),
+      )
   }
 }
 

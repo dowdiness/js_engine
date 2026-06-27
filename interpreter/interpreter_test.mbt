@@ -19470,3 +19470,185 @@ test "§15.2.5: async generator method has no self-name binding" {
   let output = run_output_async(src)
   json_inspect(output, content=["undefined", "undefined"])
 }
+
+///|
+/// §10.2.11 / §15.7.5.1: derived super-constructor env must start with `this`
+/// in TDZ. When D calls super() into B (B extends A), B's param env should put
+/// `this` in TDZ until B's own super() completes. The default `x = this` in B's
+/// constructor must therefore throw ReferenceError, not silently read D's instance.
+test "§10.2.11: this is TDZ in intermediate derived super param-default" {
+  let output = run_output(
+    (
+      #|try {
+      #|  class A {}
+      #|  class B extends A { constructor(x = this) { super(); } }
+      #|  class D extends B { constructor() { super(); } }
+      #|  new D();
+      #|  console.log("no error");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["ReferenceError"])
+}
+
+///|
+/// Regression: multi-level derived chain without defaults must still construct
+/// successfully after the `this` TDZ fix in the SuperCall handler.
+test "§10.2.11: multi-level derived chain constructs successfully" {
+  let output = run_output(
+    (
+      #|class A {}
+      #|class B extends A { constructor() { super(); this.x = 1; } }
+      #|class D extends B { constructor() { super(); } }
+      #|console.log(new D().x);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
+
+///|
+/// P3: grand-superclass object return propagates through intermediate derived
+/// constructor. class A { constructor(){ return {a:1} } } class B extends A
+/// { constructor(){ super() } } class D extends B { constructor(){ super() } }
+/// → new D() is {a:1}, so .a === 1.
+test "§15.7.5.1: grand-superclass object return propagates through chain" {
+  let output = run_output(
+    (
+      #|class A { constructor() { return { a: 1 }; } }
+      #|class B extends A { constructor() { super(); } }
+      #|class D extends B { constructor() { super(); } }
+      #|console.log(new D().a);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
+
+///|
+/// Regression: implicit derived constructor (no explicit body) must still
+/// construct without throwing after the resolved_this restructure.
+test "§15.7.5.1: implicit-ctor derived chain constructs successfully" {
+  let output = run_output(
+    (
+      #|class X {}
+      #|class A extends X {}
+      #|class B extends A { constructor() { super(); this.y = 2; } }
+      #|console.log(new B().y);
+    ),
+  )
+  json_inspect(output, content=["2"])
+}
+
+///|
+/// §15.7.5.1: when a derived constructor returns a primitive that is not
+/// undefined, it must throw TypeError — even when called as an intermediate
+/// superclass (not the outermost `new` target).
+test "panic §15.7.5.1: intermediate derived super returning primitive throws TypeError" {
+  let _ = run_output(
+    (
+      #|class A {}
+      #|class B extends A { constructor() { super(); return 1; } }
+      #|class D extends B { constructor() { super(); } }
+      #|new D();
+    ),
+  )
+}
+
+///|
+/// §15.7.5.1: undefined is the only non-object return that is not a TypeError
+/// in a derived constructor. Parity test: direct `new B()` and `new D()` where
+/// B is B's superclass both succeed when B returns undefined explicitly.
+test "§15.7.5.1: derived constructor returning undefined does not throw" {
+  let output = run_output(
+    (
+      #|class A {}
+      #|class B extends A { constructor() { super(); return undefined; } }
+      #|class D extends B { constructor() { super(); this.x = 1; } }
+      #|console.log(new D().x);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
+
+///|
+/// §15.7.5.1: implicit derived superclass (B has no explicit constructor) must
+/// forward super() to A, allowing A to set properties on the instance.
+test "§15.7.5.1: implicit derived super forwards args to base constructor" {
+  let output = run_output(
+    (
+      #|class A { constructor(v) { this.v = v; } }
+      #|class B extends A {}
+      #|class D extends B { constructor() { super(42); } }
+      #|console.log(new D().v);
+    ),
+  )
+  json_inspect(output, content=["42"])
+}
+
+///|
+/// §15.7.5.1: three-level implicit chain — GA ← A (implicit) ← B (explicit)
+/// tests recursive forwarding through more than one implicit constructor.
+test "§15.7.5.1: three-level implicit chain sets property from grandparent" {
+  let output = run_output(
+    (
+      #|class GA { constructor(v) { this.v = v; } }
+      #|class A extends GA {}
+      #|class B extends A { constructor() { super(7); } }
+      #|console.log(new B().v);
+    ),
+  )
+  json_inspect(output, content=["7"])
+}
+
+///|
+/// §15.7.5.1: when an implicit-chain superclass returns an object, that object
+/// propagates through all implicit constructors and becomes the final instance.
+test "§15.7.5.1: object return propagates through implicit-ctor chain" {
+  let output = run_output(
+    (
+      #|class GA { constructor() { return { sentinel: true }; } }
+      #|class A extends GA {}
+      #|class B extends A { constructor() { super(); } }
+      #|console.log(new B().sentinel);
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// §10.2.11 / §15.7.5.1: a base-class super's param default can reference
+/// super.prop; [[SuperPrototype]] must be installed in call_env even when the
+/// super has no superclass of its own (_super_ctor = None). The constructor
+/// closure is the outer lexical env, not instance_method_env, so [[SuperPrototype]]
+/// is not in the parent chain and must be explicitly installed.
+/// SuperCall path: D calls super() → B; B's default reads super.toString
+/// (B has no extends → [[SuperPrototype]] = Object.prototype).
+test "§15.7.5.1: base super param-default resolves super.prop via SuperCall" {
+  let output = run_output(
+    (
+      #|class B {
+      #|  constructor(x = super.toString) { this.t = typeof x; }
+      #|}
+      #|class D extends B { constructor() { super(); } }
+      #|console.log(new D().t);
+    ),
+  )
+  json_inspect(output, content=["function"])
+}
+
+///|
+/// Parity: same super.prop default works when B is constructed directly.
+/// Direct-construction path (construct.mbt None arm) must also bind
+/// [[SuperPrototype]] so that both paths stay in sync.
+test "§15.7.5.1: base ctor param-default resolves super.prop via direct new" {
+  let output = run_output(
+    (
+      #|class B {
+      #|  constructor(x = super.toString) { this.t = typeof x; }
+      #|}
+      #|console.log(new B().t);
+    ),
+  )
+  json_inspect(output, content=["function"])
+}

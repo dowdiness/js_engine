@@ -1065,6 +1065,9 @@ fn Interpreter::construct_value_impl(
               }
               None => {
                 ctor_env.def_builtin("this", new_obj)
+                // [[SuperPrototype]] for super.prop in param defaults: the constructor
+                // closure is the outer lexical env, not instance_method_env.
+                ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
                 // Base class: initialize instance fields before constructor body
                 self.install_instance_fields(new_obj, instance_fields)
               }
