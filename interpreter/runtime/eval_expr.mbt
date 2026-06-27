@@ -2046,41 +2046,21 @@ fn Interpreter::eval_expr(
               }
               // Bind parameters and execute constructor body
               match ctor_fn {
-                Some((ctor_params, _rest_param, ctor_body)) => {
-                  for i = 0; i < ctor_params.length(); i = i + 1 {
-                    let val : Value = if i < args.length() {
-                      args[i]
-                    } else {
-                      Undefined
-                    }
-                    call_env.def_parameter(ctor_params[i].name, val)
-                  }
-                  let tte : Value? = if call_env.has("[[ThrowTypeError]]") {
-                    Some(call_env.get("[[ThrowTypeError]]"))
-                  } else {
-                    None
-                  }
-                  call_env.def(
-                    "arguments",
-                    make_arguments_object(
-                      self.realm_state,
-                      self.realm_state.well_known_symbols,
-                      args,
-                      super_ctor,
-                      true,
-                      throw_type_error=tte,
-                    ),
-                    VarBinding,
-                  )
-                  self.hoist_declarations(ctor_body, call_env, strict=true)
-                  hoist_block_tdz(ctor_body, call_env)
+                Some((ctor_params, rest_param, ctor_body)) => {
                   let super_ctor_ctx : ExecContext = {
                     strict: true,
                     current_generator: None,
                   }
-                  let exec_result = self.exec_stmts(
-                    super_ctor_ctx, ctor_body, call_env,
+                  let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
+                    ctor_params,
+                    rest_param,
+                    ctor_body,
+                    super_ctor,
+                    args,
+                    call_env,
+                    super_ctor_ctx,
                   )
+                  raise_if_break_continue(exec_result)
                   // If super constructor returns an object, use it as the new 'this'
                   match exec_result {
                     ReturnSignal(v) =>
