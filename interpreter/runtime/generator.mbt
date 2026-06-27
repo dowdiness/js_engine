@@ -106,6 +106,162 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 }
 
 ///|
+/// §20.2.1.1.1 step 17a: Returns true if expr contains a YieldExpression at
+/// any level, stopping at nested function boundaries (which have their own
+/// generator context and may use yield freely).
+fn expr_contains_yield(expr : @ast.Expr) -> Bool {
+  match expr {
+    YieldExpr(_, _, _) => true
+    Binary(_, a, b, _) => expr_contains_yield(a) || expr_contains_yield(b)
+    Unary(_, e, _)
+    | UpdateExpr(_, e, _, _)
+    | Grouping(e, _)
+    | SpreadExpr(e, _) => expr_contains_yield(e)
+    Assign(_, e, _) => expr_contains_yield(e)
+    MemberAssign(obj, _, val, _) =>
+      expr_contains_yield(obj) || expr_contains_yield(val)
+    ComputedAssign(obj, key, val, _) =>
+      expr_contains_yield(obj) ||
+      expr_contains_yield(key) ||
+      expr_contains_yield(val)
+    CompoundAssign(_, a, b, _)
+    | Comma(a, b, _)
+    | WebCompatCallAssign(a, b, _) =>
+      expr_contains_yield(a) || expr_contains_yield(b)
+    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
+      expr_contains_yield(obj)
+    ComputedMember(obj, key, _)
+    | OptionalComputedMember(obj, key, _)
+    | ChainComputedMember(obj, key, _) =>
+      expr_contains_yield(obj) || expr_contains_yield(key)
+    SuperComputedMember(e, _) => expr_contains_yield(e)
+    Ternary(cond, t, f, _) =>
+      expr_contains_yield(cond) ||
+      expr_contains_yield(t) ||
+      expr_contains_yield(f)
+    Call(f, args, _) | NewExpr(f, args, _) | OptionalCall(f, args, _) =>
+      expr_contains_yield(f) ||
+      args.iter().any(fn(a) { expr_contains_yield(a) })
+    SuperCall(args, _) => args.iter().any(fn(a) { expr_contains_yield(a) })
+    ArrayLit(elems, _) => elems.iter().any(fn(e) { expr_contains_yield(e) })
+    ObjectLit(props, _) =>
+      props
+      .iter()
+      .any(fn(p) { expr_contains_yield(p.key) || expr_contains_yield(p.value) })
+    TemplateLit(_, exprs, _) =>
+      exprs.iter().any(fn(e) { expr_contains_yield(e) })
+    TaggedTemplate(tag, _, exprs, _) =>
+      expr_contains_yield(tag) ||
+      exprs.iter().any(fn(e) { expr_contains_yield(e) })
+    // DestructureAssign LHS pattern can contain computed keys or defaults with
+    // yield expressions ({[yield]: a} = {}, {a = yield} = {}) — scan both sides.
+    DestructureAssign(pat, rhs, _) =>
+      pattern_contains_yield(pat) || expr_contains_yield(rhs)
+    // Arrow params (including defaults) are evaluated in the enclosing scope,
+    // so ArrowFuncExt/AsyncArrowFuncExt are NOT full boundaries for yield.
+    // Simple ArrowFunc/AsyncArrowFunc have no defaults, so false is safe.
+    ArrowFuncExt(params, _, _, _, _) | AsyncArrowFuncExt(params, _, _, _, _) =>
+      params_contain_yield(params)
+    // Nested function boundaries — yield inside is not the outer generator's
+    FuncExpr(_, _, _, _, _)
+    | FuncExprExt(_, _, _, _, _, _)
+    | GeneratorExpr(_, _, _, _, _)
+    | GeneratorExprExt(_, _, _, _, _, _)
+    | AsyncFuncExpr(_, _, _, _, _)
+    | AsyncFuncExprExt(_, _, _, _, _, _)
+    | AsyncArrowFunc(_, _, _, _)
+    | AsyncGeneratorExpr(_, _, _, _, _)
+    | AsyncGeneratorExprExt(_, _, _, _, _, _)
+    | ArrowFunc(_, _, _, _) => false
+    // Class is NOT a full boundary: heritage and computed member keys are
+    // evaluated in the surrounding scope (ES §15.7.1 ClassElementName).
+    ClassExpr(_, superclass, members, _, _) => {
+      let heritage = match superclass {
+        Some(e) => expr_contains_yield(e)
+        None => false
+      }
+      let computed = members
+        .iter()
+        .any(fn(m) {
+          match m {
+            Method(cm) => cm.computed && expr_contains_yield(cm.key)
+            Field(cf) => cf.computed && expr_contains_yield(cf.key)
+          }
+        })
+      heritage || computed
+    }
+    _ => false
+  }
+}
+
+///|
+// Walk a binding pattern for yield expressions in default values and computed
+// property keys. Property name strings (e.g. the "yield" in {yield: x}) are
+// not expressions and are intentionally not flagged here.
+fn pattern_contains_yield(pat : @ast.Pattern) -> Bool {
+  match pat {
+    IdentPat(_) => false
+    DefaultPat(inner, default_expr) =>
+      pattern_contains_yield(inner) || expr_contains_yield(default_expr)
+    ArrayPat(elements, rest) => {
+      let elems_yield = elements
+        .iter()
+        .any(fn(e) {
+          match e {
+            Some(p) => pattern_contains_yield(p)
+            None => false
+          }
+        })
+      let rest_yield = match rest {
+        Some(r) => pattern_contains_yield(r)
+        None => false
+      }
+      elems_yield || rest_yield
+    }
+    AssignTarget(e) => expr_contains_yield(e)
+    ObjectPat(props, rest) => {
+      let props_yield = props
+        .iter()
+        .any(fn(prop) {
+          // Check computed key expression (e.g. {[yield]: x}), shorthand or
+          // keyed default (e.g. {x = yield} or {a: b = yield}), and nested pat.
+          let computed_yield = match prop.computed_key {
+            Some(e) => expr_contains_yield(e)
+            None => false
+          }
+          let default_yield = match prop.default_val {
+            Some(e) => expr_contains_yield(e)
+            None => false
+          }
+          computed_yield || default_yield || pattern_contains_yield(prop.value)
+        })
+      let rest_yield = match rest {
+        Some(r) => pattern_contains_yield(r)
+        None => false
+      }
+      props_yield || rest_yield
+    }
+  }
+}
+
+///|
+fn params_contain_yield(params : Array[@ast.Param]) -> Bool {
+  params
+  .iter()
+  .any(fn(p) {
+    let default_has_yield = match p.default_val {
+      Some(expr) => expr_contains_yield(expr)
+      None => false
+    }
+    let pattern_has_yield = match p.pattern {
+      Some(pat) => pattern_contains_yield(pat)
+      None => false
+    }
+    default_has_yield || pattern_has_yield
+  })
+}
+
+///|
 /// Set up the GeneratorFunction constructor on the given interpreter.
 /// GeneratorFunction("a", "yield a") creates a generator function,
 /// analogous to Function("a", "return a") for regular functions.
@@ -240,22 +396,22 @@ pub fn setup_generator_function_constructor(
     length=1,
     realm_state=env.realm_state,
     fn(interp, _this, args) raise {
-      // Last arg is body, previous args are parameter names. With no
-      // arguments, the synthesized body and parameter list are both empty.
-      let body_str = if args.length() == 0 {
-        ""
-      } else {
-        match args[args.length() - 1] {
-          String_(s) => s
-          _ => args[args.length() - 1].to_string()
-        }
-      }
+      // §20.2.1.1.1: coerce params first (step 5a), body last (step 6).
+      // Last arg is body, previous args are parameter names.
       let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
       let param_parts : Array[String] = []
       for i = 0; i < param_count; i = i + 1 {
         match args[i] {
           String_(s) => param_parts.push(s)
-          _ => param_parts.push(args[i].to_string())
+          _ => param_parts.push(interp.to_js_string(args[i]))
+        }
+      }
+      let body_str = if args.length() == 0 {
+        ""
+      } else {
+        match args[args.length() - 1] {
+          String_(s) => s
+          _ => interp.to_js_string(args[args.length() - 1])
         }
       }
       let params_str = param_parts.join(",")
@@ -282,6 +438,14 @@ pub fn setup_generator_function_constructor(
             )
           }
           GeneratorDeclExt(_, params, rest_param, body, _, source_text) => {
+            // §20.2.1.1.1 step 17a: YieldExpression in generator params → SyntaxError.
+            // The parser now enters generator context for params, so `yield` in
+            // default values is parsed as YieldExpr and caught here via AST walk.
+            if params_contain_yield(params) {
+              raise @errors.SyntaxError(
+                message="Generator function parameters may not contain yield expressions",
+              )
+            }
             let body_strict = @static_semantics.has_use_strict(body)
             validate_function_constructor_params_ext(params, rest_param, body)
             interp.validate_block_early_errors(body, body_strict)

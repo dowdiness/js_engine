@@ -9,6 +9,42 @@ fn func_kind_prefix(class_name : String) -> String {
 }
 
 ///|
+// §20.2.1.1.1 step 27a: create a .prototype object that inherits from
+// Object.prototype. Extracted so all three Function-constructor return paths
+// stay consistent if the construction ever changes.
+fn make_function_prototype(realm_state : @runtime.RealmState) -> Value {
+  let object_proto = @runtime.get_obj_proto(realm_state=Some(realm_state))
+  Value::Object({
+    bag: @runtime.PropertyBag(),
+    prototype: object_proto,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
+// §20.2.1.1.1 step 27a: wire result.prototype.constructor = result so the
+// constructed function's prototype correctly back-references the function.
+fn wire_constructor_to_prototype(proto : Value, result : Value) -> Unit {
+  match proto {
+    Object(proto_data) => {
+      proto_data.bag.properties["constructor"] = result
+      proto_data.bag.descriptors["constructor"] = {
+        writable: true,
+        enumerable: false,
+        configurable: true,
+        getter: None,
+        setter: None,
+        is_accessor: false,
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
 /// ES262 §10.2.4 ExpectedArgumentCount for extended parameter lists:
 /// count parameters before the first default initializer or rest parameter.
 fn callable_source_text(data : @runtime.ObjectData) -> String? {
@@ -422,9 +458,11 @@ fn setup_function_builtins(
         if prog.stmts.length() > 0 {
           match prog.stmts[0] {
             FuncDecl(_, params, body, _, _) => {
+              let proto = make_function_prototype(realm_state)
               let fn_props : Map[String, Value] = {}
               fn_props["length"] = Value::Number(params.length().to_double())
               fn_props["name"] = Value::String_("anonymous")
+              fn_props["prototype"] = proto
               // Validate static early errors against the function's strict context.
               let body_strict = @static_semantics.has_use_strict(body)
               @runtime.validate_function_constructor_params(
@@ -434,12 +472,23 @@ fn setup_function_builtins(
                 body,
               )
               interp.validate_block_early_errors(body, body_strict)
-              return @runtime.stamp_function_realm(
+              let result = @runtime.stamp_function_realm(
                 Value::Object({
                   bag: {
                     properties: fn_props,
                     symbol_properties: {},
-                    descriptors: { "length": nf_desc, "name": nf_desc },
+                    descriptors: {
+                      "length": nf_desc,
+                      "name": nf_desc,
+                      "prototype": {
+                        writable: true,
+                        enumerable: false,
+                        configurable: false,
+                        getter: None,
+                        setter: None,
+                        is_accessor: false,
+                      },
+                    },
                     symbol_descriptors: {},
                     internal_slots: {},
                   },
@@ -463,24 +512,39 @@ fn setup_function_builtins(
                 }),
                 realm_state=Some(realm_state),
               )
+              wire_constructor_to_prototype(proto, result)
+              return result
             }
             FuncDeclExt(_, params, rest_param, body, _, _) => {
+              let proto = make_function_prototype(realm_state)
               let fn_props : Map[String, Value] = {}
               let fn_length = expected_argument_count_ext(params)
               fn_props["length"] = Value::Number(fn_length.to_double())
               fn_props["name"] = Value::String_("anonymous")
+              fn_props["prototype"] = proto
               // Validate static early errors against the function's strict context.
               let body_strict = @static_semantics.has_use_strict(body)
               @runtime.validate_function_constructor_params_ext(
                 params, rest_param, body,
               )
               interp.validate_block_early_errors(body, body_strict)
-              return @runtime.stamp_function_realm(
+              let result = @runtime.stamp_function_realm(
                 Value::Object({
                   bag: {
                     properties: fn_props,
                     symbol_properties: {},
-                    descriptors: { "length": nf_desc, "name": nf_desc },
+                    descriptors: {
+                      "length": nf_desc,
+                      "name": nf_desc,
+                      "prototype": {
+                        writable: true,
+                        enumerable: false,
+                        configurable: false,
+                        getter: None,
+                        setter: None,
+                        is_accessor: false,
+                      },
+                    },
                     symbol_descriptors: {},
                     internal_slots: {},
                   },
@@ -504,20 +568,35 @@ fn setup_function_builtins(
                 }),
                 realm_state=Some(realm_state),
               )
+              wire_constructor_to_prototype(proto, result)
+              return result
             }
             _ => ()
           }
         }
-        // Fallback: empty function
-        @runtime.stamp_function_realm(
+        // Fallback: empty function (defensive — synthesized source always parses)
+        let fb_proto = make_function_prototype(realm_state)
+        let fb_result = @runtime.stamp_function_realm(
           Value::Object({
             bag: {
               properties: {
                 "length": Value::Number(0.0),
                 "name": Value::String_("anonymous"),
+                "prototype": fb_proto,
               },
               symbol_properties: {},
-              descriptors: { "length": nf_desc, "name": nf_desc },
+              descriptors: {
+                "length": nf_desc,
+                "name": nf_desc,
+                "prototype": {
+                  writable: true,
+                  enumerable: false,
+                  configurable: false,
+                  getter: None,
+                  setter: None,
+                  is_accessor: false,
+                },
+              },
               symbol_descriptors: {},
               internal_slots: {},
             },
@@ -529,6 +608,8 @@ fn setup_function_builtins(
           }),
           realm_state=Some(realm_state),
         )
+        wire_constructor_to_prototype(fb_proto, fb_result)
+        fb_result
       }),
     ),
     class_name: "Function",

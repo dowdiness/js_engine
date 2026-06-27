@@ -175,16 +175,39 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
   let _ = self.expect(Star) // consume *
   let name = self.expect_ident()
   let saved_pos = self.pos
+  // §15.5.1: params and body share generator context so that `yield` in
+  // default-parameter expressions is parsed as YieldExpression, enabling
+  // the §20.2.1.1.1 step 17a Contains check via the AST.
+  self.push_generator_context(true)
+  self.push_async_context(false)
   let params = self.parse_params() catch {
     Failure::Failure(msg) =>
       if msg == "REST_PARAM_FOUND" ||
         msg == "DEFAULT_PARAM_FOUND" ||
         msg == "DESTRUCTURE_PARAM_FOUND" {
         self.pos = saved_pos
-        let (ext_params, rest_param) = self.parse_params_ext()
-        self.push_generator_context(true)
-        self.push_async_context(false)
-        let body = self.parse_block_body()
+        // Wrap each inner call so cleanup runs even if parsing fails.
+        let (ext_params, rest_param) = self.parse_params_ext() catch {
+          e => {
+            self.pop_async_context()
+            self.pop_generator_context()
+            raise e
+          }
+        }
+        if params_contain_yield(ext_params) {
+          self.pop_async_context()
+          self.pop_generator_context()
+          raise @errors.SyntaxError(
+            message="Generator formal parameters may not contain yield expressions",
+          )
+        }
+        let body = self.parse_block_body() catch {
+          e => {
+            self.pop_async_context()
+            self.pop_generator_context()
+            raise e
+          }
+        }
         self.pop_async_context()
         self.pop_generator_context()
         return GeneratorDeclExt(
@@ -196,13 +219,23 @@ fn Parser::parse_generator_decl(self : Parser) -> @ast.Stmt raise Error {
           self.consume_source_text(tok.loc.offset),
         )
       } else {
+        self.pop_async_context()
+        self.pop_generator_context()
         raise @errors.SyntaxError(message=msg)
       }
-    e => raise e
+    e => {
+      self.pop_async_context()
+      self.pop_generator_context()
+      raise e
+    }
   }
-  self.push_generator_context(true)
-  self.push_async_context(false)
-  let body = self.parse_block_body()
+  let body = self.parse_block_body() catch {
+    e => {
+      self.pop_async_context()
+      self.pop_generator_context()
+      raise e
+    }
+  }
   self.pop_async_context()
   self.pop_generator_context()
   GeneratorDecl(
@@ -1000,7 +1033,18 @@ fn Parser::parse_object_pattern(self : Parser) -> @ast.Pattern raise Error {
         }
         (name, tok.lex_form, tok.loc, None)
       }
-      _ => (self.expect_ident(), @token.LexForm::LexNormal, key_start_loc, None)
+      // §12.2.6: LiteralPropertyName = IdentifierName, so keywords are valid as
+      // property keys when a colon follows ({yield: x}).  Without a colon the key
+      // is also the BindingIdentifier — enforce IdentifierReference rules there.
+      _ => {
+        let next_is_colon = self.peek_kind_at(1) == Colon
+        let key_str = if next_is_colon {
+          self.expect_ident_name()
+        } else {
+          self.expect_ident()
+        }
+        (key_str, @token.LexForm::LexNormal, key_start_loc, None)
+      }
     }
     let (value, default_val) : (@ast.Pattern, @ast.Expr?) = if self.eat(Colon) {
       // { key: pattern } or { [expr]: pattern }
