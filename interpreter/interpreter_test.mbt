@@ -19539,3 +19539,79 @@ test "§15.7.5.1: implicit-ctor derived chain constructs successfully" {
   )
   json_inspect(output, content=["2"])
 }
+
+///|
+/// §15.7.5.1: when a derived constructor returns a primitive that is not
+/// undefined, it must throw TypeError — even when called as an intermediate
+/// superclass (not the outermost `new` target).
+test "panic §15.7.5.1: intermediate derived super returning primitive throws TypeError" {
+  let _ = run_output(
+    (
+      #|class A {}
+      #|class B extends A { constructor() { super(); return 1; } }
+      #|class D extends B { constructor() { super(); } }
+      #|new D();
+    ),
+  )
+}
+
+///|
+/// §15.7.5.1: undefined is the only non-object return that is not a TypeError
+/// in a derived constructor. Parity test: direct `new B()` and `new D()` where
+/// B is B's superclass both succeed when B returns undefined explicitly.
+test "§15.7.5.1: derived constructor returning undefined does not throw" {
+  let output = run_output(
+    (
+      #|class A {}
+      #|class B extends A { constructor() { super(); return undefined; } }
+      #|class D extends B { constructor() { super(); this.x = 1; } }
+      #|console.log(new D().x);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
+
+///|
+/// §15.7.5.1: implicit derived superclass (B has no explicit constructor) must
+/// forward super() to A, allowing A to set properties on the instance.
+test "§15.7.5.1: implicit derived super forwards args to base constructor" {
+  let output = run_output(
+    (
+      #|class A { constructor(v) { this.v = v; } }
+      #|class B extends A {}
+      #|class D extends B { constructor() { super(42); } }
+      #|console.log(new D().v);
+    ),
+  )
+  json_inspect(output, content=["42"])
+}
+
+///|
+/// §15.7.5.1: three-level implicit chain — GA ← A (implicit) ← B (explicit)
+/// tests recursive forwarding through more than one implicit constructor.
+test "§15.7.5.1: three-level implicit chain sets property from grandparent" {
+  let output = run_output(
+    (
+      #|class GA { constructor(v) { this.v = v; } }
+      #|class A extends GA {}
+      #|class B extends A { constructor() { super(7); } }
+      #|console.log(new B().v);
+    ),
+  )
+  json_inspect(output, content=["7"])
+}
+
+///|
+/// §15.7.5.1: when an implicit-chain superclass returns an object, that object
+/// propagates through all implicit constructors and becomes the final instance.
+test "§15.7.5.1: object return propagates through implicit-ctor chain" {
+  let output = run_output(
+    (
+      #|class GA { constructor() { return { sentinel: true }; } }
+      #|class A extends GA {}
+      #|class B extends A { constructor() { super(); } }
+      #|console.log(new B().sentinel);
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
