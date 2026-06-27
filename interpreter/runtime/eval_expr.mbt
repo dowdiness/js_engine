@@ -2015,7 +2015,6 @@ fn Interpreter::eval_expr(
             ) => {
               // Create new environment for the super constructor body
               let call_env = Environment::new(parent=Some(ctor_closure))
-              call_env.def_builtin("this", this_val)
               // §10.2.2 step 4: new.target in super constructor = derived class's new.target
               call_env.def(
                 "<new.target>",
@@ -2024,9 +2023,15 @@ fn Interpreter::eval_expr(
                 },
                 LetBinding,
               )
-              // Set up super chain and handle super's own instance fields
+              // Mirror construct.mbt: derived super keeps `this` in TDZ until its
+              // own super() call completes; base super gets a live `this` immediately.
               match _super_ctor {
                 Some(grand_super) => {
+                  // §10.2.11 / §15.7.5.1: `this` is TDZ in derived constructors
+                  // until super() returns. Store the pending instance in [[PendingThis]]
+                  // so the inner SuperCall handler can find it.
+                  call_env.def_tdz("this", LetBinding)
+                  call_env.def_builtin("[[PendingThis]]", this_val)
                   call_env.def_builtin("[[SuperConstructor]]", grand_super)
                   call_env.def_builtin("[[SuperPrototype]]", super_proto)
                   // Super is also derived: defer its fields until its own super() returns
@@ -2040,9 +2045,11 @@ fn Interpreter::eval_expr(
                     )
                   }
                 }
-                None =>
-                  // Super is a base class: initialize its fields before its body
+                None => {
+                  // Super is a base class: `this` is live, install fields immediately
+                  call_env.def_builtin("this", this_val)
                   self.install_instance_fields(this_val, super_instance_fields)
+                }
               }
               // Bind parameters and execute constructor body
               match ctor_fn {
@@ -2052,12 +2059,7 @@ fn Interpreter::eval_expr(
                     current_generator: None,
                   }
                   let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
-                    ctor_params,
-                    rest_param,
-                    ctor_body,
-                    super_ctor,
-                    args,
-                    call_env,
+                    ctor_params, rest_param, ctor_body, super_ctor, args, call_env,
                     super_ctor_ctx,
                   )
                   raise_if_break_continue(exec_result)

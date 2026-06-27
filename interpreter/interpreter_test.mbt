@@ -19470,3 +19470,40 @@ test "§15.2.5: async generator method has no self-name binding" {
   let output = run_output_async(src)
   json_inspect(output, content=["undefined", "undefined"])
 }
+
+///|
+/// §10.2.11 / §15.7.5.1: derived super-constructor env must start with `this`
+/// in TDZ. When D calls super() into B (B extends A), B's param env should put
+/// `this` in TDZ until B's own super() completes. The default `x = this` in B's
+/// constructor must therefore throw ReferenceError, not silently read D's instance.
+test "§10.2.11: this is TDZ in intermediate derived super param-default" {
+  let output = run_output(
+    (
+      #|try {
+      #|  class A {}
+      #|  class B extends A { constructor(x = this) { super(); } }
+      #|  class D extends B { constructor() { super(); } }
+      #|  new D();
+      #|  console.log("no error");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["ReferenceError"])
+}
+
+///|
+/// Regression: multi-level derived chain without defaults must still construct
+/// successfully after the `this` TDZ fix in the SuperCall handler.
+test "§10.2.11: multi-level derived chain constructs successfully" {
+  let output = run_output(
+    (
+      #|class A {}
+      #|class B extends A { constructor() { super(); this.x = 1; } }
+      #|class D extends B { constructor() { super(); } }
+      #|console.log(new D().x);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
