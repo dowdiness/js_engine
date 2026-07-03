@@ -120,10 +120,15 @@ Remaining known function-environment gaps:
 
 - The engine collapses spec `env → varEnv → lexEnv` into fewer runtime envs in
   some parameter-default cases.
-- Parameter TDZ pre-declaration: class constructors fixed in PR #481 (780ef66).
-  `call.mbt` and `generator.mbt` still skip destructuring-param BoundNames
-  and still blindly pre-declare the synthetic `"$rest"` for rest patterns.
-  Apply the same `walk_pattern_idents` pattern from construct.mbt.
+- ~~Parameter TDZ pre-declaration: class constructors fixed in PR #481 (780ef66).~~
+  ~~`call.mbt` and `generator.mbt` still skip destructuring-param BoundNames~~
+  ~~and still blindly pre-declare the synthetic `"$rest"` for rest patterns.~~
+  ~~Apply the same `walk_pattern_idents` pattern from construct.mbt.~~
+- **Fixed 2026-07-03**: `call.mbt` and `generator.mbt` now use `walk_pattern_idents`
+  for destructuring-param BoundNames in TDZ pre-declaration and only pre-declare
+  `rest_param` for simple (non-destructuring) rest parameters. Verified: 2267 local
+  tests, 372 function-dstr test262 tests, 35 language/destructuring/binding test262
+  tests all pass (pre-existing assignment dstr failures unrelated).
 
 Keep fixes narrow; these interact with `arguments`, rest/destructuring params,
 class constructors, generators, and async paths.
