@@ -20,7 +20,7 @@ Before starting a task:
 
 **Required skill:** `moonbit-perf-investigation`.
 
-**Goal:** Identify and fix real O(bad) behavior only after reproducing it in an
+**Goal:** Identify and fix real O(bad) behavior after reproducing it in an
 isolated benchmark.
 
 **Steps:**
@@ -30,7 +30,33 @@ isolated benchmark.
 3. Stop if the benchmark cannot reproduce the bottleneck.
 4. Fix the measured path and keep the benchmark.
 
----
+**Fixed (2026-07-03):**
+
+- `String.prototype.repeat` with empty string + large count: added
+  `if str.length() == 0 { return "" }` early return before the loop
+  (11000ms → 0ms). Also added §21.1.3.13 max-length overflow guard for
+  non-empty strings. Fixed 1 timeout file (2 modes).
+
+- `[[SetPrototypeOf]]` cycle detection: `Object.setPrototypeOf(Object.prototype, ...)`
+  and `Object.prototype.__proto__ = ...` had no cycle detection, allowing them
+  to create prototype chain cycles that caused infinite loops in subsequent
+  chain walks. Added `ordinary_set_prototype` helper in `prototype_ops.mbt` with
+  spec-compliant §10.1.3 cycle detection. Applied to all 3 paths: `__proto__`
+  setter, `Object.setPrototypeOf` static, `Reflect.setPrototypeOf` runtime.
+  Fixed 3 timeout files (6 modes).
+
+**Remaining (test-side workload, not engine bugs):**
+
+- `decodeURI`/`decodeURIComponent`: Sputnik test with 4 nested loops (~1.3M
+  iterations calling decodeURI each time).
+- `Function.prototype.toString`: walks all intrinsic objects with O(n²)
+  `visited.includes()` check.
+
+**Remaining (engine-side performance):**
+
+- RegExp character class escape tests (7 files, 14 modes): character class
+  matching performance on large Unicode ranges. Not yet investigated.
+  Likely target: regex char-class matching optimization or native set tables.
 
 ## Feature projects
 

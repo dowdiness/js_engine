@@ -255,6 +255,8 @@ pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
 
 pub fn ordinary_get_own_value_for_descriptor(Value, Value) -> Value raise
 
+pub fn ordinary_set_prototype(Interpreter, ObjectData, Value) -> Bool
+
 pub fn own_string_property_names(Interpreter, Value) -> Value raise
 
 pub fn own_symbol_properties(Interpreter, Value) -> Value raise

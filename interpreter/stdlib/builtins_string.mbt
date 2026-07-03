@@ -1171,6 +1171,16 @@ pub fn get_string_method(
           if count == 0 {
             return Value::String_("")
           }
+          if str.length() == 0 {
+            return Value::String_("")
+          }
+          // §21.1.3.13 step 6: if T's length >= 2^53-1, throw RangeError
+          // Int64 multiply check is safe here: count (from JS Double, <= 2^53) and
+          // str_len are small enough that product fits in Int64 for all realistic
+          // inputs. Pathological overflow (both near 2^53 ~9e15) would OOM anyway.
+          if count.to_int64() * str.length().to_int64() >= 9007199254740991L {
+            raise @errors.RangeError(message="Invalid repeat count")
+          }
           let buf = StringBuilder::new()
           for _i = 0; _i < count; _i = _i + 1 {
             buf.write_string(str)

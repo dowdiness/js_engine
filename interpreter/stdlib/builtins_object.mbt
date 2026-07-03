@@ -537,14 +537,12 @@ pub fn setup_object_builtins(
         _ => return Undefined
       }
       match this_obj {
-        Object(data) => {
-          if !data.extensible {
+        Object(data) =>
+          if !@runtime.ordinary_set_prototype(interp, data, proto) {
             raise @errors.TypeError(
               message="Cannot set prototype of non-extensible object",
             )
           }
-          data.prototype = proto
-        }
         Array(data) => @runtime.set_array_prototype_override(data, proto)
         Map(data) => data.prototype = Some(proto)
         Set(data) => data.prototype = Some(proto)
@@ -1131,14 +1129,12 @@ pub fn setup_object_builtins(
                       raise @errors.TypeError(
                         message="Cannot set prototype of non-extensible object",
                       )
-                    None => {
-                      if !data.extensible {
+                    None =>
+                      if !@runtime.ordinary_set_prototype(interp, data, proto) {
                         raise @errors.TypeError(
                           message="Cannot set prototype of non-extensible object",
                         )
                       }
-                      data.prototype = proto
-                    }
                   }
                 Array(data) =>
                   @runtime.set_array_prototype_override(data, proto)

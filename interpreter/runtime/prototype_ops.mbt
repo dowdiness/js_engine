@@ -33,9 +33,39 @@ pub fn module_namespace_set_prototype_result(
 }
 
 ///|
-/// target.`[[GetPrototypeOf]]`() backing for Reflect.getPrototypeOf (§28.1.8).
-/// Argument-count validation stays at the stdlib boundary; this op performs the
-/// `match target` dispatch verbatim, including the non-object TypeError arm.
+/// [[SetPrototypeOf]] cycle detection and extensibility guard for ordinary objects
+/// (§10.1.3). Returns true if the prototype was set, false if it would create a
+/// cycle or the target is non-extensible. Does NOT handle immutable-prototype
+/// exotic objects (Object.prototype) — callers check before reaching this.
+pub fn ordinary_set_prototype(
+  interp : Interpreter,
+  data : ObjectData,
+  proto : Value,
+) -> Bool {
+  if strict_equal(proto, data.prototype) {
+    return true
+  }
+  if !data.extensible {
+    return false
+  }
+  // §10.1.3 step 6: walk from proto up the chain checking if data is reachable
+  let mut p = proto
+  while true {
+    if strict_equal(p, Object(data)) {
+      return false
+    }
+    match p {
+      Object(p_data) => p = p_data.prototype
+      Array(p_data) => p = get_array_prototype(interp.realm_state, p_data)
+      Null => break
+      _ => break
+    }
+  }
+  data.prototype = proto
+  true
+}
+
+///|
 pub fn object_get_prototype_of(
   interp : Interpreter,
   target : Value,
@@ -73,13 +103,7 @@ pub fn object_set_prototype_of(
     Object(data) =>
       match module_namespace_set_prototype_result(data, proto) {
         Some(result) => Value::Bool(result)
-        None => {
-          if !data.extensible && !strict_equal(proto, data.prototype) {
-            return Value::Bool(false)
-          }
-          data.prototype = proto
-          Value::Bool(true)
-        }
+        None => Value::Bool(ordinary_set_prototype(interp, data, proto))
       }
     Array(data) => {
       set_array_prototype_override(data, proto)
