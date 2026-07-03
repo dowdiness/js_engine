@@ -1724,6 +1724,49 @@ fn clear_captures_for_node(node : RegexNode, state : RegexExecState) -> Unit {
 }
 
 ///|
+/// Check if a regex node is a simple leaf that always advances exactly 1 char
+/// and never sets captures. Used for fast-path quantified matching.
+fn is_simple_quantified_inner(node : RegexNode) -> Bool {
+  match node {
+    Literal(_) | Dot | CharClass(_, _) => true
+    _ => false
+  }
+}
+
+///|
+/// Count consecutive matches of a simple quantified inner node starting from pos.
+/// Does NOT allocate intermediate state arrays (unlike collect_quantified_states).
+/// Returns the number of consecutive matches found.
+fn quantified_match_count(
+  inner : RegexNode,
+  input : Array[Char],
+  pos : Int,
+  state : RegexExecState,
+  max : Int?,
+  flags : RegexFlags,
+) -> Int {
+  let mut current = pos
+  let mut count = 0
+  while true {
+    match max {
+      Some(m) => if count >= m { break }
+      None => ()
+    }
+    match regex_exec_single(inner, input, current, state, flags) {
+      Some(next) => {
+        if next == current {
+          break
+        }
+        count += 1
+        current = next
+      }
+      None => break
+    }
+  }
+  count
+}
+
+///|
 fn collect_quantified_states(
   node : RegexNode,
   input : Array[Char],
@@ -1779,6 +1822,58 @@ fn match_sequence_candidates(
     return [{ pos, snapshot: state.snapshot() }]
   }
   let saved = state.snapshot()
+  // Fast-path for Quantified with simple inner node (Literal, Dot, CharClass).
+  // These always advance exactly 1 char per match and never set captures.
+  // Scan forward once to find max match count, then try positions in order
+  // without allocating large intermediate state arrays.
+  match nodes[idx] {
+    Quantified(inner, min, max, greedy) if is_simple_quantified_inner(inner) => {
+      let count = quantified_match_count(inner, input, pos, state, max, flags)
+      if count < min {
+        state.restore(saved)
+        return []
+      }
+      let results : Array[QuantifiedMatchState] = []
+      if greedy {
+        for i = count; i >= min; i = i - 1 {
+          let rest = match_sequence_candidates(
+            nodes,
+            idx + 1,
+            input,
+            pos + i,
+            state,
+            flags,
+          )
+          if !rest.is_empty() {
+            for r in rest {
+              results.push(r)
+            }
+            break
+          }
+        }
+      } else {
+        for i = min; i <= count; i = i + 1 {
+          let rest = match_sequence_candidates(
+            nodes,
+            idx + 1,
+            input,
+            pos + i,
+            state,
+            flags,
+          )
+          if !rest.is_empty() {
+            for r in rest {
+              results.push(r)
+            }
+            break
+          }
+        }
+      }
+      state.restore(saved)
+      return results
+    }
+    _ => ()
+  }
   let candidates = match_node_candidates(nodes[idx], input, pos, state, flags)
   let results : Array[QuantifiedMatchState] = []
   for candidate in candidates {
