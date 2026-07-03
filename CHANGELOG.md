@@ -7,7 +7,250 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
-## [Unreleased]
+## [0.4.0] — 2026-07-03
+122 commits since v0.3.0. The `@js_engine` root facade API is unchanged
+(additive only); all breaking changes are confined to the
+interpreter-internal layers (`interpreter/runtime`, `interpreter/stdlib`,
+`parser`, `ast`, `token`, `static_semantics`) — see Breaking changes.
+
+### Conformance
+
+test262 (each file run in both strict and non-strict modes,
+reported separately — summing would double-count files):
+
+- **Passed / Executed**: 96.9% strict (26,023 / 26,846),
+  95.8% non-strict (27,786 / 29,011). Excludes ~40% of
+  discovered files skipped for unimplemented features.
+- **Passed / Discovered**: 57.8% strict, 58.3%
+  non-strict. Counts skipped files as un-passed.
+
+Measured on CI run [28291971155] (tip `f6cbb4a`, 2026-06-27).
+Regression baseline: +100 non-strict / +100 strict vs
+`test262-baseline.json` (min 27,686 / 25,923).
+
+Versus v0.3.0's recorded per-mode Passed / Executed (94.2% strict,
+92.9% non-strict): **+882 strict / +991 non-strict** passing,
+driven by the fix sweeps below (async functions, classes, generators,
+runtime edge cases, built-in delegation).
+
+[28291971155]: https://github.com/dowdiness/js_engine/actions/runs/28291971155
+
+### Added
+
+- **ES2024 Set methods.** `Set.prototype.union`, `intersection`,
+  `difference`, `symmetricDifference`, `isSubsetOf`, `isSupersetOf`,
+  and `isDisjointFrom` — the full ES2024 Set method set (#236).
+- **Shared `%AsyncGeneratorPrototype%` chain.** The async generator
+  prototype chain is wired per ES262 §27.4, enabling correct
+  prototype delegation for async generator objects (#405).
+- **Parser source-text tracking.** `Token` gains an `end_offset` field
+  (#403); `ast` function/class/stmt variants gain a `String?` source
+  text slot. Enables `Function.prototype.toString` to return the
+  correct source.
+- **Test262 CLI progress bar** (#302) and `--format=readme` for
+  per-edition conformance tables in README (#478).
+
+### Fixed (39 fixes)
+
+- **Classes & constructors:** §10.2.11 TDZ pre-pass for constructor
+  params (#481); SuperCall routing through
+  `bind_class_ctor_params_and_exec_body_signal` (#479); NFE self-name
+  binding (Cluster 11, #463).
+- **Generators & destructuring:** IteratorClose on abrupt generator
+  resume (#429/#480); correct IteratorClose progression for array
+  destructuring in `for...of` with `yield` (#475).
+- **Async functions:** Parameter TDZ, sloppy-mode `this`, arrow
+  function arguments, and mapped arguments object for async functions
+  (#468).
+- **Runtime evaluation:** `GlobalDeclarationInstantiation` rejected
+  on non-extensible global (#466); `ArraySpeciesCreate` no longer
+  throws on non-object constructor (#467); `delete` operator — global
+  var, super, and with-scope paths (#436); optional chaining protocol
+  edge cases — receiver preservation, call continuation, delete,
+  cleanup (#434); abstract equality `ToPrimitive` via interpreter
+  context (#426/#459).
+- **Built-in objects:** Array `reverse`/`fill`/`copyWithin`/`sort`
+  now follow the spec-generic Array.prototype paths (#471);
+  `Set.prototype.forEach` visits re-added values when callback
+  deletes and re-adds the last element (#373);
+  `Function.prototype.toString` correctly returns the original source
+  text (#375); Promise spec conformance sweep — closes #379 (#413);
+  `JSON.parse` reviver is now Proxy-aware during internalize (#415/#419);
+  `Object.setPrototypeOf` accepts Map/Set/Promise receivers and
+  object-valued proto args (#452/#457);
+  `__lookupGetter__`/`__lookupSetter__` and `String.prototype.replaceAll`
+  conformance (#412).
+- **Lexer:** Regex/division disambiguation after `}` (#422); `\u`/`\x`
+  escape parsing inside regex character classes (#420); astral_count
+  tracking for correct UTF-16 offsets (#404/#408).
+- **Annex B:** web-compat call-assign (`x(y) = z`) — closes #428
+  (#432).
+
+### Performance
+
+- Promise timer queue migrated from `Array` to `@priority_queue` (#433).
+- Bytecode call-frame fast path — skip environment round-trip for
+  parameter access (#362, #366).
+- Leaf-function optimizations: skip `Environment::new` and hoist calls
+  for `needs_own_env=false` functions; skip realm-proto wrappers for
+  same-realm callees (#361, #367/#368/#371).
+- Precompute env-hoist var-name set on `BytecodeFunction` (#325, #334).
+
+Timing figures are intentionally omitted — they vary by backend,
+hardware, and local noise; run `make bench` for fresh numbers.
+
+### Architecture — Stage 1–10 extraction
+
+22 commits migrating from a monolithic `interpreter/` to a structured
+architecture of dedicated packages with clear boundaries:
+
+- **`static_semantics/`** — new package extracted from the interpreter:
+  `has_use_strict` (Stage 4, #319), strict-name validators
+  (Stage 5, #321), declaration facts (Stage 6, #322).
+- **`bytecode.mbt`** — split into three files: IR definitions, lowering
+  logic, and VM execution (Stage 2, #317). Seeded equivalence harness
+  between tree-walker and bytecode paths (Stage 3, #318).
+- **Runtime-op routing** — object integrity ops (Stage 8a, #338),
+  own-property-keys enumeration (Stage 8b, #335), Proxy revoke
+  (Stage 8c, #341), Reflect prototype ops (Stage 8d, #340),
+  `Object.keys`/`values`/`entries` (Stage 8e, #339), constructor and
+  prototype raw-bag writes (Stage 9, #346), bytecode literal
+  accumulator (Stage 7, #333). Static-attach helpers and typed
+  internal-slot accessors (Stage 8f, #345).
+- **`InternalSlotKey` enum** — engine-wide migration from ad-hoc
+  pattern-matched slot access to a typed enum in `PropertyBag.internal_slots`
+  (#337/#358/#455).
+- **`FunctionRealmProtos` struct** — 10 ambient prototype-override `Ref`s
+  consolidated into a single optional struct, reducing noise in `RealmState`
+  (#369, #456/#458).
+- **Unsupported-kind labels** — centralized in `compiler/` as `pub const`
+  (Stage 10, #348).
+- **Closure conversion** — labeled legacy/experimental (Stage 1, #316).
+
+### Tooling
+
+- **CI scaling:** test262 shard count 4× → 8× (3h → 1.5h wall clock,
+  #297); unit-test parallelization into 2 independent jobs (#293/#296);
+  MoonBit toolchain cache (skip curl install on warm runs, #292/#295);
+  `_build` artifact cache (skip redundant `moon build` calls, #291).
+- **Python → MoonBit migration complete.** Phase 4 removed all 26
+  transitional Python scripts (#290). The `-py` Make targets and
+  Python CI dependencies are gone. All tooling (runner, analyzer,
+  reporter, validator, classifiers) is native MoonBit.
+- **Regression tooling:** `test262_failing_diff.js` for per-mode
+  regression diffing (#446); test262 feature-gap tool for visualizing
+  what's still unimplemented (#460).
+- **`set-baseline.py`** — formalized script for ratcheting the
+  regression baseline after batch improvements, with AGENTS.md
+  calibration rules (#472).
+
+### Breaking changes (pre-1.0, intentional)
+
+All breaking changes are confined to the **interpreter-internal layers**
+(`interpreter/runtime`, `interpreter/stdlib`, `parser`, `ast`, `token`,
+`static_semantics`). The supported `@js_engine` facade is **additive
+only** (it gains nothing removed). These internal packages are importable
+but are not the supported public surface — direct importers must update.
+
+**Removed symbols:**
+- `interpreter/runtime`: `collect_target_own_keys` — replaced by
+  `Interpreter::own_property_keys` method.
+- `interpreter/runtime`: `has_use_strict` — moved to
+  `static_semantics::has_use_strict`.
+- `interpreter/runtime`: 10 `active_*_prototype_override` `Ref` fields
+  on `RealmState` — consolidated into `active_overrides: Ref[FunctionRealmProtos?]`.
+- `benchmarks`: `bench_closure_conversion_*` — renamed to
+  `bench_closure_legacy_*`.
+
+**Signature changes:**
+- `parser.Parser::new(Array[Token])` → `(Array[Token], String)` —
+  `source` parameter required.
+- `interpreter/stdlib::setup_object_builtins(Env, SymbolState, RealmState)`
+  → `(Env, RealmState)` — `SymbolState` parameter dropped.
+- `interpreter/runtime`: multiple `Int` → `Int64` transitions
+  (`array_species_create`, `get_array_like_element`,
+  `set_array_like_element`, `to_index`, `to_array_like_length`, etc.).
+
+**Struct/enum field changes:**
+- `timer_queue`: `Array[TimerTask]` → `@priority_queue.PriorityQueue[TimerTask]`.
+- `TimerTask.cancelled`: removed (priority queue handles cancellation
+  by removal rather than lazy skip).
+- `MapData`/`SetData`/`PromiseData.prototype`: `Value` → `Value?`
+  (nullable).
+- `PropertyBag`: gained `internal_slots: Map[InternalSlotKey, Value]`.
+- `Interpreter.param_default_eval_var_conflicts`:
+  `Map[String, Bool]?` → `@set.Set[String]?`.
+- `GeneratorObject`: gained `dstr_iterator_stack` field.
+- `ClassConstructorData`/`FuncData`/`FuncDataExt`: gained
+  `source_text: String?` field.
+- `RealmState`: 10 individual active-prototype-override fields replaced
+  by `active_overrides`.
+- `ast` enum variants (`FuncExpr`, `FuncDecl`, `GeneratorDecl`, etc.)
+  gained trailing `String?` source-text fields — breaks positional
+  enum construction.
+- `token.Token`: gained `end_offset: Int` field.
+- `token.TokenKind` template variants (`NoSubTemplate`, `TemplateHead`,
+  etc.): `(String)` → `(String, String?)` (raw/cooked split).
+
+**New public symbols in internal packages:**
+- `static_semantics` package — 6 functions: `body_is_strict`,
+  `collect_var_declared_names`, `has_use_strict`,
+  `validate_strict_assignment_target_name`, `validate_strict_binding_name`,
+  `validate_strict_identifier_reference`.
+- `runtime.FunctionRealmProtos` struct + constructor.
+- `runtime.InternalSlotKey` enum (17 keys).
+- 30+ new helper functions in `runtime` (typed internal-slot accessors,
+  object integrity ops, `install_builtin_*` helpers, map/set iterator
+  helpers).
+- `compiler/`: `UNSUPPORTED_*` const labels (37 constants) centralized
+  from inline strings.
+
+(Full machine-checkable detail: `git diff v0.3.0..v0.4.0 -- '*.mbti'`.)
+
+### Migration from 0.3.0
+
+- **Facade consumers** (`@js_engine` root package): no changes required —
+  the public API is additive only.
+- **Direct importers of `interpreter/runtime`**: migrate
+  `collect_target_own_keys` calls to `Interpreter::own_property_keys`;
+  update all `Int` → `Int64` array-index signatures; replace
+  `Map[String, Bool]` param-conflict tracking with `@set.Set[String]`;
+  reconstruct `PropertyBag` with `internal_slots` field; switch
+  `timer_queue` usage to `@priority_queue.PriorityQueue` API.
+  Replace individual active-prototype-override fields with
+  `FunctionRealmProtos` struct.
+- **Direct importers of `interpreter/stdlib`**: update
+  `setup_object_builtins` call site to drop the `SymbolState` argument.
+- **Direct importers of `parser`**: pass `source: String` to
+  `Parser::new`.
+- **Direct importers of `ast`**: reconstruct enum variants with trailing
+  `String?` source-text field; use constructors rather than positional
+  literals.
+- **Direct importers of `token`**: pass `end_offset` to
+  `Token::new`/`Token::Token`; handle `(String, String?)` in template
+  token variants.
+- **Direct importers of runtime `MapData`/`SetData`**: handle nullable
+  `prototype` field.
+
+### Known limitations at 0.4.0
+
+- The bytecode/VM path remains an experimental opt-in prototype, not the
+  default execution path.
+- ES2018+ async iteration, BigInt, class-private fields, and the RegExp
+  `v` flag remain unimplemented; ES2018/2020/2022/2024 still skip
+  80–90% of discovered tests for these features.
+- Stage 3 proposals (Temporal, decorators, ShadowRealm) are intentionally
+  unimplemented.
+- Module self-imports and cyclic imports remain partial.
+
+### Internal
+
+- Doc file reference audit: all stale references fixed across
+  AGENTS.md, README.md, and docs/ path checks.
+- `inspect` → `json_inspect` / `debug_inspect` snapshot migration
+  complete; historical notes archived.
+- Formatting and interface regeneration checked (`moon info` produces
+  zero `.mbti` drift from committed state).
 
 ## [0.3.0] — 2026-06-09
 
@@ -1000,8 +1243,9 @@ DataView / TypedArray (311), eval-code (205), generator functions (160),
 Unicode escapes in identifiers (479). See `docs/ROADMAP.md` at this
 release for the full failure breakdown.
 
-[Unreleased]: https://github.com/dowdiness/js_engine/compare/v0.2.1...main
-[0.2.1]: https://github.com/dowdiness/js_engine/compare/v0.2.0...v0.2.1
+[0.4.0]: https://github.com/dowdiness/js_engine/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/dowdiness/js_engine/compare/v0.2.3...v0.3.0
+[Unreleased]: https://github.com/dowdiness/js_engine/compare/v0.4.0...main
 [0.2.0]: https://github.com/dowdiness/js_engine/compare/v0.1.0...v0.2.0
 [0.1.0]: https://mooncakes.io/docs/dowdiness/js_engine@0.1.0
 [`fede44e`]: https://github.com/dowdiness/js_engine/commit/fede44e
