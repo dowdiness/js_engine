@@ -867,15 +867,35 @@ fn create_generator_instance(
           rest_param,
           implicit_arguments=true,
         )
-        // §10.2.11 step 21: pre-declare all simple-named params as TDZ so
-        // that self- and forward-referring defaults throw ReferenceError.
+        // §10.2.11 step 21: pre-declare all param BoundNames as TDZ so
+        // that self- and forward-referencing defaults throw ReferenceError.
+        let mut has_rest_pattern_param = false
         for p in pext {
-          guard !p.is_rest_pattern && p.pattern is None else { continue }
-          func_env.def_param_tdz(p.name)
+          if p.is_rest_pattern {
+            has_rest_pattern_param = true
+            // Declare bound names from the rest destructuring pattern (...[a] → a),
+            // but NOT the synthetic "$rest" name stored in rest_param.
+            match p.pattern {
+              Some(pat) =>
+                walk_pattern_idents(pat, name => func_env.def_param_tdz(name))
+              None => ()
+            }
+            continue
+          }
+          match p.pattern {
+            Some(pat) =>
+              // Destructuring param: pre-declare all bound names (e.g. {y} → y).
+              walk_pattern_idents(pat, name => func_env.def_param_tdz(name))
+            None => func_env.def_param_tdz(p.name)
+          }
         }
-        match rest_param {
-          Some(rp) => func_env.def_param_tdz(rp)
-          None => ()
+        // Simple named rest (e.g. ...rest): pre-declare the user name.
+        // Destructuring rest (...[a]): bound names declared above via walk_pattern_idents.
+        if !has_rest_pattern_param {
+          match rest_param {
+            Some(rp) => func_env.def_param_tdz(rp)
+            None => ()
+          }
         }
         let mut effective_count = 0
         for i = 0; i < pext.length(); i = i + 1 {
