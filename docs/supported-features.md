@@ -184,7 +184,7 @@ the time of this snapshot, feature skips include:
 
 - `Atomics`, `BigInt`, `FinalizationRegistry`, `Float16Array`, `IsHTMLDDA`,
   `RegExp.escape`, `ShadowRealm`, `SharedArrayBuffer`, `Temporal`, `WeakRef`.
-- `async-iteration`, `caller`, `cross-realm`, `decorators`, `dynamic-import`,
+- `async-iteration`, `await-dictionary`, `caller`, `cross-realm`, `decorators`, `dynamic-import`,
   `explicit-resource-management`, `for-in-order`, `hashbang`,
   `immutable-arraybuffer`, `import-attributes`,
   `import.meta`, `intl-normative-optional`, `iterator-helpers`,
