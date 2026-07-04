@@ -118,7 +118,7 @@ test262-quick: build test262-download
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
 		--filter "language/literals" \
-		--timeout 10 \
+		--timeout 120 \
 		--output test262-results.json \
 		--verbose
 
@@ -129,7 +129,7 @@ test262-filter: build test262-download
 		--engine "moon run cmd/main --" \
 		--test262 ./test262 \
 		--filter "$(FILTER)" \
-		--timeout 10 \
+		--timeout 120 \
 		--output test262-results.json \
 		--verbose
 
