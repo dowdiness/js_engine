@@ -47,21 +47,19 @@ isolated benchmark.
 
 **Fixed (2026-07-03):**
 
-- RegExp character class escape tests (7 files, 14 modes, pending CI
-  validation): `^\S+$`, `^\s+$`, `^\d+$` and similar quantifier + character
-  class shorthand patterns on large Unicode strings were timing out because
-  `match_sequence_candidates` eagerly collected ALL quantified match states (up
-  to ~2.2M entries) before trying any candidate. Added
-  `is_simple_quantified_inner` + `quantified_match_count` fast-path in
-  `match_sequence_candidates`: for quantified `Literal`/`Dot`/`CharClass` inner
-  nodes, scan forward once to count max matches without allocating intermediate
-  state arrays, then try the longest position first against the rest of the
-  pattern. Early-break on first success (safe because these nodes advance
-  exactly 1 char per match and never set captures). Verified manually: 2.1M-char
-  `^\S+$` test completes (~17s, was timeout at 30s+). Does NOT fix unquantified
-  single-char-class matches (`/\d/.test(large_str)`) — that bottleneck is in
-  `regex_search`'s position-by-position loop and remains as a separate issue.
-
+- RegExp character class escape tests (all 7 timeout files resolved):
+  - **Quantified fast-path** (PR #485): `^\S+$`, `^\s+$`, `^\d+$` — added
+    `is_simple_quantified_inner` + `quantified_match_count` in
+    `match_sequence_candidates`. For quantified `Literal`/`Dot`/`CharClass` inner
+    nodes, scan forward once to count max matches without allocating intermediate
+    state arrays, then try the longest position first against the rest of the
+    pattern. Early-break on first success.
+  - **Unquantified scan-forward** (PR #485): `/\d/`, `/\d/`, `/\S/` — added
+    `has_first_char_bound` + `advance_to_candidate` helpers that skip
+    non-matching positions in bulk. For patterns with a bounded first character
+    (Literal, CharClass, Quantified with min>0), the search loop advances past
+    positions that can never match, reducing 1.1M-position scans to 1 iteration
+    when no match exists. Also applied to `regex_search_all`.
 **Remaining (test-side workload, not engine bugs):**
 
 - `decodeURI`/`decodeURIComponent`: Sputnik test with 4 nested loops (~1.3M

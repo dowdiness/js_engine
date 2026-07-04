@@ -1734,6 +1734,90 @@ fn is_simple_quantified_inner(node : RegexNode) -> Bool {
 }
 
 ///|
+/// Returns true if the first character of this node is statically bounded
+/// (we can predict which chars can match and skip non-matching positions).
+fn has_first_char_bound(node : RegexNode) -> Bool {
+  match node {
+    Literal(_) | CharClass(_, false) => true
+    Dot | CharClass(_, true) => false
+    Anchor(_)
+    | WordBoundary(_)
+    | Backreference(_)
+    | NamedBackreference(_)
+    | DuplicateNamedBackreference(_) => false
+    Quantified(inner, min, _, _) => min > 0 && has_first_char_bound(inner)
+    Group(children, _, _) | Lookahead(children, _) =>
+      children.length() > 0 && has_first_char_bound(children[0])
+    Sequence(nodes) => nodes.length() > 0 && has_first_char_bound(nodes[0])
+    Alternation(_, _) => false
+  }
+}
+
+///|
+/// Scan forward from `pos` to find the next position where `node`'s first
+/// character could match. Only valid when has_first_char_bound(node) is true.
+/// Returns input.length() when no candidate is found.
+fn advance_to_candidate(
+  node : RegexNode,
+  input : Array[Char],
+  pos : Int,
+  flags : RegexFlags,
+) -> Int {
+  match node {
+    Literal(ch) => {
+      let mut i = pos
+      while i < input.length() {
+        if char_eq_icase(input[i], ch, flags.icase) {
+          return i
+        }
+        i += 1
+      }
+      i
+    }
+    CharClass(ranges, false) => {
+      let mut i = pos
+      while i < input.length() {
+        let ch = input[i]
+        for k in 0..<ranges.length() {
+          let (lo, hi) = ranges[k]
+          if ch.to_int() >= lo.to_int() && ch.to_int() <= hi.to_int() {
+            return i
+          }
+          if flags.icase {
+            let lowered = if ch >= 'A' && ch <= 'Z' {
+              (ch.to_int() + 32).unsafe_to_char()
+            } else {
+              ch
+            }
+            let lowered_lo = if lo >= 'A' && lo <= 'Z' {
+              (lo.to_int() + 32).unsafe_to_char()
+            } else {
+              lo
+            }
+            let lowered_hi = if hi >= 'A' && hi <= 'Z' {
+              (hi.to_int() + 32).unsafe_to_char()
+            } else {
+              hi
+            }
+            if lowered.to_int() >= lowered_lo.to_int() &&
+              lowered.to_int() <= lowered_hi.to_int() {
+              return i
+            }
+          }
+        }
+        i += 1
+      }
+      i
+    }
+    Group(children, _, _) | Lookahead(children, _) =>
+      advance_to_candidate(children[0], input, pos, flags)
+    Sequence(nodes) => advance_to_candidate(nodes[0], input, pos, flags)
+    Quantified(inner, _, _, _) => advance_to_candidate(inner, input, pos, flags)
+    _ => pos
+  }
+}
+
+///|
 /// Count consecutive matches of a simple quantified inner node starting from pos.
 /// Does NOT allocate intermediate state arrays (unlike collect_quantified_states).
 /// Returns the number of consecutive matches found.
@@ -2172,21 +2256,44 @@ pub fn regex_search(
       None => return None
     }
   }
-  for i = start_pos; i <= input_chars.length(); i = i + 1 {
+  if has_first_char_bound(parsed.node) {
     let state = RegexExecState(parsed.num_groups)
-    match regex_exec(parsed.node, input_chars, i, state, rflags) {
-      Some(end_pos) =>
-        return Some({
-          start: i,
-          end_: end_pos,
-          captures: state.captures.copy(),
-          capture_versions: state.capture_versions.copy(),
-          group_names: parsed.group_names,
-        })
-      None => continue
+    let mut i = start_pos
+    while i < input_chars.length() {
+      i = advance_to_candidate(parsed.node, input_chars, i, rflags)
+      if i >= input_chars.length() {
+        break
+      }
+      match regex_exec(parsed.node, input_chars, i, state, rflags) {
+        Some(end_pos) =>
+          return Some({
+            start: i,
+            end_: end_pos,
+            captures: state.captures.copy(),
+            capture_versions: state.capture_versions.copy(),
+            group_names: parsed.group_names,
+          })
+        None => i += 1
+      }
     }
+    None
+  } else {
+    let state = RegexExecState(parsed.num_groups)
+    for i = start_pos; i <= input_chars.length(); i = i + 1 {
+      match regex_exec(parsed.node, input_chars, i, state, rflags) {
+        Some(end_pos) =>
+          return Some({
+            start: i,
+            end_: end_pos,
+            captures: state.captures.copy(),
+            capture_versions: state.capture_versions.copy(),
+            group_names: parsed.group_names,
+          })
+        None => continue
+      }
+    }
+    None
   }
-  None
 }
 
 ///|
@@ -2199,30 +2306,58 @@ pub fn regex_search_all(
   let input_chars = input.to_array()
   let rflags = make_regex_flags(flags)
   let results : Array[RegexMatch] = []
-  let mut i = 0
-  while i <= input_chars.length() {
-    let state = RegexExecState(parsed.num_groups)
-    match regex_exec(parsed.node, input_chars, i, state, rflags) {
-      Some(end_pos) => {
-        results.push({
-          start: i,
-          end_: end_pos,
-          captures: state.captures.copy(),
-          capture_versions: state.capture_versions.copy(),
-          group_names: parsed.group_names,
-        })
-        if end_pos == i {
-          i += 1
-        } else {
-          i = end_pos
-        }
+  if has_first_char_bound(parsed.node) && !rflags.sticky {
+    let mut i = 0
+    while i <= input_chars.length() {
+      i = advance_to_candidate(parsed.node, input_chars, i, rflags)
+      if i >= input_chars.length() {
+        break
       }
-      None => {
-        // With sticky flag, stop on first failed match position
-        if rflags.sticky {
-          break
+      let state = RegexExecState(parsed.num_groups)
+      match regex_exec(parsed.node, input_chars, i, state, rflags) {
+        Some(end_pos) => {
+          results.push({
+            start: i,
+            end_: end_pos,
+            captures: state.captures.copy(),
+            capture_versions: state.capture_versions.copy(),
+            group_names: parsed.group_names,
+          })
+          if end_pos == i {
+            i += 1
+          } else {
+            i = end_pos
+          }
         }
-        i += 1
+        None => i += 1
+      }
+    }
+  } else {
+    let mut i = 0
+    while i <= input_chars.length() {
+      let state = RegexExecState(parsed.num_groups)
+      match regex_exec(parsed.node, input_chars, i, state, rflags) {
+        Some(end_pos) => {
+          results.push({
+            start: i,
+            end_: end_pos,
+            captures: state.captures.copy(),
+            capture_versions: state.capture_versions.copy(),
+            group_names: parsed.group_names,
+          })
+          if end_pos == i {
+            i += 1
+          } else {
+            i = end_pos
+          }
+        }
+        None => {
+          // With sticky flag, stop on first failed match position
+          if rflags.sticky {
+            break
+          }
+          i += 1
+        }
       }
     }
   }
