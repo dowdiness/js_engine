@@ -35,7 +35,6 @@
     "joint-iteration",
     "json-modules",
     "json-parse-with-source",
-    "regexp-lookbehind",
     "regexp-match-indices",
     "regexp-modifiers",
     "regexp-unicode-property-escapes",
