@@ -175,7 +175,10 @@ fn stmt_is_iteration_label_target(stmt : @ast.Stmt) -> Bool {
     | ForInStmtPat(_, _, _, _, _)
     | ForOfStmtPat(_, _, _, _, _)
     | ForInExpr(_, _, _, _)
-    | ForOfExpr(_, _, _, _) => true
+    | ForOfExpr(_, _, _, _)
+    | AsyncForOfStmt(_, _, _, _, _)
+    | AsyncForOfStmtPat(_, _, _, _, _)
+    | AsyncForOfExpr(_, _, _, _) => true
     LabeledStmt(_, body, _) => stmt_is_iteration_label_target(body)
     _ => false
   }
@@ -1894,7 +1897,10 @@ fn BytecodeBuilder::compile_stmt(
     }
     ForOfStmt(_, _, _, _, _)
     | ForOfStmtPat(_, _, _, _, _)
-    | ForOfExpr(_, _, _, _) =>
+    | ForOfExpr(_, _, _, _)
+    | AsyncForOfStmt(_, _, _, _, _)
+    | AsyncForOfStmtPat(_, _, _, _, _)
+    | AsyncForOfExpr(_, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_FOR_OF_STATEMENT)
     ForInStmt(var_kind, name, obj_expr, body, _) =>
       self.compile_for_in_identifier(var_kind, name, obj_expr, body)

@@ -708,7 +708,8 @@ fn validate_block_early_errors_stmt(
       validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
-    ForOfStmt(kind, name, iterable_expr, body, _) => {
+    ForOfStmt(kind, name, iterable_expr, body, _)
+    | AsyncForOfStmt(kind, name, iterable_expr, body, _) => {
       match kind {
         Some(_) =>
           if strict_context {
@@ -727,7 +728,8 @@ fn validate_block_early_errors_stmt(
       validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
-    ForOfStmtPat(kind, pattern, iterable_expr, body, _) => {
+    ForOfStmtPat(kind, pattern, iterable_expr, body, _)
+    | AsyncForOfStmtPat(kind, pattern, iterable_expr, body, _) => {
       validate_pattern_early_errors(pattern, strict_context, kind is Some(_))
       validate_block_early_errors_expr(iterable_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
@@ -743,7 +745,8 @@ fn validate_block_early_errors_stmt(
       validate_block_early_errors_expr(obj_expr, strict_context)
       validate_block_early_errors_stmt(body, strict_context)
     }
-    ForOfExpr(lhs, iterable_expr, body, _) => {
+    ForOfExpr(lhs, iterable_expr, body, _)
+    | AsyncForOfExpr(lhs, iterable_expr, body, _) => {
       match lhs {
         Ident(name, _) =>
           @static_semantics.validate_strict_assignment_target_name(

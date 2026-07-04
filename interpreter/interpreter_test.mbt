@@ -19746,3 +19746,18 @@ test "§10.2.11: backward-ref to destructuring param bound name works" {
   )
   json_inspect(output, content=["5"])
 }
+
+///|
+test "for-await-of basic with sync iterable" {
+  let src =
+    #|async function f() {
+    #|  let results = [];
+    #|  for await (const x of [1, 2, 3]) {
+    #|    results.push(x);
+    #|  }
+    #|  console.log(JSON.stringify(results));
+    #|}
+    #|f();
+  let output = run_output_async(src)
+  json_inspect(output, content=["[1,2,3]"])
+}
