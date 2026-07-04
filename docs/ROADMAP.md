@@ -6,8 +6,8 @@ and the older [archive/phase-history.md](archive/phase-history.md).
 
 ## Current Status
 
-**Test262** — CI run [28661577588](https://github.com/dowdiness/js_engine/actions/runs/28661577588)
-on tip `edd83ae` (main, 2026-07-03).
+**Test262** — CI run [28677092329](https://github.com/dowdiness/js_engine/actions/runs/28677092329)
+on tip `f33c417` (feat/regex-search-candidate-scan, 2026-07-04).
 
 Each test file runs twice, once in strict mode and once in non-strict mode. The
 two modes are reported separately because summing them would double-count files.
@@ -18,8 +18,8 @@ ARGS="--format=changelog"`.
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| strict | 44,986 | 18,119 | 26,846 | 26,023 | 823 | 21 | **96.9%** | 57.8% |
-| non-strict | 47,692 | 18,660 | 29,011 | 27,786 | 1,225 | 21 | **95.8%** | 58.3% |
+| strict | 44,986 | 18,119 | 26,855 | 26,027 | 828 | 12 | **96.9%** | 57.9% |
+| non-strict | 47,692 | 18,660 | 29,015 | 27,785 | 1,230 | 17 | **95.8%** | 58.3% |
 
 ES2015 specifically: strict **97.8%** P/E (9,906 / 10,131; 160 skipped),
 non-strict **97.6%** P/E (10,364 / 10,620; 159 skipped) — the roadmap 95%
