@@ -1612,6 +1612,28 @@ fn is_uri_reserved(c : Char) -> Bool {
 }
 
 ///|
+
+///| Validate a decoded UTF-8 code point for URI conformance:
+
+///| - Surrogate range (U+D800-U+DFFF) → URIError
+
+///| - Overlong encoding (cp below minimum for given byte count) → URIError
+
+///|
+/// - Out-of-range (cp > U+10FFFF) → URIError
+fn validate_uri_code_point(cp : Int, min_cp : Int) -> Unit raise Error {
+  if cp >= 0xD800 && cp <= 0xDFFF {
+    raise @errors.URIError(message="URI malformed")
+  }
+  if cp < min_cp {
+    raise @errors.URIError(message="URI malformed")
+  }
+  if cp > 0x10FFFF {
+    raise @errors.URIError(message="URI malformed")
+  }
+}
+
+///|
 fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
   let buf = StringBuilder::new()
   let chars = s.to_array()
@@ -1649,6 +1671,7 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
           ((b2 & 0x3F) << 12) |
           ((b3 & 0x3F) << 6) |
           (b4 & 0x3F)
+        validate_uri_code_point(cp, 0x10000)
         buf.write_char(cp.unsafe_to_char())
         i = i + 12
         continue
@@ -1667,6 +1690,7 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
           raise @errors.URIError(message="URI malformed")
         }
         let cp = ((byte1 & 0x0F) << 12) | ((b2 & 0x3F) << 6) | (b3 & 0x3F)
+        validate_uri_code_point(cp, 0x800)
         buf.write_char(cp.unsafe_to_char())
         i = i + 9
         continue
@@ -1684,6 +1708,7 @@ fn uri_decode(s : String, preserve_reserved : Bool) -> String raise Error {
           raise @errors.URIError(message="URI malformed")
         }
         let cp = ((byte1 & 0x1F) << 6) | (b2 & 0x3F)
+        validate_uri_code_point(cp, 0x80)
         buf.write_char(cp.unsafe_to_char())
         i = i + 6
         continue
