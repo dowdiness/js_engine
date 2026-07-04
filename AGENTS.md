@@ -304,16 +304,6 @@ grep -rn '() => {}' <pkg>/*.mbt                      # Empty callback anti-patte
 - Check for: integer overflow, zero/negative inputs, boundary validation, generation wrap-around.
 - Do not suggest deleting public API types (Id structs, etc.) as "unused" — they may be needed by downstream consumers.
 - Verify method names match actual API before writing tests (e.g., check if it's `insert` vs `add_local_op`).
-- **Edit numbering discipline.** Every edit that inserts or deletes lines changes all subsequent line numbers. After any edit with non-zero net line change, `read` the file (or at least the affected ranges) before the next `edit` call. Never rely on numbers from before the insert/delete. (Missed this in PR #492: helper insertion shifted the 3-byte utf-8 branch by 14 lines, causing a closing brace to be consumed by a SWAP.)
-
-## Debug Methodology
-
-When investigating a `TypeError: X is not a function` or a property access returning `undefined`:
-
-1. **Does the thing exist?** Before investigating whether X's behavior is wrong, check `typeof target.X` — it may be `undefined` (property doesn't exist at all).
-2. **What would make it exist?** If missing, trace the prototype chain (`Object.getPrototypeOf`), not the property descriptor. The root cause may be a disconnected prototype rather than a wrong descriptor.
-3. **What would prove the assumption wrong?** Before writing a fix for assumption A ("the descriptor value is wrong"), write one test query that would disprove A ("`typeof this.propertyIsEnumerable` is `function`"). Run it first.
-4. **Filter specificity.** When running `make test262-filter`, remember FILTER uses substring `contains` on the normalized test path. A short prefix like `"decodeURI"` may match unrelated tests (`language/literals/decodeURI/...`). Narrow the filter to the full directory segment: `"built-ins/decodeURI"` or a specific filename.
 
 ## Development Workflow
 
