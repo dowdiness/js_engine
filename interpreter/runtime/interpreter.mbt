@@ -173,6 +173,17 @@ pub fn Interpreter::new(
   global.interpreter_context = Some(interp)
   with_cleared_active_callee_realm_unit(realm_state, fn() {
     setup_builtins(global, output, realm_state, annex_b)
+    // Patch global object's [[Prototype]] to Object.prototype now that builtins
+    // are set up and [[ObjectPrototype]] is defined (§19.1 — global object
+    // inherits from %Object.prototype%).
+    match global.bindings.get("[[ObjectPrototype]]") {
+      Some(binding) =>
+        match global_this {
+          Object(data) => data.prototype = binding.value
+          _ => ()
+        }
+      None => ()
+    }
     // Bind 'this' and 'globalThis' in global scope
     global.def_builtin("this", global_this)
     global.def_builtin("globalThis", global_this)
