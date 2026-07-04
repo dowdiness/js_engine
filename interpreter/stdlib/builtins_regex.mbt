@@ -17,6 +17,7 @@ priv enum RegexNode {
   Alternation(Array[RegexNode], Array[RegexNode]) // left, right
   Sequence(Array[RegexNode])
   WordBoundary(Bool) // true = \b, false = \B
+  Lookbehind(Array[RegexNode], Bool) // children, positive (true=(?<=...), false=(?<!...))
   Lookahead(Array[RegexNode], Bool) // children, positive (true=(?=...), false=(?!...))
   Backreference(Int) // group number (1-based)
   NamedBackreference(String) // group name before post-parse resolution
@@ -97,6 +98,12 @@ fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
     Quantified(inner, min, max, greedy) => {
       let resolved = desugar_named_backrefs_to_literals(inner)
       Quantified(resolved, min, max, greedy)
+    }
+    Lookbehind(children, positive) => {
+      let resolved = children.map(child => {
+        desugar_named_backrefs_to_literals(child)
+      })
+      Lookbehind(resolved, positive)
     }
     Lookahead(children, positive) => {
       let resolved = children.map(child => {
@@ -183,6 +190,14 @@ fn resolve_named_backreferences(
       let resolved = resolve_named_backreferences(inner, group_names)
       Quantified(resolved, min, max, greedy)
     }
+    Lookbehind(children, positive) => {
+      let resolved = children.map(child => {
+        resolve_named_backreferences(child, group_names) catch {
+          e => raise e
+        }
+      })
+      Lookbehind(resolved, positive)
+    }
     Lookahead(children, positive) => {
       let resolved = children.map(child => {
         resolve_named_backreferences(child, group_names) catch {
@@ -214,7 +229,10 @@ fn validate_numeric_backreferences(
           message="Invalid regex: invalid numeric backreference",
         )
       }
-    Group(children, _, _) | Sequence(children) | Lookahead(children, _) =>
+    Group(children, _, _)
+    | Sequence(children)
+    | Lookahead(children, _)
+    | Lookbehind(children, _) =>
       for child in children {
         validate_numeric_backreferences(child, group_count)
       }
@@ -994,8 +1012,9 @@ fn regex_name_summary_for_node(
       summary.names.add(name)
       summary
     }
-    Group(children, _, None) | Lookahead(children, _) =>
-      regex_name_summary_for_sequence(children)
+    Group(children, _, None)
+    | Lookahead(children, _)
+    | Lookbehind(children, _) => regex_name_summary_for_sequence(children)
     Sequence(nodes) => regex_name_summary_for_sequence(nodes)
     Alternation(left, right) => {
       let summary = RegexNameSummary()
@@ -1037,26 +1056,52 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         // Non-capturing group (?:...)
         self.pos += 2
         let inner = self.parse_alternation()
-        if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
-          self.pos += 1
-        } else {
+        guard self.pos < self.pattern.length() && self.pattern[self.pos] == ')' else {
           raise @errors.SyntaxError(
             message="Invalid regex: unterminated non-capturing group",
           )
         }
+        self.pos += 1
         let children = match inner {
           Sequence(nodes) => nodes
           _ => [inner]
         }
         return Group(children, 0, None)
       } else if next == '<' {
-        // Named capture group (?<name>...) or lookbehind (not supported)
         if self.pos + 2 < self.pattern.length() {
           let after_lt = self.pattern[self.pos + 2]
-          if after_lt == '=' || after_lt == '!' {
-            raise @errors.SyntaxError(
-              message="Invalid regex: lookbehind assertions are not supported",
-            )
+          if after_lt == '=' {
+            // Positive lookbehind (?<=...)
+            self.pos += 3 // skip '?<='
+            let inner = self.parse_alternation()
+            guard self.pos < self.pattern.length() &&
+              self.pattern[self.pos] == ')' else {
+              raise @errors.SyntaxError(
+                message="Invalid regex: unterminated lookbehind",
+              )
+            }
+            self.pos += 1
+            let children = match inner {
+              Sequence(nodes) => nodes
+              _ => [inner]
+            }
+            return Lookbehind(children, true)
+          } else if after_lt == '!' {
+            // Negative lookbehind (?<!...)
+            self.pos += 3 // skip '?<!'
+            let inner = self.parse_alternation()
+            guard self.pos < self.pattern.length() &&
+              self.pattern[self.pos] == ')' else {
+              raise @errors.SyntaxError(
+                message="Invalid regex: unterminated lookbehind",
+              )
+            }
+            self.pos += 1
+            let children = match inner {
+              Sequence(nodes) => nodes
+              _ => [inner]
+            }
+            return Lookbehind(children, false)
           }
         }
         // Parse group name, interpreting \uXXXX / \u{XXXXX} escapes
@@ -1116,13 +1161,12 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         }
         self.group_name_entries.push((name, group_idx))
         let inner = self.parse_alternation()
-        if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
-          self.pos += 1
-        } else {
+        guard self.pos < self.pattern.length() && self.pattern[self.pos] == ')' else {
           raise @errors.SyntaxError(
             message="Invalid regex: unterminated named capture group",
           )
         }
+        self.pos += 1
         let children = match inner {
           Sequence(nodes) => nodes
           _ => [inner]
@@ -1132,13 +1176,12 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         // Positive lookahead (?=...)
         self.pos += 2
         let inner = self.parse_alternation()
-        if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
-          self.pos += 1
-        } else {
+        guard self.pos < self.pattern.length() && self.pattern[self.pos] == ')' else {
           raise @errors.SyntaxError(
             message="Invalid regex: unterminated lookahead",
           )
         }
+        self.pos += 1
         let children = match inner {
           Sequence(nodes) => nodes
           _ => [inner]
@@ -1148,13 +1191,12 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
         // Negative lookahead (?!...)
         self.pos += 2
         let inner = self.parse_alternation()
-        if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
-          self.pos += 1
-        } else {
+        guard self.pos < self.pattern.length() && self.pattern[self.pos] == ')' else {
           raise @errors.SyntaxError(
             message="Invalid regex: unterminated lookahead",
           )
         }
+        self.pos += 1
         let children = match inner {
           Sequence(nodes) => nodes
           _ => [inner]
@@ -1167,13 +1209,12 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
   self.group_count += 1
   let group_idx = self.group_count
   let inner = self.parse_alternation()
-  if self.pos < self.pattern.length() && self.pattern[self.pos] == ')' {
-    self.pos += 1
-  } else {
+  guard self.pos < self.pattern.length() && self.pattern[self.pos] == ')' else {
     raise @errors.SyntaxError(
       message="Invalid regex: unterminated capturing group",
     )
   }
+  self.pos += 1
   let children = match inner {
     Sequence(nodes) => nodes
     _ => [inner]
@@ -1189,9 +1230,20 @@ fn RegexParser::parse_quantifier(
   if self.pos >= self.pattern.length() {
     return node
   }
-  // Don't apply quantifiers to anchors or word boundaries
+  // Don't apply quantifiers to anchors, word boundaries, or lookbehinds.
+  // Lookbehind assertions are NOT QuantifiableAssertion per spec grammar.
+  // Quantifying them (?<=...)? is a SyntaxError.
   match node {
     Anchor(_) | WordBoundary(_) => return node
+    Lookbehind(_, _) =>
+      if self.pos < self.pattern.length() {
+        let next = self.pattern[self.pos]
+        if next == '*' || next == '+' || next == '?' || next == '{' {
+          raise @errors.SyntaxError(
+            message="Invalid regex: lookbehind assertion cannot be quantified",
+          )
+        }
+      }
     _ => ()
   }
   let ch = self.pattern[self.pos]
@@ -1317,6 +1369,9 @@ priv struct RegexExecState {
   captures : Array[String?]
   capture_versions : Array[Int]
   mut capture_epoch : Int
+  // When true (inside a lookbehind), set_capture preserves the first
+  // capture of each group instead of overwriting (spec §22.2.3.2 direction=-1).
+  mut preserve_first_capture : Bool
 }
 
 ///|
@@ -1331,6 +1386,7 @@ fn RegexExecState::RegexExecState(num_groups : Int) -> RegexExecState {
     captures: Array::make(num_groups, None),
     capture_versions: Array::make(num_groups, 0),
     capture_epoch: 0,
+    preserve_first_capture: false,
   }
 }
 
@@ -1660,6 +1716,59 @@ fn regex_exec_single(
         _ => None
       }
     }
+    Lookbehind(children, positive) => {
+      // Match backward: find start positions ending at pos (§22.2.3.2 direction=-1).
+      // Use pattern length bounds to limit the search window.
+      let (min_len, max_len) = sequence_length_bounds(children)
+      let max_start = pos - min_len
+      let min_start = match max_len {
+        Some(ml) => (pos - ml).max(0)
+        None => 0
+      }
+      let prior_preserve = state.preserve_first_capture
+      state.preserve_first_capture = true
+      let saved = state.snapshot()
+      let mut found_leftmost = false
+      let mut best_s = -1
+      let mut best_snapshot = saved
+      let mut s = max_start
+      while s >= min_start {
+        let candidates = match_sequence_candidates(
+          children, 0, input, s, state, flags,
+        )
+        for candidate in candidates {
+          if candidate.pos == pos {
+            // Found a match ending at pos from start position s.
+            // For negative: any match is enough to fail the assertion.
+            if !positive {
+              state.restore(saved)
+              state.preserve_first_capture = prior_preserve
+              return None
+            }
+            // For positive: save the leftmost start position (smallest s).
+            if !found_leftmost || s < best_s {
+              found_leftmost = true
+              best_s = s
+              best_snapshot = candidate.snapshot
+            }
+          }
+        }
+        state.restore(saved) // Restore after failed attempt
+        s -= 1
+      }
+      state.restore(saved)
+      state.preserve_first_capture = prior_preserve
+      if positive && found_leftmost {
+        state.restore(best_snapshot)
+        state.preserve_first_capture = prior_preserve
+        return Some(pos)
+      }
+      // No match found ending at pos for positive, or negative succeeded
+      match positive {
+        true => None // Positive: no match
+        false => Some(pos) // Negative: no match, assertion succeeds
+      }
+    }
     Backreference(group_num) =>
       if group_num - 1 < state.captures.length() {
         match state.captures[group_num - 1] {
@@ -1699,7 +1808,7 @@ fn clear_captures_for_node(node : RegexNode, state : RegexExecState) -> Unit {
         clear_captures_for_node(child, state)
       }
     }
-    Sequence(nodes) | Lookahead(nodes, _) =>
+    Sequence(nodes) | Lookahead(nodes, _) | Lookbehind(nodes, _) =>
       for child in nodes {
         clear_captures_for_node(child, state)
       }
@@ -1748,9 +1857,59 @@ fn has_first_char_bound(node : RegexNode) -> Bool {
     Quantified(inner, min, _, _) => min > 0 && has_first_char_bound(inner)
     Group(children, _, _) | Lookahead(children, _) =>
       children.length() > 0 && has_first_char_bound(children[0])
+    Lookbehind(_, _) => false
     Sequence(nodes) => nodes.length() > 0 && has_first_char_bound(nodes[0])
     Alternation(_, _) => false
   }
+}
+
+///|
+/// Compute min and max match lengths for a regex node.
+/// Returns (min_chars, max_chars?), where None = unbounded.
+fn node_match_length_bounds(node : RegexNode) -> (Int, Int?) {
+  match node {
+    Literal(_) | Dot | CharClass(_, _) => (1, Some(1))
+    Anchor(_) | WordBoundary(_) => (0, Some(0))
+    Group(children, _, _) => sequence_length_bounds(children)
+    Sequence(nodes) => sequence_length_bounds(nodes)
+    Alternation(left, right) => {
+      let (l_min, l_max) = sequence_length_bounds(left)
+      let (r_min, r_max) = sequence_length_bounds(right)
+      let min = if l_min < r_min { l_min } else { r_min }
+      let max = match (l_max, r_max) {
+        (Some(lm), Some(rm)) => Some(if lm > rm { lm } else { rm })
+        _ => None
+      }
+      (min, max)
+    }
+    Quantified(inner, q_min, q_max, _) => {
+      let (i_min, i_max) = node_match_length_bounds(inner)
+      let min = q_min * i_min
+      let max = match (q_max, i_max) {
+        (Some(qm), Some(im)) => Some(qm * im)
+        _ => None
+      }
+      (min, max)
+    }
+    Lookahead(_, _) | Lookbehind(_, _) => (0, Some(0))
+    Backreference(_) | NamedBackreference(_) | DuplicateNamedBackreference(_) =>
+      (0, None)
+  }
+}
+
+///|
+fn sequence_length_bounds(nodes : Array[RegexNode]) -> (Int, Int?) {
+  let mut min_sum = 0
+  let mut max_sum : Int? = Some(0)
+  for node in nodes {
+    let (n_min, n_max) = node_match_length_bounds(node)
+    min_sum += n_min
+    max_sum = match (max_sum, n_max) {
+      (Some(s), Some(m)) => Some(s + m)
+      _ => None
+    }
+  }
+  (min_sum, max_sum)
 }
 
 ///|
@@ -1864,6 +2023,10 @@ fn collect_quantified_states(
   ]
   let mut current = pos
   let mut count = 0
+  // For lookbehind (preserve_first_capture), save captures from the
+  // first match and restore them after subsequent matches so quantified
+  // groups capture the first (leftmost in input) character.
+  let mut first_captures : Array[String?] = []
   while true {
     match max {
       Some(m) => if count >= m { break }
@@ -1882,6 +2045,18 @@ fn collect_quantified_states(
         }
         count += 1
         current = next
+        // Save first match captures for lookbehind (preserve_first_capture)
+        if state.preserve_first_capture && count == 1 {
+          first_captures = state.captures.copy()
+        }
+        // Restore first match captures after subsequent matches
+        if state.preserve_first_capture && count > 1 {
+          for i in 0..<state.captures.length() {
+            if i < first_captures.length() {
+              state.captures[i] = first_captures[i]
+            }
+          }
+        }
         states.push({ pos: current, snapshot: state.snapshot() })
       }
       None => {
@@ -2060,6 +2235,59 @@ fn match_node_candidates(
         _ => ()
       }
     }
+    Lookbehind(children, positive) => {
+      // Lookbehind is atomic: captures from inner match visible.
+      // preserve_first_capture: quantified groups capture leftmost input char.
+      // For positive: use the LEFTMOST start position (= greedy reverse).
+      // For negative: any match immediately fails the assertion.
+      // Use pattern length bounds to limit the search window.
+      let (min_len, max_len) = sequence_length_bounds(children)
+      let max_start = pos - min_len
+      let min_start = match max_len {
+        Some(ml) => (pos - ml).max(0)
+        None => 0
+      }
+      let prior_preserve = state.preserve_first_capture
+      state.preserve_first_capture = true
+      let mut found_leftmost = false
+      let mut best_s = -1
+      let mut best_snapshot = saved
+      let mut s = max_start
+      while s >= min_start {
+        let candidates = match_sequence_candidates(
+          children, 0, input, s, state, flags,
+        )
+        for candidate in candidates {
+          if candidate.pos == pos {
+            if !positive {
+              // Negative: any match fails assertion
+              state.restore(saved)
+              state.preserve_first_capture = prior_preserve
+              return results
+            }
+            // Positive: save leftmost start (smallest s → leftmost in input)
+            if !found_leftmost || s < best_s {
+              found_leftmost = true
+              best_s = s
+              best_snapshot = candidate.snapshot
+            }
+          }
+        }
+        state.restore(saved)
+        s -= 1
+      }
+      state.preserve_first_capture = prior_preserve
+      if found_leftmost {
+        state.restore(best_snapshot)
+        results.push({ pos, snapshot: state.snapshot() })
+      } else {
+        state.restore(saved)
+        match positive {
+          true => () // No match → assertion fails
+          false => results.push({ pos, snapshot: state.snapshot() })
+        }
+      }
+    }
     Literal(_)
     | Dot
     | CharClass(_, _)
@@ -2111,7 +2339,7 @@ fn count_groups(node : RegexNode) -> Int {
     | Backreference(_)
     | NamedBackreference(_)
     | DuplicateNamedBackreference(_) => 0
-    Lookahead(children, _) =>
+    Lookahead(children, _) | Lookbehind(children, _) =>
       children.fold(init=0, fn(acc, child) {
         let cg = count_groups(child)
         if cg > acc {
