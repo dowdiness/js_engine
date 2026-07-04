@@ -10,8 +10,15 @@ build:
 test:
 	moon test
 
+# Ensure the native core bundle exists (required for `moon build --target native`).
+# Runs `moon bundle` on the installed core library, which links individual .core
+# files into bundle/core.core. Idempotent — fast skips when already up to date.
+# Needed after `moon clean` or a toolchain upgrade.
+native-core-bundle:
+	cd ~/.moon/lib/core && moon bundle --target native
+
 # MoonBit subprocess helper tests.
-subprocess-helpers-mbt-test:
+subprocess-helpers-mbt-test: native-core-bundle
 	moon test --target native tooling/subprocess_helpers
 
 # MoonBit native is authoritative.
