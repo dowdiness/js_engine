@@ -1944,56 +1944,14 @@ fn Interpreter::exec_stmt(
             }
         }
         // Execute loop body
-        let body_yield_base = match gen_opt {
-          Some(g) => g.yield_index
-          _ => 0
-        }
-        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
-          e => {
-            if e is YieldSignal(_) {
-              save_for_of_resume_state(
-                gen_opt, iterator, next_method, body_env, body_yield_base,
-              )
-            } else {
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
-            }
-            raise e
-          }
-        }
-        match body_signal {
-          Normal(v) => completion = v
-          ReturnSignal(v) => {
-            close_iterator(self, iterator, loc)
-            return ReturnSignal(v)
-          }
-          BreakSignal(v, None) => {
-            close_iterator(self, iterator, loc)
-            completion = v.unwrap_or(completion)
-            break
-          }
-          BreakSignal(bv, Some(l)) =>
-            if label == Some(l) {
-              close_iterator(self, iterator, loc)
-              completion = bv.unwrap_or(completion)
-              break
-            } else {
-              close_iterator(self, iterator, loc)
-              return BreakSignal(bv, Some(l))
-            }
-          ContinueSignal(v, None) => {
-            completion = v.unwrap_or(completion)
-            continue
-          }
-          ContinueSignal(cv, Some(l)) =>
-            if label == Some(l) {
-              completion = cv.unwrap_or(completion)
-              continue
-            } else {
-              close_iterator(self, iterator, loc)
-              return ContinueSignal(cv, Some(l))
-            }
+        let (new_c, should_continue, propagate) = exec_for_body_signal(
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+        )
+        completion = new_c
+        if should_continue { continue }
+        match propagate {
+          Some(s) => return s
+          None => ()
         }
       }
       Normal(completion)
@@ -2148,56 +2106,14 @@ fn Interpreter::exec_stmt(
               }
           }
         }
-        let body_yield_base = match gen_opt {
-          Some(g) => g.yield_index
-          _ => 0
-        }
-        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
-          e => {
-            if e is YieldSignal(_) {
-              save_for_of_resume_state(
-                gen_opt, iterator, next_method, body_env, body_yield_base,
-              )
-            } else {
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
-            }
-            raise e
-          }
-        }
-        match body_signal {
-          Normal(v) => completion = v
-          ReturnSignal(v) => {
-            close_iterator(self, iterator, loc)
-            return ReturnSignal(v)
-          }
-          BreakSignal(v, None) => {
-            close_iterator(self, iterator, loc)
-            completion = v.unwrap_or(completion)
-            break
-          }
-          BreakSignal(bv, Some(l)) =>
-            if label == Some(l) {
-              close_iterator(self, iterator, loc)
-              completion = bv.unwrap_or(completion)
-              break
-            } else {
-              close_iterator(self, iterator, loc)
-              return BreakSignal(bv, Some(l))
-            }
-          ContinueSignal(v, None) => {
-            completion = v.unwrap_or(completion)
-            continue
-          }
-          ContinueSignal(cv, Some(l)) =>
-            if label == Some(l) {
-              completion = cv.unwrap_or(completion)
-              continue
-            } else {
-              close_iterator(self, iterator, loc)
-              return ContinueSignal(cv, Some(l))
-            }
+        let (new_c, should_continue, propagate) = exec_for_body_signal(
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+        )
+        completion = new_c
+        if should_continue { continue }
+        match propagate {
+          Some(s) => return s
+          None => ()
         }
       }
       Normal(completion)
@@ -2307,56 +2223,14 @@ fn Interpreter::exec_stmt(
             }
           }
         }
-        let body_yield_base = match gen_opt {
-          Some(g) => g.yield_index
-          _ => 0
-        }
-        let body_signal = self.exec_stmt(ctx, body, body_env) catch {
-          e => {
-            if e is YieldSignal(_) {
-              save_for_of_resume_state(
-                gen_opt, iterator, next_method, body_env, body_yield_base,
-              )
-            } else {
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
-            }
-            raise e
-          }
-        }
-        match body_signal {
-          Normal(v) => completion = v
-          ReturnSignal(v) => {
-            close_iterator(self, iterator, loc)
-            return ReturnSignal(v)
-          }
-          BreakSignal(v, None) => {
-            close_iterator(self, iterator, loc)
-            completion = v.unwrap_or(completion)
-            break
-          }
-          BreakSignal(bv, Some(l)) =>
-            if label == Some(l) {
-              close_iterator(self, iterator, loc)
-              completion = bv.unwrap_or(completion)
-              break
-            } else {
-              close_iterator(self, iterator, loc)
-              return BreakSignal(bv, Some(l))
-            }
-          ContinueSignal(v, None) => {
-            completion = v.unwrap_or(completion)
-            continue
-          }
-          ContinueSignal(cv, Some(l)) =>
-            if label == Some(l) {
-              completion = cv.unwrap_or(completion)
-              continue
-            } else {
-              close_iterator(self, iterator, loc)
-              return ContinueSignal(cv, Some(l))
-            }
+        let (new_c, should_continue, propagate) = exec_for_body_signal(
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+        )
+        completion = new_c
+        if should_continue { continue }
+        match propagate {
+          Some(s) => return s
+          None => ()
         }
       }
       Normal(completion)
@@ -2769,6 +2643,72 @@ fn Interpreter::exec_try_catch(
       match pending_error {
         Some(e) => raise e
         None => result
+      }
+  }
+}
+///|
+/// Execute a for-of/for-await-of loop body and dispatch its completion signal.
+/// Shared by both sync and async for-of variants to avoid code duplication.
+/// Returns (updated_completion, should_continue, optional_signal_to_propagate).
+fn exec_for_body_signal(
+  interp : Interpreter,
+  ctx : ExecContext,
+  body : @ast.Stmt,
+  body_env : Environment,
+  gen_opt : GeneratorObject?,
+  iterator : Value,
+  next_method : Value,
+  loc : @token.Loc,
+  label : String?,
+  completion : Value,
+) -> (Value, Bool, Signal?) raise Error {
+  let body_yield_base = match gen_opt {
+    Some(g) => g.yield_index
+    _ => 0
+  }
+  let body_signal = interp.exec_stmt(ctx, body, body_env) catch {
+    e => {
+      if e is YieldSignal(_) {
+        save_for_of_resume_state(
+          gen_opt, iterator, next_method, body_env, body_yield_base,
+        )
+      } else {
+        close_iterator(interp, iterator, loc) catch {
+          _ => ()
+        }
+      }
+      raise e
+    }
+  }
+  match body_signal {
+    Normal(v) => (v, false, None)
+    ReturnSignal(v) => {
+      close_iterator(interp, iterator, loc)
+      (completion, false, Some(ReturnSignal(v)))
+    }
+    BreakSignal(v, None) => {
+      close_iterator(interp, iterator, loc)
+      (v.unwrap_or(completion), false, Some(BreakSignal(None, None)))
+    }
+    BreakSignal(bv, Some(l)) =>
+      if label == Some(l) {
+        close_iterator(interp, iterator, loc)
+        (bv.unwrap_or(completion), false, Some(BreakSignal(None, None)))
+      } else {
+        close_iterator(interp, iterator, loc)
+        (completion, false, Some(BreakSignal(bv, Some(l))))
+      }
+    ContinueSignal(v, None) => {
+      let c = v.unwrap_or(completion)
+      (c, true, None)
+    }
+    ContinueSignal(cv, Some(l)) =>
+      if label == Some(l) {
+        let c = cv.unwrap_or(completion)
+        (c, true, None)
+      } else {
+        close_iterator(interp, iterator, loc)
+        (completion, false, Some(ContinueSignal(cv, Some(l))))
       }
   }
 }
