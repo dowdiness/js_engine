@@ -1776,6 +1776,7 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             g.for_of_awaiting_next = false
+            g.resuming = false
             // Pop the loop env stacks pushed by save_for_of_resume_state
             let _ = g.loop_env_stack.pop()
             let _ = g.loop_yield_base_stack.pop()
@@ -1894,6 +1895,7 @@ fn Interpreter::exec_stmt(
               g.yield_value = next_promise
               let save_base = g.yield_index
               g.yield_index += 1
+              g.resume_at_yield = save_base
               let body_env = Environment::new(parent=Some(env))
               save_for_of_resume_state(
                 gen_opt, iterator, next_method, body_env, save_base,
@@ -2010,6 +2012,7 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             g.for_of_awaiting_next = false
+            g.resuming = false
             let _ = g.loop_env_stack.pop()
             let _ = g.loop_yield_base_stack.pop()
           }
@@ -2077,6 +2080,7 @@ fn Interpreter::exec_stmt(
                 g.yield_value = next_promise
                 let save_base = g.yield_index
                 g.yield_index += 1
+                g.resume_at_yield = save_base
                 let body_env = Environment::new(parent=Some(env))
                 save_for_of_resume_state(
                   gen_opt, iterator, next_method, body_env, save_base,
@@ -2212,6 +2216,7 @@ fn Interpreter::exec_stmt(
         match gen_opt {
           Some(g) => {
             g.for_of_awaiting_next = false
+            g.resuming = false
             let _ = g.loop_env_stack.pop()
             let _ = g.loop_yield_base_stack.pop()
           }
@@ -2263,6 +2268,7 @@ fn Interpreter::exec_stmt(
                 g.yield_value = next_promise
                 let save_base = g.yield_index
                 g.yield_index += 1
+                g.resume_at_yield = save_base
                 let body_env = Environment::new(parent=Some(env))
                 save_for_of_resume_state(
                   gen_opt, iterator, next_method, body_env, save_base,
