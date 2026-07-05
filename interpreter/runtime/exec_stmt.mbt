@@ -1861,13 +1861,17 @@ fn Interpreter::exec_stmt(
             ReturnSignal(v) => return ReturnSignal(v)
             BreakSignal(v, None) => {
               completion = v.unwrap_or(completion)
-              close_iterator(self, iterator, loc) catch { _ => () }
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               break
             }
             BreakSignal(bv, Some(l)) =>
               if label == Some(l) {
                 completion = bv.unwrap_or(completion)
-                close_iterator(self, iterator, loc) catch { _ => () }
+                close_iterator(self, iterator, loc) catch {
+                  _ => ()
+                }
                 break
               } else {
                 return BreakSignal(bv, Some(l))

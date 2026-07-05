@@ -673,7 +673,7 @@ fn perform_promise_then(
     let then_m = ip.get_property(promise, "then", loc)
     ip.call_value(then_m, promise, [on_fulfill, on_reject], loc)
   } catch {
-    e => make_rejected_promise(ip, error_to_js_value_ip(e, ip))
+    e => make_rejected_promise(ip, ip.error_to_js_value(e))
   }
 }
 
@@ -693,25 +693,25 @@ fn async_from_sync_continuation(
 
   // Steps 1-2: IteratorComplete(result)
   let done = extract_iterator_done(ip, result, loc) catch {
-    e => return make_rejected_promise(ip, error_to_js_value_ip(e, ip))
+    e => return make_rejected_promise(ip, ip.error_to_js_value(e))
   }
 
   // Steps 3-4: IteratorValue(result)
   let value = extract_iterator_value(ip, result, loc) catch {
-    e => return make_rejected_promise(ip, error_to_js_value_ip(e, ip))
+    e => return make_rejected_promise(ip, ip.error_to_js_value(e))
   }
 
   // Step 5: PromiseResolve(%Promise%, value)
   let promise_ctor = ip.global.get("Promise") catch {
     e => {
       try_close_on_rejection(ip, sync_iterator, loc, done, close_on_rejection)
-      return make_rejected_promise(ip, error_to_js_value_ip(e, ip))
+      return make_rejected_promise(ip, ip.error_to_js_value(e))
     }
   }
   let resolve_m = ip.get_property(promise_ctor, "resolve", loc) catch {
     e => {
       try_close_on_rejection(ip, sync_iterator, loc, done, close_on_rejection)
-      return make_rejected_promise(ip, error_to_js_value_ip(e, ip))
+      return make_rejected_promise(ip, ip.error_to_js_value(e))
     }
   }
   let resolved = ip.call_value(resolve_m, promise_ctor, [value], loc) catch {
@@ -719,7 +719,7 @@ fn async_from_sync_continuation(
       // Step 6: If abrupt, done is false, and closeOnRejection is true → close iterator
       try_close_on_rejection(ip, sync_iterator, loc, done, close_on_rejection)
       // Step 7: IfAbruptRejectPromise
-      return make_rejected_promise(ip, error_to_js_value_ip(e, ip))
+      return make_rejected_promise(ip, ip.error_to_js_value(e))
     }
   }
 
@@ -763,10 +763,10 @@ fn async_from_sync_continuation(
 }
 
 ///|
-fn error_to_js_value_ip(e : Error, ip : Interpreter) -> Value {
+fn Interpreter::error_to_js_value(self : Interpreter, e : Error) -> Value {
   match e {
     JsException(v) => v
-    _ => js_error_to_value_with_env(e, Some(ip.global))
+    _ => js_error_to_value_with_env(e, Some(self.global))
   }
 }
 
@@ -794,11 +794,7 @@ fn extract_iterator_value(
 /// Catches any raise and returns a rejected promise instead.
 fn reject_on_error(ip : Interpreter, action : () -> Value raise Error) -> Value {
   action() catch {
-    JsException(e) => make_rejected_promise(ip, e)
-    e => {
-      let err = js_error_to_value_with_env(e, Some(ip.global))
-      make_rejected_promise(ip, err)
-    }
+    e => make_rejected_promise(ip, ip.error_to_js_value(e))
   }
 }
 
