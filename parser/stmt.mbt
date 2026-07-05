@@ -692,13 +692,8 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
     let try_expr : @ast.Expr? = Some(self.parse_call()) catch { _ => None }
     match try_expr {
       Some(expr) => {
-        if is_async_for || self.at(Of) {
-          // For async, we already consumed await — expect 'of'
-          if is_async_for {
-            let _ = self.advance() // consume 'of'
-          } else {
-            let _ = self.advance() // consume 'of'
-          }
+        if self.at(Of) {
+          let _ = self.advance() // consume 'of'
           let expr = unwrap_parenthesized_lhs(expr)
           let (iterable, body) = parse_of_body(self, tok.loc)
           if is_async_for {

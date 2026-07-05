@@ -271,7 +271,7 @@ jobs:
         run: cp benchmarks/dashboard/index.html "$RUNNER_TEMP/benchmark-dashboard-index.html"
 
       - name: Publish benchmark history
-        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+        if: steps.convert-csv.outputs.has-data == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
         with:
           tool: customSmallerIsBetter

@@ -1778,8 +1778,12 @@ fn Interpreter::exec_stmt(
             g.for_of_awaiting_next = false
             g.resuming = false
             // Pop the loop env stacks pushed by save_for_of_resume_state
+            // and restore the yield index so subsequent yields resume correctly.
             let _ = g.loop_env_stack.pop()
-            let _ = g.loop_yield_base_stack.pop()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
           }
           _ => ()
         }
