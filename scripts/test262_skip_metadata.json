@@ -194,6 +194,7 @@
     "test262/test/language/statements/for-await-of/async-gen-decl-dstr-obj-rest-to-property.js": "async-generator destructuring in for-await-of",
     "test262/test/language/statements/for-await-of/async-gen-decl-dstr-obj-rest-valid-object.js": "async-generator destructuring in for-await-of",
     "test262/test/language/statements/for-await-of/let-block-with-newline.js": "async-generator destructuring in for-await-of",
-    "test262/test/language/statements/for-await-of/ticks-with-sync-iter-resolved-promise-and-constructor-lookup.js": "async-generator destructuring in for-await-of"
+    "test262/test/language/statements/for-await-of/ticks-with-sync-iter-resolved-promise-and-constructor-lookup.js": "async-generator destructuring in for-await-of",
+    "test262/test/language/expressions/yield/star-iterable.js": "old ES6-draft test: expects done:undefined per legacy spec (done:false is correct per modern CreateIterResultObject)"
   }
 }

@@ -1376,7 +1376,7 @@ fn Interpreter::eval_yield(
                     message="yield* delegate is not async iterable",
                   )
               }
-              let sync_next = get_iterator_next(sync_iterator)
+              let sync_next = get_iterator_next(self, sync_iterator)
               create_async_from_sync_iterator(
                 self, sync_iterator, sync_next, loc,
               )
@@ -1391,7 +1391,7 @@ fn Interpreter::eval_yield(
           // by async_generator_step, which needs the delegate state to handle it.
           // (Sync yield* calls .next() first and only saves state if not immediately
           // done — async yield* always yields because .next() returns a Promise.)
-          let async_next = get_iterator_next(async_iterator)
+          let async_next = get_iterator_next(self, async_iterator)
           gen.delegate_iterator = async_iterator
           gen.delegate_next = async_next
           gen.delegating = true
@@ -1441,9 +1441,14 @@ fn Interpreter::eval_yield(
               raise @errors.TypeError(message="yield* delegate is not iterable")
           }
           // Get next method
-          let next_method = get_iterator_next(iterator)
+          let next_method = get_iterator_next(self, iterator)
           // Start delegation: call next() and yield first value
-          let first_result = self.call_value(next_method, iterator, [], loc)
+          let first_result = self.call_value(
+            next_method,
+            iterator,
+            [Undefined],
+            loc,
+          )
           guard is_object_value(first_result) else {
             raise @errors.TypeError(message="Iterator result is not an object")
           }
@@ -1459,10 +1464,11 @@ fn Interpreter::eval_yield(
             // Read value from bag.properties directly — must NOT trigger
             // value getter when done is false (test262 check).
             let value = match first_result {
-              Object(data) => match data.bag.properties.get("value") {
-                Some(v) => v
-                None => Undefined
-              }
+              Object(data) =>
+                match data.bag.properties.get("value") {
+                  Some(v) => v
+                  None => Undefined
+                }
               _ => Undefined
             }
             gen.delegate_iterator = iterator
@@ -1494,8 +1500,11 @@ fn Interpreter::eval_yield(
 
 ///|
 /// Get iterator's next method (walk prototype chain)
-fn get_iterator_next(iterator : Value) -> Value raise Error {
-  match get_optional_method(iterator, "next") {
+fn get_iterator_next(
+  interp : Interpreter,
+  iterator : Value,
+) -> Value raise Error {
+  match get_optional_method(iterator, "next", interp) {
     Some(next_fn) => next_fn
     None => raise @errors.TypeError(message="iterator.next is not a function")
   }
@@ -1524,6 +1533,45 @@ fn inject_error(
 
 ///|
 /// Resume a delegated yield* — forward the resume to the delegate iterator
+
+///|
+/// Process a sync delegation result: check IsObject, extract done/value,
+/// then either complete delegation (done:true, calling `make_resume_action`)
+/// or yield the value (done:false).
+fn process_delegate_result(
+  interp : Interpreter,
+  gen : GeneratorObject,
+  result : Value,
+  make_resume_action : (Value) -> ResumeAction,
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  guard is_object_value(result) else {
+    raise @errors.TypeError(message="Iterator result is not an object")
+  }
+  let done = is_truthy(interp.get_property(result, "done", loc))
+  if done {
+    let value = interp.get_property(result, "value", loc)
+    gen.delegating = false
+    gen.delegate_iterator = Undefined
+    gen.delegate_next = Undefined
+    gen.yield_value = value
+    gen.resume_action = make_resume_action(value)
+    generator_continue(interp, gen)
+  } else {
+    let value = match result {
+      Object(data) =>
+        match data.bag.properties.get("value") {
+          Some(v) => v
+          None => Undefined
+        }
+      _ => Undefined
+    }
+    gen.state = SuspendedYield
+    create_iter_result(value, false)
+  }
+}
+
+///|
 fn delegate_resume(
   interp : Interpreter,
   gen : GeneratorObject,
@@ -1534,218 +1582,107 @@ fn delegate_resume(
   let next_method = gen.delegate_next
   // Forward the resume to the delegate
   match resume_kind {
-    Next(v) => {
-      let result = interp.call_value(next_method, iterator, [v], loc)
-      if gen.is_async {
-        // Async delegation: .next() returns a Promise — yield it for async_generator_step
-        gen.state = SuspendedYield
-        create_iter_result(result, false)
-      } else {
-        // Sync delegation: call next(), check IsObject, extract done/value.
-        // ALL errors propagate into the generator body via ThrowAction.
-        let process = fn() -> Value raise Error {
-          guard is_object_value(result) else {
-            raise @errors.TypeError(message="Iterator result is not an object")
-          }
-          let done = is_truthy(interp.get_property(result, "done", loc))
-          if done {
-            let value = interp.get_property(result, "value", loc)
-            gen.delegating = false
-            gen.delegate_iterator = Undefined
-            gen.delegate_next = Undefined
-            gen.yield_value = value
-            gen.resume_action = NextAction
-            generator_continue(interp, gen)
-          } else {
-            let value = match result {
-              Object(data) => match data.bag.properties.get("value") {
-                Some(v) => v
-                None => Undefined
-              }
-              _ => Undefined
-            }
-            gen.state = SuspendedYield
-            create_iter_result(value, false)
-          }
+    Next(v) =>
+      try {
+        let result = interp.call_value(next_method, iterator, [v], loc)
+        if gen.is_async {
+          gen.state = SuspendedYield
+          create_iter_result(result, false)
+        } else {
+          process_delegate_result(interp, gen, result, fn(_) { NextAction })
         }
-        process() catch {
-          e => inject_error(interp, gen, e)
-        }
+      } catch {
+        e => inject_error(interp, gen, e)
       }
-    }
-    Throw(e) => {
-      // Check if delegate has .throw method
-      let throw_method = get_optional_method(iterator, "throw")
-      match throw_method {
-        Some(tm) => {
-          let result = interp.call_value(tm, iterator, [e], loc)
-          if gen.is_async {
-            gen.state = SuspendedYield
-            create_iter_result(result, false)
-          } else {
-            let process = fn() -> Value raise Error {
-              guard is_object_value(result) else {
-                raise @errors.TypeError(message="Iterator result is not an object")
-              }
-              let done = is_truthy(interp.get_property(result, "done", loc))
-              if done {
-                let value = interp.get_property(result, "value", loc)
-                gen.delegating = false
-                gen.delegate_iterator = Undefined
-                gen.delegate_next = Undefined
-                gen.yield_value = value
-                gen.resume_action = NextAction
-                generator_continue(interp, gen)
-              } else {
-                let value = match result {
-                  Object(data) => match data.bag.properties.get("value") {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                  _ => Undefined
-                }
-                gen.state = SuspendedYield
-                create_iter_result(value, false)
-              }
-            }
-            process() catch {
-              e => inject_error(interp, gen, e)
+    Throw(e) =>
+      try {
+        let throw_method = get_optional_method(iterator, "throw", interp)
+        match throw_method {
+          Some(tm) => {
+            let result = interp.call_value(tm, iterator, [e], loc)
+            if gen.is_async {
+              gen.state = SuspendedYield
+              create_iter_result(result, false)
+            } else {
+              process_delegate_result(interp, gen, result, fn(_) { NextAction })
             }
           }
-        }
-        None => {
-          // No .throw — per ES spec, close delegate via .return() then throw TypeError
-          let return_method = get_optional_method(iterator, "return")
-          match return_method {
-            Some(rm) => {
-              // Close the delegate so finally blocks execute
-              let close_result = interp.call_value(rm, iterator, [], loc)
-              match close_result {
-                Object(_) => ()
-                _ =>
+          None => {
+            // No .throw: close delegate via .return() then throw TypeError
+            let return_method = get_optional_method(iterator, "return", interp)
+            match return_method {
+              Some(rm) => {
+                let close_result = interp.call_value(rm, iterator, [], loc)
+                guard is_object_value(close_result) else {
                   raise @errors.TypeError(
                     message="Iterator close result is not an object",
                   )
-              }
-            }
-            None => ()
-          }
-          gen.delegating = false
-          gen.delegate_iterator = Undefined
-          gen.delegate_next = Undefined
-          // Per spec: raise TypeError, not the original error
-          raise @errors.TypeError(
-            message="Iterator does not have a 'throw' method",
-          )
-        }
-      }
-    }
-    Return(v) => {
-      // Check if delegate has .return method
-      let return_method = get_optional_method(iterator, "return")
-      match return_method {
-        Some(rm) => {
-          let result = interp.call_value(rm, iterator, [v], loc)
-          if gen.is_async {
-            gen.state = SuspendedYield
-            create_iter_result(result, false)
-          } else {
-            let process = fn() -> Value raise Error {
-              guard is_object_value(result) else {
-                raise @errors.TypeError(message="Iterator result is not an object")
-              }
-              let done = is_truthy(interp.get_property(result, "done", loc))
-              if done {
-                let value = interp.get_property(result, "value", loc)
-                gen.delegating = false
-                gen.delegate_iterator = Undefined
-                gen.delegate_next = Undefined
-                gen.yield_value = value
-                gen.resume_action = ReturnAction(value)
-                generator_continue(interp, gen)
-              } else {
-                let value = match result {
-                  Object(data) => match data.bag.properties.get("value") {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                  _ => Undefined
                 }
-                gen.state = SuspendedYield
-                create_iter_result(value, false)
               }
+              None => ()
             }
-            process() catch {
-              e => inject_error(interp, gen, e)
-            }
+            gen.delegating = false
+            gen.delegate_iterator = Undefined
+            gen.delegate_next = Undefined
+            raise @errors.TypeError(
+              message="Iterator does not have a 'throw' method",
+            )
           }
         }
-        None => {
-          // No .return — propagate return through outer body for finally blocks
-          gen.delegating = false
-          gen.delegate_iterator = Undefined
-          gen.delegate_next = Undefined
-          gen.yield_value = v
-          gen.resume_action = ReturnAction(v)
-          generator_continue(interp, gen)
-        }
+      } catch {
+        err => inject_error(interp, gen, err)
       }
-    }
+    Return(v) =>
+      try {
+        let return_method = get_optional_method(iterator, "return", interp)
+        match return_method {
+          Some(rm) => {
+            let result = interp.call_value(rm, iterator, [v], loc)
+            if gen.is_async {
+              gen.state = SuspendedYield
+              create_iter_result(result, false)
+            } else {
+              process_delegate_result(interp, gen, result, fn(v) {
+                ReturnAction(v)
+              })
+            }
+          }
+          None => {
+            // No .return: propagate return through outer body for finally blocks
+            gen.delegating = false
+            gen.delegate_iterator = Undefined
+            gen.delegate_next = Undefined
+            gen.yield_value = v
+            gen.resume_action = ReturnAction(v)
+            generator_continue(interp, gen)
+          }
+        }
+      } catch {
+        err => inject_error(interp, gen, err)
+      }
   }
 }
 
 ///|
-/// Get an optional method from an object per ES spec GetMethod.
-/// Returns None if property is undefined/null/missing.
-/// Throws TypeError if property exists but is not callable.
-fn get_optional_method(obj : Value, name : String) -> Value? raise Error {
-  match obj {
-    Object(data) =>
-      // Check direct properties first
-      match data.bag.properties.get(name) {
-        Some(v) =>
-          match v {
-            Undefined | Null => None
-            Object(fd) =>
-              match fd.callable {
-                Some(_) => Some(v)
-                None =>
-                  raise @errors.TypeError(message="\{name} is not a function")
-              }
-            _ => raise @errors.TypeError(message="\{name} is not a function")
-          }
-        None => {
-          // Walk prototype chain
-          let mut current = data.prototype
-          while true {
-            match current {
-              Object(proto_data) =>
-                match proto_data.bag.properties.get(name) {
-                  Some(v) =>
-                    match v {
-                      Undefined | Null => return None
-                      Object(fd) =>
-                        match fd.callable {
-                          Some(_) => return Some(v)
-                          None =>
-                            raise @errors.TypeError(
-                              message="\{name} is not a function",
-                            )
-                        }
-                      _ =>
-                        raise @errors.TypeError(
-                          message="\{name} is not a function",
-                        )
-                    }
-                  None => current = proto_data.prototype
-                }
-              _ => break
-            }
-          }
-          None
-        }
+/// `None` if the property is absent, undefined, or null, or `Some(method)`
+/// if it exists and is callable.  Raises `TypeError` if the property exists
+/// but is not callable.  Delegates to `interp.get_property` for the full
+/// `[[Get]]` chain (own data, own accessor getters, prototype walk, proxies).
+fn get_optional_method(
+  obj : Value,
+  name : String,
+  interp : Interpreter,
+) -> Value? raise Error {
+  let loc = @token.Loc::default()
+  let func = interp.get_property(obj, name, loc)
+  match func {
+    Undefined | Null => None
+    Object(fd) =>
+      match fd.callable {
+        Some(_) => Some(func)
+        None => raise @errors.TypeError(message="\{name} is not a function")
       }
-    _ => None
+    _ => raise @errors.TypeError(message="\{name} is not a function")
   }
 }
 

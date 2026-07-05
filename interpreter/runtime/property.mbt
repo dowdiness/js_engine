@@ -1054,6 +1054,11 @@ fn Interpreter::get_computed_property_impl(
             _ => return Undefined
           }
         }
+        Bool(_) => {
+          // Walk full prototype chain (Boolean.prototype → Object.prototype etc.)
+          let proto = self.realm_state.get_boolean_proto()
+          return self.get_symbol_property_from_prototype(obj, proto, sym, loc)
+        }
         _ => return Undefined
       }
     }
