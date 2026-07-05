@@ -6,8 +6,8 @@ and the older [archive/phase-history.md](archive/phase-history.md).
 
 ## Current Status
 
-**Test262** — CI run [28677092329](https://github.com/dowdiness/js_engine/actions/runs/28677092329)
-on tip `f33c417` (feat/regex-search-candidate-scan, 2026-07-04).
+**Test262** — CI run [28728599011](https://github.com/dowdiness/js_engine/actions/runs/28728599011)
+on branch `feat/async-iteration-for-await-of` (pending merge to main, 2026-07-05).
 
 Each test file runs twice, once in strict mode and once in non-strict mode. The
 two modes are reported separately because summing them would double-count files.
@@ -18,17 +18,16 @@ ARGS="--format=changelog"`.
 
 | Mode | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| strict | 44,986 | 18,119 | 26,855 | 26,027 | 828 | 12 | **96.9%** | 57.9% |
-| non-strict | 47,692 | 18,660 | 29,015 | 27,785 | 1,230 | 17 | **95.8%** | 58.3% |
+| strict | 44,986 | 14,925 | 30,048 | 28,772 | 1,276 | 13 | **95.8%** | 64.0% |
+| non-strict | 47,692 | 15,410 | 32,264 | 30,587 | 1,677 | 18 | **94.8%** | 64.1% |
 
 ES2015 specifically: strict **97.8%** P/E (9,906 / 10,131; 160 skipped),
 non-strict **97.6%** P/E (10,364 / 10,620; 159 skipped) — the roadmap 95%
 ES2015 target is achieved.
 
-CI regression baseline: `test262-baseline.json`. Minimums are 27,686 non-strict
-passed and 25,923 strict passed, updated 2026-07-03. The checked-in report above
-is exactly at the baseline minimums — the baseline was ratcheted after the
-v0.4.0 release via `set-baseline.py`.
+CI regression baseline: `test262-baseline.json`. Minimums are 30,487 non-strict
+passed and 28,672 strict passed, updated 2026-07-05. The baseline was ratcheted
+in PR #494 to account for newly enabled async-iteration tests.
 
 
 **Unit tests**: run `moon test` for the current local count; this section only

@@ -14,10 +14,24 @@ fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
     ForInStmt(Some(LetKind), _, _, _, _)
     | ForInStmt(Some(ConstKind), _, _, _, _)
     | ForInStmtPat(Some(LetKind), _, _, _, _)
-    | ForInStmtPat(Some(ConstKind), _, _, _, _) => true
+    | ForInStmtPat(Some(ConstKind), _, _, _, _)
+    | ForOfStmt(Some(LetKind), _, _, _, _)
+    | ForOfStmt(Some(ConstKind), _, _, _, _)
+    | ForOfStmtPat(Some(LetKind), _, _, _, _)
+    | ForOfStmtPat(Some(ConstKind), _, _, _, _)
+    | AsyncForOfStmt(Some(LetKind), _, _, _, _)
+    | AsyncForOfStmt(Some(ConstKind), _, _, _, _)
+    | AsyncForOfStmtPat(Some(LetKind), _, _, _, _)
+    | AsyncForOfStmtPat(Some(ConstKind), _, _, _, _) => true
     ForInStmt(_, _, _, body, _)
     | ForInStmtPat(_, _, _, body, _)
-    | ForInExpr(_, _, body, _) => stmt_has_lexical_decl(body)
+    | ForInExpr(_, _, body, _)
+    | ForOfStmt(_, _, _, body, _)
+    | ForOfStmtPat(_, _, _, body, _)
+    | ForOfExpr(_, _, body, _)
+    | AsyncForOfStmt(_, _, _, body, _)
+    | AsyncForOfStmtPat(_, _, _, body, _)
+    | AsyncForOfExpr(_, _, body, _) => stmt_has_lexical_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_lexical_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_lexical_decl(body)
     _ => false
@@ -88,7 +102,13 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
     }
     ForInStmt(_, _, _, body, _)
     | ForInStmtPat(_, _, _, body, _)
-    | ForInExpr(_, _, body, _) => stmt_has_function_decl(body)
+    | ForInExpr(_, _, body, _)
+    | ForOfStmt(_, _, _, body, _)
+    | ForOfStmtPat(_, _, _, body, _)
+    | ForOfExpr(_, _, body, _)
+    | AsyncForOfStmt(_, _, _, body, _)
+    | AsyncForOfStmtPat(_, _, _, body, _)
+    | AsyncForOfExpr(_, _, body, _) => stmt_has_function_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_function_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_function_decl(body)
     _ => false
@@ -136,8 +156,15 @@ fn stmt_has_destructure_decl(stmt : @ast.Stmt) -> Bool {
       }
       init_has || stmt_has_destructure_decl(body)
     }
-    ForInStmt(_, _, _, body, _) | ForInExpr(_, _, body, _) =>
-      stmt_has_destructure_decl(body)
+    ForInStmt(_, _, _, body, _)
+    | ForInStmtPat(_, _, _, body, _)
+    | ForInExpr(_, _, body, _)
+    | ForOfStmt(_, _, _, body, _)
+    | ForOfStmtPat(_, _, _, body, _)
+    | ForOfExpr(_, _, body, _)
+    | AsyncForOfStmt(_, _, _, body, _)
+    | AsyncForOfStmtPat(_, _, _, body, _)
+    | AsyncForOfExpr(_, _, body, _) => stmt_has_destructure_decl(body)
     SwitchStmt(_, cases, _) => switch_cases_have_destructure_decl(cases)
     LabeledStmt(_, body, _) => stmt_has_destructure_decl(body)
     _ => false
@@ -175,7 +202,10 @@ fn stmt_is_iteration_label_target(stmt : @ast.Stmt) -> Bool {
     | ForInStmtPat(_, _, _, _, _)
     | ForOfStmtPat(_, _, _, _, _)
     | ForInExpr(_, _, _, _)
-    | ForOfExpr(_, _, _, _) => true
+    | ForOfExpr(_, _, _, _)
+    | AsyncForOfStmt(_, _, _, _, _)
+    | AsyncForOfStmtPat(_, _, _, _, _)
+    | AsyncForOfExpr(_, _, _, _) => true
     LabeledStmt(_, body, _) => stmt_is_iteration_label_target(body)
     _ => false
   }
@@ -1894,7 +1924,10 @@ fn BytecodeBuilder::compile_stmt(
     }
     ForOfStmt(_, _, _, _, _)
     | ForOfStmtPat(_, _, _, _, _)
-    | ForOfExpr(_, _, _, _) =>
+    | ForOfExpr(_, _, _, _)
+    | AsyncForOfStmt(_, _, _, _, _)
+    | AsyncForOfStmtPat(_, _, _, _, _)
+    | AsyncForOfExpr(_, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_FOR_OF_STATEMENT)
     ForInStmt(var_kind, name, obj_expr, body, _) =>
       self.compile_for_in_identifier(var_kind, name, obj_expr, body)

@@ -1761,6 +1761,480 @@ fn Interpreter::exec_stmt(
       with_env.with_object = Some(obj)
       self.exec_stmt(ctx, body, with_env)
     }
+    AsyncForOfStmt(var_kind, name, iterable_expr, body, loc) => {
+      let gen_opt = ctx.current_generator
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        _ => false
+      }
+      let awaiting_next = match gen_opt {
+        Some(g) => g.for_of_awaiting_next
+        _ => false
+      }
+      let mut loop_binding_env : Environment? = None
+      let (iterator, next_method) : (Value, Value) = if awaiting_next {
+        match gen_opt {
+          Some(g) => {
+            g.for_of_awaiting_next = false
+            g.resuming = false
+            // Pop the loop env stacks pushed by save_for_of_resume_state
+            let _ = g.loop_env_stack.pop()
+            let _ = g.loop_yield_base_stack.pop()
+          }
+          _ => ()
+        }
+        let (it, nm) = restore_for_of_resume_state(gen_opt)
+        (it, nm)
+      } else if resuming_for_of {
+        restore_for_of_resume_state(gen_opt)
+      } else {
+        if var_kind is Some(LetKind) || var_kind is Some(ConstKind) {
+          let loop_env = Environment::new(parent=Some(env))
+          let bk : BindingKind = match var_kind {
+            Some(LetKind) => LetBinding
+            _ => ConstBinding
+          }
+          loop_env.def_tdz(name, bk)
+          loop_binding_env = Some(loop_env)
+        }
+        let iterable_env = match loop_binding_env {
+          Some(e) => e
+          None => env
+        }
+        let iterable = self.eval_expr(ctx, iterable_expr, iterable_env)
+        let async_iter = get_async_iterator_for_of(self, iterable, loc)
+        let nm = self.get_iterator_next_method(async_iter, loc)
+        match gen_opt {
+          Some(g) => {
+            g.for_of_iterator = async_iter
+            g.for_of_next = nm
+          }
+          None => ()
+        }
+        (async_iter, nm)
+      }
+      let mut first_resume = resuming_for_of && !awaiting_next
+      let mut is_awaiting = awaiting_next
+      let mut completion : Value = Undefined
+      while true {
+        if first_resume {
+          first_resume = false
+          let body_env_parent = match loop_binding_env {
+            Some(e) => e
+            None => env
+          }
+          let body_env = Environment::new(parent=Some(body_env_parent))
+          let actual_body_env = match gen_opt {
+            Some(g) =>
+              if g.loop_env_stack.length() > 0 {
+                let saved = g.loop_env_stack.pop().unwrap()
+                match g.loop_yield_base_stack.pop() {
+                  Some(base) => g.yield_index = base
+                  None => ()
+                }
+                saved
+              } else {
+                body_env
+              }
+            None => body_env
+          }
+          let body_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            _ => 0
+          }
+          let body_signal = self.exec_stmt(ctx, body, actual_body_env) catch {
+            e => {
+              if e is YieldSignal(_) {
+                save_for_of_resume_state(
+                  gen_opt, iterator, next_method, actual_body_env, body_yield_base,
+                )
+              }
+              raise e
+            }
+          }
+          match body_signal {
+            Normal(v) => completion = v
+            ReturnSignal(v) => return ReturnSignal(v)
+            BreakSignal(v, None) => {
+              completion = v.unwrap_or(completion)
+              break
+            }
+            BreakSignal(bv, Some(l)) =>
+              if label == Some(l) {
+                completion = bv.unwrap_or(completion)
+                break
+              } else {
+                return BreakSignal(bv, Some(l))
+              }
+            ContinueSignal(v, None) => {
+              completion = v.unwrap_or(completion)
+              continue
+            }
+            ContinueSignal(cv, Some(l)) =>
+              if label == Some(l) {
+                completion = cv.unwrap_or(completion)
+                continue
+              } else {
+                return ContinueSignal(cv, Some(l))
+              }
+          }
+          continue
+        }
+        // Await next iteration value
+        let yielded_value = if is_awaiting {
+          is_awaiting = false
+          match gen_opt {
+            Some(g) => g.yield_value
+            None => fail("for-await-of: no generator")
+          }
+        } else {
+          let next_promise = self.call_value(next_method, iterator, [], loc)
+          match gen_opt {
+            Some(g) => {
+              g.for_of_awaiting_next = true
+              g.yield_value = next_promise
+              let save_base = g.yield_index
+              g.yield_index += 1
+              g.resume_at_yield = save_base
+              let body_env = Environment::new(parent=Some(env))
+              save_for_of_resume_state(
+                gen_opt, iterator, next_method, body_env, save_base,
+              )
+            }
+            None => ()
+          }
+          raise YieldSignal(next_promise)
+        }
+        // Check done
+        let done_val = self.get_property(yielded_value, "done", loc)
+        if is_truthy(done_val) {
+          completion = self.get_property(yielded_value, "value", loc)
+          break
+        }
+        let value = self.get_property(yielded_value, "value", loc)
+        // Bind value to loop variable
+        let body_env_parent = match loop_binding_env {
+          Some(e) => e
+          None => env
+        }
+        let body_env = Environment::new(parent=Some(body_env_parent))
+        match var_kind {
+          Some(VarKind) =>
+            if env.bindings.contains(name) {
+              env.assign(name, value)
+            } else {
+              env.def(name, value, VarBinding)
+            }
+          Some(kind) => {
+            let bk : BindingKind = match kind {
+              LetKind => LetBinding
+              ConstKind => ConstBinding
+              _ => fail("unreachable")
+            }
+            body_env.def(name, value, bk)
+          }
+          None =>
+            env.assign_with_strict(name, value, ctx.strict) catch {
+              e => {
+                close_iterator(self, iterator, loc) catch {
+                  _ => ()
+                }
+                raise e
+              }
+            }
+        }
+        // Execute loop body
+        let (new_c, should_continue, propagate) = exec_for_body_signal(
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+        )
+        completion = new_c
+        if should_continue { continue }
+        match propagate {
+          Some(s) => return s
+          None => ()
+        }
+      }
+      Normal(completion)
+    }
+    AsyncForOfStmtPat(var_kind, pattern, iterable_expr, body, loc) => {
+      let gen_opt = ctx.current_generator
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        _ => false
+      }
+      let awaiting_next = match gen_opt {
+        Some(g) => g.for_of_awaiting_next
+        _ => false
+      }
+      let (iterator, next_method) : (Value, Value) = if awaiting_next {
+        match gen_opt {
+          Some(g) => {
+            g.for_of_awaiting_next = false
+            g.resuming = false
+            let _ = g.loop_env_stack.pop()
+            let _ = g.loop_yield_base_stack.pop()
+          }
+          _ => ()
+        }
+        let (it, nm) = restore_for_of_resume_state(gen_opt)
+        (it, nm)
+      } else if resuming_for_of {
+        restore_for_of_resume_state(gen_opt)
+      } else {
+        let iterable_eval_env = match var_kind {
+          Some(LetKind | ConstKind) => {
+            let tdz_env = Environment::new(parent=Some(env))
+            let bk : BindingKind = match var_kind {
+              Some(LetKind) => LetBinding
+              _ => ConstBinding
+            }
+            let tdz_names : Array[String] = []
+            collect_pattern_tdz_names(pattern, tdz_names)
+            for n in tdz_names {
+              tdz_env.def_tdz(n, bk)
+            }
+            tdz_env
+          }
+          _ => env
+        }
+        let iterable = self.eval_expr(ctx, iterable_expr, iterable_eval_env)
+        let async_iter = get_async_iterator_for_of(self, iterable, loc)
+        let nm = self.get_iterator_next_method(async_iter, loc)
+        match gen_opt {
+          Some(g) => {
+            g.for_of_iterator = async_iter
+            g.for_of_next = nm
+          }
+          None => ()
+        }
+        (async_iter, nm)
+      }
+      let mut first_resume = resuming_for_of && !awaiting_next
+      let mut is_awaiting = awaiting_next
+      let mut completion : Value = Undefined
+      while true {
+        let (value, body_env, should_bind) : (Value, Environment, Bool) = if first_resume {
+          first_resume = false
+          let saved_env = restore_for_of_loop_env(
+            gen_opt,
+            Environment::new(parent=Some(env)),
+          )
+          match take_for_of_resume_value(saved_env) {
+            Some(v) => (v, saved_env, true)
+            None => (Undefined, saved_env, false)
+          }
+        } else {
+          let yielded_value = if is_awaiting {
+            is_awaiting = false
+            match gen_opt {
+              Some(g) => g.yield_value
+              None => fail("for-await-of: no generator")
+            }
+          } else {
+            let next_promise = self.call_value(next_method, iterator, [], loc)
+            match gen_opt {
+              Some(g) => {
+                g.for_of_awaiting_next = true
+                g.yield_value = next_promise
+                let save_base = g.yield_index
+                g.yield_index += 1
+                g.resume_at_yield = save_base
+                let body_env = Environment::new(parent=Some(env))
+                save_for_of_resume_state(
+                  gen_opt, iterator, next_method, body_env, save_base,
+                )
+              }
+              None => ()
+            }
+            raise YieldSignal(next_promise)
+          }
+          let done_val = self.get_property(yielded_value, "done", loc)
+          if is_truthy(done_val) {
+            completion = self.get_property(yielded_value, "value", loc)
+            break
+          }
+          let v = self.get_property(yielded_value, "value", loc)
+          (v, Environment::new(parent=Some(env)), true)
+        }
+        if should_bind {
+          let binding_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            _ => 0
+          }
+          match var_kind {
+            Some(kind) => {
+              let bk : BindingKind = match kind {
+                LetKind => LetBinding
+                ConstKind => ConstBinding
+                VarKind => VarBinding
+              }
+              let bind_env = match kind {
+                VarKind => env
+                _ => body_env
+              }
+              self.bind_pattern(pattern, value, bind_env, bk, ctx~) catch {
+                e => {
+                  if e is YieldSignal(_) {
+                    save_for_of_resume_value(body_env, value)
+                    save_for_of_resume_state(
+                      gen_opt, iterator, next_method, body_env, binding_yield_base,
+                    )
+                  } else {
+                    close_iterator(self, iterator, loc) catch {
+                      _ => ()
+                    }
+                  }
+                  raise e
+                }
+              }
+            }
+            None =>
+              self.assign_pattern(ctx, pattern, value, env) catch {
+                e => {
+                  if e is YieldSignal(_) {
+                    save_for_of_resume_value(body_env, value)
+                    save_for_of_resume_state(
+                      gen_opt, iterator, next_method, body_env, binding_yield_base,
+                    )
+                  } else {
+                    close_iterator(self, iterator, loc) catch {
+                      _ => ()
+                    }
+                  }
+                  raise e
+                }
+              }
+          }
+        }
+        let (new_c, should_continue, propagate) = exec_for_body_signal(
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+        )
+        completion = new_c
+        if should_continue { continue }
+        match propagate {
+          Some(s) => return s
+          None => ()
+        }
+      }
+      Normal(completion)
+    }
+    AsyncForOfExpr(lhs_expr, iterable_expr, body, loc) => {
+      let gen_opt = ctx.current_generator
+      let resuming_for_of = match gen_opt {
+        Some(g) => g.for_of_resume
+        _ => false
+      }
+      let awaiting_next = match gen_opt {
+        Some(g) => g.for_of_awaiting_next
+        _ => false
+      }
+      let (iterator, next_method) : (Value, Value) = if awaiting_next {
+        match gen_opt {
+          Some(g) => {
+            g.for_of_awaiting_next = false
+            g.resuming = false
+            let _ = g.loop_env_stack.pop()
+            let _ = g.loop_yield_base_stack.pop()
+          }
+          _ => ()
+        }
+        let (it, nm) = restore_for_of_resume_state(gen_opt)
+        (it, nm)
+      } else if resuming_for_of {
+        restore_for_of_resume_state(gen_opt)
+      } else {
+        let iterable = self.eval_expr(ctx, iterable_expr, env)
+        let async_iter = get_async_iterator_for_of(self, iterable, loc)
+        let nm = self.get_iterator_next_method(async_iter, loc)
+        match gen_opt {
+          Some(g) => {
+            g.for_of_iterator = async_iter
+            g.for_of_next = nm
+          }
+          None => ()
+        }
+        (async_iter, nm)
+      }
+      let mut first_resume = resuming_for_of && !awaiting_next
+      let mut is_awaiting = awaiting_next
+      let mut completion : Value = Undefined
+      while true {
+        let (value, body_env, should_assign) : (Value, Environment, Bool) = if first_resume {
+          first_resume = false
+          let saved_env = restore_for_of_loop_env(
+            gen_opt,
+            Environment::new(parent=Some(env)),
+          )
+          match take_for_of_resume_value(saved_env) {
+            Some(v) => (v, saved_env, true)
+            None => (Undefined, saved_env, false)
+          }
+        } else {
+          let yielded_value = if is_awaiting {
+            is_awaiting = false
+            match gen_opt {
+              Some(g) => g.yield_value
+              None => fail("for-await-of: no generator")
+            }
+          } else {
+            let next_promise = self.call_value(next_method, iterator, [], loc)
+            match gen_opt {
+              Some(g) => {
+                g.for_of_awaiting_next = true
+                g.yield_value = next_promise
+                let save_base = g.yield_index
+                g.yield_index += 1
+                g.resume_at_yield = save_base
+                let body_env = Environment::new(parent=Some(env))
+                save_for_of_resume_state(
+                  gen_opt, iterator, next_method, body_env, save_base,
+                )
+              }
+              None => ()
+            }
+            raise YieldSignal(next_promise)
+          }
+          let done_val = self.get_property(yielded_value, "done", loc)
+          if is_truthy(done_val) {
+            completion = self.get_property(yielded_value, "value", loc)
+            break
+          }
+          let v = self.get_property(yielded_value, "value", loc)
+          (v, Environment::new(parent=Some(env)), true)
+        }
+        if should_assign {
+          let assignment_yield_base = match gen_opt {
+            Some(g) => g.yield_index
+            _ => 0
+          }
+          self.assign_to_expr(ctx, lhs_expr, value, env) catch {
+            e => {
+              if e is YieldSignal(_) {
+                save_for_of_resume_value(body_env, value)
+                save_for_of_resume_state(
+                  gen_opt, iterator, next_method, body_env, assignment_yield_base,
+                )
+              } else {
+                close_iterator(self, iterator, loc) catch {
+                  _ => ()
+                }
+              }
+              raise e
+            }
+          }
+        }
+        let (new_c, should_continue, propagate) = exec_for_body_signal(
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+        )
+        completion = new_c
+        if should_continue { continue }
+        match propagate {
+          Some(s) => return s
+          None => ()
+        }
+      }
+      Normal(completion)
+    }
   }
 }
 
@@ -2169,6 +2643,72 @@ fn Interpreter::exec_try_catch(
       match pending_error {
         Some(e) => raise e
         None => result
+      }
+  }
+}
+///|
+/// Execute a for-of/for-await-of loop body and dispatch its completion signal.
+/// Shared by both sync and async for-of variants to avoid code duplication.
+/// Returns (updated_completion, should_continue, optional_signal_to_propagate).
+fn exec_for_body_signal(
+  interp : Interpreter,
+  ctx : ExecContext,
+  body : @ast.Stmt,
+  body_env : Environment,
+  gen_opt : GeneratorObject?,
+  iterator : Value,
+  next_method : Value,
+  loc : @token.Loc,
+  label : String?,
+  completion : Value,
+) -> (Value, Bool, Signal?) raise Error {
+  let body_yield_base = match gen_opt {
+    Some(g) => g.yield_index
+    _ => 0
+  }
+  let body_signal = interp.exec_stmt(ctx, body, body_env) catch {
+    e => {
+      if e is YieldSignal(_) {
+        save_for_of_resume_state(
+          gen_opt, iterator, next_method, body_env, body_yield_base,
+        )
+      } else {
+        close_iterator(interp, iterator, loc) catch {
+          _ => ()
+        }
+      }
+      raise e
+    }
+  }
+  match body_signal {
+    Normal(v) => (v, false, None)
+    ReturnSignal(v) => {
+      close_iterator(interp, iterator, loc)
+      (completion, false, Some(ReturnSignal(v)))
+    }
+    BreakSignal(v, None) => {
+      close_iterator(interp, iterator, loc)
+      (v.unwrap_or(completion), false, Some(BreakSignal(None, None)))
+    }
+    BreakSignal(bv, Some(l)) =>
+      if label == Some(l) {
+        close_iterator(interp, iterator, loc)
+        (bv.unwrap_or(completion), false, Some(BreakSignal(None, None)))
+      } else {
+        close_iterator(interp, iterator, loc)
+        (completion, false, Some(BreakSignal(bv, Some(l))))
+      }
+    ContinueSignal(v, None) => {
+      let c = v.unwrap_or(completion)
+      (c, true, None)
+    }
+    ContinueSignal(cv, Some(l)) =>
+      if label == Some(l) {
+        let c = cv.unwrap_or(completion)
+        (c, true, None)
+      } else {
+        close_iterator(interp, iterator, loc)
+        (completion, false, Some(ContinueSignal(cv, Some(l))))
       }
   }
 }

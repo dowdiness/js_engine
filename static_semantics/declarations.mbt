@@ -146,7 +146,7 @@ fn collect_var_declared_names_from_stmt(
         in_block=true,
       )
     }
-    ForOfStmt(kind, name, _, body, _) => {
+    ForOfStmt(kind, name, _, body, _) | AsyncForOfStmt(kind, name, _, body, _) => {
       if kind == Some(VarKind) {
         out.push(name)
       }
@@ -168,7 +168,7 @@ fn collect_var_declared_names_from_stmt(
         in_block=true,
       )
     }
-    ForOfStmtPat(kind, pattern, _, body, _) => {
+    ForOfStmtPat(kind, pattern, _, body, _) | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
         walk_pattern_binding_idents(pattern, out)
       }
@@ -179,7 +179,7 @@ fn collect_var_declared_names_from_stmt(
         in_block=true,
       )
     }
-    ForInExpr(_, _, body, _) | ForOfExpr(_, _, body, _) =>
+    ForInExpr(_, _, body, _) | ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
       collect_var_declared_names_from_stmt(
         body,
         out,

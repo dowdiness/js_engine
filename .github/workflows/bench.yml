@@ -236,10 +236,12 @@ jobs:
       # but do not save data or push to gh-pages.  Fork PRs are skipped for
       # token/write-safety.
       - name: Convert CSV for benchmark-action
+        id: convert-csv
         run: |
           python3 - <<'PY'
           import csv
           import json
+          import os
 
           rows = []
           with open("bench-results.csv", newline="") as f:
@@ -253,7 +255,16 @@ jobs:
 
           with open("benchmark-action-results.json", "w") as f:
               json.dump(rows, f, indent=2)
+
+          # Signal whether benchmark data is available for subsequent steps
+          has_data = "true" if rows else "false"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"has-data={has_data}\n")
           PY
+
+      - name: Skip check — no benchmark data
+        if: steps.convert-csv.outputs.has-data == 'false'
+        run: echo "No benchmark data available for this run; skipping comparison."
 
       - name: Prepare custom benchmark dashboard template
         if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
@@ -291,7 +302,7 @@ jobs:
           fi
 
       - name: Compare benchmark history for PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: steps.convert-csv.outputs.has-data == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: benchmark-action/github-action-benchmark@52576c92bccf6ac60c8223ec7eb2565637cae9ba # v1
         with:
           tool: customSmallerIsBetter
@@ -304,7 +315,7 @@ jobs:
           benchmark-data-dir-path: benchmarks
 
       - name: Comment benchmark summary on PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        if: steps.convert-csv.outputs.has-data == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}

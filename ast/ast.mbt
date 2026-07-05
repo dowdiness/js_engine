@@ -270,6 +270,10 @@ pub(all) enum Stmt {
   ForOfStmtPat(VarKind?, Pattern, Expr, Stmt, @token.Loc)
   ForInExpr(Expr, Expr, Stmt, @token.Loc) // for (expr in obj) where expr is member/computed
   ForOfExpr(Expr, Expr, Stmt, @token.Loc) // for (expr of iterable) where expr is member/computed
+  // Async for-await-of statements
+  AsyncForOfStmt(VarKind?, String, Expr, Stmt, @token.Loc) // for await (var x of iterable)
+  AsyncForOfStmtPat(VarKind?, Pattern, Expr, Stmt, @token.Loc) // for await (var [a,b] of iterable)
+  AsyncForOfExpr(Expr, Expr, Stmt, @token.Loc) // for await (expr of iterable) where expr is member/computed
   DestructureDecl(VarKind, Pattern, Expr, @token.Loc)
   LabeledStmt(String, Stmt, @token.Loc)
   // Generator declarations

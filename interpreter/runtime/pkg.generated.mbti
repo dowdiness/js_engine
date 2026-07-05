@@ -569,6 +569,7 @@ pub(all) struct GeneratorObject {
   for_of_iterator_stack : Array[Value]
   for_of_next_stack : Array[Value]
   mut for_of_resume : Bool
+  mut for_of_awaiting_next : Bool
   dstr_iterator_stack : Array[Value]
   mut delegate_iterator : Value
   mut delegate_next : Value
@@ -812,6 +813,7 @@ pub fn RealmState::from_symbols(SymbolState) -> Self
 pub fn RealmState::get_array_iterator_proto(Self) -> Value
 pub fn RealmState::get_array_proto(Self) -> Value
 pub fn RealmState::get_array_proto_values_intrinsic(Self) -> Value?
+pub fn RealmState::get_async_iterator_proto(Self) -> Value
 pub fn RealmState::get_boolean_proto(Self) -> Value
 pub fn RealmState::get_func_proto(Self) -> Value
 pub fn RealmState::get_iterator_proto(Self) -> Value
@@ -852,8 +854,8 @@ pub(all) struct RuntimeIteratorPrototypeCaches {
   map_iterator_proto : @ref.Ref[Value?]
   set_iterator_proto : @ref.Ref[Value?]
   regexp_string_iterator_proto : @ref.Ref[Value?]
+  async_iterator_proto : @ref.Ref[Value?]
 }
-pub fn RuntimeIteratorPrototypeCaches::RuntimeIteratorPrototypeCaches() -> Self
 
 pub(all) struct SetData {
   values : Array[Value]

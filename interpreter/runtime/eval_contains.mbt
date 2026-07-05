@@ -89,15 +89,21 @@ fn scan_stmt(scan : EvalContainsScan, stmt : @ast.Stmt) -> Unit {
       }
       scan_stmt(scan, body)
     }
-    ForInStmt(_, _, src, body, _) | ForOfStmt(_, _, src, body, _) => {
+    ForInStmt(_, _, src, body, _)
+    | ForOfStmt(_, _, src, body, _)
+    | AsyncForOfStmt(_, _, src, body, _) => {
       scan_expr(scan, src)
       scan_stmt(scan, body)
     }
-    ForInStmtPat(_, _, src, body, _) | ForOfStmtPat(_, _, src, body, _) => {
+    ForInStmtPat(_, _, src, body, _)
+    | ForOfStmtPat(_, _, src, body, _)
+    | AsyncForOfStmtPat(_, _, src, body, _) => {
       scan_expr(scan, src)
       scan_stmt(scan, body)
     }
-    ForInExpr(target, src, body, _) | ForOfExpr(target, src, body, _) => {
+    ForInExpr(target, src, body, _)
+    | ForOfExpr(target, src, body, _)
+    | AsyncForOfExpr(target, src, body, _) => {
       scan_expr(scan, target)
       scan_expr(scan, src)
       scan_stmt(scan, body)

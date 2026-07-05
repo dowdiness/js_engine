@@ -581,3 +581,193 @@ pub fn RealmState::make_string_iterator_value(
     self,
   )
 }
+
+///|
+fn make_async_iterator_proto_value(
+  well_known_symbols : WellKnownSymbols,
+  realm_state : RealmState,
+) -> Value {
+  let async_iterator_sym = well_known_symbols.async_iterator
+  let async_iter_sym_props : Map[Int, Value] = {}
+  async_iter_sym_props[async_iterator_sym.id] = make_method_func(
+    name="[Symbol.asyncIterator]",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(this_val, _args) { this_val },
+  )
+  let async_iter_sym_descs : Map[Int, PropDescriptor] = {}
+  async_iter_sym_descs[async_iterator_sym.id] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  Object({
+    bag: {
+      properties: {},
+      symbol_properties: async_iter_sym_props,
+      descriptors: {},
+      symbol_descriptors: async_iter_sym_descs,
+      internal_slots: {},
+    },
+    prototype: realm_state.get_obj_proto(),
+    callable: None,
+    class_name: "AsyncIterator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
+/// Create an Async-from-Sync Iterator wrapper per ES262 §27.1.4.
+/// Wraps a sync iterator record so it can be used with for-await-of.
+fn create_async_from_sync_iterator(
+  interp : Interpreter,
+  sync_iterator : Value,
+  sync_next_method : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  // Get the sync return and throw methods too
+  let sync_return_method = interp.get_property(sync_iterator, "return", loc)
+  let sync_throw_method = interp.get_property(sync_iterator, "throw", loc)
+  let async_iter_sym = interp.realm_state.well_known_symbols.async_iterator
+  let async_iter_proto = interp.realm_state.get_async_iterator_proto()
+
+  // Build next method
+  let async_next = make_interp_method_func(
+    name="next",
+    length=1,
+    realm_state=Some(interp.realm_state),
+    fn(ip : Interpreter, _this : Value, _args : Array[Value]) -> Value {
+      let result = ip.call_value(sync_next_method, sync_iterator, [], loc)
+      let promise_ctor = ip.global.get("Promise")
+      let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
+      ip.call_value(resolve_m, promise_ctor, [result], loc)
+    },
+  )
+  // Build return method
+  let async_return = make_interp_method_func(
+    name="return",
+    length=1,
+    realm_state=Some(interp.realm_state),
+    fn(ip : Interpreter, _this : Value, args : Array[Value]) -> Value {
+      let value = if args.length() > 0 { args[0] } else { Undefined }
+      match sync_return_method {
+        Undefined | Null =>
+          make_resolved_promise(ip, make_iterator_result_object(value, true))
+        _ => {
+          let result = try {
+            ip.call_value(sync_return_method, sync_iterator, [value], loc)
+          } catch {
+            JsException(e) => return make_rejected_promise(ip, e)
+          e => {
+            let err_val = js_error_to_value_with_env(e, Some(ip.global))
+            return make_rejected_promise(ip, err_val)
+          }
+          }
+          if !is_object_value(result) {
+            raise @errors.TypeError(message="Iterator result is not an object")
+          }
+          let promise_ctor = ip.global.get("Promise")
+          let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
+          ip.call_value(resolve_m, promise_ctor, [result], loc)
+        }
+      }
+    },
+  )
+  // Build throw method
+  let async_throw = make_interp_method_func(
+    name="throw",
+    length=1,
+    realm_state=Some(interp.realm_state),
+    fn(ip : Interpreter, _this : Value, args : Array[Value]) -> Value {
+      let value = if args.length() > 0 { args[0] } else { Undefined }
+      match sync_throw_method {
+        Undefined | Null => make_rejected_promise(ip, value)
+        _ => {
+          let result = try {
+            ip.call_value(sync_throw_method, sync_iterator, [value], loc)
+          } catch {
+            JsException(e) => return make_rejected_promise(ip, e)
+          e => {
+            let err_val = js_error_to_value_with_env(e, Some(ip.global))
+            return make_rejected_promise(ip, err_val)
+          }
+          }
+          let promise_ctor = ip.global.get("Promise")
+          let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
+          ip.call_value(resolve_m, promise_ctor, [result], loc)
+        }
+      }
+    },
+  )
+
+  // Async-from-Sync Iterator object
+  let async_iter_sym_props_obj : Map[Int, Value] = {}
+  async_iter_sym_props_obj[async_iter_sym.id] = make_method_func(
+    name="[Symbol.asyncIterator]",
+    length=0,
+    realm_state=Some(interp.realm_state),
+    fn(this_val, _args) { this_val },
+  )
+  let async_iter_sym_descs_obj : Map[Int, PropDescriptor] = {}
+  async_iter_sym_descs_obj[async_iter_sym.id] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+
+  let obj_props : Map[String, Value] = {
+    "next": async_next,
+    "return": async_return,
+    "throw": async_throw,
+  }
+  let obj_descs : Map[String, PropDescriptor] = {}
+  let next_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  obj_descs["next"] = { ..next_desc }
+  obj_descs["return"] = { ..next_desc }
+  obj_descs["throw"] = { ..next_desc }
+
+  Object({
+    bag: {
+      properties: obj_props,
+      symbol_properties: async_iter_sym_props_obj,
+      descriptors: obj_descs,
+      symbol_descriptors: async_iter_sym_descs_obj,
+      internal_slots: {},
+    },
+    prototype: async_iter_proto,
+    callable: None,
+    class_name: "Async-from-Sync Iterator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
+fn make_resolved_promise(_interp : Interpreter, value : Value) -> Value {
+  let promise_data = new_promise_data()
+  promise_data.state = Fulfilled
+  promise_data.result = value
+  Promise(promise_data)
+}
+
+///|
+fn make_rejected_promise(_interp : Interpreter, value : Value) -> Value {
+  let promise_data = new_promise_data()
+  promise_data.state = Rejected
+  promise_data.result = value
+  Promise(promise_data)
+}

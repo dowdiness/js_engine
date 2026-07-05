@@ -72,20 +72,17 @@ isolated benchmark.
 These are larger than one small cleanup PR; split them before implementation.
 See [ROADMAP.md](ROADMAP.md#active-roadmap) for the broader feature-bucket view.
 
-### `for await` / async iteration
+### `for await` / async iteration — DONE (PR #494)
 
-**Feature flag:** `async-iteration` in shared skip metadata.
+**Status:** Parser, AST, and runtime support for `for await (... of ...)` is
+implemented. Includes `Symbol.asyncIterator` protocol,
+`%AsyncIteratorPrototype%`, `CreateAsyncFromSyncIterator` for sync fallback,
+and all three binding forms (var/let/const, destructuring, member expression).
 
-**Current state:** `for await (const v of iterable)` still needs parser and
-runtime support.
-
-**Likely slices:**
-
-- Parser/AST support for `for await`.
-- Async iterator protocol lookup (`Symbol.asyncIterator`, fallback policy, and
-  `next()` Promise handling).
-- Interpreter execution semantics and abrupt-completion cleanup.
-- Async generator interactions, if needed by the chosen test262 slice.
+**Test262:** `async-iteration` remains in `skip_features` — 1,234+ for-await-of
+tests are still skipped due to edge-case failures (async generator interactions,
+destructuring with defaults, etc.). Remove the skip flag in a follow-up once
+coverage is validated.
 
 ### RegExp lookbehind assertions
 

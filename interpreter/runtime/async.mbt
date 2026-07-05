@@ -1129,3 +1129,59 @@ pub fn setup_async_generator_function_constructor(
   env.def_builtin("[[AsyncGeneratorPrototype]]", async_gen_proto)
   env.def_builtin("[[AsyncGeneratorFunctionPrototype]]", agf_proto)
 }
+
+///|
+/// Get an async iterator from an iterable for for-await-of.
+/// Tries [Symbol.asyncIterator]() first, falls back to wrapping [Symbol.iterator]()
+/// via CreateAsyncFromSyncIterator.
+fn get_async_iterator_for_of(
+  interp : Interpreter,
+  iterable : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let async_iter_sym = interp.realm_state.well_known_symbols.async_iterator
+  let async_iter_method = interp.get_computed_property(
+    iterable,
+    Symbol(async_iter_sym),
+    loc,
+  )
+  match async_iter_method {
+    Object(data) =>
+      match data.callable {
+        Some(_) => interp.call_value(async_iter_method, iterable, [], loc)
+        None =>
+          raise @errors.TypeError(
+            message="Result of the Symbol.asyncIterator method is not callable",
+          )
+      }
+    Undefined | Null => {
+      // Fall back to sync iterator wrapper
+      let sync_iter_sym = interp.realm_state.well_known_symbols.iterator
+      let sync_iter_method = interp.get_computed_property(
+        iterable,
+        Symbol(sync_iter_sym),
+        loc,
+      )
+      let sync_iter = match sync_iter_method {
+        Object(data) =>
+          match data.callable {
+            Some(_) => interp.call_value(sync_iter_method, iterable, [], loc)
+            None =>
+              raise @errors.TypeError(
+                message="Result of the Symbol.iterator method is not an object",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="\{type_of(iterable)} is not async iterable",
+          )
+      }
+      let sync_next = interp.get_iterator_next_method(sync_iter, loc)
+      create_async_from_sync_iterator(interp, sync_iter, sync_next, loc)
+    }
+    _ =>
+      raise @errors.TypeError(
+        message="Result of the Symbol.asyncIterator method is not an object",
+      )
+  }
+}

@@ -570,8 +570,29 @@ fn Parser::parse_while_stmt(self : Parser) -> @ast.Stmt raise Error {
 ///|
 fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(For)
+  // Check for for-await-of: `for await ( ... of ... )` — await comes BEFORE LParen
+  let is_async_for = self.peek_kind() is @token.TokenKind::Ident("await")
+  if is_async_for {
+    if !self.in_async() {
+      raise @errors.SyntaxError(
+        message="for await is only valid in async functions and async generators",
+      )
+    }
+    let _ = self.advance() // consume 'await'
+  }
   let _ = self.expect(LParen)
-  // Check for for-in with var/let/const
+  // Helper: parse the iterable and body when we know it's for-of/for-await-of
+  fn parse_of_body(
+    self : Parser,
+    _tok_loc : @token.Loc,
+  ) -> (@ast.Expr, @ast.Stmt) raise Error {
+    let obj = self.parse_assignment()
+    let _ = self.expect(RParen)
+    let body = self.parse_stmt()
+    reject_function_decl_in_stmt_position(body)
+    (obj, body)
+  }
+  // Check for for-in / for-await-of / for-of with var/let/const
   if self.at(Let) || self.at(Const) || self.at(Var) {
     let var_tok = self.advance()
     let var_kind : @ast.VarKind = match var_tok.kind {
@@ -579,14 +600,16 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       Const => ConstKind
       _ => VarKind
     }
-    // Check for destructuring pattern in for-of/for-in: for (let [a,b] of ...) or for (let {x,y} of ...)
+    // Check for destructuring pattern: for (let [a,b] of ...) or for (let {x,y} of ...)
     if self.at(LBracket) || self.at(LBrace) {
       let pat = self.parse_pattern()
+      if is_async_for {
+        let _ = self.expect(Of) // consume 'of'
+        let (obj, body) = parse_of_body(self, tok.loc)
+        return AsyncForOfStmtPat(Some(var_kind), pat, obj, body, tok.loc)
+      }
       if self.eat(Of) {
-        let obj = self.parse_assignment()
-        let _ = self.expect(RParen)
-        let body = self.parse_stmt()
-        reject_function_decl_in_stmt_position(body)
+        let (obj, body) = parse_of_body(self, tok.loc)
         return ForOfStmtPat(Some(var_kind), pat, obj, body, tok.loc)
       }
       if self.eat(In) {
@@ -611,6 +634,15 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
     } else {
       self.expect_ident()
     }
+    if is_async_for {
+      let _ = self.expect(Of)
+      let (obj, body) = parse_of_body(self, tok.loc)
+      return AsyncForOfStmt(Some(var_kind), name, obj, body, tok.loc)
+    }
+    if self.eat(Of) {
+      let (obj, body) = parse_of_body(self, tok.loc)
+      return ForOfStmt(Some(var_kind), name, obj, body, tok.loc)
+    }
     if self.eat(In) {
       // for-in with var declaration
       let obj = self.parse_expr()
@@ -618,14 +650,6 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       let body = self.parse_stmt()
       reject_function_decl_in_stmt_position(body)
       return ForInStmt(Some(var_kind), name, obj, body, tok.loc)
-    }
-    if self.eat(Of) {
-      // for-of with var declaration
-      let obj = self.parse_expr()
-      let _ = self.expect(RParen)
-      let body = self.parse_stmt()
-      reject_function_decl_in_stmt_position(body)
-      return ForOfStmt(Some(var_kind), name, obj, body, tok.loc)
     }
     // Regular for — finish parsing the var decl init (may have multiple comma-separated decls)
     let init_val : @ast.Expr? = if self.eat(Assign) {
@@ -661,20 +685,40 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
     }
     return self.parse_for_rest(init, tok.loc)
   }
-  // Check for for-in / for-of with bare expression (no let/var/const)
+  // Check for for-in / for-of / for-await-of with bare expression (no let/var/const)
   // This handles: for (x of arr), for ({x} of arr), for ([x] of arr), for (a.b of arr), etc.
   if !self.at(Semicolon) {
     let saved_pos = self.pos
     let try_expr : @ast.Expr? = Some(self.parse_call()) catch { _ => None }
     match try_expr {
       Some(expr) => {
-        if self.at(Of) {
+        if is_async_for || self.at(Of) {
+          // For async, we already consumed await — expect 'of'
+          if is_async_for {
+            let _ = self.advance() // consume 'of'
+          } else {
+            let _ = self.advance() // consume 'of'
+          }
           let expr = unwrap_parenthesized_lhs(expr)
-          let _ = self.advance() // consume 'of'
-          let iterable = self.parse_assignment()
-          let _ = self.expect(RParen)
-          let body = self.parse_stmt()
-          reject_function_decl_in_stmt_position(body)
+          let (iterable, body) = parse_of_body(self, tok.loc)
+          if is_async_for {
+            match expr {
+              Ident(name, _) =>
+                return AsyncForOfStmt(None, name, iterable, body, tok.loc)
+              ArrayLit(_, _) | ObjectLit(_, _) => {
+                let pattern = expr_to_pattern(expr)
+                return AsyncForOfStmtPat(None, pattern, iterable, body, tok.loc)
+              }
+              Member(_, _, _) | ComputedMember(_, _, _) =>
+                return AsyncForOfExpr(expr, iterable, body, tok.loc)
+              Call(_, _, _) =>
+                return AsyncForOfExpr(expr, iterable, body, tok.loc)
+              _ =>
+                raise @errors.SyntaxError(
+                  message="Invalid left-hand side in for-await-of at line \{tok.loc.line}, col \{tok.loc.col}",
+                )
+            }
+          }
           match expr {
             Ident(name, _) =>
               return ForOfStmt(None, name, iterable, body, tok.loc)
@@ -690,6 +734,11 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
                 message="Invalid left-hand side in for-of at line \{tok.loc.line}, col \{tok.loc.col}",
               )
           }
+        }
+        if is_async_for {
+          raise @errors.SyntaxError(
+            message="for-await-of requires 'of' keyword",
+          )
         }
         if self.at(In) {
           let expr = unwrap_parenthesized_lhs(expr)
@@ -718,6 +767,9 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       }
       None => self.pos = saved_pos
     }
+  }
+  if is_async_for {
+    raise @errors.SyntaxError(message="Invalid for-await-of syntax")
   }
   // Regular for-loop
   let init : @ast.Stmt? = if self.at(Semicolon) {
