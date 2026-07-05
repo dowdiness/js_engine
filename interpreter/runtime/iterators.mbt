@@ -88,6 +88,28 @@ fn make_iterator_result_object(value : Value, done : Bool) -> Value {
 }
 
 ///|
+fn make_iterator_result_object_with_proto(
+  value : Value,
+  done : Bool,
+  proto : Value,
+) -> Value {
+  Object({
+    bag: {
+      properties: { "value": value, "done": Bool(done) },
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+      internal_slots: {},
+    },
+    prototype: proto,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
 fn array_iterator_kind_to_slot_value(kind : ArrayIteratorKind) -> Value {
   match kind {
     Keys => Number(0.0)
@@ -621,99 +643,289 @@ fn make_async_iterator_proto_value(
 }
 
 ///|
+/// Apply AsyncFromSyncIteratorContinuation (§27.1.4.1.1):
+/// Promise.resolve(value).then(v => CreateIterResultObject(v, done)).
+/// Errors propagate to the caller's catch handler (returns rejected promise).
+fn chain_value_through_continuation(
+  ip : Interpreter,
+  value : Value,
+  done : Bool,
+) -> Value raise Error {
+  let loc = @token.Loc::default()
+  let promise_ctor = ip.global.get("Promise")
+  let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
+  let resolved = ip.call_value(resolve_m, promise_ctor, [value], loc)
+  let on_fulfill = make_interp_method_func(
+    name="",
+    length=1,
+    realm_state=Some(ip.realm_state),
+    fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
+      let v = if args.length() > 0 { args[0] } else { Undefined }
+      make_iterator_result_object_with_proto(
+        v,
+        done,
+        i.realm_state.get_obj_proto(),
+      )
+    },
+  )
+  let then_m = ip.get_property(resolved, "then", loc)
+  ip.call_value(then_m, resolved, [on_fulfill], loc)
+}
+
+///|
+fn extract_iterator_done(
+  ip : Interpreter,
+  result : Value,
+  loc : @token.Loc,
+) -> Bool raise Error {
+  let done_val = ip.get_property(result, "done", loc)
+  is_truthy(done_val)
+}
+
+///|
+fn extract_iterator_value(
+  ip : Interpreter,
+  result : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  ip.get_property(result, "value", loc)
+}
+
+///|
+/// Helper: wrap a raise-bound operation with promise-based error handling.
+/// Catches any raise and returns a rejected promise instead.
+fn reject_on_error(ip : Interpreter, action : () -> Value raise Error) -> Value {
+  action() catch {
+    JsException(e) => make_rejected_promise(ip, e)
+    e => {
+      let err = js_error_to_value_with_env(e, Some(ip.global))
+      make_rejected_promise(ip, err)
+    }
+  }
+}
+
+///|
+/// %AsyncFromSyncIteratorPrototype%.next ( value )
+fn async_from_sync_next(
+  ip : Interpreter,
+  this_val : Value,
+  _args : Array[Value],
+) -> Value {
+  reject_on_error(ip, fn() -> Value raise Error {
+    let data = match this_val {
+      Object(d) => d
+      _ =>
+        raise @errors.TypeError(
+          message="%AsyncFromSyncIteratorPrototype%.next called on incompatible receiver",
+        )
+    }
+    let sync_iterator = match get_sync_iterator(data) {
+      Some(v) => v
+      None => raise @errors.TypeError(message="SyncIterator slot missing")
+    }
+    let sync_next = match get_sync_next_method(data) {
+      Some(v) => v
+      None => raise @errors.TypeError(message="SyncNextMethod slot missing")
+    }
+    let loc = @token.Loc::default()
+    let result = ip.call_value(sync_next, sync_iterator, [], loc)
+    let done = extract_iterator_done(ip, result, loc)
+    let value = extract_iterator_value(ip, result, loc)
+    chain_value_through_continuation(ip, value, done)
+  })
+}
+
+///|
+/// %AsyncFromSyncIteratorPrototype%.return ( value )
+fn async_from_sync_return(
+  ip : Interpreter,
+  this_val : Value,
+  args : Array[Value],
+) -> Value {
+  let arg = if args.length() > 0 { args[0] } else { Undefined }
+  reject_on_error(ip, fn() -> Value raise Error {
+    let data = match this_val {
+      Object(d) => d
+      _ =>
+        raise @errors.TypeError(
+          message="%AsyncFromSyncIteratorPrototype%.return called on incompatible receiver",
+        )
+    }
+    let sync_iterator = match get_sync_iterator(data) {
+      Some(v) => v
+      None => raise @errors.TypeError(message="SyncIterator slot missing")
+    }
+    let loc = @token.Loc::default()
+    let return_method = ip.get_property(sync_iterator, "return", loc)
+    match return_method {
+      Undefined | Null => {
+        let obj_proto = ip.realm_state.get_obj_proto()
+        let result = make_iterator_result_object_with_proto(
+          arg, true, obj_proto,
+        )
+        make_resolved_promise(ip, result)
+      }
+      _ => {
+        let call_result = ip.call_value(
+          return_method,
+          sync_iterator,
+          [arg],
+          loc,
+        )
+        guard is_object_value(call_result) else {
+          raise @errors.TypeError(message="Iterator result is not an object")
+        }
+        let done = extract_iterator_done(ip, call_result, loc)
+        let value = extract_iterator_value(ip, call_result, loc)
+        chain_value_through_continuation(ip, value, done)
+      }
+    }
+  })
+}
+
+///|
+/// %AsyncFromSyncIteratorPrototype%.throw ( value )
+fn async_from_sync_throw(
+  ip : Interpreter,
+  this_val : Value,
+  args : Array[Value],
+) -> Value {
+  let arg = if args.length() > 0 { args[0] } else { Undefined }
+  reject_on_error(ip, fn() -> Value raise Error {
+    let data = match this_val {
+      Object(d) => d
+      _ =>
+        raise @errors.TypeError(
+          message="%AsyncFromSyncIteratorPrototype%.throw called on incompatible receiver",
+        )
+    }
+    let sync_iterator = match get_sync_iterator(data) {
+      Some(v) => v
+      None => raise @errors.TypeError(message="SyncIterator slot missing")
+    }
+    let loc = @token.Loc::default()
+    let throw_method = ip.get_property(sync_iterator, "throw", loc)
+    match throw_method {
+      Undefined | Null => make_rejected_promise(ip, arg)
+      _ => {
+        let call_result = ip.call_value(throw_method, sync_iterator, [arg], loc)
+        guard is_object_value(call_result) else {
+          raise @errors.TypeError(message="Iterator result is not an object")
+        }
+        let done = extract_iterator_done(ip, call_result, loc)
+        let value = extract_iterator_value(ip, call_result, loc)
+        chain_value_through_continuation(ip, value, done)
+      }
+    }
+  })
+}
+
+///|
+fn make_async_from_sync_iterator_proto_value(
+  well_known_symbols : WellKnownSymbols,
+  realm_state : RealmState,
+) -> Value {
+  let tostringtag_sym = well_known_symbols.to_string_tag
+  let async_iterator_sym = well_known_symbols.async_iterator
+  let proto_props : Map[String, Value] = {}
+  let proto_descs : Map[String, PropDescriptor] = {}
+  let method_desc : PropDescriptor = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  proto_props["next"] = make_interp_method_func(
+    name="next",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
+      async_from_sync_next(ip, this_val, args)
+    },
+  )
+  proto_descs["next"] = { ..method_desc }
+  proto_props["return"] = make_interp_method_func(
+    name="return",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
+      async_from_sync_return(ip, this_val, args)
+    },
+  )
+  proto_descs["return"] = { ..method_desc }
+  proto_props["throw"] = make_interp_method_func(
+    name="throw",
+    length=1,
+    realm_state=Some(realm_state),
+    fn(ip : Interpreter, this_val : Value, args : Array[Value]) -> Value {
+      async_from_sync_throw(ip, this_val, args)
+    },
+  )
+  proto_descs["throw"] = { ..method_desc }
+  let sym_props : Map[Int, Value] = {}
+  let sym_descs : Map[Int, PropDescriptor] = {}
+  sym_props[async_iterator_sym.id] = make_method_func(
+    name="[Symbol.asyncIterator]",
+    length=0,
+    realm_state=Some(realm_state),
+    fn(this_val, _args) { this_val },
+  )
+  sym_descs[async_iterator_sym.id] = {
+    writable: true,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  sym_props[tostringtag_sym.id] = String_("Async-from-Sync Iterator")
+  sym_descs[tostringtag_sym.id] = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  Object({
+    bag: {
+      properties: proto_props,
+      symbol_properties: sym_props,
+      descriptors: proto_descs,
+      symbol_descriptors: sym_descs,
+      internal_slots: {},
+    },
+    prototype: realm_state.get_async_iterator_proto(),
+    callable: None,
+    class_name: "Async-from-Sync Iterator",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
 /// Create an Async-from-Sync Iterator wrapper per ES262 §27.1.4.
 /// Wraps a sync iterator record so it can be used with for-await-of.
+/// The instance inherits next/return/throw from %AsyncFromSyncIteratorPrototype%
+/// and stores sync iterator data in internal slots.
 fn create_async_from_sync_iterator(
   interp : Interpreter,
   sync_iterator : Value,
   sync_next_method : Value,
-  loc : @token.Loc,
-) -> Value raise Error {
-  // Get the sync return and throw methods too
-  let sync_return_method = interp.get_property(sync_iterator, "return", loc)
-  let sync_throw_method = interp.get_property(sync_iterator, "throw", loc)
+  _loc : @token.Loc,
+) -> Value {
   let async_iter_sym = interp.realm_state.well_known_symbols.async_iterator
-  let async_iter_proto = interp.realm_state.get_async_iterator_proto()
-
-  // Build next method
-  let async_next = make_interp_method_func(
-    name="next",
-    length=1,
-    realm_state=Some(interp.realm_state),
-    fn(ip : Interpreter, _this : Value, _args : Array[Value]) -> Value {
-      let result = ip.call_value(sync_next_method, sync_iterator, [], loc)
-      let promise_ctor = ip.global.get("Promise")
-      let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
-      ip.call_value(resolve_m, promise_ctor, [result], loc)
-    },
-  )
-  // Build return method
-  let async_return = make_interp_method_func(
-    name="return",
-    length=1,
-    realm_state=Some(interp.realm_state),
-    fn(ip : Interpreter, _this : Value, args : Array[Value]) -> Value {
-      let value = if args.length() > 0 { args[0] } else { Undefined }
-      match sync_return_method {
-        Undefined | Null =>
-          make_resolved_promise(ip, make_iterator_result_object(value, true))
-        _ => {
-          let result = try {
-            ip.call_value(sync_return_method, sync_iterator, [value], loc)
-          } catch {
-            JsException(e) => return make_rejected_promise(ip, e)
-          e => {
-            let err_val = js_error_to_value_with_env(e, Some(ip.global))
-            return make_rejected_promise(ip, err_val)
-          }
-          }
-          if !is_object_value(result) {
-            raise @errors.TypeError(message="Iterator result is not an object")
-          }
-          let promise_ctor = ip.global.get("Promise")
-          let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
-          ip.call_value(resolve_m, promise_ctor, [result], loc)
-        }
-      }
-    },
-  )
-  // Build throw method
-  let async_throw = make_interp_method_func(
-    name="throw",
-    length=1,
-    realm_state=Some(interp.realm_state),
-    fn(ip : Interpreter, _this : Value, args : Array[Value]) -> Value {
-      let value = if args.length() > 0 { args[0] } else { Undefined }
-      match sync_throw_method {
-        Undefined | Null => make_rejected_promise(ip, value)
-        _ => {
-          let result = try {
-            ip.call_value(sync_throw_method, sync_iterator, [value], loc)
-          } catch {
-            JsException(e) => return make_rejected_promise(ip, e)
-          e => {
-            let err_val = js_error_to_value_with_env(e, Some(ip.global))
-            return make_rejected_promise(ip, err_val)
-          }
-          }
-          let promise_ctor = ip.global.get("Promise")
-          let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
-          ip.call_value(resolve_m, promise_ctor, [result], loc)
-        }
-      }
-    },
-  )
-
-  // Async-from-Sync Iterator object
-  let async_iter_sym_props_obj : Map[Int, Value] = {}
-  async_iter_sym_props_obj[async_iter_sym.id] = make_method_func(
+  let async_sym_props : Map[Int, Value] = {}
+  let async_sym_descs : Map[Int, PropDescriptor] = {}
+  async_sym_props[async_iter_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
     realm_state=Some(interp.realm_state),
     fn(this_val, _args) { this_val },
   )
-  let async_iter_sym_descs_obj : Map[Int, PropDescriptor] = {}
-  async_iter_sym_descs_obj[async_iter_sym.id] = {
+  async_sym_descs[async_iter_sym.id] = {
     writable: true,
     enumerable: false,
     configurable: true,
@@ -721,34 +933,19 @@ fn create_async_from_sync_iterator(
     setter: None,
     is_accessor: false,
   }
-
-  let obj_props : Map[String, Value] = {
-    "next": async_next,
-    "return": async_return,
-    "throw": async_throw,
-  }
-  let obj_descs : Map[String, PropDescriptor] = {}
-  let next_desc : PropDescriptor = {
-    writable: true,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  obj_descs["next"] = { ..next_desc }
-  obj_descs["return"] = { ..next_desc }
-  obj_descs["throw"] = { ..next_desc }
-
+  let internal_slots : Map[InternalSlotKey, Value] = {}
+  internal_slots[SyncIterator] = sync_iterator
+  internal_slots[SyncNextMethod] = sync_next_method
+  let async_from_sync_proto = interp.realm_state.get_async_from_sync_iterator_proto()
   Object({
     bag: {
-      properties: obj_props,
-      symbol_properties: async_iter_sym_props_obj,
-      descriptors: obj_descs,
-      symbol_descriptors: async_iter_sym_descs_obj,
-      internal_slots: {},
+      properties: {},
+      symbol_properties: async_sym_props,
+      descriptors: {},
+      symbol_descriptors: async_sym_descs,
+      internal_slots,
     },
-    prototype: async_iter_proto,
+    prototype: async_from_sync_proto,
     callable: None,
     class_name: "Async-from-Sync Iterator",
     extensible: true,

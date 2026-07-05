@@ -1945,10 +1945,13 @@ fn Interpreter::exec_stmt(
         }
         // Execute loop body
         let (new_c, should_continue, propagate) = exec_for_body_signal(
-          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label,
+          completion,
         )
         completion = new_c
-        if should_continue { continue }
+        if should_continue {
+          continue
+        }
         match propagate {
           Some(s) => return s
           None => ()
@@ -2107,10 +2110,13 @@ fn Interpreter::exec_stmt(
           }
         }
         let (new_c, should_continue, propagate) = exec_for_body_signal(
-          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label,
+          completion,
         )
         completion = new_c
-        if should_continue { continue }
+        if should_continue {
+          continue
+        }
         match propagate {
           Some(s) => return s
           None => ()
@@ -2224,10 +2230,13 @@ fn Interpreter::exec_stmt(
           }
         }
         let (new_c, should_continue, propagate) = exec_for_body_signal(
-          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label, completion,
+          self, ctx, body, body_env, gen_opt, iterator, next_method, loc, label,
+          completion,
         )
         completion = new_c
-        if should_continue { continue }
+        if should_continue {
+          continue
+        }
         match propagate {
           Some(s) => return s
           None => ()
@@ -2646,6 +2655,7 @@ fn Interpreter::exec_try_catch(
       }
   }
 }
+
 ///|
 /// Execute a for-of/for-await-of loop body and dispatch its completion signal.
 /// Shared by both sync and async for-of variants to avoid code duplication.
