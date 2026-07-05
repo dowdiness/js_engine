@@ -1898,6 +1898,11 @@ fn Interpreter::exec_stmt(
               // Check if the resume was a throw (promise was rejected).
               // When a throw resumes the generator, g.yield_value is Undefined
               // (set by generator_resume's Throw handler), not a proper IteratorResult.
+              // TODO(closeOnRejection): resume_action coupling - this reads
+              // gen.resume_action directly, which is normally consumed by
+              // eval_yield. If for-await-of is refactored to use eval_yield's
+              // resume mechanism, this check would break because resume_action
+              // would be consumed before reaching here.
               match g.resume_action {
                 ThrowAction(e) => {
                   g.resume_action = NextAction

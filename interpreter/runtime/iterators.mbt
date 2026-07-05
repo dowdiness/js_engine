@@ -644,7 +644,9 @@ fn make_async_iterator_proto_value(
 
 ///|
 /// Optionally close the sync iterator when closeOnRejection is true and done is false.
-/// Close errors are suppressed per §7.4.10 ThrowCompletion semantics.
+/// Only safe for ThrowCompletion close paths (§7.4.10) — close errors are
+/// suppressed because the original ThrowCompletion takes priority.
+/// Normal-completion callers must let close errors propagate.
 fn try_close_on_rejection(
   ip : Interpreter,
   sync_iterator : Value,
