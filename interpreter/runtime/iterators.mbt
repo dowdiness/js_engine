@@ -862,12 +862,11 @@ fn async_from_sync_return(
         make_resolved_promise(ip, result)
       }
       _ => {
-        let call_result = ip.call_value(
-          return_method,
-          sync_iterator,
-          [arg],
-          loc,
-        )
+        let call_result = if args.length() > 0 {
+          ip.call_value(return_method, sync_iterator, [arg], loc)
+        } else {
+          ip.call_value(return_method, sync_iterator, [], loc)
+        }
         guard is_object_value(call_result) else {
           raise @errors.TypeError(message="Iterator result is not an object")
         }

@@ -1861,11 +1861,13 @@ fn Interpreter::exec_stmt(
             ReturnSignal(v) => return ReturnSignal(v)
             BreakSignal(v, None) => {
               completion = v.unwrap_or(completion)
+              close_iterator(self, iterator, loc) catch { _ => () }
               break
             }
             BreakSignal(bv, Some(l)) =>
               if label == Some(l) {
                 completion = bv.unwrap_or(completion)
+                close_iterator(self, iterator, loc) catch { _ => () }
                 break
               } else {
                 return BreakSignal(bv, Some(l))
@@ -1888,7 +1890,19 @@ fn Interpreter::exec_stmt(
         let yielded_value = if is_awaiting {
           is_awaiting = false
           match gen_opt {
-            Some(g) => g.yield_value
+            Some(g) => {
+              // Check if the resume was a throw (promise was rejected).
+              // When a throw resumes the generator, g.yield_value is Undefined
+              // (set by generator_resume's Throw handler), not a proper IteratorResult.
+              match g.resume_action {
+                ThrowAction(e) => {
+                  g.resume_action = NextAction
+                  raise JsException(e)
+                }
+                _ => ()
+              }
+              g.yield_value
+            }
             None => fail("for-await-of: no generator")
           }
         } else {
