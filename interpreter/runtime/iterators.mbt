@@ -668,8 +668,17 @@ fn chain_value_through_continuation(
       )
     },
   )
+  let on_reject = make_interp_method_func(
+    name="",
+    length=1,
+    realm_state=Some(ip.realm_state),
+    fn(_i : Interpreter, _this : Value, args : Array[Value]) -> Value raise {
+      let e = if args.length() > 0 { args[0] } else { Undefined }
+      raise JsException(e)
+    },
+  )
   let then_m = ip.get_property(resolved, "then", loc)
-  ip.call_value(then_m, resolved, [on_fulfill], loc)
+  ip.call_value(then_m, resolved, [on_fulfill, on_reject], loc)
 }
 
 ///|
@@ -806,7 +815,10 @@ fn async_from_sync_throw(
     let loc = @token.Loc::default()
     let throw_method = ip.get_property(sync_iterator, "throw", loc)
     match throw_method {
-      Undefined | Null => make_rejected_promise(ip, arg)
+      Undefined | Null =>
+        raise @errors.TypeError(
+          message="%AsyncFromSyncIteratorPrototype%.throw: sync iterator has no throw method",
+        )
       _ => {
         let call_result = ip.call_value(throw_method, sync_iterator, [arg], loc)
         guard is_object_value(call_result) else {

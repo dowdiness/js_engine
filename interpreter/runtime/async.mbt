@@ -597,8 +597,18 @@ fn make_async_gen_function_inner(
       callable: Some(
         InterpreterCallable(func_name, fn(ip, this_val, args) raise {
           create_generator_instance(
-            ip, this_val, args, name, params, params_ext, rest_param, body, strict,
-            effective_closure, func_prototype,
+            ip,
+            this_val,
+            args,
+            name,
+            params,
+            params_ext,
+            rest_param,
+            body,
+            strict,
+            effective_closure,
+            func_prototype,
+            is_async=true,
           )
         }),
       ),
@@ -708,8 +718,16 @@ fn async_generator_step(
     _ => false
   }
   if is_done {
-    // Generator completed — resolve the promise with the iterator result
-    let _ = ip.call_value(resolve_fn, Undefined, [result], loc) catch {
+    // Generator completed — resolve the promise with a proper iterator result
+    // Per spec, iterator result objects have %Object.prototype% as [[Prototype]]
+    let obj_proto = ip.realm_state.get_obj_proto()
+    let result_value = ip.get_property(result, "value", loc) catch {
+      _ => Undefined
+    }
+    let proper_result = make_iterator_result_object_with_proto(
+      result_value, true, obj_proto,
+    )
+    let _ = ip.call_value(resolve_fn, Undefined, [proper_result], loc) catch {
       _ => Undefined
     }
   } else {
@@ -720,28 +738,129 @@ fn async_generator_step(
     let rej_fn = reject_fn
     match awaited {
       Promise(pd) => {
-        // Native Promise — attach reactions directly to resume generator
-        let on_fulfill = make_interp_method_func(
-          name="",
-          length=1,
-          realm_state=Some(ip.realm_state),
-          fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
-            let v = if args.length() > 0 { args[0] } else { Undefined }
-            async_generator_step(i, gen, Next(v), res_fn, rej_fn)
-            Undefined
-          },
-        )
-        let on_reject = make_interp_method_func(
-          name="",
-          length=1,
-          realm_state=Some(ip.realm_state),
-          fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
-            let v = if args.length() > 0 { args[0] } else { Undefined }
-            async_generator_step(i, gen, Throw(v), res_fn, rej_fn)
-            Undefined
-          },
-        )
-        attach_promise_reactions(ip, pd, on_fulfill, on_reject)
+        let gen_obj = match get_generator_object(ip, gen) {
+          Some(g) => g
+          None => return
+        }
+        let orig_resume_kind = resume_kind
+        if gen_obj.delegating && gen_obj.is_async {
+          // Async yield* delegation: Promise resolves to IteratorResult {value, done}
+          let on_fulfill = make_interp_method_func(
+            name="",
+            length=1,
+            realm_state=Some(ip.realm_state),
+            fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise {
+              let ir = if args.length() > 0 { args[0] } else { Undefined }
+              let ir_done = i.get_property(ir, "done", @token.Loc::default()) catch {
+                _ => Bool(false)
+              }
+              let is_ir_done = match ir_done {
+                Bool(b) => b
+                _ => false
+              }
+              let gen_obj = match get_generator_object(i, gen) {
+                Some(g) => g
+                None => return Undefined
+              }
+              if is_ir_done {
+                // Delegation completed — clear delegate state
+                gen_obj.delegating = false
+                gen_obj.delegate_iterator = Undefined
+                gen_obj.delegate_next = Undefined
+                let ir_value = i.get_property(ir, "value", @token.Loc::default()) catch {
+                  _ => Undefined
+                }
+                // Set up generator state and continue body via generator_continue.
+                // For Return completions, inject ReturnAction to preserve the return value
+                // through the generator body. For Next/Throw, use the corresponding action.
+                gen_obj.yield_value = ir_value
+                gen_obj.resume_action = match orig_resume_kind {
+                  Return(_) => ReturnAction(ir_value)
+                  _ => NextAction
+                }
+                let final_result = generator_continue(i, gen_obj)
+                let final_done = i.get_property(final_result, "done", @token.Loc::default()) catch {
+                  _ => Bool(true)
+                }
+                let is_final_done = match final_done {
+                  Bool(b) => b
+                  _ => true
+                }
+                if is_final_done {
+                  // Create proper IteratorResult with Object.prototype per spec
+                  let obj_proto = i.realm_state.get_obj_proto()
+                  let final_val = i.get_property(final_result, "value", @token.Loc::default()) catch {
+                    _ => Undefined
+                  }
+                  let proper_result = make_iterator_result_object_with_proto(
+                    final_val, true, obj_proto,
+                  )
+                  let _ = i.call_value(res_fn, Undefined, [proper_result], @token.Loc::default()) catch {
+                    _ => Undefined
+                  }
+                } else {
+                  // Generator yielded again (e.g. from finally in Return case or
+                  // a post-delegate yield) — let async_generator_step handle the value
+                  let final_val = i.get_property(final_result, "value", @token.Loc::default()) catch {
+                    _ => Undefined
+                  }
+                  async_generator_step(i, gen, Next(final_val), res_fn, rej_fn)
+                }
+              } else {
+                // Delegation yielded — resolve outer promise with IteratorResult
+                gen_obj.state = SuspendedYield
+                let _ = i.call_value(res_fn, Undefined, [ir], @token.Loc::default()) catch {
+                  _ => Undefined
+                }
+              }
+              Undefined
+            },
+          )
+          let on_reject = make_interp_method_func(
+            name="",
+            length=1,
+            realm_state=Some(ip.realm_state),
+            fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
+              let e = if args.length() > 0 { args[0] } else { Undefined }
+              let gen_obj = match get_generator_object(i, gen) {
+                Some(g) => g
+                None => return Undefined
+              }
+              gen_obj.delegating = false
+              gen_obj.delegate_iterator = Undefined
+              gen_obj.delegate_next = Undefined
+              gen_obj.state = Completed
+              let _ = i.call_value(rej_fn, Undefined, [e], @token.Loc::default()) catch {
+                _ => Undefined
+              }
+              Undefined
+            },
+          )
+          attach_promise_reactions(ip, pd, on_fulfill, on_reject)
+        } else {
+          // Normal yield: Promise value — attach reactions to resume generator
+          let on_fulfill = make_interp_method_func(
+            name="",
+            length=1,
+            realm_state=Some(ip.realm_state),
+            fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
+              let v = if args.length() > 0 { args[0] } else { Undefined }
+              async_generator_step(i, gen, Next(v), res_fn, rej_fn)
+              Undefined
+            },
+          )
+          let on_reject = make_interp_method_func(
+            name="",
+            length=1,
+            realm_state=Some(ip.realm_state),
+            fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value {
+              let v = if args.length() > 0 { args[0] } else { Undefined }
+              async_generator_step(i, gen, Throw(v), res_fn, rej_fn)
+              Undefined
+            },
+          )
+          attach_promise_reactions(ip, pd, on_fulfill, on_reject)
+        }
       }
       _ => {
         // Plain value — fulfill .next() promise with the iterator result
