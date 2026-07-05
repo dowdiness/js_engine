@@ -43,8 +43,6 @@ pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
 
 pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
 
-pub fn create_async_from_sync_iterator(Interpreter, Value, Value, @token.Loc) -> Value raise
-
 pub fn create_data_property_or_throw(Interpreter, Value, Int64, Value) -> Unit raise
 
 pub fn create_iter_result(Value, Bool) -> Value
@@ -102,8 +100,6 @@ pub fn get_arraybuffer_byte_length(ObjectData) -> Value?
 pub fn get_arraybuffer_id(ObjectData) -> Value?
 
 pub fn get_assignment_name_value(ExecContext, Environment, String) -> Value raise
-
-pub fn get_async_iterator_for_of(Interpreter, Value, @token.Loc) -> Value raise
 
 pub fn get_boolean_data(ObjectData) -> Value?
 
@@ -214,8 +210,6 @@ pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interprete
 pub fn make_array(Array[Value]) -> Value
 
 pub fn make_array_with_holes(Array[Value], Array[Int]) -> Value
-
-pub fn make_async_iterator_proto_value(WellKnownSymbols, RealmState) -> Value
 
 pub fn make_func(FuncData) -> Value
 

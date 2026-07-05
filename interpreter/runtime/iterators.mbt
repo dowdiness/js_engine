@@ -583,7 +583,7 @@ pub fn RealmState::make_string_iterator_value(
 }
 
 ///|
-pub fn make_async_iterator_proto_value(
+fn make_async_iterator_proto_value(
   well_known_symbols : WellKnownSymbols,
   realm_state : RealmState,
 ) -> Value {
@@ -623,7 +623,7 @@ pub fn make_async_iterator_proto_value(
 ///|
 /// Create an Async-from-Sync Iterator wrapper per ES262 §27.1.4.
 /// Wraps a sync iterator record so it can be used with for-await-of.
-pub fn create_async_from_sync_iterator(
+fn create_async_from_sync_iterator(
   interp : Interpreter,
   sync_iterator : Value,
   sync_next_method : Value,

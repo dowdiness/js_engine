@@ -1134,7 +1134,7 @@ pub fn setup_async_generator_function_constructor(
 /// Get an async iterator from an iterable for for-await-of.
 /// Tries [Symbol.asyncIterator]() first, falls back to wrapping [Symbol.iterator]()
 /// via CreateAsyncFromSyncIterator.
-pub fn get_async_iterator_for_of(
+fn get_async_iterator_for_of(
   interp : Interpreter,
   iterable : Value,
   loc : @token.Loc,
