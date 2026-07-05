@@ -150,6 +150,8 @@ pub(all) enum InternalSlotKey {
   ExportName
   NamespaceObject
   ExportValue
+  SyncIterator
+  SyncNextMethod
   SourceText
 } derive(Eq, Hash, Debug)
 

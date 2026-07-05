@@ -49,6 +49,16 @@ pub fn get_source_text(data : ObjectData) -> Value? {
 }
 
 ///|
+pub fn get_sync_iterator(data : ObjectData) -> Value? {
+  data.bag.internal_slots.get(SyncIterator)
+}
+
+///|
+pub fn get_sync_next_method(data : ObjectData) -> Value? {
+  data.bag.internal_slots.get(SyncNextMethod)
+}
+
+///|
 pub fn get_map_iterator_target(data : ObjectData, sym_id : Int) -> Value? {
   data.bag.symbol_properties.get(sym_id)
 }

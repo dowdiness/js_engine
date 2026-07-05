@@ -143,6 +143,10 @@ pub fn get_symbol_data(ObjectData) -> Value?
 
 pub fn get_symbol_proto(realm_state? : RealmState?) -> Value
 
+pub fn get_sync_iterator(ObjectData) -> Value?
+
+pub fn get_sync_next_method(ObjectData) -> Value?
+
 pub fn get_tostringtag_value(ObjectData, WellKnownSymbols) -> String? raise
 
 pub fn get_typedarray_array_length(ObjectData) -> Value?
@@ -548,6 +552,7 @@ pub(all) struct GeneratorObject {
   params_ext : Array[@ast.Param]?
   rest_param : String?
   closure : Environment
+  is_async : Bool
   name : String?
   interpreter : Interpreter
   args : Array[Value]
@@ -606,6 +611,8 @@ pub(all) enum InternalSlotKey {
   ExportName
   NamespaceObject
   ExportValue
+  SyncIterator
+  SyncNextMethod
   SourceText
 } derive(Eq, Hash, @debug.Debug)
 
@@ -813,6 +820,7 @@ pub fn RealmState::from_symbols(SymbolState) -> Self
 pub fn RealmState::get_array_iterator_proto(Self) -> Value
 pub fn RealmState::get_array_proto(Self) -> Value
 pub fn RealmState::get_array_proto_values_intrinsic(Self) -> Value?
+pub fn RealmState::get_async_from_sync_iterator_proto(Self) -> Value
 pub fn RealmState::get_async_iterator_proto(Self) -> Value
 pub fn RealmState::get_boolean_proto(Self) -> Value
 pub fn RealmState::get_func_proto(Self) -> Value
@@ -855,6 +863,7 @@ pub(all) struct RuntimeIteratorPrototypeCaches {
   set_iterator_proto : @ref.Ref[Value?]
   regexp_string_iterator_proto : @ref.Ref[Value?]
   async_iterator_proto : @ref.Ref[Value?]
+  async_from_sync_iterator_proto : @ref.Ref[Value?]
 }
 
 pub(all) struct SetData {

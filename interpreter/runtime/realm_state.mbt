@@ -8,6 +8,7 @@ pub(all) struct RuntimeIteratorPrototypeCaches {
   set_iterator_proto : Ref[Value?]
   regexp_string_iterator_proto : Ref[Value?]
   async_iterator_proto : Ref[Value?]
+  async_from_sync_iterator_proto : Ref[Value?]
 }
 
 ///|
@@ -20,6 +21,7 @@ fn RuntimeIteratorPrototypeCaches::RuntimeIteratorPrototypeCaches() -> RuntimeIt
     set_iterator_proto: { val: None },
     regexp_string_iterator_proto: { val: None },
     async_iterator_proto: { val: None },
+    async_from_sync_iterator_proto: { val: None },
   }
 }
 
@@ -209,6 +211,25 @@ pub fn RealmState::get_async_iterator_proto(self : RealmState) -> Value {
     None => {
       let proto = make_async_iterator_proto_value(self.well_known_symbols, self)
       self.runtime_iterator_prototypes.async_iterator_proto.val = Some(proto)
+      proto
+    }
+  }
+}
+
+///|
+pub fn RealmState::get_async_from_sync_iterator_proto(
+  self : RealmState,
+) -> Value {
+  match self.runtime_iterator_prototypes.async_from_sync_iterator_proto.val {
+    Some(proto) => proto
+    None => {
+      let proto = make_async_from_sync_iterator_proto_value(
+        self.well_known_symbols,
+        self,
+      )
+      self.runtime_iterator_prototypes.async_from_sync_iterator_proto.val = Some(
+        proto,
+      )
       proto
     }
   }

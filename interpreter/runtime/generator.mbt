@@ -35,6 +35,7 @@ pub(all) struct GeneratorObject {
   params_ext : Array[@ast.Param]? // extended params (with defaults)
   rest_param : String?
   closure : Environment
+  is_async : Bool
   name : String?
   interpreter : Interpreter
   args : Array[Value] // arguments passed when generator function was called
@@ -788,6 +789,7 @@ fn create_generator_instance(
   func_prototype : Value,
   is_arrow? : Bool = false,
   callee? : Value = Undefined,
+  is_async? : Bool = false,
 ) -> Value raise Error {
   // Per spec, FunctionDeclarationInstantiation runs eagerly when generator is called,
   // NOT when .next() is called. This means parameter binding errors throw immediately.
@@ -1023,6 +1025,7 @@ fn create_generator_instance(
       params_ext,
       rest_param,
       closure,
+      is_async,
       name,
       interpreter: interp,
       args,
