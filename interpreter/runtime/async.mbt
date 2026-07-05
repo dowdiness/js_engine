@@ -391,33 +391,7 @@ fn async_step(
       _ => {
         // Fallback: Promise.resolve() unavailable; inspect awaited directly
         match awaited {
-          Promise(pd) =>
-            match pd.state {
-              Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
-              Rejected => ip.enqueue_microtask(on_reject, [pd.result])
-              Pending => {
-                let noop = make_interp_method_func(
-                  name="",
-                  length=0,
-                  realm_state=Some(ip.realm_state),
-                  fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
-                    Undefined
-                  },
-                )
-                pd.fulfill_reactions.push({
-                  handler: Some(on_fulfill),
-                  resolve: noop,
-                  reject: noop,
-                  reaction_type: Fulfill,
-                })
-                pd.reject_reactions.push({
-                  handler: Some(on_reject),
-                  resolve: noop,
-                  reject: noop,
-                  reaction_type: Reject,
-                })
-              }
-            }
+          Promise(pd) => attach_promise_reactions(ip, pd, on_fulfill, on_reject)
           _ => ip.enqueue_microtask(on_fulfill, [awaited])
         }
         return
@@ -427,33 +401,7 @@ fn async_step(
     // .then property and attach reactions directly via the internal record.
     // This avoids issues with overridden .then and matches spec PerformPromiseThen.
     match resolved_promise {
-      Promise(pd) =>
-        match pd.state {
-          Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
-          Rejected => ip.enqueue_microtask(on_reject, [pd.result])
-          Pending => {
-            let noop = make_interp_method_func(
-              name="",
-              length=0,
-              realm_state=Some(ip.realm_state),
-              fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
-                Undefined
-              },
-            )
-            pd.fulfill_reactions.push({
-              handler: Some(on_fulfill),
-              resolve: noop,
-              reject: noop,
-              reaction_type: Fulfill,
-            })
-            pd.reject_reactions.push({
-              handler: Some(on_reject),
-              resolve: noop,
-              reject: noop,
-              reaction_type: Reject,
-            })
-          }
-        }
+      Promise(pd) => attach_promise_reactions(ip, pd, on_fulfill, on_reject)
       _ => {
         // Non-native promise: use JS-level .then() property
         let then_method = ip.get_property(resolved_promise, "then", loc) catch {
@@ -674,12 +622,44 @@ fn make_async_gen_function_inner(
 }
 
 ///|
-/// Wrap generator_resume in a Promise for async generator protocol.
+/// Attach fulfill/reject reactions to a native Promise, dispatching based on state.
+/// Used by both async_step and async_generator_step.
+fn attach_promise_reactions(
+  ip : Interpreter,
+  pd : PromiseData,
+  on_fulfill : Value,
+  on_reject : Value,
+) -> Unit {
+  match pd.state {
+    Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
+    Rejected => ip.enqueue_microtask(on_reject, [pd.result])
+    Pending => {
+      let noop = make_interp_method_func(
+        name="",
+        length=0,
+        realm_state=Some(ip.realm_state),
+        fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
+          Undefined
+        },
+      )
+      pd.fulfill_reactions.push({
+        handler: Some(on_fulfill),
+        resolve: noop,
+        reject: noop,
+        reaction_type: Fulfill,
+      })
+      pd.reject_reactions.push({
+        handler: Some(on_reject),
+        resolve: noop,
+        reject: noop,
+        reaction_type: Reject,
+      })
+    }
+  }
+}
 
 ///|
 /// Async generator resume: drives generator and wraps result in a Promise.
-/// If the generator yields a native Promise value, chains .then() to resume
-/// the generator when the promise resolves, then wraps the final result.
 fn async_generator_resume(
   ip : Interpreter,
   this_val : Value,
@@ -761,32 +741,7 @@ fn async_generator_step(
             Undefined
           },
         )
-        match pd.state {
-          Fulfilled => ip.enqueue_microtask(on_fulfill, [pd.result])
-          Rejected => ip.enqueue_microtask(on_reject, [pd.result])
-          Pending => {
-            let noop = make_interp_method_func(
-              name="",
-              length=0,
-              realm_state=Some(ip.realm_state),
-              fn(_i : Interpreter, _t : Value, _a : Array[Value]) -> Value {
-                Undefined
-              },
-            )
-            pd.fulfill_reactions.push({
-              handler: Some(on_fulfill),
-              resolve: noop,
-              reject: noop,
-              reaction_type: Fulfill,
-            })
-            pd.reject_reactions.push({
-              handler: Some(on_reject),
-              resolve: noop,
-              reject: noop,
-              reaction_type: Reject,
-            })
-          }
-        }
+        attach_promise_reactions(ip, pd, on_fulfill, on_reject)
       }
       _ => {
         // Plain value — fulfill .next() promise with the iterator result
