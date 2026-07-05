@@ -1382,7 +1382,11 @@ fn Interpreter::eval_yield(
                 message="Result of the Symbol.asyncIterator method is not an object",
               )
           }
-          // Save async iterator delegation state on generator
+        // Save async iterator delegation state on generator BEFORE calling first
+        // .next() — the Promise from .next() is yielded and resolved asynchronously
+        // by async_generator_step, which needs the delegate state to handle it.
+        // (Sync yield* calls .next() first and only saves state if not immediately
+        // done — async yield* always yields because .next() returns a Promise.)
           let async_next = get_iterator_next(async_iterator)
           gen.delegate_iterator = async_iterator
           gen.delegate_next = async_next

@@ -694,12 +694,30 @@ fn async_generator_step(
   let loc = @token.Loc::default()
   let result : Value = generator_resume(ip, gen_val, resume_kind) catch {
     JsException(e) => {
+      // If delegate_resume raised after setting gen.state = Executing,
+      // clean up delegation state to avoid stale flags.
+      match get_generator_object(ip, gen_val) {
+        Some(g) => {
+          g.delegating = false
+          g.delegate_iterator = Undefined
+          g.delegate_next = Undefined
+        }
+        None => ()
+      }
       let _ = ip.call_value(reject_fn, Undefined, [e], loc) catch {
         _ => Undefined
       }
       return
     }
     e => {
+      match get_generator_object(ip, gen_val) {
+        Some(g) => {
+          g.delegating = false
+          g.delegate_iterator = Undefined
+          g.delegate_next = Undefined
+        }
+        None => ()
+      }
       let err = js_error_to_value_with_env(e, Some(ip.global))
       let _ = ip.call_value(reject_fn, Undefined, [err], loc) catch {
         _ => Undefined
@@ -742,6 +760,9 @@ fn async_generator_step(
           Some(g) => g
           None => return
         }
+        // Rescue-copy resume_kind before creating closures — the closures fire
+        // asynchronously (Promise reaction microtask) by which time this stack
+        // frame is dead and the original binding is unreachable.
         let orig_resume_kind = resume_kind
         if gen_obj.delegating && gen_obj.is_async {
           // Async yield* delegation: Promise resolves to IteratorResult {value, done}
