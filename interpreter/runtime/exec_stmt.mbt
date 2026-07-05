@@ -1778,8 +1778,12 @@ fn Interpreter::exec_stmt(
             g.for_of_awaiting_next = false
             g.resuming = false
             // Pop the loop env stacks pushed by save_for_of_resume_state
+            // and restore the yield index so subsequent yields resume correctly.
             let _ = g.loop_env_stack.pop()
-            let _ = g.loop_yield_base_stack.pop()
+            match g.loop_yield_base_stack.pop() {
+              Some(base) => g.yield_index = base
+              None => ()
+            }
           }
           _ => ()
         }
@@ -1857,11 +1861,17 @@ fn Interpreter::exec_stmt(
             ReturnSignal(v) => return ReturnSignal(v)
             BreakSignal(v, None) => {
               completion = v.unwrap_or(completion)
+              close_iterator(self, iterator, loc) catch {
+                _ => ()
+              }
               break
             }
             BreakSignal(bv, Some(l)) =>
               if label == Some(l) {
                 completion = bv.unwrap_or(completion)
+                close_iterator(self, iterator, loc) catch {
+                  _ => ()
+                }
                 break
               } else {
                 return BreakSignal(bv, Some(l))
@@ -1884,7 +1894,24 @@ fn Interpreter::exec_stmt(
         let yielded_value = if is_awaiting {
           is_awaiting = false
           match gen_opt {
-            Some(g) => g.yield_value
+            Some(g) => {
+              // Check if the resume was a throw (promise was rejected).
+              // When a throw resumes the generator, g.yield_value is Undefined
+              // (set by generator_resume's Throw handler), not a proper IteratorResult.
+              // TODO(closeOnRejection): resume_action coupling - this reads
+              // gen.resume_action directly, which is normally consumed by
+              // eval_yield. If for-await-of is refactored to use eval_yield's
+              // resume mechanism, this check would break because resume_action
+              // would be consumed before reaching here.
+              match g.resume_action {
+                ThrowAction(e) => {
+                  g.resume_action = NextAction
+                  raise JsException(e)
+                }
+                _ => ()
+              }
+              g.yield_value
+            }
             None => fail("for-await-of: no generator")
           }
         } else {

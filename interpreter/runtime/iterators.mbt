@@ -643,18 +643,89 @@ fn make_async_iterator_proto_value(
 }
 
 ///|
-/// Apply AsyncFromSyncIteratorContinuation (§27.1.4.1.1):
-/// Promise.resolve(value).then(v => CreateIterResultObject(v, done)).
-/// Errors propagate to the caller's catch handler (returns rejected promise).
-fn chain_value_through_continuation(
+/// Optionally close the sync iterator when closeOnRejection is true and done is false.
+/// Only safe for ThrowCompletion close paths (§7.4.10) — close errors are
+/// suppressed because the original ThrowCompletion takes priority.
+/// Normal-completion callers must let close errors propagate.
+fn try_close_on_rejection(
   ip : Interpreter,
-  value : Value,
+  sync_iterator : Value,
+  loc : @token.Loc,
   done : Bool,
-) -> Value raise Error {
+  close_on_rejection : Bool,
+) -> Unit {
+  if !done && close_on_rejection {
+    ip.iterator_close(sync_iterator, loc) catch {
+      _ => ()
+    }
+  }
+}
+
+///|
+/// Perform Promise.prototype.then with error handling.
+/// Returns the result promise, or a rejected promise on error.
+fn perform_promise_then(
+  ip : Interpreter,
+  promise : Value,
+  on_fulfill : Value,
+  on_reject : Value,
+  loc : @token.Loc,
+) -> Value {
+  try {
+    let then_m = ip.get_property(promise, "then", loc)
+    ip.call_value(then_m, promise, [on_fulfill, on_reject], loc)
+  } catch {
+    e => make_rejected_promise(ip, ip.error_to_js_value(e))
+  }
+}
+
+///|
+/// AsyncFromSyncIteratorContinuation (§27.1.4.1.1)
+/// Resolves the sync iterator result value through a Promise chain,
+/// and optionally closes the sync iterator on rejection.
+/// closeOnRejection=true: close sync iterator before rejecting the promise.
+/// closeOnRejection=false: only the onFulfilled handler is attached.
+fn async_from_sync_continuation(
+  ip : Interpreter,
+  result : Value,
+  sync_iterator : Value,
+  close_on_rejection : Bool,
+) -> Value {
   let loc = @token.Loc::default()
-  let promise_ctor = ip.global.get("Promise")
-  let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
-  let resolved = ip.call_value(resolve_m, promise_ctor, [value], loc)
+
+  // Steps 1-2: IteratorComplete(result)
+  let done = extract_iterator_done(ip, result, loc) catch {
+    e => return make_rejected_promise(ip, ip.error_to_js_value(e))
+  }
+
+  // Steps 3-4: IteratorValue(result)
+  let value = extract_iterator_value(ip, result, loc) catch {
+    e => return make_rejected_promise(ip, ip.error_to_js_value(e))
+  }
+
+  // Step 5: PromiseResolve(%Promise%, value)
+  let promise_ctor = ip.global.get("Promise") catch {
+    e => {
+      try_close_on_rejection(ip, sync_iterator, loc, done, close_on_rejection)
+      return make_rejected_promise(ip, ip.error_to_js_value(e))
+    }
+  }
+  let resolve_m = ip.get_property(promise_ctor, "resolve", loc) catch {
+    e => {
+      try_close_on_rejection(ip, sync_iterator, loc, done, close_on_rejection)
+      return make_rejected_promise(ip, ip.error_to_js_value(e))
+    }
+  }
+  let resolved = ip.call_value(resolve_m, promise_ctor, [value], loc) catch {
+    e => {
+      // Step 6: If abrupt, done is false, and closeOnRejection is true → close iterator
+      try_close_on_rejection(ip, sync_iterator, loc, done, close_on_rejection)
+      // Step 7: IfAbruptRejectPromise
+      return make_rejected_promise(ip, ip.error_to_js_value(e))
+    }
+  }
+
+  // Create onFulfilled — common for both paths (steps 12a/13)
   let on_fulfill = make_interp_method_func(
     name="",
     length=1,
@@ -668,17 +739,37 @@ fn chain_value_through_continuation(
       )
     },
   )
-  let on_reject = make_interp_method_func(
-    name="",
-    length=1,
-    realm_state=Some(ip.realm_state),
-    fn(_i : Interpreter, _this : Value, args : Array[Value]) -> Value raise {
-      let e = if args.length() > 0 { args[0] } else { Undefined }
-      raise JsException(e)
-    },
-  )
-  let then_m = ip.get_property(resolved, "then", loc)
-  ip.call_value(then_m, resolved, [on_fulfill, on_reject], loc)
+
+  // Steps 12-14: onRejected depends on closeOnRejection and done
+  if done || !close_on_rejection {
+    // Step 12: onRejected is undefined
+    perform_promise_then(ip, resolved, on_fulfill, Undefined, loc)
+  } else {
+    // Step 13: Create onRejected that closes the iterator first
+    let on_reject = make_interp_method_func(
+      name="",
+      length=1,
+      realm_state=Some(ip.realm_state),
+      fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise {
+        let e = if args.length() > 0 { args[0] } else { Undefined }
+        // Step 13.a.i: Return ? IteratorClose(syncIteratorRecord, ThrowCompletion(error))
+        i.iterator_close(sync_iterator, loc) catch {
+          _ => () // suppress close errors; original error wins for ThrowCompletion
+        }
+        raise JsException(e)
+      },
+    )
+    // Step 14: PerformPromiseThen
+    perform_promise_then(ip, resolved, on_fulfill, on_reject, loc)
+  }
+}
+
+///|
+fn Interpreter::error_to_js_value(self : Interpreter, e : Error) -> Value {
+  match e {
+    JsException(v) => v
+    _ => js_error_to_value_with_env(e, Some(self.global))
+  }
 }
 
 ///|
@@ -705,11 +796,7 @@ fn extract_iterator_value(
 /// Catches any raise and returns a rejected promise instead.
 fn reject_on_error(ip : Interpreter, action : () -> Value raise Error) -> Value {
   action() catch {
-    JsException(e) => make_rejected_promise(ip, e)
-    e => {
-      let err = js_error_to_value_with_env(e, Some(ip.global))
-      make_rejected_promise(ip, err)
-    }
+    e => make_rejected_promise(ip, ip.error_to_js_value(e))
   }
 }
 
@@ -738,9 +825,7 @@ fn async_from_sync_next(
     }
     let loc = @token.Loc::default()
     let result = ip.call_value(sync_next, sync_iterator, [], loc)
-    let done = extract_iterator_done(ip, result, loc)
-    let value = extract_iterator_value(ip, result, loc)
-    chain_value_through_continuation(ip, value, done)
+    async_from_sync_continuation(ip, result, sync_iterator, true)
   })
 }
 
@@ -775,18 +860,15 @@ fn async_from_sync_return(
         make_resolved_promise(ip, result)
       }
       _ => {
-        let call_result = ip.call_value(
-          return_method,
-          sync_iterator,
-          [arg],
-          loc,
-        )
+        let call_result = if args.length() > 0 {
+          ip.call_value(return_method, sync_iterator, [arg], loc)
+        } else {
+          ip.call_value(return_method, sync_iterator, [], loc)
+        }
         guard is_object_value(call_result) else {
           raise @errors.TypeError(message="Iterator result is not an object")
         }
-        let done = extract_iterator_done(ip, call_result, loc)
-        let value = extract_iterator_value(ip, call_result, loc)
-        chain_value_through_continuation(ip, value, done)
+        async_from_sync_continuation(ip, call_result, sync_iterator, false)
       }
     }
   })
@@ -815,18 +897,20 @@ fn async_from_sync_throw(
     let loc = @token.Loc::default()
     let throw_method = ip.get_property(sync_iterator, "throw", loc)
     match throw_method {
-      Undefined | Null =>
+      Undefined | Null => {
+        // Step 7a: IteratorClose(syncIteratorRecord, closeCompletion)
+        ip.iterator_close(sync_iterator, loc)
+        // If close succeeded, reject with TypeError (step 7b-c)
         raise @errors.TypeError(
           message="%AsyncFromSyncIteratorPrototype%.throw: sync iterator has no throw method",
         )
+      }
       _ => {
         let call_result = ip.call_value(throw_method, sync_iterator, [arg], loc)
         guard is_object_value(call_result) else {
           raise @errors.TypeError(message="Iterator result is not an object")
         }
-        let done = extract_iterator_done(ip, call_result, loc)
-        let value = extract_iterator_value(ip, call_result, loc)
-        chain_value_through_continuation(ip, value, done)
+        async_from_sync_continuation(ip, call_result, sync_iterator, true)
       }
     }
   })

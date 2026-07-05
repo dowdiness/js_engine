@@ -1016,7 +1016,8 @@ fn collect_eval_var_names_from_stmt(
       }
       collect_eval_var_names_from_stmt(body, names, in_block=true)
     }
-    ForOfStmt(kind, name, _, body, _) => {
+    ForOfStmt(kind, name, _, body, _)
+    | AsyncForOfStmt(kind, name, _, body, _) => {
       if kind == Some(VarKind) {
         names.push(name)
       }
@@ -1028,7 +1029,8 @@ fn collect_eval_var_names_from_stmt(
       }
       collect_eval_var_names_from_stmt(body, names, in_block=true)
     }
-    ForOfStmtPat(kind, pattern, _, body, _) => {
+    ForOfStmtPat(kind, pattern, _, body, _)
+    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
         collect_pattern_var_names(pattern, names)
       }
@@ -1036,7 +1038,7 @@ fn collect_eval_var_names_from_stmt(
     }
     ForInExpr(_, _, body, _) =>
       collect_eval_var_names_from_stmt(body, names, in_block=true)
-    ForOfExpr(_, _, body, _) =>
+    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
       collect_eval_var_names_from_stmt(body, names, in_block=true)
     // §B.3.2 LabelledStatement: a top-level labeled FuncDecl participates in
     // VarDeclaredNames per §B.3.4. Mirror caller's `in_block` flag so a label
@@ -1140,7 +1142,8 @@ fn walk_var_scoped_names(
       }
       walk_var_scoped_names(body, on_name)
     }
-    ForOfStmt(kind, name, _, body, _) => {
+    ForOfStmt(kind, name, _, body, _)
+    | AsyncForOfStmt(kind, name, _, body, _) => {
       if kind == Some(VarKind) {
         on_name(name)
       }
@@ -1152,14 +1155,16 @@ fn walk_var_scoped_names(
       }
       walk_var_scoped_names(body, on_name)
     }
-    ForOfStmtPat(kind, pattern, _, body, _) => {
+    ForOfStmtPat(kind, pattern, _, body, _)
+    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
         walk_pattern_idents(pattern, on_name)
       }
       walk_var_scoped_names(body, on_name)
     }
     ForInExpr(_, _, body, _) => walk_var_scoped_names(body, on_name)
-    ForOfExpr(_, _, body, _) => walk_var_scoped_names(body, on_name)
+    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
+      walk_var_scoped_names(body, on_name)
     LabeledStmt(_, inner, _) => walk_var_scoped_names(inner, on_name)
     SwitchStmt(_, cases, _) =>
       for case_ in cases {
@@ -1234,7 +1239,8 @@ fn hoist_var_declarations_from_stmt(
       }
       hoist_var_declarations_from_stmt(body, env)
     }
-    ForOfStmt(kind, name, _, body, _) => {
+    ForOfStmt(kind, name, _, body, _)
+    | AsyncForOfStmt(kind, name, _, body, _) => {
       if kind == Some(VarKind) && !env.bindings.contains(name) {
         env.def(name, Undefined, VarBinding)
       }
@@ -1246,14 +1252,16 @@ fn hoist_var_declarations_from_stmt(
       }
       hoist_var_declarations_from_stmt(body, env)
     }
-    ForOfStmtPat(kind, pattern, _, body, _) => {
+    ForOfStmtPat(kind, pattern, _, body, _)
+    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
         hoist_pattern(pattern, env)
       }
       hoist_var_declarations_from_stmt(body, env)
     }
     ForInExpr(_, _, body, _) => hoist_var_declarations_from_stmt(body, env)
-    ForOfExpr(_, _, body, _) => hoist_var_declarations_from_stmt(body, env)
+    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
+      hoist_var_declarations_from_stmt(body, env)
     LabeledStmt(_, inner, _) => hoist_var_declarations_from_stmt(inner, env)
     SwitchStmt(_, cases, _) =>
       for case_ in cases {
@@ -1584,7 +1592,8 @@ fn walk_eval_annex_b_stmt(
         excluded~,
       )
     }
-    ForOfStmt(kind, name, _, body, _) => {
+    ForOfStmt(kind, name, _, body, _)
+    | AsyncForOfStmt(kind, name, _, body, _) => {
       let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame.add(name)
@@ -1614,7 +1623,8 @@ fn walk_eval_annex_b_stmt(
         excluded~,
       )
     }
-    ForOfStmtPat(kind, pattern, _, body, _) => {
+    ForOfStmtPat(kind, pattern, _, body, _)
+    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
       let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
@@ -1639,7 +1649,7 @@ fn walk_eval_annex_b_stmt(
         in_block=true,
         excluded~,
       )
-    ForOfExpr(_, _, body, _) =>
+    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
       walk_eval_annex_b_stmt(
         interp,
         body,

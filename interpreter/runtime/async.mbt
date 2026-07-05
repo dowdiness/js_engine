@@ -770,7 +770,11 @@ fn async_generator_step(
             name="",
             length=1,
             realm_state=Some(ip.realm_state),
-            fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise {
+            fn(
+              i : Interpreter,
+              _this : Value,
+              args : Array[Value],
+            ) -> Value raise {
               let ir = if args.length() > 0 { args[0] } else { Undefined }
               let ir_done = i.get_property(ir, "done", @token.Loc::default()) catch {
                 _ => Bool(false)
@@ -788,7 +792,11 @@ fn async_generator_step(
                 gen_obj.delegating = false
                 gen_obj.delegate_iterator = Undefined
                 gen_obj.delegate_next = Undefined
-                let ir_value = i.get_property(ir, "value", @token.Loc::default()) catch {
+                let ir_value = i.get_property(
+                  ir,
+                  "value",
+                  @token.Loc::default(),
+                ) catch {
                   _ => Undefined
                 }
                 // Set up generator state and continue body via generator_continue.
@@ -800,7 +808,11 @@ fn async_generator_step(
                   _ => NextAction
                 }
                 let final_result = generator_continue(i, gen_obj)
-                let final_done = i.get_property(final_result, "done", @token.Loc::default()) catch {
+                let final_done = i.get_property(
+                  final_result,
+                  "done",
+                  @token.Loc::default(),
+                ) catch {
                   _ => Bool(true)
                 }
                 let is_final_done = match final_done {
@@ -810,19 +822,32 @@ fn async_generator_step(
                 if is_final_done {
                   // Create proper IteratorResult with Object.prototype per spec
                   let obj_proto = i.realm_state.get_obj_proto()
-                  let final_val = i.get_property(final_result, "value", @token.Loc::default()) catch {
+                  let final_val = i.get_property(
+                    final_result,
+                    "value",
+                    @token.Loc::default(),
+                  ) catch {
                     _ => Undefined
                   }
                   let proper_result = make_iterator_result_object_with_proto(
                     final_val, true, obj_proto,
                   )
-                  let _ = i.call_value(res_fn, Undefined, [proper_result], @token.Loc::default()) catch {
+                  let _ = i.call_value(
+                    res_fn,
+                    Undefined,
+                    [proper_result],
+                    @token.Loc::default(),
+                  ) catch {
                     _ => Undefined
                   }
                 } else {
                   // Generator yielded again (e.g. from finally in Return case or
                   // a post-delegate yield) — let async_generator_step handle the value
-                  let final_val = i.get_property(final_result, "value", @token.Loc::default()) catch {
+                  let final_val = i.get_property(
+                    final_result,
+                    "value",
+                    @token.Loc::default(),
+                  ) catch {
                     _ => Undefined
                   }
                   async_generator_step(i, gen, Next(final_val), res_fn, rej_fn)
@@ -830,7 +855,12 @@ fn async_generator_step(
               } else {
                 // Delegation yielded — resolve outer promise with IteratorResult
                 gen_obj.state = SuspendedYield
-                let _ = i.call_value(res_fn, Undefined, [ir], @token.Loc::default()) catch {
+                let _ = i.call_value(
+                  res_fn,
+                  Undefined,
+                  [ir],
+                  @token.Loc::default(),
+                ) catch {
                   _ => Undefined
                 }
               }
@@ -851,7 +881,12 @@ fn async_generator_step(
               gen_obj.delegate_iterator = Undefined
               gen_obj.delegate_next = Undefined
               gen_obj.state = Completed
-              let _ = i.call_value(rej_fn, Undefined, [e], @token.Loc::default()) catch {
+              let _ = i.call_value(
+                rej_fn,
+                Undefined,
+                [e],
+                @token.Loc::default(),
+              ) catch {
                 _ => Undefined
               }
               Undefined
