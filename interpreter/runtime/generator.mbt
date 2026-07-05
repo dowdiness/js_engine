@@ -1444,12 +1444,27 @@ fn Interpreter::eval_yield(
           let next_method = get_iterator_next(iterator)
           // Start delegation: call next() and yield first value
           let first_result = self.call_value(next_method, iterator, [], loc)
-          let (done, value) = extract_iter_result(first_result)
+          guard is_object_value(first_result) else {
+            raise @errors.TypeError(message="Iterator result is not an object")
+          }
+          // Extract done via proper Get (§7.4.2 IteratorComplete) so getter
+          // side-effects fire correctly.
+          let done = is_truthy(self.get_property(first_result, "done", loc))
           if done {
-            // Delegate is immediately done — yield* evaluates to the return value
-            value
+            // Delegate is immediately done — extract value via proper Get
+            // (§7.4.3 IteratorValue) and yield* evaluates to the return value.
+            self.get_property(first_result, "value", loc)
           } else {
-            // Save delegation state on generator and yield the value
+            // Save delegation state on generator and yield the value.
+            // Read value from bag.properties directly — must NOT trigger
+            // value getter when done is false (test262 check).
+            let value = match first_result {
+              Object(data) => match data.bag.properties.get("value") {
+                Some(v) => v
+                None => Undefined
+              }
+              _ => Undefined
+            }
             gen.delegate_iterator = iterator
             gen.delegate_next = next_method
             gen.delegating = true
@@ -1487,23 +1502,25 @@ fn get_iterator_next(iterator : Value) -> Value raise Error {
 }
 
 ///|
-/// Extract done and value from an iterator result
-fn extract_iter_result(result : Value) -> (Bool, Value) raise Error {
-  match result {
-    Object(data) => {
-      let done = match data.bag.properties.get("done") {
-        Some(v) => is_truthy(v)
-        None => false
-      }
-      let value = match data.bag.properties.get("value") {
-        Some(v) => v
-        None => Undefined
-      }
-      (done, value)
-    }
-    _ => raise @errors.TypeError(message="Iterator result is not an object")
+/// Inject an error into the generator body via ThrowAction.
+/// Clears delegation state and resumes the generator with the error.
+fn inject_error(
+  interp : Interpreter,
+  gen : GeneratorObject,
+  error : Error,
+) -> Value raise Error {
+  gen.delegating = false
+  gen.delegate_iterator = Undefined
+  gen.delegate_next = Undefined
+  let v = match error {
+    JsException(js_val) => js_val
+    _ => js_error_to_value_with_env(error, Some(interp.global))
   }
+  gen.resume_action = ThrowAction(v)
+  generator_continue(interp, gen)
 }
+
+///|
 
 ///|
 /// Resume a delegated yield* — forward the resume to the delegate iterator
@@ -1524,20 +1541,35 @@ fn delegate_resume(
         gen.state = SuspendedYield
         create_iter_result(result, false)
       } else {
-        let (done, value) = extract_iter_result(result)
-        if done {
-          // Delegate completed — yield* expression evaluates to the return value
-          // Resume the outer generator body (state is already Executing from caller)
-          gen.delegating = false
-          gen.delegate_iterator = Undefined
-          gen.delegate_next = Undefined
-          gen.yield_value = value
-          gen.resume_action = NextAction
-          generator_continue(interp, gen)
-        } else {
-          // Delegate yielded — suspend the outer generator
-          gen.state = SuspendedYield
-          create_iter_result(value, false)
+        // Sync delegation: call next(), check IsObject, extract done/value.
+        // ALL errors propagate into the generator body via ThrowAction.
+        let process = fn() -> Value raise Error {
+          guard is_object_value(result) else {
+            raise @errors.TypeError(message="Iterator result is not an object")
+          }
+          let done = is_truthy(interp.get_property(result, "done", loc))
+          if done {
+            let value = interp.get_property(result, "value", loc)
+            gen.delegating = false
+            gen.delegate_iterator = Undefined
+            gen.delegate_next = Undefined
+            gen.yield_value = value
+            gen.resume_action = NextAction
+            generator_continue(interp, gen)
+          } else {
+            let value = match result {
+              Object(data) => match data.bag.properties.get("value") {
+                Some(v) => v
+                None => Undefined
+              }
+              _ => Undefined
+            }
+            gen.state = SuspendedYield
+            create_iter_result(value, false)
+          }
+        }
+        process() catch {
+          e => inject_error(interp, gen, e)
         }
       }
     }
@@ -1551,19 +1583,33 @@ fn delegate_resume(
             gen.state = SuspendedYield
             create_iter_result(result, false)
           } else {
-            let (done, value) = extract_iter_result(result)
-            if done {
-              // Delegate completed after throw — resume outer with return value
-              gen.delegating = false
-              gen.delegate_iterator = Undefined
-              gen.delegate_next = Undefined
-              gen.yield_value = value
-              gen.resume_action = NextAction
-              generator_continue(interp, gen)
-            } else {
-              // Delegate yielded after throw (e.g. from catch block)
-              gen.state = SuspendedYield
-              create_iter_result(value, false)
+            let process = fn() -> Value raise Error {
+              guard is_object_value(result) else {
+                raise @errors.TypeError(message="Iterator result is not an object")
+              }
+              let done = is_truthy(interp.get_property(result, "done", loc))
+              if done {
+                let value = interp.get_property(result, "value", loc)
+                gen.delegating = false
+                gen.delegate_iterator = Undefined
+                gen.delegate_next = Undefined
+                gen.yield_value = value
+                gen.resume_action = NextAction
+                generator_continue(interp, gen)
+              } else {
+                let value = match result {
+                  Object(data) => match data.bag.properties.get("value") {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                  _ => Undefined
+                }
+                gen.state = SuspendedYield
+                create_iter_result(value, false)
+              }
+            }
+            process() catch {
+              e => inject_error(interp, gen, e)
             }
           }
         }
@@ -1604,20 +1650,33 @@ fn delegate_resume(
             gen.state = SuspendedYield
             create_iter_result(result, false)
           } else {
-            let (done, value) = extract_iter_result(result)
-            if done {
-              // Delegate completed after .return() — propagate through outer
-              // body so finally blocks execute
-              gen.delegating = false
-              gen.delegate_iterator = Undefined
-              gen.delegate_next = Undefined
-              gen.yield_value = value
-              gen.resume_action = ReturnAction(value)
-              generator_continue(interp, gen)
-            } else {
-              // Delegate yielded from finally — outer stays suspended delegating
-              gen.state = SuspendedYield
-              create_iter_result(value, false)
+            let process = fn() -> Value raise Error {
+              guard is_object_value(result) else {
+                raise @errors.TypeError(message="Iterator result is not an object")
+              }
+              let done = is_truthy(interp.get_property(result, "done", loc))
+              if done {
+                let value = interp.get_property(result, "value", loc)
+                gen.delegating = false
+                gen.delegate_iterator = Undefined
+                gen.delegate_next = Undefined
+                gen.yield_value = value
+                gen.resume_action = ReturnAction(value)
+                generator_continue(interp, gen)
+              } else {
+                let value = match result {
+                  Object(data) => match data.bag.properties.get("value") {
+                    Some(v) => v
+                    None => Undefined
+                  }
+                  _ => Undefined
+                }
+                gen.state = SuspendedYield
+                create_iter_result(value, false)
+              }
+            }
+            process() catch {
+              e => inject_error(interp, gen, e)
             }
           }
         }
