@@ -658,24 +658,21 @@ pub fn create_async_from_sync_iterator(
         Undefined | Null =>
           make_resolved_promise(ip, make_iterator_result_object(value, true))
         _ => {
-          let result = ip.call_value(
-            sync_return_method,
-            sync_iterator,
-            [value],
-            loc,
-          )
+          let result = try {
+            ip.call_value(sync_return_method, sync_iterator, [value], loc)
+          } catch {
+            JsException(e) => return make_rejected_promise(ip, e)
+          e => {
+            let err_val = js_error_to_value_with_env(e, Some(ip.global))
+            return make_rejected_promise(ip, err_val)
+          }
+          }
+          if !is_object_value(result) {
+            raise @errors.TypeError(message="Iterator result is not an object")
+          }
           let promise_ctor = ip.global.get("Promise")
           let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
-          let resolved_promise = ip.call_value(
-            resolve_m,
-            promise_ctor,
-            [result],
-            loc,
-          )
-          if !is_object_value(result) {
-            ()
-          }
-          resolved_promise
+          ip.call_value(resolve_m, promise_ctor, [result], loc)
         }
       }
     },
@@ -690,12 +687,15 @@ pub fn create_async_from_sync_iterator(
       match sync_throw_method {
         Undefined | Null => make_rejected_promise(ip, value)
         _ => {
-          let result = ip.call_value(
-            sync_throw_method,
-            sync_iterator,
-            [value],
-            loc,
-          )
+          let result = try {
+            ip.call_value(sync_throw_method, sync_iterator, [value], loc)
+          } catch {
+            JsException(e) => return make_rejected_promise(ip, e)
+          e => {
+            let err_val = js_error_to_value_with_env(e, Some(ip.global))
+            return make_rejected_promise(ip, err_val)
+          }
+          }
           let promise_ctor = ip.global.get("Promise")
           let resolve_m = ip.get_property(promise_ctor, "resolve", loc)
           ip.call_value(resolve_m, promise_ctor, [result], loc)
