@@ -90,6 +90,7 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.env = None
   gen.delegate_iterator = Undefined
   gen.delegate_next = Undefined
+  gen.delegating = false
   gen.for_of_iterator = Undefined
   gen.for_of_next = Undefined
   gen.for_of_iterator_stack.clear()
@@ -1330,50 +1331,123 @@ fn Interpreter::eval_yield(
           Some(expr) => self.eval_expr(ctx, expr, env)
           None => Undefined
         }
-        // Get iterator from iterable
         let loc = @token.Loc::default()
-        let iterator_sym = self.realm_state.well_known_symbols.iterator
-        let iterator_method = self.get_computed_property(
-          iterable,
-          Symbol(iterator_sym),
-          loc,
-        )
-        let iterator = match iterator_method {
-          Object(data) =>
-            match data.callable {
-              Some(_) => {
-                let result = self.call_value(iterator_method, iterable, [], loc)
-                match result {
-                  Object(_) => result
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Result of the Symbol.iterator method is not an object",
-                    )
-                }
+        if gen.is_async {
+          // Async yield*: try @@asyncIterator first, fall back to wrapping sync @@iterator
+          let async_iter_sym = self.realm_state.well_known_symbols.async_iterator
+          let async_iter_method = self.get_computed_property(
+            iterable,
+            Symbol(async_iter_sym),
+            loc,
+          )
+          let async_iterator = match async_iter_method {
+            Object(data) =>
+              match data.callable {
+                Some(_) => self.call_value(async_iter_method, iterable, [], loc)
+                None =>
+                  raise @errors.TypeError(
+                    message="Result of the Symbol.asyncIterator method is not callable",
+                  )
               }
-              None =>
-                raise @errors.TypeError(
-                  message="Symbol.iterator is not a function",
-                )
+            Undefined | Null => {
+              // Fall back to wrapping sync iterator via CreateAsyncFromSyncIterator
+              let sync_iter_sym = self.realm_state.well_known_symbols.iterator
+              let sync_iter_method = self.get_computed_property(
+                iterable,
+                Symbol(sync_iter_sym),
+                loc,
+              )
+              let sync_iterator = match sync_iter_method {
+                Object(data) =>
+                  match data.callable {
+                    Some(_) =>
+                      self.call_value(sync_iter_method, iterable, [], loc)
+                    None =>
+                      raise @errors.TypeError(
+                        message="Symbol.iterator is not a function",
+                      )
+                  }
+                _ =>
+                  raise @errors.TypeError(
+                    message="yield* delegate is not async iterable",
+                  )
+              }
+              let sync_next = get_iterator_next(sync_iterator)
+              create_async_from_sync_iterator(
+                self, sync_iterator, sync_next, loc,
+              )
             }
-          _ =>
-            raise @errors.TypeError(message="yield* delegate is not iterable")
-        }
-        // Get next method
-        let next_method = get_iterator_next(iterator)
-        // Start delegation: call next() and yield first value
-        let first_result = self.call_value(next_method, iterator, [], loc)
-        let (done, value) = extract_iter_result(first_result)
-        if done {
-          // Delegate is immediately done — yield* evaluates to the return value
-          value
-        } else {
-          // Save delegation state on generator and yield the value
-          gen.delegate_iterator = iterator
-          gen.delegate_next = next_method
+            _ =>
+              raise @errors.TypeError(
+                message="Result of the Symbol.asyncIterator method is not an object",
+              )
+          }
+          // Save async iterator delegation state on generator
+          let async_next = get_iterator_next(async_iterator)
+          gen.delegate_iterator = async_iterator
+          gen.delegate_next = async_next
           gen.delegating = true
           gen.resume_at_yield = current_yield_index
-          raise YieldSignal(value)
+          gen.yield_resume_values[current_yield_index] = Undefined
+          // Start delegation by calling async .next() — returns a Promise
+          let first_result = self.call_value(
+            async_next,
+            async_iterator,
+            [],
+            loc,
+          )
+          // Yield the Promise for async_generator_step to await and handle the result
+          raise YieldSignal(first_result)
+        } else {
+          // Sync yield*: get iterator via Symbol.iterator
+          let iterator_sym = self.realm_state.well_known_symbols.iterator
+          let iterator_method = self.get_computed_property(
+            iterable,
+            Symbol(iterator_sym),
+            loc,
+          )
+          let iterator = match iterator_method {
+            Object(data) =>
+              match data.callable {
+                Some(_) => {
+                  let result = self.call_value(
+                    iterator_method,
+                    iterable,
+                    [],
+                    loc,
+                  )
+                  match result {
+                    Object(_) => result
+                    _ =>
+                      raise @errors.TypeError(
+                        message="Result of the Symbol.iterator method is not an object",
+                      )
+                  }
+                }
+                None =>
+                  raise @errors.TypeError(
+                    message="Symbol.iterator is not a function",
+                  )
+              }
+            _ =>
+              raise @errors.TypeError(message="yield* delegate is not iterable")
+          }
+          // Get next method
+          let next_method = get_iterator_next(iterator)
+          // Start delegation: call next() and yield first value
+          let first_result = self.call_value(next_method, iterator, [], loc)
+          let (done, value) = extract_iter_result(first_result)
+          if done {
+            // Delegate is immediately done — yield* evaluates to the return value
+            value
+          } else {
+            // Save delegation state on generator and yield the value
+            gen.delegate_iterator = iterator
+            gen.delegate_next = next_method
+            gen.delegating = true
+            gen.resume_at_yield = current_yield_index
+            raise YieldSignal(value)
+          }
         }
       } else {
         // Normal yield: evaluate argument and suspend
@@ -1437,20 +1511,26 @@ fn delegate_resume(
   match resume_kind {
     Next(v) => {
       let result = interp.call_value(next_method, iterator, [v], loc)
-      let (done, value) = extract_iter_result(result)
-      if done {
-        // Delegate completed — yield* expression evaluates to the return value
-        // Resume the outer generator body (state is already Executing from caller)
-        gen.delegating = false
-        gen.delegate_iterator = Undefined
-        gen.delegate_next = Undefined
-        gen.yield_value = value
-        gen.resume_action = NextAction
-        generator_continue(interp, gen)
-      } else {
-        // Delegate yielded — suspend the outer generator
+      if gen.is_async {
+        // Async delegation: .next() returns a Promise — yield it for async_generator_step
         gen.state = SuspendedYield
-        create_iter_result(value, false)
+        create_iter_result(result, false)
+      } else {
+        let (done, value) = extract_iter_result(result)
+        if done {
+          // Delegate completed — yield* expression evaluates to the return value
+          // Resume the outer generator body (state is already Executing from caller)
+          gen.delegating = false
+          gen.delegate_iterator = Undefined
+          gen.delegate_next = Undefined
+          gen.yield_value = value
+          gen.resume_action = NextAction
+          generator_continue(interp, gen)
+        } else {
+          // Delegate yielded — suspend the outer generator
+          gen.state = SuspendedYield
+          create_iter_result(value, false)
+        }
       }
     }
     Throw(e) => {
@@ -1459,19 +1539,24 @@ fn delegate_resume(
       match throw_method {
         Some(tm) => {
           let result = interp.call_value(tm, iterator, [e], loc)
-          let (done, value) = extract_iter_result(result)
-          if done {
-            // Delegate completed after throw — resume outer with return value
-            gen.delegating = false
-            gen.delegate_iterator = Undefined
-            gen.delegate_next = Undefined
-            gen.yield_value = value
-            gen.resume_action = NextAction
-            generator_continue(interp, gen)
-          } else {
-            // Delegate yielded after throw (e.g. from catch block)
+          if gen.is_async {
             gen.state = SuspendedYield
-            create_iter_result(value, false)
+            create_iter_result(result, false)
+          } else {
+            let (done, value) = extract_iter_result(result)
+            if done {
+              // Delegate completed after throw — resume outer with return value
+              gen.delegating = false
+              gen.delegate_iterator = Undefined
+              gen.delegate_next = Undefined
+              gen.yield_value = value
+              gen.resume_action = NextAction
+              generator_continue(interp, gen)
+            } else {
+              // Delegate yielded after throw (e.g. from catch block)
+              gen.state = SuspendedYield
+              create_iter_result(value, false)
+            }
           }
         }
         None => {
@@ -1507,20 +1592,25 @@ fn delegate_resume(
       match return_method {
         Some(rm) => {
           let result = interp.call_value(rm, iterator, [v], loc)
-          let (done, value) = extract_iter_result(result)
-          if done {
-            // Delegate completed after .return() — propagate through outer
-            // body so finally blocks execute
-            gen.delegating = false
-            gen.delegate_iterator = Undefined
-            gen.delegate_next = Undefined
-            gen.yield_value = value
-            gen.resume_action = ReturnAction(value)
-            generator_continue(interp, gen)
-          } else {
-            // Delegate yielded from finally — outer stays suspended delegating
+          if gen.is_async {
             gen.state = SuspendedYield
-            create_iter_result(value, false)
+            create_iter_result(result, false)
+          } else {
+            let (done, value) = extract_iter_result(result)
+            if done {
+              // Delegate completed after .return() — propagate through outer
+              // body so finally blocks execute
+              gen.delegating = false
+              gen.delegate_iterator = Undefined
+              gen.delegate_next = Undefined
+              gen.yield_value = value
+              gen.resume_action = ReturnAction(value)
+              generator_continue(interp, gen)
+            } else {
+              // Delegate yielded from finally — outer stays suspended delegating
+              gen.state = SuspendedYield
+              create_iter_result(value, false)
+            }
           }
         }
         None => {
