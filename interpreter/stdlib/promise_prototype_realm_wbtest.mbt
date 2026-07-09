@@ -1,32 +1,9 @@
 ///| Whitebox tests for stdlib Promise prototype ownership by RealmState.
 
 ///|
-fn new_promise_realm_state() -> @runtime.RealmState {
-  @runtime.RealmState::from_symbols(@runtime.SymbolState::new())
-}
-
-///|
-fn shifted_promise_realm_state() -> @runtime.RealmState {
-  let symbols = @runtime.SymbolState::new()
-  let _ = symbols.new_symbol(Some("offset"))
-  @runtime.RealmState::from_symbols(symbols)
-}
-
-///|
-fn assert_promise_object(
-  label : String,
-  value : Value,
-) -> ObjectData raise Error {
-  match value {
-    Object(data) => data
-    _ => fail(label + " expected object value")
-  }
-}
-
-///|
 test "promise prototype is realm-isolated" {
-  let default_realm = new_promise_realm_state()
-  let shifted_realm = shifted_promise_realm_state()
+  let default_realm = new_realm_state()
+  let shifted_realm = shifted_realm_state()
   let default_env = @runtime.Environment::new()
   let shifted_env = @runtime.Environment::new()
   setup_promise(default_env, default_realm)
@@ -44,10 +21,10 @@ test "promise prototype is realm-isolated" {
 
   // The two prototypes must be physically distinct objects, not a shared
   // module-global value re-used across realms.
-  let default_data = assert_promise_object(
+  let default_data = assert_object_value(
     "default Promise.prototype", default_proto,
   )
-  let shifted_data = assert_promise_object(
+  let shifted_data = assert_object_value(
     "shifted Promise.prototype", shifted_proto,
   )
   if physical_equal(default_data, shifted_data) {
@@ -59,7 +36,7 @@ test "promise prototype is realm-isolated" {
   // silently route dispatch through one source while user code observes the
   // other (cache-for-X invariant; Codex finding on PR #138).
   let default_ctor_proto = ctor_prototype_from_env(default_env, "Promise")
-  let default_ctor_proto_data = assert_promise_object(
+  let default_ctor_proto_data = assert_object_value(
     "default Promise constructor .prototype", default_ctor_proto,
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
@@ -68,7 +45,7 @@ test "promise prototype is realm-isolated" {
     )
   }
   let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "Promise")
-  let shifted_ctor_proto_data = assert_promise_object(
+  let shifted_ctor_proto_data = assert_object_value(
     "shifted Promise constructor .prototype", shifted_ctor_proto,
   )
   if !physical_equal(shifted_data, shifted_ctor_proto_data) {
@@ -90,8 +67,8 @@ test "promise prototype is realm-isolated" {
     Undefined => fail("expected Promise.prototype.then in shifted realm")
     _ => ()
   }
-  let default_then_obj = assert_promise_object("default then", default_then)
-  let shifted_then_obj = assert_promise_object("shifted then", shifted_then)
+  let default_then_obj = assert_object_value("default then", default_then)
+  let shifted_then_obj = assert_object_value("shifted then", shifted_then)
   if physical_equal(default_then_obj, shifted_then_obj) {
     fail("Promise.prototype.then must not be shared across realms")
   }
@@ -99,7 +76,7 @@ test "promise prototype is realm-isolated" {
 
 ///|
 test "promise method lookup returns undefined for unknown keys" {
-  let realm = new_promise_realm_state()
+  let realm = new_realm_state()
   setup_promise(@runtime.Environment::new(), realm)
   let promise_data = @runtime.new_promise_data()
   match get_promise_method(promise_data, "no_such_method", realm) {
@@ -110,7 +87,7 @@ test "promise method lookup returns undefined for unknown keys" {
 
 ///|
 test "promise method lookup returns undefined when prototype is absent" {
-  let realm = new_promise_realm_state()
+  let realm = new_realm_state()
   // No setup_promise call - realm.promise_prototype.val stays None.
   let promise_data = @runtime.new_promise_data()
   match get_promise_method(promise_data, "then", realm) {

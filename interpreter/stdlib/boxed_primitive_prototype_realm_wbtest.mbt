@@ -8,32 +8,9 @@
 /// objects depending on which API the user called.
 
 ///|
-fn new_boxed_primitive_realm_state() -> @runtime.RealmState {
-  @runtime.RealmState::from_symbols(@runtime.SymbolState::new())
-}
-
-///|
-fn shifted_boxed_primitive_realm_state() -> @runtime.RealmState {
-  let symbols = @runtime.SymbolState::new()
-  let _ = symbols.new_symbol(Some("offset"))
-  @runtime.RealmState::from_symbols(symbols)
-}
-
-///|
-fn assert_boxed_primitive_object(
-  label : String,
-  value : Value,
-) -> ObjectData raise Error {
-  match value {
-    Object(data) => data
-    _ => fail(label + " expected object value")
-  }
-}
-
-///|
 test "String prototype is realm-isolated" {
-  let default_realm = new_boxed_primitive_realm_state()
-  let shifted_realm = shifted_boxed_primitive_realm_state()
+  let default_realm = new_realm_state()
+  let shifted_realm = shifted_realm_state()
   let default_env = @runtime.Environment::new()
   let shifted_env = @runtime.Environment::new()
   setup_builtins_with_realm_state(default_env, [], default_realm)
@@ -46,10 +23,10 @@ test "String prototype is realm-isolated" {
     Some(v) => v
     None => fail("shifted realm String.prototype missing")
   }
-  let default_data = assert_boxed_primitive_object(
+  let default_data = assert_object_value(
     "default String.prototype", default_proto,
   )
-  let shifted_data = assert_boxed_primitive_object(
+  let shifted_data = assert_object_value(
     "shifted String.prototype", shifted_proto,
   )
   if physical_equal(default_data, shifted_data) {
@@ -61,7 +38,7 @@ test "String prototype is realm-isolated" {
   // these would let a regression silently route Object.getPrototypeOf
   // through one source while user code observes the other.
   let default_ctor_proto = ctor_prototype_from_env(default_env, "String")
-  let default_ctor_proto_data = assert_boxed_primitive_object(
+  let default_ctor_proto_data = assert_object_value(
     "default String constructor .prototype", default_ctor_proto,
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
@@ -70,7 +47,7 @@ test "String prototype is realm-isolated" {
     )
   }
   let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "String")
-  let shifted_ctor_proto_data = assert_boxed_primitive_object(
+  let shifted_ctor_proto_data = assert_object_value(
     "shifted String constructor .prototype", shifted_ctor_proto,
   )
   if !physical_equal(shifted_data, shifted_ctor_proto_data) {
@@ -82,8 +59,8 @@ test "String prototype is realm-isolated" {
 
 ///|
 test "Number prototype is realm-isolated" {
-  let default_realm = new_boxed_primitive_realm_state()
-  let shifted_realm = shifted_boxed_primitive_realm_state()
+  let default_realm = new_realm_state()
+  let shifted_realm = shifted_realm_state()
   let default_env = @runtime.Environment::new()
   let shifted_env = @runtime.Environment::new()
   setup_builtins_with_realm_state(default_env, [], default_realm)
@@ -96,17 +73,17 @@ test "Number prototype is realm-isolated" {
     Some(v) => v
     None => fail("shifted realm Number.prototype missing")
   }
-  let default_data = assert_boxed_primitive_object(
+  let default_data = assert_object_value(
     "default Number.prototype", default_proto,
   )
-  let shifted_data = assert_boxed_primitive_object(
+  let shifted_data = assert_object_value(
     "shifted Number.prototype", shifted_proto,
   )
   if physical_equal(default_data, shifted_data) {
     fail("Number.prototype must not be shared across realms")
   }
   let default_ctor_proto = ctor_prototype_from_env(default_env, "Number")
-  let default_ctor_proto_data = assert_boxed_primitive_object(
+  let default_ctor_proto_data = assert_object_value(
     "default Number constructor .prototype", default_ctor_proto,
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
@@ -115,7 +92,7 @@ test "Number prototype is realm-isolated" {
     )
   }
   let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "Number")
-  let shifted_ctor_proto_data = assert_boxed_primitive_object(
+  let shifted_ctor_proto_data = assert_object_value(
     "shifted Number constructor .prototype", shifted_ctor_proto,
   )
   if !physical_equal(shifted_data, shifted_ctor_proto_data) {
@@ -127,8 +104,8 @@ test "Number prototype is realm-isolated" {
 
 ///|
 test "Boolean prototype is realm-isolated" {
-  let default_realm = new_boxed_primitive_realm_state()
-  let shifted_realm = shifted_boxed_primitive_realm_state()
+  let default_realm = new_realm_state()
+  let shifted_realm = shifted_realm_state()
   let default_env = @runtime.Environment::new()
   let shifted_env = @runtime.Environment::new()
   setup_builtins_with_realm_state(default_env, [], default_realm)
@@ -141,17 +118,17 @@ test "Boolean prototype is realm-isolated" {
     Some(v) => v
     None => fail("shifted realm Boolean.prototype missing")
   }
-  let default_data = assert_boxed_primitive_object(
+  let default_data = assert_object_value(
     "default Boolean.prototype", default_proto,
   )
-  let shifted_data = assert_boxed_primitive_object(
+  let shifted_data = assert_object_value(
     "shifted Boolean.prototype", shifted_proto,
   )
   if physical_equal(default_data, shifted_data) {
     fail("Boolean.prototype must not be shared across realms")
   }
   let default_ctor_proto = ctor_prototype_from_env(default_env, "Boolean")
-  let default_ctor_proto_data = assert_boxed_primitive_object(
+  let default_ctor_proto_data = assert_object_value(
     "default Boolean constructor .prototype", default_ctor_proto,
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
@@ -160,7 +137,7 @@ test "Boolean prototype is realm-isolated" {
     )
   }
   let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "Boolean")
-  let shifted_ctor_proto_data = assert_boxed_primitive_object(
+  let shifted_ctor_proto_data = assert_object_value(
     "shifted Boolean constructor .prototype", shifted_ctor_proto,
   )
   if !physical_equal(shifted_data, shifted_ctor_proto_data) {
@@ -172,8 +149,8 @@ test "Boolean prototype is realm-isolated" {
 
 ///|
 test "Symbol prototype is realm-isolated" {
-  let default_realm = new_boxed_primitive_realm_state()
-  let shifted_realm = shifted_boxed_primitive_realm_state()
+  let default_realm = new_realm_state()
+  let shifted_realm = shifted_realm_state()
   let default_env = @runtime.Environment::new()
   let shifted_env = @runtime.Environment::new()
   setup_builtins_with_realm_state(default_env, [], default_realm)
@@ -186,17 +163,17 @@ test "Symbol prototype is realm-isolated" {
     Some(v) => v
     None => fail("shifted realm Symbol.prototype missing")
   }
-  let default_data = assert_boxed_primitive_object(
+  let default_data = assert_object_value(
     "default Symbol.prototype", default_proto,
   )
-  let shifted_data = assert_boxed_primitive_object(
+  let shifted_data = assert_object_value(
     "shifted Symbol.prototype", shifted_proto,
   )
   if physical_equal(default_data, shifted_data) {
     fail("Symbol.prototype must not be shared across realms")
   }
   let default_ctor_proto = ctor_prototype_from_env(default_env, "Symbol")
-  let default_ctor_proto_data = assert_boxed_primitive_object(
+  let default_ctor_proto_data = assert_object_value(
     "default Symbol constructor .prototype", default_ctor_proto,
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
@@ -205,7 +182,7 @@ test "Symbol prototype is realm-isolated" {
     )
   }
   let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "Symbol")
-  let shifted_ctor_proto_data = assert_boxed_primitive_object(
+  let shifted_ctor_proto_data = assert_object_value(
     "shifted Symbol constructor .prototype", shifted_ctor_proto,
   )
   if !physical_equal(shifted_data, shifted_ctor_proto_data) {
