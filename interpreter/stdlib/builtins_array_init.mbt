@@ -1267,9 +1267,7 @@ fn setup_array_builtins(
                 loc,
               ) catch {
                 e => {
-                  interp.iterator_close(iterator, loc) catch {
-                    _ => ()
-                  }
+                  interp.iterator_close_throw(iterator, loc)
                   raise e
                 }
               }

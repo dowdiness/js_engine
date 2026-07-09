@@ -16856,6 +16856,36 @@ test "IteratorClose: throw-completion suppresses return() error (original throw 
 }
 
 ///|
+/// IteratorClose §7.4.11: throw completion skips IsObject check on return() result.
+/// Set.prototype.isSupersetOf closes the other keys iterator without a catch
+/// wrapper, so a non-object return() must not replace the original throw.
+test "IteratorClose: throw-completion skips return() non-object TypeError (isSupersetOf)" {
+  let src =
+    #|var returnCalled = false;
+    #|var set = new Set([1, 2, 3]);
+    #|var other = {
+    #|  size: 1,
+    #|  has() { return true; },
+    #|  keys() {
+    #|    return {
+    #|      next() { return { get value() { throw new Error("value threw"); }, done: false }; },
+    #|      return() { returnCalled = true; return 42; }
+    #|    };
+    #|  }
+    #|};
+    #|try {
+    #|  set.isSupersetOf(other);
+    #|  console.log("no error");
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|  console.log(returnCalled);
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["value threw", "true", "false"])
+}
+
+///|
 /// Proxy [[Construct]] newTarget: Reflect.construct passes newTarget to trap
 test "Proxy construct: Reflect.construct newTarget forwarded to trap" {
   let src =

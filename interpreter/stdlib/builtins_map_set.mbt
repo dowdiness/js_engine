@@ -761,9 +761,7 @@ fn setup_map_builtins(
             }
             let value = interp.iterator_result_value(iter_result, loc)
             if !@runtime.is_object_value(value) {
-              interp.iterator_close(iterator, loc) catch {
-                _ => ()
-              }
+              interp.iterator_close_throw(iterator, loc)
               raise @errors.TypeError(
                 message="Iterator value " +
                   @runtime.to_js_string(value) +
@@ -776,9 +774,7 @@ fn setup_map_builtins(
               loc,
             ) catch {
               e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
+                interp.iterator_close_throw(iterator, loc)
                 raise e
               }
             }
@@ -788,17 +784,13 @@ fn setup_map_builtins(
               loc,
             ) catch {
               e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
+                interp.iterator_close_throw(iterator, loc)
                 raise e
               }
             }
             let _ = interp.call_value(adder, new_map, [key, val], loc) catch {
               e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
+                interp.iterator_close_throw(iterator, loc)
                 raise e
               }
             }
@@ -867,9 +859,7 @@ fn setup_map_builtins(
               loc,
             ) catch {
               e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
+                interp.iterator_close_throw(iterator, loc)
                 raise e
               }
             }
@@ -1251,7 +1241,7 @@ fn setup_set_builtins(
         }
         let next_val = interp.iterator_result_value(iter_result, loc) catch {
           e => {
-            interp.iterator_close(key_iter, loc)
+            interp.iterator_close_throw(key_iter, loc)
             raise e
           }
         }
@@ -1334,7 +1324,7 @@ fn setup_set_builtins(
           }
           let next_val = interp.iterator_result_value(iter_result, loc) catch {
             e => {
-              interp.iterator_close(key_iter, loc)
+              interp.iterator_close_throw(key_iter, loc)
               raise e
             }
           }
@@ -1428,7 +1418,7 @@ fn setup_set_builtins(
           }
           let next_val = interp.iterator_result_value(iter_result, loc) catch {
             e => {
-              interp.iterator_close(key_iter, loc)
+              interp.iterator_close_throw(key_iter, loc)
               raise e
             }
           }
@@ -1492,7 +1482,7 @@ fn setup_set_builtins(
         }
         let next_val = interp.iterator_result_value(iter_result, loc) catch {
           e => {
-            interp.iterator_close(key_iter, loc)
+            interp.iterator_close_throw(key_iter, loc)
             raise e
           }
         }
@@ -1604,7 +1594,7 @@ fn setup_set_builtins(
         }
         let next_val = interp.iterator_result_value(iter_result, loc) catch {
           e => {
-            interp.iterator_close(key_iter, loc)
+            interp.iterator_close_throw(key_iter, loc)
             raise e
           }
         }
@@ -1679,7 +1669,7 @@ fn setup_set_builtins(
           }
           let next_val = interp.iterator_result_value(iter_result, loc) catch {
             e => {
-              interp.iterator_close(key_iter, loc)
+              interp.iterator_close_throw(key_iter, loc)
               raise e
             }
           }
@@ -1835,9 +1825,7 @@ fn setup_set_builtins(
             let value = interp.iterator_result_value(iter_result, loc)
             let _ = interp.call_value(adder, new_set, [value], loc) catch {
               e => {
-                interp.iterator_close(iterator, loc) catch {
-                  _ => ()
-                }
+                interp.iterator_close_throw(iterator, loc)
                 raise e
               }
             }

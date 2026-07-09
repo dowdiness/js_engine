@@ -1734,9 +1734,8 @@ fn Interpreter::close_dstr_stack_on_abrupt_resume(
     }
     ThrowAction(e) => {
       for iter in iters {
-        self.iterator_close(iter, loc) catch {
-          _ => ()
-        }
+        // ThrowCompletion: §7.4.11 step 5 — close errors discarded.
+        self.iterator_close_throw(iter, loc)
       }
       raise JsException(e)
     }

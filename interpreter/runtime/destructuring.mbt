@@ -149,9 +149,7 @@ fn Interpreter::bind_pattern(
                     }
                   }
                 } else if !iter_done {
-                  self.iterator_close(iterator, loc_dstr) catch {
-                    _ => ()
-                  }
+                  self.iterator_close_throw(iterator, loc_dstr)
                 }
                 raise e
               }
@@ -426,9 +424,7 @@ fn Interpreter::assign_pattern(
                         }
                       }
                     } else if !iter_done_a {
-                      self.iterator_close(iterator_a, loc_dstr) catch {
-                        _ => ()
-                      }
+                      self.iterator_close_throw(iterator_a, loc_dstr)
                     }
                     raise e
                   }
@@ -441,9 +437,7 @@ fn Interpreter::assign_pattern(
                     iterator_a, next_method_a, loc_dstr,
                   ) catch {
                     e => {
-                      self.iterator_close(iterator_a, loc_dstr) catch {
-                        _ => ()
-                      }
+                      self.iterator_close_throw(iterator_a, loc_dstr)
                       raise e
                     }
                   }
@@ -470,9 +464,7 @@ fn Interpreter::assign_pattern(
                               }
                             }
                           } else if !iter_done_a {
-                            self.iterator_close(iterator_a, loc_dstr) catch {
-                              _ => ()
-                            }
+                            self.iterator_close_throw(iterator_a, loc_dstr)
                           }
                           raise e
                         }
@@ -486,9 +478,7 @@ fn Interpreter::assign_pattern(
                 self.put_lref(ctx, lref, final_val, env) catch {
                   e => {
                     if !iter_done_a && !(e is YieldSignal(_)) {
-                      self.iterator_close(iterator_a, loc_dstr) catch {
-                        _ => ()
-                      }
+                      self.iterator_close_throw(iterator_a, loc_dstr)
                     }
                     raise e
                   }
@@ -520,9 +510,7 @@ fn Interpreter::assign_pattern(
                         }
                       }
                     } else if !iter_done_a {
-                      self.iterator_close(iterator_a, loc_dstr) catch {
-                        _ => ()
-                      }
+                      self.iterator_close_throw(iterator_a, loc_dstr)
                     }
                     raise e
                   }
@@ -555,9 +543,7 @@ fn Interpreter::assign_pattern(
                   }
                 }
               } else if !iter_done_a {
-                self.iterator_close(iterator_a, loc_dstr) catch {
-                  _ => ()
-                }
+                self.iterator_close_throw(iterator_a, loc_dstr)
               }
               raise e
             }
@@ -569,9 +555,7 @@ fn Interpreter::assign_pattern(
                 iterator_a, next_method_a, loc_dstr,
               ) catch {
                 e => {
-                  self.iterator_close(iterator_a, loc_dstr) catch {
-                    _ => ()
-                  }
+                  self.iterator_close_throw(iterator_a, loc_dstr)
                   raise e
                 }
               }
@@ -587,9 +571,7 @@ fn Interpreter::assign_pattern(
           self.put_lref(ctx, lref, make_array(rest_elements), env) catch {
             e => {
               if !iter_done_a && !(e is YieldSignal(_)) {
-                self.iterator_close(iterator_a, loc_dstr) catch {
-                  _ => ()
-                }
+                self.iterator_close_throw(iterator_a, loc_dstr)
               }
               raise e
             }

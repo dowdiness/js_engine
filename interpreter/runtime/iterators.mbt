@@ -644,9 +644,7 @@ fn make_async_iterator_proto_value(
 
 ///|
 /// Optionally close the sync iterator when closeOnRejection is true and done is false.
-/// Only safe for ThrowCompletion close paths (§7.4.10) — close errors are
-/// suppressed because the original ThrowCompletion takes priority.
-/// Normal-completion callers must let close errors propagate.
+/// ThrowCompletion path only (§7.4.11 step 5) — close errors are discarded.
 fn try_close_on_rejection(
   ip : Interpreter,
   sync_iterator : Value,
@@ -655,9 +653,7 @@ fn try_close_on_rejection(
   close_on_rejection : Bool,
 ) -> Unit {
   if !done && close_on_rejection {
-    ip.iterator_close(sync_iterator, loc) catch {
-      _ => ()
-    }
+    ip.iterator_close_throw(sync_iterator, loc)
   }
 }
 
@@ -753,9 +749,7 @@ fn async_from_sync_continuation(
       fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise {
         let e = if args.length() > 0 { args[0] } else { Undefined }
         // Step 13.a.i: Return ? IteratorClose(syncIteratorRecord, ThrowCompletion(error))
-        i.iterator_close(sync_iterator, loc) catch {
-          _ => () // suppress close errors; original error wins for ThrowCompletion
-        }
+        i.iterator_close_throw(sync_iterator, loc)
         raise JsException(e)
       },
     )

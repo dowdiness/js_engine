@@ -72,7 +72,11 @@ pub fn Interpreter::iterator_step_value(
 }
 
 ///|
-/// Perform `IteratorClose(iteratorRecord, completion)`'s `return` call.
+/// `IteratorClose(iteratorRecord, completion)` for a non-throw completion.
+///
+/// Resolves `"return"` via [[Get]], calls it if present, and raises on
+/// GetMethod/Call/IsObject failures (§7.4.11 steps 6–7). Use
+/// `iterator_close_throw` when `completion` is a throw completion.
 pub fn Interpreter::iterator_close(
   self : Interpreter,
   iterator : Value,
@@ -93,6 +97,35 @@ pub fn Interpreter::iterator_close(
           raise @errors.TypeError(
             message="Iterator return() must return an object",
           )
+        }
+      }
+  }
+}
+
+///|
+/// `IteratorClose(iteratorRecord, ThrowCompletion(...))` (§7.4.11 step 5).
+///
+/// Attempts `return()` for cleanup, then discards GetMethod/Call/IsObject
+/// errors so the original ThrowCompletion remains the completion value.
+/// Infallible: callers re-raise the original error after this returns.
+pub fn Interpreter::iterator_close_throw(
+  self : Interpreter,
+  iterator : Value,
+  loc : @token.Loc,
+) -> Unit {
+  if !is_object_value(iterator) {
+    return
+  }
+  let return_fn = self.get_property(iterator, "return", loc) catch {
+    _ => return
+  }
+  match return_fn {
+    Undefined | Null => ()
+    _ =>
+      if is_callable(return_fn) {
+        // Discard Call errors and skip IsObject: throw completion wins (§7.4.11 step 5).
+        let _ = self.call_value(return_fn, iterator, [], loc) catch {
+          _ => Undefined
         }
       }
   }

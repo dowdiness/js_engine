@@ -28,7 +28,9 @@ fn assert_raises(f : () -> Unit raise) -> Unit {
 
 ///|
 async fn run_node_script(script : String) -> ProcessCapture? {
-  let capture = @async.with_timeout_opt(3000, () => {
+  // CI runners can be slow to spawn node + evaluate SharedArrayBuffer/Atomics
+  // harness scripts; 3s was flaky under parallel Test262 jobs.
+  let capture = @async.with_timeout_opt(15000, () => {
     collect_output_hard("node", ["-e", script])
   }) catch {
     err => {
