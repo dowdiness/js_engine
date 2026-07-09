@@ -55,16 +55,10 @@ fn get_set_record(
 }
 
 ///|
-// Engine-private negative symbol IDs for Set Iterator internal slots.
-const SET_ITERATOR_NEXT_INDEX_SYMBOL_ID = -133
+const SET_ITERATOR_NAME = "Set Iterator"
 
 ///|
-const SET_ITERATOR_TARGET_SYMBOL_ID = -134
-
-///|
-const SET_ITERATOR_KIND_SYMBOL_ID = -135
-
-///|
+// Set iterator kind constants (§23.2.5.1 CreateSetIterator).
 const SET_ITERATOR_KIND_VALUES = 0
 
 ///|
@@ -1060,35 +1054,23 @@ fn setup_set_builtins(
 }
 
 ///|
-fn set_iterator_type_error() -> Value raise Error {
-  raise @errors.TypeError(
-    message="Set Iterator.prototype.next requires that |this| be a Set Iterator",
-  )
-}
-
-///|
 /// §23.2.5.2.1 %SetIteratorPrototype%.next
 fn set_iterator_next(this_val : Value) -> Value raise Error {
+  let slots = keyed_collection_iterator_set_slots()
   match this_val {
     Object(data) => {
-      guard data.class_name == "Set Iterator" else {
-        return set_iterator_type_error()
+      guard data.class_name == SET_ITERATOR_NAME else {
+        return keyed_collection_iterator_type_error(SET_ITERATOR_NAME)
       }
-      let current = match
-        data.bag.symbol_properties.get(SET_ITERATOR_NEXT_INDEX_SYMBOL_ID) {
-        Some(Number(n)) => n.to_int()
-        _ => return set_iterator_type_error()
-      }
-      let kind = match
-        data.bag.symbol_properties.get(SET_ITERATOR_KIND_SYMBOL_ID) {
-        Some(Number(k)) => k.to_int()
-        _ => return set_iterator_type_error()
+      let (current, iterated_set, kind) = match
+        read_keyed_collection_iterator_state(data, slots) {
+        Some(state) => state
+        None => return keyed_collection_iterator_type_error(SET_ITERATOR_NAME)
       }
       // §23.2.5.2.1 step 7: [[IteratedSet]] undefined → already done
-      match data.bag.symbol_properties.get(SET_ITERATOR_TARGET_SYMBOL_ID) {
-        None => return set_iterator_type_error()
-        Some(Undefined) => return @runtime.create_iter_result(Undefined, true)
-        Some(Set(set_data)) => {
+      match iterated_set {
+        Undefined => @runtime.create_iter_result(Undefined, true)
+        Set(set_data) => {
           // tombstone mode was entered at make_set_iterator so that delete/clear
           // tombstone instead of compacting while this iterator is live.
           // Skip tombstoned slots (entries deleted during live iteration).
@@ -1106,8 +1088,10 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
           }
           if idx < set_data.values.length() {
             let value = set_data.values[idx]
-            data.bag.symbol_properties[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(
-              (idx + 1).to_double(),
+            @runtime.set_map_iterator_next_index(
+              data,
+              slots.next_index,
+              Number((idx + 1).to_double()),
             )
             let result_value = if kind == SET_ITERATOR_KIND_ENTRIES {
               @runtime.make_array([value, value])
@@ -1123,79 +1107,26 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
             // is the responsibility of forEach when it exits tombstone mode
             // (tombstones_pre_existed=false at forEach entry). Until then, tombstones
             // persist — size is bounded by the count of deleted entries (≤ values.length).
-            data.bag.symbol_properties[SET_ITERATOR_TARGET_SYMBOL_ID] = Undefined
+            @runtime.detach_map_iterator_target(data, slots.target)
             @runtime.create_iter_result(Undefined, true)
           }
         }
-        _ => set_iterator_type_error()
+        _ => keyed_collection_iterator_type_error(SET_ITERATOR_NAME)
       }
     }
-    _ => set_iterator_type_error()
+    _ => keyed_collection_iterator_type_error(SET_ITERATOR_NAME)
   }
 }
 
 ///|
 /// Get or create the realm-owned %SetIteratorPrototype%
 fn get_set_iterator_proto(realm_state : @runtime.RealmState) -> Value {
-  let well_known_symbols = realm_state.well_known_symbols
-  match realm_state.runtime_iterator_prototypes.set_iterator_proto.val {
-    Some(proto) => proto
-    None => {
-      let iterator_sym = well_known_symbols.iterator
-      let tostringtag_sym = well_known_symbols.to_string_tag
-      let proto_sym_props : Map[Int, Value] = {}
-      proto_sym_props[tostringtag_sym.id] = Value::String_("Set Iterator")
-      let proto_props : Map[String, Value] = {}
-      let proto_sym_descs : Map[Int, PropDescriptor] = {}
-      proto_sym_descs[tostringtag_sym.id] = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      proto_sym_props[iterator_sym.id] = @runtime.make_method_func(
-        name="[Symbol.iterator]",
-        length=0,
-        realm_state=Some(realm_state),
-        fn(this_val, _args) { this_val },
-      )
-      proto_props["next"] = @runtime.make_method_func(
-        name="next",
-        length=0,
-        realm_state=Some(realm_state),
-        fn(this_val, _args) raise { set_iterator_next(this_val) },
-      )
-      let proto = Value::Object({
-        bag: {
-          properties: proto_props,
-          symbol_properties: proto_sym_props,
-          descriptors: {
-            "next": {
-              writable: true,
-              enumerable: false,
-              configurable: true,
-              getter: None,
-              setter: None,
-              is_accessor: false,
-            },
-          },
-          symbol_descriptors: proto_sym_descs,
-          internal_slots: {},
-        },
-        prototype: realm_state.get_iterator_proto(),
-        callable: None,
-        class_name: "Set Iterator",
-        extensible: true,
-        arraybuffer_state: None,
-      })
-      realm_state.runtime_iterator_prototypes.set_iterator_proto.val = Some(
-        proto,
-      )
-      proto
-    }
-  }
+  get_or_create_keyed_collection_iterator_proto(
+    realm_state.runtime_iterator_prototypes.set_iterator_proto,
+    realm_state,
+    SET_ITERATOR_NAME,
+    set_iterator_next,
+  )
 }
 
 ///|
@@ -1210,34 +1141,19 @@ fn make_set_iterator(
   set_data : SetData,
   kind : Int,
 ) -> Value {
-  // Enter tombstone mode so delete/clear tombstone (not compact) during for..of.
-  if set_data.tombstones is None {
-    set_data.tombstones = Some(@set.Set::default())
-  }
-  let set_iter_proto = get_set_iterator_proto(realm_state)
-  let iter_sym_props : Map[Int, Value] = {}
-  iter_sym_props[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
-  iter_sym_props[SET_ITERATOR_TARGET_SYMBOL_ID] = Value::Set(set_data)
-  iter_sym_props[SET_ITERATOR_KIND_SYMBOL_ID] = Value::Number(kind.to_double())
-  let iter_sym_descs : Map[Int, PropDescriptor] = {}
-  let slot_desc = map_iterator_internal_slot_descriptor()
-  iter_sym_descs[SET_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
-  iter_sym_descs[SET_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
-  iter_sym_descs[SET_ITERATOR_KIND_SYMBOL_ID] = slot_desc
-  Value::Object({
-    bag: {
-      properties: {},
-      symbol_properties: iter_sym_props,
-      descriptors: {},
-      symbol_descriptors: iter_sym_descs,
-      internal_slots: {},
+  make_keyed_collection_iterator(
+    get_set_iterator_proto(realm_state),
+    SET_ITERATOR_NAME,
+    keyed_collection_iterator_set_slots(),
+    Value::Set(set_data),
+    kind,
+    before_create=fn() {
+      // Enter tombstone mode so delete/clear tombstone (not compact) during for..of.
+      if set_data.tombstones is None {
+        set_data.tombstones = Some(@set.Set::default())
+      }
     },
-    prototype: set_iter_proto,
-    callable: None,
-    class_name: "Set Iterator",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+  )
 }
 
 ///|

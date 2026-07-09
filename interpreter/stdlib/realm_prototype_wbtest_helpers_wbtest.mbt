@@ -17,10 +17,7 @@ fn shifted_realm_state() -> @runtime.RealmState {
 }
 
 ///|
-fn assert_object_value(
-  label : String,
-  value : Value,
-) -> ObjectData raise Error {
+fn assert_object_value(label : String, value : Value) -> ObjectData raise Error {
   match value {
     Object(data) => data
     _ => fail(label + " expected object value")
