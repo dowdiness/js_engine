@@ -655,7 +655,9 @@ fn try_close_on_rejection(
   close_on_rejection : Bool,
 ) -> Unit {
   if !done && close_on_rejection {
-    ip.iterator_close(sync_iterator, loc) catch {
+    // ThrowCompletion path: close errors must not replace the original (§7.4.11 step 5).
+    // catch is only for the Unit (non-raise) signature; throw_completion suppresses raises.
+    ip.iterator_close(sync_iterator, loc, throw_completion=true) catch {
       _ => ()
     }
   }
@@ -753,9 +755,8 @@ fn async_from_sync_continuation(
       fn(i : Interpreter, _this : Value, args : Array[Value]) -> Value raise {
         let e = if args.length() > 0 { args[0] } else { Undefined }
         // Step 13.a.i: Return ? IteratorClose(syncIteratorRecord, ThrowCompletion(error))
-        i.iterator_close(sync_iterator, loc) catch {
-          _ => () // suppress close errors; original error wins for ThrowCompletion
-        }
+        // throw_completion=true: §7.4.11 step 5 — original ThrowCompletion wins.
+        i.iterator_close(sync_iterator, loc, throw_completion=true)
         raise JsException(e)
       },
     )

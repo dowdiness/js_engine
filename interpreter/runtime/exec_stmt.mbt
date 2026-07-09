@@ -918,9 +918,7 @@ fn Interpreter::exec_stmt(
           None =>
             env.assign_with_strict(name, value, ctx.strict) catch {
               e => {
-                close_iterator(self, iterator, loc) catch {
-                  _ => ()
-                }
+                close_iterator(self, iterator, loc, throw_completion=true)
                 raise e
               }
             }
@@ -940,9 +938,7 @@ fn Interpreter::exec_stmt(
               )
             } else {
               // Close iterator on exception (IteratorClose)
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
+              close_iterator(self, iterator, loc, throw_completion=true)
             }
             raise e
           }
@@ -1153,9 +1149,7 @@ fn Interpreter::exec_stmt(
                     }
                   } else {
                     // Throw completion — outer close error discarded (§7.4.9 step 4)
-                    close_iterator(self, iterator, loc) catch {
-                      _ => ()
-                    }
+                    close_iterator(self, iterator, loc, throw_completion=true)
                   }
                   raise e
                 }
@@ -1182,9 +1176,7 @@ fn Interpreter::exec_stmt(
                     }
                   } else {
                     // Throw completion — outer close error discarded (§7.4.9 step 4)
-                    close_iterator(self, iterator, loc) catch {
-                      _ => ()
-                    }
+                    close_iterator(self, iterator, loc, throw_completion=true)
                   }
                   raise e
                 }
@@ -1202,9 +1194,7 @@ fn Interpreter::exec_stmt(
                 gen_opt, iterator, next_method, body_env, body_yield_base,
               )
             } else {
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
+              close_iterator(self, iterator, loc, throw_completion=true)
             }
             raise e
           }
@@ -1356,9 +1346,7 @@ fn Interpreter::exec_stmt(
                   gen_opt, iterator, next_method, body_env, assignment_yield_base,
                 )
               } else {
-                close_iterator(self, iterator, loc) catch {
-                  _ => ()
-                }
+                close_iterator(self, iterator, loc, throw_completion=true)
               }
               raise e
             }
@@ -1375,9 +1363,7 @@ fn Interpreter::exec_stmt(
                 gen_opt, iterator, next_method, body_env, body_yield_base,
               )
             } else {
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
+              close_iterator(self, iterator, loc, throw_completion=true)
             }
             raise e
           }
@@ -1861,17 +1847,13 @@ fn Interpreter::exec_stmt(
             ReturnSignal(v) => return ReturnSignal(v)
             BreakSignal(v, None) => {
               completion = v.unwrap_or(completion)
-              close_iterator(self, iterator, loc) catch {
-                _ => ()
-              }
+              close_iterator(self, iterator, loc, throw_completion=true)
               break
             }
             BreakSignal(bv, Some(l)) =>
               if label == Some(l) {
                 completion = bv.unwrap_or(completion)
-                close_iterator(self, iterator, loc) catch {
-                  _ => ()
-                }
+                close_iterator(self, iterator, loc, throw_completion=true)
                 break
               } else {
                 return BreakSignal(bv, Some(l))
@@ -1963,9 +1945,7 @@ fn Interpreter::exec_stmt(
           None =>
             env.assign_with_strict(name, value, ctx.strict) catch {
               e => {
-                close_iterator(self, iterator, loc) catch {
-                  _ => ()
-                }
+                close_iterator(self, iterator, loc, throw_completion=true)
                 raise e
               }
             }
@@ -2110,9 +2090,7 @@ fn Interpreter::exec_stmt(
                       gen_opt, iterator, next_method, body_env, binding_yield_base,
                     )
                   } else {
-                    close_iterator(self, iterator, loc) catch {
-                      _ => ()
-                    }
+                    close_iterator(self, iterator, loc, throw_completion=true)
                   }
                   raise e
                 }
@@ -2127,9 +2105,7 @@ fn Interpreter::exec_stmt(
                       gen_opt, iterator, next_method, body_env, binding_yield_base,
                     )
                   } else {
-                    close_iterator(self, iterator, loc) catch {
-                      _ => ()
-                    }
+                    close_iterator(self, iterator, loc, throw_completion=true)
                   }
                   raise e
                 }
@@ -2248,9 +2224,7 @@ fn Interpreter::exec_stmt(
                   gen_opt, iterator, next_method, body_env, assignment_yield_base,
                 )
               } else {
-                close_iterator(self, iterator, loc) catch {
-                  _ => ()
-                }
+                close_iterator(self, iterator, loc, throw_completion=true)
               }
               raise e
             }
@@ -2468,7 +2442,7 @@ fn Interpreter::exec_stmts(
 }
 
 ///|
-/// §7.4.10 IteratorClose: call iterator.return() if it exists.
+/// §7.4.11 IteratorClose: call iterator.return() if it exists.
 ///
 /// Resolves "return" via the [[Get]] dispatcher (`Interpreter::get_property`)
 /// rather than walking `bag.properties` directly, so:
@@ -2478,18 +2452,20 @@ fn Interpreter::exec_stmts(
 ///   "return" through the same dispatcher path used by ordinary property access
 ///
 /// Per §7.3.10 GetMethod: undefined/null → skip; non-callable → TypeError.
-/// Per §7.4.10 step 6: a non-Object result from `return()` → TypeError.
+/// Per §7.4.11: a non-Object result from `return()` → TypeError, except when
+/// `throw_completion` is true (step 5: the original ThrowCompletion wins).
 ///
-/// This helper does NOT distinguish throw vs non-throw completions — that
-/// responsibility lives at the call sites, which wrap the call in
-/// `try { … } catch { _ => () }` when the surrounding completion is a throw
-/// (so the original error wins per §7.4.10 step 4).
+/// Pass `throw_completion=true` for throw-completion callers so close errors
+/// (GetMethod/Call/IsObject) cannot replace the original error. Non-throw
+/// callers (break/return/normal) keep the default and must let close errors
+/// propagate.
 fn close_iterator(
   interp : Interpreter,
   iterator : Value,
   loc : @token.Loc,
+  throw_completion? : Bool = false,
 ) -> Unit raise Error {
-  interp.iterator_close(iterator, loc)
+  interp.iterator_close(iterator, loc, throw_completion~)
 }
 
 ///|
@@ -2710,9 +2686,7 @@ fn exec_for_body_signal(
           gen_opt, iterator, next_method, body_env, body_yield_base,
         )
       } else {
-        close_iterator(interp, iterator, loc) catch {
-          _ => ()
-        }
+        close_iterator(interp, iterator, loc, throw_completion=true)
       }
       raise e
     }

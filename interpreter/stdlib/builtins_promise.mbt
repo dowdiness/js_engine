@@ -64,24 +64,13 @@ fn get_promise_iterator_record(
 /// IteratorClose used by Promise combinators on abrupt completion during
 /// iteration (e.g., next() throws, accessing .done or .value throws).
 /// This is NOT invoked when a promise settles first - only for iteration errors.
+/// Always a ThrowCompletion path (§7.4.11 step 5).
 fn promise_iterator_close(
   interp : Interpreter,
   iterator : Value,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  let return_method = interp.get_property(iterator, "return", loc)
-  match return_method {
-    Undefined | Null => ()
-    _ => {
-      guard @runtime.is_function_value(return_method) else {
-        raise @errors.TypeError(message="iterator.return is not a function")
-      }
-      let return_result = interp.call_value(return_method, iterator, [], loc)
-      guard return_result is Object(_) else {
-        raise @errors.TypeError(message="Iterator result is not an object")
-      }
-    }
-  }
+  interp.iterator_close(iterator, loc, throw_completion=true)
 }
 
 ///|
@@ -101,11 +90,8 @@ fn reject_combinator_abrupt(
 ) -> Value raise Error {
   let reason = @runtime.js_error_to_value_with_env(err, Some(interp.global))
   if has_iterator && !iterator_done {
-    // For throw completions, IteratorClose errors do not replace the original
-    // abrupt reason.
-    promise_iterator_close(interp, iterator, loc) catch {
-      _ => ()
-    }
+    // ThrowCompletion: close errors suppressed inside iterator_close.
+    promise_iterator_close(interp, iterator, loc)
   }
   let _ = interp.call_value(reject, Undefined, [reason], loc)
   result_promise

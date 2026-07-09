@@ -662,7 +662,7 @@ pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
 pub fn Interpreter::get_prototype_from_constructor(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::has_property(Self, Value, String) -> Bool raise
 pub fn Interpreter::has_property_key(Self, Value, Value) -> Bool raise
-pub fn Interpreter::iterator_close(Self, Value, @token.Loc) -> Unit raise
+pub fn Interpreter::iterator_close(Self, Value, @token.Loc, throw_completion? : Bool) -> Unit raise
 pub fn Interpreter::iterator_result_value(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::iterator_step_result(Self, Value, Value, @token.Loc) -> Value? raise
 pub fn Interpreter::iterator_step_value(Self, Value, Value, @token.Loc) -> Value? raise

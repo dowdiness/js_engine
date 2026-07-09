@@ -73,23 +73,39 @@ pub fn Interpreter::iterator_step_value(
 
 ///|
 /// Perform `IteratorClose(iteratorRecord, completion)`'s `return` call.
+///
+/// When `throw_completion` is true, the surrounding completion is a throw
+/// completion (§7.4.11 step 5): after attempting `return()`, return the
+/// original completion and do not raise GetMethod/Call/IsObject errors from
+/// the close itself. Callers that re-raise the original error after close
+/// must pass `throw_completion=true` so a non-object `return()` result cannot
+/// replace that error.
 pub fn Interpreter::iterator_close(
   self : Interpreter,
   iterator : Value,
   loc : @token.Loc,
+  throw_completion? : Bool = false,
 ) -> Unit raise Error {
   if !is_object_value(iterator) {
     return
   }
-  let return_fn = self.get_property(iterator, "return", loc)
+  let return_fn = self.get_property(iterator, "return", loc) catch {
+    e => if throw_completion { return } else { raise e }
+  }
   match return_fn {
     Undefined | Null => ()
     _ =>
       if !is_callable(return_fn) {
+        if throw_completion {
+          return
+        }
         raise @errors.TypeError(message="iterator.return is not a function")
       } else {
-        let result = self.call_value(return_fn, iterator, [], loc)
-        if !is_object_value(result) {
+        let result = self.call_value(return_fn, iterator, [], loc) catch {
+          e => if throw_completion { return } else { raise e }
+        }
+        // §7.4.11 step 5: throw completion wins before IsObject (step 7).
+        if !throw_completion && !is_object_value(result) {
           raise @errors.TypeError(
             message="Iterator return() must return an object",
           )
