@@ -1,48 +1,6 @@
 ///| Whitebox tests for stdlib iterator prototype cache ownership.
 
 ///|
-fn new_realm_state() -> @runtime.RealmState {
-  @runtime.RealmState::from_symbols(@runtime.SymbolState::new())
-}
-
-///|
-fn shifted_realm_state() -> @runtime.RealmState {
-  let symbols = @runtime.SymbolState::new()
-  let _ = symbols.new_symbol(Some("offset"))
-  @runtime.RealmState::from_symbols(symbols)
-}
-
-///|
-fn assert_same_object(
-  label : String,
-  left : Value,
-  right : Value,
-) -> Unit raise Error {
-  match (left, right) {
-    (Object(left_data), Object(right_data)) =>
-      if !physical_equal(left_data, right_data) {
-        fail(label + " expected same object")
-      }
-    _ => fail(label + " expected object values")
-  }
-}
-
-///|
-fn assert_distinct_object(
-  label : String,
-  left : Value,
-  right : Value,
-) -> Unit raise Error {
-  match (left, right) {
-    (Object(left_data), Object(right_data)) =>
-      if physical_equal(left_data, right_data) {
-        fail(label + " expected distinct objects")
-      }
-    _ => fail(label + " expected object values")
-  }
-}
-
-///|
 fn assert_object_prototype(
   label : String,
   value : Value,
