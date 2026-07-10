@@ -136,3 +136,29 @@ pub fn install_builtin_symbol_string(
   data.bag.symbol_properties[sym_id] = Value::String_(tag)
   data.bag.symbol_descriptors[sym_id] = builtin_non_writable_desc()
 }
+
+///|
+/// Cache-for-X install contract (#504): atomically pin `proto` in the realm
+/// dispatch cache (`realm_proto_cache`), on the constructor's `.prototype`
+/// property, and register `ctor` in `env`.
+///
+/// Invariant: `realm_proto_cache.val` must equal the constructor object's
+/// `.prototype` property in every realm. Splitting these updates causes silent
+/// dual-source dispatch bugs (PR #138).
+///
+/// Pilot: Map/Set (`setup_map_builtins` / `setup_set_builtins`). Remaining
+/// families to migrate: Array, Promise, WeakMap/WeakSet, boxed primitives, …
+pub fn install_realm_pinned_builtin_constructor(
+  env : Environment,
+  realm_proto_cache : Ref[Value?],
+  ctor_name : String,
+  ctor : Value,
+  proto : Value,
+) -> Unit {
+  guard ctor is Object(data) else {
+    abort("built-in constructor must be an object: \{ctor_name}")
+  }
+  realm_proto_cache.val = Some(proto)
+  install_builtin_frozen_data(data, "prototype", proto)
+  env.def_builtin(ctor_name, ctor)
+}

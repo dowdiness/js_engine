@@ -417,8 +417,6 @@ fn setup_map_builtins(
     arraybuffer_state: None,
   })
 
-  realm_state.map_prototype.val = Some(map_proto)
-
   // Add Map.prototype[Symbol.iterator] = Map.prototype.entries
   match map_proto {
     Object(data) => {
@@ -534,12 +532,6 @@ fn setup_map_builtins(
       new_map
     },
   )
-  // Add prototype property to Map constructor
-  match map_ctor {
-    Object(data) =>
-      @runtime.install_builtin_frozen_data(data, "prototype", map_proto)
-    _ => ()
-  }
   // Add Map.groupBy static method
   match map_ctor {
     Object(ctor_data) => {
@@ -627,13 +619,13 @@ fn setup_map_builtins(
     }
     _ => ()
   }
-  env.def_builtin("Map", map_ctor)
-  // Set Map.prototype.constructor = Map
-  match map_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(data, "constructor", map_ctor)
-    _ => ()
-  }
+  install_keyed_collection_builtin_constructor(
+    env,
+    realm_state.map_prototype,
+    "Map",
+    map_ctor,
+    map_proto,
+  )
 }
 
 ///|
