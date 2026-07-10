@@ -59,22 +59,31 @@ pub fn get_sync_next_method(data : ObjectData) -> Value? {
 }
 
 ///|
-pub fn get_map_iterator_target(data : ObjectData, sym_id : Int) -> Value? {
+pub fn get_keyed_collection_iterator_target(
+  data : ObjectData,
+  sym_id : Int,
+) -> Value? {
   data.bag.symbol_properties.get(sym_id)
 }
 
 ///|
-pub fn get_map_iterator_next_index(data : ObjectData, sym_id : Int) -> Value? {
+pub fn get_keyed_collection_iterator_next_index(
+  data : ObjectData,
+  sym_id : Int,
+) -> Value? {
   data.bag.symbol_properties.get(sym_id)
 }
 
 ///|
-pub fn get_map_iterator_kind(data : ObjectData, sym_id : Int) -> Value? {
+pub fn get_keyed_collection_iterator_kind(
+  data : ObjectData,
+  sym_id : Int,
+) -> Value? {
   data.bag.symbol_properties.get(sym_id)
 }
 
 ///|
-pub fn set_map_iterator_next_index(
+pub fn set_keyed_collection_iterator_next_index(
   data : ObjectData,
   sym_id : Int,
   value : Value,
@@ -83,6 +92,9 @@ pub fn set_map_iterator_next_index(
 }
 
 ///|
-pub fn detach_map_iterator_target(data : ObjectData, sym_id : Int) -> Unit {
+pub fn detach_keyed_collection_iterator_target(
+  data : ObjectData,
+  sym_id : Int,
+) -> Unit {
   data.bag.symbol_properties[sym_id] = Undefined
 }

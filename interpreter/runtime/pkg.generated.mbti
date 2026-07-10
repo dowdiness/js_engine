@@ -55,7 +55,7 @@ pub fn delete_array_like_element(Value, Int) -> Unit
 
 pub fn descriptor_to_value(PropDescriptor, Value, realm_state? : RealmState?) -> Value
 
-pub fn detach_map_iterator_target(ObjectData, Int) -> Unit
+pub fn detach_keyed_collection_iterator_target(ObjectData, Int) -> Unit
 
 pub fn enqueue_promise_reaction_job(Interpreter, PromiseReaction, Value) -> Unit
 
@@ -113,11 +113,11 @@ pub fn get_func_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_function_length(Value) -> Int
 
-pub fn get_map_iterator_kind(ObjectData, Int) -> Value?
+pub fn get_keyed_collection_iterator_kind(ObjectData, Int) -> Value?
 
-pub fn get_map_iterator_next_index(ObjectData, Int) -> Value?
+pub fn get_keyed_collection_iterator_next_index(ObjectData, Int) -> Value?
 
-pub fn get_map_iterator_target(ObjectData, Int) -> Value?
+pub fn get_keyed_collection_iterator_target(ObjectData, Int) -> Value?
 
 pub fn get_map_proto(realm_state? : RealmState?) -> Value
 
@@ -317,7 +317,7 @@ pub fn set_integrity_frozen(Value) -> Value raise
 
 pub fn set_integrity_sealed(Value) -> Value
 
-pub fn set_map_iterator_next_index(ObjectData, Int, Value) -> Unit
+pub fn set_keyed_collection_iterator_next_index(ObjectData, Int, Value) -> Unit
 
 pub fn setup_async_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
 

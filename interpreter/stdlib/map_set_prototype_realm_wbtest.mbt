@@ -21,12 +21,8 @@ test "Map prototype is realm-isolated" {
 
   // The two prototypes must be physically distinct objects, not a shared
   // module-global value re-used across realms.
-  let default_data = assert_object_value(
-    "default Map.prototype", default_proto,
-  )
-  let shifted_data = assert_object_value(
-    "shifted Map.prototype", shifted_proto,
-  )
+  let default_data = assert_object_value("default Map.prototype", default_proto)
+  let shifted_data = assert_object_value("shifted Map.prototype", shifted_proto)
   if physical_equal(default_data, shifted_data) {
     fail("Map.prototype must not be shared across realms")
   }
@@ -91,12 +87,8 @@ test "Set prototype is realm-isolated" {
     Some(v) => v
     None => fail("shifted realm Set.prototype missing")
   }
-  let default_data = assert_object_value(
-    "default Set.prototype", default_proto,
-  )
-  let shifted_data = assert_object_value(
-    "shifted Set.prototype", shifted_proto,
-  )
+  let default_data = assert_object_value("default Set.prototype", default_proto)
+  let shifted_data = assert_object_value("shifted Set.prototype", shifted_proto)
   if physical_equal(default_data, shifted_data) {
     fail("Set.prototype must not be shared across realms")
   }
