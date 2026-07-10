@@ -282,59 +282,50 @@ fn setup_symbol_builtins(
   symbol_descs["name"] = nf_desc
   symbol_props["length"] = Value::Number(0.0)
   symbol_descs["length"] = nf_desc
-  env.def_builtin(
-    "Symbol",
-    Value::Object({
-      bag: {
-        properties: symbol_props,
-        symbol_properties: {},
-        descriptors: symbol_descs,
-        symbol_descriptors: {},
-        internal_slots: {},
-      },
-      prototype: Null,
-      callable: Some(
-        InterpreterCallableWithContext("Symbol", fn(
-          _interp,
-          context,
-          _this_val,
-          args,
-        ) raise {
-          if context.is_constructing() {
-            raise @errors.TypeError(message="Symbol is not a constructor")
+  let symbol_ctor : Value = Value::Object({
+    bag: {
+      properties: symbol_props,
+      symbol_properties: {},
+      descriptors: symbol_descs,
+      symbol_descriptors: {},
+      internal_slots: {},
+    },
+    prototype: Null,
+    callable: Some(
+      InterpreterCallableWithContext("Symbol", fn(
+        _interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        if context.is_constructing() {
+          raise @errors.TypeError(message="Symbol is not a constructor")
+        }
+        let description : String? = if args.length() > 0 {
+          match args[0] {
+            Undefined => None
+            Symbol(_) =>
+              raise @errors.TypeError(
+                message="Cannot convert a Symbol value to a string",
+              )
+            _ => Some(args[0].to_string())
           }
-          let description : String? = if args.length() > 0 {
-            match args[0] {
-              Undefined => None
-              Symbol(_) =>
-                raise @errors.TypeError(
-                  message="Cannot convert a Symbol value to a string",
-                )
-              _ => Some(args[0].to_string())
-            }
-          } else {
-            None
-          }
-          Symbol(symbols.new_symbol(description))
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    }),
-  )
+        } else {
+          None
+        }
+        Symbol(symbols.new_symbol(description))
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
   env.def_builtin("[[SymbolPrototype]]", symbol_proto)
-  realm_state.symbol_prototype.val = Some(symbol_proto)
-  // Set Symbol.prototype.constructor = Symbol
-  match symbol_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(
-        data,
-        "constructor",
-        env.get("Symbol") catch {
-          _ => Undefined
-        },
-      )
-    _ => ()
-  }
+  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+    env,
+    realm_state.symbol_prototype,
+    "Symbol",
+    symbol_ctor,
+    symbol_proto,
+  )
 }

@@ -217,10 +217,10 @@ fn assert_ctor_bagged_prototype_matches(
 /// - `install_realm_pinned_builtin_constructor_assign_prototype` when the
 ///   constructor bag already declares a `.prototype` descriptor and the value is
 ///   assigned at install time (Promise, …).
-/// - A family-specific variant for other assign patterns (boxed primitives, …).
+/// - A family-specific variant for other assign patterns (…).
 ///
-/// **Migrated:** Map/Set, WeakMap/WeakSet, Array, Promise. **Remaining:** boxed
-/// primitives, …
+/// **Migrated:** Map/Set, WeakMap/WeakSet, Array, Promise, boxed primitives
+/// (String/Number/Boolean/Symbol). **Remaining:** …
 pub fn install_realm_pinned_builtin_constructor(
   env : Environment,
   realm_proto_cache : Ref[Value?],

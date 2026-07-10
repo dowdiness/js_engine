@@ -444,7 +444,6 @@ fn setup_number_builtins(
   })
   // Store Number.prototype for ToObject wrapping
   env.def_builtin("[[NumberPrototype]]", number_proto)
-  realm_state.number_prototype.val = Some(number_proto)
   let number_props : Map[String, Value] = {}
   number_props["prototype"] = number_proto
   number_props["MAX_SAFE_INTEGER"] = Value::Number(9007199254740991.0)
@@ -557,70 +556,58 @@ fn setup_number_builtins(
   number_descs["isSafeInteger"] = num_method_desc
   number_descs["parseInt"] = num_method_desc
   number_descs["parseFloat"] = num_method_desc
-  env.def_builtin(
+  let number_ctor : Value = Value::Object({
+    bag: {
+      properties: number_props,
+      symbol_properties: {},
+      descriptors: number_descs,
+      symbol_descriptors: {},
+      internal_slots: {},
+    },
+    prototype: Null,
+    callable: Some(
+      InterpreterCallableWithContext("Number", fn(
+        interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        // Per spec: Value::Number() with no args returns +0, not NaN
+        let n = if args.length() > 0 { interp.to_number(args[0]) } else { 0.0 }
+        if context.is_constructing() {
+          // new Value::Number(value) → boxed Number object
+          Value::Object({
+            bag: {
+              properties: {},
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+              internal_slots: Map::from_array([
+                (@runtime.NumberData, Value::Number(n)),
+              ]),
+            },
+            prototype: number_proto,
+            callable: None,
+            class_name: "Number",
+            extensible: true,
+            arraybuffer_state: None,
+          })
+        } else {
+          Value::Number(n)
+        }
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+    env,
+    realm_state.number_prototype,
     "Number",
-    Value::Object({
-      bag: {
-        properties: number_props,
-        symbol_properties: {},
-        descriptors: number_descs,
-        symbol_descriptors: {},
-        internal_slots: {},
-      },
-      prototype: Null,
-      callable: Some(
-        InterpreterCallableWithContext("Number", fn(
-          interp,
-          context,
-          _this_val,
-          args,
-        ) raise {
-          // Per spec: Value::Number() with no args returns +0, not NaN
-          let n = if args.length() > 0 {
-            interp.to_number(args[0])
-          } else {
-            0.0
-          }
-          if context.is_constructing() {
-            // new Value::Number(value) → boxed Number object
-            Value::Object({
-              bag: {
-                properties: {},
-                symbol_properties: {},
-                descriptors: {},
-                symbol_descriptors: {},
-                internal_slots: Map::from_array([
-                  (@runtime.NumberData, Value::Number(n)),
-                ]),
-              },
-              prototype: number_proto,
-              callable: None,
-              class_name: "Number",
-              extensible: true,
-              arraybuffer_state: None,
-            })
-          } else {
-            Value::Number(n)
-          }
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    }),
+    number_ctor,
+    number_proto,
   )
-  // Set Number.prototype.constructor = Number
-  match number_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(
-        data,
-        "constructor",
-        env.get("Number") catch {
-          _ => Undefined
-        },
-      )
-    _ => ()
-  }
 }
 
 ///|

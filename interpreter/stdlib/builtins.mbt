@@ -551,249 +551,243 @@ fn setup_builtins_with_realm_state_active(
     extensible: true,
     arraybuffer_state: None,
   })
-  env.def_builtin(
-    "String",
-    Value::Object({
-      bag: {
-        properties: {
-          "prototype": string_proto,
-          "name": Value::String_("String"),
-          "length": Value::Number(1.0),
-          "fromCharCode": @runtime.make_interp_static_func(
-            name="fromCharCode",
-            length=1,
-            fn(interp, args) raise {
-              let buf = StringBuilder::new()
-              for arg in args {
-                let code = interp.to_number(arg).to_int()
-                // fromCharCode uses UTF-16 code units, modulo 2^16
-                let code_unit = code & 0xFFFF
-                buf.write_char(code_unit.unsafe_to_char())
+  let string_ctor : Value = Value::Object({
+    bag: {
+      properties: {
+        "prototype": string_proto,
+        "name": Value::String_("String"),
+        "length": Value::Number(1.0),
+        "fromCharCode": @runtime.make_interp_static_func(
+          name="fromCharCode",
+          length=1,
+          fn(interp, args) raise {
+            let buf = StringBuilder::new()
+            for arg in args {
+              let code = interp.to_number(arg).to_int()
+              // fromCharCode uses UTF-16 code units, modulo 2^16
+              let code_unit = code & 0xFFFF
+              buf.write_char(code_unit.unsafe_to_char())
+            }
+            Value::String_(buf.to_string())
+          },
+        ),
+        "fromCodePoint": @runtime.make_interp_static_func(
+          name="fromCodePoint",
+          length=1,
+          fn(interp, args) raise {
+            // String.fromCodePoint() - accepts Unicode code points (not code units)
+            let buf = StringBuilder::new()
+            for arg in args {
+              let num = interp.to_number(arg)
+              // Check if it's a valid number
+              if num.is_nan() || num.is_inf() {
+                raise @errors.RangeError(message="Invalid code point")
               }
-              Value::String_(buf.to_string())
-            },
-          ),
-          "fromCodePoint": @runtime.make_interp_static_func(
-            name="fromCodePoint",
-            length=1,
-            fn(interp, args) raise {
-              // String.fromCodePoint() - accepts Unicode code points (not code units)
-              let buf = StringBuilder::new()
-              for arg in args {
-                let num = interp.to_number(arg)
-                // Check if it's a valid number
-                if num.is_nan() || num.is_inf() {
-                  raise @errors.RangeError(message="Invalid code point")
+              // Check if it's an integer (no fractional part)
+              let code = num.to_int()
+              if code.to_double() != num {
+                raise @errors.RangeError(message="Invalid code point")
+              }
+              // Valid Unicode code points: 0 to 0x10FFFF
+              if code < 0 || code > 0x10FFFF {
+                raise @errors.RangeError(
+                  message="Invalid code point \{code.to_string()}",
+                )
+              }
+              // Convert code point to UTF-16
+              if code <= 0xFFFF {
+                // BMP (Basic Multilingual Plane) - single code unit
+                buf.write_char(code.unsafe_to_char())
+              } else {
+                // Supplementary planes - surrogate pair
+                let code_adj = code - 0x10000
+                let high = 0xD800 + (code_adj >> 10)
+                let low = 0xDC00 + (code_adj & 0x3FF)
+                buf.write_char(high.unsafe_to_char())
+                buf.write_char(low.unsafe_to_char())
+              }
+            }
+            Value::String_(buf.to_string())
+          },
+        ),
+        "raw": @runtime.make_interp_static_func(name="raw", length=1, fn(
+          interp,
+          args,
+        ) raise {
+          // String.raw(template, ...substitutions)
+          // Returns raw string content without processing escape sequences
+          if args.length() == 0 {
+            return Value::String_("")
+          }
+          let template = args[0]
+          match template {
+            Object(_) | Array(_) => {
+              let raw = interp.get_property(
+                template,
+                "raw",
+                @token.Loc::default(),
+              )
+              match raw {
+                Array(raw_data) => {
+                  let buf = StringBuilder::new()
+                  let raw_strings = raw_data.elements
+                  let sub_count = args.length() - 1
+                  for i = 0; i < raw_strings.length(); i = i + 1 {
+                    // Add raw string segment
+                    buf.write_string(raw_strings[i].to_string())
+                    // Add substitution if available
+                    if i < sub_count {
+                      buf.write_string(args[i + 1].to_string())
+                    }
+                  }
+                  Value::String_(buf.to_string())
                 }
-                // Check if it's an integer (no fractional part)
-                let code = num.to_int()
-                if code.to_double() != num {
-                  raise @errors.RangeError(message="Invalid code point")
+                Object(raw_obj) => {
+                  // Handle object with numeric indices - use length property per spec
+                  let buf = StringBuilder::new()
+                  let sub_count = args.length() - 1
+
+                  // Get length property (treat missing/invalid as 0)
+                  let length = match raw_obj.bag.properties.get("length") {
+                    Some(Value::Number(n)) => n.to_int().max(0)
+                    _ => 0
+                  }
+
+                  // Iterate from 0 to length-1, treating missing indices as Undefined
+                  for i = 0; i < length; i = i + 1 {
+                    let str_val = match
+                      raw_obj.bag.properties.get(i.to_string()) {
+                      Some(v) => v
+                      None => Undefined
+                    }
+                    buf.write_string(str_val.to_string())
+                    // Add substitution if available
+                    if i < sub_count {
+                      buf.write_string(args[i + 1].to_string())
+                    }
+                  }
+                  Value::String_(buf.to_string())
                 }
-                // Valid Unicode code points: 0 to 0x10FFFF
-                if code < 0 || code > 0x10FFFF {
-                  raise @errors.RangeError(
-                    message="Invalid code point \{code.to_string()}",
+                _ =>
+                  raise @errors.TypeError(
+                    message="Cannot convert to string template",
                   )
-                }
-                // Convert code point to UTF-16
-                if code <= 0xFFFF {
-                  // BMP (Basic Multilingual Plane) - single code unit
-                  buf.write_char(code.unsafe_to_char())
-                } else {
-                  // Supplementary planes - surrogate pair
-                  let code_adj = code - 0x10000
-                  let high = 0xD800 + (code_adj >> 10)
-                  let low = 0xDC00 + (code_adj & 0x3FF)
-                  buf.write_char(high.unsafe_to_char())
-                  buf.write_char(low.unsafe_to_char())
-                }
               }
-              Value::String_(buf.to_string())
-            },
-          ),
-          "raw": @runtime.make_interp_static_func(name="raw", length=1, fn(
-            interp,
-            args,
-          ) raise {
-            // String.raw(template, ...substitutions)
-            // Returns raw string content without processing escape sequences
-            if args.length() == 0 {
-              return Value::String_("")
             }
-            let template = args[0]
-            match template {
-              Object(_) | Array(_) => {
-                let raw = interp.get_property(
-                  template,
-                  "raw",
-                  @token.Loc::default(),
-                )
-                match raw {
-                  Array(raw_data) => {
-                    let buf = StringBuilder::new()
-                    let raw_strings = raw_data.elements
-                    let sub_count = args.length() - 1
-                    for i = 0; i < raw_strings.length(); i = i + 1 {
-                      // Add raw string segment
-                      buf.write_string(raw_strings[i].to_string())
-                      // Add substitution if available
-                      if i < sub_count {
-                        buf.write_string(args[i + 1].to_string())
-                      }
-                    }
-                    Value::String_(buf.to_string())
-                  }
-                  Object(raw_obj) => {
-                    // Handle object with numeric indices - use length property per spec
-                    let buf = StringBuilder::new()
-                    let sub_count = args.length() - 1
-
-                    // Get length property (treat missing/invalid as 0)
-                    let length = match raw_obj.bag.properties.get("length") {
-                      Some(Value::Number(n)) => n.to_int().max(0)
-                      _ => 0
-                    }
-
-                    // Iterate from 0 to length-1, treating missing indices as Undefined
-                    for i = 0; i < length; i = i + 1 {
-                      let str_val = match
-                        raw_obj.bag.properties.get(i.to_string()) {
-                        Some(v) => v
-                        None => Undefined
-                      }
-                      buf.write_string(str_val.to_string())
-                      // Add substitution if available
-                      if i < sub_count {
-                        buf.write_string(args[i + 1].to_string())
-                      }
-                    }
-                    Value::String_(buf.to_string())
-                  }
-                  _ =>
-                    raise @errors.TypeError(
-                      message="Cannot convert to string template",
-                    )
-                }
-              }
-              _ =>
-                raise @errors.TypeError(
-                  message="Cannot convert to string template",
-                )
-            }
-          }),
+            _ =>
+              raise @errors.TypeError(
+                message="Cannot convert to string template",
+              )
+          }
+        }),
+      },
+      symbol_properties: {},
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+          is_accessor: false,
         },
-        symbol_properties: {},
-        descriptors: {
-          "name": nf_desc,
-          "length": nf_desc,
-          "prototype": {
+        "fromCharCode": @runtime.builtin_method_desc(),
+        "fromCodePoint": @runtime.builtin_method_desc(),
+        "raw": @runtime.builtin_method_desc(),
+      },
+      symbol_descriptors: {},
+      internal_slots: {},
+    },
+    prototype: Null,
+    callable: Some(
+      InterpreterCallableWithContext("String", fn(
+        interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        let str = if args.length() == 0 {
+          // Per spec: String() with no args returns ""
+          ""
+        } else {
+          let val = args[0]
+          // Per spec: String(symbol) returns the symbol description
+          match val {
+            Value::Symbol(sym) =>
+              match sym.description {
+                Some(d) => "Symbol(" + d + ")"
+                None => "Symbol()"
+              }
+            _ => @runtime.to_js_string(val, interp=Some(interp))
+          }
+        }
+        if context.is_constructing() {
+          // new String(value) → boxed String object
+          let props : Map[String, Value] = {}
+          props["length"] = Value::Number(str.length().to_double())
+          // Add indexed character properties
+          for i = 0; i < str.length(); i = i + 1 {
+            props[i.to_string()] = Value::String_(
+              str.view()[i:i + 1].to_owned(),
+            )
+          }
+          let descs : Map[String, PropDescriptor] = {}
+          descs["length"] = {
             writable: false,
             enumerable: false,
             configurable: false,
             getter: None,
             setter: None,
             is_accessor: false,
-          },
-          "fromCharCode": @runtime.builtin_method_desc(),
-          "fromCodePoint": @runtime.builtin_method_desc(),
-          "raw": @runtime.builtin_method_desc(),
-        },
-        symbol_descriptors: {},
-        internal_slots: {},
-      },
-      prototype: Null,
-      callable: Some(
-        InterpreterCallableWithContext("String", fn(
-          interp,
-          context,
-          _this_val,
-          args,
-        ) raise {
-          let str = if args.length() == 0 {
-            // Per spec: String() with no args returns ""
-            ""
-          } else {
-            let val = args[0]
-            // Per spec: String(symbol) returns the symbol description
-            match val {
-              Value::Symbol(sym) =>
-                match sym.description {
-                  Some(d) => "Symbol(" + d + ")"
-                  None => "Symbol()"
-                }
-              _ => @runtime.to_js_string(val, interp=Some(interp))
-            }
           }
-          if context.is_constructing() {
-            // new String(value) → boxed String object
-            let props : Map[String, Value] = {}
-            props["length"] = Value::Number(str.length().to_double())
-            // Add indexed character properties
-            for i = 0; i < str.length(); i = i + 1 {
-              props[i.to_string()] = Value::String_(
-                str.view()[i:i + 1].to_owned(),
-              )
-            }
-            let descs : Map[String, PropDescriptor] = {}
-            descs["length"] = {
+          for i = 0; i < str.length(); i = i + 1 {
+            descs[i.to_string()] = {
               writable: false,
-              enumerable: false,
+              enumerable: true,
               configurable: false,
               getter: None,
               setter: None,
               is_accessor: false,
             }
-            for i = 0; i < str.length(); i = i + 1 {
-              descs[i.to_string()] = {
-                writable: false,
-                enumerable: true,
-                configurable: false,
-                getter: None,
-                setter: None,
-                is_accessor: false,
-              }
-            }
-            Value::Object({
-              bag: {
-                properties: props,
-                symbol_properties: {},
-                descriptors: descs,
-                symbol_descriptors: {},
-                internal_slots: Map::from_array([
-                  (@runtime.StringData, Value::String_(str)),
-                ]),
-              },
-              prototype: string_proto,
-              callable: None,
-              class_name: "String",
-              extensible: true,
-              arraybuffer_state: None,
-            })
-          } else {
-            Value::String_(str)
           }
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    }),
-  )
-
+          Value::Object({
+            bag: {
+              properties: props,
+              symbol_properties: {},
+              descriptors: descs,
+              symbol_descriptors: {},
+              internal_slots: Map::from_array([
+                (@runtime.StringData, Value::String_(str)),
+              ]),
+            },
+            prototype: string_proto,
+            callable: None,
+            class_name: "String",
+            extensible: true,
+            arraybuffer_state: None,
+          })
+        } else {
+          Value::String_(str)
+        }
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
   // Store String.prototype for ToObject wrapping
   env.def_builtin("[[StringPrototype]]", string_proto)
-  realm_state.string_prototype.val = Some(string_proto)
   // Populate String.prototype with methods for .call() support
   setup_string_prototype(string_proto, realm_state, annex_b~)
-  // Set String.prototype.constructor = String
-  match string_proto {
-    Object(data) => {
-      let ctor = env.get("String") catch { _ => Undefined }
-      @runtime.install_builtin_method(data, "constructor", ctor)
-    }
-    _ => ()
-  }
+  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+    env,
+    realm_state.string_prototype,
+    "String",
+    string_ctor,
+    string_proto,
+  )
 
   mark_builtin_setup_phase(profile, "string")
 
@@ -879,74 +873,68 @@ fn setup_builtins_with_realm_state_active(
   })
   // Store Boolean.prototype for ToObject wrapping
   env.def_builtin("[[BooleanPrototype]]", boolean_proto)
-  realm_state.boolean_prototype.val = Some(boolean_proto)
-  env.def_builtin(
-    "Boolean",
-    Value::Object({
-      bag: {
-        properties: {
-          "prototype": boolean_proto,
-          "name": Value::String_("Boolean"),
-          "length": Value::Number(1.0),
-        },
-        symbol_properties: {},
-        descriptors: {
-          "name": nf_desc,
-          "length": nf_desc,
-          "prototype": {
-            writable: false,
-            enumerable: false,
-            configurable: false,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          },
-        },
-        symbol_descriptors: {},
-        internal_slots: {},
+  let boolean_ctor : Value = Value::Object({
+    bag: {
+      properties: {
+        "prototype": boolean_proto,
+        "name": Value::String_("Boolean"),
+        "length": Value::Number(1.0),
       },
-      prototype: Null,
-      callable: Some(
-        NativeCallableWithContext("Boolean", fn(context, args) {
-          let val = if args.length() > 0 { args[0] } else { Undefined }
-          let b = @runtime.is_truthy(val)
-          if context.is_constructing() {
-            // new Boolean(value) → boxed Boolean object
-            Value::Object({
-              bag: {
-                properties: {},
-                symbol_properties: {},
-                descriptors: {},
-                symbol_descriptors: {},
-                internal_slots: Map::from_array([
-                  (@runtime.BooleanData, Value::Bool(b)),
-                ]),
-              },
-              prototype: boolean_proto,
-              callable: None,
-              class_name: "Boolean",
-              extensible: true,
-              arraybuffer_state: None,
-            })
-          } else {
-            Value::Bool(b)
-          }
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    }),
+      symbol_properties: {},
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        },
+      },
+      symbol_descriptors: {},
+      internal_slots: {},
+    },
+    prototype: Null,
+    callable: Some(
+      NativeCallableWithContext("Boolean", fn(context, args) {
+        let val = if args.length() > 0 { args[0] } else { Undefined }
+        let b = @runtime.is_truthy(val)
+        if context.is_constructing() {
+          // new Boolean(value) → boxed Boolean object
+          Value::Object({
+            bag: {
+              properties: {},
+              symbol_properties: {},
+              descriptors: {},
+              symbol_descriptors: {},
+              internal_slots: Map::from_array([
+                (@runtime.BooleanData, Value::Bool(b)),
+              ]),
+            },
+            prototype: boolean_proto,
+            callable: None,
+            class_name: "Boolean",
+            extensible: true,
+            arraybuffer_state: None,
+          })
+        } else {
+          Value::Bool(b)
+        }
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+    env,
+    realm_state.boolean_prototype,
+    "Boolean",
+    boolean_ctor,
+    boolean_proto,
   )
-
-  // Set Boolean.prototype.constructor = Boolean
-  match boolean_proto {
-    Object(data) => {
-      let ctor = env.get("Boolean") catch { _ => Undefined }
-      @runtime.install_builtin_method(data, "constructor", ctor)
-    }
-    _ => ()
-  }
 
   mark_builtin_setup_phase(profile, "boolean")
 
