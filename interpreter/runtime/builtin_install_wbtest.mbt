@@ -174,25 +174,33 @@ test "pinned install is isolated per env and cache ref" {
 }
 
 ///|
-fn bagged_install_ctor(proto : Value, name : String) -> Value {
-  let props : Map[String, Value] = { "prototype": proto, "name": String_(name) }
-  let descs : Map[String, PropDescriptor] = {
-    "prototype": {
-      writable: false,
-      enumerable: false,
-      configurable: false,
-      getter: None,
-      setter: None,
-      is_accessor: false,
-    },
-    "name": builtin_method_desc(),
+fn non_configurable_prototype_desc() -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn function_install_ctor(name : String, proto : Value?) -> Value {
+  let props : Map[String, Value] = { "name": String_(name) }
+  match proto {
+    Some(value) => props["prototype"] = value
+    None => ()
   }
   make_object(
     props,
     Null,
     Some(NonConstructableCallable(name, fn(_args) { Undefined })),
     "Function",
-    descs,
+    {
+      "prototype": non_configurable_prototype_desc(),
+      "name": builtin_method_desc(),
+    },
     true,
   )
 }
@@ -202,7 +210,7 @@ test "install_realm_pinned_builtin_constructor_bagged_prototype aligns cache and
   let env = Environment::new()
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("BaggedProto")
-  let ctor = bagged_install_ctor(proto, "BaggedCtor")
+  let ctor = function_install_ctor("BaggedCtor", Some(proto))
   install_realm_pinned_builtin_constructor_bagged_prototype(
     env, cache, "BaggedCtor", ctor, proto,
   )
@@ -227,7 +235,7 @@ test "install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_const
   let env = Environment::new()
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("BaggedLinkedProto")
-  let ctor = bagged_install_ctor(proto, "BaggedLinkedCtor")
+  let ctor = function_install_ctor("BaggedLinkedCtor", Some(proto))
   install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
     env, cache, "BaggedLinkedCtor", ctor, proto,
   )
@@ -244,34 +252,11 @@ test "install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_const
 }
 
 ///|
-fn assign_install_ctor(_proto : Value, name : String) -> Value {
-  let descs : Map[String, PropDescriptor] = {
-    "prototype": {
-      writable: false,
-      enumerable: false,
-      configurable: false,
-      getter: None,
-      setter: None,
-      is_accessor: false,
-    },
-    "name": builtin_method_desc(),
-  }
-  make_object(
-    { "name": String_(name) },
-    Null,
-    Some(NonConstructableCallable(name, fn(_args) { Undefined })),
-    "Function",
-    descs,
-    true,
-  )
-}
-
-///|
 test "install_realm_pinned_builtin_constructor_assign_prototype aligns cache and ctor prototype" {
   let env = Environment::new()
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("AssignedProto")
-  let ctor = assign_install_ctor(proto, "AssignedCtor")
+  let ctor = function_install_ctor("AssignedCtor", None)
   install_realm_pinned_builtin_constructor_assign_prototype(
     env, cache, "AssignedCtor", ctor, proto,
   )
@@ -296,7 +281,7 @@ test "install_realm_pinned_builtin_constructor_assign_prototype_with_proto_const
   let env = Environment::new()
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("AssignedLinkedProto")
-  let ctor = assign_install_ctor(proto, "AssignedLinkedCtor")
+  let ctor = function_install_ctor("AssignedLinkedCtor", None)
   install_realm_pinned_builtin_constructor_assign_prototype_with_proto_constructor(
     env, cache, "AssignedLinkedCtor", ctor, proto,
   )

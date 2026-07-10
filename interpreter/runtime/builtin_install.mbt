@@ -138,6 +138,68 @@ pub fn install_builtin_symbol_string(
 }
 
 ///|
+fn ctor_object_data(ctor : Value, ctor_name : String) -> ObjectData {
+  guard ctor is Object(data) else {
+    abort("built-in constructor must be an object: \{ctor_name}")
+  }
+  data
+}
+
+///|
+fn pin_realm_cache_and_register_builtin(
+  env : Environment,
+  realm_proto_cache : Ref[Value?],
+  ctor_name : String,
+  ctor : Value,
+  proto : Value,
+) -> Unit {
+  realm_proto_cache.val = Some(proto)
+  env.def_builtin(ctor_name, ctor)
+}
+
+///|
+fn install_registered_proto_constructor(
+  env : Environment,
+  ctor_name : String,
+  proto : Value,
+) -> Unit {
+  let registered_ctor = match env.bindings.get(ctor_name) {
+    Some(binding) => binding.value
+    None =>
+      abort("built-in constructor missing from env after install: \{ctor_name}")
+  }
+  match proto {
+    Object(data) => install_builtin_method(data, "constructor", registered_ctor)
+    _ => ()
+  }
+}
+
+///|
+fn assert_ctor_bagged_prototype_matches(
+  ctor : Value,
+  proto : Value,
+  ctor_name : String,
+) -> Unit {
+  let data = ctor_object_data(ctor, ctor_name)
+  match data.bag.properties.get("prototype") {
+    Some(bagged) =>
+      match (bagged, proto) {
+        (Object(bagged_data), Object(proto_data)) =>
+          if !physical_equal(bagged_data, proto_data) {
+            abort(
+              "constructor bag .prototype must match pinned proto: \{ctor_name}",
+            )
+          }
+        _ =>
+          abort(
+            "constructor bag .prototype must be an object value: \{ctor_name}",
+          )
+      }
+    None => abort("constructor bag missing .prototype property: \{ctor_name}")
+  }
+}
+
+///|
 /// Cache-for-X install contract (#504): atomically pin `proto` in the realm
 /// dispatch cache (`realm_proto_cache`), on the constructor's frozen `.prototype`
 /// property, and register `ctor` in `env`.
@@ -166,9 +228,7 @@ pub fn install_realm_pinned_builtin_constructor(
   ctor : Value,
   proto : Value,
 ) -> Unit {
-  guard ctor is Object(data) else {
-    abort("built-in constructor must be an object: \{ctor_name}")
-  }
+  let data = ctor_object_data(ctor, ctor_name)
   realm_proto_cache.val = Some(proto)
   install_builtin_frozen_data(data, "prototype", proto)
   env.def_builtin(ctor_name, ctor)
@@ -190,37 +250,7 @@ pub fn install_realm_pinned_builtin_constructor_with_proto_constructor(
   install_realm_pinned_builtin_constructor(
     env, realm_proto_cache, ctor_name, ctor, proto,
   )
-  match proto {
-    Object(data) => install_builtin_method(data, "constructor", ctor)
-    _ => ()
-  }
-}
-
-///|
-fn assert_ctor_bagged_prototype_matches(
-  ctor : Value,
-  proto : Value,
-  ctor_name : String,
-) -> Unit {
-  guard ctor is Object(data) else {
-    abort("built-in constructor must be an object: \{ctor_name}")
-  }
-  match data.bag.properties.get("prototype") {
-    Some(bagged) =>
-      match (bagged, proto) {
-        (Object(bagged_data), Object(proto_data)) =>
-          if !physical_equal(bagged_data, proto_data) {
-            abort(
-              "constructor bag .prototype must match pinned proto: \{ctor_name}",
-            )
-          }
-        _ =>
-          abort(
-            "constructor bag .prototype must be an object value: \{ctor_name}",
-          )
-      }
-    None => abort("constructor bag missing .prototype property: \{ctor_name}")
-  }
+  install_registered_proto_constructor(env, ctor_name, proto)
 }
 
 ///|
@@ -238,8 +268,9 @@ pub fn install_realm_pinned_builtin_constructor_bagged_prototype(
   proto : Value,
 ) -> Unit {
   assert_ctor_bagged_prototype_matches(ctor, proto, ctor_name)
-  realm_proto_cache.val = Some(proto)
-  env.def_builtin(ctor_name, ctor)
+  pin_realm_cache_and_register_builtin(
+    env, realm_proto_cache, ctor_name, ctor, proto,
+  )
 }
 
 ///|
@@ -255,15 +286,7 @@ pub fn install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_cons
   install_realm_pinned_builtin_constructor_bagged_prototype(
     env, realm_proto_cache, ctor_name, ctor, proto,
   )
-  let registered_ctor = match env.bindings.get(ctor_name) {
-    Some(binding) => binding.value
-    None =>
-      abort("built-in constructor missing from env after install: \{ctor_name}")
-  }
-  match proto {
-    Object(data) => install_builtin_method(data, "constructor", registered_ctor)
-    _ => ()
-  }
+  install_registered_proto_constructor(env, ctor_name, proto)
 }
 
 ///|
@@ -277,16 +300,15 @@ pub fn install_realm_pinned_builtin_constructor_assign_prototype(
   ctor : Value,
   proto : Value,
 ) -> Unit {
-  guard ctor is Object(data) else {
-    abort("built-in constructor must be an object: \{ctor_name}")
-  }
+  let data = ctor_object_data(ctor, ctor_name)
   match data.bag.descriptors.get("prototype") {
     None => abort("constructor missing .prototype descriptor: \{ctor_name}")
     Some(_) => ()
   }
   data.bag.properties["prototype"] = proto
-  realm_proto_cache.val = Some(proto)
-  env.def_builtin(ctor_name, ctor)
+  pin_realm_cache_and_register_builtin(
+    env, realm_proto_cache, ctor_name, ctor, proto,
+  )
 }
 
 ///|
@@ -302,13 +324,5 @@ pub fn install_realm_pinned_builtin_constructor_assign_prototype_with_proto_cons
   install_realm_pinned_builtin_constructor_assign_prototype(
     env, realm_proto_cache, ctor_name, ctor, proto,
   )
-  let registered_ctor = match env.bindings.get(ctor_name) {
-    Some(binding) => binding.value
-    None =>
-      abort("built-in constructor missing from env after install: \{ctor_name}")
-  }
-  match proto {
-    Object(data) => install_builtin_method(data, "constructor", registered_ctor)
-    _ => ()
-  }
+  install_registered_proto_constructor(env, ctor_name, proto)
 }
