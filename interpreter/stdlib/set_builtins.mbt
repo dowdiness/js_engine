@@ -1056,14 +1056,13 @@ fn setup_set_builtins(
 ///|
 /// §23.2.5.2.1 %SetIteratorPrototype%.next
 fn set_iterator_next(this_val : Value) -> Value raise Error {
-  let slots = keyed_collection_iterator_set_slots()
   match this_val {
     Object(data) => {
       guard data.class_name == SET_ITERATOR_NAME else {
         return keyed_collection_iterator_type_error(SET_ITERATOR_NAME)
       }
       let (current, iterated_set, kind) = match
-        read_keyed_collection_iterator_state(data, slots) {
+        read_keyed_collection_iterator_state(data, set_iterator_slots) {
         Some(state) => state
         None => return keyed_collection_iterator_type_error(SET_ITERATOR_NAME)
       }
@@ -1088,9 +1087,9 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
           }
           if idx < set_data.values.length() {
             let value = set_data.values[idx]
-            @runtime.set_map_iterator_next_index(
+            @runtime.set_keyed_collection_iterator_next_index(
               data,
-              slots.next_index,
+              set_iterator_slots.next_index,
               Number((idx + 1).to_double()),
             )
             let result_value = if kind == SET_ITERATOR_KIND_ENTRIES {
@@ -1107,7 +1106,10 @@ fn set_iterator_next(this_val : Value) -> Value raise Error {
             // is the responsibility of forEach when it exits tombstone mode
             // (tombstones_pre_existed=false at forEach entry). Until then, tombstones
             // persist — size is bounded by the count of deleted entries (≤ values.length).
-            @runtime.detach_map_iterator_target(data, slots.target)
+            @runtime.detach_keyed_collection_iterator_target(
+              data,
+              set_iterator_slots.target,
+            )
             @runtime.create_iter_result(Undefined, true)
           }
         }
@@ -1144,7 +1146,7 @@ fn make_set_iterator(
   make_keyed_collection_iterator(
     get_set_iterator_proto(realm_state),
     SET_ITERATOR_NAME,
-    keyed_collection_iterator_set_slots(),
+    set_iterator_slots,
     Value::Set(set_data),
     kind,
     before_create=fn() {

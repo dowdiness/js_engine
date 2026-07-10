@@ -32,14 +32,13 @@ fn map_iterator_result_value(
 
 ///|
 fn map_iterator_next(this_val : Value) -> Value raise Error {
-  let slots = keyed_collection_iterator_map_slots()
   match this_val {
     Object(data) => {
       guard data.class_name == MAP_ITERATOR_NAME else {
         return keyed_collection_iterator_type_error(MAP_ITERATOR_NAME)
       }
       let (current, iterated_map, kind) = match
-        read_keyed_collection_iterator_state(data, slots) {
+        read_keyed_collection_iterator_state(data, map_iterator_slots) {
         Some(state) => state
         None => return keyed_collection_iterator_type_error(MAP_ITERATOR_NAME)
       }
@@ -47,13 +46,16 @@ fn map_iterator_next(this_val : Value) -> Value raise Error {
         Undefined => @runtime.create_iter_result(Undefined, true)
         Map(map_data) => {
           guard current < map_data.entries.length() else {
-            @runtime.detach_map_iterator_target(data, slots.target)
+            @runtime.detach_keyed_collection_iterator_target(
+              data,
+              map_iterator_slots.target,
+            )
             return @runtime.create_iter_result(Undefined, true)
           }
           let (key, value) = map_data.entries[current]
-          @runtime.set_map_iterator_next_index(
+          @runtime.set_keyed_collection_iterator_next_index(
             data,
-            slots.next_index,
+            map_iterator_slots.next_index,
             Number((current + 1).to_double()),
           )
           let result_value = map_iterator_result_value(kind, key, value)
@@ -75,7 +77,7 @@ fn make_map_iterator(
   make_keyed_collection_iterator(
     get_map_iterator_proto(realm_state),
     MAP_ITERATOR_NAME,
-    keyed_collection_iterator_map_slots(),
+    map_iterator_slots,
     Value::Map(map_data),
     kind,
   )

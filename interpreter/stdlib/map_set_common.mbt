@@ -107,14 +107,21 @@ priv struct KeyedCollectionIteratorSlots {
 }
 
 ///|
-fn keyed_collection_iterator_map_slots() -> KeyedCollectionIteratorSlots {
-  // Engine-private negative symbol IDs — not registered in SymbolState.
-  { next_index: -130, target: -131, kind: -132 }
+/// Engine-private negative symbol IDs for Map Iterator internal slots.
+/// These IDs are not registered in SymbolState, so JavaScript cannot obtain
+/// or enumerate keys for them via string or symbol property access.
+let map_iterator_slots : KeyedCollectionIteratorSlots = {
+  next_index: -130,
+  target: -131,
+  kind: -132,
 }
 
 ///|
-fn keyed_collection_iterator_set_slots() -> KeyedCollectionIteratorSlots {
-  { next_index: -133, target: -134, kind: -135 }
+/// Engine-private negative symbol IDs for Set Iterator internal slots.
+let set_iterator_slots : KeyedCollectionIteratorSlots = {
+  next_index: -133,
+  target: -134,
+  kind: -135,
 }
 
 ///|
@@ -146,9 +153,9 @@ fn read_keyed_collection_iterator_state(
 ) -> (Int, Value, Int)? {
   match
     (
-      @runtime.get_map_iterator_next_index(data, slots.next_index),
-      @runtime.get_map_iterator_target(data, slots.target),
-      @runtime.get_map_iterator_kind(data, slots.kind),
+      @runtime.get_keyed_collection_iterator_next_index(data, slots.next_index),
+      @runtime.get_keyed_collection_iterator_target(data, slots.target),
+      @runtime.get_keyed_collection_iterator_kind(data, slots.kind),
     ) {
     (Some(Number(index)), Some(target), Some(Number(kind))) =>
       Some((index.to_int(), target, kind.to_int()))
