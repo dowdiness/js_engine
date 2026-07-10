@@ -183,6 +183,10 @@ pub fn install_builtin_symbol_string(ObjectData, Int, String) -> Unit
 
 pub fn install_realm_pinned_builtin_constructor(Environment, @ref.Ref[Value?], String, Value, Value) -> Unit
 
+pub fn install_realm_pinned_builtin_constructor_bagged_prototype(Environment, @ref.Ref[Value?], String, Value, Value) -> Unit
+
+pub fn install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(Environment, @ref.Ref[Value?], String, Value, Value) -> Unit
+
 pub fn install_realm_pinned_builtin_constructor_with_proto_constructor(Environment, @ref.Ref[Value?], String, Value, Value) -> Unit
 
 pub fn instanceof_prototype_chain(Value, Value, Interpreter) -> Value raise
