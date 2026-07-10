@@ -949,8 +949,6 @@ fn setup_set_builtins(
     arraybuffer_state: None,
   })
 
-  realm_state.set_prototype.val = Some(set_proto)
-
   // Add Set.prototype[Symbol.iterator] = Set.prototype.values
   match set_proto {
     Object(data) => {
@@ -1038,19 +1036,13 @@ fn setup_set_builtins(
       new_set
     },
   )
-  // Add prototype property to Set constructor
-  match set_ctor {
-    Object(data) =>
-      @runtime.install_builtin_frozen_data(data, "prototype", set_proto)
-    _ => ()
-  }
-  env.def_builtin("Set", set_ctor)
-  // Set Set.prototype.constructor = Set
-  match set_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(data, "constructor", set_ctor)
-    _ => ()
-  }
+  install_keyed_collection_builtin_constructor(
+    env,
+    realm_state.set_prototype,
+    "Set",
+    set_ctor,
+    set_proto,
+  )
 }
 
 ///|
