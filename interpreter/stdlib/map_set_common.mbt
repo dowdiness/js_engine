@@ -277,22 +277,3 @@ fn get_or_create_keyed_collection_iterator_proto(
     }
   }
 }
-
-///|
-/// Map/Set cache-for-X install (#504): pin realm dispatch cache, constructor
-/// `.prototype`, global registration, and `.prototype.constructor` in one place.
-fn install_keyed_collection_builtin_constructor(
-  env : Environment,
-  realm_proto_cache : Ref[Value?],
-  ctor_name : String,
-  ctor : Value,
-  proto : Value,
-) -> Unit {
-  @runtime.install_realm_pinned_builtin_constructor(
-    env, realm_proto_cache, ctor_name, ctor, proto,
-  )
-  match proto {
-    Object(data) => @runtime.install_builtin_method(data, "constructor", ctor)
-    _ => ()
-  }
-}
