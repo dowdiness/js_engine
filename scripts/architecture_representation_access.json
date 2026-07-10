@@ -1710,8 +1710,8 @@
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "representation-bag-field",
-      "allowed_count": 5,
-      "fingerprint": "5:288:119964:199310",
+      "allowed_count": 4,
+      "fingerprint": "4:223:240669:274859",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"
@@ -1755,8 +1755,8 @@
     {
       "path": "interpreter/stdlib/builtins_promise.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 23,
-      "fingerprint": "23:648:216256:187310",
+      "allowed_count": 21,
+      "fingerprint": "21:557:4756:887055",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"

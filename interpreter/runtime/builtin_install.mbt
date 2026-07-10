@@ -152,10 +152,12 @@ pub fn install_builtin_symbol_string(
 ///   family also needs `proto.constructor = ctor` (Map/Set, WeakMap/WeakSet, …).
 /// - `install_realm_pinned_builtin_constructor_bagged_prototype` when `.prototype`
 ///   is already installed on the constructor bag (Array, …).
-/// - A family-specific variant when `.prototype` is assigned without frozen or
-///   pre-bagged descriptors (Promise, …).
+/// - `install_realm_pinned_builtin_constructor_assign_prototype` when the
+///   constructor bag already declares a `.prototype` descriptor and the value is
+///   assigned at install time (Promise, …).
+/// - A family-specific variant for other assign patterns (boxed primitives, …).
 ///
-/// **Migrated:** Map/Set, WeakMap/WeakSet, Array. **Remaining:** Promise, boxed
+/// **Migrated:** Map/Set, WeakMap/WeakSet, Array, Promise. **Remaining:** boxed
 /// primitives, …
 pub fn install_realm_pinned_builtin_constructor(
   env : Environment,
@@ -251,6 +253,53 @@ pub fn install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_cons
   proto : Value,
 ) -> Unit {
   install_realm_pinned_builtin_constructor_bagged_prototype(
+    env, realm_proto_cache, ctor_name, ctor, proto,
+  )
+  let registered_ctor = match env.bindings.get(ctor_name) {
+    Some(binding) => binding.value
+    None =>
+      abort("built-in constructor missing from env after install: \{ctor_name}")
+  }
+  match proto {
+    Object(data) => install_builtin_method(data, "constructor", registered_ctor)
+    _ => ()
+  }
+}
+
+///|
+/// Cache-for-X install contract for builtins that predeclare a `.prototype`
+/// descriptor on the constructor bag and assign the value at install time
+/// (#512, e.g. Promise).
+pub fn install_realm_pinned_builtin_constructor_assign_prototype(
+  env : Environment,
+  realm_proto_cache : Ref[Value?],
+  ctor_name : String,
+  ctor : Value,
+  proto : Value,
+) -> Unit {
+  guard ctor is Object(data) else {
+    abort("built-in constructor must be an object: \{ctor_name}")
+  }
+  match data.bag.descriptors.get("prototype") {
+    None => abort("constructor missing .prototype descriptor: \{ctor_name}")
+    Some(_) => ()
+  }
+  data.bag.properties["prototype"] = proto
+  realm_proto_cache.val = Some(proto)
+  env.def_builtin(ctor_name, ctor)
+}
+
+///|
+/// `install_realm_pinned_builtin_constructor_assign_prototype` plus
+/// `proto.constructor = ctor` using the env-registered constructor value.
+pub fn install_realm_pinned_builtin_constructor_assign_prototype_with_proto_constructor(
+  env : Environment,
+  realm_proto_cache : Ref[Value?],
+  ctor_name : String,
+  ctor : Value,
+  proto : Value,
+) -> Unit {
+  install_realm_pinned_builtin_constructor_assign_prototype(
     env, realm_proto_cache, ctor_name, ctor, proto,
   )
   let registered_ctor = match env.bindings.get(ctor_name) {

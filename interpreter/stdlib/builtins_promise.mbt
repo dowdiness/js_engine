@@ -458,9 +458,6 @@ pub fn setup_promise(
     arraybuffer_state: None,
   })
 
-  // Store prototype reference for method lookup
-  realm_state.promise_prototype.val = Some(promise_proto)
-
   // Promise constructor
   let promise_ctor_props : Map[String, Value] = {}
   promise_ctor_props["length"] = Value::Number(1.0)
@@ -1221,17 +1218,13 @@ pub fn setup_promise(
   }
 
   // Set prototype property on constructor
-  match promise_ctor {
-    Object(od) => od.bag.properties["prototype"] = promise_proto
-    _ => ()
-  }
-  env.def_builtin("Promise", promise_ctor)
-  // Set Promise.prototype.constructor = Promise
-  match promise_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(data, "constructor", promise_ctor)
-    _ => ()
-  }
+  @runtime.install_realm_pinned_builtin_constructor_assign_prototype_with_proto_constructor(
+    env,
+    realm_state.promise_prototype,
+    "Promise",
+    promise_ctor,
+    promise_proto,
+  )
 
   // queueMicrotask(callback) - schedules a microtask
   // Part of the Web Platform APIs, used for scheduling microtasks directly
