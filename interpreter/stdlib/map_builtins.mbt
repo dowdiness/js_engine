@@ -619,7 +619,7 @@ fn setup_map_builtins(
     }
     _ => ()
   }
-  install_keyed_collection_builtin_constructor(
+  @runtime.install_realm_pinned_builtin_constructor_with_proto_constructor(
     env,
     realm_state.map_prototype,
     "Map",

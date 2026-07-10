@@ -139,15 +139,21 @@ pub fn install_builtin_symbol_string(
 
 ///|
 /// Cache-for-X install contract (#504): atomically pin `proto` in the realm
-/// dispatch cache (`realm_proto_cache`), on the constructor's `.prototype`
+/// dispatch cache (`realm_proto_cache`), on the constructor's frozen `.prototype`
 /// property, and register `ctor` in `env`.
 ///
-/// Invariant: `realm_proto_cache.val` must equal the constructor object's
+/// **Invariant:** `realm_proto_cache.val` must equal the constructor object's
 /// `.prototype` property in every realm. Splitting these updates causes silent
 /// dual-source dispatch bugs (PR #138).
 ///
-/// Pilot: Map/Set (`setup_map_builtins` / `setup_set_builtins`). Remaining
-/// families to migrate: Array, Promise, WeakMap/WeakSet, boxed primitives, …
+/// **When to use:**
+/// - This helper when `.prototype` is a frozen data property on the constructor.
+/// - `install_realm_pinned_builtin_constructor_with_proto_constructor` when the
+///   family also needs `proto.constructor = ctor` (Map/Set, WeakMap/WeakSet, …).
+/// - A family-specific variant when `.prototype` is not frozen (Promise, Array, …).
+///
+/// **Migrated:** Map/Set, WeakMap/WeakSet. **Remaining:** Array, Promise, boxed
+/// primitives, …
 pub fn install_realm_pinned_builtin_constructor(
   env : Environment,
   realm_proto_cache : Ref[Value?],
@@ -161,4 +167,26 @@ pub fn install_realm_pinned_builtin_constructor(
   realm_proto_cache.val = Some(proto)
   install_builtin_frozen_data(data, "prototype", proto)
   env.def_builtin(ctor_name, ctor)
+}
+
+///|
+/// Cache-for-X install contract for frozen-prototype builtins (#504 / #512):
+/// `install_realm_pinned_builtin_constructor` plus `proto.constructor = ctor`.
+///
+/// Use for built-in families whose `%FooPrototype%` objects expose a spec
+/// `constructor` property back to the realm's `%Foo%` function.
+pub fn install_realm_pinned_builtin_constructor_with_proto_constructor(
+  env : Environment,
+  realm_proto_cache : Ref[Value?],
+  ctor_name : String,
+  ctor : Value,
+  proto : Value,
+) -> Unit {
+  install_realm_pinned_builtin_constructor(
+    env, realm_proto_cache, ctor_name, ctor, proto,
+  )
+  match proto {
+    Object(data) => install_builtin_method(data, "constructor", ctor)
+    _ => ()
+  }
 }

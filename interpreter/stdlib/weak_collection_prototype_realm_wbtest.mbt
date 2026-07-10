@@ -40,16 +40,25 @@ test "WeakMap prototype is realm-isolated" {
   }
 
   // The realm-state field must agree with the JS-visible WeakMap.prototype
-  // slot on the constructor object. Decoupling these would let a regression
-  // silently route dispatch through one source while user code observes the
-  // other.
+  // slot on the constructor object in BOTH realms. Decoupling these would let
+  // a regression silently route dispatch through one source while user code
+  // observes the other (cache-for-X invariant; Codex finding on PR #138).
   let default_ctor_proto = ctor_prototype_from_env(default_env, "WeakMap")
   let default_ctor_proto_data = assert_object_value(
     "default WeakMap constructor .prototype", default_ctor_proto,
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
     fail(
-      "realm_state.weakmap_prototype must equal WeakMap.prototype on the constructor",
+      "realm_state.weakmap_prototype must equal WeakMap.prototype on the constructor (default realm)",
+    )
+  }
+  let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "WeakMap")
+  let shifted_ctor_proto_data = assert_object_value(
+    "shifted WeakMap constructor .prototype", shifted_ctor_proto,
+  )
+  if !physical_equal(shifted_data, shifted_ctor_proto_data) {
+    fail(
+      "realm_state.weakmap_prototype must equal WeakMap.prototype on the constructor (shifted realm)",
     )
   }
 
@@ -107,14 +116,24 @@ test "WeakSet prototype is realm-isolated" {
     fail("WeakSet.prototype must not be shared across realms")
   }
 
-  // Realm-state proto field must agree with the constructor's .prototype.
+  // Realm-state proto field must agree with the constructor's .prototype in
+  // BOTH realms (cache-for-X invariant; Codex finding on PR #138).
   let default_ctor_proto = ctor_prototype_from_env(default_env, "WeakSet")
   let default_ctor_proto_data = assert_object_value(
     "default WeakSet constructor .prototype", default_ctor_proto,
   )
   if !physical_equal(default_data, default_ctor_proto_data) {
     fail(
-      "realm_state.weakset_prototype must equal WeakSet.prototype on the constructor",
+      "realm_state.weakset_prototype must equal WeakSet.prototype on the constructor (default realm)",
+    )
+  }
+  let shifted_ctor_proto = ctor_prototype_from_env(shifted_env, "WeakSet")
+  let shifted_ctor_proto_data = assert_object_value(
+    "shifted WeakSet constructor .prototype", shifted_ctor_proto,
+  )
+  if !physical_equal(shifted_data, shifted_ctor_proto_data) {
+    fail(
+      "realm_state.weakset_prototype must equal WeakSet.prototype on the constructor (shifted realm)",
     )
   }
 

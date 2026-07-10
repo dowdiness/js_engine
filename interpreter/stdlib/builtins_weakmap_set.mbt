@@ -487,9 +487,6 @@ fn setup_weakmap_builtins(
     arraybuffer_state: None,
   })
 
-  // Store WeakMap prototype in the realm.
-  realm_state.weakmap_prototype.val = Some(wm_proto)
-
   // WeakMap constructor
   let wm_ctor = @runtime.make_interp_method_func_with_context(
     name="WeakMap",
@@ -584,20 +581,13 @@ fn setup_weakmap_builtins(
       wm_obj
     },
   )
-  // Add prototype property to WeakMap constructor
-  match wm_ctor {
-    Object(data) =>
-      @runtime.install_builtin_frozen_data(data, "prototype", wm_proto)
-    _ => ()
-  }
-  env.def_builtin("WeakMap", wm_ctor)
-
-  // Set WeakMap.prototype.constructor = WeakMap
-  match wm_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(data, "constructor", wm_ctor)
-    _ => ()
-  }
+  @runtime.install_realm_pinned_builtin_constructor_with_proto_constructor(
+    env,
+    realm_state.weakmap_prototype,
+    "WeakMap",
+    wm_ctor,
+    wm_proto,
+  )
 }
 
 ///|
@@ -750,9 +740,6 @@ fn setup_weakset_builtins(
     arraybuffer_state: None,
   })
 
-  // Store WeakSet prototype in the realm.
-  realm_state.weakset_prototype.val = Some(ws_proto)
-
   // WeakSet constructor
   let ws_ctor = @runtime.make_interp_method_func_with_context(
     name="WeakSet",
@@ -836,18 +823,11 @@ fn setup_weakset_builtins(
       ws_obj
     },
   )
-  // Add prototype property to WeakSet constructor
-  match ws_ctor {
-    Object(data) =>
-      @runtime.install_builtin_frozen_data(data, "prototype", ws_proto)
-    _ => ()
-  }
-  env.def_builtin("WeakSet", ws_ctor)
-
-  // Set WeakSet.prototype.constructor = WeakSet
-  match ws_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(data, "constructor", ws_ctor)
-    _ => ()
-  }
+  @runtime.install_realm_pinned_builtin_constructor_with_proto_constructor(
+    env,
+    realm_state.weakset_prototype,
+    "WeakSet",
+    ws_ctor,
+    ws_proto,
+  )
 }
