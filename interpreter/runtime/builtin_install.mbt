@@ -220,7 +220,7 @@ fn assert_ctor_bagged_prototype_matches(
 /// - A family-specific variant for other assign patterns (…).
 ///
 /// **Migrated:** Map/Set, WeakMap/WeakSet, Array, Promise, boxed primitives
-/// (String/Number/Boolean/Symbol). **Remaining:** …
+/// (String/Number/Boolean/Symbol). #512 rollout complete.
 pub fn install_realm_pinned_builtin_constructor(
   env : Environment,
   realm_proto_cache : Ref[Value?],
