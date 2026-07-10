@@ -1165,7 +1165,6 @@ fn setup_array_builtins(
     extensible: true,
     arraybuffer_state: None,
   })
-  realm_state.array_prototype.val = Some(array_proto)
 
   // Array constructor with Array.isArray, Array.from, Array.of
   let array_props : Map[String, Value] = {}
@@ -1368,95 +1367,87 @@ fn setup_array_builtins(
       }
     },
   )
-  env.def_builtin(
-    "Array",
-    Value::Object({
-      bag: {
-        properties: array_props,
-        symbol_properties: {},
-        descriptors: {
-          "name": nf_desc,
-          "length": nf_desc,
-          "prototype": {
-            writable: false,
-            enumerable: false,
-            configurable: false,
-            getter: None,
-            setter: None,
-            is_accessor: false,
-          },
-          "isArray": obj_method_desc,
-          "from": obj_method_desc,
-          "of": obj_method_desc,
+  let array_ctor = Value::Object({
+    bag: {
+      properties: array_props,
+      symbol_properties: {},
+      descriptors: {
+        "name": nf_desc,
+        "length": nf_desc,
+        "prototype": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+          is_accessor: false,
         },
-        symbol_descriptors: {},
-        internal_slots: {},
+        "isArray": obj_method_desc,
+        "from": obj_method_desc,
+        "of": obj_method_desc,
       },
-      prototype: Null,
-      callable: Some(
-        NativeCallable("Array", fn(args) raise {
-          // Array constructor behavior
-          if args.length() == 1 {
-            match args[0] {
-              Value::Number(n) => {
-                // Array(n) creates an array with the given length.
-                // Validate using double to avoid int32 overflow
-                if n < 0.0 ||
-                  n > 4294967295.0 ||
-                  n != @math.floor(n) ||
-                  n.is_nan() {
-                  raise @errors.RangeError(message="Invalid array length")
-                }
-                let len64 = n.to_int64()
-                // Use Array::make for a fast single allocation. Cap at 10M to
-                // avoid OOM for pathological inputs; lengths above the cap are
-                // tracked in ArrayData.bag so arr.length still
-                // reports the correct value.
-                let elements : Array[Value] = if len64 <=
-                  ARRAY_DENSE_MATERIALIZE_LIMIT_I64 {
-                  Array::make(len64.to_int(), Undefined)
-                } else {
-                  []
-                }
-                let arr_data : ArrayData = {
-                  elements,
-                  bag: @runtime.PropertyBag(),
-                  length_writable: true,
-                  holes: {},
-                  extensible: true,
-                }
-                // Mark materialized indices as holes — Array(n) creates an exotic
-                // array of length n with no own properties (§22.1.1.1 step 5.c).
-                for i in 0..<arr_data.elements.length() {
-                  arr_data.holes[i] = ()
-                }
-                if len64 > arr_data.elements.length().to_int64() {
-                  @runtime.set_array_length_override(arr_data, len64)
-                }
-                Value::Array(arr_data)
+      symbol_descriptors: {},
+      internal_slots: {},
+    },
+    prototype: Null,
+    callable: Some(
+      NativeCallable("Array", fn(args) raise {
+        // Array constructor behavior
+        if args.length() == 1 {
+          match args[0] {
+            Value::Number(n) => {
+              // Array(n) creates an array with the given length.
+              // Validate using double to avoid int32 overflow
+              if n < 0.0 ||
+                n > 4294967295.0 ||
+                n != @math.floor(n) ||
+                n.is_nan() {
+                raise @errors.RangeError(message="Invalid array length")
               }
-              _ => @runtime.make_array(args)
+              let len64 = n.to_int64()
+              // Use Array::make for a fast single allocation. Cap at 10M to
+              // avoid OOM for pathological inputs; lengths above the cap are
+              // tracked in ArrayData.bag so arr.length still
+              // reports the correct value.
+              let elements : Array[Value] = if len64 <=
+                ARRAY_DENSE_MATERIALIZE_LIMIT_I64 {
+                Array::make(len64.to_int(), Undefined)
+              } else {
+                []
+              }
+              let arr_data : ArrayData = {
+                elements,
+                bag: @runtime.PropertyBag(),
+                length_writable: true,
+                holes: {},
+                extensible: true,
+              }
+              // Mark materialized indices as holes — Array(n) creates an exotic
+              // array of length n with no own properties (§22.1.1.1 step 5.c).
+              for i in 0..<arr_data.elements.length() {
+                arr_data.holes[i] = ()
+              }
+              if len64 > arr_data.elements.length().to_int64() {
+                @runtime.set_array_length_override(arr_data, len64)
+              }
+              Value::Array(arr_data)
             }
-          } else {
-            @runtime.make_array(args)
+            _ => @runtime.make_array(args)
           }
-        }),
-      ),
-      class_name: "Function",
-      extensible: true,
-      arraybuffer_state: None,
-    }),
+        } else {
+          @runtime.make_array(args)
+        }
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+    env,
+    realm_state.array_prototype,
+    "Array",
+    array_ctor,
+    array_proto,
   )
-  // Set Array.prototype.constructor = Array
-  match array_proto {
-    Object(data) =>
-      @runtime.install_builtin_method(
-        data,
-        "constructor",
-        env.get("Array") catch {
-          _ => Undefined
-        },
-      )
-    _ => ()
-  }
 }

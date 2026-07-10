@@ -172,3 +172,73 @@ test "pinned install is isolated per env and cache ref" {
     proto_b,
   )
 }
+
+///|
+fn bagged_install_ctor(proto : Value, name : String) -> Value {
+  let props : Map[String, Value] = { "prototype": proto, "name": String_(name) }
+  let descs : Map[String, PropDescriptor] = {
+    "prototype": {
+      writable: false,
+      enumerable: false,
+      configurable: false,
+      getter: None,
+      setter: None,
+      is_accessor: false,
+    },
+    "name": builtin_method_desc(),
+  }
+  make_object(
+    props,
+    Null,
+    Some(NonConstructableCallable(name, fn(_args) { Undefined })),
+    "Function",
+    descs,
+    true,
+  )
+}
+
+///|
+test "install_realm_pinned_builtin_constructor_bagged_prototype aligns cache and ctor prototype" {
+  let env = Environment::new()
+  let cache : Ref[Value?] = { val: None }
+  let proto = pinned_install_proto("BaggedProto")
+  let ctor = bagged_install_ctor(proto, "BaggedCtor")
+  install_realm_pinned_builtin_constructor_bagged_prototype(
+    env, cache, "BaggedCtor", ctor, proto,
+  )
+
+  match cache.val {
+    Some(cached) => pinned_assert_same_object("realm cache", cached, proto)
+    None => fail("realm proto cache must be populated")
+  }
+  let installed_ctor = match env.bindings.get("BaggedCtor") {
+    Some(binding) => binding.value
+    None => fail("constructor must be registered in env")
+  }
+  pinned_assert_same_object(
+    "constructor .prototype",
+    pinned_ctor_prototype(installed_ctor),
+    proto,
+  )
+}
+
+///|
+test "install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor wires proto.constructor" {
+  let env = Environment::new()
+  let cache : Ref[Value?] = { val: None }
+  let proto = pinned_install_proto("BaggedLinkedProto")
+  let ctor = bagged_install_ctor(proto, "BaggedLinkedCtor")
+  install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+    env, cache, "BaggedLinkedCtor", ctor, proto,
+  )
+
+  let installed_ctor = match env.bindings.get("BaggedLinkedCtor") {
+    Some(binding) => binding.value
+    None => fail("constructor must be registered in env")
+  }
+  pinned_assert_same_object(
+    "proto.constructor",
+    pinned_proto_constructor(proto),
+    installed_ctor,
+  )
+}

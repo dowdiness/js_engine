@@ -150,9 +150,12 @@ pub fn install_builtin_symbol_string(
 /// - This helper when `.prototype` is a frozen data property on the constructor.
 /// - `install_realm_pinned_builtin_constructor_with_proto_constructor` when the
 ///   family also needs `proto.constructor = ctor` (Map/Set, WeakMap/WeakSet, …).
-/// - A family-specific variant when `.prototype` is not frozen (Promise, Array, …).
+/// - `install_realm_pinned_builtin_constructor_bagged_prototype` when `.prototype`
+///   is already installed on the constructor bag (Array, …).
+/// - A family-specific variant when `.prototype` is assigned without frozen or
+///   pre-bagged descriptors (Promise, …).
 ///
-/// **Migrated:** Map/Set, WeakMap/WeakSet. **Remaining:** Array, Promise, boxed
+/// **Migrated:** Map/Set, WeakMap/WeakSet, Array. **Remaining:** Promise, boxed
 /// primitives, …
 pub fn install_realm_pinned_builtin_constructor(
   env : Environment,
@@ -187,6 +190,76 @@ pub fn install_realm_pinned_builtin_constructor_with_proto_constructor(
   )
   match proto {
     Object(data) => install_builtin_method(data, "constructor", ctor)
+    _ => ()
+  }
+}
+
+///|
+fn assert_ctor_bagged_prototype_matches(
+  ctor : Value,
+  proto : Value,
+  ctor_name : String,
+) -> Unit {
+  guard ctor is Object(data) else {
+    abort("built-in constructor must be an object: \{ctor_name}")
+  }
+  match data.bag.properties.get("prototype") {
+    Some(bagged) =>
+      match (bagged, proto) {
+        (Object(bagged_data), Object(proto_data)) =>
+          if !physical_equal(bagged_data, proto_data) {
+            abort(
+              "constructor bag .prototype must match pinned proto: \{ctor_name}",
+            )
+          }
+        _ =>
+          abort(
+            "constructor bag .prototype must be an object value: \{ctor_name}",
+          )
+      }
+    None => abort("constructor bag missing .prototype property: \{ctor_name}")
+  }
+}
+
+///|
+/// Cache-for-X install contract for pre-bagged `.prototype` builtins (#512):
+/// pin `realm_proto_cache` and register `ctor` when the constructor object's
+/// property bag already carries `.prototype` with its descriptor (e.g. Array).
+///
+/// The caller must finish attaching constructor statics before calling this
+/// helper; it does not mutate the constructor bag.
+pub fn install_realm_pinned_builtin_constructor_bagged_prototype(
+  env : Environment,
+  realm_proto_cache : Ref[Value?],
+  ctor_name : String,
+  ctor : Value,
+  proto : Value,
+) -> Unit {
+  assert_ctor_bagged_prototype_matches(ctor, proto, ctor_name)
+  realm_proto_cache.val = Some(proto)
+  env.def_builtin(ctor_name, ctor)
+}
+
+///|
+/// `install_realm_pinned_builtin_constructor_bagged_prototype` plus
+/// `proto.constructor = ctor` using the env-registered constructor value.
+pub fn install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+  env : Environment,
+  realm_proto_cache : Ref[Value?],
+  ctor_name : String,
+  ctor : Value,
+  proto : Value,
+) -> Unit {
+  install_realm_pinned_builtin_constructor_bagged_prototype(
+    env, realm_proto_cache, ctor_name, ctor, proto,
+  )
+  let registered_ctor = match env.bindings.get(ctor_name) {
+    Some(binding) => binding.value
+    None =>
+      abort("built-in constructor missing from env after install: \{ctor_name}")
+  }
+  match proto {
+    Object(data) => install_builtin_method(data, "constructor", registered_ctor)
     _ => ()
   }
 }
