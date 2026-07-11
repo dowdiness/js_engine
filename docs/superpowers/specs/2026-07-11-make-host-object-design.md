@@ -94,11 +94,13 @@ let el = make_host_object(
 
 **Same-key across JS maps:** later step wins (documented). Embedders should not dual-define the same string key across maps.
 
-**Accessor pairs:** `(Some, Some)` / `(Some, None)` / `(None, Some)` are valid. `(None, None)` is a defect → `abort`/`fail`.
+**Accessor pairs:** `(Some, Some)` / `(Some, None)` / `(None, Some)` are valid. `(None, None)` is a defect → `abort` in `install_builtin_accessor` (single-sourced; `make_host_object` relies on that helper).
 
-Note: today’s `install_builtin_accessor` takes a non-optional `getter : Value`. Implementation must support setter-only either by widening that helper to `getter : Value?` (preferred, keeps one install path) or by a local descriptor write equivalent to `builtin_accessor_desc` with `getter: None`. Do not pass a dummy `Undefined` getter — that would make `[[Get]]` invoke a non-callable.
+Use `None` for an absent accessor side, not `Some(Undefined)`, unless intentionally mimicking `{ get: undefined }` / `{ set: undefined }`.
 
-**Defaults:** empty maps + `proto=Null` + `extensible=true` yield a named empty host shell.
+Note: today’s `install_builtin_accessor` takes `getter : Value?` and `setter : Value?`. Do not pass a dummy `Undefined` getter — that would make `[[Get]]` invoke a non-callable.
+
+**Defaults:** empty maps + `proto=Null` + `extensible=true` yield a named empty host shell. `proto=Null` is intentional — not `%Object.prototype%`; callers pass a realm prototype when needed.
 
 ## Placement
 

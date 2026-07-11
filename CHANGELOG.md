@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
+## [Unreleased]
+
+### Added
+
+- **`make_host_object`** in `@js_engine/interpreter/runtime` — labelled
+  factory for embedder host objects (methods, paired accessors,
+  non-writable/frozen data, host slots) returning `Value` without an
+  `ObjectData` match (#517).
+
+### Changed
+
+- **`install_builtin_accessor`** getter parameter widened from `Value` to
+  `Value?` so setter-only accessors can be installed. `(None, None)` now
+  aborts in the helper. Breaking for downstream packages that type against
+  the old `.mbti` signature (passing a bare `Value` remains source-compatible).
+
 ## [0.4.0] — 2026-07-03
 122 commits since v0.3.0. The `@js_engine` root facade API is unchanged
 (additive only); all breaking changes are confined to the

@@ -1146,6 +1146,52 @@ pub fn make_object(
 }
 
 ///|
+/// Create a host object with methods, accessors, intent-shaped data properties,
+/// and embedder host slots (#517). Returns `Value` so callers need not match
+/// on `ObjectData`. Composes `install_builtin_*` and `set_host_slot`.
+///
+/// **Parameters**
+/// - `name` — `[[Class]]` / `class_name` string (e.g. `"Element"`).
+/// - `proto` — `[[Prototype]]`. Defaults to `Null` (not `%Object.prototype%`);
+///   pass a realm object prototype when the host object should inherit from it.
+/// - `methods` — string-keyed callables with builtin method descriptors.
+/// - `accessors` — map of name → `(getter?, setter?)`. At least one side must
+///   be `Some`; use `None` for an absent side.
+/// - `non_writable` / `frozen` — rare constant data props (builtin descriptors).
+/// - `host_slots` — embedder-private state keyed by pre-reserved `HostSlotKey`
+///   values (`HostSlotKey::reserve()` once per slot kind, then build the map).
+/// - `extensible` — `[[Extensible]]` (default `true`).
+///
+/// **Install order:** `non_writable` → `frozen` → `methods` → `accessors` →
+/// `host_slots`. Same string key across the JS maps: later step wins (factory
+/// stomping, not `[[DefineOwnProperty]]` — avoid dual-defining the same name,
+/// including overwriting a `frozen` key).
+pub fn make_host_object(
+  name~ : String,
+  proto? : Value = Null,
+  methods? : Map[String, Value] = {},
+  accessors? : Map[String, (Value?, Value?)] = {},
+  non_writable? : Map[String, Value] = {},
+  frozen? : Map[String, Value] = {},
+  host_slots? : Map[HostSlotKey, Value] = {},
+  extensible? : Bool = true,
+) -> Value {
+  let obj = make_object({}, proto, None, name, {}, extensible)
+  guard obj is Object(data) else {
+    abort("make_host_object: make_object must return Object")
+  }
+  non_writable.each(fn(k, v) { install_builtin_non_writable(data, k, v) })
+  frozen.each(fn(k, v) { install_builtin_frozen_data(data, k, v) })
+  methods.each(fn(k, v) { install_builtin_method(data, k, v) })
+  accessors.each(fn(k, pair) {
+    let (getter, setter) = pair
+    install_builtin_accessor(data, k, getter, setter)
+  })
+  host_slots.each(fn(k, v) { set_host_slot(data, k, v) })
+  obj
+}
+
+///|
 /// Create an iterator result object { value, done }
 pub fn create_iter_result(value : Value, done : Bool) -> Value {
   let props : Map[String, Value] = {}

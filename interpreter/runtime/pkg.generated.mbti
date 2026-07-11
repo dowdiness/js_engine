@@ -171,7 +171,7 @@ pub fn has_parameter_expressions(Array[@ast.Param]) -> Bool
 
 pub fn has_property(Value, String, interp? : Interpreter?) -> Bool
 
-pub fn install_builtin_accessor(ObjectData, String, Value, Value?) -> Unit
+pub fn install_builtin_accessor(ObjectData, String, Value?, Value?) -> Unit
 
 pub fn install_builtin_frozen_data(ObjectData, String, Value) -> Unit
 
@@ -226,6 +226,8 @@ pub fn make_array_with_holes(Array[Value], Array[Int]) -> Value
 pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value
+
+pub fn make_host_object(name~ : String, proto? : Value, methods? : Map[String, Value], accessors? : Map[String, (Value?, Value?)], non_writable? : Map[String, Value], frozen? : Map[String, Value], host_slots? : Map[HostSlotKey, Value], extensible? : Bool) -> Value
 
 pub fn make_interp_method_func(name~ : String, length? : Int, realm_state? : RealmState?, (Interpreter, Value, Array[Value]) -> Value raise) -> Value
 
