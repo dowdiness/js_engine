@@ -1218,12 +1218,14 @@ pub fn setup_promise(
   }
 
   // Set prototype property on constructor
-  @runtime.install_realm_pinned_builtin_constructor_assign_prototype_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.promise_prototype,
     "Promise",
     promise_ctor,
     promise_proto,
+    prototype_install=@runtime.BuiltinCtorPrototypeInstall::AssignAtInstall,
+    wire_proto_constructor=true,
   )
 
   // queueMicrotask(callback) - schedules a microtask

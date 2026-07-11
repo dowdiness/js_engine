@@ -619,12 +619,13 @@ fn setup_map_builtins(
     }
     _ => ()
   }
-  @runtime.install_realm_pinned_builtin_constructor_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.map_prototype,
     "Map",
     map_ctor,
     map_proto,
+    wire_proto_constructor=true,
   )
 }
 

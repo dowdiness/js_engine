@@ -781,12 +781,14 @@ fn setup_builtins_with_realm_state_active(
   env.def_builtin("[[StringPrototype]]", string_proto)
   // Populate String.prototype with methods for .call() support
   setup_string_prototype(string_proto, realm_state, annex_b~)
-  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.string_prototype,
     "String",
     string_ctor,
     string_proto,
+    prototype_install=@runtime.BuiltinCtorPrototypeInstall::PreBagged,
+    wire_proto_constructor=true,
   )
 
   mark_builtin_setup_phase(profile, "string")
@@ -928,12 +930,14 @@ fn setup_builtins_with_realm_state_active(
     extensible: true,
     arraybuffer_state: None,
   })
-  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.boolean_prototype,
     "Boolean",
     boolean_ctor,
     boolean_proto,
+    prototype_install=@runtime.BuiltinCtorPrototypeInstall::PreBagged,
+    wire_proto_constructor=true,
   )
 
   mark_builtin_setup_phase(profile, "boolean")
