@@ -1036,12 +1036,13 @@ fn setup_set_builtins(
       new_set
     },
   )
-  @runtime.install_realm_pinned_builtin_constructor_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.set_prototype,
     "Set",
     set_ctor,
     set_proto,
+    wire_proto_constructor=true,
   )
 }
 

@@ -581,12 +581,13 @@ fn setup_weakmap_builtins(
       wm_obj
     },
   )
-  @runtime.install_realm_pinned_builtin_constructor_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.weakmap_prototype,
     "WeakMap",
     wm_ctor,
     wm_proto,
+    wire_proto_constructor=true,
   )
 }
 
@@ -823,11 +824,12 @@ fn setup_weakset_builtins(
       ws_obj
     },
   )
-  @runtime.install_realm_pinned_builtin_constructor_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.weakset_prototype,
     "WeakSet",
     ws_ctor,
     ws_proto,
+    wire_proto_constructor=true,
   )
 }

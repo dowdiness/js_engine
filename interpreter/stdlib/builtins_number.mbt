@@ -601,12 +601,14 @@ fn setup_number_builtins(
     extensible: true,
     arraybuffer_state: None,
   })
-  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.number_prototype,
     "Number",
     number_ctor,
     number_proto,
+    prototype_install=@runtime.BuiltinCtorPrototypeInstall::PreBagged,
+    wire_proto_constructor=true,
   )
 }
 

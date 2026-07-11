@@ -111,8 +111,13 @@ test "install_realm_pinned_builtin_constructor_with_proto_constructor wires prot
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("LinkedProto")
   let ctor = pinned_install_ctor("LinkedCtor")
-  install_realm_pinned_builtin_constructor_with_proto_constructor(
-    env, cache, "LinkedCtor", ctor, proto,
+  install_realm_pinned_builtin_constructor(
+    env,
+    cache,
+    "LinkedCtor",
+    ctor,
+    proto,
+    wire_proto_constructor=true,
   )
 
   let installed_ctor = match env.bindings.get("LinkedCtor") {
@@ -140,11 +145,21 @@ test "pinned install is isolated per env and cache ref" {
   let proto_b = pinned_install_proto("RealmB")
   let ctor_a = pinned_install_ctor("CtorA")
   let ctor_b = pinned_install_ctor("CtorB")
-  install_realm_pinned_builtin_constructor_with_proto_constructor(
-    env_a, cache_a, "CtorA", ctor_a, proto_a,
+  install_realm_pinned_builtin_constructor(
+    env_a,
+    cache_a,
+    "CtorA",
+    ctor_a,
+    proto_a,
+    wire_proto_constructor=true,
   )
-  install_realm_pinned_builtin_constructor_with_proto_constructor(
-    env_b, cache_b, "CtorB", ctor_b, proto_b,
+  install_realm_pinned_builtin_constructor(
+    env_b,
+    cache_b,
+    "CtorB",
+    ctor_b,
+    proto_b,
+    wire_proto_constructor=true,
   )
 
   match (cache_a.val, cache_b.val) {
@@ -211,8 +226,13 @@ test "install_realm_pinned_builtin_constructor_bagged_prototype aligns cache and
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("BaggedProto")
   let ctor = function_install_ctor("BaggedCtor", Some(proto))
-  install_realm_pinned_builtin_constructor_bagged_prototype(
-    env, cache, "BaggedCtor", ctor, proto,
+  install_realm_pinned_builtin_constructor(
+    env,
+    cache,
+    "BaggedCtor",
+    ctor,
+    proto,
+    prototype_install=PreBagged,
   )
 
   match cache.val {
@@ -236,8 +256,14 @@ test "install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_const
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("BaggedLinkedProto")
   let ctor = function_install_ctor("BaggedLinkedCtor", Some(proto))
-  install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
-    env, cache, "BaggedLinkedCtor", ctor, proto,
+  install_realm_pinned_builtin_constructor(
+    env,
+    cache,
+    "BaggedLinkedCtor",
+    ctor,
+    proto,
+    prototype_install=PreBagged,
+    wire_proto_constructor=true,
   )
 
   let installed_ctor = match env.bindings.get("BaggedLinkedCtor") {
@@ -257,8 +283,13 @@ test "install_realm_pinned_builtin_constructor_assign_prototype aligns cache and
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("AssignedProto")
   let ctor = function_install_ctor("AssignedCtor", None)
-  install_realm_pinned_builtin_constructor_assign_prototype(
-    env, cache, "AssignedCtor", ctor, proto,
+  install_realm_pinned_builtin_constructor(
+    env,
+    cache,
+    "AssignedCtor",
+    ctor,
+    proto,
+    prototype_install=AssignAtInstall,
   )
 
   match cache.val {
@@ -282,8 +313,14 @@ test "install_realm_pinned_builtin_constructor_assign_prototype_with_proto_const
   let cache : Ref[Value?] = { val: None }
   let proto = pinned_install_proto("AssignedLinkedProto")
   let ctor = function_install_ctor("AssignedLinkedCtor", None)
-  install_realm_pinned_builtin_constructor_assign_prototype_with_proto_constructor(
-    env, cache, "AssignedLinkedCtor", ctor, proto,
+  install_realm_pinned_builtin_constructor(
+    env,
+    cache,
+    "AssignedLinkedCtor",
+    ctor,
+    proto,
+    prototype_install=AssignAtInstall,
+    wire_proto_constructor=true,
   )
 
   let installed_ctor = match env.bindings.get("AssignedLinkedCtor") {

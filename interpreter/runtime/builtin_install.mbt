@@ -200,129 +200,72 @@ fn assert_ctor_bagged_prototype_matches(
 }
 
 ///|
-/// Cache-for-X install contract (#504): atomically pin `proto` in the realm
-/// dispatch cache (`realm_proto_cache`), on the constructor's frozen `.prototype`
-/// property, and register `ctor` in `env`.
+/// How the constructor object's `.prototype` property is prepared before the
+/// cache-for-X install pins `proto` and registers `ctor` in `env`.
+pub(all) enum BuiltinCtorPrototypeInstall {
+  /// Install a frozen data `.prototype` on the constructor bag at install time
+  /// (Map/Set, WeakMap/WeakSet, …).
+  FrozenAtInstall
+  /// `.prototype` is already on the constructor bag with its descriptor; only
+  /// assert it matches `proto` (Array, boxed primitives, …).
+  PreBagged
+  /// `.prototype` descriptor is predeclared; assign `proto` at install time
+  /// (Promise, …).
+  AssignAtInstall
+}
+
+///|
+fn apply_ctor_prototype_install(
+  ctor : Value,
+  ctor_name : String,
+  proto : Value,
+  mode : BuiltinCtorPrototypeInstall,
+) -> Unit {
+  match mode {
+    FrozenAtInstall => {
+      let data = ctor_object_data(ctor, ctor_name)
+      install_builtin_frozen_data(data, "prototype", proto)
+    }
+    PreBagged => assert_ctor_bagged_prototype_matches(ctor, proto, ctor_name)
+    AssignAtInstall => {
+      let data = ctor_object_data(ctor, ctor_name)
+      match data.bag.descriptors.get("prototype") {
+        None => abort("constructor missing .prototype descriptor: \{ctor_name}")
+        Some(_) => ()
+      }
+      data.bag.properties["prototype"] = proto
+    }
+  }
+}
+
+///|
+/// Cache-for-X install contract (#504 / #512): atomically pin `proto` in the
+/// realm dispatch cache (`realm_proto_cache`), prepare the constructor's
+/// `.prototype` property per `prototype_install`, and register `ctor` in `env`.
 ///
 /// **Invariant:** `realm_proto_cache.val` must equal the constructor object's
 /// `.prototype` property in every realm. Splitting these updates causes silent
 /// dual-source dispatch bugs (PR #138).
 ///
-/// **When to use:**
-/// - This helper when `.prototype` is a frozen data property on the constructor.
-/// - `install_realm_pinned_builtin_constructor_with_proto_constructor` when the
-///   family also needs `proto.constructor = ctor` (Map/Set, WeakMap/WeakSet, …).
-/// - `install_realm_pinned_builtin_constructor_bagged_prototype` when `.prototype`
-///   is already installed on the constructor bag (Array, …).
-/// - `install_realm_pinned_builtin_constructor_assign_prototype` when the
-///   constructor bag already declares a `.prototype` descriptor and the value is
-///   assigned at install time (Promise, …).
-/// - A family-specific variant for other assign patterns (…).
+/// Set `wire_proto_constructor` when the family also needs
+/// `proto.constructor = ctor` (Map/Set, Array, boxed primitives, Promise, …).
 ///
-/// **Migrated:** Map/Set, WeakMap/WeakSet, Array, Promise, boxed primitives
-/// (String/Number/Boolean/Symbol). #512 rollout complete.
+/// **Migrated families:** Map/Set, WeakMap/WeakSet, Array, Promise, boxed
+/// primitives (String/Number/Boolean/Symbol). #512 rollout complete.
 pub fn install_realm_pinned_builtin_constructor(
   env : Environment,
   realm_proto_cache : Ref[Value?],
   ctor_name : String,
   ctor : Value,
   proto : Value,
+  prototype_install? : BuiltinCtorPrototypeInstall = FrozenAtInstall,
+  wire_proto_constructor? : Bool = false,
 ) -> Unit {
-  let data = ctor_object_data(ctor, ctor_name)
-  realm_proto_cache.val = Some(proto)
-  install_builtin_frozen_data(data, "prototype", proto)
-  env.def_builtin(ctor_name, ctor)
-}
-
-///|
-/// Cache-for-X install contract for frozen-prototype builtins (#504 / #512):
-/// `install_realm_pinned_builtin_constructor` plus `proto.constructor = ctor`.
-///
-/// Use for built-in families whose `%FooPrototype%` objects expose a spec
-/// `constructor` property back to the realm's `%Foo%` function.
-pub fn install_realm_pinned_builtin_constructor_with_proto_constructor(
-  env : Environment,
-  realm_proto_cache : Ref[Value?],
-  ctor_name : String,
-  ctor : Value,
-  proto : Value,
-) -> Unit {
-  install_realm_pinned_builtin_constructor(
-    env, realm_proto_cache, ctor_name, ctor, proto,
-  )
-  install_registered_proto_constructor(env, ctor_name, proto)
-}
-
-///|
-/// Cache-for-X install contract for pre-bagged `.prototype` builtins (#512):
-/// pin `realm_proto_cache` and register `ctor` when the constructor object's
-/// property bag already carries `.prototype` with its descriptor (e.g. Array).
-///
-/// The caller must finish attaching constructor statics before calling this
-/// helper; it does not mutate the constructor bag.
-pub fn install_realm_pinned_builtin_constructor_bagged_prototype(
-  env : Environment,
-  realm_proto_cache : Ref[Value?],
-  ctor_name : String,
-  ctor : Value,
-  proto : Value,
-) -> Unit {
-  assert_ctor_bagged_prototype_matches(ctor, proto, ctor_name)
+  apply_ctor_prototype_install(ctor, ctor_name, proto, prototype_install)
   pin_realm_cache_and_register_builtin(
     env, realm_proto_cache, ctor_name, ctor, proto,
   )
-}
-
-///|
-/// `install_realm_pinned_builtin_constructor_bagged_prototype` plus
-/// `proto.constructor = ctor` using the env-registered constructor value.
-pub fn install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
-  env : Environment,
-  realm_proto_cache : Ref[Value?],
-  ctor_name : String,
-  ctor : Value,
-  proto : Value,
-) -> Unit {
-  install_realm_pinned_builtin_constructor_bagged_prototype(
-    env, realm_proto_cache, ctor_name, ctor, proto,
-  )
-  install_registered_proto_constructor(env, ctor_name, proto)
-}
-
-///|
-/// Cache-for-X install contract for builtins that predeclare a `.prototype`
-/// descriptor on the constructor bag and assign the value at install time
-/// (#512, e.g. Promise).
-pub fn install_realm_pinned_builtin_constructor_assign_prototype(
-  env : Environment,
-  realm_proto_cache : Ref[Value?],
-  ctor_name : String,
-  ctor : Value,
-  proto : Value,
-) -> Unit {
-  let data = ctor_object_data(ctor, ctor_name)
-  match data.bag.descriptors.get("prototype") {
-    None => abort("constructor missing .prototype descriptor: \{ctor_name}")
-    Some(_) => ()
+  if wire_proto_constructor {
+    install_registered_proto_constructor(env, ctor_name, proto)
   }
-  data.bag.properties["prototype"] = proto
-  pin_realm_cache_and_register_builtin(
-    env, realm_proto_cache, ctor_name, ctor, proto,
-  )
-}
-
-///|
-/// `install_realm_pinned_builtin_constructor_assign_prototype` plus
-/// `proto.constructor = ctor` using the env-registered constructor value.
-pub fn install_realm_pinned_builtin_constructor_assign_prototype_with_proto_constructor(
-  env : Environment,
-  realm_proto_cache : Ref[Value?],
-  ctor_name : String,
-  ctor : Value,
-  proto : Value,
-) -> Unit {
-  install_realm_pinned_builtin_constructor_assign_prototype(
-    env, realm_proto_cache, ctor_name, ctor, proto,
-  )
-  install_registered_proto_constructor(env, ctor_name, proto)
 }

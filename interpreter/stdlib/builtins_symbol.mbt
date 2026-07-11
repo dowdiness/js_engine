@@ -321,11 +321,13 @@ fn setup_symbol_builtins(
     arraybuffer_state: None,
   })
   env.def_builtin("[[SymbolPrototype]]", symbol_proto)
-  @runtime.install_realm_pinned_builtin_constructor_bagged_prototype_with_proto_constructor(
+  @runtime.install_realm_pinned_builtin_constructor(
     env,
     realm_state.symbol_prototype,
     "Symbol",
     symbol_ctor,
     symbol_proto,
+    prototype_install=@runtime.BuiltinCtorPrototypeInstall::PreBagged,
+    wire_proto_constructor=true,
   )
 }
