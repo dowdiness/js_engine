@@ -19857,3 +19857,33 @@ test "Promise instance getter-type symbol descriptor is invoked via [[Get]]" {
   let output = run_output(src)
   json_inspect(output, content=["getter-called", "inherited", "undefined"])
 }
+
+///|
+test "JSON.stringify Proxy traps fire during stringify walk" {
+  let src =
+    #|var objectProxy = new Proxy({a: 1}, {
+    #|  getOwnPropertyDescriptor: function() {
+    #|    return {value: 1, writable: true, enumerable: true, configurable: true};
+    #|  },
+    #|  get: function(target, key) {
+    #|    if (key === 'a') return 99;
+    #|    return 1;
+    #|  },
+    #|  ownKeys: function() {
+    #|    return ['a', 'b'];
+    #|  },
+    #|});
+    #|console.log(JSON.stringify(objectProxy));
+    #|// Replacer array: selects only 'a', value from get trap
+    #|console.log(JSON.stringify(objectProxy, ['a']));
+    #|// Array proxy: length and index via get trap
+    #|var arrayProxy = new Proxy([], {
+    #|  get: function(target, key) {
+    #|    if (key === 'length') return 2;
+    #|    return Number(key);
+    #|  },
+    #|});
+    #|console.log(JSON.stringify(arrayProxy));
+  let output = run_output(src)
+  json_inspect(output, content=["{\"a\":99,\"b\":1}", "{\"a\":99}", "[0,1]"])
+}
