@@ -1025,6 +1025,16 @@ fn Interpreter::get_computed_property_impl(
           return Undefined
         }
         Promise(data) => {
+          // Check expando symbol descriptors first (instance fields from subclasses,
+          // accessor-type symbol properties)
+          match data.bag.symbol_descriptors.get(sym.id) {
+            Some(desc) =>
+              match desc.getter {
+                Some(getter) => return self.call_value(getter, obj, [], loc)
+                None => ()
+              }
+            None => ()
+          }
           match data.bag.symbol_properties.get(sym.id) {
             Some(v) => return v
             None => ()

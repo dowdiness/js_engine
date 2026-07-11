@@ -19831,3 +19831,29 @@ test "host slot is invisible to Object.keys for-in and JSON.stringify" {
     "7",
   ])
 }
+
+///|
+test "Promise instance getter-type symbol descriptor is invoked via [[Get]]" {
+  let src =
+    #|var p = new Promise(function() {});
+    #|var sym = Symbol("test");
+    #|Object.defineProperty(p, sym, {
+    #|  get: function() { return "getter-called"; },
+    #|  configurable: true
+    #|});
+    #|console.log(p[sym]);
+    #|// Positive control: prototype symbol assignment is observable
+    #|var sym2 = Symbol("no-getter");
+    #|Promise.prototype[sym2] = "inherited";
+    #|console.log(Promise.prototype[sym2]);
+    #|// Accessor with no getter (setter-only) — must return undefined from the accessor
+    #|// even when the prototype has a value for the same symbol key
+    #|Object.defineProperty(p, sym2, {
+    #|  set: function(v) {},
+    #|  configurable: true
+    #|});
+    #|console.log(p[sym2]);
+    #|delete Promise.prototype[sym2];
+  let output = run_output(src)
+  json_inspect(output, content=["getter-called", "inherited", "undefined"])
+}
