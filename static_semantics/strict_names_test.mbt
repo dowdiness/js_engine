@@ -85,3 +85,25 @@ test "validate_strict_assignment_target_name: eval allowed in sloppy" {
   }
   inspect(result, content="ok")
 }
+
+///|
+test "validate_strict_assignment_target_name: strict reserved word rejected in strict" {
+  let result = try {
+    validate_strict_assignment_target_name(true, "static")
+    "ok"
+  } catch {
+    _ => "error"
+  }
+  inspect(result, content="error")
+}
+
+///|
+test "validate_strict_assignment_target_name: strict reserved word allowed in sloppy" {
+  let result = try {
+    validate_strict_assignment_target_name(false, "static")
+    "ok"
+  } catch {
+    _ => "error"
+  }
+  inspect(result, content="ok")
+}

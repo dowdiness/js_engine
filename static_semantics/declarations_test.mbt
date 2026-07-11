@@ -52,3 +52,12 @@ test "collect_var_declared_names: function decl inside if is block-scoped (§B.3
   inspect(names.contains("f"), content="false")
   inspect(names.length(), content="0")
 }
+
+///|
+test "collect_var_declared_names: destructuring var declaration" {
+  let prog = @parser.parse("var [a, b] = arr;")
+  let names = collect_var_declared_names(prog.stmts)
+  inspect(names.contains("a"), content="true")
+  inspect(names.contains("b"), content="true")
+  inspect(names.length(), content="2")
+}

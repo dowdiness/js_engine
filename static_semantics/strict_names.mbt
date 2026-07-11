@@ -21,12 +21,12 @@ fn is_strict_reserved_word(name : String) -> Bool {
 /// Validate that a binding name is legal in strict mode.
 /// Raises SyntaxError if name is "eval", "arguments", or a strict reserved word.
 pub fn validate_strict_binding_name(name : String) -> Unit raise Error {
-  if name == "eval" || name == "arguments" {
+  guard name != "eval" && name != "arguments" else {
     raise @errors.SyntaxError(
       message="Unexpected eval or arguments in strict mode",
     )
   }
-  if is_strict_reserved_word(name) {
+  guard !is_strict_reserved_word(name) else {
     raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
   }
 }
@@ -36,7 +36,7 @@ pub fn validate_strict_identifier_reference(
   strict : Bool,
   name : String,
 ) -> Unit raise Error {
-  if strict && is_strict_reserved_word(name) {
+  guard !(strict && is_strict_reserved_word(name)) else {
     raise @errors.SyntaxError(message="Unexpected strict mode reserved word")
   }
 }
@@ -47,7 +47,7 @@ pub fn validate_strict_assignment_target_name(
   name : String,
 ) -> Unit raise Error {
   validate_strict_identifier_reference(strict, name)
-  if strict && (name == "eval" || name == "arguments") {
+  guard !(strict && (name == "eval" || name == "arguments")) else {
     raise @errors.SyntaxError(
       message="Unexpected eval or arguments in strict mode",
     )
