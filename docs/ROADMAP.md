@@ -6,28 +6,24 @@ and the older [archive/phase-history.md](archive/phase-history.md).
 
 ## Current Status
 
-**Test262** — CI run [28728599011](https://github.com/dowdiness/js_engine/actions/runs/28728599011)
-on branch `feat/async-iteration-for-await-of` (pending merge to main, 2026-07-05).
+**Test262** — CI run [29141665989](https://github.com/dowdiness/js_engine/actions/runs/29141665989) on tip `74d84e5`, 2026-07-11. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
 
-Each test file runs twice, once in strict mode and once in non-strict mode. The
-two modes are reported separately because summing them would double-count files.
+| Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| strict | 44,986 | 14,491 | 30,483 | 29,526 | 957 | 11 | **96.9%** | 65.6% |
+| non-strict | 47,692 | 14,976 | 32,699 | 31,341 | 1,358 | 16 | **95.8%** | 65.7% |
+
+CI regression baseline: `test262-baseline.json` (min 30,487 non-strict / 28,672 strict passed, updated 2026-07-05; currently +854 / +854 above).
+
+_Note: 2 runner error(s) excluded from the Timeouts column; inspect results JSON for details._
 
 To refresh this block, run `make test262-report`; do not copy numbers from
 other documentation. For release notes, use `make test262-report
 ARGS="--format=changelog"`.
 
-| Mode | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| strict | 44,986 | 14,925 | 30,048 | 28,772 | 1,276 | 13 | **95.8%** | 64.0% |
-| non-strict | 47,692 | 15,410 | 32,264 | 30,587 | 1,677 | 18 | **94.8%** | 64.1% |
-
-ES2015 specifically: strict **97.8%** P/E (9,906 / 10,131; 160 skipped),
-non-strict **97.6%** P/E (10,364 / 10,620; 159 skipped) — the roadmap 95%
+ES2015 specifically: strict **98.1%** P/E (9,935 / 10,131; 161 skipped),
+non-strict **97.9%** P/E (10,393 / 10,620; 160 skipped) — the roadmap 95%
 ES2015 target is achieved.
-
-CI regression baseline: `test262-baseline.json`. Minimums are 30,487 non-strict
-passed and 28,672 strict passed, updated 2026-07-05. The baseline was ratcheted
-in PR #494 to account for newly enabled async-iteration tests.
 
 
 **Unit tests**: run `moon test` for the current local count; this section only

@@ -55,7 +55,7 @@ For DOM-style globals and native methods, create a wired interpreter and inject
 bindings — do not reverse-engineer `Interpreter::new` / `setup_builtins` unless
 you need to replace builtin installation itself:
 
-```moonbit
+```moonbit nocheck
 let interp = @interpreter.new_interpreter()
 // Build query_selector with realm_state=Some(interp.realm_state) — see guide.
 let document = @runtime.make_host_object(
@@ -80,45 +80,49 @@ For the full per-category breakdown, see [docs/supported-features.md](docs/suppo
 
 <!-- Refresh: make test262-report ARGS="--format=readme" -->
 
-Test262 conformance by edition — CI run [28279305916](https://github.com/dowdiness/js_engine/actions/runs/28279305916), tip `39c6bc1`, 2026-06-27. P/E = passed ÷ executed (excludes skipped tests). Refresh: `make test262-report ARGS="--format=readme"`.
+Test262 conformance by edition — CI run [29141665989](https://github.com/dowdiness/js_engine/actions/runs/29141665989), tip `74d84e5`, 2026-07-11. P/E = passed ÷ executed (excludes skipped tests). Refresh: `make test262-report ARGS="--format=readme"`.
+
 ### strict
+
 | Edition | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Pre-ES2015 (baseline) | 13,281 | 0 | 13,273 | 12,976 | 297 | 8 | 97.8% | 97.7% |
-| ES2015 | 10,300 | 160 | 10,131 | 9,895 | 236 | 9 | 97.7% | 96.1% |
+| Pre-ES2015 (baseline) | 13,281 | 0 | 13,278 | 12,986 | 292 | 3 | 97.8% | 97.8% |
+| ES2015 | 10,300 | 161 | 10,131 | 9,935 | 196 | 8 | 98.1% | 96.5% |
 | ES2016 | 100 | 0 | 99 | 99 | 0 | 1 | 100.0% | 99.0% |
 | ES2017 | 736 | 344 | 392 | 389 | 3 | 0 | 99.2% | 52.9% |
-| ES2018 | 4,725 | 4,326 | 399 | 382 | 17 | 0 | 95.7% | 8.1% |
+| ES2018 | 4,725 | 727 | 3,998 | 3,811 | 187 | 0 | 95.3% | 80.7% |
 | ES2019 | 128 | 0 | 128 | 106 | 22 | 0 | 82.8% | 82.8% |
-| ES2020 | 1,784 | 1,537 | 247 | 243 | 4 | 0 | 98.4% | 13.6% |
+| ES2020 | 1,784 | 1,537 | 247 | 244 | 3 | 0 | 98.8% | 13.7% |
 | ES2021 | 468 | 128 | 340 | 325 | 15 | 0 | 95.6% | 69.4% |
-| ES2022 | 5,065 | 4,352 | 713 | 708 | 5 | 0 | 99.3% | 14.0% |
+| ES2022 | 5,065 | 4,324 | 741 | 736 | 5 | 0 | 99.3% | 14.5% |
 | ES2023 | 254 | 33 | 221 | 218 | 3 | 0 | 98.6% | 85.8% |
 | ES2024 | 1,072 | 866 | 206 | 108 | 98 | 0 | 52.4% | 10.1% |
 | ES2025 | 1,148 | 779 | 369 | 296 | 73 | 0 | 80.2% | 25.8% |
-| Annex B | 365 | 46 | 316 | 260 | 56 | 3 | 82.3% | 71.2% |
+| Annex B | 365 | 44 | 321 | 267 | 54 | 0 | 83.2% | 73.2% |
 | Stage 3 | 5,531 | 5,519 | 12 | 6 | 6 | 0 | 50.0% | 0.1% |
-| **Total** | **44,986** | **18,119** | **26,846** | **26,011** | **835** | **21** | **96.9%** | **57.8%** |
+| **Total** | **44,986** | **14,491** | **30,483** | **29,526** | **957** | **12** | **96.9%** | **65.6%** |
 
 _Fully-skipped buckets (no tests executed) folded into Total: Unmapped (29)._
+
 ### non-strict
+
 | Edition | Discovered | Skipped | Executed | Passed | Failed | Timeout/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| Pre-ES2015 (baseline) | 13,917 | 0 | 13,909 | 13,452 | 457 | 8 | 96.7% | 96.7% |
-| ES2015 | 10,788 | 159 | 10,620 | 10,353 | 267 | 9 | 97.5% | 96.0% |
+| Pre-ES2015 (baseline) | 13,917 | 0 | 13,911 | 13,460 | 451 | 6 | 96.8% | 96.7% |
+| ES2015 | 10,788 | 160 | 10,620 | 10,393 | 227 | 8 | 97.9% | 96.3% |
 | ES2016 | 100 | 0 | 99 | 99 | 0 | 1 | 100.0% | 99.0% |
 | ES2017 | 775 | 344 | 431 | 428 | 3 | 0 | 99.3% | 55.2% |
-| ES2018 | 4,781 | 4,384 | 397 | 380 | 17 | 0 | 95.7% | 7.9% |
+| ES2018 | 4,781 | 735 | 4,046 | 3,859 | 187 | 0 | 95.4% | 80.7% |
 | ES2019 | 127 | 0 | 127 | 105 | 22 | 0 | 82.7% | 82.7% |
-| ES2020 | 1,984 | 1,610 | 374 | 370 | 4 | 0 | 98.9% | 18.6% |
+| ES2020 | 1,984 | 1,604 | 380 | 377 | 3 | 0 | 99.2% | 19.0% |
 | ES2021 | 444 | 128 | 316 | 301 | 15 | 0 | 95.3% | 67.8% |
-| ES2022 | 5,361 | 4,628 | 733 | 727 | 6 | 0 | 99.2% | 13.6% |
+| ES2022 | 5,361 | 4,600 | 761 | 755 | 6 | 0 | 99.2% | 14.1% |
 | ES2023 | 277 | 56 | 221 | 218 | 3 | 0 | 98.6% | 78.7% |
 | ES2024 | 1,077 | 870 | 207 | 109 | 98 | 0 | 52.7% | 10.1% |
 | ES2025 | 1,180 | 813 | 367 | 294 | 73 | 0 | 80.1% | 24.9% |
-| Annex B | 1,156 | 46 | 1,107 | 928 | 179 | 3 | 83.8% | 80.3% |
+| Annex B | 1,156 | 44 | 1,110 | 933 | 177 | 2 | 84.1% | 80.7% |
 | Stage 3 | 5,696 | 5,593 | 103 | 10 | 93 | 0 | 9.7% | 0.2% |
-| **Total** | **47,692** | **18,660** | **29,011** | **27,774** | **1,237** | **21** | **95.7%** | **58.2%** |
+| **Total** | **47,692** | **14,976** | **32,699** | **31,341** | **1,358** | **17** | **95.8%** | **65.7%** |
 
 _Fully-skipped buckets (no tests executed) folded into Total: Unmapped (29)._
 
