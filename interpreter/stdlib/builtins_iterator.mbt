@@ -110,6 +110,7 @@ fn setup_iterator_protocol(
                     descriptors: {},
                     symbol_descriptors: {},
                     internal_slots: {},
+                    host_slots: {},
                   },
                   prototype: Null,
                   callable: None,

@@ -409,6 +409,7 @@ fn setup_map_builtins(
       descriptors: map_proto_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,

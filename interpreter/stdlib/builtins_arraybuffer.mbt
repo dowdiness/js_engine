@@ -165,6 +165,7 @@ pub fn make_arraybuffer_object(
         (@runtime.ArrayBufferID, Value::Number(id.to_double())),
         (@runtime.ArrayBufferByteLength, Value::Number(byte_length.to_double())),
       ]),
+      host_slots: {},
     },
     prototype: proto,
     callable: None,
@@ -458,6 +459,7 @@ pub fn setup_arraybuffer_builtins(
       descriptors: ab_proto_descs,
       symbol_descriptors: ab_proto_sym_descs,
       internal_slots: {},
+      host_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -524,6 +526,7 @@ pub fn setup_arraybuffer_builtins(
       descriptors: ab_ctor_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(

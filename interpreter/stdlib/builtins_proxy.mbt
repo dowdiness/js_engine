@@ -19,6 +19,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
       descriptors: { "name": nf_desc, "length": nf_desc },
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -115,6 +116,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
           descriptors: {},
           symbol_descriptors: {},
           internal_slots: {},
+          host_slots: {},
         },
         prototype: Null,
         callable: None,

@@ -165,6 +165,7 @@ pub(all) struct PropertyBag {
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor] // Descriptors for symbol properties
   internal_slots : Map[InternalSlotKey, Value] // Engine-internal slots, invisible to enumeration
+  host_slots : Map[Int, Value] // Embedder slots; invisible to JS enumeration
 }
 
 ///|
@@ -176,6 +177,7 @@ pub fn PropertyBag::PropertyBag() -> PropertyBag {
     descriptors: {},
     symbol_descriptors: {},
     internal_slots: {},
+    host_slots: {},
   }
 }
 

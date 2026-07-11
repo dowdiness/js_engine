@@ -285,6 +285,7 @@ fn setup_function_builtins(
             descriptors: { "length": nf_desc, "name": nf_desc },
             symbol_descriptors: {},
             internal_slots: {},
+            host_slots: {},
           },
           prototype: target_proto,
           callable: Some(BoundFunc(this_val, bind_this, bound_args)),
@@ -322,6 +323,7 @@ fn setup_function_builtins(
       },
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -381,6 +383,7 @@ fn setup_function_builtins(
       descriptors: func_proto_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(NonConstructableCallable("", fn(_args) { Undefined })),
@@ -425,6 +428,7 @@ fn setup_function_builtins(
       },
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -491,6 +495,7 @@ fn setup_function_builtins(
                     },
                     symbol_descriptors: {},
                     internal_slots: {},
+                    host_slots: {},
                   },
                   prototype: func_proto,
                   callable: Some(
@@ -547,6 +552,7 @@ fn setup_function_builtins(
                     },
                     symbol_descriptors: {},
                     internal_slots: {},
+                    host_slots: {},
                   },
                   prototype: func_proto,
                   callable: Some(
@@ -599,6 +605,7 @@ fn setup_function_builtins(
               },
               symbol_descriptors: {},
               internal_slots: {},
+              host_slots: {},
             },
             prototype: func_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),

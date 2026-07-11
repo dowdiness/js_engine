@@ -1,1 +1,3 @@
-{}
+{
+  "interpreter/runtime/host_slots.mbt:host_slot_id_counter": "Process/package-instance allocator for HostSlotKey::reserve (#518). Embedder slot identities are intentionally shared across interpreters in one loaded runtime package (approved design: not per-realm/per-interpreter). Monotonic Int; abort on exhaustion, never wrap. Tests isolate by reserving fresh keys per case rather than resetting the counter."
+}

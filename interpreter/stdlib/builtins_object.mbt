@@ -588,6 +588,7 @@ pub fn setup_object_builtins(
       descriptors: obj_proto_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: None,
@@ -694,6 +695,7 @@ pub fn setup_object_builtins(
                     internal_slots: Map::from_array([
                       (@runtime.NumberData, Value::Number(n)),
                     ]),
+                    host_slots: {},
                   },
                   prototype: realm_state.get_number_proto(),
                   callable: None,
@@ -711,6 +713,7 @@ pub fn setup_object_builtins(
                     internal_slots: Map::from_array([
                       (@runtime.BooleanData, Value::Bool(b)),
                     ]),
+                    host_slots: {},
                   },
                   prototype: realm_state.get_boolean_proto(),
                   callable: None,
@@ -755,6 +758,7 @@ pub fn setup_object_builtins(
                     internal_slots: Map::from_array([
                       (@runtime.StringData, Value::String_(s)),
                     ]),
+                    host_slots: {},
                   },
                   prototype: realm_state.get_string_proto(),
                   callable: None,
@@ -773,6 +777,7 @@ pub fn setup_object_builtins(
                     internal_slots: Map::from_array([
                       (@runtime.SymbolData, raw_target),
                     ]),
+                    host_slots: {},
                   },
                   prototype: realm_state.get_symbol_proto(),
                   callable: None,
@@ -1186,6 +1191,7 @@ pub fn setup_object_builtins(
         },
         symbol_descriptors: {},
         internal_slots: {},
+        host_slots: {},
       },
       prototype: Null,
       callable: Some(
@@ -1241,6 +1247,7 @@ pub fn setup_object_builtins(
                   internal_slots: Map::from_array([
                     (@runtime.StringData, Value::String_(s)),
                   ]),
+                  host_slots: {},
                 },
                 prototype: string_proto,
                 callable: None,
@@ -1263,6 +1270,7 @@ pub fn setup_object_builtins(
                   internal_slots: Map::from_array([
                     (@runtime.NumberData, Value::Number(n)),
                   ]),
+                  host_slots: {},
                 },
                 prototype: number_proto,
                 callable: None,
@@ -1285,6 +1293,7 @@ pub fn setup_object_builtins(
                   internal_slots: Map::from_array([
                     (@runtime.BooleanData, Value::Bool(b)),
                   ]),
+                  host_slots: {},
                 },
                 prototype: boolean_proto,
                 callable: None,
@@ -1305,6 +1314,7 @@ pub fn setup_object_builtins(
                   descriptors: {},
                   symbol_descriptors: {},
                   internal_slots: Map::from_array([(@runtime.SymbolData, val)]),
+                  host_slots: {},
                 },
                 prototype: symbol_proto,
                 callable: None,

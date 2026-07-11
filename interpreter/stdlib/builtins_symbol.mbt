@@ -187,6 +187,7 @@ fn setup_symbol_builtins(
       descriptors: symbol_proto_descs,
       symbol_descriptors: symbol_proto_sym_descs,
       internal_slots: {},
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -289,6 +290,7 @@ fn setup_symbol_builtins(
       descriptors: symbol_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
