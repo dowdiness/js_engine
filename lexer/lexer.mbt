@@ -1659,6 +1659,42 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       col += 3
       continue
     }
+    // Private identifier (#name)
+    if c == '#' {
+      let mut start_offset = offset + 1
+      if start_offset >= len {
+        raise @errors.SyntaxError(
+          message="Invalid private name at line \{line}, col \{col}",
+        )
+      }
+      let next = char_at(start_offset)
+      if !is_id_start_cp(next.to_int()) {
+        raise @errors.SyntaxError(
+          message="Invalid private name at line \{line}, col \{col}",
+        )
+      }
+      let name_buf = StringBuilder::new()
+      name_buf.write_char(next)
+      start_offset += 1
+      let mut col_offset = 2 // # + first char
+      while start_offset < len {
+        let ch = char_at(start_offset)
+        if is_id_continue_cp(ch.to_int()) {
+          name_buf.write_char(ch)
+          start_offset += 1
+          col_offset += 1
+        } else {
+          break
+        }
+      }
+      let name = name_buf.to_string()
+      let raw = "#" + name
+      tokens.push(@token.Token(PrivateName(name), loc, raw))
+      offset = start_offset
+      col += col_offset
+      continue
+    }
+
     // Single-character tokens
     let (kind, raw) : (@token.TokenKind, String) = match c {
       '+' => (Plus, "+")

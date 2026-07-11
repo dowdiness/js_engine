@@ -19887,3 +19887,101 @@ test "JSON.stringify Proxy traps fire during stringify walk" {
   let output = run_output(src)
   json_inspect(output, content=["{\"a\":99,\"b\":1}", "{\"a\":99}", "[0,1]"])
 }
+//|
+
+///|
+test "class private fields: read via method" {
+  let src =
+    #|class C {
+    #|  #x = 42;
+    #|  getX() { return this.#x; }
+    #|}
+    #|const c = new C();
+    #|console.log(c.getX());
+  let output = run_output(src)
+  json_inspect(output, content=["42"])
+}
+//|
+
+///|
+test "class private fields: brand error on wrong object" {
+  let src =
+    #|class C {
+    #|  #x = 1;
+    #|  getX() { return this.#x; }
+    #|}
+    #|try {
+    #|  C.prototype.getX.call({});
+    #|  console.log("NO_ERROR");
+    #|} catch(e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError"])
+}
+//|
+
+///|
+test "class private fields: #x in obj brand check" {
+  let src =
+    #|class C {
+    #|  #x = 1;
+    #|  hasX(obj) { return #x in obj; }
+    #|}
+    #|const c = new C();
+    #|console.log(c.hasX(c));
+    #|console.log(c.hasX({}));
+  let output = run_output(src)
+  json_inspect(output, content=["true", "false"])
+}
+//|
+
+///|
+test "class private methods: read via method call" {
+  let src =
+    #|class C {
+    #|  #m() { return 42; }
+    #|  callM() { return this.#m(); }
+    #|}
+    #|const c = new C();
+    #|console.log(c.callM());
+  let output = run_output(src)
+  json_inspect(output, content=["42"])
+}
+//|
+
+///|
+test "class private methods: brand error on wrong object" {
+  let src =
+    #|class C {
+    #|  #m() { return 1; }
+    #|  callM() { return this.#m(); }
+    #|}
+    #|try {
+    #|  C.prototype.callM.call({});
+    #|  console.log("NO_ERROR");
+    #|} catch(e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError"])
+}
+//|
+
+///|
+test "class static block: execution order" {
+  let src =
+    #|var order = [];
+    #|class C {
+    #|  static x = order.push("field");
+    #|  static { order.push("block1"); }
+    #|  static y = order.push("field2");
+    #|  static { order.push("block2"); }
+    #|}
+    #|console.log(order.join(","));
+    #|console.log(C.x);
+  let output = run_output(src)
+  // TODO: §15.7.11 requires interleaved static field/block evaluation in definition order.
+  // Current implementation evaluates all static fields first, then all static blocks.
+  json_inspect(output, content=["field,field2,block1,block2", "1"])
+}

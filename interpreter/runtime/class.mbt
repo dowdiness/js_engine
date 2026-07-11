@@ -98,6 +98,12 @@ fn Interpreter::create_class(
   let instance_fields : Array[ClassFieldInit] = []
   // Collect static field initializers (evaluated after class object is created)
   let static_fields : Array[ClassFieldInit] = []
+  // Collect private instance field initializers (evaluated during construction)
+  let private_instance_fields : Array[ClassFieldInit] = []
+  // Collect private static field initializers (evaluated after class object is created)
+  let private_static_fields : Array[ClassFieldInit] = []
+  // Collect private methods for this class (shared across all instances)
+  let private_methods : Map[String, Value] = {}
   // Create method environments with [[SuperPrototype]] for super.method() support.
   // Base classes (no extends) still need these bindings: instance methods resolve
   // super against Object.prototype; static methods against Function.prototype.
@@ -119,16 +125,22 @@ fn Interpreter::create_class(
     menv.def_builtin("[[SuperPrototype]]", static_super)
     menv
   }
+  // Generate private brand symbol for this class declaration
+  let private_brand : Value = if name != "" {
+    Value::Symbol(self.realm_state.symbols.new_symbol(Some("[\{name}]")))
+  } else {
+    Value::Symbol(self.realm_state.symbols.new_symbol(Some("[anonymous]")))
+  }
+  // Bind private brand in method environments so PrivateMember/PrivateIdent
+  // can resolve it at eval time via the environment chain.
+  instance_method_env.def_builtin("[[PrivateBrand]]", private_brand)
+  static_method_env.def_builtin("[[PrivateBrand]]", private_brand)
   // Pre-seed the intrinsic static slots (length, name, prototype) so they
   // appear before user-defined static keys in OrdinaryOwnPropertyKeys order.
   // The actual values are written after the loop; placeholders here only fix
   // Map insertion order, which sort_property_keys preserves for non-integer
   // string keys.
   static_props["length"] = Undefined
-  if name != "" {
-    static_props["name"] = Undefined
-  }
-  static_props["prototype"] = Undefined
   // Process all members (methods and fields)
   // Class bodies are always strict — computed property keys and method keys
   // must be evaluated as strict code per ES2022 §15.7.
@@ -140,6 +152,7 @@ fn Interpreter::create_class(
         // so side-effectful toString/valueOf don't re-run per-construction.
         let key_val : Value = match f.key {
           StringLit(s, _, _, _) => String_(s)
+          PrivateIdent(name, _) => String_(name) // private fields: use name directly
           _ => {
             let v = self.eval_expr(class_ctx, f.key, env)
             to_property_key(v, interp=Some(self))
@@ -154,16 +167,24 @@ fn Interpreter::create_class(
             instance_method_env
           },
         }
-        if f.is_static {
+        if f.is_private {
+          if f.is_static {
+            private_static_fields.push(field_init)
+          } else {
+            private_instance_fields.push(field_init)
+          }
+        } else if f.is_static {
           static_fields.push(field_init)
         } else {
           instance_fields.push(field_init)
         }
       }
+      @ast.ClassMember::StaticBlock(_) => ()
       @ast.ClassMember::Method(m) => { // method branch
         // Get the method key - could be string or symbol
         let key_val : Value = match m.key {
           StringLit(s, _, _, _) => String_(s)
+          PrivateIdent(name, _) => String_(name) // private methods: use name directly
           _ =>
             to_property_key(
               self.eval_expr(class_ctx, m.key, env),
@@ -186,7 +207,10 @@ fn Interpreter::create_class(
         // Per ES2022 §15.7.13, only a non-computed `constructor` method
         // becomes the class's [[Construct]]. Computed `["constructor"]` is
         // a regular prototype method.
-        if method_key_str == "constructor" && !m.is_static && !m.computed {
+        if method_key_str == "constructor" &&
+          !m.is_static &&
+          !m.is_private &&
+          !m.computed {
           // Extract constructor params and body
           // Class bodies are always strict, so ensure constructor body has "use strict"
           match m.value {
@@ -383,6 +407,15 @@ fn Interpreter::create_class(
           Set => set_function_name(method_val, "set " + method_key_str)
           _ => set_function_name(method_val, method_key_str)
         }
+        // Private methods: skip public installation, store in private_methods map
+        if m.is_private {
+          let priv_name : String = match m.key {
+            PrivateIdent(n, _) => n
+            _ => method_key_str
+          }
+          private_methods[priv_name] = method_val
+          continue
+        }
         match m.kind {
           Get =>
             // Getter method - store as accessor descriptor
@@ -516,6 +549,24 @@ fn Interpreter::create_class(
       } // end Method arm
     } // end match member
   } // end for member in members
+  // Bind private methods in method environments for PrivateMember eval
+  let private_methods_obj : Value = Object({
+    bag: {
+      properties: private_methods,
+      symbol_properties: {},
+      descriptors: {},
+      symbol_descriptors: {},
+      internal_slots: {},
+      host_slots: {},
+    },
+    prototype: Null,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  instance_method_env.def_builtin("[[PrivateMethods]]", private_methods_obj)
+  static_method_env.def_builtin("[[PrivateMethods]]", private_methods_obj)
   // Create prototype object
   let proto = Object({
     bag: {
@@ -544,6 +595,7 @@ fn Interpreter::create_class(
       }
     Some(super_class) => super_class
   }
+
   // Create the class constructor function
   let class_obj = stamp_function_realm(
     Object({
@@ -565,7 +617,10 @@ fn Interpreter::create_class(
           closure: env,
           super_proto,
           instance_fields,
+          private_instance_fields,
           source_text,
+          private_brand,
+          private_methods,
         }),
       ),
       class_name: "Function",
@@ -707,6 +762,18 @@ fn Interpreter::create_class(
             }
           }
         }
+      _ => ()
+    }
+  }
+  // Execute static blocks in order (after static field initialization)
+  // Each StaticBlock has `this` = class_obj and the class name in scope.
+  for mbr in members {
+    match mbr {
+      @ast.ClassMember::StaticBlock(stmts, _) => {
+        let block_env = Environment::new(parent=Some(static_init_base))
+        block_env.def_builtin("this", class_obj)
+        let _ = self.exec_stmts(static_field_ctx, stmts, block_env)
+      }
       _ => ()
     }
   }

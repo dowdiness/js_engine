@@ -603,7 +603,7 @@ fn json_internalize(
   interp.call_value(reviver, holder, [Value::String_(name), val], loc)
 }
 
-///
+///|
 ///
 /// Write comma separator and indentation before the next element in a JSON
 /// array or object. Returns `false` (the next `first` value).
@@ -627,7 +627,8 @@ fn json_write_element_separator(
   }
   false
 }
-///
+
+///|
 /// Write closing indentation (newline + indent at the shallower depth)
 /// before the closing bracket/brace, when the container has content.
 fn json_write_close_indent(
@@ -647,7 +648,8 @@ fn json_write_close_indent(
     None => ()
   }
 }
-///
+
+///|
 fn json_stringify_proxy_array(
   ip : Interpreter,
   val : Value,
@@ -1088,7 +1090,9 @@ fn json_stringify_value(
             match stringified {
               Undefined => () // Skip undefined values
               Value::String_(s) => {
-                first = json_write_element_separator(buf, first, indent, new_depth)
+                first = json_write_element_separator(
+                  buf, first, indent, new_depth,
+                )
                 buf.write_string(json_escape_string(k))
                 buf.write_char(':')
                 match indent {

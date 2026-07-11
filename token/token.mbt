@@ -39,6 +39,8 @@ pub(all) enum TokenKind {
   Undefined
   // Identifier
   Ident(String)
+  // Private identifier (#name)
+  PrivateName(String)
   // Keywords
   Let
   Const

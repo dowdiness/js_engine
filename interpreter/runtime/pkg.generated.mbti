@@ -129,6 +129,8 @@ pub fn get_number_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_obj_proto(realm_state? : RealmState?) -> Value
 
+pub fn get_private_field(Value, Value, String) -> Value raise
+
 pub fn get_promise_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_proxy_handler(ProxyData) -> Value raise
@@ -164,6 +166,8 @@ pub fn get_typedarray_byte_offset(ObjectData) -> Value?
 pub fn get_typedarray_viewed_buffer(ObjectData) -> Value?
 
 pub fn has_array_like_element(Interpreter, Value, Int64) -> Bool
+
+pub fn has_brand(Value, Value) -> Bool
 
 pub fn has_host_slot(ObjectData, HostSlotKey) -> Bool
 
@@ -331,6 +335,8 @@ pub fn set_integrity_sealed(Value) -> Value
 
 pub fn set_keyed_collection_iterator_next_index(ObjectData, Int, Value) -> Unit
 
+pub fn set_private_field(Value, Value, String, Value) -> Unit raise
+
 pub fn setup_async_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
 
 pub fn setup_async_generator_function_constructor(Environment, well_known_symbols~ : WellKnownSymbols) -> Unit
@@ -477,7 +483,10 @@ pub(all) struct ClassConstructorData {
   closure : Environment
   super_proto : Value
   instance_fields : Array[ClassFieldInit]
+  private_instance_fields : Array[ClassFieldInit]
   source_text : String?
+  private_brand : Value
+  private_methods : Map[String, Value]
 }
 
 pub(all) struct ClassFieldInit {
@@ -637,6 +646,7 @@ pub(all) enum InternalSlotKey {
   SyncIterator
   SyncNextMethod
   SourceText
+  PrivateBrandStore
 } derive(Eq, Hash, @debug.Debug)
 
 pub(all) struct Interpreter {

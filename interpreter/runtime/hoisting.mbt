@@ -498,6 +498,12 @@ fn validate_block_early_errors_expr(
               None => ()
             }
           }
+          @ast.ClassMember::StaticBlock(stmts, _) => {
+            validate_block_statement_list_early_errors(stmts)
+            for s in stmts {
+              validate_block_early_errors_stmt(s, true)
+            }
+          }
         }
       }
     }
@@ -906,6 +912,12 @@ fn validate_block_early_errors_stmt(
             match f.initializer {
               Some(expr) => validate_block_early_errors_expr(expr, true)
               None => ()
+            }
+          }
+          @ast.ClassMember::StaticBlock(stmts, _) => {
+            validate_block_statement_list_early_errors(stmts)
+            for s in stmts {
+              validate_block_early_errors_stmt(s, true)
             }
           }
         }

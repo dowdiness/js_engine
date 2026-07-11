@@ -45,12 +45,14 @@ pub(all) struct ClassField {
   initializer : Expr?
   computed : Bool
   is_static : Bool
+  is_private : Bool
 } derive(Eq, @debug.Debug)
 pub impl Show for ClassField
 
 pub(all) enum ClassMember {
   Method(ClassMethod)
   Field(ClassField)
+  StaticBlock(Array[Stmt], @token.Loc)
 } derive(Eq, @debug.Debug)
 pub impl Show for ClassMember
 
@@ -60,6 +62,7 @@ pub(all) struct ClassMethod {
   kind : PropKind
   computed : Bool
   is_static : Bool
+  is_private : Bool
 } derive(Eq, @debug.Debug)
 pub impl Show for ClassMethod
 
@@ -143,6 +146,8 @@ pub(all) enum Expr {
   AsyncGeneratorExprExt(String?, Array[Param], String?, Array[Stmt], @token.Loc, String?)
   AwaitExpr(Expr, @token.Loc)
   WebCompatCallAssign(Expr, Expr, @token.Loc)
+  PrivateIdent(String, @token.Loc)
+  PrivateMember(Expr, String, @token.Loc)
 } derive(Eq, @debug.Debug)
 pub impl Show for Expr
 

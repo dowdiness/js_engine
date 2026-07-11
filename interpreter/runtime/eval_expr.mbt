@@ -134,6 +134,7 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
               }
               expr_may_contain_yield(f.key) || init_has_yield
             }
+            @ast.ClassMember::StaticBlock(_) => false
           }
         })
       super_has_yield || members_have_yield
@@ -2001,6 +2002,35 @@ fn Interpreter::eval_expr(
       self.eval_super_computed_property(env, key, loc)
     }
     NewTargetExpr(_) => eval_new_target_value(env)
+    PrivateIdent(name, _) => fail("TODO: bare private name reference: #\{name}")
+    PrivateMember(obj, name, _) => {
+      let obj_val = self.eval_expr(ctx, obj, env)
+      let brand = env.get("[[PrivateBrand]]") catch {
+        _ =>
+          raise @errors.ReferenceError(
+            message="Private field '#\{name}' must be declared in an enclosing class",
+          )
+      }
+      // Check private methods first (shared per-class, not instance-specific)
+      let methods_obj = env.get("[[PrivateMethods]]") catch { _ => Undefined }
+      match methods_obj {
+        Object(mobj_data) =>
+          match mobj_data.bag.properties.get(name) {
+            Some(method_val) => {
+              if !has_brand(obj_val, brand) {
+                raise @errors.TypeError(
+                  message="Cannot read private member #\{name} from object of different class",
+                )
+              }
+              return method_val
+            }
+            None => ()
+          }
+        _ => ()
+      }
+      // Fall back to private field lookup
+      get_private_field(obj_val, brand, name)
+    }
   }
 }
 
@@ -2030,6 +2060,8 @@ fn Interpreter::eval_super_dispatch(
             {
               super_ctor: _super_ctor,
               instance_fields: super_instance_fields,
+              private_instance_fields: super_private_fields,
+              private_brand: super_brand,
               ctor_fn,
               closure: ctor_closure,
               super_proto,
@@ -2058,11 +2090,13 @@ fn Interpreter::eval_super_dispatch(
               call_env.def_builtin("[[SuperConstructor]]", grand_super)
               call_env.def_builtin("[[SuperPrototype]]", super_proto)
               // Super is also derived: defer its fields until its own super() returns
-              if super_instance_fields.length() > 0 {
+              if super_instance_fields.length() > 0 || super_private_fields.length() > 0 {
                 call_env.def_builtin(
                   "[[InitInstanceFields]]",
                   make_instance_fields_init(
                     super_instance_fields,
+                    super_private_fields,
+                    Some(super_brand),
                     self.realm_state,
                   ),
                 )
@@ -2076,6 +2110,9 @@ fn Interpreter::eval_super_dispatch(
               call_env.def_builtin("this", this_val)
               call_env.def_builtin("[[SuperPrototype]]", super_proto)
               self.install_instance_fields(this_val, super_instance_fields)
+              self.install_private_fields(
+                this_val, super_private_fields, super_brand,
+              )
             }
           }
           // §15.7.5.1 derived constructor return rule: after the body returns
@@ -2352,19 +2389,38 @@ fn Interpreter::eval_binary(
       let r = self.eval_expr(ctx, right_expr, env)
       self.eval_instanceof_values(l, r, loc)
     }
-    In => {
-      let left = self.eval_expr(ctx, left_expr, env)
-      let right = self.eval_expr(ctx, right_expr, env)
-      if is_object_value(right) {
-        Bool(
-          self.has_property_key(right, to_property_key(left, interp=Some(self))),
-        )
-      } else {
-        raise @errors.TypeError(
-          message="Cannot use 'in' operator to search for '\{left.to_string()}' in \{type_of(right)}",
-        )
+    In =>
+      // Handle #x in obj — check private brand rather than property lookup
+      match left_expr {
+        PrivateIdent(_, _) => {
+          let right = self.eval_expr(ctx, right_expr, env)
+          if !is_object_value(right) {
+            raise @errors.TypeError(
+              message="Cannot use 'in' operator to search for '\{right.to_string()}' in \{type_of(right)}",
+            )
+          }
+          let brand = env.get("[[PrivateBrand]]") catch {
+            _ => return Bool(false)
+          }
+          Bool(has_brand(right, brand))
+        }
+        _ => {
+          let left = self.eval_expr(ctx, left_expr, env)
+          let right = self.eval_expr(ctx, right_expr, env)
+          if is_object_value(right) {
+            Bool(
+              self.has_property_key(
+                right,
+                to_property_key(left, interp=Some(self)),
+              ),
+            )
+          } else {
+            raise @errors.TypeError(
+              message="Cannot use 'in' operator to search for '\{left.to_string()}' in \{type_of(right)}",
+            )
+          }
+        }
       }
-    }
     _ => {
       let left = self.eval_expr(ctx, left_expr, env)
       let right = self.eval_expr(ctx, right_expr, env)

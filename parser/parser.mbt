@@ -55,6 +55,7 @@ pub(all) struct Parser {
   generator_depth : Array[Bool] // Stack: true when inside a generator function body
   async_depth : Array[Bool] // Stack: true when inside an async function body
   yield_identifier_depth : Array[Bool] // Stack: false where `yield` cannot be an IdentifierReference
+  mut class_body_depth : Int // 0 = outside class body, >0 = inside class body
 }
 
 ///|
@@ -68,6 +69,7 @@ pub fn Parser::new(tokens : Array[@token.Token], source : String) -> Parser {
     generator_depth: [false],
     async_depth: [false],
     yield_identifier_depth: [true],
+    class_body_depth: 0,
   }
 }
 

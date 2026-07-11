@@ -46,6 +46,7 @@ pub(all) enum TokenKind {
   Null
   Undefined
   Ident(String)
+  PrivateName(String)
   Let
   Const
   Var

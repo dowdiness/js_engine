@@ -182,6 +182,9 @@ pub(all) enum Expr {
   AwaitExpr(Expr, @token.Loc) // argument
   // Annex B §B.3.4: f()=g() non-strict — eval call for side effects, then throw ReferenceError (strict: SyntaxError)
   WebCompatCallAssign(Expr, Expr, @token.Loc)
+  // Private name reference
+  PrivateIdent(String, @token.Loc) // #name as expression (e.g. `#x in obj`)
+  PrivateMember(Expr, String, @token.Loc) // obj.#name
 } derive(Debug, Eq)
 
 ///|
@@ -230,6 +233,7 @@ pub(all) struct ClassMethod {
   kind : PropKind // Init for regular method, Get for getter, Set for setter
   computed : Bool // true for [expr]() syntax
   is_static : Bool // true for static methods
+  is_private : Bool // true for private (#name) methods
 } derive(Debug, Eq)
 
 ///|
@@ -238,12 +242,14 @@ pub(all) struct ClassField {
   initializer : Expr? // None if no `= expr`
   computed : Bool // true for [expr] syntax
   is_static : Bool // true for static fields
+  is_private : Bool // true for private (#name) fields
 } derive(Debug, Eq)
 
 ///|
 pub(all) enum ClassMember {
   Method(ClassMethod)
   Field(ClassField)
+  StaticBlock(Array[Stmt], @token.Loc) // static { ... } block
 } derive(Debug, Eq)
 
 ///|

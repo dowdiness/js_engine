@@ -77,7 +77,6 @@ fn load_parity_cases(path : String) -> Array[ParityCase] raise {
 test "loads strict shared skip metadata JSON" {
   let metadata = load_skip_metadata(root=".")
   assert_true(metadata.features.contains("BigInt"))
-  assert_true(metadata.features.contains("class-fields-private"))
   assert_true(metadata.flags.contains("CanBlockIsFalse"))
   assert_true(metadata.flags.contains("CanBlockIsTrue"))
   assert_true(metadata.path_suffixes.length() > 0) // async-iteration failing paths

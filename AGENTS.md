@@ -295,6 +295,10 @@ grep -rn '() => {}' <pkg>/*.mbt                      # Empty callback anti-patte
 - `() => {}` is a map literal, not an empty function body — use `() => ()`.
 - `loop` keyword is deprecated — use `for .. in`.
 - `try?` does not catch `abort`.
+- `let EnumVariant(x) = expr` performs a partial match and will **not compile** for
+  non-exhaustive patterns — use `match expr { EnumVariant(x) => x, _ => ... }`
+  or `guard expr is EnumVariant(_) else { ... }; let EnumVariant(x) = expr`.
+  Rust-style `let EnumVariant(x) = expr else { ... }` does not exist.
 - For cross-target builds, use per-file conditional compilation rather than `supported-targets` in `moon.pkg.json`.
 
 ## Code Changes & Review
@@ -306,6 +310,16 @@ grep -rn '() => {}' <pkg>/*.mbt                      # Empty callback anti-patte
 - Verify method names match actual API before writing tests (e.g., check if it's `insert` vs `add_local_op`).
 
 ## Development Workflow
+
+### 着手前チェック（必須）
+
+作業を始める前に以下を確認する。スキップ禁止。
+
+1. **影響範囲の grep** — 変更対象の関数/型の呼び出し元を全件洗い出す
+2. **パスごとの型確認** — 各呼び出し元で引数の取りうる型を確認する（Object だけ？
+   Map/Set/Promise もあり得る？）
+3. **前提の明示** — 「〜が常に成り立つ」と仮定していることを3行以内で書く
+4. **テストを先に書く** — 最小の end-to-end テストを実装前に書き、落ちることを確認する
 
 ### Performance Optimization Rule
 
