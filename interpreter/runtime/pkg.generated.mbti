@@ -478,6 +478,8 @@ pub(all) struct ClassConstructorData {
   super_proto : Value
   instance_fields : Array[ClassFieldInit]
   source_text : String?
+  private_brand : Value
+  private_methods : Map[String, Value]
 }
 
 pub(all) struct ClassFieldInit {
@@ -637,6 +639,7 @@ pub(all) enum InternalSlotKey {
   SyncIterator
   SyncNextMethod
   SourceText
+  PrivateBrandStore
 } derive(Eq, Hash, @debug.Debug)
 
 pub(all) struct Interpreter {

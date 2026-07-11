@@ -1059,7 +1059,7 @@ fn Interpreter::construct_value_impl(
               closure,
               super_proto,
               instance_fields,
-              source_text: _,
+              ..,
             }
           )
         ) => {

@@ -236,6 +236,7 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
     }
     NewTargetExpr(_) => scan.new_target = true
     Ident("arguments", _) => scan.arguments_ref = true
+    PrivateIdent(_, _) => ()
     // Skip-entirely: non-arrow function/generator/async bodies define their
     // own super/arguments/new.target context per ES262 §15.2.12.
     FuncExpr(_, _, _, _, _)
@@ -300,8 +301,10 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
         scan_expr(scan, a)
       }
     }
-    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
-      scan_expr(scan, obj)
+    Member(obj, _, _)
+    | OptionalMember(obj, _, _)
+    | ChainMember(obj, _, _)
+    | PrivateMember(obj, _, _) => scan_expr(scan, obj)
     ComputedMember(obj, key, _)
     | OptionalComputedMember(obj, key, _)
     | ChainComputedMember(obj, key, _) => {

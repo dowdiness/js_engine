@@ -498,6 +498,7 @@ fn validate_block_early_errors_expr(
               None => ()
             }
           }
+          @ast.ClassMember::StaticBlock(_) => ()
         }
       }
     }
@@ -908,6 +909,7 @@ fn validate_block_early_errors_stmt(
               None => ()
             }
           }
+          @ast.ClassMember::StaticBlock(_) => ()
         }
       }
     }

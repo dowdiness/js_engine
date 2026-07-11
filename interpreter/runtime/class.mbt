@@ -160,6 +160,7 @@ fn Interpreter::create_class(
           instance_fields.push(field_init)
         }
       }
+      @ast.ClassMember::StaticBlock(_) => ()
       @ast.ClassMember::Method(m) => { // method branch
         // Get the method key - could be string or symbol
         let key_val : Value = match m.key {
@@ -544,6 +545,13 @@ fn Interpreter::create_class(
       }
     Some(super_class) => super_class
   }
+  // Create private brand for this class
+  let private_brand : Value = if name != "" {
+    Value::Symbol(self.realm_state.symbols.new_symbol(Some("[\{name}]")))
+  } else {
+    Value::Symbol(self.realm_state.symbols.new_symbol(Some("[anonymous]")))
+  }
+
   // Create the class constructor function
   let class_obj = stamp_function_realm(
     Object({
@@ -566,6 +574,8 @@ fn Interpreter::create_class(
           super_proto,
           instance_fields,
           source_text,
+          private_brand,
+          private_methods: {},
         }),
       ),
       class_name: "Function",

@@ -192,6 +192,7 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
           match m {
             Method(cm) => cm.computed && expr_contains_yield(cm.key)
             Field(cf) => cf.computed && expr_contains_yield(cf.key)
+            StaticBlock(_) => false
           }
         })
       heritage || computed

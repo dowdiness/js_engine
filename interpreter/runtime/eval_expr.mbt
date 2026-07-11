@@ -134,6 +134,7 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
               }
               expr_may_contain_yield(f.key) || init_has_yield
             }
+            @ast.ClassMember::StaticBlock(_) => false
           }
         })
       super_has_yield || members_have_yield
@@ -2001,6 +2002,11 @@ fn Interpreter::eval_expr(
       self.eval_super_computed_property(env, key, loc)
     }
     NewTargetExpr(_) => eval_new_target_value(env)
+    PrivateIdent(name, _) => fail("TODO: bare private name reference: #\{name}")
+    PrivateMember(obj, name, _) => {
+      let _ = self.eval_expr(ctx, obj, env)
+      fail("TODO: private member access: #\{name}")
+    }
   }
 }
 
