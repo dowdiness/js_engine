@@ -13,12 +13,12 @@ pub fn builtin_method_desc() -> PropDescriptor {
 }
 
 ///|
-fn builtin_accessor_desc(getter : Value, setter : Value?) -> PropDescriptor {
+fn builtin_accessor_desc(getter : Value?, setter : Value?) -> PropDescriptor {
   {
     writable: false,
     enumerable: false,
     configurable: true,
-    getter: Some(getter),
+    getter,
     setter,
     is_accessor: true,
   }
@@ -61,12 +61,18 @@ pub fn install_builtin_method(
 
 ///|
 /// Install a built-in string-keyed accessor property.
+/// At least one of `getter` / `setter` must be `Some`; `(None, None)` aborts.
+/// Use `None` for an absent side (not `Some(Undefined)`), unless intentionally
+/// mimicking a JS `{ get: undefined }` / `{ set: undefined }` descriptor.
 pub fn install_builtin_accessor(
   data : ObjectData,
   name : String,
-  getter : Value,
+  getter : Value?,
   setter : Value?,
 ) -> Unit {
+  guard getter is Some(_) || setter is Some(_) else {
+    abort("install_builtin_accessor: '\{name}' has neither getter nor setter")
+  }
   data.bag.properties[name] = Undefined
   data.bag.descriptors[name] = builtin_accessor_desc(getter, setter)
 }
@@ -123,7 +129,10 @@ pub fn install_builtin_symbol_accessor(
   getter : Value,
 ) -> Unit {
   data.bag.symbol_properties[sym_id] = Undefined
-  data.bag.symbol_descriptors[sym_id] = builtin_accessor_desc(getter, None)
+  data.bag.symbol_descriptors[sym_id] = builtin_accessor_desc(
+    Some(getter),
+    None,
+  )
 }
 
 ///|
