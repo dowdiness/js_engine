@@ -45,7 +45,7 @@
     "features": ["class-fields-private", "BigInt"],
     "flags": [],
     "mode": "strict",
-    "reason": "unsupported feature: class-fields-private"
+    "reason": "unsupported feature: BigInt"
   },
   {
     "name": "supported metadata does not skip",
