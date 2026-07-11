@@ -277,11 +277,199 @@ fn Interpreter::install_instance_fields(
 }
 
 ///|
+/// Initialize private instance fields during construction.
+/// Each private field is stored in the instance's PrivateBrandStore internal slot:
+///   obj.internal_slots[PrivateBrandStore]
+///     → Object { bag.properties: { "brandId": Object { bag.properties: { "fieldName": value } } } }
+/// The brand symbol's integer id is used as the key for the per-brand sub-storage.
+fn Interpreter::install_private_fields(
+  self : Interpreter,
+  this_arg : Value,
+  fields : Array[ClassFieldInit],
+  brand : Value,
+) -> Unit raise Error {
+  // Always install the brand on the instance so that private method
+  // brand checks work even without private fields.
+  let data : ObjectData = match this_arg {
+    Object(d) => d
+    _ => return // non-Object exotic types can't have private names
+  }
+  let sym_id : Int = match brand {
+    Symbol(s) => s.id
+    _ => abort("brand must be a Symbol")
+  }
+  let brand_key : String = sym_id.to_string()
+  // Ensure PrivateBrandStore slot exists
+  let brand_store : Value = match
+    data.bag.internal_slots.get(PrivateBrandStore) {
+    Some(store) => store
+    None => {
+      let store = Object({
+        bag: PropertyBag(),
+        prototype: Null,
+        callable: None,
+        class_name: "Object",
+        extensible: true,
+        arraybuffer_state: None,
+      })
+      data.bag.internal_slots[PrivateBrandStore] = store
+      store
+    }
+  }
+  // Ensure per-brand sub-storage exists
+  let brand_storage : ObjectData = match brand_store {
+    Object(store_data) =>
+      match store_data.bag.properties.get(brand_key) {
+        Some(Object(inner)) => inner
+        _ => {
+          let inner = Object({
+            bag: PropertyBag(),
+            prototype: Null,
+            callable: None,
+            class_name: "Object",
+            extensible: true,
+            arraybuffer_state: None,
+          })
+          store_data.bag.properties[brand_key] = inner
+          match inner {
+            Object(d) => d
+            _ => abort("brand storage must be Object")
+          }
+        }
+      }
+    _ => abort("PrivateBrandStore must be an Object")
+  }
+  // Evaluate and install each private field
+  let field_ctx : ExecContext = { strict: true, current_generator: None }
+  for field in fields {
+    let field_value : Value = match field.initializer {
+      Some(expr) => {
+        let init_env = Environment::new(parent=Some(field.closure))
+        init_env.def_builtin("this", this_arg)
+        init_env.def_builtin("<new.target>", Undefined)
+        self.eval_expr(field_ctx, expr, init_env)
+      }
+      None => Undefined
+    }
+    // For private fields, key is always String_(name)
+    let field_name : String = match field.key {
+      String_(s) => s
+      _ => self.to_js_string(field.key)
+    }
+    brand_storage.bag.properties[field_name] = field_value
+  }
+}
+
+///|
+/// Read a private field value from an object.
+/// Returns the field value on success, raises TypeError if brand check fails.
+pub fn get_private_field(
+  obj : Value,
+  brand : Value,
+  name : String,
+) -> Value raise Error {
+  let data : ObjectData = match obj {
+    Object(d) => d
+    _ =>
+      raise @errors.TypeError(
+        message="Cannot read private member from non-object",
+      )
+  }
+  let sym_id : Int = match brand {
+    Symbol(s) => s.id
+    _ => abort("brand must be a Symbol")
+  }
+  let brand_key : String = sym_id.to_string()
+  match data.bag.internal_slots.get(PrivateBrandStore) {
+    Some(Object(store_data)) =>
+      match store_data.bag.properties.get(brand_key) {
+        Some(Object(inner)) =>
+          match inner.bag.properties.get(name) {
+            Some(v) => v
+            None =>
+              raise @errors.TypeError(
+                message="Cannot read private member #\{name} from object",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="Cannot read private member #\{name} from object",
+          )
+      }
+    _ =>
+      raise @errors.TypeError(
+        message="Cannot read private member #\{name} from object",
+      )
+  }
+}
+
+///|
+/// Write a private field value on an object.
+/// Raises TypeError if brand check fails.
+pub fn set_private_field(
+  obj : Value,
+  brand : Value,
+  name : String,
+  value : Value,
+) -> Unit raise Error {
+  let data : ObjectData = match obj {
+    Object(d) => d
+    _ =>
+      raise @errors.TypeError(message="Cannot set private member on non-object")
+  }
+  let sym_id : Int = match brand {
+    Symbol(s) => s.id
+    _ => abort("brand must be a Symbol")
+  }
+  let brand_key : String = sym_id.to_string()
+  match data.bag.internal_slots.get(PrivateBrandStore) {
+    Some(Object(store_data)) =>
+      match store_data.bag.properties.get(brand_key) {
+        Some(Object(inner)) => inner.bag.properties[name] = value
+        _ =>
+          raise @errors.TypeError(
+            message="Cannot set private member #\{name} on object",
+          )
+      }
+    _ =>
+      raise @errors.TypeError(
+        message="Cannot set private member #\{name} on object",
+      )
+  }
+}
+
+///|
+/// Check if an object has been branded with the given private brand.
+/// Returns false for non-object values (no TypeError).
+pub fn has_brand(obj : Value, brand : Value) -> Bool {
+  let data : ObjectData? = match obj {
+    Object(d) => Some(d)
+    _ => None
+  }
+  let sym_id : Int = match brand {
+    Symbol(s) => s.id
+    _ => abort("brand must be a Symbol")
+  }
+  let brand_key : String = sym_id.to_string()
+  match data {
+    Some(data) =>
+      match data.bag.internal_slots.get(PrivateBrandStore) {
+        Some(Object(store_data)) =>
+          store_data.bag.properties.contains(brand_key)
+        _ => false
+      }
+    None => false
+  }
+}
+
+///|
 /// Create a deferred instance-field initializer Value.
 /// Stored as [[InitInstanceFields]] in the constructor env so the super()
 /// call site can apply the fields to the actual `this` after super() returns.
 fn make_instance_fields_init(
   fields : Array[ClassFieldInit],
+  private_fields : Array[ClassFieldInit],
+  private_brand : Value?,
   realm_state : RealmState,
 ) -> Value {
   stamp_function_realm(
@@ -295,6 +483,13 @@ fn make_instance_fields_init(
           _,
         ) raise {
           interp.install_instance_fields(this_arg, fields)
+          match private_brand {
+            Some(brand) =>
+              if private_fields.length() > 0 {
+                interp.install_private_fields(this_arg, private_fields, brand)
+              }
+            None => ()
+          }
           Undefined
         }),
       ),
@@ -1059,6 +1254,8 @@ fn Interpreter::construct_value_impl(
               closure,
               super_proto,
               instance_fields,
+              private_instance_fields,
+              private_brand,
               ..,
             }
           )
@@ -1091,7 +1288,12 @@ fn Interpreter::construct_value_impl(
                 if ctor_fn is Some(_) && instance_fields.length() > 0 {
                   ctor_env.def_builtin(
                     "[[InitInstanceFields]]",
-                    make_instance_fields_init(instance_fields, self.realm_state),
+                    make_instance_fields_init(
+                      instance_fields,
+                      [],
+                      None,
+                      self.realm_state,
+                    ),
                   )
                 }
               }
@@ -1102,6 +1304,9 @@ fn Interpreter::construct_value_impl(
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
                 // Base class: initialize instance fields before constructor body
                 self.install_instance_fields(new_obj, instance_fields)
+                self.install_private_fields(
+                  new_obj, private_instance_fields, private_brand,
+                )
               }
             }
             ctor_env.def("<new.target>", new_target, LetBinding)
@@ -1144,6 +1349,8 @@ fn Interpreter::construct_value_impl(
                               {
                                 super_ctor: grand_super,
                                 instance_fields: super_instance_fields,
+                                private_instance_fields: super_private_fields,
+                                private_brand: super_brand,
                                 ctor_fn: ctor,
                                 closure: senv,
                                 super_proto: sproto,
@@ -1172,16 +1379,22 @@ fn Interpreter::construct_value_impl(
                                     "[[InitInstanceFields]]",
                                     make_instance_fields_init(
                                       super_instance_fields,
+                                      super_private_fields,
+                                      Some(super_brand),
                                       self.realm_state,
                                     ),
                                   )
                                 }
                               }
-                              None =>
+                              None => {
                                 // B is a base class: initialize B's fields before its body
                                 self.install_instance_fields(
                                   new_obj, super_instance_fields,
                                 )
+                                self.install_private_fields(
+                                  new_obj, super_private_fields, super_brand,
+                                )
+                              }
                             }
                             match ctor {
                               Some((params, rest_param, body)) => {
@@ -1194,6 +1407,9 @@ fn Interpreter::construct_value_impl(
                                     if is_object_like_for_constructor_return(v) {
                                       self.install_instance_fields(
                                         v, instance_fields,
+                                      )
+                                      self.install_private_fields(
+                                        v, private_instance_fields, private_brand,
                                       )
                                       return v
                                     }
@@ -1218,6 +1434,9 @@ fn Interpreter::construct_value_impl(
                               self.install_instance_fields(
                                 super_result, instance_fields,
                               )
+                              self.install_private_fields(
+                                super_result, private_instance_fields, private_brand,
+                              )
                               return super_result
                             }
                           }
@@ -1231,6 +1450,9 @@ fn Interpreter::construct_value_impl(
                               )
                               self.install_instance_fields(
                                 super_result, instance_fields,
+                              )
+                              self.install_private_fields(
+                                super_result, private_instance_fields, private_brand,
                               )
                               return super_result
                             }
@@ -1255,6 +1477,9 @@ fn Interpreter::construct_value_impl(
                               self.install_instance_fields(
                                 super_result, instance_fields,
                               )
+                              self.install_private_fields(
+                                super_result, private_instance_fields, private_brand,
+                              )
                               return super_result
                             }
                           }
@@ -1277,6 +1502,9 @@ fn Interpreter::construct_value_impl(
                 // Apply derived class instance fields after implicit super() call
                 if super_ctor is Some(_) {
                   self.install_instance_fields(new_obj, instance_fields)
+                  self.install_private_fields(
+                    new_obj, private_instance_fields, private_brand,
+                  )
                 }
                 new_obj
               }

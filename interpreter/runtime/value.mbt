@@ -117,6 +117,7 @@ pub(all) struct ClassConstructorData {
   closure : Environment // lexical environment where the class was defined
   super_proto : Value // super class's prototype (bound as [[SuperPrototype]])
   instance_fields : Array[ClassFieldInit] // instance field initializers, run before ctor body
+  private_instance_fields : Array[ClassFieldInit] // private instance field initializers, run before ctor body
   source_text : String?
   private_brand : Value // Brand symbol for private field/method access checks
   private_methods : Map[String, Value] // Private method values keyed by name string
