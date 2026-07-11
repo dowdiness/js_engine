@@ -23,6 +23,7 @@ pub(all) struct Parser {
   generator_depth : Array[Bool]
   async_depth : Array[Bool]
   yield_identifier_depth : Array[Bool]
+  mut class_body_depth : Int
 }
 pub fn Parser::new(Array[@token.Token], String) -> Self
 

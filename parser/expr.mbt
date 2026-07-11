@@ -627,12 +627,21 @@ fn Parser::parse_call(self : Parser) -> @ast.Expr raise Error {
       expr = Call(expr, args, loc)
     } else if self.at(Dot) {
       let _ = self.advance()
-      let name = self.expect_ident_name()
       let loc = self.peek().loc
-      if in_optional_chain {
-        expr = ChainMember(expr, name, loc)
+      if self.peek_kind() is PrivateName(name) {
+        let _ = self.advance()
+        if in_optional_chain {
+          expr = ChainMember(expr, name, loc)
+        } else {
+          expr = PrivateMember(expr, name, loc)
+        }
       } else {
-        expr = Member(expr, name, loc)
+        let name = self.expect_ident_name()
+        if in_optional_chain {
+          expr = ChainMember(expr, name, loc)
+        } else {
+          expr = Member(expr, name, loc)
+        }
       }
     } else if self.at(LBracket) {
       let loc = self.advance().loc
@@ -770,6 +779,15 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
         let _ = self.advance()
         Ident(name, tok.loc)
       }
+    PrivateName(name) => {
+      if self.class_body_depth == 0 {
+        raise @errors.SyntaxError(
+          message="Private identifier '#\{name}' cannot be used outside a class body",
+        )
+      }
+      let _ = self.advance()
+      PrivateIdent(name, tok.loc)
+    }
     Get => {
       let _ = self.advance()
       Ident("get", tok.loc)
@@ -2146,6 +2164,7 @@ fn Parser::parse_class_heritage(self : Parser) -> @ast.Expr raise Error {
 fn Parser::parse_class_body(
   self : Parser,
 ) -> Array[@ast.ClassMember] raise Error {
+  self.class_body_depth += 1
   let _ = self.expect(LBrace)
   let members : Array[@ast.ClassMember] = []
   while !self.at(RBrace) && !self.at(EOF) {
@@ -2157,6 +2176,7 @@ fn Parser::parse_class_body(
     members.push(self.parse_class_member())
   }
   let _ = self.expect(RBrace)
+  self.class_body_depth -= 1
   members
 }
 
@@ -2175,6 +2195,12 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     }
   } else {
     false
+  }
+  // Static block: static { ... }
+  if is_static && self.at(LBrace) {
+    let block_loc = self.peek().loc
+    let stmts = self.parse_block_body()
+    return @ast.ClassMember::StaticBlock(stmts, block_loc)
   }
   let class_member_start = self.peek().loc.offset
   // Check for async modifier: async method() {} or static async method() {}
@@ -2202,6 +2228,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       Get =>
         match self.peek_kind_at(1) {
           Ident(_)
+          | PrivateName(_)
           | String_(_)
           | Number(_)
           | LBracket
@@ -2259,6 +2286,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       Set =>
         match self.peek_kind_at(1) {
           Ident(_)
+          | PrivateName(_)
           | String_(_)
           | Number(_)
           | LBracket
@@ -2321,6 +2349,10 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     Ident(name) => {
       let kloc = self.advance().loc
       (StringLit(name, false, @token.LexForm::LexNormal, kloc), false)
+    }
+    PrivateName(name) => {
+      let kloc = self.advance().loc
+      (PrivateIdent(name, kloc), false)
     }
     String_(s) => {
       let tok2 = self.advance()
@@ -2399,6 +2431,11 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       }
     }
   }
+  // Track whether this member uses a private name (#name)
+  let is_private_member : Bool = match key_expr {
+    PrivateIdent(_, _) => true
+    _ => false
+  }
   // After parsing the key: decide field vs method
   // If async/generator/get/set modifiers were used -> must be a method
   // Otherwise: if next token is NOT '(' -> it's a field
@@ -2458,6 +2495,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
       initializer,
       computed,
       is_static,
+      is_private: is_private_member,
     })
   }
   // It's a method - parse params and body
@@ -2534,6 +2572,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
           kind: method_kind,
           computed,
           is_static,
+          is_private: is_private_member,
         })
       } else {
         raise @errors.SyntaxError(message=msg)
@@ -2593,6 +2632,7 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
     kind: method_kind,
     computed,
     is_static,
+    is_private: is_private_member,
   })
 }
 

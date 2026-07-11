@@ -94,6 +94,7 @@ fn expr_has_yield(expr : @ast.Expr) -> Bool {
           match mbr {
             Method(cm) => cm.computed && expr_has_yield(cm.key)
             Field(cf) => cf.computed && expr_has_yield(cf.key)
+            StaticBlock(_) => false
           }
         })
       h || m
@@ -209,6 +210,7 @@ fn expr_has_await(expr : @ast.Expr) -> Bool {
           match mbr {
             Method(cm) => cm.computed && expr_has_await(cm.key)
             Field(cf) => cf.computed && expr_has_await(cf.key)
+            StaticBlock(_) => false
           }
         })
       h || m
