@@ -50,10 +50,7 @@ pub fn PropertyBag::has_host_slot(
   self : PropertyBag,
   key : HostSlotKey,
 ) -> Bool {
-  match self.host_slots.get(key.id) {
-    Some(_) => true
-    None => false
-  }
+  self.host_slots.contains(key.id)
 }
 
 ///|

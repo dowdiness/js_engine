@@ -3,7 +3,7 @@
 ///|
 fn empty_object_data() -> ObjectData {
   {
-    bag: PropertyBag::PropertyBag(),
+    bag: PropertyBag(),
     prototype: Null,
     callable: None,
     class_name: "Object",
@@ -44,9 +44,8 @@ test "host slot stores Undefined as present" {
   guard has_host_slot(data, key) else {
     fail("Undefined must count as present")
   }
-  match get_host_slot(data, key) {
-    Some(Undefined) => ()
-    _ => fail("expected Some(Undefined)")
+  guard get_host_slot(data, key) is Some(Undefined) else {
+    fail("expected Some(Undefined)")
   }
 }
 
@@ -73,9 +72,8 @@ test "set_host_slot does not touch internal_slots" {
   data.bag.internal_slots[StringData] = String_("engine")
   let key = HostSlotKey::reserve()
   set_host_slot(data, key, Number(7.0))
-  match data.bag.internal_slots.get(StringData) {
-    Some(String_("engine")) => ()
-    _ => fail("engine internal slot must be unchanged")
+  guard data.bag.internal_slots.get(StringData) is Some(String_("engine")) else {
+    fail("engine internal slot must be unchanged")
   }
   guard data.bag.internal_slots.get(NumberData) is None else {
     fail("must not invent engine slots")
@@ -84,7 +82,7 @@ test "set_host_slot does not touch internal_slots" {
 
 ///|
 test "PropertyBag host slot methods round-trip" {
-  let bag = PropertyBag::PropertyBag()
+  let bag = PropertyBag()
   let key = HostSlotKey::reserve()
   bag.set_host_slot(key, Number(9.0))
   guard bag.has_host_slot(key) else { fail("bag.has expected true") }
@@ -95,5 +93,18 @@ test "PropertyBag host slot methods round-trip" {
   bag.delete_host_slot(key)
   guard !bag.has_host_slot(key) else {
     fail("bag.has expected false after delete")
+  }
+}
+
+///|
+test "delete_host_slot on absent key is a no-op" {
+  let data = empty_object_data()
+  let key = HostSlotKey::reserve()
+  delete_host_slot(data, key)
+  guard !has_host_slot(data, key) else {
+    fail("absent delete must stay absent")
+  }
+  guard get_host_slot(data, key) is None else {
+    fail("expected None after absent delete")
   }
 }
