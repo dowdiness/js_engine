@@ -7,25 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
-## [Unreleased]
+## [0.5.0] — 2026-07-11
 
 ### Added
 
+- **for-await-of loops and async iteration protocol** (#494). Implements
+  `for-await-of` statement and expression, `%AsyncIteratorPrototype%`,
+  `%AsyncFromSyncIteratorPrototype%`, and the async-to-sync iterator
+  bridge. 3 new AST variants (`AsyncForOfStmt`, `AsyncForOfStmtPat`,
+  `AsyncForOfExpr`).
 - **`make_host_object`** in `@js_engine/interpreter/runtime` — labelled
   factory for embedder host objects (methods, paired accessors,
   non-writable/frozen data, host slots) returning `Value` without an
   `ObjectData` match (#517).
-- **Embedding guide** (`docs/embedding.md`) — cookbook for host-object
-  injection: `new_interpreter` + `def_builtin`, `make_*_func` choice, errors,
-  `make_host_object` / host slots, and the custom `setup_builtins` escape hatch
-  (#519).
+- **Host slot API** — `delete_host_slot`, `get_host_slot`,
+  `PropertyBag::{get/set/has}_host_slot` for embedder-side per-object
+  private data (#518).
+- **RegExp lookbehind assertions** — `(?<=...)` and `(?<!...)` (#493).
+- **Embedding cookbook** (`docs/embedding.md`) — host-object injection
+  patterns: `new_interpreter` + `def_builtin`, `make_*_func` choice, errors,
+  `make_host_object` / host slots, custom `setup_builtins` escape hatch (#519).
+- **Design decision doc** — `builtin property dispatch boundaries` (#506
+  Option C), documenting when to use `PropertyBag`-routed vs
+  hand-pattern-matched dispatch (#521).
 
 ### Changed
 
 - **`install_builtin_accessor`** getter parameter widened from `Value` to
   `Value?` so setter-only accessors can be installed. `(None, None)` now
-  aborts in the helper. Breaking for downstream packages that type against
-  the old `.mbti` signature (passing a bare `Value` remains source-compatible).
+  aborts in the helper. Breaking for direct `.mbti` consumers (passing a
+  bare `Value` remains source-compatible).
+- **Builtin install helpers unified** behind a `pub(all) BuiltinCtorPrototypeInstall` enum,
+  replacing ad-hoc `install_*` overloads (#520).
+- **Map/Set iterator helpers extracted** as spec-safe mechanical helpers
+  (`detach_keyed_collection_iterator_target`, `get_keyed_collection_iterator_kind`,
+  etc.), renamed from the Map-only `detach_map_iterator_target` / `get_map_iterator_*`
+  (#510). Breaking for direct callers of the old names.
+- **builtins_map_set.mbt** split into per-struct focused files (#509).
+- **Realm prototype wbtests centralized** and arch audit inventory synced (#508).
+- **Boxed primitives, Promise, Array, WeakMap/WeakSet** migrated to
+  cache-for-X builtin install contract (#512–516).
+- **`RuntimeIteratorPrototypeCaches`** default constructor removed — callers
+  now use the labelled constructor. Breaking for direct positional construction.
+- **Conformance numbers** refreshed to latest CI run (#29141665989).
+
+### Fixed
+
+- **Map/Set builtins** installed via cache-for-X prototype contract, fixing
+  spec divergence where builtin methods were installed on wrong prototypes (#504, #511).
+- **IteratorClose throw completion** — skips `IsObject` check on the return
+  result when the return is abrupt (#500, #503).
+- **Sync yield\* delegation** — getter support, error injection edge cases,
+  `Bool@@iterator` custom iterator case (#502).
+- **Sync yield\* delegation done/value extraction** — correct progression
+  through iterator protocol steps (#501).
+- **AsyncFromSyncIteratorContinuation** — `closeOnRejection` semantics (#499).
+- **Async generator yield\* delegation** — multiple fix passes covering
+  error propagation and completion handling (#496).
+- **Async generator for-await-of** and `AsyncFromSyncIteratorPrototype`
+  correctness (#495).
+- **decodeURI / decodeURIComponent** — `DontEnum` attribute on URIError
+  properties and proper URIError validation (#492).
+- **RegExp search position-loop timeout** — eliminated with candidate-scan
+  optimization.
+- **RegExp character-class timeout** — fast-path for quantified simple leaf
+  nodes.
+- **Empty-string repeat** guard and `SetPrototypeOf` cycle detection —
+  eliminates 4 timeout files in test262.
+- **TDZ pre-declaration** for destructuring params in call/generator
+  expressions (§10.2.11, #484).
+- **native-core-bundle Makefile target** for native builds (#486).
 
 ## [0.4.0] — 2026-07-03
 122 commits since v0.3.0. The `@js_engine` root facade API is unchanged
