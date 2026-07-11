@@ -81,6 +81,7 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
     | Comma(left, right, _)
     | ComputedMember(left, right, _)
     | MemberAssign(left, _, right, _)
+    | PrivateMemberAssign(left, _, right, _)
     | CompoundAssign(_, left, right, _)
     | WebCompatCallAssign(left, right, _) =>
       expr_may_contain_yield(left) || expr_may_contain_yield(right)
@@ -1185,6 +1186,20 @@ fn Interpreter::eval_chain_expr(
 }
 
 ///|
+
+///|
+/// Resolve the [[PrivateBrand]] from an environment.
+/// Raises ReferenceError if the brand is not found (expression outside a class context).
+fn resolve_private_brand(env : Environment, name : String) -> Value raise Error {
+  env.get("[[PrivateBrand]]") catch {
+    _ =>
+      raise @errors.ReferenceError(
+        message="Private field '#\{name}' must be declared in an enclosing class",
+      )
+  }
+}
+
+///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -1613,6 +1628,13 @@ fn Interpreter::eval_expr(
       let value = self.eval_expr(ctx, value_expr, env)
       self.set_property(obj, prop, value, loc, strict=ctx.strict)
     }
+    PrivateMemberAssign(obj_expr, name, value_expr, _) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let value = self.eval_expr(ctx, value_expr, env)
+      let brand = resolve_private_brand(env, name)
+      let _ = set_private_field(obj, brand, name, value)
+      value
+    }
     ComputedAssign(obj_expr, key_expr, value_expr, loc) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       let key = self.eval_expr(ctx, key_expr, env)
@@ -2005,12 +2027,7 @@ fn Interpreter::eval_expr(
     PrivateIdent(name, _) => fail("TODO: bare private name reference: #\{name}")
     PrivateMember(obj, name, _) => {
       let obj_val = self.eval_expr(ctx, obj, env)
-      let brand = env.get("[[PrivateBrand]]") catch {
-        _ =>
-          raise @errors.ReferenceError(
-            message="Private field '#\{name}' must be declared in an enclosing class",
-          )
-      }
+      let brand = resolve_private_brand(env, name)
       // Check private methods first (shared per-class, not instance-specific)
       let methods_obj = env.get("[[PrivateMethods]]") catch { _ => Undefined }
       match methods_obj {
@@ -2090,7 +2107,8 @@ fn Interpreter::eval_super_dispatch(
               call_env.def_builtin("[[SuperConstructor]]", grand_super)
               call_env.def_builtin("[[SuperPrototype]]", super_proto)
               // Super is also derived: defer its fields until its own super() returns
-              if super_instance_fields.length() > 0 || super_private_fields.length() > 0 {
+              if super_instance_fields.length() > 0 ||
+                super_private_fields.length() > 0 {
                 call_env.def_builtin(
                   "[[InitInstanceFields]]",
                   make_instance_fields_init(

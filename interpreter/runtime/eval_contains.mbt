@@ -320,6 +320,10 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
       scan_expr(scan, obj)
       scan_expr(scan, rhs)
     }
+    PrivateMemberAssign(obj, _, rhs, _) => {
+      scan_expr(scan, obj)
+      scan_expr(scan, rhs)
+    }
     ComputedAssign(obj, key, rhs, _) => {
       scan_expr(scan, obj)
       scan_expr(scan, key)

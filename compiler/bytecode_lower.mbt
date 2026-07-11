@@ -3874,7 +3874,9 @@ fn BytecodeBuilder::compile_expr(
       bytecode_unsupported(UNSUPPORTED_WEB_COMPAT_CALL_ASSIGN)
     ClassExpr(_, _, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
-    PrivateIdent(_, _) | PrivateMember(_, _, _) =>
+    PrivateIdent(_, _)
+    | PrivateMember(_, _, _)
+    | PrivateMemberAssign(_, _, _, _) =>
       bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
   }
 }
