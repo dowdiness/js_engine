@@ -17,7 +17,9 @@ test "host slot round-trip set get has delete" {
   let data = empty_object_data()
   let key = HostSlotKey::reserve()
   guard !has_host_slot(data, key) else { fail("expected absent before set") }
-  guard get_host_slot(data, key) is None else { fail("expected None before set") }
+  guard get_host_slot(data, key) is None else {
+    fail("expected None before set")
+  }
   set_host_slot(data, key, Number(42.0))
   guard has_host_slot(data, key) else { fail("expected present after set") }
   match get_host_slot(data, key) {
@@ -29,7 +31,9 @@ test "host slot round-trip set get has delete" {
   }
   delete_host_slot(data, key)
   guard !has_host_slot(data, key) else { fail("expected absent after delete") }
-  guard get_host_slot(data, key) is None else { fail("expected None after delete") }
+  guard get_host_slot(data, key) is None else {
+    fail("expected None after delete")
+  }
 }
 
 ///|
@@ -37,7 +41,9 @@ test "host slot stores Undefined as present" {
   let data = empty_object_data()
   let key = HostSlotKey::reserve()
   set_host_slot(data, key, Undefined)
-  guard has_host_slot(data, key) else { fail("Undefined must count as present") }
+  guard has_host_slot(data, key) else {
+    fail("Undefined must count as present")
+  }
   match get_host_slot(data, key) {
     Some(Undefined) => ()
     _ => fail("expected Some(Undefined)")
@@ -83,12 +89,11 @@ test "PropertyBag host slot methods round-trip" {
   bag.set_host_slot(key, Number(9.0))
   guard bag.has_host_slot(key) else { fail("bag.has expected true") }
   match bag.get_host_slot(key) {
-    Some(Number(n)) =>
-      if n != 9.0 {
-        fail("bag.get mismatch")
-      }
+    Some(Number(n)) => if n != 9.0 { fail("bag.get mismatch") }
     _ => fail("bag.get expected Some(9)")
   }
   bag.delete_host_slot(key)
-  guard !bag.has_host_slot(key) else { fail("bag.has expected false after delete") }
+  guard !bag.has_host_slot(key) else {
+    fail("bag.has expected false after delete")
+  }
 }

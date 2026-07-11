@@ -21,7 +21,10 @@ pub fn HostSlotKey::reserve() -> HostSlotKey {
 }
 
 ///|
-pub fn PropertyBag::get_host_slot(self : PropertyBag, key : HostSlotKey) -> Value? {
+pub fn PropertyBag::get_host_slot(
+  self : PropertyBag,
+  key : HostSlotKey,
+) -> Value? {
   self.host_slots.get(key.id)
 }
 
@@ -35,12 +38,18 @@ pub fn PropertyBag::set_host_slot(
 }
 
 ///|
-pub fn PropertyBag::delete_host_slot(self : PropertyBag, key : HostSlotKey) -> Unit {
+pub fn PropertyBag::delete_host_slot(
+  self : PropertyBag,
+  key : HostSlotKey,
+) -> Unit {
   self.host_slots.remove(key.id)
 }
 
 ///|
-pub fn PropertyBag::has_host_slot(self : PropertyBag, key : HostSlotKey) -> Bool {
+pub fn PropertyBag::has_host_slot(
+  self : PropertyBag,
+  key : HostSlotKey,
+) -> Bool {
   match self.host_slots.get(key.id) {
     Some(_) => true
     None => false
@@ -53,7 +62,11 @@ pub fn get_host_slot(data : ObjectData, key : HostSlotKey) -> Value? {
 }
 
 ///|
-pub fn set_host_slot(data : ObjectData, key : HostSlotKey, value : Value) -> Unit {
+pub fn set_host_slot(
+  data : ObjectData,
+  key : HostSlotKey,
+  value : Value,
+) -> Unit {
   data.bag.set_host_slot(key, value)
 }
 

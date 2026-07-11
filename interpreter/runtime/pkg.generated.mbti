@@ -53,6 +53,8 @@ pub fn default_stdlib_hooks() -> StdlibHooks
 
 pub fn delete_array_like_element(Value, Int) -> Unit
 
+pub fn delete_host_slot(ObjectData, HostSlotKey) -> Unit
+
 pub fn descriptor_to_value(PropDescriptor, Value, realm_state? : RealmState?) -> Value
 
 pub fn detach_keyed_collection_iterator_target(ObjectData, Int) -> Unit
@@ -113,6 +115,8 @@ pub fn get_func_proto(realm_state? : RealmState?) -> Value
 
 pub fn get_function_length(Value) -> Int
 
+pub fn get_host_slot(ObjectData, HostSlotKey) -> Value?
+
 pub fn get_keyed_collection_iterator_kind(ObjectData, Int) -> Value?
 
 pub fn get_keyed_collection_iterator_next_index(ObjectData, Int) -> Value?
@@ -160,6 +164,8 @@ pub fn get_typedarray_byte_offset(ObjectData) -> Value?
 pub fn get_typedarray_viewed_buffer(ObjectData) -> Value?
 
 pub fn has_array_like_element(Interpreter, Value, Int64) -> Bool
+
+pub fn has_host_slot(ObjectData, HostSlotKey) -> Bool
 
 pub fn has_parameter_expressions(Array[@ast.Param]) -> Bool
 
@@ -314,6 +320,8 @@ pub fn set_array_prototype_override(ArrayData, Value) -> Unit
 pub fn set_array_symbol_prop(ArrayData, Int, Value) -> Unit
 
 pub fn set_function_name(Value, String) -> Unit
+
+pub fn set_host_slot(ObjectData, HostSlotKey, Value) -> Unit
 
 pub fn set_integrity_frozen(Value) -> Value raise
 
@@ -602,6 +610,11 @@ pub(all) struct HostEnv {
   module_loader : ModuleLoader?
 }
 
+pub(all) struct HostSlotKey {
+  // private fields
+} derive(Eq, Hash, @debug.Debug)
+pub fn HostSlotKey::reserve() -> Self
+
 pub(all) enum InternalSlotKey {
   StringData
   NumberData
@@ -785,8 +798,13 @@ pub(all) struct PropertyBag {
   descriptors : Map[String, PropDescriptor]
   symbol_descriptors : Map[Int, PropDescriptor]
   internal_slots : Map[InternalSlotKey, Value]
+  host_slots : Map[Int, Value]
 }
 pub fn PropertyBag::PropertyBag() -> Self
+pub fn PropertyBag::delete_host_slot(Self, HostSlotKey) -> Unit
+pub fn PropertyBag::get_host_slot(Self, HostSlotKey) -> Value?
+pub fn PropertyBag::has_host_slot(Self, HostSlotKey) -> Bool
+pub fn PropertyBag::set_host_slot(Self, HostSlotKey, Value) -> Unit
 
 pub(all) struct ProxyData {
   mut target : Value?

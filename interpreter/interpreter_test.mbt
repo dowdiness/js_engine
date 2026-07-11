@@ -19797,7 +19797,9 @@ test "host slot is invisible to Object.keys for-in and JSON.stringify" {
   let interp = new_interpreter()
   // Ordinary property that must remain visible and unchanged beside the host slot.
   let prog = @parser.parse(
-    #|var o = { visible: 1, __crater_nid: 7 };
+    (
+      #|var o = { visible: 1, __crater_nid: 7 };
+    ),
   )
   let _ = interp.run(prog.stmts)
   let o = interp.global.get("o")
@@ -19808,25 +19810,24 @@ test "host slot is invisible to Object.keys for-in and JSON.stringify" {
     _ => fail("expected Object for o")
   }
   let check = @parser.parse(
-    #|var keys = Object.keys(o).sort().join(",");
-    #|var enumed = [];
-    #|for (var k in o) enumed.push(k);
-    #|enumed.sort();
-    #|var json = JSON.stringify(o);
-    #|var nid = o.__crater_nid;
-    #|var missing = o.host_secret;
-    #|console.log(keys);
-    #|console.log(enumed.join(","));
-    #|console.log(json);
-    #|console.log(String(nid));
-    #|console.log(typeof missing);
+    (
+      #|var keys = Object.keys(o).sort().join(",");
+      #|var enumed = [];
+      #|for (var k in o) enumed.push(k);
+      #|enumed.sort();
+      #|var json = JSON.stringify(o);
+      #|var nid = o.__crater_nid;
+      #|var missing = o.host_secret;
+      #|console.log(keys);
+      #|console.log(enumed.join(","));
+      #|console.log(json);
+      #|console.log(String(nid));
+      #|console.log(typeof missing);
+    ),
   )
   let _ = interp.run(check.stmts)
   json_inspect(interp.host.output, content=[
-    "visible,__crater_nid",
-    "visible,__crater_nid",
-    "{\"visible\":1,\"__crater_nid\":7}",
-    "7",
-    "undefined",
+    "visible,__crater_nid", "visible,__crater_nid", "{\"visible\":1,\"__crater_nid\":7}",
+    "7", "undefined",
   ])
 }
