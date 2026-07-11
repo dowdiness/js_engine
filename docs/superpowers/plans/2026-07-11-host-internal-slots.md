@@ -19,7 +19,7 @@
 - `reserve()` must never wrap; abort on exhaustion
 - Module-level `host_slot_id_counter : Ref[Int]` is intentional process/package-instance state: classify it in `scripts/architecture_state_classified_mutable_state.json` and verify with `make architecture-state-audit` (do not put the counter on `Interpreter` — that would change the approved uniqueness contract)
 - No test262 changes expected
-- Before final commit: `NEW_MOON_MOD=0 moon info && NEW_MOON_MOD=0 moon fmt`, then `make check`, `NEW_MOON_MOD=0 moon test`, and `make architecture-state-audit`
+- Before final commit: `NEW_MOON_MOD=0 moon info && NEW_MOON_MOD=0 moon fmt`, then `NEW_MOON_MOD=0 moon check`, `NEW_MOON_MOD=0 moon test`, and `make architecture-state-audit` (this repo has no `make check` target; CI uses those three gates)
 - Stage only the exact paths this work changed — never `git add -u`
 
 ## File map
@@ -500,7 +500,6 @@ Confirm root facade was **not** changed to re-export these.
 ```bash
 NEW_MOON_MOD=0 moon check
 NEW_MOON_MOD=0 moon test 2>&1 | tee /tmp/host-slots-moon-test.txt
-make check 2>&1 | tee /tmp/host-slots-make-check.txt
 make architecture-state-audit 2>&1 | tee /tmp/host-slots-arch-state.txt
 ```
 
@@ -510,7 +509,7 @@ Each command above must exit 0 on its own (do not `rg | head` in the same pipeli
 rg -n "host slot|FAILED|failed|UNCLASSIFIED" /tmp/host-slots-moon-test.txt /tmp/host-slots-arch-state.txt
 ```
 
-Expected: `moon check` clean; full `moon test` pass; `make check` pass (includes formatting / repo gates as defined by the Makefile); architecture-state audit pass with classified `host_slot_id_counter`.
+Expected: `moon check` clean; full `moon test` pass; architecture-state audit pass with classified `host_slot_id_counter`. (There is no `make check` target in this repo; do not invent one in this slice.)
 
 - [ ] **Step 4: Commit mbti / fmt if dirty**
 
@@ -545,7 +544,7 @@ Skip empty commit if `moon info`/`fmt` produced no diff.
 | Runtime unit tests (no JS builtins) | Task 1 |
 | Eval invisibility + colliding ordinary property | Task 3 |
 | No root facade re-export | Task 4 Step 2 |
-| `moon info` / `.mbti` / full `moon test` / `make check` | Task 4 |
+| `moon info` / `.mbti` / full `moon test` / `moon check` / architecture-state-audit | Task 4 |
 
 ## Out of scope (do not implement)
 
