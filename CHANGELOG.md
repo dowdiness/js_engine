@@ -15,6 +15,10 @@ For changes before this file existed, see `git log`.
   factory for embedder host objects (methods, paired accessors,
   non-writable/frozen data, host slots) returning `Value` without an
   `ObjectData` match (#517).
+- **Embedding guide** (`docs/embedding.md`) — cookbook for host-object
+  injection: `new_interpreter` + `def_builtin`, `make_*_func` choice, errors,
+  `make_host_object` / host slots, and the custom `setup_builtins` escape hatch
+  (#519).
 
 ### Changed
 

@@ -49,6 +49,27 @@ The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
 - `run_with_event_loop`, `run_microtask_checkpoint`, `run_timer_checkpoint`,
   `has_pending_microtasks`, `has_pending_timers` — for hosts that want to drive the event loop themselves
 
+### Embedding (custom host objects)
+
+For DOM-style globals and native methods, create a wired interpreter and inject
+bindings — do not reverse-engineer `Interpreter::new` / `setup_builtins` unless
+you need to replace builtin installation itself:
+
+```moonbit
+let interp = @interpreter.new_interpreter()
+// Build query_selector with realm_state=Some(interp.realm_state) — see guide.
+let document = @runtime.make_host_object(
+  name="Document",
+  proto=@runtime.get_obj_proto(realm_state=Some(interp.realm_state)),
+  methods={ "querySelector": query_selector },
+)
+interp.global.def_builtin("document", document)
+// Then parse, interp.run, interp.run_microtasks(), interp.run_timers().
+```
+
+Full cookbook (`make_*_func` + `realm_state`, errors, host slots, `globalThis`,
+custom `setup_builtins`): [docs/embedding.md](docs/embedding.md).
+
 ## Supported Language
 
 Core ES5 plus selected ES6+ features: `let` / `const` / `var`, arrow functions, closures, classes, `for` / `while` / `for-in` / `for-of`, `try` / `catch` / `finally`, template literals, destructuring, spread / rest, ES Modules, Promises + microtasks, `setTimeout` / `setInterval`, ES6 Proxy (13 traps) + Reflect API (13 methods), TypedArrays (9 types), ArrayBuffer, DataView, RegExp, JSON, Map / Set / WeakMap / WeakSet, generators, Symbols.

@@ -6,6 +6,7 @@ truth; when a doc and the code disagree, trust the code.
 ## Start here
 
 - [../README.md](../README.md) — project overview, quick start, supported language
+- [embedding.md](embedding.md) — embed with custom host objects (`new_interpreter`, `def_builtin`, `make_*_func`)
 - [ROADMAP.md](ROADMAP.md) — headline status and current next targets
 - [supported-features.md](supported-features.md) — per-category pass rates, Annex B, missing features
 - [TEST262.md](TEST262.md) — how to run the test262 conformance suite
