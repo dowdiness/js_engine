@@ -22,7 +22,9 @@ test "host slot round-trip set get has delete" {
   guard has_host_slot(data, key) else { fail("expected present after set") }
   match get_host_slot(data, key) {
     Some(Number(n)) =>
-      guard n == 42.0 else { fail("expected 42.0, got " + n.to_string()) }
+      if n != 42.0 {
+        fail("expected 42.0, got " + n.to_string())
+      }
     _ => fail("expected Some(Number(42))")
   }
   delete_host_slot(data, key)
@@ -81,7 +83,10 @@ test "PropertyBag host slot methods round-trip" {
   bag.set_host_slot(key, Number(9.0))
   guard bag.has_host_slot(key) else { fail("bag.has expected true") }
   match bag.get_host_slot(key) {
-    Some(Number(n)) => guard n == 9.0 else { fail("bag.get mismatch") }
+    Some(Number(n)) =>
+      if n != 9.0 {
+        fail("bag.get mismatch")
+      }
     _ => fail("bag.get expected Some(9)")
   }
   bag.delete_host_slot(key)
