@@ -203,6 +203,8 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
     match expr {
       Ident(name, _) => return Assign(name, value, loc)
       Member(obj, prop, _) => return MemberAssign(obj, prop, value, loc)
+      PrivateMember(obj, name, _) =>
+        return PrivateMemberAssign(obj, name, value, loc)
       ComputedMember(obj, key, _) => return ComputedAssign(obj, key, value, loc)
       ArrayLit(_, _) | ObjectLit(_, _) => {
         let pattern = expr_to_pattern(expr)

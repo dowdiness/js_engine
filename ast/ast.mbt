@@ -119,6 +119,7 @@ pub(all) enum Expr {
   ArrayLit(Array[Expr], @token.Loc)
   ComputedMember(Expr, Expr, @token.Loc)
   MemberAssign(Expr, String, Expr, @token.Loc)
+  PrivateMemberAssign(Expr, String, Expr, @token.Loc) // obj.#name = value
   ComputedAssign(Expr, Expr, Expr, @token.Loc)
   NewExpr(Expr, Array[Expr], @token.Loc)
   ThisExpr(@token.Loc)

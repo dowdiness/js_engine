@@ -19985,3 +19985,38 @@ test "class static block: execution order" {
   // Current implementation evaluates all static fields first, then all static blocks.
   json_inspect(output, content=["field,field2,block1,block2", "1"])
 }
+
+///|
+test "class private fields: assignment via setter method" {
+  let src =
+    #|class C {
+    #|  #x = 1;
+    #|  setX(v) { this.#x = v; }
+    #|  getX() { return this.#x; }
+    #|}
+    #|const c = new C();
+    #|console.log(c.getX());
+    #|c.setX(42);
+    #|console.log(c.getX());
+    #|c.setX(99);
+    #|console.log(c.getX());
+  let output = run_output(src)
+  json_inspect(output, content=["1", "42", "99"])
+}
+
+///|
+test "class private fields: setter brand error on wrong object" {
+  let src =
+    #|class C {
+    #|  #x = 1;
+    #|  setX(v) { this.#x = v; }
+    #|}
+    #|try {
+    #|  C.prototype.setX.call({}, 42);
+    #|  console.log("NO_ERROR");
+    #|} catch(e) {
+    #|  console.log(e.name);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError"])
+}

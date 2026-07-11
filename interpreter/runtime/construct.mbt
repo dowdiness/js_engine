@@ -1286,7 +1286,11 @@ fn Interpreter::construct_value_impl(
                 // call [[InitInstanceFields]] after establishing `this`.
                 // For implicit constructors (ctor_fn=None): fields are applied
                 // directly at each return/fallthrough site in the None arm below.
-                if ctor_fn is Some(_) && (instance_fields.length() > 0 || private_instance_fields.length() > 0) {
+                if ctor_fn is Some(_) &&
+                  (
+                    instance_fields.length() > 0 ||
+                    private_instance_fields.length() > 0
+                  ) {
                   ctor_env.def_builtin(
                     "[[InitInstanceFields]]",
                     make_instance_fields_init(
@@ -1375,7 +1379,8 @@ fn Interpreter::construct_value_impl(
                                   "[[SuperPrototype]]", sproto,
                                 )
                                 // B is derived: defer B's fields to after B's own super()
-                                if super_instance_fields.length() > 0 || super_private_fields.length() > 0 {
+                                if super_instance_fields.length() > 0 ||
+                                  super_private_fields.length() > 0 {
                                   super_env.def_builtin(
                                     "[[InitInstanceFields]]",
                                     make_instance_fields_init(
