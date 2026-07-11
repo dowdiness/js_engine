@@ -48,6 +48,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           internal_slots: Map::from_array([
             (@runtime.StringData, Value::String_(s)),
           ]),
+          host_slots: {},
         },
         prototype: string_proto,
         callable: None,
@@ -69,6 +70,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           internal_slots: Map::from_array([
             (@runtime.NumberData, Value::Number(n)),
           ]),
+          host_slots: {},
         },
         prototype: number_proto,
         callable: None,
@@ -90,6 +92,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           internal_slots: Map::from_array([
             (@runtime.BooleanData, Value::Bool(b)),
           ]),
+          host_slots: {},
         },
         prototype: boolean_proto,
         callable: None,
@@ -109,6 +112,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
           descriptors: {},
           symbol_descriptors: {},
           internal_slots: Map::from_array([(@runtime.SymbolData, val)]),
+          host_slots: {},
         },
         prototype: symbol_proto,
         callable: None,
@@ -141,6 +145,7 @@ pub fn make_data_desc_obj(
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,
@@ -171,6 +176,7 @@ pub fn make_accessor_desc_obj(
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,

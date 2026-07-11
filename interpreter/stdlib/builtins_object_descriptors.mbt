@@ -173,6 +173,7 @@ fn make_get_own_property_descriptors_func() -> Value {
         descriptors: {},
         symbol_descriptors: {},
         internal_slots: {},
+        host_slots: {},
       },
       prototype: @runtime.get_obj_proto(realm_state=Some(interp.realm_state)),
       callable: None,

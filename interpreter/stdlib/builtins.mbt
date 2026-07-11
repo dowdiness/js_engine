@@ -237,6 +237,7 @@ fn setup_builtins_with_realm_state_active(
       descriptors: { "length": nf_desc, "name": nf_desc },
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -544,6 +545,7 @@ fn setup_builtins_with_realm_state_active(
       internal_slots: Map::from_array([
         (@runtime.StringData, Value::String_("")),
       ]),
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -699,6 +701,7 @@ fn setup_builtins_with_realm_state_active(
       },
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -761,6 +764,7 @@ fn setup_builtins_with_realm_state_active(
               internal_slots: Map::from_array([
                 (@runtime.StringData, Value::String_(str)),
               ]),
+              host_slots: {},
             },
             prototype: string_proto,
             callable: None,
@@ -866,6 +870,7 @@ fn setup_builtins_with_realm_state_active(
       internal_slots: Map::from_array([
         (@runtime.BooleanData, Value::Bool(false)),
       ]),
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -897,6 +902,7 @@ fn setup_builtins_with_realm_state_active(
       },
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -914,6 +920,7 @@ fn setup_builtins_with_realm_state_active(
               internal_slots: Map::from_array([
                 (@runtime.BooleanData, Value::Bool(b)),
               ]),
+              host_slots: {},
             },
             prototype: boolean_proto,
             callable: None,
@@ -1271,6 +1278,7 @@ fn setup_builtins_with_realm_state_active(
           descriptors: regexp_proto_descs,
           symbol_descriptors: regexp_sym_descs,
           internal_slots: {},
+          host_slots: {},
         },
         prototype: obj_proto,
         callable: None,
@@ -1912,6 +1920,7 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
         descriptors: {},
         symbol_descriptors: {},
         internal_slots: {},
+        host_slots: {},
       },
       prototype: Null,
       callable: None,
@@ -1999,6 +2008,7 @@ pub fn setup_harness_builtins(
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: None,
@@ -2076,6 +2086,7 @@ pub fn setup_harness_builtins(
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: None,

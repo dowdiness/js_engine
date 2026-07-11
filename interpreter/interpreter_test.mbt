@@ -19791,3 +19791,43 @@ test "for-await-of basic with sync iterable" {
   let output = run_output_async(src)
   json_inspect(output, content=["[1,2,3]"])
 }
+
+///|
+test "host slot is invisible to Object.keys for-in and JSON.stringify" {
+  let interp = new_interpreter()
+  // Ordinary property that must remain visible and unchanged beside the host slot.
+  let prog = @parser.parse(
+    (
+      #|var o = { visible: 1, __crater_nid: 7 };
+    ),
+  )
+  let _ = interp.run(prog.stmts)
+  let o = interp.global.get("o")
+  let key = @runtime.HostSlotKey::reserve()
+  match o {
+    // Host bookkeeping value deliberately differs from the visible __crater_nid.
+    Object(data) => @runtime.set_host_slot(data, key, Value::Number(99.0))
+    _ => fail("expected Object for o")
+  }
+  let check = @parser.parse(
+    (
+      #|var keys = Object.keys(o).sort().join(",");
+      #|var names = Object.getOwnPropertyNames(o).sort().join(",");
+      #|var enumed = [];
+      #|for (var k in o) enumed.push(k);
+      #|enumed.sort();
+      #|var json = JSON.stringify(o);
+      #|var nid = o.__crater_nid;
+      #|console.log(keys);
+      #|console.log(names);
+      #|console.log(enumed.join(","));
+      #|console.log(json);
+      #|console.log(String(nid));
+    ),
+  )
+  let _ = interp.run(check.stmts)
+  json_inspect(interp.host.output, content=[
+    "visible,__crater_nid", "visible,__crater_nid", "visible,__crater_nid", "{\"visible\":1,\"__crater_nid\":7}",
+    "7",
+  ])
+}

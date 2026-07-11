@@ -716,6 +716,7 @@ fn make_date_object(t : Double, date_proto : Value) -> Value {
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: Map::from_array([(@runtime.DateValue, Value::Number(t))]),
+      host_slots: {},
     },
     prototype: date_proto,
     callable: None,
@@ -1729,6 +1730,7 @@ pub fn setup_date_builtins(
       descriptors: date_proto_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -1857,6 +1859,7 @@ pub fn setup_date_builtins(
         },
         symbol_descriptors: {},
         internal_slots: {},
+        host_slots: {},
       },
       prototype: Null,
       callable: Some(

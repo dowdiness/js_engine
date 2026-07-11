@@ -309,6 +309,7 @@ fn compile_object_lit(
       descriptors,
       symbol_descriptors,
       internal_slots: {},
+      host_slots: {},
     }
     let object_data : ObjectData = {
       bag,
@@ -1380,6 +1381,7 @@ fn make_compiled_func(
         descriptors: func_descs,
         symbol_descriptors: {},
         internal_slots: {},
+        host_slots: {},
       },
       prototype: @runtime.get_func_proto(realm_state~),
       callable: Some(
@@ -1973,6 +1975,7 @@ fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
         descriptors: { "name": nf_desc, "length": nf_desc },
         symbol_descriptors: {},
         internal_slots: {},
+        host_slots: {},
       },
       prototype: @runtime.get_func_proto(realm_state~),
       callable: Some(Callable::ArrowFuncExt(data)),

@@ -524,6 +524,7 @@ fn Interpreter::create_class(
       descriptors: proto_descriptors,
       symbol_descriptors: proto_symbol_descriptors,
       internal_slots: {},
+      host_slots: {},
     },
     prototype: super_proto,
     callable: None,
@@ -552,6 +553,7 @@ fn Interpreter::create_class(
         descriptors: static_descriptors,
         symbol_descriptors: static_symbol_descriptors,
         internal_slots: {},
+        host_slots: {},
       },
       prototype: class_proto,
       callable: Some(

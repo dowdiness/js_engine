@@ -1081,6 +1081,7 @@ fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
       descriptors: {},
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     extensible: true,

@@ -435,6 +435,7 @@ fn setup_number_builtins(
       internal_slots: Map::from_array([
         (@runtime.NumberData, Value::Number(0.0)),
       ]),
+      host_slots: {},
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -563,6 +564,7 @@ fn setup_number_builtins(
       descriptors: number_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -585,6 +587,7 @@ fn setup_number_builtins(
               internal_slots: Map::from_array([
                 (@runtime.NumberData, Value::Number(n)),
               ]),
+              host_slots: {},
             },
             prototype: number_proto,
             callable: None,

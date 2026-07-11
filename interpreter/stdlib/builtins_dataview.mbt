@@ -867,6 +867,7 @@ pub fn setup_dataview_builtins(
       descriptors: dv_proto_descs,
       symbol_descriptors: dv_proto_sym_descs,
       internal_slots: {},
+      host_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -908,6 +909,7 @@ pub fn setup_dataview_builtins(
       descriptors: dv_ctor_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
@@ -1008,6 +1010,7 @@ pub fn setup_dataview_builtins(
               (@runtime.ByteOffset, Value::Number(byte_offset.to_double())),
               (@runtime.ByteLength, Value::Number(byte_length.to_double())),
             ]),
+            host_slots: {},
           },
           prototype: proto,
           callable: None,

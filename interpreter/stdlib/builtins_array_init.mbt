@@ -1158,6 +1158,7 @@ fn setup_array_builtins(
       descriptors: array_proto_descs,
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: obj_proto,
     callable: None,
@@ -1388,6 +1389,7 @@ fn setup_array_builtins(
       },
       symbol_descriptors: {},
       internal_slots: {},
+      host_slots: {},
     },
     prototype: Null,
     callable: Some(
