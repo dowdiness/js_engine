@@ -19890,7 +19890,7 @@ test "JSON.stringify Proxy traps fire during stringify walk" {
 //|
 
 ///|
-test "class private fields: read and write via method" {
+test "class private fields: read via method" {
   let src =
     #|class C {
     #|  #x = 42;

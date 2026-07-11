@@ -2490,6 +2490,12 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
         message="Expected ';' or line terminator after class field at line \{t.loc.line}, col \{t.loc.col}",
       )
     }
+    // Reject static private fields until runtime support is implemented
+    if is_static && is_private_member {
+      raise @errors.SyntaxError(
+        message="Static private fields are not yet implemented",
+      )
+    }
     return @ast.ClassMember::Field({
       key: key_expr,
       initializer,

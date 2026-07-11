@@ -2090,7 +2090,7 @@ fn Interpreter::eval_super_dispatch(
               call_env.def_builtin("[[SuperConstructor]]", grand_super)
               call_env.def_builtin("[[SuperPrototype]]", super_proto)
               // Super is also derived: defer its fields until its own super() returns
-              if super_instance_fields.length() > 0 {
+              if super_instance_fields.length() > 0 || super_private_fields.length() > 0 {
                 call_env.def_builtin(
                   "[[InitInstanceFields]]",
                   make_instance_fields_init(
@@ -2394,6 +2394,11 @@ fn Interpreter::eval_binary(
       match left_expr {
         PrivateIdent(_, _) => {
           let right = self.eval_expr(ctx, right_expr, env)
+          if !is_object_value(right) {
+            raise @errors.TypeError(
+              message="Cannot use 'in' operator to search for '\{right.to_string()}' in \{type_of(right)}",
+            )
+          }
           let brand = env.get("[[PrivateBrand]]") catch {
             _ => return Bool(false)
           }
