@@ -10,6 +10,7 @@ cd "$ROOT"
 packages=$(find . \( -name "moon.pkg.json" -o -name "moon.pkg" \) \
   -not -path "./.worktrees/*" \
   -not -path "./.mooncakes/*" \
+  -not -path "./_build/*" \
   -printf '%h\n' | sort)
 
 echo "=== Package Overview ==="
