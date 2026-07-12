@@ -53,6 +53,8 @@ fn expr_has_yield(expr : @ast.Expr) -> Bool {
     | SpreadExpr(e, _) => expr_has_yield(e)
     Assign(_, e, _) => expr_has_yield(e)
     MemberAssign(obj, _, val, _) => expr_has_yield(obj) || expr_has_yield(val)
+    PrivateMemberAssign(obj, _, val, _) =>
+      expr_has_yield(obj) || expr_has_yield(val)
     ComputedAssign(obj, key, val, _) =>
       expr_has_yield(obj) || expr_has_yield(key) || expr_has_yield(val)
     CompoundAssign(_, a, b, _)
@@ -60,6 +62,7 @@ fn expr_has_yield(expr : @ast.Expr) -> Bool {
     | WebCompatCallAssign(a, b, _) => expr_has_yield(a) || expr_has_yield(b)
     Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       expr_has_yield(obj)
+    PrivateMember(obj, _, _) => expr_has_yield(obj)
     ComputedMember(obj, key, _)
     | OptionalComputedMember(obj, key, _)
     | ChainComputedMember(obj, key, _) =>
@@ -110,6 +113,7 @@ fn expr_has_yield(expr : @ast.Expr) -> Bool {
     | AsyncFuncExprExt(_, _, _, _, _, _)
     | AsyncGeneratorExpr(_, _, _, _, _)
     | AsyncGeneratorExprExt(_, _, _, _, _, _) => false
+    PrivateIdent(_, _) => false
     _ => false
   }
 }
@@ -170,6 +174,8 @@ fn expr_has_await(expr : @ast.Expr) -> Bool {
     | SpreadExpr(e, _) => expr_has_await(e)
     Assign(_, e, _) => expr_has_await(e)
     MemberAssign(obj, _, val, _) => expr_has_await(obj) || expr_has_await(val)
+    PrivateMemberAssign(obj, _, val, _) =>
+      expr_has_await(obj) || expr_has_await(val)
     ComputedAssign(obj, key, val, _) =>
       expr_has_await(obj) || expr_has_await(key) || expr_has_await(val)
     CompoundAssign(_, a, b, _)
@@ -177,6 +183,7 @@ fn expr_has_await(expr : @ast.Expr) -> Bool {
     | WebCompatCallAssign(a, b, _) => expr_has_await(a) || expr_has_await(b)
     Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
       expr_has_await(obj)
+    PrivateMember(obj, _, _) => expr_has_await(obj)
     ComputedMember(obj, key, _)
     | OptionalComputedMember(obj, key, _)
     | ChainComputedMember(obj, key, _) =>
@@ -227,6 +234,7 @@ fn expr_has_await(expr : @ast.Expr) -> Bool {
     | AsyncFuncExprExt(_, _, _, _, _, _)
     | AsyncGeneratorExpr(_, _, _, _, _)
     | AsyncGeneratorExprExt(_, _, _, _, _, _) => false
+    PrivateIdent(_, _) => false
     _ => false
   }
 }
