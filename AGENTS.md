@@ -4,7 +4,7 @@ Conventions and tooling guide for humans and AI agents working on this repo. `CL
 
 ## Repository Overview
 
-This module is a MoonBit JavaScript interpreter. The root package `@js_engine` is the user-facing facade. Internal layers include `token`, `errors`, `ast`, `lexer`, `parser`, `interpreter`, `interpreter/runtime`, and `interpreter/stdlib`. Executable entry points live in `cmd/main`, Test262 tooling lives under `scripts/`, and benchmark code lives in `benchmarks`.
+This module is a MoonBit JavaScript interpreter. The root package `@js_engine` is the user-facing facade.
 
 ## Commands
 
