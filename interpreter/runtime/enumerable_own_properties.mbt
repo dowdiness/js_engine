@@ -17,7 +17,7 @@
 /// descriptor is recorded (the ordinary-object convention for data properties
 /// created without an explicit descriptor).
 fn bag_key_enumerable(bag : PropertyBag, key : String) -> Bool {
-  bag.descriptors.get(key).map(fn(d) { d.enumerable }).unwrap_or(true)
+  bag.descriptors.get(key).map(d => d.enumerable).unwrap_or(true)
 }
 
 ///|
@@ -57,9 +57,9 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       // [[OwnPropertyKeys]] via proxy trap, filtered to enumerable own string
       // keys ([[GetOwnProperty]].[[Enumerable]]).
       make_array(
-        proxy_enumerable_own_string_keys(interp, obj, proxy_data).map(fn(s) {
+        proxy_enumerable_own_string_keys(interp, obj, proxy_data).map(s =>
           Value::String_(s)
-        }),
+        ),
       )
     // Module namespaces resolve enumerability via the exotic [[Get]]
     // (`interp.get_own_property`, which raises), so they keep an imperative
@@ -81,14 +81,14 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       make_array(
         sort_property_keys(data.bag.properties)
         .iter()
-        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
-        .map(fn(k) { Value::String_(k) })
+        .filter(k => bag_key_enumerable(data.bag, k))
+        .map(k => Value::String_(k))
         .to_array(),
       )
     Value::String_(s) =>
       // String objects have enumerable indexed properties
       make_array(
-        Array::makei(s.length(), fn(i) { Value::String_(i.to_string()) }),
+        Array::makei(s.length(), i => Value::String_(i.to_string())),
       )
     Value::Array(data) =>
       // Array objects have enumerable indexed properties followed by
@@ -113,24 +113,24 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       make_array(
         sort_property_keys(data.bag.properties)
         .iter()
-        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
-        .map(fn(k) { Value::String_(k) })
+        .filter(k => bag_key_enumerable(data.bag, k))
+        .map(k => Value::String_(k))
         .to_array(),
       )
     Set(data) =>
       make_array(
         sort_property_keys(data.bag.properties)
         .iter()
-        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
-        .map(fn(k) { Value::String_(k) })
+        .filter(k => bag_key_enumerable(data.bag, k))
+        .map(k => Value::String_(k))
         .to_array(),
       )
     Promise(data) =>
       make_array(
         sort_property_keys(data.bag.properties)
         .iter()
-        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
-        .map(fn(k) { Value::String_(k) })
+        .filter(k => bag_key_enumerable(data.bag, k))
+        .map(k => Value::String_(k))
         .to_array(),
       )
     _ => make_array([])
@@ -176,7 +176,7 @@ pub fn object_values(interp : Interpreter, obj : Value) -> Value raise Error {
     }
     Value::String_(s) =>
       // String objects have enumerable indexed properties
-      make_array(s.to_array().map(fn(ch) { Value::String_(ch.to_string()) }))
+      make_array(s.to_array().map(ch => Value::String_(ch.to_string())))
     Value::Array(data) => {
       // Array objects - enumerable indexed slots (getter-aware), then enumerable
       // own named properties read through [[Get]].
