@@ -636,6 +636,29 @@ pub fn create_data_property_or_throw(
 }
 
 ///|
+/// §7.2.2 IsArray — returns true for Array exotic objects and Object values
+/// whose `class_name` is `"Array"`, recursively unwrapping Proxy chains.
+/// Throws TypeError when a revoked Proxy is encountered (spec step 3.a).
+pub fn is_array(val : Value) -> Bool raise Error {
+  match val {
+    Array(_) => true
+    Object(data) => data.class_name == "Array"
+    Proxy(proxy_data) => {
+      guard proxy_data.handler is Some(_) else {
+        raise @errors.TypeError(
+          message="Cannot perform 'IsArray' on a proxy that has been revoked",
+        )
+      }
+      match proxy_data.target {
+        Some(target) => is_array(target)
+        None => false
+      }
+    }
+    _ => false
+  }
+}
+
+///|
 /// ArraySpeciesCreate(originalArray, length) per ES spec 9.4.2.3
 /// Looks up Symbol.species on the original array's constructor to determine
 /// what constructor to use for the result. Returns a plain Array if no
@@ -648,27 +671,7 @@ pub fn array_species_create(
   // Step 1: If originalArray is not an Array, return a plain array.
   // IsArray unwraps proxies, so ArraySpeciesCreate must do the same before
   // deciding whether to consult constructor/@@species.
-  let mut array_probe = original
-  let mut is_array = false
-  while true {
-    match array_probe {
-      Array(_) => {
-        is_array = true
-        break
-      }
-      Object(data) => {
-        is_array = data.class_name == "Array"
-        break
-      }
-      Proxy(proxy_data) =>
-        match proxy_data.target {
-          Some(target) => array_probe = target
-          None => break
-        }
-      _ => break
-    }
-  }
-  if !is_array {
+  if !is_array(original) {
     if len > JS_MAX_ARRAY_LENGTH_I64 {
       raise @errors.RangeError(message="Invalid array length")
     }

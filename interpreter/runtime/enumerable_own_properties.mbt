@@ -109,6 +109,30 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
           ],
         ],
       )
+    Map(data) =>
+      make_array(
+        sort_property_keys(data.bag.properties)
+        .iter()
+        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
+        .map(fn(k) { Value::String_(k) })
+        .to_array(),
+      )
+    Set(data) =>
+      make_array(
+        sort_property_keys(data.bag.properties)
+        .iter()
+        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
+        .map(fn(k) { Value::String_(k) })
+        .to_array(),
+      )
+    Promise(data) =>
+      make_array(
+        sort_property_keys(data.bag.properties)
+        .iter()
+        .filter(fn(k) { bag_key_enumerable(data.bag, k) })
+        .map(fn(k) { Value::String_(k) })
+        .to_array(),
+      )
     _ => make_array([])
   }
 }
