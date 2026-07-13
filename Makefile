@@ -1,4 +1,4 @@
-.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 
@@ -203,6 +203,13 @@ test262-feature-gap:
 # Run Python unit tests for the feature-gap comparison script.
 test262-feature-gap-test:
 	python3 -m unittest scripts/test_test262_feature_gap.py -v
+
+# Validate active intent docs against shared skip metadata (fast policy guard).
+validate-docs-skip-policy: validate-docs-skip-policy-test
+	python3 scripts/validate_docs_skip_policy.py
+
+validate-docs-skip-policy-test:
+	python3 -m unittest scripts/test_validate_docs_skip_policy.py -v
 
 # Regenerate lexer/unicode_id.mbt from DerivedCoreProperties.txt.
 # Pass UNICODE_VERSION=X.Y.Z to target a specific Unicode release (default: 17.0.0).

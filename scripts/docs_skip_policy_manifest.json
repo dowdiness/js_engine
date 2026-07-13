@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "graduated_features": [
+    "async-iteration",
+    "regexp-lookbehind",
+    "class-fields-private",
+    "class-methods-private",
+    "class-static-block",
+    "class-static-fields-private",
+    "class-static-methods-private"
+  ],
+  "active_intent_docs": [
+    "docs/agent-todo.md",
+    "docs/ROADMAP.md",
+    "docs/TEST262.md",
+    "docs/supported-features.md"
+  ],
+  "allowed_line_patterns": [
+    "no `FEATURE`",
+    "no FEATURE feature skip",
+    "not in shared skip metadata",
+    "not in `skip_features`",
+    "no longer blanket-skipped",
+    "no longer blanket-skips",
+    "was removed",
+    "removed from",
+    "shipped",
+    "ships",
+    "implemented",
+    "DONE",
+    "used to",
+    "feature skips included",
+    "not claim full FEATURE",
+    "FEATURE conformance",
+    "No `FEATURE` feature skip",
+    "no `FEATURE` feature skip"
+  ],
+  "historical_context_markers": [
+    "snapshot",
+    "at the time of",
+    "historical",
+    "used to",
+    "feature skips included"
+  ]
+}

@@ -103,6 +103,9 @@ jobs:
       - name: Test262 utils parity
         run: make test262-utils-test
 
+      - name: Docs skip policy alignment
+        run: make validate-docs-skip-policy
+
       - name: Check and test
         run: |
           moon check

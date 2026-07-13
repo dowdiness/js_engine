@@ -318,6 +318,17 @@ This runs the native `cmd/test262_validate_skips`. It only reports dead or
 unknown skip metadata entries; it does not run tests or produce conformance
 numbers.
 
+After removing a blanket feature skip, also run:
+
+```bash
+make validate-docs-skip-policy
+```
+
+It checks that active intent docs (`docs/agent-todo.md`, `docs/ROADMAP.md`,
+`docs/TEST262.md`, `docs/supported-features.md`) do not still claim graduated
+features are blanket-skipped. Update `scripts/docs_skip_policy_manifest.json`
+when a feature ships.
+
 
 ## Skip policy report
 

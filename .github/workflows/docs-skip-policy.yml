@@ -1,0 +1,41 @@
+name: Docs skip policy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/agent-todo.md'
+      - 'docs/ROADMAP.md'
+      - 'docs/TEST262.md'
+      - 'docs/supported-features.md'
+      - 'scripts/test262_skip_metadata.json'
+      - 'scripts/docs_skip_policy_manifest.json'
+      - 'scripts/validate_docs_skip_policy.py'
+      - 'scripts/test_validate_docs_skip_policy.py'
+      - '.github/workflows/docs-skip-policy.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/agent-todo.md'
+      - 'docs/ROADMAP.md'
+      - 'docs/TEST262.md'
+      - 'docs/supported-features.md'
+      - 'scripts/test262_skip_metadata.json'
+      - 'scripts/docs_skip_policy_manifest.json'
+      - 'scripts/validate_docs_skip_policy.py'
+      - 'scripts/test_validate_docs_skip_policy.py'
+      - '.github/workflows/docs-skip-policy.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Validate docs skip policy
+        run: make validate-docs-skip-policy
