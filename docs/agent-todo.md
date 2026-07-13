@@ -72,28 +72,18 @@ isolated benchmark.
 These are larger than one small cleanup PR; split them before implementation.
 See [ROADMAP.md](ROADMAP.md#active-roadmap) for the broader feature-bucket view.
 
-### `for await` / async iteration — DONE (PR #494)
+### Async-generator destructuring in `for await`
 
-**Status:** Parser, AST, and runtime support for `for await (... of ...)` is
-implemented. Includes `Symbol.asyncIterator` protocol,
-`%AsyncIteratorPrototype%`, `CreateAsyncFromSyncIterator` for sync fallback,
-and all three binding forms (var/let/const, destructuring, member expression).
+**Source:** `scripts/test262_skip_metadata.json` — 146 path-specific exceptions
+with rationale `async-generator destructuring in for-await-of` (plus one legacy
+`star-iterable.js` spec-draft exception). There is no `async-iteration`
+blanket skip; core `for await`, async iterators, and async generators ship in
+PR #494 and follow-ups.
 
-**Test262:** `async-iteration` remains in `skip_features` — 1,234+ for-await-of
-tests are still skipped due to edge-case failures (async generator interactions,
-destructuring with defaults, etc.). Remove the skip flag in a follow-up once
-coverage is validated.
-
-### RegExp lookbehind assertions
-
-**Feature flag:** `regexp-lookbehind`.
-
-**Goal:** Implement `(?<=...)` and `(?<!...)` without regressing existing
-lookahead, capture, and replacement semantics.
-
-**Notes:** Requires backward matching from the current position; do not model it
-as simple lookahead reuse without checking capture ordering and zero-width edge
-cases.
+**Goal:** Reproduce one path-skipped `for-await-of` async-generator
+destructuring file, read its Test262 `info` field, and land a narrow fix. Do
+not claim full async-iteration conformance until these exceptions shrink from
+measured CI runs.
 
 ### RegExp Unicode/property gaps
 
@@ -107,16 +97,8 @@ Known remaining RegExp issues include:
 - Duplicate named groups in disjoint alternatives (ES2024 behavior).
 
 Work one cohort at a time and verify against the exact spec algorithm for that
-RegExp method or accessor.
-
-### Class-private fields/methods
-
-Large skipped-feature bucket. Split before implementation:
-
-- `#name` parsing for fields, methods, accessors, static variants.
-- Lexical private-name resolution.
-- Per-class brands and brand checks.
-- Private field/method/accessor storage and inheritance behavior.
+RegExp method or accessor. Lookbehind `(?<=...)` / `(?<!...)` shipped in PR
+#493; `regexp-lookbehind` is not in shared skip metadata.
 
 ### BigInt
 
@@ -198,7 +180,6 @@ formatter before refreshing docs.
 These are real work but not good default one-session tasks:
 
 - Temporal.
-- Full class-private rollout.
 - Full BigInt rollout.
 - Broad RegExp Unicode property table strategy.
 - Large architecture package splits without an invariant-pinning plan.

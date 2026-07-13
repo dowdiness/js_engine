@@ -97,6 +97,19 @@ make test262-validate-skips
 This target checks that skip features, flags, and path suffixes still match the
 checked-out Test262 suite. It does not run tests or produce conformance numbers.
 
+When removing a blanket feature skip, also update the active intent docs listed
+in `scripts/docs_skip_policy_manifest.json` and add the feature to
+`graduated_features` there. Then run:
+
+```bash
+make validate-docs-skip-policy
+```
+
+This fast check ensures active docs do not still claim the feature is blanket-
+skipped or wholly unimplemented. CI runs it on docs/metadata changes via
+`.github/workflows/docs-skip-policy.yml` and on every main/PR unit-test job when
+skip metadata or tooling changes.
+
 ## Benchmarks
 
 CI runs benchmark tests on the JS target:

@@ -39,10 +39,14 @@ which mode you mean.
 | **Passed / Executed** | The headline rate engines usually quote. Numerator and denominator both exclude skipped files. | Rises mechanically when more tests get skipped, so it is not a reliability signal on its own. A feature whose tests are 100% skipped contributes 0 to this ratio. |
 | **Passed / Discovered** | Broader spec-coverage figure. Skipped files count as un-passed, so it only moves when the engine itself improves. | Falls when the test262 suite adds new-edition tests faster than we implement them, even if the engine is unchanged. |
 
-Skips dominate the gap: class-private fields/methods, async iteration, Temporal,
-BigInt, RegExp Unicode properties, and related feature buckets. Implementing one
-of these narrows the gap between the two rates — and can briefly lower Passed /
-Executed as previously skipped tests start executing and failing.
+Skips dominate the gap: Temporal, BigInt, RegExp Unicode property escapes,
+iterator helpers, and other entries in `scripts/test262_skip_metadata.json`
+`skip_features`. Async iteration and class-private syntax are no longer blanket-
+skipped; remaining gaps show up as path-specific exceptions (146 async-generator
+destructuring `for-await-of` paths) or executed-but-failing tests (for example
+ES2022 at 53.8% strict Passed / Executed in the latest CI run). Implementing a
+still-skipped feature narrows the gap between the two rates — and can briefly
+lower Passed / Executed as previously skipped tests start executing and failing.
 
 **Do not sum strict and non-strict figures.** Each file is run in both modes, so
 adding them double-counts the underlying test files. Report per-mode or not at
@@ -64,15 +68,17 @@ ARGS="--format=changelog"` for the changelog block.
 ### 2. Close large skipped-feature buckets
 
 These are the main drivers of the gap between Passed / Executed and Passed /
-Discovered:
+Discovered. Distinguish **feature skips** (`skip_features` in shared metadata),
+**path skips** (`skip_path_suffixes`), and **executed failures** (no skip; fix
+per spec):
 
-| Feature bucket | Why it matters | Current direction |
-|----------------|----------------|-------------------|
-| Class private fields/methods | Large skipped class-private suite; required for modern class semantics. | Add `#name` parsing, private-name lexical resolution, per-class brands, brand checks, and private storage for fields/methods/accessors/static members. |
-| Async iteration | Large skipped async-iteration suite; builds on existing async/await and iterator support. | Implement async iterator protocol, `for await`, async generator interactions, and harness-safe scheduling semantics. |
-| RegExp lookbehind and Unicode property escapes | High-impact RegExp skips and failures. | Lookbehind requires reverse matching from the current position; Unicode properties require a data-table strategy. |
-| BigInt | Broad modern-JS feature bucket. | Requires value representation, literal parsing, arithmetic/comparison/coercion rules, typed-array/DataView interactions, and skip-list rollout. |
-| Temporal | Large skipped suite but high implementation cost. | Treat as a later feature unless a narrower compatibility target emerges. |
+| Bucket | Skip policy (shared metadata) | Current direction |
+|--------|------------------------------|-------------------|
+| BigInt | `BigInt` in `skip_features` | Value representation, literal parsing, arithmetic/comparison/coercion, typed-array/DataView interactions, and skip-list rollout. |
+| Temporal | `Temporal` in `skip_features` | Treat as a later feature unless a narrower compatibility target emerges. |
+| RegExp Unicode property escapes | `regexp-unicode-property-escapes` in `skip_features` | Data-table strategy for `\p{...}` / `\P{...}`; lookbehind `(?<=...)` / `(?<!...)` already ships (PR #493). |
+| Async iteration (path cohort) | No `async-iteration` feature skip; 146 `for-await-of` paths skipped as `async-generator destructuring in for-await-of` | Core `for await`, async iterators, and async generators ship (PR #494+). Reproduce and fix one path-skipped destructuring file at a time. |
+| Class private members | No class-private feature skips; syntax/runtime ship (PR #527+) | Remaining ES2022 conformance gaps are executed failures, not blanket skips — drill down with `make test262-filter` rather than re-implementing parsing. |
 
 ### 3. Reduce distributed failures
 
