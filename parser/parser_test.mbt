@@ -134,6 +134,17 @@ fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
 }
 
 ///|
+fn expect_parse_err(source : String) -> Unit raise Error {
+  let result = Ok(@parser.parse(source)) catch { _ => Err(()) }
+  expect_err(result)
+}
+
+///|
+fn expect_parse_ok(source : String) -> Unit raise Error {
+  let _ = @parser.parse(source)
+}
+
+///|
 test "parse variable declaration" {
   let prog = @parser.parse("let x = 42;")
   match prog.stmts[0] {
@@ -775,6 +786,61 @@ test "trailing comma after rest param with leading param is SyntaxError" {
     _ => Err(())
   }
   expect_err(result)
+}
+
+///|
+test "private early error yield in private read receiver of generator param default" {
+  expect_parse_err("function* g(a = (yield this).#x) {}")
+}
+
+///|
+test "private early error yield in private read receiver of nested arrow default in generator param" {
+  expect_parse_err("function* g(a = (q = (yield this).#x) => q) {}")
+}
+
+///|
+test "private early error yield in private assign receiver of nested arrow default in generator param" {
+  expect_parse_err("function* g(a = (q = (yield this).#x = 1) => q) {}")
+}
+
+///|
+test "private early error yield in private assign value of nested arrow default in generator param" {
+  expect_parse_err("function* g(a = (q = this.#x = yield 1) => q) {}")
+}
+
+///|
+test "private early error await in private read receiver of async param default" {
+  expect_parse_err(";(async function f(a = (await this).#x) {})")
+}
+
+///|
+test "private early error await in private read receiver of nested arrow default in async param" {
+  expect_parse_err(";(async function f(a = (q = (await this).#x) => q) {})")
+}
+
+///|
+test "private early error await in private assign receiver of nested arrow default in async param" {
+  expect_parse_err(";(async function f(a = (q = (await this).#x = 1) => q) {})")
+}
+
+///|
+test "private early error await in private assign value of nested arrow default in async param" {
+  expect_parse_err(";(async function f(a = (q = this.#x = await 1) => q) {})")
+}
+
+///|
+test "private early error generator param default with private read parses when no yield" {
+  expect_parse_ok("function* g(a = this.#x) {}")
+}
+
+///|
+test "private early error generator param default with private assign parses when no yield" {
+  expect_parse_ok("function* g(a = (this.#x = 1)) {}")
+}
+
+///|
+test "private early error yield in nested function body not in arrow param default" {
+  expect_parse_ok("function* g(a = (q = function*() { yield 1; }) => q) {}")
 }
 
 ///|
