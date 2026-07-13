@@ -2803,6 +2803,190 @@ test "Set.entries() hides tombstoned entries during forEach" {
   json_inspect(output, content=["[1,3]"])
 }
 
+// ============================================================
+// JSON.stringify semantic operations (Plan 002)
+// ============================================================
+
+///|
+test "JSON.stringify array invokes enumerable index getter" {
+  let src =
+    #|const a = [0];
+    #|Object.defineProperty(a, "0", {
+    #|  enumerable: true,
+    #|  get() { return 1; }
+    #|});
+    #|console.log(JSON.stringify(a));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1]"])
+}
+
+///|
+test "JSON.stringify array propagates throwing getter" {
+  let src =
+    #|const a = [0];
+    #|Object.defineProperty(a, "0", {
+    #|  enumerable: true,
+    #|  get() { throw new Error("abrupt"); }
+    #|});
+    #|try {
+    #|  JSON.stringify(a);
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|}
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["abrupt"])
+}
+
+///|
+test "JSON.stringify array uses proxy get traps" {
+  let src =
+    #|const target = [1, 2];
+    #|const proxy = new Proxy(target, {
+    #|  get(t, k) { return k === "0" ? 99 : t[k]; }
+    #|});
+    #|console.log(JSON.stringify(proxy));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[99,2]"])
+}
+
+///|
+test "JSON.stringify array serializes holes as null" {
+  let src =
+    #|const a = [1, , 3];
+    #|console.log(JSON.stringify(a));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["[1,null,3]"])
+}
+
+///|
+test "JSON.stringify array detects cycles" {
+  let src =
+    #|const a = [1];
+    #|a.push(a);
+    #|try {
+    #|  JSON.stringify(a);
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|}
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["Converting circular structure to JSON"])
+}
+
+///|
+test "JSON.stringify object invokes enumerable getter" {
+  let src =
+    #|const o = {};
+    #|Object.defineProperty(o, "x", {
+    #|  enumerable: true,
+    #|  get() { return 1; }
+    #|});
+    #|console.log(JSON.stringify(o));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"x\":1}"])
+}
+
+///|
+test "JSON.stringify object snapshots keys before getter side effects" {
+  let src =
+    #|const o = { a: 1 };
+    #|Object.defineProperty(o, "b", {
+    #|  enumerable: true,
+    #|  get() { delete o.a; return 2; }
+    #|});
+    #|console.log(JSON.stringify(o));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"a\":1,\"b\":2}"])
+}
+
+///|
+test "JSON.stringify Map with enumerable expando" {
+  let src =
+    #|const m = new Map();
+    #|m.x = 1;
+    #|console.log(JSON.stringify(m));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"x\":1}"])
+}
+
+///|
+test "JSON.stringify Set with enumerable expando" {
+  let src =
+    #|const s = new Set();
+    #|s.x = 1;
+    #|console.log(JSON.stringify(s));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"x\":1}"])
+}
+
+///|
+test "JSON.stringify Promise with enumerable expando" {
+  let src =
+    #|const p = Promise.resolve(1);
+    #|p.x = 1;
+    #|console.log(JSON.stringify(p));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"x\":1}"])
+}
+
+///|
+test "JSON.stringify object uses proxy ownKeys trap" {
+  let src =
+    #|const target = { a: 1 };
+    #|const proxy = new Proxy(target, {
+    #|  ownKeys() { return ["b"]; },
+    #|  getOwnPropertyDescriptor(k) {
+    #|    return { enumerable: true, configurable: true, value: 2 };
+    #|  },
+    #|  get(t, k) { return k === "b" ? 2 : t[k]; }
+    #|});
+    #|console.log(JSON.stringify(proxy));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"b\":2}"])
+}
+
+///|
+test "JSON.stringify calls toJSON before replacer" {
+  let src =
+    #|const order = [];
+    #|const o = {
+    #|  toJSON() { order.push("toJSON"); return { v: 1 }; },
+    #|  v: 0
+    #|};
+    #|const replacer = (key, val) => { order.push("replacer"); return val; };
+    #|JSON.stringify(o, replacer);
+    #|console.log(order[0] === "toJSON" && order[1] === "replacer");
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "JSON.stringify replacer array uses Get for elements" {
+  let src =
+    #|const target = { a: 1, b: 2, c: 3 };
+    #|const replacer = new Proxy(["b", "a"], {
+    #|  get(t, k) {
+    #|    if (k === "length") return 2;
+    #|    if (k === "0") return "c";
+    #|    if (k === "1") return "a";
+    #|    return t[k];
+    #|  }
+    #|});
+    #|console.log(JSON.stringify(target, replacer));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"c\":3,\"a\":1}"])
+}
+
+///|
+test "JSON.stringify omits callable values" {
+  let src =
+    #|const o = { f: function() {}, x: 1 };
+    #|console.log(JSON.stringify(o));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=["{\"x\":1}"])
+}
+
 ///|
 test "builtin method descriptors use standard metadata" {
   let src =
