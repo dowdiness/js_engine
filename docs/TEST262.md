@@ -203,7 +203,10 @@ $RUNNER --test262 ./test262
 The runner prints a **per-mode** conformance report (strict and non-strict run separately — do **not** sum them, each file is tested twice):
 
 - **Discovered**: all `.js` files applicable to the mode
-- **Skipped**: tests requiring unimplemented features (Temporal, BigInt, async-iteration, class-private, regexp-v-flag, etc.) — excluded from the Passed / Executed figure
+- **Skipped**: tests excluded by shared skip metadata — feature tags in
+  `skip_features`, Test262 flags, or path-specific exceptions — e.g. Temporal,
+  BigInt, `top-level-await`, `regexp-v-flag` — excluded from the Passed /
+  Executed figure
 - **Executed**: `Discovered − Skipped`, i.e. tests actually run
 - **Passed / Failed / Timeouts**: outcome counts among executed tests
 - **Passed / Executed** — the conventional "test262 pass rate". Rises as failures are fixed; also rises mechanically when skipping more tests. **Does not reflect whether a feature is implemented at all** — a feature whose tests are 100% skipped contributes 0 to this ratio.
@@ -231,16 +234,58 @@ Results are saved as JSON with:
 
 ## Skipped Features
 
-Tests requiring these unimplemented features are automatically skipped (excluded from the Passed / Executed ratio). Rough groupings — see the shared skip metadata in `scripts/test262_skip_metadata.json` (applied by the runner):
+Skip policy has three layers. All decisions live in
+`scripts/test262_skip_metadata.json` (applied by the runner):
 
-- **Async iteration / top-level await**: `async-iteration`, `top-level-await` (note: plain `async-functions` is implemented and no longer skipped)
-- **Class private members**: `class-fields-private`, `class-methods-private`, `class-static-fields-private`, `class-static-methods-private`, `class-static-block` (public class fields are implemented)
-- **BigInt**, **Temporal**, **ShadowRealm**, **SharedArrayBuffer**, **Atomics**, **Float16Array**, **FinalizationRegistry**, **WeakRef**
-- **Advanced RegExp**: `regexp-lookbehind`, `regexp-unicode-property-escapes`, `regexp-match-indices`, `regexp-v-flag`, `regexp-modifiers`, `RegExp.escape` (named groups are implemented — see PR #47)
-- **Dynamic / special imports**: `import.meta`, `dynamic-import`, `import-attributes`, `json-modules`, `source-phase-imports`
-- **Intl normative optional**, **decorators**, **iterator-helpers**, **set-methods**, **resizable-arraybuffer**, **arraybuffer-transfer**, **explicit-resource-management**, **tail-call-optimization**, **hashbang**
+1. **Feature skips** (`skip_features`) — every test file tagged with that
+   Test262 feature is excluded from Executed.
+2. **Path skips** (`skip_path_suffixes`) — individual files skipped with a
+   recorded rationale, even when their feature tags are not blanket-skipped.
+3. **Executed failures** — no skip entry; the test runs and may fail.
 
-Skipped files explain the gap between Passed / Executed and Passed / Discovered. Implementing skipped features generally shrinks that gap, but it can temporarily lower Passed / Executed while newly unskipped tests still fail.
+The authoritative list is the JSON file. Run `make test262-validate-skips` after
+editing it. The rough groupings below mirror the current metadata; verify at tip
+before citing.
+
+### Shipped areas no longer blanket-skipped
+
+These used to appear in `skip_features` but are now executed (pass or fail):
+
+- **Async iteration core** — `for await`, async iterators, and async generators
+  ship (PR #494+). There is no `async-iteration` feature skip.
+- **RegExp lookbehind** — `(?<=...)` / `(?<!...)` ship (PR #493). There is no
+  `regexp-lookbehind` feature skip.
+- **Class private members** — `#` parsing, brands, and private storage ship (PR
+  #527+). No class-private feature tags remain in `skip_features`.
+
+Remaining async gaps are **path skips**: 146 `for-await-of` files with rationale
+`async-generator destructuring in for-await-of`, plus one legacy
+`star-iterable.js` spec-draft exception. Class-private and broader async
+conformance gaps beyond those paths are **executed failures** — use
+`make test262-filter` to investigate.
+
+### Current feature skips (`skip_features`)
+
+- **BigInt**, **Temporal**, **ShadowRealm**, **SharedArrayBuffer**, **Atomics**,
+  **Float16Array**, **FinalizationRegistry**, **WeakRef**, **IsHTMLDDA**
+- **Top-level await**: `top-level-await` (plain `async-functions` is implemented
+  and not skipped)
+- **Advanced RegExp**: `regexp-unicode-property-escapes`, `regexp-match-indices`,
+  `regexp-v-flag`, `regexp-modifiers`, `RegExp.escape` (named groups and
+  lookbehind are implemented — see PR #47 and PR #493)
+- **Dynamic / special imports**: `import.meta`, `dynamic-import`,
+  `import-attributes`, `json-modules`, `source-phase-imports`,
+  `source-phase-imports-module-source`, `json-parse-with-source`,
+  `await-dictionary`
+- **Intl normative optional**, **decorators**, **iterator-helpers**,
+  **iterator-sequencing**, **joint-iteration**, **explicit-resource-management**,
+  **tail-call-optimization**, **hashbang**, **for-in-order**, **caller**,
+  **cross-realm**, **immutable-arraybuffer**, **resizable-arraybuffer**,
+  **arraybuffer-transfer**
+
+Skipped files explain part of the gap between Passed / Executed and Passed /
+Discovered. Removing a blanket feature skip grows Executed; until those tests
+pass, Passed / Executed can drop even as Passed / Discovered rises.
 
 ## Static Metadata Analysis (Non-Authoritative)
 
