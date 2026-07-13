@@ -94,8 +94,8 @@ jobs:
       - name: Install MoonBit dependencies
         run: moon update
 
-      - name: Architecture state audit
-        run: make architecture-state-audit
+      - name: Architecture audit
+        run: make architecture-audit
 
       - name: Test262 metadata parity
         run: make test262-metadata-test
