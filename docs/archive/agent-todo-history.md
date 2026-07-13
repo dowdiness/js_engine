@@ -1451,3 +1451,34 @@ Consolidated three separate copies of the 15-entry ECMAScript WhiteSpace+LineTer
 **How to investigate**: read the current `classify-by-edition.py`, diff against `~b225cda`, run with `--show-unmapped` to see what's missing from the map. If hypothesis (3): patch the formatter to emit zero-rows when generating doc tables.
 
 **Why this matters**: editions ES2016–ES2024 are precisely where partial-implementation drama lives (regexp-v-flag, array-grouping, BigInt, class-private). Collapsing them into an "ES2015 / Annex B / Stage 3" view loses the granularity that makes the doc useful for prioritization.
+
+---
+
+## ~~`for await` / async iteration core~~ — DONE (2026-07-13, PR #494+)
+
+**Result:** Parser, AST, and runtime support for `for await (... of ...)`,
+`Symbol.asyncIterator`, `%AsyncIteratorPrototype%`,
+`CreateAsyncFromSyncIterator`, and async generator follow-ups (PR #495, #496,
+#499). The `async-iteration` blanket skip was removed from shared metadata.
+
+**Remaining cohort (active queue):** 146 path-specific
+`skip_path_suffixes` entries with rationale `async-generator destructuring in
+for-await-of`, plus one legacy `star-iterable.js` exception. See
+[../agent-todo.md](../agent-todo.md) for the active narrow-fix task.
+
+---
+
+## ~~RegExp lookbehind assertions~~ — DONE (2026-07-13, PR #493)
+
+**Result:** `(?<=...)` positive and `(?<!...)` negative lookbehind parsing and
+matching in `interpreter/stdlib/builtins_regex.mbt`. The `regexp-lookbehind`
+feature flag is not in shared skip metadata.
+
+---
+
+## ~~Class private fields, methods, and static blocks~~ — DONE (2026-07-13, PR #527+)
+
+**Result:** `#name` parsing (`lexer`, `parser`), per-class brands, private field
+and method storage, static private members, and assignment (PR #527, #528, #532,
+#535). No class-private feature tags remain in `skip_features`. Remaining
+conformance gaps are executed ES2022 failures, not blanket skips.

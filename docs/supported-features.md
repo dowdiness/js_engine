@@ -180,11 +180,15 @@ categories.
 ## Shared skip metadata
 
 The runner's shared skip metadata is `scripts/test262_skip_metadata.json`. At
-the time of this snapshot, feature skips include:
+the time of this snapshot (2026-07-03 CI run above), feature skips included
+`async-iteration`, private-class tags, and `regexp-lookbehind`. **Current
+shared metadata** (verify at tip before citing) has 37 `skip_features` entries
+and no longer blanket-skips those shipped areas. Present-day feature skips
+include:
 
 - `Atomics`, `BigInt`, `FinalizationRegistry`, `Float16Array`, `IsHTMLDDA`,
   `RegExp.escape`, `ShadowRealm`, `SharedArrayBuffer`, `Temporal`, `WeakRef`.
-- `async-iteration`, `await-dictionary`, `caller`, `cross-realm`, `decorators`, `dynamic-import`,
+- `await-dictionary`, `caller`, `cross-realm`, `decorators`, `dynamic-import`,
   `explicit-resource-management`, `for-in-order`, `hashbang`,
   `immutable-arraybuffer`, `import-attributes`,
   `import.meta`, `intl-normative-optional`, `iterator-helpers`,
@@ -192,13 +196,11 @@ the time of this snapshot, feature skips include:
   `json-parse-with-source`, `source-phase-imports`,
   `source-phase-imports-module-source`, `tail-call-optimization`,
   `top-level-await`.
-- Private class features: `class-fields-private`, `class-methods-private`,
-  `class-static-block`, `class-static-fields-private`,
-  `class-static-methods-private`.
-- RegExp features: `regexp-lookbehind`, `regexp-match-indices`,
-  `regexp-modifiers`, `regexp-unicode-property-escapes`, `regexp-v-flag`.
+- RegExp features still skipped: `regexp-match-indices`, `regexp-modifiers`,
+  `regexp-unicode-property-escapes`, `regexp-v-flag`.
 - ArrayBuffer features: `resizable-arraybuffer` and `arraybuffer-transfer`.
 
 The runner also skips Test262 flags `CanBlockIsFalse` and `CanBlockIsTrue`, plus
-a small set of path-specific int64 array-index cases recorded in the same JSON
-file.
+147 path-specific suffixes in the same JSON file (146
+`async-generator destructuring in for-await-of` exceptions and one legacy
+`star-iterable.js` spec-draft exception).
