@@ -95,6 +95,7 @@ The rest of this file is project-agnostic MoonBit conventions. Inlined here so t
 | Simple boolean             | `if/else`                           |                               |
 | Struct construction        | `fn Type::Type(...)` constructor    | old `fn new()` inside body    |
 | Empty callback body        | `() => ()`                          | `() => {}` (map literal!)     |
+| Higher-order callback      | `xs.map(x => f(x))`                 | `xs.map(fn(x) { f(x) })`      |
 | Tuple field access         | `.0`                                | `._` (deprecated)             |
 | Fallible return type       | `T!Error` with `!` propagation      | `try?` (won't catch abort)    |
 | Iteration                  | `for .. in`                         | `loop` (deprecated)           |
@@ -138,6 +139,7 @@ moon ide doc --dump /tmp/symbols.jsonl                # Full symbol dump (NEVER 
 # Stylistic audits (grep — moon ide can't see keywords like return/if/guard)
 grep -rn 'if .* { return' <pkg>/*.mbt                # guard candidates (early return)
 grep -rn '() => {}' <pkg>/*.mbt                      # Empty callback anti-pattern
+grep -rn '\.(map|filter|fold|each)\(fn(' <pkg>/*.mbt # HOF callbacks should use =>
 ```
 
 ## Bindings & Visibility
@@ -246,6 +248,18 @@ grep -rn '() => {}' <pkg>/*.mbt                      # Empty callback anti-patte
 ## Functions & Types
 
 - **Arrow functions:** `() => expr` (zero params, single expression), `() => { stmts }` (multi-statement), `x => expr` (one param), `(x, y) => expr` (multiple params). Empty body: `() => ()` — not `() => {}` which MoonBit parses as a map literal. Named functions (`pub fn`, `fn name(...)`) are unaffected.
+- **Higher-order callbacks:** When passing a function to `map`, `filter`, `fold`, `each`, `Array::makei`, or similar APIs, prefer arrow syntax over `fn(...) { ... }`. Reserve named `fn` for top-level or multi-use helpers; inline one-shot callbacks read better as arrows.
+
+  ```moonbit
+  // Preferred
+  keys.iter().filter(k => bag_key_enumerable(bag, k)).map(k => Value::String_(k))
+  Array::makei(n, i => Value::String_(i.to_string()))
+
+  // Avoid for inline HOF arguments
+  keys.iter().filter(fn(k) { bag_key_enumerable(bag, k) }).map(fn(k) { Value::String_(k) })
+  ```
+
+  Multi-statement bodies use a block: `x => { stmt; expr }`. Keep using named `fn` when the callback is large, reused, or needs a `raise`/`!Error` signature that is clearer on a named function.
 - **Custom constructors for structs:** Define a constructor method named after the type, `fn Type::Type(...) -> Type`. This enables `Type(...)` construction syntax with labelled/optional parameters, validation, and defaults without repeating a signature inside the struct body. Applies regardless of visibility — `pub`, `pub(all)`, and `priv` structs all benefit from consistent call syntax and future-proof validation hooks. Prefer this over bare struct literals `{ field: value }`.
 
   ```moonbit

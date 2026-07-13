@@ -49,6 +49,10 @@ moon fmt
 moon build
 ```
 
+MoonBit coding conventions (including arrow functions for higher-order callbacks)
+live in `AGENTS.md` / `CLAUDE.md` — update those files when adding project-wide
+style rules.
+
 `moon info` regenerates `pkg.generated.mbti` files. Review those diffs as API
 changes, especially for `@js_engine`, `@js_engine/token`, `@js_engine/ast`,
 and `@js_engine/interpreter/runtime`.
