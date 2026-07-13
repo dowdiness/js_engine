@@ -195,6 +195,8 @@ pub fn install_realm_pinned_builtin_constructor(Environment, @ref.Ref[Value?], S
 
 pub fn instanceof_prototype_chain(Value, Value, Interpreter) -> Value raise
 
+pub fn is_array(Value) -> Bool raise
+
 pub fn is_callable(Value) -> Bool
 
 pub fn is_constructor_value(Value) -> Bool

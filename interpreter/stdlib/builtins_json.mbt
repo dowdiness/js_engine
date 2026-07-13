@@ -118,52 +118,23 @@ fn setup_json_builtins(
       }
       // Handle replacer array (property list filter).
       // Per spec §7.2.2, IsArray on a Proxy exotic object checks the ProxyHandler;
-      // if null (revoked), throw TypeError. Otherwise, inspect the target.
-      // Must also extract string elements from Proxy-wrapped arrays via [[Get]].
+      // if null (revoked), throw TypeError. Elements are read via [[Get]].
       let property_list : Array[String]? = if args.length() > 1 {
-        match args[1] {
-          Value::Array(arr) => {
-            let keys : Array[String] = []
-            for elem in arr.elements {
-              match elem {
-                Value::String_(s) => keys.push(s)
-                Value::Number(n) => keys.push(n.to_string())
-                _ => ()
-              }
+        if @runtime.is_array(args[1]) {
+          let loc = @token.Loc::default()
+          let len = @runtime.to_array_like_length_interp(args[1], interp)
+          let keys : Array[String] = []
+          for i in 0L..<len {
+            let elem = interp.get_property(args[1], i.to_string(), loc)
+            match elem {
+              Value::String_(s) => keys.push(s)
+              Value::Number(n) => keys.push(n.to_string())
+              _ => ()
             }
-            Some(keys)
           }
-          Value::Proxy(proxy_data) =>
-            // Check handler revocation (IsArray step 3.a)
-            match proxy_data.handler {
-              None =>
-                raise @errors.TypeError(
-                  message="Cannot use a revoked proxy as a replacer array",
-                )
-              Some(_) =>
-                // IsArray through Proxy chains
-                if json_is_array_like(args[1]) {
-                  let loc = @token.Loc::default()
-                  let len_val = interp.get_property(args[1], "length", loc)
-                  let len = match len_val {
-                    Number(n) => n.to_int()
-                    _ => 0
-                  }
-                  let keys : Array[String] = []
-                  for i in 0..<len {
-                    let elem = interp.get_property(args[1], i.to_string(), loc)
-                    match elem {
-                      Value::String_(s) => keys.push(s)
-                      Value::Number(n) => keys.push(n.to_string())
-                      _ => ()
-                    }
-                  }
-                  Some(keys)
-                } else {
-                  None
-                }
-            }
-          _ => None
+          Some(keys)
+        } else {
+          None
         }
       } else {
         None
@@ -516,20 +487,6 @@ fn json_parse(input : String, interp : Interpreter) -> Value raise Error {
 }
 
 ///|
-/// §7.2.2 IsArray check that sees through Proxy chains.
-fn json_is_array_like(val : Value) -> Bool {
-  match val {
-    Array(_) => true
-    Proxy(proxy_data) =>
-      match proxy_data.target {
-        Some(target) => json_is_array_like(target)
-        None => false
-      }
-    _ => false
-  }
-}
-
-///|
 /// InternalizeJSONProperty — walks the parsed (or reviver-returned) value
 /// using the full abstract operations so that Proxy traps fire correctly.
 fn json_internalize(
@@ -544,7 +501,7 @@ fn json_internalize(
   let val = interp.get_property(holder, name, loc)
   // Step 2: Recurse into object-typed values (including Proxies).
   if @runtime.is_object_value(val) {
-    if json_is_array_like(val) {
+    if @runtime.is_array(val) {
       // Array branch: ? ToLength(? Get(val, "length")), then for each index:
       // delete or CreateDataProperty via [[DefineOwnProperty]].
       let len = @runtime.to_array_like_length_interp(val, interp)
@@ -572,17 +529,7 @@ fn json_internalize(
       // delete or CreateDataProperty. Proxy ownKeys/getOwnPropertyDescriptor
       // traps fire through object_keys.
       let keys_val = @runtime.object_keys(interp, val)
-      let keys : Array[String] = []
-      match keys_val {
-        Array(arr) =>
-          for k in arr.elements {
-            match k {
-              String_(s) => keys.push(s)
-              _ => ()
-            }
-          }
-        _ => ()
-      }
+      let keys : Array[String] = json_extract_string_keys(interp, keys_val)
       for key in keys {
         let new_val = json_internalize(val, key, reviver, interp)
         match new_val {
@@ -601,6 +548,25 @@ fn json_internalize(
   }
   // Step 3: Call reviver(holder, name, val).
   interp.call_value(reviver, holder, [Value::String_(name), val], loc)
+}
+
+///|
+/// Extract string keys from an array-like keys value returned by `object_keys`,
+/// reading elements via [[Get]] so stdlib does not touch ArrayData representation.
+fn json_extract_string_keys(
+  interp : Interpreter,
+  keys_val : Value,
+) -> Array[String] raise Error {
+  let loc = @token.Loc::default()
+  let len = @runtime.to_array_like_length_interp(keys_val, interp)
+  let keys : Array[String] = []
+  for i in 0L..<len {
+    match interp.get_property(keys_val, i.to_string(), loc) {
+      Value::String_(s) => keys.push(s)
+      _ => ()
+    }
+  }
+  keys
 }
 
 ///|
@@ -650,10 +616,10 @@ fn json_write_close_indent(
 }
 
 ///|
-fn json_stringify_proxy_array(
+/// SerializeJSONArray (ES2024 §25.5.8.2) via LengthOfArrayLike and indexed [[Get]].
+fn json_serialize_json_array(
   ip : Interpreter,
   val : Value,
-  _proxy_data : ProxyData,
   seen : Array[Value],
   indent : String?,
   depth : Int,
@@ -668,17 +634,13 @@ fn json_stringify_proxy_array(
     }
   }
   seen.push(val)
-  let len_val = ip.get_property(val, "length", loc)
+  let len = @runtime.to_array_like_length_interp(val, ip)
   let new_depth = depth + 1
-  let len = match len_val {
-    Number(n) => n.to_int()
-    _ => 0
-  }
   let buf = StringBuilder::new()
   buf.write_char('[')
   let mut first = true
-  for idx in 0..<len {
-    let element_val = ip.get_property(val, idx.to_string(), loc)
+  for i in 0L..<len {
+    let element_val = ip.get_property(val, i.to_string(), loc)
     let stringified = json_stringify_value(
       element_val,
       seen,
@@ -687,7 +649,7 @@ fn json_stringify_proxy_array(
       Some(ip),
       replacer~,
       holder=val,
-      key=idx.to_string(),
+      key=i.to_string(),
       property_list~,
     )
     match stringified {
@@ -702,20 +664,17 @@ fn json_stringify_proxy_array(
       _ => ()
     }
   }
-  json_write_close_indent(buf, indent, len > 0, depth)
+  json_write_close_indent(buf, indent, len > 0L, depth)
   buf.write_char(']')
   let _ = seen.pop()
   Value::String_(buf.to_string())
 }
 
 ///|
-/// Serialize a Proxy wrapping an Object as JSON object, using interpreter-aware
-/// abstract operations so [[Get]], [[OwnPropertyKeys]], and [[GetOwnProperty]]
-/// traps fire via the Proxy handler.
-fn json_stringify_proxy_object(
+/// SerializeJSONObject (ES2024 §25.5.8.3) via enumerable own keys and per-key [[Get]].
+fn json_serialize_json_object(
   ip : Interpreter,
   val : Value,
-  _proxy_data : ProxyData,
   seen : Array[Value],
   indent : String?,
   depth : Int,
@@ -739,19 +698,7 @@ fn json_stringify_proxy_object(
   // getOwnPropertyDescriptor traps.
   let keys : Array[String] = match property_list {
     Some(pl) => pl
-    None => {
-      let keys_val = @runtime.object_keys(ip, val)
-      match keys_val {
-        Value::Array(arr) =>
-          arr.elements.filter_map(fn(v) {
-            match v {
-              Value::String_(s) => Some(s)
-              _ => None
-            }
-          })
-        _ => []
-      }
-    }
+    None => json_extract_string_keys(ip, @runtime.object_keys(ip, val))
   }
   for k in keys {
     let v = ip.get_property(val, k, loc)
@@ -786,7 +733,6 @@ fn json_stringify_proxy_object(
   let _ = seen.pop()
   Value::String_(buf.to_string())
 }
-///
 
 ///|
 fn json_stringify_value(
@@ -807,14 +753,10 @@ fn json_stringify_value(
       Some(ip) => {
         let loc = @token.Loc::default()
         let to_json_fn = ip.get_property(val, "toJSON", loc)
-        match to_json_fn {
-          Object(data) =>
-            match data.callable {
-              Some(_) =>
-                ip.call_value(to_json_fn, val, [Value::String_(key)], loc)
-              None => val
-            }
-          _ => val
+        if @runtime.is_callable(to_json_fn) {
+          ip.call_value(to_json_fn, val, [Value::String_(key)], loc)
+        } else {
+          val
         }
       }
       None => val
@@ -849,21 +791,27 @@ fn json_stringify_value(
       }
     Value::String_(s) => Value::String_(json_escape_string(s))
     Symbol(_) => Undefined // Symbols are omitted from JSON
-    Map(_) => Value::String_("{}") // Maps serialize as empty objects
-    Set(_) => Value::String_("{}") // Sets serialize as empty objects
-    Promise(_) => Value::String_("{}") // Promises serialize as empty objects
+    Map(_) | Set(_) | Promise(_) =>
+      match interp {
+        Some(ip) =>
+          json_serialize_json_object(
+            ip,
+            val,
+            seen,
+            indent,
+            depth,
+            replacer~,
+            property_list~,
+          )
+        None => Value::String_("{}")
+      }
     Value::Proxy(proxy_data) =>
       match interp {
         Some(ip) =>
-          // Determine if Proxy wraps an array via IsArray (per spec, IsArray
-          // recursively unwraps Proxy chains to inspect the target, not via a
-          // handler trap). If array-like, use interpreter ops to serialize so
-          // [[Get]] and [[OwnPropertyKeys]] traps fire via the handler.
-          if json_is_array_like(val) {
-            json_stringify_proxy_array(
+          if @runtime.is_array(val) {
+            json_serialize_json_array(
               ip,
               val,
-              proxy_data,
               seen,
               indent,
               depth,
@@ -871,10 +819,9 @@ fn json_stringify_value(
               property_list~,
             )
           } else {
-            json_stringify_proxy_object(
+            json_serialize_json_object(
               ip,
               val,
-              proxy_data,
               seen,
               indent,
               depth,
@@ -883,7 +830,6 @@ fn json_stringify_value(
             )
           }
         None =>
-          // Without interpreter, best effort: unwrap to target
           match proxy_data.target {
             Some(target) =>
               json_stringify_value(
@@ -898,216 +844,71 @@ fn json_stringify_value(
             None => Value::String_("{}")
           }
       }
-    Value::Array(data) => {
-      // Cycle detection
-      for s in seen {
-        match s {
-          Array(sd) =>
-            if physical_equal(sd, data) {
-              raise @errors.TypeError(
-                message="Converting circular structure to JSON",
+    Value::Array(_) =>
+      match interp {
+        Some(ip) =>
+          json_serialize_json_array(
+            ip,
+            val,
+            seen,
+            indent,
+            depth,
+            replacer~,
+            property_list~,
+          )
+        None => Value::String_("[]")
+      }
+    Object(data) =>
+      if @runtime.is_callable(val) {
+        Undefined // Functions are not serialized
+      } else {
+        // Unwrap boxed primitives per spec (SerializeJSONProperty step 4)
+        if data.class_name == "Number" {
+          match data.bag.internal_slots.get(@runtime.NumberData) {
+            Some(Value::Number(n)) =>
+              return if n.is_nan() || n.is_inf() {
+                Value::String_("null")
+              } else {
+                Value::String_(Value::Number(n).to_string())
+              }
+            _ => ()
+          }
+        } else if data.class_name == "String" {
+          match data.bag.internal_slots.get(@runtime.StringData) {
+            Some(Value::String_(s)) =>
+              return Value::String_(json_escape_string(s))
+            _ => ()
+          }
+        } else if data.class_name == "Boolean" {
+          match data.bag.internal_slots.get(@runtime.BooleanData) {
+            Some(Value::Bool(b)) => return Value::String_(b.to_string())
+            _ => ()
+          }
+        }
+        match interp {
+          Some(ip) =>
+            if @runtime.is_array(val) {
+              json_serialize_json_array(
+                ip,
+                val,
+                seen,
+                indent,
+                depth,
+                replacer~,
+                property_list~,
+              )
+            } else {
+              json_serialize_json_object(
+                ip,
+                val,
+                seen,
+                indent,
+                depth,
+                replacer~,
+                property_list~,
               )
             }
-          _ => ()
-        }
-      }
-      seen.push(val)
-      let new_depth = depth + 1
-      let buf = StringBuilder::new()
-      buf.write_char('[')
-      let mut first = true
-      for idx, el in data.elements {
-        let stringified = json_stringify_value(
-          el,
-          seen,
-          indent,
-          new_depth,
-          interp,
-          replacer~,
-          holder=val,
-          key=idx.to_string(),
-          property_list~,
-        )
-        match stringified {
-          Undefined => {
-            first = json_write_element_separator(buf, first, indent, new_depth)
-            buf.write_string("null")
-          }
-          Value::String_(s) => {
-            first = json_write_element_separator(buf, first, indent, new_depth)
-            buf.write_string(s)
-          }
-          _ => ()
-        }
-      }
-      json_write_close_indent(buf, indent, data.elements.length() > 0, depth)
-      buf.write_char(']')
-      let _ = seen.pop()
-      Value::String_(buf.to_string())
-    }
-    Object(data) =>
-      match data.callable {
-        Some(_) => Undefined // Functions are not serialized
-        None => {
-          // Unwrap boxed primitives per spec (SerializeJSONProperty step 4)
-          if data.class_name == "Number" {
-            match data.bag.internal_slots.get(@runtime.NumberData) {
-              Some(Value::Number(n)) =>
-                return if n.is_nan() || n.is_inf() {
-                  Value::String_("null")
-                } else {
-                  Value::String_(Value::Number(n).to_string())
-                }
-              _ => ()
-            }
-          } else if data.class_name == "String" {
-            match data.bag.internal_slots.get(@runtime.StringData) {
-              Some(Value::String_(s)) =>
-                return Value::String_(json_escape_string(s))
-              _ => ()
-            }
-          } else if data.class_name == "Boolean" {
-            match data.bag.internal_slots.get(@runtime.BooleanData) {
-              Some(Value::Bool(b)) => return Value::String_(b.to_string())
-              _ => ()
-            }
-          }
-          // toJSON is handled by the shared prelude when interp is available.
-          // For headless calls (interp=None), fall back to direct bag walk.
-          match interp {
-            None => {
-              let mut to_json_fn : Value? = None
-              let mut cur : Value? = Some(val)
-              while to_json_fn is None {
-                match cur {
-                  Some(Object(obj_data)) =>
-                    match obj_data.bag.properties.get("toJSON") {
-                      Some(v) => to_json_fn = Some(v)
-                      None => cur = Some(obj_data.prototype)
-                    }
-                  _ => break
-                }
-              }
-              match to_json_fn {
-                Some(Object(to_json_data)) =>
-                  match to_json_data.callable {
-                    Some(_) => {
-                      let to_json_obj : Value = Object(to_json_data)
-                      let json_val : Value? = match interp {
-                        Some(ip) =>
-                          Some(
-                            ip.call_value(
-                              to_json_obj,
-                              val,
-                              [],
-                              @token.Loc::default(),
-                            ),
-                          )
-                        None =>
-                          match to_json_data.callable {
-                            Some(MethodCallable(_, func)) => Some(func(val, []))
-                            Some(NativeCallable(_, func)) => Some(func([]))
-                            Some(NativeCallableWithContext(_, func)) =>
-                              Some(func(Call, []))
-                            Some(NonConstructableCallable(_, func)) =>
-                              Some(func([]))
-                            _ => None
-                          }
-                      }
-                      match json_val {
-                        Some(v) =>
-                          return json_stringify_value(
-                            v,
-                            seen,
-                            indent,
-                            depth,
-                            None,
-                            replacer~,
-                            property_list~,
-                          )
-                        None => ()
-                      }
-                    }
-                    None => ()
-                  }
-                _ => ()
-              }
-            }
-            Some(_) => ()
-          }
-          // Cycle detection
-          for s in seen {
-            match s {
-              Object(sd) =>
-                if physical_equal(sd, data) {
-                  raise @errors.TypeError(
-                    message="Converting circular structure to JSON",
-                  )
-                }
-              _ => ()
-            }
-          }
-          seen.push(val)
-          let new_depth = depth + 1
-          let buf = StringBuilder::new()
-          buf.write_char('{')
-          let mut first = true
-          // Use property list (from replacer array) or sorted keys
-          let keys_to_iterate : Array[String] = match property_list {
-            Some(pl) => pl
-            None => {
-              let sorted = @runtime.sort_property_keys(data.bag.properties)
-              let filtered : Array[String] = []
-              for k in sorted {
-                // Skip non-enumerable properties
-                let enumerable = match data.bag.descriptors.get(k) {
-                  Some(d) => d.enumerable
-                  None => true
-                }
-                if enumerable {
-                  filtered.push(k)
-                }
-              }
-              filtered
-            }
-          }
-          for k in keys_to_iterate {
-            let v = match data.bag.properties.get(k) {
-              Some(v) => v
-              None => continue
-            }
-            let stringified = json_stringify_value(
-              v,
-              seen,
-              indent,
-              new_depth,
-              interp,
-              replacer~,
-              holder=val,
-              key=k,
-              property_list~,
-            )
-            match stringified {
-              Undefined => () // Skip undefined values
-              Value::String_(s) => {
-                first = json_write_element_separator(
-                  buf, first, indent, new_depth,
-                )
-                buf.write_string(json_escape_string(k))
-                buf.write_char(':')
-                match indent {
-                  Some(_) => buf.write_char(' ')
-                  None => ()
-                }
-                buf.write_string(s)
-              }
-              _ => ()
-            }
-          }
-          json_write_close_indent(buf, indent, !first, depth)
-          buf.write_char('}')
-          let _ = seen.pop()
-          Value::String_(buf.to_string())
+          None => Value::String_("{}")
         }
       }
   }

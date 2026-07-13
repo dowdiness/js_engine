@@ -1174,29 +1174,9 @@ fn setup_array_builtins(
   array_props["length"] = Value::Number(1.0)
   array_props["isArray"] = @runtime.make_native_func(name="isArray", length=1, fn(
     args,
-  ) {
+  ) raise {
     let val = if args.length() > 0 { args[0] } else { Undefined }
-    // Spec: Array.isArray unwraps proxies recursively
-    let mut current = val
-    while true {
-      match current {
-        Array(_) => return Value::Bool(true)
-        Object(data) =>
-          // Array.prototype is an Object with class_name "Array"
-          if data.class_name == "Array" {
-            return Value::Bool(true)
-          } else {
-            return Value::Bool(false)
-          }
-        Value::Proxy(proxy_data) =>
-          match proxy_data.target {
-            Some(target) => current = target
-            None => return Value::Bool(false)
-          }
-        _ => return Value::Bool(false)
-      }
-    }
-    Value::Bool(false)
+    Value::Bool(@runtime.is_array(val))
   })
   array_props["of"] = @runtime.make_native_func(name="of", fn(args) {
     // Array.of() - creates array from arguments
