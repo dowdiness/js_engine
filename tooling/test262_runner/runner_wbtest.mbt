@@ -51,6 +51,27 @@ async fn run_node_script(script : String) -> ProcessCapture? {
 }
 
 ///|
+test "command tokenization preserves backslash inside single quotes" {
+  json_inspect(@helpers.tokenize_command("engine 'path\\to\\file'"), content=[
+    "engine", "path\\to\\file",
+  ])
+}
+
+///|
+test "command tokenization matches subprocess helper contract" {
+  json_inspect(@helpers.tokenize_command("sh -c \"printf 'hi there'\""), content=[
+    "sh", "-c", "printf 'hi there'",
+  ])
+  json_inspect(@helpers.tokenize_command("a\\ b"), content=["a b"])
+  try {
+    ignore(@helpers.tokenize_command("'open"))
+    abort("expected failure")
+  } catch {
+    _ => ()
+  }
+}
+
+///|
 test "task selection mirrors Python runner helpers" {
   let tasks : Array[(String, String)] = []
   for i in 0..<10 {
