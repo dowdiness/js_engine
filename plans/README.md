@@ -13,7 +13,7 @@ update the plan's row when done.
 | [002](002-json-stringify-semantic-ops.md) | Route JSON serialization through semantic operations | P1 | M | — | DONE |
 | [003](003-reconcile-active-intent-docs.md) | Reconcile active intent docs with shipped features | P1 | S | — | DONE |
 | [004](004-enforce-architecture-audit-ci.md) | Enforce the full architecture audit in CI | P1 | S | 002 | TODO |
-| [005](005-unify-command-tokenizer.md) | Unify native tooling command tokenization | P2 | S–M | — | TODO |
+| [005](005-unify-command-tokenizer.md) | Unify native tooling command tokenization | P2 | S–M | — | DONE |
 | [006](006-centralize-ast-containment-walks.md) | Centralize AST containment traversal mechanics | P2 | M–L | 001 | TODO |
 
 Status values: `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` (with a one-line reason) | `REJECTED` (with a one-line rationale).
