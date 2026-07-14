@@ -1,4 +1,12 @@
 ///|
+/// Parse a configured `--engine` command string into argv without a shell.
+/// This is the Test262 runner's only tokenization seam; do not reintroduce a
+/// local quote parser.
+fn parse_engine_command(engine : String) -> Array[String] raise {
+  @helpers.tokenize_command(engine)
+}
+
+///|
 async fn auto_thread_count() -> Int {
   let detected = @async.with_timeout_opt(1000, () => {
     collect_output_hard("getconf", ["_NPROCESSORS_ONLN"])
@@ -208,7 +216,7 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   if threads < 1 {
     threads = 1
   }
-  let engine_cmd = @helpers.tokenize_command(engine)
+  let engine_cmd = parse_engine_command(engine)
   let test262_dir = @path_utils.absolute_path(config.test262)
   guard is_readable_dir(test262_dir) else {
     fail("test262 directory not found: \{test262_dir}")

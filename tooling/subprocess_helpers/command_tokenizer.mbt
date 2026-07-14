@@ -3,8 +3,9 @@
 ///
 /// Contract:
 /// 1. Spaces, tabs, and newlines separate unquoted words.
-/// 2. Empty quoted segments (`''`, `""`) contribute nothing; adjacent quoted and
-///    unquoted segments concatenate into one word.
+/// 2. Adjacent quoted and unquoted segments concatenate into one word. An empty
+///    quote pair mid-word (`a""b`) adds no characters; a standalone empty pair
+///    (`''` or `""`) yields a single empty argument.
 /// 3. Inside single quotes, every character is literal (backslashes included).
 /// 4. Inside double quotes, backslash escapes only `"`, `\`, `$`, backtick, and
 ///    newline; other backslashes are preserved literally.

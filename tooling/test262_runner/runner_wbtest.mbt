@@ -52,19 +52,25 @@ async fn run_node_script(script : String) -> ProcessCapture? {
 
 ///|
 test "command tokenization preserves backslash inside single quotes" {
-  json_inspect(@helpers.tokenize_command("engine 'path\\to\\file'"), content=[
+  json_inspect(parse_engine_command("engine 'path\\to\\file'"), content=[
     "engine", "path\\to\\file",
   ])
 }
 
 ///|
 test "command tokenization matches subprocess helper contract" {
-  json_inspect(@helpers.tokenize_command("sh -c \"printf 'hi there'\""), content=[
+  json_inspect(parse_engine_command("sh -c \"printf 'hi there'\""), content=[
     "sh", "-c", "printf 'hi there'",
   ])
-  json_inspect(@helpers.tokenize_command("a\\ b"), content=["a b"])
+  json_inspect(parse_engine_command("a\\ b"), content=["a b"])
   try {
-    ignore(@helpers.tokenize_command("'open"))
+    ignore(parse_engine_command("'open"))
+    abort("expected failure")
+  } catch {
+    _ => ()
+  }
+  try {
+    ignore(parse_engine_command("\"open"))
     abort("expected failure")
   } catch {
     _ => ()

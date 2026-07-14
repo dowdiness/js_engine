@@ -7,6 +7,7 @@ test "tokenize_command splits on whitespace" {
 test "tokenize_command treats empty quotes as adjacent segments" {
   json_inspect(tokenize_command("a\"\"b"), content=["ab"])
   json_inspect(tokenize_command("''"), content=[""])
+  json_inspect(tokenize_command("\"\""), content=[""])
 }
 
 ///|
