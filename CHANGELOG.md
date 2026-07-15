@@ -22,7 +22,7 @@ Measured on CI run [29417823934](https://github.com/dowdiness/js_engine/actions/
 Regression baseline: +2,844 non-strict / +2,841 strict vs
 `test262-baseline.json` (min 30,487 / 28,672).
 
-Unit tests: **2,342 / 2,342 passed** (`moon test`).
+Unit tests: **2,355 / 2,355 passed** (`moon test`).
 
 Compared with v0.5.0's recorded per-mode results from CI run
 `29141665989` (96.9% strict, 95.8% non-strict Passed / Executed),
