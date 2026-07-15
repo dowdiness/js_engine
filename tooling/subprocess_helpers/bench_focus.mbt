@@ -163,7 +163,9 @@ async fn collect_command(
   command : String,
   timeout_ms? : Int = DEFAULT_PROCESS_TIMEOUT_MS,
 ) -> ProcessCapture {
-  let argv = tokenize_command(command)
+  let argv = tokenize_command(command) catch {
+    e => fail("error: invalid benchmark command: \{e}")
+  }
   guard argv.length() > 0 else { fail("error: benchmark command is empty") }
   let exe = argv[0]
   let args = argv[1:]

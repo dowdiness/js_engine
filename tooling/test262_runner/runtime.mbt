@@ -216,7 +216,9 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   if threads < 1 {
     threads = 1
   }
-  let engine_cmd = parse_engine_command(engine)
+  let engine_cmd = parse_engine_command(engine) catch {
+    e => fail("Invalid engine command: \{e}")
+  }
   let test262_dir = @path_utils.absolute_path(config.test262)
   guard is_readable_dir(test262_dir) else {
     fail("test262 directory not found: \{test262_dir}")
