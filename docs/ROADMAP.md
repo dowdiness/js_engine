@@ -6,23 +6,23 @@ and the older [archive/phase-history.md](archive/phase-history.md).
 
 ## Current Status
 
-**Test262** — CI run [29141665989](https://github.com/dowdiness/js_engine/actions/runs/29141665989) on tip `74d84e5`, 2026-07-11. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
+**Test262** — CI run [29452024184](https://github.com/dowdiness/js_engine/actions/runs/29452024184) on tag tip `71e07d0`, 2026-07-15. Each test file is run twice (strict + non-strict); the two are reported separately because summing would double-count files.
 
-| Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts | Passed / Executed | Passed / Discovered |
+| Mode | Discovered | Skipped | Executed | Passed | Failed | Timeouts/Err | Passed / Executed | Passed / Discovered |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| strict | 44,986 | 14,491 | 30,483 | 29,526 | 957 | 11 | **96.9%** | 65.6% |
-| non-strict | 47,692 | 14,976 | 32,699 | 31,341 | 1,358 | 16 | **95.8%** | 65.7% |
+| strict | 44,986 | 10,201 | 34,773 | 31,513 | 3,260 | 12 | **90.6%** | 70.1% |
+| non-strict | 47,692 | 10,672 | 37,003 | 33,331 | 3,672 | 17 | **90.1%** | 69.9% |
 
-CI regression baseline: `test262-baseline.json` (min 30,487 non-strict / 28,672 strict passed, updated 2026-07-05; currently +854 / +854 above).
+CI regression baseline: `test262-baseline.json` (min 30,487 non-strict / 28,672 strict passed, updated 2026-07-05; currently +2,844 / +2,841 above).
 
-_Note: 2 runner error(s) excluded from the Timeouts column; inspect results JSON for details._
+_Note: the runner reports timeout and error outcomes together in the `Timeout/Err` column; inspect the results JSON for details._
 
 To refresh this block, run `make test262-report`; do not copy numbers from
 other documentation. For release notes, use `make test262-report
 ARGS="--format=changelog"`.
 
-ES2015 specifically: strict **98.1%** P/E (9,935 / 10,131; 161 skipped),
-non-strict **97.9%** P/E (10,393 / 10,620; 160 skipped) — the roadmap 95%
+ES2015 specifically: strict **98.1%** P/E (9,942 / 10,131; 161 skipped),
+non-strict **97.9%** P/E (10,400 / 10,620; 160 skipped) — the roadmap 95%
 ES2015 target is achieved.
 
 
