@@ -57,9 +57,9 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       // [[OwnPropertyKeys]] via proxy trap, filtered to enumerable own string
       // keys ([[GetOwnProperty]].[[Enumerable]]).
       make_array(
-        proxy_enumerable_own_string_keys(interp, obj, proxy_data).map(s =>
+        proxy_enumerable_own_string_keys(interp, obj, proxy_data).map(s => {
           Value::String_(s)
-        ),
+        }),
       )
     // Module namespaces resolve enumerability via the exotic [[Get]]
     // (`interp.get_own_property`, which raises), so they keep an imperative
@@ -87,9 +87,7 @@ pub fn object_keys(interp : Interpreter, obj : Value) -> Value raise Error {
       )
     Value::String_(s) =>
       // String objects have enumerable indexed properties
-      make_array(
-        Array::makei(s.length(), i => Value::String_(i.to_string())),
-      )
+      make_array(Array::makei(s.length(), i => Value::String_(i.to_string())))
     Value::Array(data) =>
       // Array objects have enumerable indexed properties followed by
       // enumerable own named properties in their embedded bag.
