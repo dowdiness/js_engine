@@ -17,8 +17,8 @@ reported separately — summing would double-count files):
 - **Passed / Discovered**: 70.1% strict (31,513 / 44,986),
   69.9% non-strict (33,331 / 47,692).
 - **Skipped**: 10,201 strict, 10,672 non-strict.
-Measured on CI run [29417823934](https://github.com/dowdiness/js_engine/actions/runs/29417823934)
-(tip `524f3fc`, 2026-07-15).
+Measured on CI run [29452024184](https://github.com/dowdiness/js_engine/actions/runs/29452024184)
+(tip `71e07d0`, 2026-07-15).
 Regression baseline: +2,844 non-strict / +2,841 strict vs
 `test262-baseline.json` (min 30,487 / 28,672).
 
