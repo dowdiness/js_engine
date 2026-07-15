@@ -8,6 +8,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 For changes before this file existed, see `git log`.
 
 ## [0.6.0] — 2026-07-15
+### Conformance
+
+test262 (each file run in both strict and non-strict modes,
+reported separately — summing would double-count files):
+- **Passed / Executed**: 90.6% strict (31,513 / 34,773),
+  90.1% non-strict (33,331 / 37,003). Excludes ~40% of
+  discovered files skipped for unimplemented features.
+- **Passed / Discovered**: 70.1% strict, 69.9%
+  non-strict. Counts skipped files as un-passed.
+Measured on CI run [29417823934](https://github.com/dowdiness/js_engine/actions/runs/29417823934)
+(tip `524f3fc`, 2026-07-15).
+Regression baseline: +2,844 non-strict / +2,841 strict vs
+`test262-baseline.json` (min 30,487 / 28,672).
+
+Unit tests: **2,342 / 2,342 passed** (`moon test`).
+
+Compared with v0.5.0's recorded per-mode results from CI run
+`29141665989` (96.9% strict, 95.8% non-strict Passed / Executed),
+the absolute passing count increased by **+1,987 strict** and
+**+1,990 non-strict**. The methodology remains per-mode, but the
+expanded feature coverage and changed skip list increased the executed
+denominators, so rates are not directly comparable.
+
 
 ### Added
 
