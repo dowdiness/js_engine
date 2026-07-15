@@ -107,10 +107,10 @@ test "changelog renderer includes baseline deltas without table output" {
     #|reported separately — summing would double-count files):
     #|
     #|- **Passed / Executed**: 94.1% strict (800 / 850),
-    #|  80.0% non-strict (1,200 / 1,500).
-    #|- **Passed / Discovered**: 80.0% strict (800 / 1,000),
-    #|  60.0% non-strict (1,200 / 2,000).
-    #|- **Skipped**: 100 strict, 400 non-strict.
+    #|  80.0% non-strict (1,200 / 1,500). Excludes ~40% of
+    #|  discovered files skipped for unimplemented features.
+    #|- **Passed / Discovered**: 80.0% strict, 60.0%
+    #|  non-strict. Counts skipped files as un-passed.
     #|
     #|Measured on CI run 1234567 (tip `abcdef1`, 2026-06-07).
     #|Regression baseline: +100 non-strict / +10 strict vs `test262-baseline.json` (min 1,100 / 790).
