@@ -324,10 +324,26 @@ fn render_changelog(
     format_int_grouped(np) +
     " / " +
     format_int_grouped(ne) +
-    "). Excludes ~40% of",
-    "  discovered files skipped for unimplemented features.",
-    "- **Passed / Discovered**: " + pct(sp, sd) + " strict, " + pct(np, nd),
-    "  non-strict. Counts skipped files as un-passed.",
+    ").",
+    "- **Passed / Discovered**: " +
+    pct(sp, sd) +
+    " strict (" +
+    format_int_grouped(sp) +
+    " / " +
+    format_int_grouped(sd) +
+    "),",
+    "  " +
+    pct(np, nd) +
+    " non-strict (" +
+    format_int_grouped(np) +
+    " / " +
+    format_int_grouped(nd) +
+    ").",
+    "- **Skipped**: " +
+    format_int_grouped(strict.skipped) +
+    " strict, " +
+    format_int_grouped(nonstrict.skipped) +
+    " non-strict.",
     "",
     "Measured on CI run " +
     run.id.to_string() +

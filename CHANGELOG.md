@@ -13,13 +13,10 @@ For changes before this file existed, see `git log`.
 test262 (each file run in both strict and non-strict modes,
 reported separately — summing would double-count files):
 - **Passed / Executed**: 90.6% strict (31,513 / 34,773),
-  90.1% non-strict (33,331 / 37,003). Excludes ~40% of
-  discovered files skipped for unimplemented features.
-- **Passed / Discovered**: 70.1% strict, 69.9%
-  non-strict. Counts skipped files as un-passed.
-Exact artifact totals: **strict 44,986 discovered / 10,201 skipped** and
-**non-strict 47,692 discovered / 10,672 skipped**. These counts provide the
-denominators behind the generated Passed / Discovered rates.
+  90.1% non-strict (33,331 / 37,003).
+- **Passed / Discovered**: 70.1% strict (31,513 / 44,986),
+  69.9% non-strict (33,331 / 47,692).
+- **Skipped**: 10,201 strict, 10,672 non-strict.
 Measured on CI run [29417823934](https://github.com/dowdiness/js_engine/actions/runs/29417823934)
 (tip `524f3fc`, 2026-07-15).
 Regression baseline: +2,844 non-strict / +2,841 strict vs
