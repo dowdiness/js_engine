@@ -221,6 +221,8 @@ pub fn js_error_to_value(Error) -> Value
 
 pub fn js_error_to_value_with_env(Error, Environment?) -> Value
 
+pub fn json_to_realm_value(RealmState, Json) -> Value raise JsonBridgeError
+
 pub fn load_direct_eval_callee(Environment) -> Value raise
 
 pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interpreter?) -> Value? raise
@@ -306,6 +308,8 @@ pub fn proxy_set(Interpreter, ProxyData, String, Value, Value, Bool) -> Value ra
 pub fn proxy_set_prototype_of(Interpreter, ProxyData, Value) -> Bool raise
 
 pub fn raise_js_exception(Value) -> Unit raise
+
+pub fn realm_value_to_json(RealmState, Value) -> Json raise JsonBridgeError
 
 pub fn reflect_get_with_receiver(Interpreter, Value, Value, Value, @token.Loc) -> Value raise
 
@@ -407,6 +411,10 @@ pub suberror GeneratorReturnSignal {
 pub suberror JsException {
   JsException(Value)
 }
+
+pub(all) suberror JsonBridgeError {
+  JsonBridgeFailure(String)
+} derive(@debug.Debug)
 
 pub suberror YieldSignal {
   YieldSignal(Value)

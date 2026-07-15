@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
+## [0.6.0] — 2026-07-15
+
+### Added
+
+- **Stateful root `Engine` facade** for persistent JavaScript realms, repeated
+  JSON calls, consuming console output, and explicit microtask/timer
+  checkpoints.
+- **Strict direct JSON boundary** that is independent of mutable global
+  `JSON` methods and does not invoke getters, `toJSON`, or Proxy traps.
+- **Stable `EngineError` classification** for parse failures, JavaScript
+  exceptions, missing/non-callable globals, JSON conversion failures, and
+  internal errors.
+- **Canonical rule-engine example** demonstrating repeated calls, state
+  persistence, and isolation between engines.
+- **Cross-target adoption CI** for native, JavaScript, Wasm, and Wasm-GC.
+
+### Changed
+
+- Package positioning now describes js_engine as a pure MoonBit cross-target
+  embedded scripting engine. Existing one-shot `run*` APIs remain compatible.
+
 ## [0.5.0] — 2026-07-11
 
 ### Added

@@ -65,6 +65,66 @@
   "symbol_overrides": [
     {
       "package": "dowdiness/js_engine",
+      "symbol": "EngineError",
+      "category": "stable_user_facade",
+      "reason": "documented error contract for stateful Engine embedding"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine",
+      "category": "stable_user_facade",
+      "reason": "documented persistent realm for application embedding"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::Engine",
+      "category": "stable_user_facade",
+      "reason": "documented constructor for persistent Engine realms"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::eval",
+      "category": "stable_user_facade",
+      "reason": "documented stateful script evaluation entry point"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::call_json",
+      "category": "stable_user_facade",
+      "reason": "documented strict JSON call boundary"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::take_output",
+      "category": "stable_user_facade",
+      "reason": "documented consuming console-output operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::has_pending_microtasks",
+      "category": "stable_user_facade",
+      "reason": "documented Engine microtask state query"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::has_pending_timers",
+      "category": "stable_user_facade",
+      "reason": "documented Engine timer state query"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::run_microtask_checkpoint",
+      "category": "stable_user_facade",
+      "reason": "documented explicit Engine microtask checkpoint"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::run_timer_checkpoint",
+      "category": "stable_user_facade",
+      "reason": "documented explicit Engine timer checkpoint"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "run",
       "category": "stable_user_facade",
       "reason": "documented library entry point for script execution"
