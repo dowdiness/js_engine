@@ -17,6 +17,9 @@ reported separately — summing would double-count files):
   discovered files skipped for unimplemented features.
 - **Passed / Discovered**: 70.1% strict, 69.9%
   non-strict. Counts skipped files as un-passed.
+Exact artifact totals: **strict 44,986 discovered / 10,201 skipped** and
+**non-strict 47,692 discovered / 10,672 skipped**. These counts provide the
+denominators behind the generated Passed / Discovered rates.
 Measured on CI run [29417823934](https://github.com/dowdiness/js_engine/actions/runs/29417823934)
 (tip `524f3fc`, 2026-07-15).
 Regression baseline: +2,844 non-strict / +2,841 strict vs
