@@ -19,13 +19,6 @@ test "bench focus parses CSV after prelude output" {
 }
 
 ///|
-test "bench focus shlex handles quoted command strings" {
-  json_inspect(shlex_split("sh -c \"printf 'hi there'\""), content=[
-    "sh", "-c", "printf 'hi there'",
-  ])
-}
-
-///|
 test "bench focus summarizes medians and missing rows" {
   let rows_by_run = [
     parse_rows(make_bench_csv(34.0, 2.0)),

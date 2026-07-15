@@ -1,56 +1,9 @@
 ///|
-fn shlex_split(command : String) -> Array[String] raise {
-  let args : Array[String] = []
-  let buf = StringBuilder()
-  let chars = command.to_array()
-  let mut quote : Char? = None
-  let mut token_started = false
-  let mut i = 0
-  while i < chars.length() {
-    let ch = chars[i]
-    match quote {
-      Some(q) =>
-        if ch == q {
-          quote = None
-        } else if ch == '\\' && i + 1 < chars.length() {
-          i += 1
-          buf.write_char(chars[i])
-        } else {
-          buf.write_char(ch)
-        }
-      None =>
-        if ch == ' ' || ch == '\t' || ch == '\n' {
-          if token_started || !buf.is_empty() {
-            args.push(buf.to_string())
-            buf.reset()
-            token_started = false
-          }
-        } else if ch == '\'' || ch == '"' {
-          quote = Some(ch)
-          token_started = true
-        } else if ch == '\\' {
-          if i + 1 < chars.length() {
-            i += 1
-            buf.write_char(chars[i])
-            token_started = true
-          } else {
-            buf.write_char(ch)
-            token_started = true
-          }
-        } else {
-          buf.write_char(ch)
-          token_started = true
-        }
-    }
-    i += 1
-  }
-  if quote is Some(_) {
-    fail("No closing quotation")
-  }
-  if token_started || !buf.is_empty() {
-    args.push(buf.to_string())
-  }
-  args
+/// Parse a configured `--engine` command string into argv without a shell.
+/// This is the Test262 runner's only tokenization seam; do not reintroduce a
+/// local quote parser.
+fn parse_engine_command(engine : String) -> Array[String] raise {
+  @helpers.tokenize_command(engine)
 }
 
 ///|
@@ -263,7 +216,9 @@ pub async fn run_runner(config : RunnerConfig) -> ToolRun {
   if threads < 1 {
     threads = 1
   }
-  let engine_cmd = shlex_split(engine)
+  let engine_cmd = parse_engine_command(engine) catch {
+    e => fail("Invalid engine command: \{e}")
+  }
   let test262_dir = @path_utils.absolute_path(config.test262)
   guard is_readable_dir(test262_dir) else {
     fail("test262 directory not found: \{test262_dir}")

@@ -1,6 +1,7 @@
 import {
   "dowdiness/js_engine/tooling/test262_metadata" @metadata,
   "dowdiness/js_engine/tooling/test262_utils" @utils,
+  "dowdiness/js_engine/tooling/subprocess_helpers" @helpers,
   "moonbitlang/async",
   "moonbitlang/async/fs" @afs,
   "moonbitlang/async/process",
