@@ -38,6 +38,10 @@
       "packages": ["benchmarks"]
     },
     {
+      "name": "examples",
+      "packages": ["example/*"]
+    },
+    {
       "name": "static-semantics",
       "packages": ["static_semantics"]
     },
@@ -68,8 +72,26 @@
     {
       "from": ".",
       "to": "interpreter/runtime",
-      "scope": "test",
-      "reason": "root facade tests assert runtime-level details"
+      "scope": "prod",
+      "reason": "stateful Engine delegates JSON conversion, calls, and queue control to runtime semantic APIs"
+    },
+    {
+      "from": ".",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "stateful Engine classifies runtime JavaScript errors for its stable facade"
+    },
+    {
+      "from": ".",
+      "to": "token",
+      "scope": "prod",
+      "reason": "stateful Engine supplies a host call location to runtime call dispatch"
+    },
+    {
+      "from": "example/rule_engine",
+      "to": ".",
+      "scope": "prod",
+      "reason": "runnable embedding examples consume the stable root facade"
     },
     {
       "from": "ast",

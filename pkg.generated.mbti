@@ -3,6 +3,7 @@ package "dowdiness/js_engine"
 
 import {
   "dowdiness/js_engine/interpreter/runtime",
+  "moonbitlang/core/debug",
 }
 
 // Values
@@ -25,8 +26,28 @@ pub fn run_timer_checkpoint(@runtime.Interpreter) -> Unit raise
 pub fn run_with_event_loop(String, annex_b? : Bool) -> (@runtime.Interpreter, @runtime.Value) raise
 
 // Errors
+pub(all) suberror EngineError {
+  ParseError(String)
+  JavaScriptException(String)
+  MissingGlobal(String)
+  NotCallable(String)
+  JsonConversionError(String)
+  InternalError(String)
+} derive(@debug.Debug)
+pub impl Show for EngineError
 
 // Types and methods
+pub struct Engine {
+  interp : @runtime.Interpreter
+}
+pub fn Engine::Engine(annex_b? : Bool) -> Self
+pub fn Engine::call_json(Self, String, Array[Json]) -> Json raise EngineError
+pub fn Engine::eval(Self, String) -> Unit raise EngineError
+pub fn Engine::has_pending_microtasks(Self) -> Bool
+pub fn Engine::has_pending_timers(Self) -> Bool
+pub fn Engine::run_microtask_checkpoint(Self) -> Bool raise EngineError
+pub fn Engine::run_timer_checkpoint(Self) -> Unit raise EngineError
+pub fn Engine::take_output(Self) -> Array[String]
 
 // Type aliases
 

@@ -1,0 +1,67 @@
+name: Adoption foundation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  MOONBIT_CACHE_VERSION: "2026-06"
+
+jobs:
+  cross-target-engine:
+    name: Engine (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [native, js, wasm, wasm-gc]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install dependencies
+        run: moon update
+
+      - name: Check ${{ matrix.target }}
+        run: moon check --target ${{ matrix.target }}
+
+      - name: Test ${{ matrix.target }}
+        run: moon test --target ${{ matrix.target }}

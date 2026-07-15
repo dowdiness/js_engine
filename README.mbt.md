@@ -1,9 +1,9 @@
 # js_engine
 
-A minimal JavaScript tree-walking interpreter written in [MoonBit](https://www.moonbitlang.com/).
+A pure [MoonBit](https://www.moonbitlang.com/), cross-target embedded JavaScript engine. It uses a tree-walking interpreter and runs on MoonBit's native, JavaScript, Wasm, and Wasm-GC targets.
 
 - Conformance on [test262](https://github.com/tc39/test262): each file is run in strict and non-strict modes and reported per mode. Do not sum the modes. Generate current numbers from CI artifacts with `make test262-report`; see [docs/TEST262.md](docs/TEST262.md).
-- JavaScript target: the engine builds with MoonBit's JS target and runs on Node.js.
+- Cross-target embedding: the same stateful `Engine` API is tested on native, JavaScript, Wasm, and Wasm-GC.
 - Benchmark dashboard: https://dowdiness.github.io/js_engine/benchmarks/
 
 ## Quick Start
@@ -32,17 +32,44 @@ More sample programs live in [`example/`](example/).
 
 ```mbt check
 ///|
-test "README run facade" {
-  let (output, result) = @js_engine.run("console.log(1 + 2)")
+test "README stateful rule engine" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|let evaluations = 0;
+    #|function allow(request) {
+    #|  evaluations += 1;
+    #|  return { allowed: request.role === "admin", evaluations };
+    #|}
+  engine.eval(source)
+  let admin = Json::object({ "role": Json::string("admin") })
+  let member_request = Json::object({ "role": Json::string("member") })
+  json_inspect(engine.call_json("allow", [admin]), content={
+    "allowed": true,
+    "evaluations": 1,
+  })
+  json_inspect(engine.call_json("allow", [member_request]), content={
+    "allowed": false,
+    "evaluations": 2,
+  })
+}
+```
+
+`Engine` keeps one global realm alive across calls. Its strict JSON boundary copies plain data directly: it does not consult a mutable global `JSON`, call getters or `toJSON`, or execute Proxy traps. Promise results and non-JSON values are rejected. This API is intended for trusted application scripts, not as a security sandbox. See [`example/rule_engine/`](example/rule_engine/) for the runnable example.
+
+For one-shot evaluation, the existing facade remains available:
+
+```mbt check
+///|
+test "README one-shot facade" {
+  let (output, _) = @js_engine.run("console.log(1 + 2)")
   json_inspect(output, content=["3"])
-  guard result == "undefined" else {
-    fail("result: expected undefined, got " + result)
-  }
 }
 ```
 
 The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
 
+- `Engine`, `Engine::eval`, `Engine::call_json`, `Engine::take_output` — persistent JSON-oriented embedding
+- `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` — explicit job-queue control; `eval` and `call_json` do not drain queues automatically
 - `run` — evaluate a script; drains microtasks and timers before returning
 - `run_compiled` — evaluate the supported script subset through the opt-in closure-conversion prototype
 - `run_module` / `run_modules` — evaluate one or more ES modules and collect exports
@@ -143,6 +170,7 @@ cmd/main/       CLI entry point
 cmd/test262_runner/  Native test262 runner
 cmd/report_test262/  CI artifact report generator
 benchmarks/     Benchmark workloads and runner
+example/rule_engine/  Canonical stateful JSON rule-engine embedding
 ```
 
 ## Development

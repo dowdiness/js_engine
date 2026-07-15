@@ -1,0 +1,7 @@
+import {
+  "dowdiness/js_engine",
+}
+
+options(
+  "is-main": true,
+)
