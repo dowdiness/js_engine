@@ -1,5 +1,5 @@
 ///|
-let rule_source =
+const RULE_SOURCE =
   #|let evaluationCount = 0;
   #|function allow(request) {
   #|  evaluationCount += 1;
@@ -15,7 +15,7 @@ fn request(role : String, action : String) -> Json {
 ///|
 fn load_rule_engine() -> @js_engine.Engine raise @js_engine.EngineError {
   let engine = @js_engine.Engine()
-  engine.eval(rule_source)
+  engine.eval(RULE_SOURCE)
   engine
 }
 

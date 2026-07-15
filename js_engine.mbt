@@ -135,18 +135,39 @@ pub fn Engine::eval(self : Engine, source : String) -> Unit raise EngineError {
 }
 
 ///|
+fn Engine::get_global_export(
+  self : Engine,
+  name : String,
+) -> @runtime.Value raise EngineError {
+  let has_binding = self.interp.global.has(name) catch {
+    err => raise classify_engine_runtime_error(err)
+  }
+  if has_binding {
+    return self.interp.global.get(name) catch {
+      err => raise classify_engine_runtime_error(err)
+    }
+  }
+  let own_property = self.interp.get_own_property(
+    self.interp.global_this,
+    @runtime.String_(name),
+  ) catch {
+    @runtime.JsException(value) => raise JavaScriptException(value.to_string())
+    err => raise classify_engine_runtime_error(err)
+  }
+  guard own_property is Some(_) else { raise MissingGlobal(name) }
+  self.interp.get_property(self.interp.global_this, name, @token.Loc::default()) catch {
+    @runtime.JsException(value) => raise JavaScriptException(value.to_string())
+    err => raise classify_engine_runtime_error(err)
+  }
+}
+
+///|
 pub fn Engine::call_json(
   self : Engine,
   name : String,
   args : Array[Json],
 ) -> Json raise EngineError {
-  let exists = self.interp.global.has(name) catch {
-    err => raise classify_engine_runtime_error(err)
-  }
-  guard exists else { raise MissingGlobal(name) }
-  let callee = self.interp.global.get(name) catch {
-    err => raise classify_engine_runtime_error(err)
-  }
+  let callee = self.get_global_export(name)
   guard @runtime.is_callable(callee) else { raise NotCallable(name) }
   let runtime_args : Array[@runtime.Value] = []
   for arg in args {
@@ -164,7 +185,7 @@ pub fn Engine::call_json(
     @runtime.JsException(value) => raise JavaScriptException(value.to_string())
     err => raise classify_engine_runtime_error(err)
   }
-  @runtime.realm_value_to_json(result) catch {
+  @runtime.realm_value_to_json(self.interp.realm_state, result) catch {
     @runtime.JsonBridgeFailure(message) => raise JsonConversionError(message)
   }
 }

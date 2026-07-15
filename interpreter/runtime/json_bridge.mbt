@@ -77,6 +77,7 @@ fn json_bridge_push_unique(
 ///|
 fn json_bridge_value_to_json(
   value : Value,
+  object_prototype : Value,
   stack : Array[Value],
 ) -> Json raise JsonBridgeError {
   match value {
@@ -116,13 +117,17 @@ fn json_bridge_value_to_json(
       json_bridge_push_unique(stack, value)
       let items : Array[Json] = []
       for item in data.elements {
-        items.push(json_bridge_value_to_json(item, stack))
+        items.push(json_bridge_value_to_json(item, object_prototype, stack))
       }
       ignore(stack.pop())
       Json::array(items)
     }
     Object(data) => {
-      guard data.class_name == "Object" && data.callable is None else {
+      let has_plain_prototype = data.prototype is Null ||
+        strict_equal(data.prototype, object_prototype)
+      guard data.class_name == "Object" &&
+        data.callable is None &&
+        has_plain_prototype else {
         raise JsonBridgeFailure(
           "only plain non-callable objects are accepted as JSON data",
         )
@@ -152,7 +157,10 @@ fn json_bridge_value_to_json(
             raise JsonBridgeFailure(
               "non-enumerable properties are not accepted as JSON data: " + key,
             )
-          _ => entries[key] = json_bridge_value_to_json(property, stack)
+          _ =>
+            entries[key] = json_bridge_value_to_json(
+              property, object_prototype, stack,
+            )
         }
       }
       ignore(stack.pop())
@@ -164,6 +172,9 @@ fn json_bridge_value_to_json(
 ///|
 /// Copy a runtime value into strict JSON data without performing property
 /// lookup, calling getters or `toJSON`, or consulting a mutable global.
-pub fn realm_value_to_json(value : Value) -> Json raise JsonBridgeError {
-  json_bridge_value_to_json(value, [])
+pub fn realm_value_to_json(
+  realm_state : RealmState,
+  value : Value,
+) -> Json raise JsonBridgeError {
+  json_bridge_value_to_json(value, realm_state.get_obj_proto(), [])
 }

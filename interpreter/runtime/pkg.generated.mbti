@@ -309,7 +309,7 @@ pub fn proxy_set_prototype_of(Interpreter, ProxyData, Value) -> Bool raise
 
 pub fn raise_js_exception(Value) -> Unit raise
 
-pub fn realm_value_to_json(Value) -> Json raise JsonBridgeError
+pub fn realm_value_to_json(RealmState, Value) -> Json raise JsonBridgeError
 
 pub fn reflect_get_with_receiver(Interpreter, Value, Value, Value, @token.Loc) -> Value raise
 

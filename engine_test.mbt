@@ -38,6 +38,29 @@ test "Engine distinguishes missing and non-callable globals" {
 }
 
 ///|
+test "Engine calls functions exported on the global object" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|globalThis.fromGlobalThis = function(value) { return value + 1; };
+    #|this.fromThis = function(value) { return value + 2; };
+    #|globalThis.globalValue = 42;
+  engine.eval(source)
+  json_inspect(
+    engine.call_json("fromGlobalThis", [Json::number(1.0)]),
+    content=2,
+  )
+  json_inspect(engine.call_json("fromThis", [Json::number(1.0)]), content=3)
+  let not_callable = try {
+    let _ = engine.call_json("globalValue", [])
+    "no error"
+  } catch {
+    @js_engine.NotCallable(name) => "not-callable:" + name
+    err => "wrong:" + err.to_string()
+  }
+  inspect(not_callable, content="not-callable:globalValue")
+}
+
+///|
 test "Engine take_output consumes a copied buffer" {
   let engine = @js_engine.Engine()
   engine.eval("console.log('once')")
@@ -130,6 +153,42 @@ test "Engine rejects non-data results without executing user conversion hooks" {
   inspect(to_json_error, content="conversion")
   inspect(proxy_error, content="conversion")
   json_inspect(engine.call_json("touchedCount", []), content=0)
+}
+
+///|
+test "Engine only accepts plain-object prototypes at the JSON boundary" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function Custom() { this.value = 1; }
+    #|function customInstance() { return new Custom(); }
+    #|function customPrototype() {
+    #|  return Object.create({ inherited: true }, {
+    #|    value: { value: 2, enumerable: true }
+    #|  });
+    #|}
+    #|function nullPrototype() {
+    #|  const value = Object.create(null);
+    #|  value.ok = true;
+    #|  return value;
+    #|}
+  engine.eval(source)
+  let constructor_error = try {
+    let _ = engine.call_json("customInstance", [])
+    "no error"
+  } catch {
+    @js_engine.JsonConversionError(_) => "conversion"
+    err => "wrong:" + err.to_string()
+  }
+  let prototype_error = try {
+    let _ = engine.call_json("customPrototype", [])
+    "no error"
+  } catch {
+    @js_engine.JsonConversionError(_) => "conversion"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(constructor_error, content="conversion")
+  inspect(prototype_error, content="conversion")
+  json_inspect(engine.call_json("nullPrototype", []), content={ "ok": true })
 }
 
 ///|
