@@ -371,6 +371,14 @@ Categories:
 | `generated_interface_artifact` | public only because current package layout requires it | shrink intentionally |
 | `benchmark_tooling_hook` | exposed for benchmark/tool runner integration | may break with same-stage tooling migration |
 
+The Adoption Roadmap refines root-package user surfaces into the product-facing
+categories `stable_embedding`, `compatibility`, and `advanced_internal`.
+Package-level implementation categories above remain in use for non-root
+packages. The current inventory in
+[`scripts/architecture_surface_taxonomy.json`](../../scripts/architecture_surface_taxonomy.json)
+is authoritative when this original Stage 0 expectation differs from the later
+adoption classification.
+
 ### 5.4 Initial classification expectations
 
 The first inventory should classify at least:

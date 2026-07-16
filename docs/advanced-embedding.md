@@ -1,8 +1,8 @@
-# Embedding js_engine
+# Advanced embedding with js_engine
 
 How to run JavaScript with custom host objects (DOM-style globals, native
 methods, private host state). This guide is for embedders that go beyond the
-`@js_engine.run` facade.
+stable root facade described in [EMBEDDING.md](EMBEDDING.md).
 
 Code is the source of truth. If this document and the API disagree, trust the
 code and open a docs fix.
