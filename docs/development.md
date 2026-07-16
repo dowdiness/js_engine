@@ -132,6 +132,29 @@ moon run benchmarks --target js -- --all --csv
 Timing is meaningful only on the JS target; the WASM and WASM-GC timer files
 return `0.0` by design.
 
+To reproduce the Stage 1 stable-embedding usage baselines, run:
+
+```bash
+make embedding-baseline
+```
+
+The command prints the MoonBit version, target, release mode, and sampling
+policy before running two fixed scenarios:
+
+- `embedding/one_shot/run_rule` includes fresh runtime construction, builtin
+  setup, parsing, evaluation, and display-string conversion. It excludes
+  process startup.
+- `embedding/persistent/call_json_rule` starts after `Engine` construction and
+  rule-source evaluation. Each measured operation includes argument conversion,
+  a synchronous call that mutates Engine-owned state, and result conversion
+  through the strict JSON bridge.
+
+Both use 10 outer runs with auto-calibrated inner runs. They are different usage
+envelopes, so do not divide their results to claim that one API is faster than
+the other. Keep source, input data, target, mode, and sampling policy fixed when
+recording a new baseline. Optimization work still requires a separate,
+isolated benchmark that reproduces a concrete bottleneck.
+
 Benchmark output has both a category and a stage. Category answers when the
 benchmark should run (`regression`, `component`, `workflow`); stage answers what
 part of the engine it measures (`startup`, `frontend`, `execution`). Keep those

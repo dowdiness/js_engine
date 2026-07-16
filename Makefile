@@ -1,4 +1,4 @@
-.PHONY: build test external-consumer-test bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test external-consumer-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 TARGET ?= native
@@ -16,6 +16,17 @@ external-consumer-test:
 	cd integration/external_consumer && \
 		moon check --target $(TARGET) . && \
 		moon test --target $(TARGET) .
+
+# Reproduce the stable embedding usage baselines with recorded run metadata.
+embedding-baseline:
+	@echo "MoonBit: $$(moon version 2>&1 | head -n 1)"
+	@echo "Target: js"
+	@echo "Mode: release"
+	@echo "Sampling: 10 outer runs, auto-calibrated inner runs"
+	moon bench -p dowdiness/js_engine/benchmarks \
+		-f embedding_baseline.mbt \
+		--target js \
+		--release
 
 # Ensure the native core bundle exists (required for `moon build --target native`).
 # Runs `moon bundle` on the installed core library, which links individual .core
