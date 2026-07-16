@@ -108,9 +108,11 @@ primitive.
   that imports only the supported facade and runs the Rule Engine acceptance
   scenario on all four targets. Keep release smoke testing from Mooncakes
   distinct from PR testing of the checkout under review.
-- Add focused baselines for one-shot execution and repeated calls through a
-  persistent Engine. These establish usage costs; optimization still requires
-  an isolated benchmark that reproduces a bottleneck.
+- Maintain the focused
+  [stable-embedding baselines](../benchmarks/embedding_baseline.mbt) for
+  one-shot execution and repeated calls through a persistent Engine. These
+  establish usage costs; optimization still requires an isolated benchmark
+  that reproduces a bottleneck.
 
 Acceptance: a consumer starting from an empty module can follow only the stable
 embedding guide and pass the portable Rule Engine scenario without importing

@@ -67,18 +67,6 @@ isolated benchmark.
 - `Function.prototype.toString`: walks all intrinsic objects with O(n²)
   `visited.includes()` check.
 
-## Adoption Stage 1 follow-up PRs
-
-Keep these separate from the stable embedding documentation PR.
-
-### Embedding baselines
-
-- In a separate benchmark PR, measure one-shot `run` and repeated persistent
-  `Engine::call_json` scenarios with fixed source/data and recorded toolchain
-  metadata.
-- Treat the results as baselines only. Do not propose an optimization unless an
-  isolated microbenchmark reproduces a concrete bottleneck.
-
 ## Feature projects
 
 These are larger than one small cleanup PR; split them before implementation.
