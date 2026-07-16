@@ -125,10 +125,5 @@ jobs:
         if: matrix.target == 'native'
         run: make architecture-boundary-audit
 
-      - name: Check consumer on ${{ matrix.target }}
-        working-directory: integration/external_consumer
-        run: moon check --target ${{ matrix.target }} .
-
-      - name: Test consumer on ${{ matrix.target }}
-        working-directory: integration/external_consumer
-        run: moon test --target ${{ matrix.target }} .
+      - name: Check and test consumer on ${{ matrix.target }}
+        run: make external-consumer-test TARGET=${{ matrix.target }}
