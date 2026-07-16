@@ -2,6 +2,7 @@
 
 Long-form design, architecture, and research notes for `js_engine`.
 
+- [embedded-runtime-vision.md](embedded-runtime-vision.md) — long-term product boundary, promises, non-goals, and success criteria for the stable embedded runtime.
 - [architecture.md](architecture.md) — design principles, package boundaries, value model, and host integration.
 - [architecture-redesign-2026-06-12.md](architecture-redesign-2026-06-12.md) — current first-principles architecture redesign findings.
 - [architecture-execution-plan-2026-06-12.md](architecture-execution-plan-2026-06-12.md) — staged execution contract for the current redesign.

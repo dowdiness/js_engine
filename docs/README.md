@@ -7,7 +7,7 @@ truth; when a doc and the code disagree, trust the code.
 
 - [../README.md](../README.md) — project overview, quick start, supported language
 - [embedding.md](embedding.md) — embed with custom host objects (`new_interpreter`, `def_builtin`, `make_*_func`)
-- [ROADMAP.md](ROADMAP.md) — headline status and current next targets
+- [ROADMAP.md](ROADMAP.md) — headline status and the adoption-first implementation sequence
 - [supported-features.md](supported-features.md) — per-category pass rates, Annex B, missing features
 - [TEST262.md](TEST262.md) — how to run the test262 conformance suite
 - [decisions/tooling-migration-contracts.md](decisions/tooling-migration-contracts.md) — parity contract for migrating Python scripts to MoonBit
@@ -27,6 +27,7 @@ truth; when a doc and the code disagree, trust the code.
 Long-form research and design analysis. These explain design history and may
 lag the code. Start with [design/README.md](design/README.md) for the design-folder index.
 
+- [embedded-runtime-vision.md](design/embedded-runtime-vision.md) — long-term product boundary, promises, non-goals, and success criteria for embedding
 - [closure-conversion-and-bytecode.md](design/closure-conversion-and-bytecode.md) — closure-conversion prototype status, research notes, and bytecode/IR direction
 - [SELF_HOST_JS_RESEARCH.md](design/SELF_HOST_JS_RESEARCH.md) — self-hosting analysis (compiling the engine to JS)
 - [architecture-redesign-2026-06-12.md](design/architecture-redesign-2026-06-12.md) — current first-principles architecture redesign findings

@@ -70,7 +70,9 @@ isolated benchmark.
 ## Feature projects
 
 These are larger than one small cleanup PR; split them before implementation.
-See [ROADMAP.md](ROADMAP.md#active-roadmap) for the broader feature-bucket view.
+They belong to the parallel conformance quality stream described in
+[ROADMAP.md](ROADMAP.md#continuing-quality-streams), not to the ordered adoption
+stages.
 
 ### Async-generator destructuring in `for await`
 

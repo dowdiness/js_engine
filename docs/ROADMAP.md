@@ -56,84 +56,172 @@ Annex B legacy features, and not-yet-implemented features.
 
 ---
 
-## Active Roadmap
+## Adoption Roadmap
 
-### 1. Keep conformance data fresh
+The primary direction after v0.6.0 is to make `js_engine` a dependable embedded
+JavaScript runtime for MoonBit applications. An application author should be
+able to embed trusted JavaScript on every supported target without depending on
+internal `Interpreter` or `Value` representations.
 
-Before changing release notes, planning targets, or public claims, regenerate the
-Test262 block from CI artifacts with `make test262-report`. Do not hand-edit the
-numbers. If a release is being cut, use `make test262-report
-ARGS="--format=changelog"` for the changelog block.
+Browser compatibility, DOM APIs, crater-specific context lifecycle, and a
+security sandbox are outside this roadmap. Test262 improvement continues as a
+quality stream, but adoption is evaluated by whether an external consumer can
+understand, integrate, control, and diagnose the stable facade.
 
-### 2. Close large skipped-feature buckets
+The durable product principles and non-goals are defined in
+[Embedded Runtime Vision](design/embedded-runtime-vision.md).
 
-These are the main drivers of the gap between Passed / Executed and Passed /
-Discovered. Distinguish **feature skips** (`skip_features` in shared metadata),
-**path skips** (`skip_path_suffixes`), and **executed failures** (no skip; fix
-per spec):
+### Completed baseline — v0.6.0 release
 
-| Bucket | Skip policy (shared metadata) | Current direction |
-|--------|------------------------------|-------------------|
-| BigInt | `BigInt` in `skip_features` | Value representation, literal parsing, arithmetic/comparison/coercion, typed-array/DataView interactions, and skip-list rollout. |
-| Temporal | `Temporal` in `skip_features` | Treat as a later feature unless a narrower compatibility target emerges. |
-| RegExp Unicode property escapes | `regexp-unicode-property-escapes` in `skip_features` | Data-table strategy for `\p{...}` / `\P{...}`; lookbehind `(?<=...)` / `(?<!...)` already ships (PR #493). |
-| Async iteration (path cohort) | No `async-iteration` feature skip; 146 `for-await-of` paths skipped as `async-generator destructuring in for-await-of` | Core `for await`, async iterators, and async generators ship (PR #494+). Reproduce and fix one path-skipped destructuring file at a time. |
-| Class private members | No class-private feature skips; syntax/runtime ship (PR #527+) | Remaining ES2022 conformance gaps are executed failures, not blanket skips — drill down with `make test262-filter` rather than re-implementing parsing. |
+v0.6.0 established the release baseline:
 
-### 3. Reduce distributed failures
+- post-merge `main` conformance and unit-test results were recorded in the
+  changelog;
+- [`moon.mod`](../moon.mod) and the `v0.6.0` tag record the released package
+  version; and
+- the [Adoption foundation workflow](../.github/workflows/adoption.yml) checks
+  and tests the repository on native, JavaScript, Wasm, and Wasm-GC.
 
-No single small fix is expected to unlock hundreds of remaining executed tests.
-Use the runner to drill into current failure clusters, then land narrow,
-spec-anchored fixes with targeted verification. Prefer test262 `info` fields and
-spec algorithms over analogy with sibling built-ins.
+The release process also included maintainer-reported Mooncakes publication and
+installation from an empty external project. Those manual smoke results are not
+independently verifiable from repository artifacts. The next stage therefore
+treats reproducible external-consumer CI as required evidence rather than as an
+already-complete gate.
 
-Useful workflow:
+### 1. Establish the adoption contract
 
-```bash
-make test262-filter ARGS="--filter <path-or-category> --summary"
-make test262-report
-```
+Harden and document the existing facade before adding another host-integration
+primitive.
 
-### 4. Tighten architecture boundaries as optimization paths grow
+- Audit every root-package entry point and classify it as **stable embedding**,
+  **compatibility**, or **advanced/internal**. Existing APIs that expose runtime
+  values may remain compatible, but they are not the model for new stable APIs.
+- Add a stable `docs/EMBEDDING.md` based only on released behavior. Because the
+  existing `docs/embedding.md` differs only by case, rename the existing
+  interpreter/value cookbook to `docs/advanced-embedding.md` before adding the
+  stable guide.
+- Document the strict JSON acceptance and rejection matrix, queue checkpoint
+  meaning and ordering, non-rollback after failure, Engine reuse expectations,
+  target guarantees, and the trusted-script boundary.
+- Add characterization tests for every documented lifecycle and failure claim.
+- Add a true external-consumer CI fixture that imports only the supported facade
+  and runs the Rule Engine acceptance scenario on all four targets. Keep release
+  smoke testing from Mooncakes distinct from PR testing of the checkout under
+  review.
+- Add focused baselines for one-shot execution and repeated calls through a
+  persistent Engine. These establish usage costs; optimization still requires
+  an isolated benchmark that reproduces a bottleneck.
 
-Mutable realm-state ownership is now a maintenance invariant, not the active
-redesign pressure: the architecture-state audit inventory is empty
-(`scripts/architecture_state_classified_mutable_state.json` is `{}`). Keep that
-gate green, but focus new architecture work on boundary clarity between the
-runtime semantic owner, stdlib bootstrap, static-semantic preparation, and
-compiler/bytecode experiments. The current design context is in
-[architecture-redesign-2026-06-12.md](design/architecture-redesign-2026-06-12.md)
-and [architecture-execution-plan-2026-06-12.md](design/architecture-execution-plan-2026-06-12.md).
+Acceptance: a consumer starting from an empty module can follow only the stable
+embedding guide and pass the portable Rule Engine scenario without importing
+interpreter internals.
 
-Completed realm-state, representation-access, and dispatcher stages are archived
-in [archive/executed-roadmap-history.md](archive/executed-roadmap-history.md#completed-structural-refactoring-stages).
+### 2. Decide the execution contract
 
-### 5. Keep bytecode optimization disciplined
+Before host callbacks, record and test the runtime lifecycle contracts that are
+expensive to retrofit:
 
-Closure conversion and the opt-in bytecode prototype are benchmark paths, not a
-second semantic interpreter. Keep JavaScript semantics centralized in runtime
-helpers and leave default `run` on the tree-walking interpreter unless a
-microbenchmark demonstrates the bottleneck. See
-[closure-conversion-and-bytecode.md](design/closure-conversion-and-bytecode.md).
+- concurrent use and same-Engine re-entry;
+- reusability after parse, JavaScript, JSON-boundary, interruption, and internal
+  failures;
+- pending-job state after each failure category;
+- structured error evolution and compatibility of new error classifications;
+- step accounting, recursion limits, interruption observation points, and the
+  relationship between a bounded call and queued jobs; and
+- target-dependent diagnostic details outside the portable contract.
 
-### 6. Maintain JavaScript target viability
+These decisions belong under `docs/decisions/`. They must be settled from the
+embedder contract rather than inherited accidentally from internal helpers.
 
-The engine builds with MoonBit's JS target and runs on Node.js:
+### 3. Inject host-owned JSON data
 
-```bash
-moon build --target js
-node ./_build/js/debug/build/cmd/main/main.js 'console.log(1 + 2)'
-# => 3
-```
+Add stable JSON injection before exposing executable host capabilities. The
+candidate remains an Engine operation taking a name and `Json`, but this
+roadmap does not freeze its exact name or signature.
 
-Future JS-target work:
+Decide before implementation:
 
-- Re-verify the JS-target unit-test count after recent unit-test growth.
-- Package an npm distribution only after deciding ESM/CJS output and sandboxing boundaries.
-- Explore a browser playground once filesystem assumptions are isolated.
-- Treat self-interpretation as long-term research; it depends on higher support for the JavaScript emitted by MoonBit.
+- whether the value is visible as a global binding, a global-object property,
+  or both;
+- collision behavior with existing lexical and object bindings;
+- writable, configurable, and enumerable attributes;
+- host-side update and redefinition policy; and
+- error classification and source-compatibility consequences.
 
-For historical JS-target analysis, see [SELF_HOST_JS_RESEARCH.md](design/SELF_HOST_JS_RESEARCH.md).
+Conversion must use the direct JSON-to-realm bridge. It must not invoke the
+mutable global `JSON` object or execute user JavaScript.
+
+### 4. Add minimum execution guardrails
+
+Implement the minimum execution controls before granting JavaScript synchronous
+host capabilities:
+
+- a deterministic step budget;
+- a recursion or stack-depth guard;
+- explicit interruption at documented observation points;
+- distinct structured failure classification;
+- documented non-rollback of mutations before interruption; and
+- Engine-integrity and reuse tests after limits are reached.
+
+Infinite-loop and deep-recursion acceptance tests must terminate predictably on
+native, JavaScript, Wasm, and Wasm-GC. These controls protect host availability
+from faulty trusted scripts; they do not create a security sandbox.
+
+### 5. Expose synchronous host capabilities
+
+Add a stable synchronous callback boundary without exposing raw runtime values.
+The contract must cover:
+
+- strict JSON arguments and return values;
+- conversion of expected host failures into catchable JavaScript exceptions;
+- rejection or detection of same-Engine re-entry;
+- callback ownership, lifetime, and removal;
+- execution-budget treatment across the host boundary; and
+- explicit non-support for Promise and asynchronous callbacks.
+
+Prefer a model in which host functions are reviewable capabilities rather than
+an unstructured collection of ambient globals. The Rule Engine acceptance
+scenario should then cover configuration or data access and an observable host
+operation, not only a pure decision function.
+
+### 6. Improve operational maturity
+
+Once the boundary and controls are stable, improve the embedder's ability to
+reuse and operate the runtime:
+
+- structured diagnostics with source context and runtime-reuse status;
+- an opaque parse/compile-once script abstraction if benchmarks and consumer
+  experience justify it;
+- execution statistics useful for limits and diagnosis;
+- deterministic providers for host-dependent facilities where needed; and
+- compatibility tests that exercise released consumers across upgrades.
+
+### Deferred
+
+Defer these until concrete embedder demand appears:
+
+- Promise-aware asynchronous calls;
+- calling ES module exports through the stable facade;
+- snapshots or serialization;
+- a bytecode VM as the default runtime;
+- DOM or browser APIs;
+- a crater adapter; and
+- a V8- or QuickJS-compatible runtime interface.
+
+### Continuing quality streams
+
+Test262 fixes remain welcome in parallel, especially narrow spec-anchored fixes
+and justified removal of skip buckets. They do not reorder the adoption
+sequence. Before changing release notes or public conformance claims, regenerate
+per-mode figures from CI artifacts with `make test262-report`; never hand-edit
+the numbers. For release notes, use `make test262-report
+ARGS="--format=changelog"`.
+
+Architecture-state ownership remains a maintenance invariant. Bytecode and
+closure-conversion work remain measured optimization or research paths rather
+than a second source of JavaScript semantics. Do not promote an internal
+execution strategy without a benchmark that demonstrates the relevant embedder
+bottleneck.
 
 ---
 
