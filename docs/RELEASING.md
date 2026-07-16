@@ -34,7 +34,11 @@ Do not hand-edit the generated numbers. If they look wrong, fix the upstream (ru
 
 ## 4. Bump version and tag
 
-1. Update the version string in `moon.mod`.
+1. Update the version string in `moon.mod`, and update the
+   `dowdiness/js_engine@X.Y.Z` dependency in
+   `integration/external_consumer/moon.mod` to the same version. The workspace
+   resolves this dependency to the checkout during PR CI, but keeping it aligned
+   prevents release metadata drift.
 2. Commit with message `release: vX.Y.Z`.
 3. Annotate the tag with a summary of headline facts:
 

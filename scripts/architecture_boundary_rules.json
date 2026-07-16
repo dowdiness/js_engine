@@ -94,6 +94,12 @@
       "reason": "runnable embedding examples consume the stable root facade"
     },
     {
+      "from": "integration/external_consumer",
+      "to": ".",
+      "scope": "test",
+      "reason": "external-consumer acceptance fixture imports only the stable root facade"
+    },
+    {
       "from": "ast",
       "to": "token",
       "scope": "prod",

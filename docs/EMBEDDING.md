@@ -147,11 +147,14 @@ Engine's output buffer.
 
 ## Four-target support
 
-The repository's adoption workflow checks and tests the Engine scenario on
-MoonBit's `native`, `js`, `wasm`, and `wasm-gc` targets. Four-target support
-means the stable facade and the behaviors documented here are expected to have
-equivalent data, failure categories, state retention, and queue ordering on all
-four targets.
+The repository's adoption workflow checks and tests the Engine scenario from a
+standalone [external-consumer module](../integration/external_consumer/) on
+MoonBit's `native`, `js`, `wasm`, and `wasm-gc` targets. Its workspace resolves
+`dowdiness/js_engine` to the checkout under review, and the architecture audit
+rejects direct imports of internal packages. Four-target support means the
+stable facade and the behaviors documented here are expected to have equivalent
+data, failure categories, state retention, and queue ordering on all four
+targets.
 
 It does not promise browser APIs, a DOM, browser compatibility, identical
 diagnostic formatting, or target-specific platform services.
