@@ -6,7 +6,8 @@ truth; when a doc and the code disagree, trust the code.
 ## Start here
 
 - [../README.md](../README.md) — project overview, quick start, supported language
-- [embedding.md](embedding.md) — embed with custom host objects (`new_interpreter`, `def_builtin`, `make_*_func`)
+- [EMBEDDING.md](EMBEDDING.md) — stable root-facade embedding contract and usage guide
+- [advanced-embedding.md](advanced-embedding.md) — advanced custom host objects and direct interpreter/runtime integration
 - [ROADMAP.md](ROADMAP.md) — headline status and the adoption-first implementation sequence
 - [supported-features.md](supported-features.md) — per-category pass rates, Annex B, missing features
 - [TEST262.md](TEST262.md) — how to run the test262 conformance suite

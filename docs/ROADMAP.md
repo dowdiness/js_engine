@@ -96,10 +96,10 @@ primitive.
 - Audit every root-package entry point and classify it as **stable embedding**,
   **compatibility**, or **advanced/internal**. Existing APIs that expose runtime
   values may remain compatible, but they are not the model for new stable APIs.
-- Add a stable `docs/EMBEDDING.md` based only on released behavior. Because the
-  existing `docs/embedding.md` differs only by case, rename the existing
-  interpreter/value cookbook to `docs/advanced-embedding.md` before adding the
-  stable guide.
+- Maintain the stable [`docs/EMBEDDING.md`](EMBEDDING.md) from released and
+  characterized behavior. The interpreter/value cookbook lives at
+  [`docs/advanced-embedding.md`](advanced-embedding.md), avoiding filenames
+  that differ only by case.
 - Document the strict JSON acceptance and rejection matrix, queue checkpoint
   meaning and ordering, non-rollback after failure, Engine reuse expectations,
   target guarantees, and the trusted-script boundary.

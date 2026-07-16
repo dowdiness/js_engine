@@ -66,115 +66,115 @@
     {
       "package": "dowdiness/js_engine",
       "symbol": "EngineError",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented error contract for stateful Engine embedding"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented persistent realm for application embedding"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::Engine",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented constructor for persistent Engine realms"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::eval",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented stateful script evaluation entry point"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::call_json",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented strict JSON call boundary"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::take_output",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented consuming console-output operation"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::has_pending_microtasks",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented Engine microtask state query"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::has_pending_timers",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented Engine timer state query"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::run_microtask_checkpoint",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented explicit Engine microtask checkpoint"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "Engine::run_timer_checkpoint",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented explicit Engine timer checkpoint"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "run",
-      "category": "stable_user_facade",
+      "category": "stable_embedding",
       "reason": "documented library entry point for script execution"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "run_module",
-      "category": "stable_user_facade",
-      "reason": "documented library entry point for module execution"
+      "category": "compatibility",
+      "reason": "existing module facade returns raw runtime Value exports and is not the stable embedding model"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "run_modules",
-      "category": "stable_user_facade",
-      "reason": "documented library entry point for multi-module execution"
+      "category": "compatibility",
+      "reason": "existing multi-module facade returns raw runtime Value exports and is not the stable embedding model"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "run_with_event_loop",
-      "category": "stable_user_facade",
-      "reason": "documented library entry point that exposes the event loop handle"
+      "category": "advanced_internal",
+      "reason": "advanced compatibility entry point that exposes raw Interpreter and Value representations"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "run_microtask_checkpoint",
-      "category": "stable_user_facade",
-      "reason": "event loop microtask drain hook for callers managing their own loop"
+      "category": "advanced_internal",
+      "reason": "advanced compatibility helper that operates on a raw Interpreter"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "run_timer_checkpoint",
-      "category": "stable_user_facade",
-      "reason": "event loop timer drain hook for callers managing their own loop"
+      "category": "advanced_internal",
+      "reason": "advanced compatibility helper that operates on a raw Interpreter"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "has_pending_microtasks",
-      "category": "stable_user_facade",
-      "reason": "event loop state query for callers managing their own loop"
+      "category": "advanced_internal",
+      "reason": "advanced compatibility query that operates on a raw Interpreter"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "has_pending_timers",
-      "category": "stable_user_facade",
-      "reason": "event loop state query for callers managing their own loop"
+      "category": "advanced_internal",
+      "reason": "advanced compatibility query that operates on a raw Interpreter"
     },
     {
       "package": "dowdiness/js_engine",
       "symbol": "run_compiled",
-      "category": "experimental_public",
+      "category": "advanced_internal",
       "reason": "closure-conversion entry point; may be removed when closure legacy retires"
     }
   ]

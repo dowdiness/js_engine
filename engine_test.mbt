@@ -18,7 +18,7 @@ test "Engine preserves state and isolates realms" {
 ///|
 test "Engine distinguishes missing and non-callable globals" {
   let engine = @js_engine.Engine()
-  engine.eval("let answer = 42")
+  engine.eval("let answer = 42; function ok() { return true; }")
   let missing = try {
     let _ = engine.call_json("absent", [])
     "no error"
@@ -35,6 +35,7 @@ test "Engine distinguishes missing and non-callable globals" {
   }
   inspect(missing, content="missing:absent")
   inspect(non_callable, content="not-callable:answer")
+  json_inspect(engine.call_json("ok", []), content=true)
 }
 
 ///|
@@ -44,12 +45,15 @@ test "Engine calls functions exported on the global object" {
     #|globalThis.fromGlobalThis = function(value) { return value + 1; };
     #|this.fromThis = function(value) { return value + 2; };
     #|globalThis.globalValue = 42;
+    #|let shadowed = function() { return "binding"; };
+    #|globalThis.shadowed = function() { return "globalThis"; };
   engine.eval(source)
   json_inspect(
     engine.call_json("fromGlobalThis", [Json::number(1.0)]),
     content=2,
   )
   json_inspect(engine.call_json("fromThis", [Json::number(1.0)]), content=3)
+  json_inspect(engine.call_json("shadowed", []), content="binding")
   let not_callable = try {
     let _ = engine.call_json("globalValue", [])
     "no error"
@@ -58,6 +62,45 @@ test "Engine calls functions exported on the global object" {
     err => "wrong:" + err.to_string()
   }
   inspect(not_callable, content="not-callable:globalValue")
+}
+
+///|
+test "Engine global-object lookup executes own accessor getters" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|let lookupCount = 0;
+    #|Object.defineProperty(globalThis, "callableGetter", {
+    #|  get() {
+    #|    lookupCount += 1;
+    #|    return function() { return lookupCount; };
+    #|  }
+    #|});
+    #|Object.defineProperty(globalThis, "nonCallableGetter", {
+    #|  get() { lookupCount += 1; return 42; }
+    #|});
+    #|Object.defineProperty(globalThis, "throwingGetter", {
+    #|  get() { lookupCount += 1; throw new Error("lookup failed"); }
+    #|});
+    #|function currentLookupCount() { return lookupCount; }
+  engine.eval(source)
+  json_inspect(engine.call_json("callableGetter", []), content=1)
+  let non_callable = try {
+    let _ = engine.call_json("nonCallableGetter", [])
+    "no error"
+  } catch {
+    @js_engine.NotCallable(_) => "not-callable"
+    err => "wrong:" + err.to_string()
+  }
+  let thrown = try {
+    let _ = engine.call_json("throwingGetter", [])
+    "no error"
+  } catch {
+    @js_engine.JavaScriptException(_) => "javascript"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(non_callable, content="not-callable")
+  inspect(thrown, content="javascript")
+  json_inspect(engine.call_json("currentLookupCount", []), content=3)
 }
 
 ///|
@@ -229,6 +272,56 @@ test "Engine rejects Promise undefined and cyclic results" {
 }
 
 ///|
+test "Engine rejects remaining non-JSON result categories" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|function nonFiniteResult() { return NaN; }
+    #|function symbolResult() { return Symbol("value"); }
+    #|function functionResult() { return function() {}; }
+    #|function mapResult() { return new Map(); }
+    #|function setResult() { return new Set(); }
+    #|function sparseArrayResult() { const value = []; value.length = 1; return value; }
+    #|function customArrayResult() { const value = []; value.extra = 1; return value; }
+    #|function nonEnumerableResult() {
+    #|  return Object.defineProperty({}, "hidden", { value: 1, enumerable: false });
+    #|}
+    #|function symbolPropertyResult() {
+    #|  const value = {};
+    #|  value[Symbol("hidden")] = 1;
+    #|  return value;
+    #|}
+  engine.eval(source)
+  let classifications : Array[String] = []
+  for
+    name in [
+      "nonFiniteResult", "symbolResult", "functionResult", "mapResult", "setResult",
+      "sparseArrayResult", "customArrayResult", "nonEnumerableResult", "symbolPropertyResult",
+    ] {
+    let classification = try {
+      let _ = engine.call_json(name, [])
+      "accepted"
+    } catch {
+      @js_engine.JsonConversionError(_) => "conversion"
+      err => "wrong:" + err.to_string()
+    }
+    classifications.push(classification)
+  }
+  json_inspect(classifications, content=[
+    "conversion", "conversion", "conversion", "conversion", "conversion", "conversion",
+    "conversion", "conversion", "conversion",
+  ])
+  engine.eval("function identity(value) { return value; }")
+  let non_finite_input = try {
+    let _ = engine.call_json("identity", [Json::number(1.0 / 0.0)])
+    "accepted"
+  } catch {
+    @js_engine.JsonConversionError(_) => "conversion"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(non_finite_input, content="conversion")
+}
+
+///|
 test "Engine classifies errors by phase and remains reusable without rollback" {
   let engine = @js_engine.Engine()
   engine.eval("var marker = 0; function markerValue() { return marker; }")
@@ -260,22 +353,62 @@ test "Engine classifies errors by phase and remains reusable without rollback" {
 }
 
 ///|
+test "Engine call_json failures retain mutations and remain reusable" {
+  let engine = @js_engine.Engine()
+  let source =
+    #|let calls = 0;
+    #|function throwAfterMutation() {
+    #|  calls += 1;
+    #|  throw new Error("boom");
+    #|}
+    #|function rejectAfterMutation() {
+    #|  calls += 1;
+    #|  return undefined;
+    #|}
+    #|function callCount() { return calls; }
+  engine.eval(source)
+  let thrown = try {
+    let _ = engine.call_json("throwAfterMutation", [])
+    "no error"
+  } catch {
+    @js_engine.JavaScriptException(_) => "javascript"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(thrown, content="javascript")
+  json_inspect(engine.call_json("callCount", []), content=1)
+  let rejected = try {
+    let _ = engine.call_json("rejectAfterMutation", [])
+    "no error"
+  } catch {
+    @js_engine.JsonConversionError(_) => "conversion"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(rejected, content="conversion")
+  json_inspect(engine.call_json("callCount", []), content=2)
+}
+
+///|
 test "Engine leaves jobs pending until explicit checkpoints" {
   let engine = @js_engine.Engine()
   let source =
-    #|let microtaskDone = false;
-    #|let timerDone = false;
-    #|Promise.resolve().then(() => { microtaskDone = true; });
-    #|setTimeout(() => { timerDone = true; }, 0);
-    #|function jobState() { return [microtaskDone, timerDone]; }
+    #|let events = [];
+    #|Promise.resolve().then(() => { events.push("initial microtask"); });
+    #|setTimeout(() => {
+    #|  events.push("timer 1");
+    #|  Promise.resolve().then(() => { events.push("timer 1 microtask"); });
+    #|}, 0);
+    #|setTimeout(() => { events.push("timer 2"); }, 0);
+    #|function jobState() { return events; }
   engine.eval(source)
-  json_inspect(engine.call_json("jobState", []), content=[false, false])
+  json_inspect(engine.call_json("jobState", []), content=[])
   inspect(engine.has_pending_microtasks(), content="true")
   inspect(engine.has_pending_timers(), content="true")
-  ignore(engine.run_microtask_checkpoint())
-  json_inspect(engine.call_json("jobState", []), content=[true, false])
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  json_inspect(engine.call_json("jobState", []), content=["initial microtask"])
   engine.run_timer_checkpoint()
-  json_inspect(engine.call_json("jobState", []), content=[true, true])
+  json_inspect(engine.call_json("jobState", []), content=[
+    "initial microtask", "timer 1", "timer 1 microtask", "timer 2",
+  ])
   inspect(engine.has_pending_microtasks(), content="false")
   inspect(engine.has_pending_timers(), content="false")
 }

@@ -56,6 +56,10 @@ test "README stateful rule engine" {
 
 `Engine` keeps one global realm alive across calls. Its strict JSON boundary copies plain data directly: it does not consult a mutable global `JSON`, call getters or `toJSON`, or execute Proxy traps. Promise results and non-JSON values are rejected. This API is intended for trusted application scripts, not as a security sandbox. See [`example/rule_engine/`](example/rule_engine/) for the runnable example.
 
+The [stable embedding guide](docs/EMBEDDING.md) defines the JSON boundary,
+lookup rules, queue checkpoints, retained-state behavior, error reuse limits,
+and four-target contract.
+
 For one-shot evaluation, the existing facade remains available:
 
 ```mbt check
@@ -66,15 +70,15 @@ test "README one-shot facade" {
 }
 ```
 
-The public entry points are defined in [`js_engine.mbt`](js_engine.mbt):
+The public entry points are defined in [`js_engine.mbt`](js_engine.mbt) and
+classified in the stable guide:
 
-- `Engine`, `Engine::eval`, `Engine::call_json`, `Engine::take_output` — persistent JSON-oriented embedding
-- `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` — explicit job-queue control; `eval` and `call_json` do not drain queues automatically
-- `run` — evaluate a script; drains microtasks and timers before returning
-- `run_compiled` — evaluate the supported script subset through the opt-in closure-conversion prototype
-- `run_module` / `run_modules` — evaluate one or more ES modules and collect exports
-- `run_with_event_loop`, `run_microtask_checkpoint`, `run_timer_checkpoint`,
-  `has_pending_microtasks`, `has_pending_timers` — for hosts that want to drive the event loop themselves
+- **Stable embedding:** `run`, `Engine`, `EngineError`, and the `Engine::*`
+  methods.
+- **Compatibility:** `run_module` / `run_modules`; their export maps expose
+  raw runtime values.
+- **Advanced/internal:** `run_compiled` and the module-level event-loop APIs
+  that expose or accept a raw interpreter.
 
 ### Embedding (custom host objects)
 
@@ -94,8 +98,9 @@ interp.global.def_builtin("document", document)
 // Then parse, interp.run, interp.run_microtasks(), interp.run_timers().
 ```
 
-Full cookbook (`make_*_func` + `realm_state`, errors, host slots, `globalThis`,
-custom `setup_builtins`): [docs/embedding.md](docs/embedding.md).
+Full advanced cookbook (`make_*_func` + `realm_state`, errors, host slots,
+`globalThis`, custom `setup_builtins`):
+[docs/advanced-embedding.md](docs/advanced-embedding.md).
 
 ## Supported Language
 
