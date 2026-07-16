@@ -67,3 +67,68 @@ jobs:
 
       - name: Test ${{ matrix.target }}
         run: moon test --target ${{ matrix.target }}
+
+  external-consumer:
+    name: External consumer (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [native, js, wasm, wasm-gc]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+            integration/.mooncakes
+          key: moon-external-consumer-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod', 'integration/moon.work', 'integration/external_consumer/moon.mod') }}
+          restore-keys: moon-external-consumer-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Install workspace dependencies
+        working-directory: integration/external_consumer
+        run: moon update
+
+      - name: Install repository dependencies for boundary audit
+        if: matrix.target == 'native'
+        run: moon update
+
+      - name: Verify stable facade import boundary
+        if: matrix.target == 'native'
+        run: make architecture-boundary-audit
+
+      - name: Check consumer on ${{ matrix.target }}
+        working-directory: integration/external_consumer
+        run: moon check --target ${{ matrix.target }} .
+
+      - name: Test consumer on ${{ matrix.target }}
+        working-directory: integration/external_consumer
+        run: moon test --target ${{ matrix.target }} .

@@ -71,21 +71,6 @@ isolated benchmark.
 
 Keep these separate from the stable embedding documentation PR.
 
-### External-consumer CI fixture
-
-- Add a standalone MoonBit module under an integration-fixture directory that
-  starts with no js_engine internals and imports only the root
-  `dowdiness/js_engine` package.
-- Point the fixture at the checkout under review rather than a published
-  Mooncakes version, so pull-request CI validates the candidate source.
-- Reproduce the documented persistent Rule Engine scenario using only
-  `Engine`, `eval`, `call_json`, and MoonBit `Json`.
-- Run the fixture on `native`, `js`, `wasm`, and `wasm-gc` in a dedicated CI
-  matrix. Keep this checkout-under-review gate distinct from the release
-  checklist's Mooncakes installation smoke test.
-- Fail if the fixture directly imports `interpreter`, `interpreter/runtime`,
-  parser, AST, or compiler packages.
-
 ### Embedding baselines
 
 - In a separate benchmark PR, measure one-shot `run` and repeated persistent

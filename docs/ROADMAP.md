@@ -104,10 +104,10 @@ primitive.
   meaning and ordering, non-rollback after failure, Engine reuse expectations,
   target guarantees, and the trusted-script boundary.
 - Add characterization tests for every documented lifecycle and failure claim.
-- Add a true external-consumer CI fixture that imports only the supported facade
-  and runs the Rule Engine acceptance scenario on all four targets. Keep release
-  smoke testing from Mooncakes distinct from PR testing of the checkout under
-  review.
+- Maintain the standalone [external-consumer fixture](../integration/external_consumer/)
+  that imports only the supported facade and runs the Rule Engine acceptance
+  scenario on all four targets. Keep release smoke testing from Mooncakes
+  distinct from PR testing of the checkout under review.
 - Add focused baselines for one-shot execution and repeated calls through a
   persistent Engine. These establish usage costs; optimization still requires
   an isolated benchmark that reproduces a bottleneck.
