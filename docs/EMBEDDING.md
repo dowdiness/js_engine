@@ -128,13 +128,14 @@ back.
 
 Current characterization tests establish the following reuse behavior:
 
-| Failure | Confirmed state after failure |
-|---|---|
-| `ParseError` from `eval` | No script body ran; the Engine remains usable. |
-| `JavaScriptException` from `eval` or `call_json` | Mutations completed before the throw remain; later calls can reuse the Engine. |
-| `MissingGlobal` | No JavaScript lookup code or target function runs; later lookups can reuse the Engine. |
-| `NotCallable` | No target function runs. An own `globalThis` accessor getter may already have run and mutated state; later calls can reuse the Engine. |
-| `JsonConversionError` while converting a result | The JavaScript call already ran, its mutations remain, and later calls can reuse the Engine. |
+| Failure | Confirmed state after failure | Pending jobs after failure |
+|---|---|---|
+| `ParseError` from `eval` | No rejected script body ran; prior state remains and the Engine is reusable. | Existing microtasks and timers remain pending. |
+| `JavaScriptException` from `eval` or `call_json` | Mutations completed before the throw remain; later calls can reuse the Engine. | Microtasks and timers queued before the throw remain pending. |
+| `MissingGlobal` | No JavaScript lookup code or target function runs; later lookups can reuse the Engine. | Not characterized by the failure/reuse matrix. |
+| `NotCallable` | No target function runs. An own `globalThis` accessor getter may already have run and mutated state; later calls can reuse the Engine. | Not characterized by the failure/reuse matrix. |
+| `JsonConversionError` while converting an argument | Callee lookup completes first. The target function is not called, but lookup getter mutations remain along with prior state; later calls can reuse the Engine. | Existing jobs and jobs queued by a lookup getter remain pending. |
+| `JsonConversionError` while converting a result | The JavaScript call already ran, its mutations remain, and later calls can reuse the Engine. | Microtasks and timers queued by the target remain pending. |
 
 Do not infer a broader guarantee from this table. Reuse and pending-job state
 after `InternalError` or a failure raised while running a microtask/timer
