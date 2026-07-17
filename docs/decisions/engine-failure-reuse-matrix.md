@@ -1,47 +1,50 @@
-# Engine failure/reuse matrix
+# Reusing an Engine after synchronous failure
 
 Date: 2026-07-17
 
 ## Status
 
-Accepted as a characterization baseline for the current synchronous `Engine`
-facade. This records observed behavior only; it does not add new runtime or API
-features.
+Accepted as a baseline for the current `Engine` facade. It records behavior; it
+does not change the runtime or public API.
 
 ## Context
 
-Stage 2 embedding work needs a stable answer for what a host may do after a
-synchronous `Engine` operation fails. The important questions are whether the
-same `Engine` can be reused, whether JavaScript-visible mutations before the
-failure survive, and whether queued microtasks or timers are discarded or left
-for explicit checkpoints.
+An embedding host needs to know whether an `Engine` is still usable after
+`eval` or `call_json` fails. It also needs to know what happens to state changes
+and queued jobs. This baseline must be clear before adding callbacks, execution
+budgets, or re-entry.
 
 ## Decision
 
-Characterization tests in `engine_test.mbt` define this baseline:
+The same `Engine` remains usable after the characterized parse, JavaScript, and
+JSON conversion failures.
 
-| Failure category | Reusable afterward? | State before the failure | Pending microtasks/timers |
-|---|---:|---|---|
-| Parse failure from `Engine::eval` | Yes | Prior state is retained; the rejected source does not run. | Existing queues remain pending. |
-| JavaScript throw from `Engine::eval` or `Engine::call_json` | Yes | Mutations completed before the throw are retained. | Jobs queued before the throw remain pending. |
-| JSON argument conversion failure in `Engine::call_json` | Yes | Callee lookup completes before argument conversion. The target function is not called, but lookup getter mutations are retained along with prior state. | Existing jobs and jobs queued by a lookup getter remain pending. |
-| JSON result conversion failure in `Engine::call_json` | Yes | Target function already ran; mutations completed before conversion failure are retained. | Jobs queued by the target remain pending. |
+Three rules define the contract:
 
-`Engine::eval` and `Engine::call_json` continue to avoid implicit event-loop
-checkpointing. Hosts must call `run_microtask_checkpoint` and
-`run_timer_checkpoint` to advance pending jobs after both successful and failed
-synchronous operations.
+1. Completed JavaScript work is not rolled back.
+2. `eval` and `call_json` do not run queue checkpoints, even when they fail.
+3. `call_json` finds the callee before converting arguments. A lookup getter
+   can therefore change state or queue jobs even if conversion later fails.
+   The target itself does not run in that case.
+
+The tests in `engine_test.mbt` are the source of truth for individual cases.
+The [embedding guide](../EMBEDDING.md#reusing-an-engine-after-failure) gives
+hosts the reader-facing summary.
 
 ## Non-goals
 
-This decision does not implement or specify `define_json`, host callbacks,
-execution budgets, structured errors, concurrency, or same-`Engine` re-entry.
-It also does not characterize `InternalError` recovery or failures that occur
-while explicitly running microtask or timer checkpoints.
+This decision does not cover:
+
+- `InternalError` recovery
+- failures raised by microtask or timer checkpoints
+- `define_json`, host callbacks, or same-`Engine` re-entry
+- execution budgets, structured errors, or concurrency
 
 ## Consequences
 
-The current `Engine` contract is non-transactional: hosts can reuse it after the
-characterized synchronous failure categories, but they must account for retained
-mutations and pending jobs. Future features that introduce host callbacks or
-re-entry must be checked against this baseline before they are added.
+Hosts may recover from the characterized failures without rebuilding the
+`Engine`. They must still account for retained state and pending jobs.
+
+Any future change to this behavior must update the tests, the embedding guide,
+and this record together. Callback and re-entry designs must also preserve this
+baseline or replace it through an explicit decision.

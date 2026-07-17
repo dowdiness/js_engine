@@ -120,28 +120,30 @@ Persistent calls leave queued jobs pending until the host advances them:
 Neither `eval` nor `call_json` performs any of these steps implicitly. This
 lets the MoonBit host decide when queued JavaScript receives execution time.
 
-## Failures, retained state, and reuse
+## Reusing an Engine after failure
 
-An `Engine` is not transactional. JavaScript-visible mutations completed before
-an exception or result-conversion failure are retained; they are not rolled
-back.
+The failures below do not poison the `Engine`; the host may use it again.
+However, an `Engine` does not roll back JavaScript work. State changes and
+queued jobs survive if they happened before the failure.
 
-Current characterization tests establish the following reuse behavior:
-
-| Failure | Confirmed state after failure | Pending jobs after failure |
+| Failure | What happened before the failure | Jobs left pending |
 |---|---|---|
-| `ParseError` from `eval` | No rejected script body ran; prior state remains and the Engine is reusable. | Existing microtasks and timers remain pending. |
-| `JavaScriptException` from `eval` or `call_json` | Mutations completed before the throw remain; later calls can reuse the Engine. | Microtasks and timers queued before the throw remain pending. |
-| `MissingGlobal` | No JavaScript lookup code or target function runs; later lookups can reuse the Engine. | Not characterized by the failure/reuse matrix. |
-| `NotCallable` | No target function runs. An own `globalThis` accessor getter may already have run and mutated state; later calls can reuse the Engine. | Not characterized by the failure/reuse matrix. |
-| `JsonConversionError` while converting an argument | Callee lookup completes first. The target function is not called, but lookup getter mutations remain along with prior state; later calls can reuse the Engine. | Existing jobs and jobs queued by a lookup getter remain pending. |
-| `JsonConversionError` while converting a result | The JavaScript call already ran, its mutations remain, and later calls can reuse the Engine. | Microtasks and timers queued by the target remain pending. |
+| `ParseError` from `eval` | The rejected source did not run. Earlier state is unchanged. | Jobs that were already queued. |
+| `JavaScriptException` from `eval` or `call_json` | Code before the throw ran. This can include a getter used to find a `call_json` target. | Jobs queued before the throw. |
+| `MissingGlobal` | No JavaScript lookup code or target ran. | Not yet characterized. |
+| `NotCallable` | The target did not run. A `globalThis` getter may have run while finding it. | Not yet characterized. |
+| Argument `JsonConversionError` | Callee lookup ran, but the target did not. Any lookup-getter effects remain. | Earlier jobs and jobs queued by the getter. |
+| Result `JsonConversionError` | The target ran before its result was converted. Its effects remain. | Jobs queued by the target. |
 
-Do not infer a broader guarantee from this table. Reuse and pending-job state
-after `InternalError` or a failure raised while running a microtask/timer
-checkpoint are not yet characterized as a stable contract. Discard the Engine
-after those failures. Interruption and execution-budget failures are not part
-of the current API.
+Use `run_microtask_checkpoint()` and `run_timer_checkpoint()` when the surviving
+jobs should run. Neither `eval` nor `call_json` runs them automatically.
+
+Recovery from `InternalError` or from an error raised by a queue checkpoint is
+not yet supported. Discard the `Engine` in those cases. Interruption and
+execution-budget failures are not part of the current API.
+
+The [failure/reuse decision record](decisions/engine-failure-reuse-matrix.md)
+explains why this behavior is part of the embedding baseline.
 
 `take_output()` returns a copy of accumulated console output and clears the
 Engine's output buffer.
