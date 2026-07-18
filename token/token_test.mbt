@@ -57,17 +57,6 @@ test "Token creation via constructor" {
 }
 
 ///|
-test "Token creation via Token::new (backward compat)" {
-  let tok = @token.Token::new(
-    @token.TokenKind::Number(42.0),
-    @token.Loc::default(),
-    "42",
-  )
-  expect_token_kind(tok.kind, @token.TokenKind::Number(42.0))
-  expect_string(tok.raw, "42", "raw")
-}
-
-///|
 test "Token EOF" {
   let tok = @token.Token::eof(@token.Loc::default())
   expect_token_kind(tok.kind, @token.TokenKind::EOF)

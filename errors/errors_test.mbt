@@ -4,7 +4,7 @@
 
 ///| These are black-box tests. They verify the public API (name, get_message,
 
-///| format) without depending on internal representation details.
+///| to_string) without depending on internal representation details.
 
 ///|
 fn expect_string(
@@ -89,25 +89,25 @@ test "get_message - AggregateError returns message, not errors list" {
 }
 
 ///|
-test "format produces ErrorType: message" {
+test "to_string produces ErrorType: message" {
   let e = @errors.JsError::TypeError(message="cannot read property")
-  expect_string(e.format(), "TypeError: cannot read property", "format")
+  expect_string(e.to_string(), "TypeError: cannot read property", "to_string")
 }
 
 ///|
-test "format - SyntaxError" {
+test "to_string - SyntaxError" {
   let e = @errors.JsError::SyntaxError(message="Unexpected token '}'")
-  expect_string(e.format(), "SyntaxError: Unexpected token '}'", "format")
+  expect_string(e.to_string(), "SyntaxError: Unexpected token '}'", "to_string")
 }
 
 ///|
-test "format - AggregateError" {
+test "to_string - AggregateError" {
   let e = @errors.JsError::AggregateError(message="all promises rejected", errors=[])
-  expect_string(e.format(), "AggregateError: all promises rejected", "format")
+  expect_string(e.to_string(), "AggregateError: all promises rejected", "to_string")
 }
 
 ///|
-test "format_if_js_error - consistent with format() for all variants" {
+test "format_if_js_error - consistent with to_string() for all variants" {
   let cases : Array[@errors.JsError] = [
     TypeError(message="a"),
     ReferenceError(message="b"),
@@ -120,7 +120,7 @@ test "format_if_js_error - consistent with format() for all variants" {
   ]
   for e in cases {
     expect_true(
-      @errors.format_if_js_error(e) == Some(e.format()),
+      @errors.format_if_js_error(e) == Some(e.to_string()),
       "format_if_js_error mismatch for " + e.name(),
     )
   }
@@ -166,7 +166,7 @@ test "name_message_if_js_error - None for non-JsError" {
 }
 
 ///|
-test "format equals name + colon-space + get_message" {
+test "to_string equals name + colon-space + get_message" {
   let cases : Array[@errors.JsError] = [
     TypeError(message="a"),
     ReferenceError(message="b"),
@@ -179,6 +179,6 @@ test "format equals name + colon-space + get_message" {
   ]
   for e in cases {
     let expected = e.name() + ": " + e.get_message()
-    expect_true(e.format() == expected, "format mismatch for " + e.name())
+    expect_true(e.to_string() == expected, "to_string mismatch for " + e.name())
   }
 }

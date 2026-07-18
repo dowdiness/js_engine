@@ -65,12 +65,6 @@ pub fn JsError::get_message(self : JsError) -> String noraise {
 }
 
 ///|
-/// Format as "ErrorType: message" (for stack traces). Equivalent to to_string().
-pub fn JsError::format(self : JsError) -> String noraise {
-  self.to_string()
-}
-
-///|
 /// If `err` is a JsError variant, return its formatted string; otherwise `None`.
 ///
 /// Lets consumers handle all JsError variants in one catch arm without
