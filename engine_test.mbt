@@ -412,3 +412,205 @@ test "Engine leaves jobs pending until explicit checkpoints" {
   inspect(engine.has_pending_microtasks(), content="false")
   inspect(engine.has_pending_timers(), content="false")
 }
+
+///|
+test "Engine failure reuse matrix: parse failure keeps prior state and queues" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = ["seed"];
+      #|Promise.resolve().then(() => { events.push("microtask"); });
+      #|setTimeout(() => { events.push("timer"); }, 0);
+      #|function snapshot() { return events; }
+    ),
+  )
+  let failure = try {
+    engine.eval("let =")
+    "no error"
+  } catch {
+    @js_engine.ParseError(_) => "parse"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(failure, content="parse")
+  json_inspect(engine.call_json("snapshot", []), content=["seed"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "seed", "microtask", "timer",
+  ])
+}
+
+///|
+test "Engine failure reuse matrix: eval throw retains state and queues" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|function snapshot() { return events; }
+    ),
+  )
+  let failure = try {
+    engine.eval(
+      (
+        #|events.push("before throw");
+        #|Promise.resolve().then(() => { events.push("microtask"); });
+        #|setTimeout(() => { events.push("timer"); }, 0);
+        #|throw new Error("boom");
+      ),
+    )
+    "no error"
+  } catch {
+    @js_engine.JavaScriptException(_) => "javascript"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(failure, content="javascript")
+  json_inspect(engine.call_json("snapshot", []), content=["before throw"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "before throw", "microtask", "timer",
+  ])
+}
+
+///|
+test "Engine failure reuse matrix: JavaScript throw retains state and queues" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|function snapshot() { return events; }
+      #|function throwAfterQueueing() {
+      #|  events.push("before throw");
+      #|  Promise.resolve().then(() => { events.push("microtask"); });
+      #|  setTimeout(() => { events.push("timer"); }, 0);
+      #|  throw new Error("boom");
+      #|}
+    ),
+  )
+  let failure = try {
+    let _ = engine.call_json("throwAfterQueueing", [])
+    "no error"
+  } catch {
+    @js_engine.JavaScriptException(_) => "javascript"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(failure, content="javascript")
+  json_inspect(engine.call_json("snapshot", []), content=["before throw"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "before throw", "microtask", "timer",
+  ])
+}
+
+///|
+test "Engine failure reuse matrix: lookup throw retains state and queues" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|Object.defineProperty(globalThis, "throwDuringLookup", {
+      #|  get() {
+      #|    events.push("getter");
+      #|    Promise.resolve().then(() => { events.push("microtask"); });
+      #|    setTimeout(() => { events.push("timer"); }, 0);
+      #|    throw new Error("lookup failed");
+      #|  }
+      #|});
+      #|function snapshot() { return events; }
+    ),
+  )
+  let failure = try {
+    let _ = engine.call_json("throwDuringLookup", [])
+    "no error"
+  } catch {
+    @js_engine.JavaScriptException(_) => "javascript"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(failure, content="javascript")
+  json_inspect(engine.call_json("snapshot", []), content=["getter"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "getter", "microtask", "timer",
+  ])
+}
+
+///|
+test "Engine failure reuse matrix: JSON argument conversion failure skips call" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = ["seed"];
+      #|Promise.resolve().then(() => { events.push("existing microtask"); });
+      #|setTimeout(() => { events.push("existing timer"); }, 0);
+      #|Object.defineProperty(globalThis, "mutate", {
+      #|  get() {
+      #|    events.push("getter");
+      #|    Promise.resolve().then(() => { events.push("getter microtask"); });
+      #|    setTimeout(() => { events.push("getter timer"); }, 0);
+      #|    return function(_) { events.push("called"); return events; };
+      #|  }
+      #|});
+      #|function snapshot() { return events; }
+    ),
+  )
+  let failure = try {
+    let _ = engine.call_json("mutate", [Json::number(1.0 / 0.0)])
+    "no error"
+  } catch {
+    @js_engine.JsonConversionError(_) => "conversion"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(failure, content="conversion")
+  json_inspect(engine.call_json("snapshot", []), content=["seed", "getter"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "seed", "getter", "existing microtask", "getter microtask", "existing timer",
+    "getter timer",
+  ])
+}
+
+///|
+test "Engine failure reuse matrix: JSON result conversion failure retains state and queues" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|function rejectResultAfterQueueing() {
+      #|  events.push("called");
+      #|  Promise.resolve().then(() => { events.push("microtask"); });
+      #|  setTimeout(() => { events.push("timer"); }, 0);
+      #|  return undefined;
+      #|}
+      #|function snapshot() { return events; }
+    ),
+  )
+  let failure = try {
+    let _ = engine.call_json("rejectResultAfterQueueing", [])
+    "no error"
+  } catch {
+    @js_engine.JsonConversionError(_) => "conversion"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(failure, content="conversion")
+  json_inspect(engine.call_json("snapshot", []), content=["called"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "called", "microtask", "timer",
+  ])
+}
