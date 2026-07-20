@@ -1,0 +1,20 @@
+name: Release PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  release_metadata:
+    if: contains(github.event.pull_request.labels.*.name, 'tagpr')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Validate release metadata
+        run: bash scripts/validate_release_metadata.sh

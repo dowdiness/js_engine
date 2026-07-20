@@ -1,20 +1,43 @@
 # Releasing
 
-Short checklist for cutting a new version. The repo has no release automation — releases are human-driven, but the conformance numbers are machine-generated so CHANGELOG entries stay honest.
+Short checklist for cutting a new version. `tagpr` creates and updates the
+release PR, bumps the release metadata, creates the tag, and creates the GitHub
+Release. Conformance numbers and Mooncakes publication remain human-reviewed.
 
-## 1. Merge all release-candidate PRs
+## One-time repository setup
 
-Everything intended for the release must be in `main` before you start. Do **not** rely on the pre-release CI run for final numbers; see step 5.
+Before enabling `.github/workflows/tagpr.yml`, a repository administrator must:
 
-## 2. Wait for test262 CI to go green on `main`
+1. Set **Settings → Actions → General → Workflow permissions** to
+   **Read and write permissions**, and enable **Allow GitHub Actions to create
+   and approve pull requests**.
+2. Protect `main` so the complete test262 workflow is a required, up-to-date
+   check before a release PR can merge. tagpr creates the tag immediately after
+   that merge, so this gate is the protection against tagging an unverified tip.
 
-The test262 workflow runs on every push to `main`. Confirm the most recent run succeeded before proceeding:
+The workflow needs only `contents: write`, `pull-requests: write`, and
+`issues: read`. The third-party action is pinned to an immutable commit SHA.
+Configure the `Release PR / release_metadata` check as required for `main` as
+well; it runs only for pull requests carrying tagpr's `tagpr` label.
+
+## 1. Merge release-candidate PRs
+
+Everything intended for the release must be in `main`. Each push causes tagpr to
+create or update one release PR. It bumps `moon.mod` and runs
+`scripts/sync_release_version.sh` to update only the js_engine dependency in
+`integration/external_consumer/moon.mod`. The release-PR CI rejects a missing
+CHANGELOG heading or a version mismatch before it can merge.
+
+## 2. Wait for test262 CI on `main`
+
+The release PR must contain a conformance block from the latest successful
+`main` run. tagpr is configured not to generate a generic changelog.
 
 ```bash
 gh run list --workflow=test262.yml --branch main --status success --limit 1
 ```
 
-If it's still running, wait. If it failed, fix and re-merge.
+If it is still running, wait. If it failed, fix and re-merge.
 
 ## 3. Draft the CHANGELOG entry
 
@@ -32,34 +55,21 @@ Paste the output into `CHANGELOG.md` under the new version heading's `### Confor
 
 Do not hand-edit the generated numbers. If they look wrong, fix the upstream (runner, baseline, classifier), not the release note.
 
-## 4. Bump version and tag
+Review the generated version changes, the external-consumer dependency, and the
+hand-written release notes. Do **not** merge while the required checks are
+running or failing.
 
-1. Update the version string in `moon.mod`, and update the
-   `dowdiness/js_engine@X.Y.Z` dependency in
-   `integration/external_consumer/moon.mod` to the same version. The workspace
-   resolves this dependency to the checkout during PR CI, but keeping it aligned
-   prevents release metadata drift.
-2. Commit with message `release: vX.Y.Z`.
-3. Annotate the tag with a summary of headline facts:
+## 4. Merge the release PR
 
-   ```bash
-   git tag -a vX.Y.Z -m "vX.Y.Z — <one-line theme>"
-   ```
-
-   Keep the tag annotation short — it's frozen; CHANGELOG is the canonical, editable record.
-
-4. Push both the commit and tag:
-
-   ```bash
-   git push origin main
-   git push origin vX.Y.Z
-   ```
+Once its required, up-to-date checks pass, merge the tagpr release PR. tagpr
+then creates the annotated `vX.Y.Z` tag and GitHub Release. Keep the GitHub
+Release summary short — CHANGELOG is the canonical, editable record.
 
 ## 5. Re-verify numbers on the release tip
 
 This is the step that catches release-prep vs. release-tip drift (see v0.2.0: CHANGELOG pinned 86.6% / 85.0% from a pre-release CI run, while CI on the actual tagged commit reported 86.7% / 85.1% — a one-point drift nobody noticed until later).
 
-After the tag push triggers a fresh test262 run on the release commit:
+After the release-PR merge triggers a fresh test262 run on the release commit:
 
 ```bash
 gh run list --workflow=test262.yml --branch main --status success --limit 1

@@ -1,0 +1,8 @@
+[tagpr]
+releaseBranch = main
+versionFile = moon.mod
+vPrefix = true
+changelog = false
+release = true
+commitPrefix = release:
+postVersionCommand = scripts/sync_release_version.sh
