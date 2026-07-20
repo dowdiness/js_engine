@@ -18,7 +18,7 @@ Before enabling `.github/workflows/tagpr.yml`, a repository administrator must:
 The workflow needs only `contents: write`, `pull-requests: write`, and
 `issues: read`. The third-party action is pinned to an immutable commit SHA.
 Configure the `Release PR / release_metadata` check as required for `main` as
-well; it runs only for pull requests carrying tagpr's `tagpr` label.
+well; it runs only for tagpr's `tagpr-from-*` release branches.
 
 ## 1. Merge release-candidate PRs
 
