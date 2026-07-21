@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   release_metadata:
-    if: startsWith(github.event.pull_request.head.ref, 'tagpr-from-')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -19,4 +18,9 @@ jobs:
           persist-credentials: false
 
       - name: Validate release metadata
+        if: startsWith(github.event.pull_request.head.ref, 'tagpr-from-')
         run: bash scripts/validate_release_metadata.sh
+
+      - name: Skip non-release PR
+        if: "!startsWith(github.event.pull_request.head.ref, 'tagpr-from-')"
+        run: echo "Not a tagpr release PR; release metadata validation is not required."
