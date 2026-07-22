@@ -88,7 +88,8 @@ the stable facade does not load npm modules. Bundling is allowed; syntax
 downleveling, Hono source patches, and bundler-injected polyfills are not. The
 fixture itself defines the minimum `Request`, `Response`, and `Headers` shim in
 JavaScript before loading Hono. That shim is test infrastructure, not a new
-`js_engine` Web API.
+`js_engine` Web API. It must be framework-agnostic and must not inspect or
+special-case Hono internals.
 
 The four-target test must use only the stable facade and the following
 observable protocol:
