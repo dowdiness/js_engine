@@ -37,6 +37,14 @@ JavaScript source may still contain mistakes or receive unexpected data.
 "Trusted" means the host is willing to grant the script the configured runtime
 and capabilities. It does not mean that scripts are bug-free.
 
+Framework-level compatibility is a named adoption outcome for this direction.
+A version-pinned external framework acceptance scenario should exercise
+routing and asynchronous middleware through the stable embedding surface
+without source patches or syntax downleveling. This demonstrates useful
+framework compatibility without changing the primary MoonBit embedder audience
+or promising server adapters, Node.js compatibility, a DOM, or a complete Web
+Platform implementation.
+
 ## Product promises
 
 ### A stable host boundary
@@ -113,6 +121,10 @@ exceptions, boundary conversion failures, host failures, interruption,
 execution-limit exhaustion, and engine defects. Diagnostics should preserve
 structured classification and source context for applications while still
 providing useful human-readable output.
+
+Engine integrity, retained side effects, and pending-job state are separate
+diagnostic facts. A reusable Engine has intact runtime invariants; that label
+does not promise rollback or make retrying the failed operation safe.
 
 Error evolution must account for source compatibility. Adding a new error case
 must not be treated as automatically harmless merely because it is additive in
@@ -191,9 +203,13 @@ the stable root facade and current embedding documentation:
 - grant narrowly scoped synchronous host capabilities;
 - set an execution bound and interrupt work;
 - understand queue progress and drive it deliberately;
-- diagnose failures and decide whether the runtime is reusable;
+- receive machine-readable failure classification, source context when
+  available, runtime-integrity status, retained-effect status, and pending-job
+  status through the stable facade;
+- run a version-pinned external framework acceptance scenario through the
+  stable facade without source patches or syntax downleveling;
 - avoid all dependency on interpreter-internal values and state; and
-- run the same acceptance scenario on all four supported targets.
+- run all portable acceptance scenarios on all four supported targets.
 
 These criteria are stronger than "works inside this repository" and more useful
 to adoption than a conformance percentage alone.
