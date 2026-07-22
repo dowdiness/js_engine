@@ -95,10 +95,14 @@ The four-target test must use only the stable facade and the following
 observable protocol:
 
 1. `Engine::eval` loads the shim, bundled Hono, routes, middleware, and a
-   JavaScript wrapper that starts one `app.request()` and stores its result.
-2. The MoonBit host runs an explicit microtask checkpoint.
-3. `Engine::call_json` retrieves a plain JSON result containing status,
-   headers, body, and middleware-order observations.
+   JavaScript wrapper that starts an asynchronous operation. The operation
+   awaits one `app.request()`, extracts status, headers, body, and
+   middleware-order observations into a plain JSON-compatible object, and
+   stores only that materialized object.
+2. The MoonBit host runs an explicit microtask checkpoint, allowing the wrapper
+   to settle and store the object.
+3. `Engine::call_json` retrieves the stored object after the checkpoint; it
+   never receives the request Promise.
 
 Acceptance requires that this one scenario verifies route matching, path
 parameters, query access, a JSON response, and async middleware composition
@@ -118,16 +122,16 @@ requiring consumers to inspect internal parser, interpreter, or runtime error
 types. A diagnostic must separate its portable fields from target-dependent
 human-readable formatting.
 
-The first delivery covers every current stable `EngineError`: parse failure,
-JavaScript exception, missing global, non-callable global, JSON-boundary
-failure, and internal engine failure. Interruption, execution-limit, and host
-callback failures must extend the same model when those features are added.
+The first delivery covers every failure category exposed through the stable
+root facade. Interruption, execution-limit, and host callback failures must
+extend the same model when those features are added.
 
 Each diagnostic must provide these portable semantics:
 
 - a stable, machine-readable failure kind and a useful human-readable message;
-- optional source identity and location, with the index unit and whether each
-  field is zero- or one-based documented explicitly;
+- source identity and location when the failure can be tied to source text;
+  diagnostics without an attributable source omit these fields, and the index
+  unit and whether each field is zero- or one-based are documented explicitly;
 - Engine integrity as `reusable`, `discard`, `unknown`, or `not-applicable`;
 - retained effects as `none`, `may-remain`, or `unknown`;
 - pending jobs as `none`, `present`, or `unknown`; and

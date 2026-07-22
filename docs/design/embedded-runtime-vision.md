@@ -37,14 +37,13 @@ JavaScript source may still contain mistakes or receive unexpected data.
 "Trusted" means the host is willing to grant the script the configured runtime
 and capabilities. It does not mean that scripts are bug-free.
 
-The default Hono core is a named reference workload for this direction. The
-acceptance scenario pins the `hono` package, uses its default entry point and
-`SmartRouter`, bundles it without syntax downleveling, and supplies a minimal
-Web Standard shim inside the JavaScript fixture. The MoonBit host observes the
-result through `Engine`, an explicit microtask checkpoint, and `call_json`.
-This demonstrates useful framework-level compatibility without changing the
-primary MoonBit embedder audience or promising Hono server adapters, Node.js
-compatibility, a DOM, or a complete Web Platform implementation.
+Framework-level compatibility is a named adoption outcome for this direction.
+A version-pinned external framework acceptance scenario should exercise
+routing and asynchronous middleware through the stable embedding surface
+without source patches or syntax downleveling. This demonstrates useful
+framework compatibility without changing the primary MoonBit embedder audience
+or promising server adapters, Node.js compatibility, a DOM, or a complete Web
+Platform implementation.
 
 ## Product promises
 
@@ -204,11 +203,11 @@ the stable root facade and current embedding documentation:
 - grant narrowly scoped synchronous host capabilities;
 - set an execution bound and interrupt work;
 - understand queue progress and drive it deliberately;
-- receive machine-readable failure classification, source context, Engine
-  integrity, retained-effect status, and pending-job status through the stable
-  facade;
-- run the pinned default-Hono/`SmartRouter` scenario through the documented
-  Engine/checkpoint/JSON protocol without source patches or syntax downleveling;
+- receive machine-readable failure classification, source context when
+  available, runtime-integrity status, retained-effect status, and pending-job
+  status through the stable facade;
+- run a version-pinned external framework acceptance scenario through the
+  stable facade without source patches or syntax downleveling;
 - avoid all dependency on interpreter-internal values and state; and
 - run all portable acceptance scenarios on all four supported targets.
 
