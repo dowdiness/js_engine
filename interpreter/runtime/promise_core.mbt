@@ -29,7 +29,7 @@ pub fn Interpreter::enqueue_microtask(
   callback : Value,
   args : Array[Value],
 ) -> Unit {
-  self.host.microtask_queue.push({ callback, args })
+  microtask_policy_enqueue(self.host.microtask_queue, { callback, args })
 }
 
 ///|
@@ -38,28 +38,32 @@ pub fn Interpreter::enqueue_microtask(
 /// Implements the microtask checkpoint from WHATWG Event Loop spec.
 pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
   with_cleared_active_callee_realm(self.realm_state, fn() raise {
-    // Process microtasks until queue is empty
-    // Note: new microtasks can be enqueued during execution
-    // Use index-based draining to avoid O(n²) from repeated remove(0)
-    let mut head = 0
-    while head < self.host.microtask_queue.length() {
-      let task = self.host.microtask_queue[head]
-      head = head + 1
+    let policy = MicrotaskQueuePolicy(self.host.microtask_queue)
+    while true {
+      let task = match policy.select_next() {
+        Some(task) => task
+        None => break
+      }
       // Call the callback with queued arguments
       match task.callback {
         Object(obj_data) =>
           match obj_data.callable {
             Some(_) => {
               let loc = @token.Loc::default()
-              let _ = self.call_value(task.callback, Undefined, task.args, loc)
+              let _ = self.call_value(task.callback, Undefined, task.args, loc) catch {
+                e => {
+                  policy.fail_selected()
+                  raise e
+                }
+              }
             }
             None => ()
           }
         _ => ()
       }
+      policy.complete_selected()
     }
-    // Clear processed microtasks
-    self.host.microtask_queue.clear()
+    policy.complete_drain()
   }) catch {
     e => raise e
   }
