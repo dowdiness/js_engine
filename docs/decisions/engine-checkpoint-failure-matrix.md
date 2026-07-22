@@ -40,6 +40,11 @@ The tests in `engine_test.mbt` are the source of truth for these observations.
 The [embedding guide](../EMBEDDING.md#checkpoint-failure-baseline) gives hosts a
 reader-facing summary.
 
+The [checkpoint failure policy](engine-checkpoint-failure-policy.md) chooses
+at-most-once dispatch for follow-up queue-boundary work. That target is not
+implemented by this PR and does not turn diagnostic retry into a supported
+recovery contract.
+
 ## Non-goals
 
 This record does not define:
