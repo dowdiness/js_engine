@@ -43,13 +43,27 @@ Each queued job instance will use at-most-once dispatch:
 3. If the callback fails, stop the checkpoint and propagate the failure without
    restoring the consumed job.
 4. Leave jobs that have not started, including jobs enqueued before the throw,
-   in their current order. Their presence is internal state, not a supported
-   recovery mechanism while discard-on-failure remains the public contract.
+   ordered by their queue's existing rule: FIFO for microtasks and
+   `(delay, insertion_order)` for timers. Jobs enqueued by the failing callback
+   participate in that same rule. Their presence is internal state, not a
+   supported recovery mechanism while discard-on-failure remains the public
+   contract.
 
 An interval is eligible for re-registration only after its callback and the
 following microtask checkpoint both complete successfully, and only if it was
 not cancelled. A failed interval invocation is consumed and is not scheduled
 again.
+
+### Target state examples
+
+These examples define the policy independently of JavaScript callback
+execution:
+
+| Starting state | Callback outcome | Target state |
+|---|---|---|
+| Microtasks `[A, B]` | `A` enqueues `C`, then throws. | `A` is consumed. The remaining queue is `[B, C]`. |
+| The next timer is `T1`; `T2` is also pending. | `T1` enqueues microtask `M` and timer `T3`, then throws. | `T1` is consumed. `M` remains pending. `T2` and `T3` remain ordered by `(delay, insertion_order)`. |
+| Interval invocation `I` | `I` returns, but its following microtask checkpoint throws. | `I` is consumed and is not re-registered. |
 
 ### Architecture boundary
 
@@ -61,6 +75,11 @@ imperative shell.
 The core must not invoke JavaScript. The shell must not decide whether a job was
 consumed or should be re-registered. Callback results are inputs to the next
 queue-policy transition.
+
+The microtask core must preserve an O(n) drain in the number of jobs. Consuming
+before callback execution must not be implemented as repeated front removal
+from an array. Timer dispatch must preserve the existing priority-queue
+ordering and complexity.
 
 ## Rationale
 
@@ -81,7 +100,10 @@ Follow-up work should remain split into narrow changes:
    preserving timer order.
 
 Each behavior-changing step must pass the stable `Engine` tests on `native`,
-`js`, `wasm`, and `wasm-gc`.
+`js`, `wasm`, and `wasm-gc`. The extracted core must also have direct tests that
+do not invoke JavaScript and cover selection, consumption, ordering, callback
+failure, and interval re-registration outcomes, including the state examples
+above.
 
 ## Rejected alternatives
 
