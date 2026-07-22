@@ -614,3 +614,139 @@ test "Engine failure reuse matrix: JSON result conversion failure retains state 
     "called", "microtask", "timer",
   ])
 }
+
+///|
+fn assert_javascript_exception(
+  action : () -> Unit raise @js_engine.EngineError,
+) -> Unit raise {
+  let failure = try {
+    action()
+    "no error"
+  } catch {
+    @js_engine.JavaScriptException(_) => "javascript"
+    err => "wrong:" + err.to_string()
+  }
+  inspect(failure, content="javascript")
+}
+
+///|
+test "Engine checkpoint failure matrix: microtask throw retains and replays queued jobs" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|let attempts = 0;
+      #|queueMicrotask(() => { events.push("prefix"); });
+      #|queueMicrotask(() => {
+      #|  attempts += 1;
+      #|  const current = attempts;
+      #|  events.push("job:" + current);
+      #|  queueMicrotask(() => { events.push("nested:" + current); });
+      #|  if (current === 1) { throw new Error("microtask failed"); }
+      #|});
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_javascript_exception(() => {
+    let _ = engine.run_microtask_checkpoint()
+  })
+  json_inspect(engine.call_json("snapshot", []), content=["prefix", "job:1"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="false")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  // A failed drain retains the entire queue. Retry replays the completed prefix
+  // and throwing job before running the nested jobs appended by both attempts.
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "prefix", "job:1", "prefix", "job:2", "nested:1", "nested:2",
+  ])
+}
+
+///|
+test "Engine checkpoint failure matrix: timer callback throw consumes the timer" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|setTimeout(() => {
+      #|  events.push("throwing timer");
+      #|  queueMicrotask(() => { events.push("queued microtask"); });
+      #|  setTimeout(() => { events.push("new timer"); }, 0);
+      #|  throw new Error("timer failed");
+      #|}, 0);
+      #|setTimeout(() => { events.push("later timer"); }, 0);
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_javascript_exception(() => engine.run_timer_checkpoint())
+  json_inspect(engine.call_json("snapshot", []), content=["throwing timer"])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  inspect(engine.run_microtask_checkpoint(), content="false")
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "throwing timer", "queued microtask",
+  ])
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "throwing timer", "queued microtask", "later timer", "new timer",
+  ])
+  inspect(engine.has_pending_microtasks(), content="false")
+  inspect(engine.has_pending_timers(), content="false")
+}
+
+///|
+test "Engine checkpoint failure matrix: timer microtask throw retains its queue" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|let attempts = 0;
+      #|setTimeout(() => {
+      #|  events.push("timer 1");
+      #|  queueMicrotask(() => {
+      #|    attempts += 1;
+      #|    const current = attempts;
+      #|    events.push("microtask:" + current);
+      #|    queueMicrotask(() => { events.push("nested:" + current); });
+      #|    if (current === 1) { throw new Error("microtask failed"); }
+      #|  });
+      #|}, 0);
+      #|setTimeout(() => { events.push("timer 2"); }, 0);
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_javascript_exception(() => engine.run_timer_checkpoint())
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "timer 1", "microtask:1",
+  ])
+  inspect(engine.has_pending_microtasks(), content="true")
+  inspect(engine.has_pending_timers(), content="true")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "timer 1", "microtask:1", "timer 2", "microtask:2", "nested:1", "nested:2",
+  ])
+  inspect(engine.has_pending_microtasks(), content="false")
+  inspect(engine.has_pending_timers(), content="false")
+}
+
+///|
+test "Engine checkpoint failure matrix: interval callback throw drops the interval" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|setInterval(() => {
+      #|  events.push("interval");
+      #|  throw new Error("interval failed");
+      #|}, 0);
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_javascript_exception(() => engine.run_timer_checkpoint())
+  json_inspect(engine.call_json("snapshot", []), content=["interval"])
+  inspect(engine.has_pending_microtasks(), content="false")
+  inspect(engine.has_pending_timers(), content="false")
+  engine.run_timer_checkpoint()
+  json_inspect(engine.call_json("snapshot", []), content=["interval"])
+  inspect(engine.has_pending_microtasks(), content="false")
+  inspect(engine.has_pending_timers(), content="false")
+}
