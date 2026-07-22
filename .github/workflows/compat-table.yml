@@ -1,0 +1,108 @@
+name: "compat-table Feature Coverage"
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/**'
+      - '!.github/workflows/compat-table.yml'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/**'
+      - '!.github/workflows/compat-table.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  MOONBIT_CACHE_VERSION: "2026-06"
+
+jobs:
+  compat-table:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Cache MoonBit toolchain
+        id: toolchain-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.moon
+          key: moonbit-toolchain-${{ runner.os }}-${{ env.MOONBIT_CACHE_VERSION }}
+
+      - name: Install MoonBit toolchain
+        if: steps.toolchain-cache.outputs.cache-hit != 'true'
+        run: curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+
+      - name: Add MoonBit to PATH
+        run: echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Get MoonBit version
+        id: moonbit-version
+        run: echo "version=$(moon version 2>&1 | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoonBit dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.moon/registry
+            .mooncakes
+          key: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('moon.mod') }}
+          restore-keys: moon-deps-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Cache build artifacts
+        uses: actions/cache@v5
+        with:
+          path: ./_build
+          key: build-compat-table-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-${{ hashFiles('**/*.mbt', 'moon.mod', '**/moon.pkg.json') }}
+          restore-keys: build-compat-table-${{ runner.os }}-${{ steps.moonbit-version.outputs.version }}-
+
+      - name: Cache compat-table data
+        uses: actions/cache@v5
+        with:
+          path: .cache/compat-table
+          key: compat-table-${{ hashFiles('scripts/compat_table_version.txt') }}
+
+      - name: Install MoonBit dependencies
+        run: moon update
+
+      - name: Run feature-coverage diagnostic
+        run: make compat-table
+
+      - name: Publish job summary
+        if: always()
+        run: |
+          if [ -f compat-table-summary.md ]; then
+            cat compat-table-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## compat-table diagnostic did not produce a summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload diagnostic report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: compat-table-report
+          path: |
+            compat-table-results.json
+            compat-table-summary.md
+          if-no-files-found: warn
+          retention-days: 90

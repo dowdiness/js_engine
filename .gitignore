@@ -4,6 +4,7 @@ target/
 target
 .mooncakes/
 .moonagent/
+.cache/compat-table/
 test262/
 test262-results.json
 test262-analysis.json
@@ -17,6 +18,10 @@ test262_*.txt
 promise.json
 # Baseline is tracked (negation must be after the glob)
 !test262-baseline.json
+
+# compat-table local outputs
+compat-table-results.json
+compat-table-summary.md
 
 # Worktrees
 .worktrees/
