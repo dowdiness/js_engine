@@ -120,6 +120,25 @@ Persistent calls leave queued jobs pending until the host advances them:
 Neither `eval` nor `call_json` performs any of these steps implicitly. This
 lets the MoonBit host decide when queued JavaScript receives execution time.
 
+## Checkpoint failure baseline
+
+Checkpoint recovery is not a supported contract. The following matrix records
+current observations so that hosts can diagnose a failure and future runtime
+changes can be compared against a fixed baseline.
+
+| JavaScript exception from | Observed state after failure | Diagnostic retry observation |
+|---|---|---|
+| A microtask | Completed mutations remain, and the queue retains the completed prefix, throwing job, and jobs appended before the throw. | The completed prefix and throwing job replay before nested jobs from both attempts are drained. |
+| A timer callback | The failing timer is consumed. Microtasks and timers queued by it remain, as do later timers. | After an explicit microtask drain, an existing later timer runs before the newly queued timer. The failing timer does not replay. |
+| The microtask checkpoint after a timer | The current timer is consumed. The microtask queue and next timer remain. | The next timer runs before its checkpoint replays the retained microtasks and drains their nested jobs. |
+| An interval callback | The interval is consumed without being re-registered. | Another timer checkpoint does not invoke it again. |
+
+The retries and synchronous `call_json` snapshots used to make these
+observations are diagnostic probes, not supported recovery procedures. After a
+checkpoint raises an error, discard the `Engine` rather than continuing to use
+it. See the [checkpoint failure decision record](decisions/engine-checkpoint-failure-matrix.md)
+for scope and non-goals.
+
 ## Reusing an Engine after failure
 
 The failures below do not poison the `Engine`; the host may use it again.
@@ -138,9 +157,9 @@ queued jobs survive if they happened before the failure.
 Use `run_microtask_checkpoint()` and `run_timer_checkpoint()` when the surviving
 jobs should run. Neither `eval` nor `call_json` runs them automatically.
 
-Recovery from `InternalError` or from an error raised by a queue checkpoint is
-not yet supported. Discard the `Engine` in those cases. Interruption and
-execution-budget failures are not part of the current API.
+Recovery from `InternalError` is not supported. As described above, an error
+raised by a queue checkpoint also requires discarding the `Engine`. Interruption
+and execution-budget failures are not part of the current API.
 
 The [failure/reuse decision record](decisions/engine-failure-reuse-matrix.md)
 explains why this behavior is part of the embedding baseline.
