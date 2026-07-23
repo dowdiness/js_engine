@@ -1,6 +1,12 @@
-.PHONY: build test external-consumer-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test external-consumer-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
+COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
+COMPAT_TABLE_DIR ?= .cache/compat-table/$(COMPAT_TABLE_COMMIT)
+COMPAT_TABLE_ARCHIVE_URL ?= https://api.github.com/repos/compat-table/compat-table/tarball/$(COMPAT_TABLE_COMMIT)
+COMPAT_TABLE_RESULTS ?= compat-table-results.json
+COMPAT_TABLE_SUMMARY ?= compat-table-summary.md
+COMPAT_TABLE_TIMEOUT_MS ?= 5000
 TARGET ?= native
 
 # Build the JS engine
@@ -74,6 +80,52 @@ architecture-boundary-audit-mbt: architecture-boundary-audit-mbt-test
 
 architecture-boundary-audit-mbt-test:
 	moon test --target native tooling/architecture_boundary_audit
+
+# Download the pinned compat-table data set. The path includes the commit, so a
+# revision bump never reuses stale data from an older checkout.
+compat-table-download:
+	@set -eu; \
+	if [ ! -f "$(COMPAT_TABLE_DIR)/.complete" ]; then \
+		echo "Downloading compat-table ($(COMPAT_TABLE_COMMIT))..."; \
+		tmp_root=$$(mktemp -d "$${TMPDIR:-/tmp}/compat-table.XXXXXX"); \
+		cleanup() { rm -rf "$$tmp_root"; }; \
+		trap cleanup EXIT; \
+		trap 'exit 1' HUP INT TERM; \
+		mkdir -p "$$tmp_root/extract"; \
+		curl -fsSL -L "$(COMPAT_TABLE_ARCHIVE_URL)" -o "$$tmp_root/archive.tar.gz"; \
+		tar -xzf "$$tmp_root/archive.tar.gz" -C "$$tmp_root/extract" --strip-components=1; \
+		for required in data-common.json data-es5.js data-es6.js data-es2016plus.js test-utils/testHelpers.js LICENSE; do \
+			if [ ! -f "$$tmp_root/extract/$$required" ]; then \
+				echo "compat-table archive is missing $$required" >&2; \
+				exit 1; \
+			fi; \
+		done; \
+		mkdir -p "$(COMPAT_TABLE_DIR)"; \
+		cp -a "$$tmp_root/extract/." "$(COMPAT_TABLE_DIR)/"; \
+		touch "$(COMPAT_TABLE_DIR)/.complete"; \
+		echo "compat-table downloaded."; \
+	else \
+		echo "compat-table already present ($(COMPAT_TABLE_COMMIT))."; \
+	fi
+
+# Fast deterministic tests for extraction, scoring, Annex B routing, and report output.
+compat-table-test:
+	node scripts/test_compat_table_runner.js
+	bash scripts/test_compat_table_download.sh
+
+# Run feature-coverage diagnostics. Expected feature failures are report data;
+# only runner/infrastructure failures make this target fail.
+compat-table: compat-table-test compat-table-download native-core-bundle
+	moon build --target native --release cmd/main
+	node scripts/compat_table_runner.js \
+		--compat-table "$(COMPAT_TABLE_DIR)" \
+		--compat-table-commit "$(COMPAT_TABLE_COMMIT)" \
+		--engine ./_build/native/release/build/cmd/main/main.exe \
+		--engine-commit "$$(git rev-parse HEAD)" \
+		--timeout-ms "$(COMPAT_TABLE_TIMEOUT_MS)" \
+		--output "$(COMPAT_TABLE_RESULTS)" \
+		--markdown "$(COMPAT_TABLE_SUMMARY)" \
+		$(COMPAT_TABLE_ARGS)
 
 # Download the Test262 test suite
 test262-download:
@@ -247,4 +299,4 @@ unicode-tables-mbt: subprocess-helpers-mbt-test
 # Clean build artifacts
 clean:
 	moon clean
-	rm -f test262-results.json test262-analysis.json test262-analysis.moonbit-shadow.json
+	rm -f test262-results.json test262-analysis.json test262-analysis.moonbit-shadow.json compat-table-results.json compat-table-summary.md
