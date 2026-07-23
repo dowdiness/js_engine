@@ -71,6 +71,81 @@ understand, integrate, control, and diagnose the stable facade.
 The durable product principles and non-goals are defined in
 [Embedded Runtime Vision](design/embedded-runtime-vision.md).
 
+### Project outcome goals
+
+The stages below describe enabling work. The following outcomes define two
+observable adoption goals; they are targets, not claims about current support.
+
+#### Run the default Hono core as a reference workload
+
+Maintain an acceptance fixture that pins an exact `hono` package version and
+uses its default `hono` entry point and default `SmartRouter`. Passing only the
+`hono/tiny` preset is useful intermediate evidence but does not complete this
+goal.
+
+The fixture must bundle Hono's ESM distribution into one ESNext script because
+the stable facade does not load npm modules. Bundling is allowed; syntax
+downleveling, Hono source patches, and bundler-injected polyfills are not. The
+fixture itself defines the minimum `Request`, `Response`, and `Headers` shim in
+JavaScript before loading Hono. That shim is test infrastructure, not a new
+`js_engine` Web API. It must be framework-agnostic and must not inspect or
+special-case Hono internals.
+
+The four-target test must use only the stable facade and the following
+observable protocol:
+
+1. `Engine::eval` loads the shim, bundled Hono, routes, middleware, and a
+   JavaScript wrapper that starts an asynchronous operation. The operation
+   awaits one `app.request()`, extracts status, headers, body, and
+   middleware-order observations into a plain JSON-compatible object, and
+   stores only that materialized object.
+2. The MoonBit host runs an explicit microtask checkpoint, allowing the wrapper
+   to settle and store the object.
+3. `Engine::call_json` retrieves the stored object after the checkpoint; it
+   never receives the request Promise.
+
+Acceptance requires that this one scenario verifies route matching, path
+parameters, query access, a JSON response, and async middleware composition
+with equivalent results on native, JavaScript, Wasm, and Wasm-GC. The fixture
+must document its complete shim surface and every Hono capability intentionally
+left unsupported. Engine bugs exposed by the fixture require focused regression
+tests, beginning with the RegExp-after-logical-assignment lexer gap tracked in
+[#552](https://github.com/dowdiness/js_engine/issues/552).
+
+This goal does not include Hono server adapters, sockets, Node.js compatibility,
+a DOM, or a complete Web Platform implementation.
+
+#### Provide structured diagnostics to embedders
+
+Expose stable, machine-readable diagnostics through the root facade without
+requiring consumers to inspect internal parser, interpreter, or runtime error
+types. A diagnostic must separate its portable fields from target-dependent
+human-readable formatting.
+
+The first delivery covers every failure category exposed through the stable
+root facade. Interruption, execution-limit, and host callback failures must
+extend the same model when those features are added.
+
+Each diagnostic must provide these portable semantics:
+
+- a stable, machine-readable failure kind and a useful human-readable message;
+- source identity and location when the failure can be tied to source text;
+  diagnostics without an attributable source omit these fields, and the index
+  unit and whether each field is zero- or one-based are documented explicitly;
+- Engine integrity as `reusable`, `discard`, `unknown`, or `not-applicable`;
+- retained effects as `none`, `may-remain`, or `unknown`;
+- pending jobs as `none`, `present`, or `unknown`; and
+- equivalent values and classification tests on native, JavaScript, Wasm, and
+  Wasm-GC.
+
+`reusable` means that runtime invariants remain valid. It does not mean that
+state was rolled back or that repeating the failed operation is safe.
+
+The exact public types require a focused compatibility decision before
+implementation. New diagnostic variants must follow the error-evolution policy
+defined by the execution contract rather than being treated as automatically
+source-compatible.
+
 ### Completed baseline — v0.6.0 release
 
 v0.6.0 established the release baseline:
@@ -135,6 +210,12 @@ expensive to retrofit:
 These decisions belong under `docs/decisions/`. They must be settled from the
 embedder contract rather than inherited accidentally from internal helpers.
 
+Before Stage 3, implement the first structured-diagnostic delivery for the
+current `EngineError` categories, including a source-aware evaluation entry
+point or an equivalent way to attach source identity. Stages 4 and 5 extend
+that model with limit, interruption, and host failures; they must not introduce
+a second diagnostic model.
+
 ### 3. Inject host-owned JSON data
 
 Add stable JSON injection before exposing executable host capabilities. The
@@ -191,7 +272,8 @@ operation, not only a pure decision function.
 Once the boundary and controls are stable, improve the embedder's ability to
 reuse and operate the runtime:
 
-- structured diagnostics with source context and runtime-reuse status;
+- diagnostic presentation and aggregation beyond the structured core delivered
+  after Stage 2;
 - an opaque parse/compile-once script abstraction if benchmarks and consumer
   experience justify it;
 - execution statistics useful for limits and diagnosis;

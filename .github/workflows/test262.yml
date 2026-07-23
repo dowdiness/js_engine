@@ -21,14 +21,8 @@ on:
       - '!.github/workflows/test262.yml'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - '*.md'
-      - '.gitignore'
-      - 'LICENSE'
-      - '.github/ISSUE_TEMPLATE/**'
-      - '.github/workflows/**'
-      - '!.github/workflows/test262.yml'
+    # Always start the lightweight classifier and required gate. The changes
+    # job skips the expensive suite for the same paths ignored on push.
   workflow_dispatch:
 
 # Auto-cancel superseded PR runs (you only care about the latest commit's
@@ -46,7 +40,54 @@ env:
   SHARD_TOTAL: 4
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      run_test262: ${{ steps.classify.outputs.run_test262 }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Classify pull request paths
+        id: classify
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "run_test262=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          merge_base=$(git merge-base "$BASE_SHA" "$HEAD_SHA")
+          if ! git diff --quiet "$merge_base" "$HEAD_SHA" -- .github/workflows/test262.yml; then
+            echo "run_test262=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet "$merge_base" "$HEAD_SHA" -- \
+            . \
+            ':(top,exclude,glob)docs/**' \
+            ':(top,exclude,glob)*.md' \
+            ':(top,exclude).gitignore' \
+            ':(top,exclude)LICENSE' \
+            ':(top,exclude,glob).github/ISSUE_TEMPLATE/**' \
+            ':(top,exclude,glob).github/workflows/**'
+          then
+            echo "run_test262=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run_test262=true" >> "$GITHUB_OUTPUT"
+          fi
+
   unit-test:
+    needs: changes
+    if: needs.changes.outputs.run_test262 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -112,6 +153,8 @@ jobs:
           moon test
 
   unit-test-runner:
+    needs: changes
+    if: needs.changes.outputs.run_test262 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -174,6 +217,8 @@ jobs:
         run: make test262-runner-test
 
   test262:
+    needs: changes
+    if: needs.changes.outputs.run_test262 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -290,8 +335,8 @@ jobs:
           retention-days: 90
 
   regression-check:
-    needs: test262
-    if: always()
+    needs: [changes, test262]
+    if: always() && needs.changes.outputs.run_test262 == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -842,3 +887,42 @@ jobs:
                   if len(recovered) > 20:
                       print(f"    ... and {len(recovered) - 20} more")
           PYEOF
+
+  test262-required:
+    name: test262-required
+    needs: [changes, unit-test, unit-test-runner, test262, regression-check]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Require the path-appropriate Test262 result
+        env:
+          RUN_TEST262: ${{ needs.changes.outputs.run_test262 }}
+          UNIT_TEST_RESULT: ${{ needs.unit-test.result }}
+          UNIT_TEST_RUNNER_RESULT: ${{ needs.unit-test-runner.result }}
+          TEST262_RESULT: ${{ needs.test262.result }}
+          REGRESSION_RESULT: ${{ needs.regression-check.result }}
+        run: |
+          if [[ "$RUN_TEST262" == "false" ]]; then
+            echo "Docs-only change: full Test262 execution is not required."
+            exit 0
+          fi
+
+          if [[ "$RUN_TEST262" != "true" ]]; then
+            echo "::error::Could not classify whether Test262 is required."
+            exit 1
+          fi
+
+          for result in \
+            "$UNIT_TEST_RESULT" \
+            "$UNIT_TEST_RUNNER_RESULT" \
+            "$TEST262_RESULT" \
+            "$REGRESSION_RESULT"
+          do
+            if [[ "$result" != "success" ]]; then
+              echo "::error::A required Test262 workflow job ended with: $result"
+              exit 1
+            fi
+          done
