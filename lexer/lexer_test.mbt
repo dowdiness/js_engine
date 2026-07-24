@@ -198,6 +198,16 @@ test "lex compound bitwise assignment" {
 }
 
 ///|
+test "lex regexp after logical assignment" {
+  let kinds = tok_kinds("a &&= /and/; b ||= /or/; c ??= /nullish/")
+  inspect_kinds(kinds, content=[
+    "Ident(\"a\")", "AndAssign", "Regex(\"and\", \"\")", "Semicolon", "Ident(\"b\")",
+    "OrAssign", "Regex(\"or\", \"\")", "Semicolon", "Ident(\"c\")", "NullishAssign",
+    "Regex(\"nullish\", \"\")", "EOF",
+  ])
+}
+
+///|
 test "lex mixed new operators" {
   let kinds = tok_kinds("a++ + b")
   inspect_kinds(kinds, content=[

@@ -1079,6 +1079,33 @@ test "nullish assign ??= non-null lhs skips" {
 }
 
 ///|
+test "logical assignment accepts regexp RHS and preserves short circuiting" {
+  let output = run_output(
+    (
+      #|let andValue = true;
+      #|andValue &&= /x/.test("x");
+      #|let orValue = false;
+      #|orValue ||= /x/.test("x");
+      #|let nullishValue;
+      #|nullishValue ??= /x/.test("x");
+      #|let skippedAnd = false;
+      #|skippedAnd &&= /x/.test("x");
+      #|let skippedOr = true;
+      #|skippedOr ||= /no-match/.test("x");
+      #|let skippedNullish = 0;
+      #|skippedNullish ??= /x/.test("x");
+      #|let encoded;
+      #|let url = "hello%20world";
+      #|encoded ??= /[%+]/.test(url);
+      #|console.log(andValue, orValue, nullishValue);
+      #|console.log(skippedAnd, skippedOr, skippedNullish);
+      #|console.log(encoded);
+    ),
+  )
+  json_inspect(output, content=["true true true", "false true 0", "true"])
+}
+
+///|
 test "logical and assign computed member key evaluated once" {
   // Verifies ToPropertyKey is called exactly once per spec (not once for get
   // and again for set).
