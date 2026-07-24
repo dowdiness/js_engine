@@ -526,6 +526,25 @@ test "parse compound assignment" {
 }
 
 ///|
+test "parse regexp after logical assignment" {
+  let prog = @parser.parse("a &&= /and/; b ||= /or/; c ??= /nullish/")
+  match prog.stmts {
+    [
+      ExprStmt(
+        CompoundAssign(LogicalAndAssign, _, RegexLit("and", "", _), _),
+        _
+      ),
+      ExprStmt(CompoundAssign(LogicalOrAssign, _, RegexLit("or", "", _), _), _),
+      ExprStmt(
+        CompoundAssign(NullishAssign, _, RegexLit("nullish", "", _), _),
+        _
+      ),
+    ] => ()
+    _ => fail("Expected logical assignments with regexp RHS expressions")
+  }
+}
+
+///|
 test "parse bitwise operators" {
   let prog = @parser.parse("a & b | c ^ d")
   match prog.stmts[0] {

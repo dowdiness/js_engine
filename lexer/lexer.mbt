@@ -593,75 +593,15 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
       // Check if / is a regex literal (context-dependent)
       if next != '=' {
         // Determine if this is a regex based on the last token
-        let is_regex = if tokens.length() == 0 {
-          true
-        } else {
-          let last_kind = tokens[tokens.length() - 1].kind
-          match last_kind {
-            // After these tokens, / starts a regex
-            Assign
-            | EqEq
-            | EqEqEq
-            | BangEq
-            | BangEqEq
-            | LParen
-            | LBracket
-            | LBrace
-            | Comma
-            | Semicolon
-            | Colon
-            | Question
-            | QuestionQuestion
-            | QuestionDot
-            | And
-            | Or
-            | Bang
-            | Plus
-            | Minus
-            | Star
-            | StarStar
-            | Slash
-            | Percent
-            | Lt
-            | Gt
-            | LtEq
-            | GtEq
-            | Return
-            | Typeof
-            | Throw
-            | New
-            | Delete
-            | Void
-            | In
-            | Instanceof
-            | PlusAssign
-            | MinusAssign
-            | StarAssign
-            | StarStarAssign
-            | SlashAssign
-            | PercentAssign
-            | BitAnd
-            | BitOr
-            | BitXor
-            | Tilde
-            | LShift
-            | RShift
-            | URShift
-            | BitAndAssign
-            | BitOrAssign
-            | BitXorAssign
-            | LShiftAssign
-            | RShiftAssign
-            | URShiftAssign
-            | Case
-            | Arrow => true
-            Yield => last_yield_allows_regex
-            // RParen after control-flow keyword (if/while/for/switch) starts regex
-            RParen => last_rparen_is_control_flow
-            // RBrace after a block (statement/declaration body) starts regex
-            RBrace => last_rbrace_is_block
-            _ => false
-          }
+        let is_regex = match tokens {
+          [] => true
+          [.., previous] =>
+            slash_starts_regexp_after(
+              previous.kind,
+              yield_allows_regexp=last_yield_allows_regex,
+              rparen_is_control_flow=last_rparen_is_control_flow,
+              rbrace_is_block=last_rbrace_is_block,
+            )
         }
         if is_regex {
           let rloc = make_loc()
