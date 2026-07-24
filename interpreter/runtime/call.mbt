@@ -708,8 +708,8 @@ fn Interpreter::eval_call(
             self.call_value(func_val, obj, args, loc)
           }
         }
-        // For Member/ComputedMember/SuperMember/SuperComputedMember, grouping
-        // preserves the Reference, so ((a.b))() correctly calls with this=a.
+        // For member and super references, grouping preserves the Reference,
+        // so ((a.b))() correctly calls with this=a.
         Member(obj_expr, prop, mloc) =>
           match obj_expr {
             Ident("console", _) => {
@@ -728,6 +728,12 @@ fn Interpreter::eval_call(
           let obj = self.eval_expr(ctx, obj_expr, env)
           let key = self.eval_expr(ctx, key_expr, env)
           let func_val = self.get_computed_property(obj, key, mloc)
+          let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+          self.call_value(func_val, obj, args, loc)
+        }
+        PrivateMember(obj_expr, name, _) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let func_val = get_private_member(obj, name, env)
           let args = self.eval_args_with_spread(ctx, arg_exprs, env)
           self.call_value(func_val, obj, args, loc)
         }

@@ -19992,6 +19992,37 @@ test "class private methods: read via method call" {
 //|
 
 ///|
+test "class private methods: method call preserves receiver" {
+  let src =
+    #|class C {
+    #|  constructor() { this.x = 1; }
+    #|  #m() { return this.x; }
+    #|  call() { return this.#m(); }
+    #|}
+    #|console.log(new C().call());
+  let output = run_output(src)
+  json_inspect(output, content=["1"])
+}
+//|
+
+///|
+test "class private methods: optional call preserves receiver" {
+  let src =
+    #|class C {
+    #|  constructor() { this.x = 1; }
+    #|  #m() { return this.x; }
+    #|  #factory() { return () => this.x; }
+    #|  call() { return this.#m?.(); }
+    #|  chained() { return this.#factory?.()(); }
+    #|}
+    #|console.log(new C().call());
+    #|console.log(new C().chained());
+  let output = run_output(src)
+  json_inspect(output, content=["1", "1"])
+}
+//|
+
+///|
 test "class private methods: brand error on wrong object" {
   let src =
     #|class C {

@@ -1085,6 +1085,11 @@ fn Interpreter::eval_chain_expr(
           let func_val = self.get_computed_property(obj, key, mloc)
           self.eval_optional_call_tail(ctx, func_val, obj, arg_exprs, env, loc)
         }
+        PrivateMember(obj_expr, name, _) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let func_val = get_private_member(obj, name, env)
+          self.eval_optional_call_tail(ctx, func_val, obj, arg_exprs, env, loc)
+        }
         SuperMember(prop, sloc) => {
           let (this_val, func_val) = self.eval_super_property_call_reference(
             env, prop, sloc,
@@ -1197,6 +1202,34 @@ fn resolve_private_brand(env : Environment, name : String) -> Value raise Error 
         message="Private field '#\{name}' must be declared in an enclosing class",
       )
   }
+}
+
+///|
+fn get_private_member(
+  obj : Value,
+  name : String,
+  env : Environment,
+) -> Value raise Error {
+  let brand = resolve_private_brand(env, name)
+  // Check private methods first (shared per-class, not instance-specific)
+  let methods_obj = env.get("[[PrivateMethods]]") catch { _ => Undefined }
+  match methods_obj {
+    Object(mobj_data) =>
+      match mobj_data.bag.properties.get(name) {
+        Some(method_val) => {
+          if !has_brand(obj, brand) {
+            raise @errors.TypeError(
+              message="Cannot read private member #\{name} from object of different class",
+            )
+          }
+          return method_val
+        }
+        None => ()
+      }
+    _ => ()
+  }
+  // Fall back to private field lookup
+  get_private_field(obj, brand, name)
 }
 
 ///|
@@ -1950,6 +1983,17 @@ fn Interpreter::eval_expr(
             }
           }
         }
+        PrivateMember(obj_expr, name, _) => {
+          let obj = self.eval_expr(ctx, obj_expr, env)
+          let func_val = get_private_member(obj, name, env)
+          match func_val {
+            Null | Undefined => Undefined
+            _ => {
+              let args = self.eval_args_with_spread(ctx, arg_exprs, env)
+              self.call_value(func_val, obj, args, loc)
+            }
+          }
+        }
         SuperMember(prop, sloc) => {
           let (this_val, func_val) = self.eval_super_property_call_reference(
             env, prop, sloc,
@@ -2027,26 +2071,7 @@ fn Interpreter::eval_expr(
     PrivateIdent(name, _) => fail("TODO: bare private name reference: #\{name}")
     PrivateMember(obj, name, _) => {
       let obj_val = self.eval_expr(ctx, obj, env)
-      let brand = resolve_private_brand(env, name)
-      // Check private methods first (shared per-class, not instance-specific)
-      let methods_obj = env.get("[[PrivateMethods]]") catch { _ => Undefined }
-      match methods_obj {
-        Object(mobj_data) =>
-          match mobj_data.bag.properties.get(name) {
-            Some(method_val) => {
-              if !has_brand(obj_val, brand) {
-                raise @errors.TypeError(
-                  message="Cannot read private member #\{name} from object of different class",
-                )
-              }
-              return method_val
-            }
-            None => ()
-          }
-        _ => ()
-      }
-      // Fall back to private field lookup
-      get_private_field(obj_val, brand, name)
+      get_private_member(obj_val, name, env)
     }
   }
 }
