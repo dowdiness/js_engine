@@ -303,47 +303,36 @@ pub fn create_resolving_functions(
 /// until cancelled. A safety limit prevents infinite loops.
 pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
   with_cleared_active_callee_realm(self.realm_state, fn() raise {
-    // Safety limit to prevent infinite loops from setInterval
-    let max_iterations = 10000
-    let mut iterations = 0
-    while self.host.timer_queue.length() > 0 && iterations < max_iterations {
-      iterations = iterations + 1
-      // pop() extracts the soonest-due timer via the Compare impl
-      let timer = match self.host.timer_queue.pop() {
-        Some(t) => t
-        None => break // unreachable: guarded by length() > 0 above
-      }
-      // Lazy deletion: skip timers cancelled via clearTimeout/clearInterval
-      if self.host.cancelled_timer_ids.contains(timer.id) {
-        continue
+    let policy = TimerQueuePolicy(
+      self.host.timer_queue,
+      self.host.cancelled_timer_ids,
+      self.host.timer_insertion_counter,
+      TIMER_SAFETY_LIMIT,
+    )
+    while true {
+      let timer = match policy.select_next() {
+        Some(timer) => timer
+        None => break
       }
       // Execute the timer callback
       let loc = @token.Loc::default()
-      let _ = self.call_value(timer.callback, Undefined, timer.args, loc)
-      // Microtask checkpoint after each task (per WHATWG event loop spec)
-      self.run_microtasks()
-      // If this is setInterval and not cancelled inside the callback, re-enqueue.
-      // cancelled_timer_ids covers both pre-pop and in-callback cancellation.
-      if timer.is_interval && !self.host.cancelled_timer_ids.contains(timer.id) {
-        let order = self.host.timer_insertion_counter.val
-        self.host.timer_insertion_counter.val = order + 1
-        self.host.timer_queue.push({
-          id: timer.id,
-          callback: timer.callback,
-          args: timer.args,
-          delay: timer.delay + timer.period,
-          period: timer.period,
-          is_interval: true,
-          insertion_order: order,
-        })
+      let _ = self.call_value(timer.callback, Undefined, timer.args, loc) catch {
+        e => {
+          policy.callback_failed()
+          raise e
+        }
       }
+      policy.callback_succeeded()
+      // Microtask checkpoint after each task (per WHATWG event loop spec)
+      self.run_microtasks() catch {
+        e => {
+          policy.checkpoint_failed()
+          raise e
+        }
+      }
+      policy.checkpoint_succeeded()
     }
-    // Clear cancelled IDs only when the queue is fully drained.
-    // If the safety limit fires, surviving timers may fire on the next
-    // run_timers call; keeping cancelled IDs ensures they are still skipped.
-    if self.host.timer_queue.length() == 0 {
-      self.host.cancelled_timer_ids.clear()
-    }
+    policy.complete_run()
   }) catch {
     e => raise e
   }

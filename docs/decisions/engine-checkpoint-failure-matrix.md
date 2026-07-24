@@ -10,10 +10,11 @@ a supported contract or change the public API.
 
 ## Context
 
-Microtask queue policy is separated into a functional core while callback
-execution remains in an imperative shell. The observations use only the stable
-`Engine` facade and JavaScript exceptions. They do not manufacture an
-`InternalError` path. Timer and interval policy extraction remains pending.
+Microtask, timer, and interval queue policies are separated into private cores
+while callback execution and error propagation remain in imperative shells.
+The observations use only the stable `Engine` facade and JavaScript exceptions.
+They do not manufacture an `InternalError` path. The timer policy extraction
+does not change these observations.
 
 ## Observations
 
@@ -41,9 +42,9 @@ The [embedding guide](../EMBEDDING.md#checkpoint-failure-baseline) gives hosts a
 reader-facing summary.
 
 The [checkpoint failure policy](engine-checkpoint-failure-policy.md) chooses
-at-most-once dispatch. Microtasks now implement that target. Timer and interval
-policy extraction remains pending, and diagnostic retry is still not a
-supported recovery contract.
+at-most-once dispatch. Private microtask and timer policies now implement the
+queue transitions, and diagnostic retry is still not a supported recovery
+contract.
 
 ## Non-goals
 
@@ -51,7 +52,7 @@ This record does not define:
 
 - recovery from `InternalError`
 - a poisoned `Engine` state
-- timer or interval policy extraction
+- changes to timer or interval observable semantics
 - callbacks, re-entry, execution budgets, or concurrency
 
 Any future runtime change that alters these observations must intentionally

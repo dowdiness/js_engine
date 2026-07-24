@@ -4,10 +4,9 @@ Date: 2026-07-22
 
 ## Status
 
-Accepted. At-most-once microtask dispatch is implemented by the private
-`MicrotaskQueuePolicy`. Timer and interval policy extraction remains follow-up
-work; the public API and discard-on-checkpoint-failure host contract are
-unchanged.
+Accepted. At-most-once dispatch and timer lifecycle bookkeeping are implemented
+by private microtask and timer queue policies. The public API and
+discard-on-checkpoint-failure host contract are unchanged.
 
 ## Context
 
@@ -17,9 +16,10 @@ microtask checkpoint retained and replayed jobs that already ran, while a timer
 was removed before its callback ran and an interval was re-registered only
 after successful work.
 
-Microtask selection and failure compaction now follow the explicit private
-policy below. Timer and interval decisions still follow imperative runtime
-control flow and have not yet moved behind a policy boundary.
+Microtask selection and failure compaction, together with timer selection,
+consumption, cancellation, and interval re-registration, now follow explicit
+private policies. JavaScript execution and error propagation remain outside
+those policies.
 
 ## Decision
 
@@ -36,9 +36,8 @@ classification.
 
 ### Target queue policy
 
-Each queued job instance uses at-most-once dispatch as the target policy.
-Microtasks implement these steps now; timer and interval policy extraction is
-still pending:
+Each queued job instance uses at-most-once dispatch. The private microtask and
+timer policies implement these steps:
 
 1. Select and consume the next job before invoking its callback.
 2. Run the callback outside the queue-policy core.
@@ -75,8 +74,11 @@ microtask core now owns selection, logical consumption, FIFO ordering, and
 failure compaction. Invoking a JavaScript callback and translating its result or
 error remain in the imperative shell.
 
-The core must not invoke JavaScript. The shell must not decide whether a job was
-consumed or should be re-registered. Callback results are inputs to the next
+The timer core now owns priority-queue selection and consumption, lazy
+cancellation decisions, callback/checkpoint outcome transitions, interval
+re-registration, and end-of-drain bookkeeping. The core must not invoke
+JavaScript. The shell must not decide whether a job was consumed or should be
+re-registered. Callback and checkpoint results are inputs to the next
 queue-policy transition.
 
 The microtask core must preserve an O(n) drain in the number of jobs. Consuming
@@ -100,14 +102,14 @@ The implementation remains split into narrow changes:
    observed behavior.
 2. Completed: change microtask dispatch to the chosen at-most-once policy and
    intentionally update the characterization tests and documentation.
-3. Pending: move timer and interval bookkeeping behind the same policy boundary
-   while preserving timer order and current behavior.
+3. Completed: move timer and interval bookkeeping behind the same policy
+   boundary while preserving timer order and observed behavior.
 
-Each behavior-changing step must pass the stable `Engine` tests on `native`,
-`js`, `wasm`, and `wasm-gc`. The extracted microtask core has direct tests that
-do not invoke JavaScript and cover selection, consumption, ordering, callback
-failure, complete drain, and invalid transitions. Timer and interval policy
-tests belong to the pending extraction.
+Each step must pass the stable `Engine` tests on `native`, `js`, `wasm`, and
+`wasm-gc`. Both extracted cores have direct tests that do not
+invoke JavaScript. Timer tests cover priority ordering, consumption, lazy
+cancellation, callback and checkpoint outcomes, interval re-registration,
+safety-limit bookkeeping, and invalid transitions.
 
 ## Rejected alternatives
 
