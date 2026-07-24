@@ -4,22 +4,22 @@ Date: 2026-07-22
 
 ## Status
 
-Accepted target policy, not yet implemented. This record guides follow-up
-queue-boundary work without changing the current runtime or public API in this
-PR.
+Accepted. At-most-once microtask dispatch is implemented by the private
+`MicrotaskQueuePolicy`. Timer and interval policy extraction remains follow-up
+work; the public API and discard-on-checkpoint-failure host contract are
+unchanged.
 
 ## Context
 
-The [checkpoint failure matrix](engine-checkpoint-failure-matrix.md) shows that
-failure currently commits queue progress at different points. A failed
-microtask checkpoint retains and replays jobs that already ran, while a timer
-is removed before its callback runs and an interval is re-registered only after
-successful work.
+The original [checkpoint failure matrix](engine-checkpoint-failure-matrix.md)
+showed that failure committed queue progress at different points. A failed
+microtask checkpoint retained and replayed jobs that already ran, while a timer
+was removed before its callback ran and an interval was re-registered only
+after successful work.
 
-These differences follow from control flow in the imperative runtime rather
-than from an explicit queue policy. A functional core / imperative shell split
-needs a chosen target before code is moved, so that structural refactoring and
-behavior changes can be reviewed separately.
+Microtask selection and failure compaction now follow the explicit private
+policy below. Timer and interval decisions still follow imperative runtime
+control flow and have not yet moved behind a policy boundary.
 
 ## Decision
 
@@ -36,7 +36,9 @@ classification.
 
 ### Target queue policy
 
-Each queued job instance will use at-most-once dispatch:
+Each queued job instance uses at-most-once dispatch as the target policy.
+Microtasks implement these steps now; timer and interval policy extraction is
+still pending:
 
 1. Select and consume the next job before invoking its callback.
 2. Run the callback outside the queue-policy core.
@@ -68,9 +70,10 @@ execution:
 ### Architecture boundary
 
 Queue selection, consumption, ordering, and interval re-registration decisions
-belong to a functional core expressed as explicit state transitions. Invoking a
-JavaScript callback and translating its result or error belong to the
-imperative shell.
+belong to a functional core expressed as explicit state transitions. The
+microtask core now owns selection, logical consumption, FIFO ordering, and
+failure compaction. Invoking a JavaScript callback and translating its result or
+error remain in the imperative shell.
 
 The core must not invoke JavaScript. The shell must not decide whether a job was
 consumed or should be re-registered. Callback results are inputs to the next
@@ -91,19 +94,20 @@ re-entry, and execution limits have been designed together.
 
 ## Implementation sequence
 
-Follow-up work should remain split into narrow changes:
+The implementation remains split into narrow changes:
 
-1. Extract queue-policy transitions without changing observed behavior.
-2. Change microtask dispatch to the chosen at-most-once policy and intentionally
-   update the characterization tests and documentation.
-3. Move timer and interval bookkeeping behind the same policy boundary while
-   preserving timer order.
+1. Completed: extract microtask queue-policy transitions without changing
+   observed behavior.
+2. Completed: change microtask dispatch to the chosen at-most-once policy and
+   intentionally update the characterization tests and documentation.
+3. Pending: move timer and interval bookkeeping behind the same policy boundary
+   while preserving timer order and current behavior.
 
 Each behavior-changing step must pass the stable `Engine` tests on `native`,
-`js`, `wasm`, and `wasm-gc`. The extracted core must also have direct tests that
+`js`, `wasm`, and `wasm-gc`. The extracted microtask core has direct tests that
 do not invoke JavaScript and cover selection, consumption, ordering, callback
-failure, and interval re-registration outcomes, including the state examples
-above.
+failure, complete drain, and invalid transitions. Timer and interval policy
+tests belong to the pending extraction.
 
 ## Rejected alternatives
 

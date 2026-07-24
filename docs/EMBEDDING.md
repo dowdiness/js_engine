@@ -128,9 +128,9 @@ changes can be compared against a fixed baseline.
 
 | JavaScript exception from | Observed state after failure | Diagnostic retry observation |
 |---|---|---|
-| A microtask | Completed mutations remain, and the queue retains the completed prefix, throwing job, and jobs appended before the throw. | The completed prefix and throwing job replay before nested jobs from both attempts are drained. |
+| A microtask | Completed mutations remain. The completed prefix and throwing job are consumed; unstarted jobs, including jobs appended before the throw, remain queued. | Only retained unstarted jobs drain. The completed prefix and throwing job do not replay. |
 | A timer callback | The failing timer is consumed. Microtasks and timers queued by it remain, as do later timers. | After an explicit microtask drain, an existing later timer runs before the newly queued timer. The failing timer does not replay. |
-| The microtask checkpoint after a timer | The current timer is consumed. The microtask queue and next timer remain. | The next timer runs before its checkpoint replays the retained microtasks and drains their nested jobs. |
+| The microtask checkpoint after a timer | The current timer and dispatched microtasks are consumed. Unstarted microtasks and the next timer remain. | The next timer runs before its checkpoint drains only the retained unstarted microtasks. The throwing job does not replay. |
 | An interval callback | The interval is consumed without being re-registered. | Another timer checkpoint does not invoke it again. |
 
 The retries and synchronous `call_json` snapshots used to make these
@@ -138,6 +138,11 @@ observations are diagnostic probes, not supported recovery procedures. After a
 checkpoint raises an error, discard the `Engine` rather than continuing to use
 it. See the [checkpoint failure decision record](decisions/engine-checkpoint-failure-matrix.md)
 for scope and non-goals.
+
+At-most-once microtask dispatch is implemented by a private queue-policy core;
+JavaScript callback execution and error propagation remain in the runtime
+shell. Timer and interval policy extraction is still pending and does not alter
+the discard-on-failure requirement.
 
 ## Reusing an Engine after failure
 

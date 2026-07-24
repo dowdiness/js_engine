@@ -1,5 +1,5 @@
-// Private queue-policy core for the current microtask checkpoint behavior.
-// It selects jobs by FIFO position and records callback outcomes, but never
+// Private queue-policy core for at-most-once microtask dispatch.
+// It consumes jobs by FIFO position before callback execution, but never
 // inspects or invokes the JavaScript callback stored in a Microtask.
 
 ///|
@@ -41,8 +41,10 @@ fn MicrotaskQueuePolicy::select_next(
   match self.phase {
     MicrotaskQueueReady => {
       guard self.next_index < self.queue.length() else { return None }
+      let task = self.queue[self.next_index]
+      self.next_index = self.next_index + 1
       self.phase = MicrotaskQueueSelected
-      Some(self.queue[self.next_index])
+      Some(task)
     }
     MicrotaskQueueSelected | MicrotaskQueueFailed | MicrotaskQueueCompleted =>
       invalid_microtask_policy_transition("select_next requires Ready")
@@ -56,7 +58,6 @@ fn MicrotaskQueuePolicy::complete_selected(
   guard self.phase is MicrotaskQueueSelected else {
     invalid_microtask_policy_transition("complete_selected requires Selected")
   }
-  self.next_index = self.next_index + 1
   self.phase = MicrotaskQueueReady
 }
 
@@ -67,7 +68,9 @@ fn MicrotaskQueuePolicy::fail_selected(
   guard self.phase is MicrotaskQueueSelected else {
     invalid_microtask_policy_transition("fail_selected requires Selected")
   }
-  // Preserve the full queue for the existing replay-on-retry behavior.
+  let remaining = self.queue.length() - self.next_index
+  self.queue[self.next_index:].blit_to(self.queue)
+  self.queue.truncate(remaining)
   self.phase = MicrotaskQueueFailed
 }
 

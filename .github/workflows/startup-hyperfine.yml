@@ -23,7 +23,7 @@ jobs:
       contents: read
 
     env:
-      MOONBIT_CACHE_VERSION: "2026-06"
+      MOONBIT_CACHE_VERSION: "2026-07"
       WARMUP_RUNS: ${{ inputs.warmup }}
       MIN_RUNS: ${{ inputs.min_runs }}
       STARTUP_SOURCE: "1 + 1"

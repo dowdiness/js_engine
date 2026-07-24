@@ -630,7 +630,7 @@ fn assert_javascript_exception(
 }
 
 ///|
-test "Engine checkpoint failure matrix: microtask throw retains and replays queued jobs" {
+test "Engine checkpoint failure matrix: microtask throw consumes dispatched jobs" {
   let engine = @js_engine.Engine()
   engine.eval(
     (
@@ -654,10 +654,10 @@ test "Engine checkpoint failure matrix: microtask throw retains and replays queu
   inspect(engine.has_pending_microtasks(), content="true")
   inspect(engine.has_pending_timers(), content="false")
   inspect(engine.run_microtask_checkpoint(), content="false")
-  // A failed drain retains the entire queue. Retry replays the completed prefix
-  // and throwing job before running the nested jobs appended by both attempts.
+  // A failed drain consumes the completed prefix and throwing job. Diagnostic
+  // retry runs only the nested job appended before the throw.
   json_inspect(engine.call_json("snapshot", []), content=[
-    "prefix", "job:1", "prefix", "job:2", "nested:1", "nested:2",
+    "prefix", "job:1", "nested:1",
   ])
 }
 
@@ -694,7 +694,7 @@ test "Engine checkpoint failure matrix: timer callback throw consumes the timer"
 }
 
 ///|
-test "Engine checkpoint failure matrix: timer microtask throw retains its queue" {
+test "Engine checkpoint failure matrix: timer microtask throw consumes dispatched job" {
   let engine = @js_engine.Engine()
   engine.eval(
     (
@@ -722,7 +722,7 @@ test "Engine checkpoint failure matrix: timer microtask throw retains its queue"
   inspect(engine.has_pending_timers(), content="true")
   engine.run_timer_checkpoint()
   json_inspect(engine.call_json("snapshot", []), content=[
-    "timer 1", "microtask:1", "timer 2", "microtask:2", "nested:1", "nested:2",
+    "timer 1", "microtask:1", "timer 2", "nested:1",
   ])
   inspect(engine.has_pending_microtasks(), content="false")
   inspect(engine.has_pending_timers(), content="false")

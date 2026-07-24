@@ -36,7 +36,7 @@ concurrency:
 env:
   TEST262_COMMIT: "2b2ecead6e82"
   # Bump this string to force a toolchain cache bust (e.g. after a MoonBit release).
-  MOONBIT_CACHE_VERSION: "2026-06"
+  MOONBIT_CACHE_VERSION: "2026-07"
   SHARD_TOTAL: 4
 
 jobs:
