@@ -4,24 +4,24 @@ Date: 2026-07-22
 
 ## Status
 
-Observed, non-contractual baseline. This record characterizes current behavior;
-it does not make checkpoint recovery a supported contract or change the runtime
-or public API.
+Observed, non-contractual baseline. This record characterizes current behavior,
+including at-most-once microtask dispatch. It does not make checkpoint recovery
+a supported contract or change the public API.
 
 ## Context
 
-Before separating queue policy into a functional core and callback execution
-into an imperative shell, the existing failure state must be measurable. The
-observations use only the stable `Engine` facade and JavaScript exceptions. They
-do not manufacture an `InternalError` path.
+Microtask queue policy is separated into a functional core while callback
+execution remains in an imperative shell. The observations use only the stable
+`Engine` facade and JavaScript exceptions. They do not manufacture an
+`InternalError` path. Timer and interval policy extraction remains pending.
 
 ## Observations
 
 | Failure point | State after failure | Observation on retry |
 |---|---|---|
-| A microtask throws once | Mutations from the successful prefix and throwing job remain. The queue retains the prefix, throwing job, and the nested job appended before the throw. | The prefix and throwing job replay. Nested jobs appended by the first and retry attempts then run in insertion order, and the queue becomes empty. |
+| A microtask throws once | Mutations from the successful prefix and throwing job remain. The queue consumes that prefix and throwing job, retaining only unstarted jobs such as the nested job appended before the throw. | Only the retained nested job runs, and the queue becomes empty. The successful prefix and throwing job do not replay. |
 | A timer callback throws | The failing timer has been consumed. A microtask and new timer queued by the callback remain beside the existing later timer. | After an explicit microtask drain, the existing later timer runs before the new timer. The failing timer does not replay. |
-| A timer's microtask checkpoint throws | The current timer has been consumed. The microtask queue and next timer remain. | The next timer runs first. Its checkpoint replays the retained microtask prefix and throwing job, then drains nested jobs. |
+| A timer's microtask checkpoint throws | The current timer, successful microtask prefix, and throwing microtask have been consumed. Unstarted microtasks and the next timer remain. | The next timer runs first. Its checkpoint drains only the retained unstarted microtasks; the throwing job does not replay. |
 | An interval callback throws | The interval invocation has been consumed and the interval is not re-registered. No timer remains pending. | Another timer checkpoint does not invoke the callback again. |
 
 In every case, synchronous `call_json` snapshot reads remain possible after the
@@ -41,18 +41,17 @@ The [embedding guide](../EMBEDDING.md#checkpoint-failure-baseline) gives hosts a
 reader-facing summary.
 
 The [checkpoint failure policy](engine-checkpoint-failure-policy.md) chooses
-at-most-once dispatch for follow-up queue-boundary work. That target is not
-implemented by this PR and does not turn diagnostic retry into a supported
-recovery contract.
+at-most-once dispatch. Microtasks now implement that target. Timer and interval
+policy extraction remains pending, and diagnostic retry is still not a
+supported recovery contract.
 
 ## Non-goals
 
 This record does not define:
 
 - recovery from `InternalError`
-- at-most-once checkpoint execution
 - a poisoned `Engine` state
-- extracted queue policy or a runtime refactor
+- timer or interval policy extraction
 - callbacks, re-entry, execution budgets, or concurrency
 
 Any future runtime change that alters these observations must intentionally

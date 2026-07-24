@@ -86,18 +86,18 @@ test "microtask policy clears the queue after a successful drain" {
 }
 
 ///|
-test "microtask policy retains the full queue after a failed job" {
+test "microtask policy consumes the failed job before retry" {
   let queue = [microtask_policy_test_job("A"), microtask_policy_test_job("B")]
   let policy = MicrotaskQueuePolicy(queue)
   inspect(microtask_policy_test_id(policy.select_next()), content="A")
   microtask_policy_enqueue(queue, microtask_policy_test_job("C"))
   policy.fail_selected()
-  json_inspect(microtask_policy_test_queue_ids(queue), content=["A", "B", "C"])
+  json_inspect(microtask_policy_test_queue_ids(queue), content=["B", "C"])
   expect_invalid_microtask_policy_transition("select_next requires Ready", () => {
     let _ = policy.select_next()
   })
   let retry = MicrotaskQueuePolicy(queue)
-  inspect(microtask_policy_test_id(retry.select_next()), content="A")
+  inspect(microtask_policy_test_id(retry.select_next()), content="B")
 }
 
 ///|

@@ -47,7 +47,7 @@ on:
 
 env:
   # Bump this string to force a toolchain cache bust (e.g. after a MoonBit release).
-  MOONBIT_CACHE_VERSION: "2026-06"
+  MOONBIT_CACHE_VERSION: "2026-07"
 
 jobs:
   bench:
@@ -108,7 +108,10 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           set -o pipefail
-          moon run benchmarks --target js -- --all --csv | tee bench-results.csv
+          moon run benchmarks --target js --build-only
+          node --stack-size=8192 --enable-source-maps \
+            ./_build/js/debug/build/benchmarks/benchmarks.js --all --csv \
+            | tee bench-results.csv
 
       - name: Generate PR base/head CSV baselines
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -122,10 +125,16 @@ jobs:
           git fetch --no-tags --depth=1 origin "$BASE_SHA" "$HEAD_SHA"
           git checkout --force "$BASE_SHA"
           moon update
-          moon run benchmarks --target js -- --all --csv | tee "$result_dir/bench-base-results.csv"
+          moon run benchmarks --target js --build-only
+          node --stack-size=8192 --enable-source-maps \
+            ./_build/js/debug/build/benchmarks/benchmarks.js --all --csv \
+            | tee "$result_dir/bench-base-results.csv"
           git checkout --force "$HEAD_SHA"
           moon update
-          moon run benchmarks --target js -- --all --csv | tee "$result_dir/bench-head-results.csv"
+          moon run benchmarks --target js --build-only
+          node --stack-size=8192 --enable-source-maps \
+            ./_build/js/debug/build/benchmarks/benchmarks.js --all --csv \
+            | tee "$result_dir/bench-head-results.csv"
           # Restore the workflow checkout before rendering, so old PR branches
           # still use the renderer from the tested merge ref.
           git checkout --force "$GITHUB_SHA"
@@ -161,7 +170,7 @@ jobs:
       # Scheduled/manual/same-repository PR reporting writes a human-readable
       # summary without needing repository-write credentials.
       - name: Post human-readable results to summary
-        if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) && !cancelled()
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
         env:
           MOONBIT_VERSION: ${{ steps.moonbit-version.outputs.version }}
           REPORT_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}

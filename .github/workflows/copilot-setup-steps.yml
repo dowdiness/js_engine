@@ -27,7 +27,7 @@ jobs:
     # If you do not check out your code, Copilot will do this for you.
     env:
       # Bump this string to force a toolchain cache bust (e.g. after a MoonBit release).
-      MOONBIT_CACHE_VERSION: "2026-06"
+      MOONBIT_CACHE_VERSION: "2026-07"
 
     steps:
       - name: Checkout code
