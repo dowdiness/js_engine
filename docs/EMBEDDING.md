@@ -139,10 +139,11 @@ checkpoint raises an error, discard the `Engine` rather than continuing to use
 it. See the [checkpoint failure decision record](decisions/engine-checkpoint-failure-matrix.md)
 for scope and non-goals.
 
-At-most-once microtask dispatch is implemented by a private queue-policy core;
-JavaScript callback execution and error propagation remain in the runtime
-shell. Timer and interval policy extraction is still pending and does not alter
-the discard-on-failure requirement.
+Microtask dispatch and timer/interval lifecycle bookkeeping are implemented by
+private queue-policy cores. The timer extraction does not change the observed
+timer or interval semantics. JavaScript callback execution and error
+propagation remain in the runtime shell, and the discard-on-failure requirement
+is unchanged.
 
 ## Reusing an Engine after failure
 
