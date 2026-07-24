@@ -19931,6 +19931,20 @@ test "class private fields: read via method" {
 //|
 
 ///|
+test "class private fields: constructor assignment and method read" {
+  let src =
+    #|class C {
+    #|  #x;
+    #|  constructor() { this.#x = 1; }
+    #|  get() { return this.#x; }
+    #|}
+    #|console.log(new C().get());
+  let output = run_output(src)
+  json_inspect(output, content=["1"])
+}
+//|
+
+///|
 test "class private fields: brand error on wrong object" {
   let src =
     #|class C {

@@ -614,7 +614,7 @@ fn Interpreter::create_class(
           proto,
           super_ctor,
           ctor_fn,
-          closure: env,
+          closure: instance_method_env,
           super_proto,
           instance_fields,
           private_instance_fields,
