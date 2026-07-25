@@ -20092,3 +20092,95 @@ test "class private fields: setter brand error on wrong object" {
   let output = run_output(src)
   json_inspect(output, content=["TypeError"])
 }
+
+///|
+test "class private fields: compound, update, and logical assignment" {
+  let src =
+    #|class Box {
+    #|  #value;
+    #|  constructor(value) { this.#value = value; }
+    #|  read() { return this.#value; }
+    #|  compound() {
+    #|    let baseCount = 0;
+    #|    let rhsCount = 0;
+    #|    const base = () => { baseCount++; return this; };
+    #|    const rhs = () => { rhsCount++; return 3; };
+    #|    const result = base().#value += rhs();
+    #|    return [result, this.#value, baseCount, rhsCount];
+    #|  }
+    #|  updates() {
+    #|    let baseCount = 0;
+    #|    const base = () => { baseCount++; return this; };
+    #|    const postInc = base().#value++;
+    #|    const preInc = ++base().#value;
+    #|    const postDec = base().#value--;
+    #|    const preDec = --base().#value;
+    #|    return [postInc, preInc, postDec, preDec, this.#value, baseCount];
+    #|  }
+    #|  logical() {
+    #|    let baseCount = 0;
+    #|    let rhsCount = 0;
+    #|    const base = () => { baseCount++; return this; };
+    #|    const rhs = (value) => { rhsCount++; return value; };
+    #|    this.#value = 0;
+    #|    const andSkip = base().#value &&= rhs(10);
+    #|    this.#value = 2;
+    #|    const andWrite = base().#value &&= rhs(3);
+    #|    const orSkip = base().#value ||= rhs(4);
+    #|    this.#value = 0;
+    #|    const orWrite = base().#value ||= rhs(5);
+    #|    const nullishSkip = base().#value ??= rhs(6);
+    #|    this.#value = undefined;
+    #|    const nullishWrite = base().#value ??= rhs(7);
+    #|    return [andSkip, andWrite, orSkip, orWrite, nullishSkip,
+    #|      nullishWrite, this.#value, baseCount, rhsCount];
+    #|  }
+    #|  compoundOn(other) { return other.#value += 1; }
+    #|  updateOn(other) { return other.#value++; }
+    #|  logicalOn(other) { return other.#value ??= 1; }
+    #|}
+    #|const box = new Box(2);
+    #|console.log(JSON.stringify(box.compound()));
+    #|console.log(JSON.stringify(box.updates()));
+    #|console.log(JSON.stringify(box.logical()));
+    #|console.log(box.read());
+    #|for (const operation of ["compoundOn", "updateOn", "logicalOn"]) {
+    #|  try { box[operation]({}); console.log("NO_ERROR"); }
+    #|  catch (error) { console.log(error.name); }
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "[5,5,1,1]", "[5,7,7,5,5,4]", "[0,3,3,5,5,7,7,6,3]", "7", "TypeError", "TypeError",
+    "TypeError",
+  ])
+}
+
+///|
+test "class private methods: assignment operators reject writes" {
+  let src =
+    #|class Box {
+    #|  #method() { return 1; }
+    #|  compound() { return this.#method += 1; }
+    #|  update() { return this.#method++; }
+    #|  logicalAnd() { return this.#method &&= 1; }
+    #|  logicalOr() {
+    #|    const before = this.#method;
+    #|    return (this.#method ||= 1) === before;
+    #|  }
+    #|  logicalNullish() {
+    #|    const before = this.#method;
+    #|    return (this.#method ??= 1) === before;
+    #|  }
+    #|}
+    #|const box = new Box();
+    #|console.log(box.logicalOr());
+    #|console.log(box.logicalNullish());
+    #|for (const operation of ["compound", "update", "logicalAnd"]) {
+    #|  try { box[operation](); console.log("NO_ERROR"); }
+    #|  catch (error) { console.log(error.name); }
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "true", "TypeError", "TypeError", "TypeError",
+  ])
+}
