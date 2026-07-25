@@ -42,6 +42,14 @@ pub(all) struct RealmState {
   // "any active?" check is `active_overrides.val is Some(_)` — one Ref read —
   // with no separate Bool cache that could become stale.
   active_overrides : Ref[FunctionRealmProtos?]
+  // Source identity active while evaluating or invoking attributable code.
+  // Function factories copy this into engine-private function metadata.
+  active_source_identity : Ref[String?]
+  // Detailed operations enable this only while atomically observing a failure.
+  // The error object distinguishes unhandled propagation from a later throw.
+  observing_source_failure : Ref[Bool]
+  observed_source_failure : Ref[Error?]
+  observed_source_identity : Ref[String?]
   object_prototype : Ref[Value?]
   function_prototype : Ref[Value?]
   string_prototype : Ref[Value?]
@@ -82,6 +90,10 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     well_known_symbols: symbols.well_known_symbols(),
     runtime_iterator_prototypes: RuntimeIteratorPrototypeCaches(),
     active_overrides: { val: None },
+    active_source_identity: { val: None },
+    observing_source_failure: { val: false },
+    observed_source_failure: { val: None },
+    observed_source_identity: { val: None },
     object_prototype: { val: None },
     function_prototype: { val: None },
     string_prototype: { val: None },

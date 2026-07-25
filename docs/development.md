@@ -239,6 +239,8 @@ maps. Reserve IDs in code comments before adding new hidden slots:
   `interpreter/runtime/iterators.mbt`.
 - `-101`: function home-realm intrinsic prototype bundle slot in
   `interpreter/runtime/factories.mbt`.
+- `-102`: optional host-supplied source identity retained on attributable
+  function objects in `interpreter/runtime/factories.mbt`.
 - `-111`: final realm-stamp traversal marker in
   `interpreter/stdlib/builtins.mbt`, mirrored by
   `benchmarks/startup_new_interpreter_subphases.mbt`.

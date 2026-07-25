@@ -131,6 +131,156 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "run_diagnostic",
+      "category": "stable_embedding",
+      "reason": "documented one-shot structured diagnostic entry point"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::call_json_diagnostic",
+      "category": "stable_embedding",
+      "reason": "documented strict JSON call boundary with structured diagnostics"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::eval_diagnostic",
+      "category": "stable_embedding",
+      "reason": "documented source-aware evaluation boundary with structured diagnostics"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::run_microtask_checkpoint_diagnostic",
+      "category": "stable_embedding",
+      "reason": "documented explicit microtask checkpoint with structured diagnostics"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::run_timer_checkpoint_diagnostic",
+      "category": "stable_embedding",
+      "reason": "documented explicit timer checkpoint with structured diagnostics"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic",
+      "category": "stable_embedding",
+      "reason": "documented opaque diagnostic returned by stable embedding operations"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::engine_integrity",
+      "category": "stable_embedding",
+      "reason": "documented accessor for the diagnostic Engine reuse contract"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::failure_kind_code",
+      "category": "stable_embedding",
+      "reason": "documented accessor for portable failure classification"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::message",
+      "category": "stable_embedding",
+      "reason": "documented accessor for the human-readable diagnostic message"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::operation_code",
+      "category": "stable_embedding",
+      "reason": "documented accessor for the failed public operation"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::pending_jobs",
+      "category": "stable_embedding",
+      "reason": "documented accessor for pending Engine jobs at failure"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::phase_code",
+      "category": "stable_embedding",
+      "reason": "documented accessor for the failure phase"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::retained_effects",
+      "category": "stable_embedding",
+      "reason": "documented accessor for retained effects at failure"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::source_identity",
+      "category": "stable_embedding",
+      "reason": "documented accessor for attributable host source identity"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineDiagnostic::source_location",
+      "category": "stable_embedding",
+      "reason": "documented accessor for optional portable source coordinates"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "EngineIntegrity",
+      "category": "stable_embedding",
+      "reason": "documented closed Engine reuse state in structured diagnostics"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "PendingJobs",
+      "category": "stable_embedding",
+      "reason": "documented closed pending-jobs state in structured diagnostics"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "RetainedEffects",
+      "category": "stable_embedding",
+      "reason": "documented closed retained-effects state in structured diagnostics"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SourceLocation",
+      "category": "stable_embedding",
+      "reason": "documented opaque portable source range"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SourceLocation::end",
+      "category": "stable_embedding",
+      "reason": "documented accessor for an optional exclusive source-range end"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SourceLocation::start",
+      "category": "stable_embedding",
+      "reason": "documented accessor for an inclusive source-range start"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SourcePosition",
+      "category": "stable_embedding",
+      "reason": "documented opaque portable source position"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SourcePosition::column",
+      "category": "stable_embedding",
+      "reason": "documented accessor for a portable source column"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SourcePosition::line",
+      "category": "stable_embedding",
+      "reason": "documented accessor for a portable source line"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "SourcePosition::offset",
+      "category": "stable_embedding",
+      "reason": "documented accessor for a portable source offset"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "run_module",
       "category": "compatibility",
       "reason": "existing module facade returns raw runtime Value exports and is not the stable embedding model"

@@ -79,6 +79,8 @@ pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
 pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
 
+pub fn function_source_identity(Value) -> String?
+
 pub fn get_array_iterator_override(ArrayData, well_known_symbols~ : WellKnownSymbols) -> (Value?, Value?)
 
 pub fn get_array_length_override(ArrayData) -> Int64?
@@ -273,6 +275,8 @@ pub fn object_set_prototype_of(Interpreter, Value, Value) -> Value raise
 
 pub fn object_values(Interpreter, Value) -> Value raise
 
+pub fn[T] observe_source_failure(RealmState, () -> T raise) -> Result[T, SourceObservedFailure]
+
 pub fn ordinary_get_own_property(Value, Value) -> PropDescriptor? raise
 
 pub fn ordinary_get_own_value_for_descriptor(Value, Value) -> Value raise
@@ -402,6 +406,8 @@ pub fn validate_function_signature_ext(Bool, String?, Array[@ast.Param], String?
 pub fn validate_non_configurable(PropDescriptor, String, Bool, Bool, Bool, Bool?, Bool?, Bool?, Value?, Value?, () -> Value, () -> Value?) -> Unit raise
 
 pub fn with_active_realm_state_unit(RealmState, () -> Unit) -> Unit
+
+pub fn[T] with_source_identity(RealmState, String?, () -> T raise) -> T raise
 
 // Errors
 pub suberror GeneratorReturnSignal {
@@ -719,9 +725,11 @@ pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_compiled_script(Self, Array[@ast.Stmt], (ExecContext, Environment) -> Value raise) -> Value raise
 pub fn Interpreter::run_microtasks(Self) -> Unit raise
+pub fn Interpreter::run_microtasks_observed(Self) -> Result[Unit, MicrotaskRunFailure] raise
 pub fn Interpreter::run_module(Self, Array[@ast.Stmt]) -> Map[String, Value] raise
 pub fn Interpreter::run_modules(Self, Array[(String, String)]) -> Map[String, Value] raise
 pub fn Interpreter::run_timers(Self) -> Unit raise
+pub fn Interpreter::run_timers_observed(Self) -> Result[Unit, TimerRunFailure] raise
 pub fn Interpreter::set_computed_property(Self, Value, Value, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::set_property(Self, Value, String, Value, @token.Loc, strict? : Bool, receiver? : Value) -> Value raise
 pub fn Interpreter::spread_iterable(Self, Value, @token.Loc) -> Array[Value] raise
@@ -748,6 +756,13 @@ pub(all) struct Microtask {
   callback : Value
   args : Array[Value]
 }
+
+pub struct MicrotaskRunFailure {
+  cause_ : Error
+  source_identity_ : String?
+}
+pub fn MicrotaskRunFailure::cause(Self) -> Error
+pub fn MicrotaskRunFailure::source_identity(Self) -> String?
 
 pub(all) struct ModuleLoader((String) -> Map[String, Value] raise)
 
@@ -839,6 +854,10 @@ pub(all) struct RealmState {
   well_known_symbols : WellKnownSymbols
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
   active_overrides : @ref.Ref[FunctionRealmProtos?]
+  active_source_identity : @ref.Ref[String?]
+  observing_source_failure : @ref.Ref[Bool]
+  observed_source_failure : @ref.Ref[Error?]
+  observed_source_identity : @ref.Ref[String?]
   object_prototype : @ref.Ref[Value?]
   function_prototype : @ref.Ref[Value?]
   string_prototype : @ref.Ref[Value?]
@@ -932,6 +951,13 @@ pub(all) enum Signal {
   ContinueSignal(Value?, String?)
 }
 
+pub struct SourceObservedFailure {
+  cause_ : Error
+  source_identity_ : String?
+}
+pub fn SourceObservedFailure::cause(Self) -> Error
+pub fn SourceObservedFailure::source_identity(Self) -> String?
+
 pub(all) struct StdlibHooks {
   get_string_method : (String, String, RealmState, Bool) -> Value
   get_number_method : (Value, String, RealmState) -> Value
@@ -962,6 +988,21 @@ pub fn SymbolState::get_symbol_by_id(Self, Int) -> SymbolData?
 pub fn SymbolState::new() -> Self
 pub fn SymbolState::new_symbol(Self, String?) -> SymbolData
 pub fn SymbolState::well_known_symbols(Self) -> WellKnownSymbols
+
+pub struct TimerRunFailure {
+  cause_ : Error
+  phase_ : TimerRunFailurePhase
+  source_identity_ : String?
+}
+pub fn TimerRunFailure::cause(Self) -> Error
+pub fn TimerRunFailure::phase(Self) -> TimerRunFailurePhase
+pub fn TimerRunFailure::source_identity(Self) -> String?
+
+pub enum TimerRunFailurePhase {
+  TimerCallback
+  IntervalCallback
+  MicrotaskCheckpoint
+}
 
 pub(all) struct TimerTask {
   id : Int

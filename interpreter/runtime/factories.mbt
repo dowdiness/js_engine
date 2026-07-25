@@ -3,8 +3,12 @@
 // -101 stores a function object's packed home-realm intrinsic prototypes as a
 // 10-element Array[Value] (indices REALM_PROTO_IDX_*), enabling the call_value
 // fast path to do 1 HashMap lookup + 10 array reads instead of 10 HashMap lookups.
-// -102..-110 are freed. Keep this comment updated if the range changes.
+// -102 stores the optional host-supplied source identity of attributable code.
+// -103..-110 are freed. Keep this comment updated if the range changes.
 const FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID = -101
+
+///|
+const FUNCTION_SOURCE_IDENTITY_SYMBOL_ID = -102
 
 ///|
 const REALM_PROTO_IDX_FUNCTION = 0
@@ -145,13 +149,18 @@ pub fn make_func(data : FuncData) -> Value {
   func_props["name"] = String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
-  let func_symbol_props = function_realm_symbol_props(realm_protos)
+  let source_identity = source_identity_from_state(realm_state~)
+  let func_symbol_props = function_realm_symbol_props(
+    realm_protos, source_identity,
+  )
   let func_obj = Object({
     bag: {
       properties: func_props,
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: function_realm_symbol_descs(realm_protos),
+      symbol_descriptors: function_realm_symbol_descs(
+        realm_protos, source_identity,
+      ),
       internal_slots: {},
       host_slots: {},
     },
@@ -241,13 +250,18 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
   func_props["name"] = String_(func_name)
   func_descs["length"] = nf_desc
   func_descs["name"] = nf_desc
-  let func_symbol_props = function_realm_symbol_props(realm_protos)
+  let source_identity = source_identity_from_state(realm_state~)
+  let func_symbol_props = function_realm_symbol_props(
+    realm_protos, source_identity,
+  )
   let func_obj = Object({
     bag: {
       properties: func_props,
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: function_realm_symbol_descs(realm_protos),
+      symbol_descriptors: function_realm_symbol_descs(
+        realm_protos, source_identity,
+      ),
       internal_slots: {},
       host_slots: {},
     },
@@ -481,6 +495,7 @@ fn build_func_object(
 ) -> Value {
   let function_proto = get_func_proto(realm_state~)
   let realm_protos = function_realm_protos_from_state(realm_state~)
+  let source_identity = source_identity_from_state(realm_state~)
   let nf_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -495,9 +510,13 @@ fn build_func_object(
         "length": Number(length.to_double()),
         "name": String_(name),
       },
-      symbol_properties: function_realm_symbol_props(realm_protos),
+      symbol_properties: function_realm_symbol_props(
+        realm_protos, source_identity,
+      ),
       descriptors: { "length": nf_desc, "name": nf_desc },
-      symbol_descriptors: function_realm_symbol_descs(realm_protos),
+      symbol_descriptors: function_realm_symbol_descs(
+        realm_protos, source_identity,
+      ),
       internal_slots: {},
       host_slots: {},
     },
@@ -622,11 +641,27 @@ fn make_realm_protos_packed_array(protos : FunctionRealmProtos) -> Value {
 }
 
 ///|
-fn function_realm_symbol_props(protos : FunctionRealmProtos) -> Map[Int, Value] {
+fn source_identity_from_state(realm_state? : RealmState? = None) -> String? {
+  match realm_state {
+    Some(state) => state.active_source_identity.val
+    None => None
+  }
+}
+
+///|
+fn function_realm_symbol_props(
+  protos : FunctionRealmProtos,
+  source_identity : String?,
+) -> Map[Int, Value] {
   let props : Map[Int, Value] = {}
   props[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = make_realm_protos_packed_array(
     protos,
   )
+  match source_identity {
+    Some(identity) =>
+      props[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = String_(identity)
+    None => ()
+  }
   props
 }
 
@@ -645,10 +680,133 @@ fn function_realm_symbol_desc() -> PropDescriptor {
 ///|
 fn function_realm_symbol_descs(
   _ : FunctionRealmProtos,
+  source_identity : String?,
 ) -> Map[Int, PropDescriptor] {
   let descs : Map[Int, PropDescriptor] = {}
   descs[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = function_realm_symbol_desc()
+  if source_identity is Some(_) {
+    descs[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = function_realm_symbol_desc()
+  }
   descs
+}
+
+///|
+fn stamp_function_source_identity(
+  value : Value,
+  source_identity : String?,
+) -> Unit {
+  match (value, source_identity) {
+    (Object(data), Some(identity)) if data.callable is Some(_) => {
+      data.bag.symbol_properties[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = String_(
+        identity,
+      )
+      data.bag.symbol_descriptors[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = function_realm_symbol_desc()
+    }
+    _ => ()
+  }
+}
+
+///|
+pub fn function_source_identity(value : Value) -> String? {
+  match value {
+    Object(data) =>
+      match data.bag.symbol_properties.get(FUNCTION_SOURCE_IDENTITY_SYMBOL_ID) {
+        Some(String_(identity)) => Some(identity)
+        _ =>
+          match data.callable {
+            Some(BoundFunc(target, _, _)) => function_source_identity(target)
+            _ => None
+          }
+      }
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) => function_source_identity(target)
+        None => None
+      }
+    _ => None
+  }
+}
+
+///|
+/// A runtime failure paired with the deepest source identity that propagated
+/// unchanged to the observation boundary.
+pub struct SourceObservedFailure {
+  cause_ : Error
+  source_identity_ : String?
+}
+
+///|
+fn SourceObservedFailure::SourceObservedFailure(
+  cause : Error,
+  source_identity : String?,
+) -> SourceObservedFailure {
+  { cause_: cause, source_identity_: source_identity }
+}
+
+///|
+pub fn SourceObservedFailure::cause(self : SourceObservedFailure) -> Error {
+  self.cause_
+}
+
+///|
+pub fn SourceObservedFailure::source_identity(
+  self : SourceObservedFailure,
+) -> String? {
+  self.source_identity_
+}
+
+///|
+/// Observe source provenance atomically without changing the raised error.
+/// Nested call wrappers record an error only while this scope is active.
+pub fn[T] observe_source_failure(
+  realm_state : RealmState,
+  eval : () -> T raise Error,
+) -> Result[T, SourceObservedFailure] {
+  let previous_observing = realm_state.observing_source_failure.val
+  let previous_failure = realm_state.observed_source_failure.val
+  let previous_identity = realm_state.observed_source_identity.val
+  realm_state.observing_source_failure.val = true
+  realm_state.observed_source_failure.val = None
+  realm_state.observed_source_identity.val = None
+  try {
+    let result = eval()
+    realm_state.observing_source_failure.val = previous_observing
+    realm_state.observed_source_failure.val = previous_failure
+    realm_state.observed_source_identity.val = previous_identity
+    Ok(result)
+  } catch {
+    error => {
+      let source_identity = match realm_state.observed_source_failure.val {
+        Some(observed) if physical_equal(observed, error) =>
+          realm_state.observed_source_identity.val
+        _ => None
+      }
+      realm_state.observing_source_failure.val = previous_observing
+      realm_state.observed_source_failure.val = previous_failure
+      realm_state.observed_source_identity.val = previous_identity
+      Err(SourceObservedFailure(error, source_identity))
+    }
+  }
+}
+
+///|
+pub fn[T] with_source_identity(
+  realm_state : RealmState,
+  source_identity : String?,
+  eval : () -> T raise Error,
+) -> T raise Error {
+  let previous = realm_state.active_source_identity.val
+  realm_state.active_source_identity.val = source_identity
+  try {
+    let result = eval()
+    realm_state.active_source_identity.val = previous
+    result
+  } catch {
+    error => {
+      realm_state.active_source_identity.val = previous
+      raise error
+    }
+  }
 }
 
 ///|
@@ -684,10 +842,15 @@ pub fn stamp_function_realm(
   value : Value,
   realm_state? : RealmState? = None,
 ) -> Value {
-  stamp_function_realm_with_protos(
+  let stamped = stamp_function_realm_with_protos(
     value,
     function_realm_protos_from_state(realm_state~),
   )
+  stamp_function_source_identity(
+    stamped,
+    source_identity_from_state(realm_state~),
+  )
+  stamped
 }
 
 ///|
@@ -940,6 +1103,8 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
 // subset is unsafe because stamp_function_realm_with
 // accepts slots independently.
 fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
+  guard !realm_state.observing_source_failure.val else { return false }
+  guard function_source_identity(callee) is None else { return false }
   // Part 1: no active cross-realm override — one Ref read (None = no overrides active)
   guard realm_state.active_overrides.val is None else { return false }
   // Part 2: every callee stamped proto is absent or pointer-equal to the main realm's.
@@ -1001,14 +1166,30 @@ fn with_active_callee_realm_value(
   eval : () -> Value raise Error,
 ) -> Value raise Error {
   let prev = active_realm_protos(realm_state)
+  let previous_source_identity = realm_state.active_source_identity.val
   apply_active_realm_protos(realm_state, callee_realm_protos(callee))
+  realm_state.active_source_identity.val = function_source_identity(callee)
   try {
     let result = eval()
     apply_active_realm_protos(realm_state, prev)
+    realm_state.active_source_identity.val = previous_source_identity
     result
   } catch {
     e => {
+      if realm_state.observing_source_failure.val {
+        let should_record = match realm_state.observed_source_failure.val {
+          Some(observed) => !physical_equal(observed, e)
+          None => true
+        }
+        if should_record {
+          realm_state.observed_source_failure.val = Some(e)
+          realm_state.observed_source_identity.val = function_source_identity(
+            callee,
+          )
+        }
+      }
       apply_active_realm_protos(realm_state, prev)
+      realm_state.active_source_identity.val = previous_source_identity
       raise e
     }
   }

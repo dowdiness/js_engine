@@ -4,10 +4,9 @@ Date: 2026-07-24
 
 ## Status
 
-Accepted as the compatibility and contract design for a future structured
-diagnostic API. No structured diagnostic API described here exists yet. This
-record does not change the runtime, the current `EngineError` surface, or the
-generated interface.
+Accepted and implemented by the root facade's additive detailed operations.
+The existing `EngineError` surface remains unchanged. Source locations remain
+absent until trustworthy parser/runtime location propagation is implemented.
 
 ## Context
 
@@ -175,7 +174,8 @@ Every detailed failure provides these fields:
 Initial operation codes are `eval`, `call-json`, `microtask-checkpoint`,
 `timer-checkpoint`, and `run`. Initial phase codes are `parse`, `lookup`,
 `argument-conversion`, `execute`, `result-conversion`, `microtask-dispatch`,
-`timer-callback`, `timer-microtask-checkpoint`, and `interval-callback`.
+`timer-dispatch`, `timer-callback`, `timer-microtask-checkpoint`, and
+`interval-callback`.
 
 The operation records the host-visible entry point. The phase records the
 failing work within it. For example, a microtask failure reached from
@@ -183,6 +183,12 @@ failing work within it. For example, a microtask failure reached from
 `timer-microtask-checkpoint`; the corresponding one-shot failure reports
 operation `run` and the same phase. Implementations must not collapse these two
 axes into an error-kind-only mapping.
+
+`timer-dispatch` identifies an unexpected failure while selecting or advancing
+the timer queue policy, before the failure can be attributed to a timer,
+interval, or timer-following microtask callback. It is distinct from
+`timer-callback` and `interval-callback`, and therefore reports no callback
+source identity.
 
 An implementation may carry additional target-dependent detail separately,
 such as a rendered stack trace. That detail must not change the portable kind,
@@ -225,6 +231,14 @@ source-aware detailed evaluation entry point. The runtime does not interpret it
 as a path or URL. The identity must remain associated with code originating
 from that evaluation so a later `call_json` or checkpoint diagnostic can return
 it when the runtime has retained a trustworthy association.
+
+For lookup, execution, and callback failures, the implementation reports the
+deepest attributable function whose unchanged error reaches the public
+operation boundary. An error caught by JavaScript does not determine a later,
+different failure's identity. Code loaded through identity-free evaluation
+also does not inherit an identified caller's source. Result-conversion failures
+omit source identity because the runtime does not yet retain provenance for the
+returned value itself.
 
 The existing `Engine::eval(source)` remains unchanged and supplies no identity.
 The new entry point does not require identity: omitting it is equivalent to the
@@ -271,9 +285,10 @@ current `Engine` boundary does not retain a trustworthy structured location.
 | `MissingGlobal` | `missing-global` | `call-json` | `lookup` | Omitted | `reusable` | `none` | `unknown` until characterization | Root lookup path; missing/non-callable test |
 | `NotCallable` | `not-callable` | `call-json` | `lookup` | Omitted | `reusable` | `may-remain` because an accessor may have run | `unknown` until characterization | Global accessor and missing/non-callable tests |
 | Argument `JsonConversionError` | `json-conversion-error` | `call-json` | `argument-conversion` | Omitted | `reusable` | `may-remain` because lookup precedes conversion | Dynamic | Direct JSON bridge; argument-conversion reuse test |
-| Result `JsonConversionError` | `json-conversion-error` | `call-json` | `result-conversion` | Origin identity only when retained faithfully; otherwise omitted | `reusable` | `may-remain` | Dynamic | Direct JSON bridge; result-conversion reuse test |
+| Result `JsonConversionError` | `json-conversion-error` | `call-json` | `result-conversion` | Omitted until returned-value provenance is retained faithfully | `reusable` | `may-remain` | Dynamic | Direct JSON bridge; result-conversion reuse test |
 | `InternalError` | `internal-error` | The public entry operation | The phase that observed it | Only when attribution is trustworthy | `discard` | `unknown` | `unknown` | Runtime classifier; recovery is explicitly unsupported |
 | Microtask checkpoint failure | Usually `javascript-exception` | `microtask-checkpoint` | `microtask-dispatch` | Callback origin only when retained faithfully | `discard` | `may-remain` | Dynamic | Microtask checkpoint characterization |
+| Timer queue dispatch failure | `internal-error` | `timer-checkpoint` | `timer-dispatch` | Omitted because no callback origin is attributable | `discard` | `unknown` | `unknown` | Root diagnostic adapter classification test |
 | Timer callback failure | Usually `javascript-exception` | `timer-checkpoint` | `timer-callback` | Callback origin only when retained faithfully | `discard` | `may-remain` | Dynamic | Timer callback characterization |
 | Microtask failure after a timer | Usually `javascript-exception` | `timer-checkpoint` | `timer-microtask-checkpoint` | Callback origin only when retained faithfully | `discard` | `may-remain` | Dynamic | Timer-following-microtask characterization |
 | Interval callback failure | Usually `javascript-exception` | `timer-checkpoint` | `interval-callback` | Callback origin only when retained faithfully | `discard` | `may-remain` | Dynamic | Interval characterization |
@@ -312,9 +327,9 @@ not replace the outer context with the attempted operation. Each feature still
 needs cross-target classification and state tests before replacing `unknown`
 with a stronger value.
 
-## Implementation sequence
+## Implemented delivery
 
-The smallest follow-up implementation should:
+The first implementation:
 
 1. add the opaque diagnostic and source-location types, the three frozen state
    enums, accessors, stable codes, and the parallel detailed operations;
@@ -327,9 +342,11 @@ The smallest follow-up implementation should:
 6. add equivalent classification tests on native, JavaScript, Wasm, and
    Wasm-GC, including an external-consumer use of the new surface.
 
-Parser/runtime location propagation, missing/not-callable queue
-characterization, and one-shot phase characterization can remain separate
-follow-ups. They must not be hidden inside an API-only implementation.
+Parser/runtime location propagation, one-shot retained-effects
+characterization, and missing/not-callable queue characterization remain
+separate follow-ups. In particular, the first implementation's one-shot
+retained-effects values must not be narrowed without phase-specific evidence.
+These follow-ups were not hidden inside this delivery.
 
 ## Consequences
 
@@ -345,11 +362,9 @@ follow-ups. They must not be hidden inside an API-only implementation.
 
 ## Non-goals
 
-This decision does not implement or change:
+This implementation does not change:
 
-- structured diagnostic types or any public API;
 - `EngineError` variants, payloads, formatting, or behavior;
-- a source-aware evaluation entry point;
 - parser or runtime error representations;
 - execution budgets, interruption, or recursion limits;
 - host callbacks or same-Engine re-entry;
