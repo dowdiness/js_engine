@@ -12,7 +12,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       let string_proto = interp.global.get("[[StringPrototype]]") catch {
         _ => Null
       }
-      let props : Map[String, Value] = {}
+      let props : Map[String, Value] = Map([])
       props["length"] = Value::Number(s.length().to_double())
       let chars = s.to_array()
       for i = 0; i < chars.length(); i = i + 1 {
@@ -20,7 +20,7 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
         buf.write_char(chars[i])
         props[i.to_string()] = Value::String_(buf.to_string())
       }
-      let descs : Map[String, PropDescriptor] = {}
+      let descs : Map[String, PropDescriptor] = Map([])
       descs["length"] = {
         writable: false,
         enumerable: false,
@@ -42,13 +42,13 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       Value::Object({
         bag: {
           properties: props,
-          symbol_properties: {},
+          symbol_properties: Map([]),
           descriptors: descs,
-          symbol_descriptors: {},
+          symbol_descriptors: Map([]),
           internal_slots: Map::from_array([
             (@runtime.StringData, Value::String_(s)),
           ]),
-          host_slots: {},
+          host_slots: Map([]),
         },
         prototype: string_proto,
         callable: None,
@@ -63,14 +63,14 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       }
       Value::Object({
         bag: {
-          properties: {},
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
+          properties: Map([]),
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
           internal_slots: Map::from_array([
             (@runtime.NumberData, Value::Number(n)),
           ]),
-          host_slots: {},
+          host_slots: Map([]),
         },
         prototype: number_proto,
         callable: None,
@@ -85,14 +85,14 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       }
       Value::Object({
         bag: {
-          properties: {},
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
+          properties: Map([]),
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
           internal_slots: Map::from_array([
             (@runtime.BooleanData, Value::Bool(b)),
           ]),
-          host_slots: {},
+          host_slots: Map([]),
         },
         prototype: boolean_proto,
         callable: None,
@@ -107,12 +107,12 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       }
       Value::Object({
         bag: {
-          properties: {},
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
+          properties: Map([]),
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
           internal_slots: Map::from_array([(@runtime.SymbolData, val)]),
-          host_slots: {},
+          host_slots: Map([]),
         },
         prototype: symbol_proto,
         callable: None,
@@ -141,11 +141,11 @@ pub fn make_data_desc_obj(
         "enumerable": Value::Bool(enumerable),
         "configurable": Value::Bool(configurable),
       },
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,
@@ -172,11 +172,11 @@ pub fn make_accessor_desc_obj(
         "enumerable": Value::Bool(enumerable),
         "configurable": Value::Bool(configurable),
       },
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state~),
     callable: None,

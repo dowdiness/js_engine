@@ -233,11 +233,11 @@ fn setup_builtins_with_realm_state_active(
         "length": Value::Number(1.0),
         "name": Value::String_("eval"),
       },
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: { "length": nf_desc, "name": nf_desc },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -530,7 +530,7 @@ fn setup_builtins_with_realm_state_active(
   let string_proto : Value = Value::Object({
     bag: {
       properties: { "length": Value::Number(0.0) },
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "length": {
           writable: false,
@@ -541,11 +541,11 @@ fn setup_builtins_with_realm_state_active(
           is_accessor: false,
         },
       },
-      symbol_descriptors: {},
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([
         (@runtime.StringData, Value::String_("")),
       ]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -683,7 +683,7 @@ fn setup_builtins_with_realm_state_active(
           }
         }),
       },
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "name": nf_desc,
         "length": nf_desc,
@@ -699,9 +699,9 @@ fn setup_builtins_with_realm_state_active(
         "fromCodePoint": @runtime.builtin_method_desc(),
         "raw": @runtime.builtin_method_desc(),
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -728,7 +728,7 @@ fn setup_builtins_with_realm_state_active(
         }
         if context.is_constructing() {
           // new String(value) → boxed String object
-          let props : Map[String, Value] = {}
+          let props : Map[String, Value] = Map([])
           props["length"] = Value::Number(str.length().to_double())
           // Add indexed character properties
           for i = 0; i < str.length(); i = i + 1 {
@@ -736,7 +736,7 @@ fn setup_builtins_with_realm_state_active(
               str.view()[i:i + 1].to_owned(),
             )
           }
-          let descs : Map[String, PropDescriptor] = {}
+          let descs : Map[String, PropDescriptor] = Map([])
           descs["length"] = {
             writable: false,
             enumerable: false,
@@ -758,13 +758,13 @@ fn setup_builtins_with_realm_state_active(
           Value::Object({
             bag: {
               properties: props,
-              symbol_properties: {},
+              symbol_properties: Map([]),
               descriptors: descs,
-              symbol_descriptors: {},
+              symbol_descriptors: Map([]),
               internal_slots: Map::from_array([
                 (@runtime.StringData, Value::String_(str)),
               ]),
-              host_slots: {},
+              host_slots: Map([]),
             },
             prototype: string_proto,
             callable: None,
@@ -802,7 +802,7 @@ fn setup_builtins_with_realm_state_active(
   mark_builtin_setup_phase(profile, "number")
 
   // Boolean constructor with prototype
-  let boolean_proto_props : Map[String, Value] = {}
+  let boolean_proto_props : Map[String, Value] = Map([])
   boolean_proto_props["toString"] = @runtime.make_method_func(
     name="toString",
     length=0,
@@ -858,19 +858,19 @@ fn setup_builtins_with_realm_state_active(
     },
   )
   let method_desc = @runtime.builtin_method_desc()
-  let boolean_proto_descs : Map[String, PropDescriptor] = {}
+  let boolean_proto_descs : Map[String, PropDescriptor] = Map([])
   boolean_proto_descs["toString"] = method_desc
   boolean_proto_descs["valueOf"] = method_desc
   let boolean_proto : Value = Value::Object({
     bag: {
       properties: boolean_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: boolean_proto_descs,
-      symbol_descriptors: {},
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([
         (@runtime.BooleanData, Value::Bool(false)),
       ]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -887,7 +887,7 @@ fn setup_builtins_with_realm_state_active(
         "name": Value::String_("Boolean"),
         "length": Value::Number(1.0),
       },
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "name": nf_desc,
         "length": nf_desc,
@@ -900,9 +900,9 @@ fn setup_builtins_with_realm_state_active(
           is_accessor: false,
         },
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -913,14 +913,14 @@ fn setup_builtins_with_realm_state_active(
           // new Boolean(value) → boxed Boolean object
           Value::Object({
             bag: {
-              properties: {},
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
+              properties: Map([]),
+              symbol_properties: Map([]),
+              descriptors: Map([]),
+              symbol_descriptors: Map([]),
               internal_slots: Map::from_array([
                 (@runtime.BooleanData, Value::Bool(b)),
               ]),
-              host_slots: {},
+              host_slots: Map([]),
             },
             prototype: boolean_proto,
             callable: None,
@@ -1129,7 +1129,7 @@ fn setup_builtins_with_realm_state_active(
   match env.bindings.get("[[ObjectPrototype]]") {
     Some(obj_proto_binding) => {
       let obj_proto = obj_proto_binding.value
-      let regexp_proto_props : Map[String, Value] = {}
+      let regexp_proto_props : Map[String, Value] = Map([])
       regexp_proto_props["constructor"] = match env.bindings.get("RegExp") {
         Some(b) => b.value
         None => Undefined
@@ -1182,7 +1182,7 @@ fn setup_builtins_with_realm_state_active(
       regexp_proto_props["compile"] = make_regexp_compile_method(realm_state)
       regexp_proto_props["toString"] = make_regexp_to_string_method(realm_state)
       // Add flag/source getter accessors to RegExp.prototype per spec
-      let regexp_proto_descs : Map[String, PropDescriptor] = {}
+      let regexp_proto_descs : Map[String, PropDescriptor] = Map([])
       install_regexp_prototype_accessors(
         regexp_proto_props, regexp_proto_descs, realm_state,
       )
@@ -1193,8 +1193,8 @@ fn setup_builtins_with_realm_state_active(
       regexp_proto_descs["toString"] = re_method_desc2
       regexp_proto_descs["compile"] = re_method_desc2
       // Install well-known symbol methods on RegExp.prototype (not on instances)
-      let regexp_sym_props : Map[Int, Value] = {}
-      let regexp_sym_descs : Map[Int, PropDescriptor] = {}
+      let regexp_sym_props : Map[Int, Value] = Map([])
+      let regexp_sym_descs : Map[Int, PropDescriptor] = Map([])
       let sym_method_desc = @runtime.builtin_method_desc()
       match regexp_proto_props.get("constructor") {
         Some(ctor) =>
@@ -1277,8 +1277,8 @@ fn setup_builtins_with_realm_state_active(
           symbol_properties: regexp_sym_props,
           descriptors: regexp_proto_descs,
           symbol_descriptors: regexp_sym_descs,
-          internal_slots: {},
-          host_slots: {},
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: obj_proto,
         callable: None,
@@ -1862,7 +1862,7 @@ fn js_unescape(s : String) -> String {
 /// so all nested realms are also fully wired.
 fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
   ri.with_active_value(fn() {
-    let realm_props : Map[String, Value] = {}
+    let realm_props : Map[String, Value] = Map([])
     realm_props["global"] = ri.global_this
     realm_props["gc"] = @runtime.make_native_func(
       name="gc",
@@ -1916,11 +1916,11 @@ fn make_realm_dollar262(ri : Interpreter) -> Value raise Error {
     Value::Object({
       bag: {
         properties: realm_props,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_properties: Map([]),
+        descriptors: Map([]),
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: Null,
       callable: None,
@@ -1963,7 +1963,7 @@ pub fn setup_harness_builtins(
 
   // $262.agent - stub object for agent/worker testing (Atomics/SharedArrayBuffer).
   // All methods throw because the engine has no multi-agent support.
-  let agent_props : Map[String, Value] = {}
+  let agent_props : Map[String, Value] = Map([])
   agent_props["start"] = @runtime.make_native_func(
     name="start",
     realm_state=Some(realm_state),
@@ -2004,11 +2004,11 @@ pub fn setup_harness_builtins(
   let agent : Value = Value::Object({
     bag: {
       properties: agent_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -2018,7 +2018,7 @@ pub fn setup_harness_builtins(
   })
 
   // $262 - the test262 host object providing host-level hooks.
-  let dollar262_props : Map[String, Value] = {}
+  let dollar262_props : Map[String, Value] = Map([])
   dollar262_props["global"] = global_this
   dollar262_props["agent"] = agent
   dollar262_props["gc"] = @runtime.make_native_func(
@@ -2082,11 +2082,11 @@ pub fn setup_harness_builtins(
   let dollar262 : Value = Value::Object({
     bag: {
       properties: dollar262_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,

@@ -20,7 +20,7 @@ fn Interpreter::make_async_function(
     Some(n) => n
     None => ""
   }
-  let internal_slots : Map[InternalSlotKey, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = Map([])
   match source_text {
     Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
@@ -61,11 +61,11 @@ fn Interpreter::make_async_function(
           "name": String_(func_name),
           "length": Number(params.length().to_double()),
         },
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: { "name": nf_desc, "length": nf_desc },
-        symbol_descriptors: {},
+        symbol_descriptors: Map([]),
         internal_slots,
-        host_slots: {},
+        host_slots: Map([]),
       },
       prototype: async_proto,
       callable: Some(
@@ -127,7 +127,7 @@ fn Interpreter::make_async_function_ext(
     Some(n) => n
     None => ""
   }
-  let internal_slots : Map[InternalSlotKey, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = Map([])
   match source_text {
     Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
@@ -169,11 +169,11 @@ fn Interpreter::make_async_function_ext(
           "name": String_(func_name),
           "length": Number(func_length.to_double()),
         },
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: { "name": nf_desc, "length": nf_desc },
-        symbol_descriptors: {},
+        symbol_descriptors: Map([]),
         internal_slots,
-        host_slots: {},
+        host_slots: Map([]),
       },
       prototype: async_proto,
       callable: Some(
@@ -540,11 +540,11 @@ fn make_async_gen_function_inner(
     Some(pext) => expected_argument_count_ext(pext)
     None => params.length()
   }
-  let fn_props : Map[String, Value] = {}
+  let fn_props : Map[String, Value] = Map([])
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
   fn_props["length"] = Number(func_length.to_double())
-  let internal_slots : Map[InternalSlotKey, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = Map([])
   match source_text {
     Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
@@ -579,7 +579,7 @@ fn make_async_gen_function_inner(
     Object({
       bag: {
         properties: fn_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: {
           "name": nf_desc,
           "length": nf_desc,
@@ -592,9 +592,9 @@ fn make_async_gen_function_inner(
             is_accessor: false,
           },
         },
-        symbol_descriptors: {},
+        symbol_descriptors: Map([]),
         internal_slots,
-        host_slots: {},
+        host_slots: Map([]),
       },
       prototype: gen_func_proto,
       callable: Some(
@@ -962,8 +962,8 @@ pub fn setup_async_function_constructor(
     Some(binding) => binding.value
     None => Null
   }
-  let af_sym_props : Map[Int, Value] = {}
-  let af_sym_descs : Map[Int, PropDescriptor] = {}
+  let af_sym_props : Map[Int, Value] = Map([])
+  let af_sym_descs : Map[Int, PropDescriptor] = Map([])
   let tostringtag_sym = well_known_symbols.to_string_tag
   af_sym_props[tostringtag_sym.id] = String_("AsyncFunction")
   af_sym_descs[tostringtag_sym.id] = {
@@ -976,12 +976,12 @@ pub fn setup_async_function_constructor(
   }
   let async_func_proto : Value = Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: af_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: af_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: func_proto,
     callable: None,
@@ -1153,18 +1153,18 @@ pub fn setup_async_generator_function_constructor(
   // Build %AsyncGeneratorFunction%.prototype first so it can be used as the
   // constructor value in %AsyncGeneratorPrototype%'s property map, ensuring
   // insertion order follows spec §27.4.3: constructor, prototype (string keys).
-  let agf_sym_props : Map[Int, Value] = {}
-  let agf_sym_descs : Map[Int, PropDescriptor] = {}
+  let agf_sym_props : Map[Int, Value] = Map([])
+  let agf_sym_descs : Map[Int, PropDescriptor] = Map([])
   agf_sym_props[to_string_tag_sym.id] = String_("AsyncGeneratorFunction")
   agf_sym_descs[to_string_tag_sym.id] = non_enum_non_writable
   let agf_proto : Value = Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: agf_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: agf_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: func_proto,
     callable: None,
@@ -1176,8 +1176,8 @@ pub fn setup_async_generator_function_constructor(
   // Build %AsyncIteratorPrototype% (§27.1.2) — owns Symbol.asyncIterator only.
   // %AsyncGeneratorPrototype% inherits from it; own-key checks on the latter
   // must not see Symbol.asyncIterator.
-  let aip_sym_props : Map[Int, Value] = {}
-  let aip_sym_descs : Map[Int, PropDescriptor] = {}
+  let aip_sym_props : Map[Int, Value] = Map([])
+  let aip_sym_descs : Map[Int, PropDescriptor] = Map([])
   aip_sym_props[async_iter_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
@@ -1187,12 +1187,12 @@ pub fn setup_async_generator_function_constructor(
   aip_sym_descs[async_iter_sym.id] = non_enum
   let async_iter_proto : Value = Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: aip_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: aip_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: object_prototype,
     callable: None,
@@ -1205,10 +1205,10 @@ pub fn setup_async_generator_function_constructor(
   // [[Prototype]] = %AsyncIteratorPrototype% (not Object.prototype).
   // Own string keys follow spec §27.6: constructor, next, return, throw.
   // Own symbol keys: Symbol.toStringTag only — Symbol.asyncIterator is inherited.
-  let agp_props : Map[String, Value] = {}
-  let agp_sym_props : Map[Int, Value] = {}
-  let agp_descs : Map[String, PropDescriptor] = {}
-  let agp_sym_descs : Map[Int, PropDescriptor] = {}
+  let agp_props : Map[String, Value] = Map([])
+  let agp_sym_props : Map[Int, Value] = Map([])
+  let agp_descs : Map[String, PropDescriptor] = Map([])
+  let agp_sym_descs : Map[Int, PropDescriptor] = Map([])
 
   agp_props["constructor"] = agf_proto
   agp_descs["constructor"] = non_enum_non_writable
@@ -1259,8 +1259,8 @@ pub fn setup_async_generator_function_constructor(
       symbol_properties: agp_sym_props,
       descriptors: agp_descs,
       symbol_descriptors: agp_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: async_iter_proto,
     callable: None,

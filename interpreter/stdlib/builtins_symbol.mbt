@@ -48,8 +48,8 @@ fn setup_symbol_builtins(
   let async_iterator_sym = well_known.async_iterator
 
   // Symbol prototype
-  let symbol_proto_props : Map[String, Value] = {}
-  let symbol_proto_descs : Map[String, PropDescriptor] = {}
+  let symbol_proto_props : Map[String, Value] = Map([])
+  let symbol_proto_descs : Map[String, PropDescriptor] = Map([])
   symbol_proto_props["toString"] = @runtime.make_method_func(
     name="toString",
     length=0,
@@ -147,8 +147,8 @@ fn setup_symbol_builtins(
   }
 
   // Symbol.prototype[@@toPrimitive](hint)
-  let symbol_proto_sym_props : Map[Int, Value] = {}
-  let symbol_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let symbol_proto_sym_props : Map[Int, Value] = Map([])
+  let symbol_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   let toprimitive_method = @runtime.make_method_func(
     name="[Symbol.toPrimitive]",
     length=1,
@@ -186,8 +186,8 @@ fn setup_symbol_builtins(
       symbol_properties: symbol_proto_sym_props,
       descriptors: symbol_proto_descs,
       symbol_descriptors: symbol_proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -197,8 +197,8 @@ fn setup_symbol_builtins(
   })
 
   // Symbol constructor properties
-  let symbol_props : Map[String, Value] = {}
-  let symbol_descs : Map[String, PropDescriptor] = {}
+  let symbol_props : Map[String, Value] = Map([])
+  let symbol_descs : Map[String, PropDescriptor] = Map([])
   symbol_props["prototype"] = symbol_proto
   symbol_descs["prototype"] = {
     writable: false,
@@ -286,11 +286,11 @@ fn setup_symbol_builtins(
   let symbol_ctor : Value = Value::Object({
     bag: {
       properties: symbol_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: symbol_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(

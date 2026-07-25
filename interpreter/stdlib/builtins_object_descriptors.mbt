@@ -160,8 +160,8 @@ fn make_get_own_property_descriptors_func() -> Value {
       Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => raw
       _ => to_object(raw, interp)
     }
-    let descriptors_props : Map[String, Value] = {}
-    let symbol_descriptors_props : Map[Int, Value] = {}
+    let descriptors_props : Map[String, Value] = Map([])
+    let symbol_descriptors_props : Map[Int, Value] = Map([])
     let keys = interp.own_property_keys(obj)
     append_own_property_descriptors_from_keys(
       interp, obj, keys, descriptors_props, symbol_descriptors_props,
@@ -170,10 +170,10 @@ fn make_get_own_property_descriptors_func() -> Value {
       bag: {
         properties: descriptors_props,
         symbol_properties: symbol_descriptors_props,
-        descriptors: {},
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        descriptors: Map([]),
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: @runtime.get_obj_proto(realm_state=Some(interp.realm_state)),
       callable: None,

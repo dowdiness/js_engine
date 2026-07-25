@@ -176,12 +176,12 @@ pub(all) struct PropertyBag {
 /// Construct an empty PropertyBag.
 pub fn PropertyBag::PropertyBag() -> PropertyBag {
   {
-    properties: {},
-    symbol_properties: {},
-    descriptors: {},
-    symbol_descriptors: {},
-    internal_slots: {},
-    host_slots: {},
+    properties: Map([]),
+    symbol_properties: Map([]),
+    descriptors: Map([]),
+    symbol_descriptors: Map([]),
+    internal_slots: Map([]),
+    host_slots: Map([]),
   }
 }
 
@@ -194,7 +194,7 @@ pub(all) struct ArrayBufferState {
 
 ///|
 pub fn ArrayBufferState::ArrayBufferState() -> ArrayBufferState {
-  { id_counter: { val: 0 }, store: {}, detached: {} }
+  { id_counter: { val: 0 }, store: Map([]), detached: Map([]) }
 }
 
 ///|

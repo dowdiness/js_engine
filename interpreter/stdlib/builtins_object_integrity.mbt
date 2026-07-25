@@ -80,7 +80,7 @@ fn make_from_entries_func(realm_state : @runtime.RealmState) -> Value {
     fn(args) raise {
       // Object.fromEntries() - create object from iterable of key-value pairs
       let iterable = if args.length() > 0 { args[0] } else { Undefined }
-      let properties : Map[String, Value] = {}
+      let properties : Map[String, Value] = Map([])
       match iterable {
         Value::Array(data) =>
           for entry in data.elements {
@@ -127,11 +127,11 @@ fn make_from_entries_func(realm_state : @runtime.RealmState) -> Value {
       Value::Object({
         bag: {
           properties,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-          host_slots: {},
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: object_proto,
         callable: None,
@@ -160,7 +160,7 @@ fn make_group_by_func() -> Value {
     let loc = @token.Loc::default()
     let o = to_object(items, interp)
     let len = @runtime.to_array_like_length_interp(o, interp)
-    let group_arrays : Map[String, Array[Value]] = {}
+    let group_arrays : Map[String, Array[Value]] = Map([])
     for k = 0L; k < len; k = k + 1L {
       let kvalue = @runtime.get_array_like_element_interp(interp, o, k)
       let key = interp.call_value(
@@ -179,18 +179,18 @@ fn make_group_by_func() -> Value {
       }
     }
     // Build result object with null prototype
-    let result_props : Map[String, Value] = {}
+    let result_props : Map[String, Value] = Map([])
     group_arrays.each(fn(key, arr) {
       result_props[key] = @runtime.make_array(arr)
     })
     Value::Object({
       bag: {
         properties: result_props,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_properties: Map([]),
+        descriptors: Map([]),
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: Null,
       callable: None,

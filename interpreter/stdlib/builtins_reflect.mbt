@@ -26,7 +26,7 @@ fn setup_reflect_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
 ) -> Unit {
-  let reflect_props : Map[String, Value] = {}
+  let reflect_props : Map[String, Value] = Map([])
 
   // Reflect.apply(target, thisArg, argumentsList)
   reflect_props["apply"] = @runtime.make_interp_method_func(
@@ -348,10 +348,10 @@ fn setup_reflect_builtins(
 
   // Create the Reflect object
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let reflect_sym_props : Map[Int, Value] = {}
+  let reflect_sym_props : Map[Int, Value] = Map([])
   reflect_sym_props[tostringtag_sym.id] = Value::String_("Reflect")
   let method_desc = @runtime.builtin_method_desc()
-  let reflect_descs : Map[String, PropDescriptor] = {}
+  let reflect_descs : Map[String, PropDescriptor] = Map([])
   reflect_descs["apply"] = method_desc
   reflect_descs["construct"] = method_desc
   reflect_descs["defineProperty"] = method_desc
@@ -365,7 +365,7 @@ fn setup_reflect_builtins(
   reflect_descs["preventExtensions"] = method_desc
   reflect_descs["set"] = method_desc
   reflect_descs["setPrototypeOf"] = method_desc
-  let reflect_sym_descs : Map[Int, PropDescriptor] = {}
+  let reflect_sym_descs : Map[Int, PropDescriptor] = Map([])
   reflect_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -380,8 +380,8 @@ fn setup_reflect_builtins(
       symbol_properties: reflect_sym_props,
       descriptors: reflect_descs,
       symbol_descriptors: reflect_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,

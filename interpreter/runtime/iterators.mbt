@@ -74,11 +74,11 @@ fn make_iterator_result_object(value : Value, done : Bool) -> Value {
   Object({
     bag: {
       properties: { "value": value, "done": Bool(done) },
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -97,11 +97,11 @@ fn make_iterator_result_object_with_proto(
   Object({
     bag: {
       properties: { "value": value, "done": Bool(done) },
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: proto,
     callable: None,
@@ -208,14 +208,14 @@ fn make_iterator_proto_value(
   realm_state : RealmState,
 ) -> Value {
   let iterator_sym = well_known_symbols.iterator
-  let proto_sym_props : Map[Int, Value] = {}
+  let proto_sym_props : Map[Int, Value] = Map([])
   proto_sym_props[iterator_sym.id] = make_method_func(
     name="[Symbol.iterator]",
     length=0,
     realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
-  let proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   proto_sym_descs[iterator_sym.id] = {
     writable: true,
     enumerable: false,
@@ -226,12 +226,12 @@ fn make_iterator_proto_value(
   }
   Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: proto_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: realm_state.get_obj_proto(),
     callable: None,
@@ -262,10 +262,10 @@ fn make_array_iterator_proto_value(
 ) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let proto_sym_props : Map[Int, Value] = {}
+  let proto_sym_props : Map[Int, Value] = Map([])
   proto_sym_props[tostringtag_sym.id] = String_("Array Iterator")
-  let proto_props : Map[String, Value] = {}
-  let proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let proto_props : Map[String, Value] = Map([])
+  let proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -294,7 +294,7 @@ fn make_array_iterator_proto_value(
     realm_state=Some(realm_state),
     fn(interp, this_val, _args) raise { array_iterator_next(interp, this_val) },
   )
-  let proto_descs : Map[String, PropDescriptor] = {}
+  let proto_descs : Map[String, PropDescriptor] = Map([])
   proto_descs["next"] = {
     writable: true,
     enumerable: false,
@@ -309,8 +309,8 @@ fn make_array_iterator_proto_value(
       symbol_properties: proto_sym_props,
       descriptors: proto_descs,
       symbol_descriptors: proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: iterator_proto,
     callable: None,
@@ -344,13 +344,13 @@ fn make_array_iterator_value_with_proto(
   target : Value,
   kind : ArrayIteratorKind,
 ) -> Value {
-  let iter_sym_props : Map[Int, Value] = {}
+  let iter_sym_props : Map[Int, Value] = Map([])
   iter_sym_props[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Number(0.0)
   iter_sym_props[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = target
   iter_sym_props[ARRAY_ITERATOR_KIND_SYMBOL_ID] = array_iterator_kind_to_slot_value(
     kind,
   )
-  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let iter_sym_descs : Map[Int, PropDescriptor] = Map([])
   let slot_desc = array_iterator_internal_slot_descriptor()
   iter_sym_descs[ARRAY_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
   iter_sym_descs[ARRAY_ITERATOR_TARGET_SYMBOL_ID] = slot_desc
@@ -358,12 +358,12 @@ fn make_array_iterator_value_with_proto(
 
   Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: iter_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: iter_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: arr_iter_proto,
     callable: None,
@@ -500,10 +500,10 @@ fn make_string_iterator_proto_value(
 ) -> Value {
   let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let proto_sym_props : Map[Int, Value] = {}
+  let proto_sym_props : Map[Int, Value] = Map([])
   proto_sym_props[tostringtag_sym.id] = String_("String Iterator")
-  let proto_props : Map[String, Value] = {}
-  let proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let proto_props : Map[String, Value] = Map([])
+  let proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -524,7 +524,7 @@ fn make_string_iterator_proto_value(
     realm_state=Some(realm_state),
     fn(this_val, _args) raise { string_iterator_next(this_val) },
   )
-  let str_proto_descs : Map[String, PropDescriptor] = {}
+  let str_proto_descs : Map[String, PropDescriptor] = Map([])
   str_proto_descs["next"] = {
     writable: true,
     enumerable: false,
@@ -539,8 +539,8 @@ fn make_string_iterator_proto_value(
       symbol_properties: proto_sym_props,
       descriptors: str_proto_descs,
       symbol_descriptors: proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: iterator_proto,
     callable: None,
@@ -576,20 +576,20 @@ fn make_string_iterator_value_with_proto(
   _realm_state : RealmState,
 ) -> Value {
   let slot_desc = array_iterator_internal_slot_descriptor()
-  let iter_sym_props : Map[Int, Value] = {}
+  let iter_sym_props : Map[Int, Value] = Map([])
   iter_sym_props[STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID] = Value::Number(0.0)
   iter_sym_props[STRING_ITERATOR_STRING_SYMBOL_ID] = Value::String_(s)
-  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let iter_sym_descs : Map[Int, PropDescriptor] = Map([])
   iter_sym_descs[STRING_ITERATOR_NEXT_INDEX_SYMBOL_ID] = slot_desc
   iter_sym_descs[STRING_ITERATOR_STRING_SYMBOL_ID] = slot_desc
   Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: iter_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: iter_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: str_iter_proto,
     callable: None,
@@ -617,14 +617,14 @@ fn make_async_iterator_proto_value(
   realm_state : RealmState,
 ) -> Value {
   let async_iterator_sym = well_known_symbols.async_iterator
-  let async_iter_sym_props : Map[Int, Value] = {}
+  let async_iter_sym_props : Map[Int, Value] = Map([])
   async_iter_sym_props[async_iterator_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
     realm_state=Some(realm_state),
     fn(this_val, _args) { this_val },
   )
-  let async_iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let async_iter_sym_descs : Map[Int, PropDescriptor] = Map([])
   async_iter_sym_descs[async_iterator_sym.id] = {
     writable: true,
     enumerable: false,
@@ -635,12 +635,12 @@ fn make_async_iterator_proto_value(
   }
   Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: async_iter_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: async_iter_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: realm_state.get_obj_proto(),
     callable: None,
@@ -925,8 +925,8 @@ fn make_async_from_sync_iterator_proto_value(
 ) -> Value {
   let tostringtag_sym = well_known_symbols.to_string_tag
   let async_iterator_sym = well_known_symbols.async_iterator
-  let proto_props : Map[String, Value] = {}
-  let proto_descs : Map[String, PropDescriptor] = {}
+  let proto_props : Map[String, Value] = Map([])
+  let proto_descs : Map[String, PropDescriptor] = Map([])
   let method_desc : PropDescriptor = {
     writable: true,
     enumerable: false,
@@ -962,8 +962,8 @@ fn make_async_from_sync_iterator_proto_value(
     },
   )
   proto_descs["throw"] = { ..method_desc }
-  let sym_props : Map[Int, Value] = {}
-  let sym_descs : Map[Int, PropDescriptor] = {}
+  let sym_props : Map[Int, Value] = Map([])
+  let sym_descs : Map[Int, PropDescriptor] = Map([])
   sym_props[async_iterator_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
@@ -993,8 +993,8 @@ fn make_async_from_sync_iterator_proto_value(
       symbol_properties: sym_props,
       descriptors: proto_descs,
       symbol_descriptors: sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: realm_state.get_async_iterator_proto(),
     callable: None,
@@ -1016,8 +1016,8 @@ fn create_async_from_sync_iterator(
   _loc : @token.Loc,
 ) -> Value {
   let async_iter_sym = interp.realm_state.well_known_symbols.async_iterator
-  let async_sym_props : Map[Int, Value] = {}
-  let async_sym_descs : Map[Int, PropDescriptor] = {}
+  let async_sym_props : Map[Int, Value] = Map([])
+  let async_sym_descs : Map[Int, PropDescriptor] = Map([])
   async_sym_props[async_iter_sym.id] = make_method_func(
     name="[Symbol.asyncIterator]",
     length=0,
@@ -1032,18 +1032,18 @@ fn create_async_from_sync_iterator(
     setter: None,
     is_accessor: false,
   }
-  let internal_slots : Map[InternalSlotKey, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = Map([])
   internal_slots[SyncIterator] = sync_iterator
   internal_slots[SyncNextMethod] = sync_next_method
   let async_from_sync_proto = interp.realm_state.get_async_from_sync_iterator_proto()
   Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: async_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: async_sym_descs,
       internal_slots,
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: async_from_sync_proto,
     callable: None,

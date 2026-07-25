@@ -295,10 +295,10 @@ fn compile_object_lit(
     }
   }
   fn(interp, ctx, env) raise {
-    let properties : Map[String, Value] = {}
-    let symbol_properties : Map[Int, Value] = {}
-    let descriptors : Map[String, PropDescriptor] = {}
-    let symbol_descriptors : Map[Int, PropDescriptor] = {}
+    let properties : Map[String, Value] = Map([])
+    let symbol_properties : Map[Int, Value] = Map([])
+    let descriptors : Map[String, PropDescriptor] = Map([])
+    let symbol_descriptors : Map[Int, PropDescriptor] = Map([])
     let mut proto_override : Value? = None
     let default_obj_proto = env.get("[[ObjectPrototype]]") catch {
       _ => Value::Null
@@ -308,8 +308,8 @@ fn compile_object_lit(
       symbol_properties,
       descriptors,
       symbol_descriptors,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     }
     let object_data : ObjectData = {
       bag,
@@ -1355,8 +1355,8 @@ fn make_compiled_func(
     setter: None,
     is_accessor: false,
   }
-  let func_props : Map[String, Value] = {}
-  let func_descs : Map[String, PropDescriptor] = {}
+  let func_props : Map[String, Value] = Map([])
+  let func_descs : Map[String, PropDescriptor] = Map([])
   if constructable {
     func_props["prototype"] = proto
     func_descs["prototype"] = {
@@ -1377,11 +1377,11 @@ fn make_compiled_func(
     Value::Object({
       bag: {
         properties: func_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: func_descs,
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: @runtime.get_func_proto(realm_state~),
       callable: Some(
@@ -1971,11 +1971,11 @@ fn make_arrow_func_ext(data : FuncDataExt, length : Int) -> Value {
           "name": Value::String_(""),
           "length": Value::Number(length.to_double()),
         },
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: { "name": nf_desc, "length": nf_desc },
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: @runtime.get_func_proto(realm_state~),
       callable: Some(Callable::ArrowFuncExt(data)),

@@ -92,7 +92,14 @@ test "borrowed Object.prototype.isPrototypeOf honors array prototype override" {
     "isPrototypeOf",
     @token.Loc::default(),
   )
-  let custom_proto = @runtime.make_object({}, Null, None, "Object", {}, true)
+  let custom_proto = @runtime.make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
   let arr = @runtime.make_array([Number(1.0)])
   match arr {
     Array(data) => @runtime.set_array_prototype_override(data, custom_proto)
@@ -150,19 +157,19 @@ test "borrowed Object.getPrototypeOf uses built-in function realm for primitives
 test "Map and Set property lookup uses target realm prototype" {
   let interp = make_borrowed_builtin_realm_interp()
   let active_map_proto = @runtime.make_object(
-    {},
+    Map([]),
     Null,
     None,
     "Object",
-    {},
+    Map([]),
     true,
   )
   let active_set_proto = @runtime.make_object(
-    {},
+    Map([]),
     Null,
     None,
     "Object",
-    {},
+    Map([]),
     true,
   )
   @runtime.apply_active_realm_protos(

@@ -7,8 +7,8 @@ fn setup_array_builtins(
   obj_method_desc : PropDescriptor,
 ) -> Unit {
   // Create Array.prototype with all array methods
-  let array_proto_props : Map[String, Value] = {}
-  let array_proto_descs : Map[String, PropDescriptor] = {}
+  let array_proto_props : Map[String, Value] = Map([])
+  let array_proto_descs : Map[String, PropDescriptor] = Map([])
   let method_desc : PropDescriptor = {
     writable: true,
     enumerable: false,
@@ -1154,11 +1154,11 @@ fn setup_array_builtins(
   let array_proto : Value = Value::Object({
     bag: {
       properties: array_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: array_proto_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: obj_proto,
     callable: None,
@@ -1168,7 +1168,7 @@ fn setup_array_builtins(
   })
 
   // Array constructor with Array.isArray, Array.from, Array.of
-  let array_props : Map[String, Value] = {}
+  let array_props : Map[String, Value] = Map([])
   array_props["prototype"] = array_proto
   array_props["name"] = Value::String_("Array")
   array_props["length"] = Value::Number(1.0)
@@ -1351,7 +1351,7 @@ fn setup_array_builtins(
   let array_ctor = Value::Object({
     bag: {
       properties: array_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "name": nf_desc,
         "length": nf_desc,
@@ -1367,9 +1367,9 @@ fn setup_array_builtins(
         "from": obj_method_desc,
         "of": obj_method_desc,
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -1401,7 +1401,7 @@ fn setup_array_builtins(
                 elements,
                 bag: @runtime.PropertyBag(),
                 length_writable: true,
-                holes: {},
+                holes: Map([]),
                 extensible: true,
               }
               // Mark materialized indices as holes — Array(n) creates an exotic

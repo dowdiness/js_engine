@@ -254,7 +254,7 @@ pub fn setup_promise(
     is_accessor: false,
   }
   // Promise prototype with then, catch, finally
-  let promise_proto_props : Map[String, Value] = {}
+  let promise_proto_props : Map[String, Value] = Map([])
 
   // Promise.prototype.then(onFulfilled, onRejected)
   promise_proto_props["then"] = @runtime.make_interp_method_func(
@@ -432,15 +432,15 @@ pub fn setup_promise(
       )
     },
   )
-  let promise_proto_descs : Map[String, PropDescriptor] = {}
+  let promise_proto_descs : Map[String, PropDescriptor] = Map([])
   let pd_method_desc = @runtime.builtin_method_desc()
   promise_proto_descs["then"] = pd_method_desc
   promise_proto_descs["catch"] = pd_method_desc
   promise_proto_descs["finally"] = pd_method_desc
   // Symbol.toStringTag = "Promise" per §27.2.3.6: {w:false, e:false, c:true}
   let to_string_tag_sym = realm_state.well_known_symbols.to_string_tag
-  let promise_proto_sym_props : Map[Int, Value] = {}
-  let promise_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let promise_proto_sym_props : Map[Int, Value] = Map([])
+  let promise_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   promise_proto_sym_props[to_string_tag_sym.id] = Value::String_("Promise")
   promise_proto_sym_descs[to_string_tag_sym.id] = nf_desc
   let promise_proto = Value::Object({
@@ -449,8 +449,8 @@ pub fn setup_promise(
       symbol_properties: promise_proto_sym_props,
       descriptors: promise_proto_descs,
       symbol_descriptors: promise_proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -460,7 +460,7 @@ pub fn setup_promise(
   })
 
   // Promise constructor
-  let promise_ctor_props : Map[String, Value] = {}
+  let promise_ctor_props : Map[String, Value] = Map([])
   promise_ctor_props["length"] = Value::Number(1.0)
   promise_ctor_props["name"] = Value::String_("Promise")
 
@@ -524,18 +524,18 @@ pub fn setup_promise(
       let (promise, resolve, reject) = create_promise_capability_from_constructor(
         interp, this_val, loc,
       )
-      let props : Map[String, Value] = {}
+      let props : Map[String, Value] = Map([])
       props["promise"] = promise
       props["resolve"] = resolve
       props["reject"] = reject
       Value::Object({
         bag: {
           properties: props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-          host_slots: {},
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
         callable: None,
@@ -864,17 +864,17 @@ pub fn setup_promise(
               }
               already_called.val = true
               let value = if args2.length() > 0 { args2[0] } else { Undefined }
-              let result_props : Map[String, Value] = {}
+              let result_props : Map[String, Value] = Map([])
               result_props["status"] = Value::String_("fulfilled")
               result_props["value"] = value
               results[index] = Value::Object({
                 bag: {
                   properties: result_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  internal_slots: {},
-                  host_slots: {},
+                  symbol_properties: Map([]),
+                  descriptors: Map([]),
+                  symbol_descriptors: Map([]),
+                  internal_slots: Map([]),
+                  host_slots: Map([]),
                 },
                 prototype: Null,
                 callable: None,
@@ -905,17 +905,17 @@ pub fn setup_promise(
               }
               already_called.val = true
               let reason = if args2.length() > 0 { args2[0] } else { Undefined }
-              let result_props : Map[String, Value] = {}
+              let result_props : Map[String, Value] = Map([])
               result_props["status"] = Value::String_("rejected")
               result_props["reason"] = reason
               results[index] = Value::Object({
                 bag: {
                   properties: result_props,
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
-                  internal_slots: {},
-                  host_slots: {},
+                  symbol_properties: Map([]),
+                  descriptors: Map([]),
+                  symbol_descriptors: Map([]),
+                  internal_slots: Map([]),
+                  host_slots: Map([]),
                 },
                 prototype: Null,
                 callable: None,
@@ -1090,7 +1090,7 @@ pub fn setup_promise(
   let promise_ctor = Value::Object({
     bag: {
       properties: promise_ctor_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "length": nf_desc,
         "name": nf_desc,
@@ -1111,9 +1111,9 @@ pub fn setup_promise(
         "withResolvers": @runtime.builtin_method_desc(),
         "try": @runtime.builtin_method_desc(),
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -1473,18 +1473,18 @@ fn make_aggregate_error(
       }
     _ => ()
   }
-  let props : Map[String, Value] = {}
+  let props : Map[String, Value] = Map([])
   props["name"] = Value::String_("AggregateError")
   props["message"] = Value::String_(message)
   props["errors"] = errors_value
   Value::Object({
     bag: {
       properties: props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,

@@ -314,18 +314,18 @@ pub fn setup_generator_function_constructor(
   // %GeneratorFunction%.prototype — build shell first so it can serve as
   // the constructor value in %GeneratorPrototype%'s property map, ensuring
   // insertion order follows §27.3.3: constructor, prototype (string keys).
-  let gf_sym_props : Map[Int, Value] = {}
-  let gf_sym_descs : Map[Int, PropDescriptor] = {}
+  let gf_sym_props : Map[Int, Value] = Map([])
+  let gf_sym_descs : Map[Int, PropDescriptor] = Map([])
   gf_sym_props[tostringtag_sym.id] = String_("GeneratorFunction")
   gf_sym_descs[tostringtag_sym.id] = non_enum_non_writable
   let gen_func_proto : Value = Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: gf_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: gf_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: func_proto,
     callable: None,
@@ -335,10 +335,10 @@ pub fn setup_generator_function_constructor(
   })
   // %GeneratorPrototype% — shared singleton for all sync generator instances.
   // Own string keys follow §27.3.1: constructor, next, return, throw.
-  let gp_props : Map[String, Value] = {}
-  let gp_sym_props : Map[Int, Value] = {}
-  let gp_descs : Map[String, PropDescriptor] = {}
-  let gp_sym_descs : Map[Int, PropDescriptor] = {}
+  let gp_props : Map[String, Value] = Map([])
+  let gp_sym_props : Map[Int, Value] = Map([])
+  let gp_descs : Map[String, PropDescriptor] = Map([])
+  let gp_sym_descs : Map[Int, PropDescriptor] = Map([])
   gp_props["constructor"] = gen_func_proto
   gp_descs["constructor"] = non_enum_non_writable
   gp_props["next"] = make_interp_method_func(
@@ -390,8 +390,8 @@ pub fn setup_generator_function_constructor(
       symbol_properties: gp_sym_props,
       descriptors: gp_descs,
       symbol_descriptors: gp_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: iter_proto,
     callable: None,
@@ -555,11 +555,11 @@ fn Interpreter::make_generator_function(
     Some(n) => n
     None => ""
   }
-  let fn_props : Map[String, Value] = {}
+  let fn_props : Map[String, Value] = Map([])
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
   fn_props["length"] = Number(params.length().to_double())
-  let internal_slots : Map[InternalSlotKey, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = Map([])
   match source_text {
     Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
@@ -594,7 +594,7 @@ fn Interpreter::make_generator_function(
     Object({
       bag: {
         properties: fn_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: {
           "name": nf_desc,
           "length": nf_desc,
@@ -607,9 +607,9 @@ fn Interpreter::make_generator_function(
             is_accessor: false,
           },
         },
-        symbol_descriptors: {},
+        symbol_descriptors: Map([]),
         internal_slots,
-        host_slots: {},
+        host_slots: Map([]),
       },
       prototype: gen_func_proto,
       callable: Some(
@@ -686,11 +686,11 @@ fn Interpreter::make_generator_function_ext(
     None => ""
   }
   let expected_arg_count = expected_argument_count_ext(params)
-  let fn_props : Map[String, Value] = {}
+  let fn_props : Map[String, Value] = Map([])
   fn_props["prototype"] = func_prototype
   fn_props["name"] = String_(func_name)
   fn_props["length"] = Number(expected_arg_count.to_double())
-  let internal_slots : Map[InternalSlotKey, Value] = {}
+  let internal_slots : Map[InternalSlotKey, Value] = Map([])
   match source_text {
     Some(text) => internal_slots[SourceText] = String_(text)
     None => ()
@@ -725,7 +725,7 @@ fn Interpreter::make_generator_function_ext(
     Object({
       bag: {
         properties: fn_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: {
           "name": nf_desc,
           "length": nf_desc,
@@ -738,9 +738,9 @@ fn Interpreter::make_generator_function_ext(
             is_accessor: false,
           },
         },
-        symbol_descriptors: {},
+        symbol_descriptors: Map([]),
         internal_slots,
-        host_slots: {},
+        host_slots: Map([]),
       },
       prototype: gen_func_proto,
       callable: Some(
@@ -1039,7 +1039,7 @@ fn create_generator_instance(
       env: Some(body_exec_env),
       pc: 0,
       yield_value: Undefined,
-      yield_resume_values: {},
+      yield_resume_values: Map([]),
       resuming: false,
       resume_action: NextAction,
       try_resume_phase: -1,
@@ -1064,16 +1064,16 @@ fn create_generator_instance(
     }
     interp.generator_objects[gen_id] = gen_obj
     // Create the generator instance object with gen_id stored in a property
-    let props : Map[String, Value] = {}
+    let props : Map[String, Value] = Map([])
     props["<gen_id>"] = Number(gen_id.to_double())
     Object({
       bag: {
         properties: props,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_properties: Map([]),
+        descriptors: Map([]),
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: func_prototype,
       callable: None,

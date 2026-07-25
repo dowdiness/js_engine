@@ -115,7 +115,7 @@ fn setup_set_builtins(
   let iterator_sym = well_known_symbols.iterator
 
   // Set.prototype methods
-  let set_proto_props : Map[String, Value] = {}
+  let set_proto_props : Map[String, Value] = Map([])
 
   // Set.prototype.add(value)
   set_proto_props["add"] = @runtime.make_method_func(name="add", length=1, fn(
@@ -889,7 +889,7 @@ fn setup_set_builtins(
 
   // Non-enumerable descriptors for Set.prototype methods
   let method_desc = @runtime.builtin_method_desc()
-  let set_proto_descs : Map[String, PropDescriptor] = {}
+  let set_proto_descs : Map[String, PropDescriptor] = Map([])
   set_proto_descs["add"] = method_desc
   set_proto_descs["has"] = method_desc
   set_proto_descs["delete"] = method_desc
@@ -937,11 +937,11 @@ fn setup_set_builtins(
   let set_proto : Value = Value::Object({
     bag: {
       properties: set_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: set_proto_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,

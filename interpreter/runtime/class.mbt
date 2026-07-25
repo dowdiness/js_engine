@@ -82,14 +82,14 @@ fn Interpreter::create_class(
   // Create the prototype object
   // Pre-insert constructor so it appears first in property enumeration order
   let proto_props : Map[String, Value] = { "constructor": Undefined }
-  let proto_descriptors : Map[String, PropDescriptor] = {}
-  let proto_symbol_props : Map[Int, Value] = {}
-  let proto_symbol_descriptors : Map[Int, PropDescriptor] = {}
+  let proto_descriptors : Map[String, PropDescriptor] = Map([])
+  let proto_symbol_props : Map[Int, Value] = Map([])
+  let proto_symbol_descriptors : Map[Int, PropDescriptor] = Map([])
   // Create static properties map
-  let static_props : Map[String, Value] = {}
-  let static_descriptors : Map[String, PropDescriptor] = {}
-  let static_symbol_props : Map[Int, Value] = {}
-  let static_symbol_descriptors : Map[Int, PropDescriptor] = {}
+  let static_props : Map[String, Value] = Map([])
+  let static_descriptors : Map[String, PropDescriptor] = Map([])
+  let static_symbol_props : Map[Int, Value] = Map([])
+  let static_symbol_descriptors : Map[Int, PropDescriptor] = Map([])
   // Track constructor method
   let mut ctor_fn : (Array[@ast.Param], String?, Array[@ast.Stmt])? = None
   let mut ctor_param_count : Int = 0
@@ -103,7 +103,7 @@ fn Interpreter::create_class(
   // Collect private static field initializers (evaluated after class object is created)
   let private_static_fields : Array[ClassFieldInit] = []
   // Collect private methods for this class (shared across all instances)
-  let private_methods : Map[String, Value] = {}
+  let private_methods : Map[String, Value] = Map([])
   // Create method environments with [[SuperPrototype]] for super.method() support.
   // Base classes (no extends) still need these bindings: instance methods resolve
   // super against Object.prototype; static methods against Function.prototype.
@@ -553,11 +553,11 @@ fn Interpreter::create_class(
   let private_methods_obj : Value = Object({
     bag: {
       properties: private_methods,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -574,8 +574,8 @@ fn Interpreter::create_class(
       symbol_properties: proto_symbol_props,
       descriptors: proto_descriptors,
       symbol_descriptors: proto_symbol_descriptors,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: super_proto,
     callable: None,
@@ -604,8 +604,8 @@ fn Interpreter::create_class(
         symbol_properties: static_symbol_props,
         descriptors: static_descriptors,
         symbol_descriptors: static_symbol_descriptors,
-        internal_slots: {},
-        host_slots: {},
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: class_proto,
       callable: Some(

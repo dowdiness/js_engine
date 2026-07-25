@@ -108,7 +108,7 @@ fn make_startup_host(output : Array[String]) -> HostEnv {
     timer_queue: @priority_queue.PriorityQueue([]),
     timer_id_counter: { val: 1 },
     timer_insertion_counter: { val: 0 },
-    cancelled_timer_ids: {},
+    cancelled_timer_ids: Map([]),
     module_loader,
   }
 }
@@ -129,10 +129,10 @@ fn make_startup_interpreter_core() -> StartupInterpreterCore {
     global_this,
     annex_b: false,
     realm_state,
-    module_registry: {},
-    module_exports: {},
+    module_registry: Map([]),
+    module_exports: Map([]),
     module_export_bindings: [],
-    generator_objects: {},
+    generator_objects: Map([]),
     gen_id_counter: { val: 0 },
     symbols,
     stdlib_hooks: make_startup_stdlib_hooks(),
@@ -476,7 +476,7 @@ fn make_startup_harness_print_func(core : StartupInterpreterCore) -> Value {
 ///|
 fn make_startup_harness_agent_object(core : StartupInterpreterCore) -> Value {
   let realm_state = core.realm_state
-  let agent_props : Map[String, Value] = {}
+  let agent_props : Map[String, Value] = Map([])
   agent_props["start"] = @runtime.make_native_func(
     name="start",
     realm_state=Some(realm_state),
@@ -505,11 +505,11 @@ fn make_startup_harness_agent_object(core : StartupInterpreterCore) -> Value {
   Value::Object({
     bag: {
       properties: agent_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Value::Null,
     callable: None,
@@ -561,11 +561,11 @@ fn bind_startup_harness_dollar262(
   let dollar262 : Value = Value::Object({
     bag: {
       properties: dollar262_props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Value::Null,
     callable: None,
@@ -588,7 +588,7 @@ fn bind_startup_harness_dollar262(
 fn setup_startup_harness_without_stamp(core : StartupInterpreterCore) -> Unit {
   let print_func = make_startup_harness_print_func(core)
   let agent = make_startup_harness_agent_object(core)
-  let dollar262_props : Map[String, Value] = {}
+  let dollar262_props : Map[String, Value] = Map([])
   fill_startup_harness_dollar262_props(core, dollar262_props, agent)
   bind_startup_harness_dollar262(core, print_func, dollar262_props) |> ignore
 }
@@ -761,7 +761,7 @@ fn time_test262_harness_agent_object() -> Double {
 fn time_test262_harness_dollar262_methods() -> Double {
   let core = prepare_startup_core_before_harness()
   let agent = make_startup_harness_agent_object(core)
-  let dollar262_props : Map[String, Value] = {}
+  let dollar262_props : Map[String, Value] = Map([])
   let elapsed = measure_active_unit(core.realm_state, fn() {
     fill_startup_harness_dollar262_props(core, dollar262_props, agent)
   })
@@ -776,7 +776,7 @@ fn time_test262_harness_dollar262_bind_mirror() -> Double {
   let core = prepare_startup_core_before_harness()
   let print_func = make_startup_harness_print_func(core)
   let agent = make_startup_harness_agent_object(core)
-  let dollar262_props : Map[String, Value] = {}
+  let dollar262_props : Map[String, Value] = Map([])
   fill_startup_harness_dollar262_props(core, dollar262_props, agent)
   let elapsed = measure_active_unit(core.realm_state, fn() {
     bind_startup_harness_dollar262(core, print_func, dollar262_props) |> ignore
@@ -1001,7 +1001,7 @@ fn run_profiled_startup_builtin_setup_phases() -> Array[BenchResult] {
   for row in initial_rows {
     names.push(row.0)
   }
-  let times_by_name : Map[String, Array[Double]] = {}
+  let times_by_name : Map[String, Array[Double]] = Map([])
   for name in names {
     times_by_name[name] = Array::make(config.iterations, 0.0)
   }
@@ -1011,7 +1011,7 @@ fn run_profiled_startup_builtin_setup_phases() -> Array[BenchResult] {
     }
   }
   for i in 0..<config.iterations {
-    let totals : Map[String, Double] = {}
+    let totals : Map[String, Double] = Map([])
     for name in names {
       totals[name] = 0.0
     }

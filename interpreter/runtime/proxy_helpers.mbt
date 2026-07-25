@@ -914,7 +914,7 @@ pub fn proxy_own_property_keys(
   }
   // Step 9: If trapResult contains any duplicate entries, throw TypeError
   let seen_strings = @set.Set::default()
-  let seen_symbols : Map[Int, Bool] = {}
+  let seen_symbols : Map[Int, Bool] = Map([])
   for key in trap_keys {
     match key {
       Value::String_(s) => {
@@ -964,8 +964,8 @@ pub fn proxy_own_property_keys(
     return make_array(trap_keys)
   }
   // Step 16: Let uncheckedResultKeys be a copy of trapResult
-  let unchecked : Map[String, Int] = {} // string key -> count
-  let unchecked_sym : Map[Int, Int] = {} // symbol id -> count
+  let unchecked : Map[String, Int] = Map([]) // string key -> count
+  let unchecked_sym : Map[Int, Int] = Map([]) // symbol id -> count
   for key in trap_keys {
     match key {
       Value::String_(s) =>
@@ -1051,7 +1051,7 @@ pub fn proxy_own_property_keys(
 /// Per ES §6.2.5.4 FromPropertyDescriptor, only present fields are emitted
 /// (absent fields don't appear on the object).
 fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
-  let props : Map[String, Value] = {}
+  let props : Map[String, Value] = Map([])
   match partial.value {
     Some(v) => props["value"] = v
     None => ()
@@ -1077,11 +1077,11 @@ fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
   Value::Object({
     bag: {
       properties: props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     extensible: true,

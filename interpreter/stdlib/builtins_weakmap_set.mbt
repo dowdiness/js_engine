@@ -158,7 +158,7 @@ fn setup_weakmap_builtins(
   let tostringtag_sym = well_known_symbols.to_string_tag
 
   // WeakMap.prototype methods
-  let wm_proto_props : Map[String, Value] = {}
+  let wm_proto_props : Map[String, Value] = Map([])
 
   // WeakMap.prototype.get(key)
   wm_proto_props["get"] = @runtime.make_method_func(name="get", length=1, fn(
@@ -451,7 +451,7 @@ fn setup_weakmap_builtins(
   )
 
   // Create descriptor map for WeakMap prototype methods
-  let wm_proto_descs : Map[String, PropDescriptor] = {}
+  let wm_proto_descs : Map[String, PropDescriptor] = Map([])
   let method_desc = @runtime.builtin_method_desc()
   wm_proto_descs["get"] = method_desc
   wm_proto_descs["set"] = method_desc
@@ -461,9 +461,9 @@ fn setup_weakmap_builtins(
   wm_proto_descs["getOrInsertComputed"] = method_desc
 
   // Create WeakMap prototype
-  let wm_proto_sym_props : Map[Int, Value] = {}
+  let wm_proto_sym_props : Map[Int, Value] = Map([])
   wm_proto_sym_props[tostringtag_sym.id] = Value::String_("WeakMap")
-  let wm_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let wm_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   wm_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -478,8 +478,8 @@ fn setup_weakmap_builtins(
       symbol_properties: wm_proto_sym_props,
       descriptors: wm_proto_descs,
       symbol_descriptors: wm_proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -602,7 +602,7 @@ fn setup_weakset_builtins(
   let tostringtag_sym = well_known_symbols.to_string_tag
 
   // WeakSet.prototype methods
-  let ws_proto_props : Map[String, Value] = {}
+  let ws_proto_props : Map[String, Value] = Map([])
 
   // WeakSet.prototype.add(value)
   ws_proto_props["add"] = @runtime.make_method_func(name="add", length=1, fn(
@@ -709,16 +709,16 @@ fn setup_weakset_builtins(
   )
 
   // Create descriptor map for WeakSet prototype methods
-  let ws_proto_descs : Map[String, PropDescriptor] = {}
+  let ws_proto_descs : Map[String, PropDescriptor] = Map([])
   let ws_method_desc = @runtime.builtin_method_desc()
   ws_proto_descs["add"] = ws_method_desc
   ws_proto_descs["has"] = ws_method_desc
   ws_proto_descs["delete"] = ws_method_desc
 
   // Create WeakSet prototype
-  let ws_proto_sym_props : Map[Int, Value] = {}
+  let ws_proto_sym_props : Map[Int, Value] = Map([])
   ws_proto_sym_props[tostringtag_sym.id] = Value::String_("WeakSet")
-  let ws_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let ws_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   ws_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -733,8 +733,8 @@ fn setup_weakset_builtins(
       symbol_properties: ws_proto_sym_props,
       descriptors: ws_proto_descs,
       symbol_descriptors: ws_proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,

@@ -1350,7 +1350,7 @@ fn bytecode_props_contain_destructure_assign(
 // `eval` reference keeps this function and enclosing compiled functions on
 // environment bindings instead of local slots.
 fn bytecode_body_references_eval(body : Array[@ast.Stmt]) -> Bool {
-  let refs : Map[String, Bool] = {}
+  let refs : Map[String, Bool] = Map([])
   collect_name_refs_from_stmts(body, refs)
   refs.contains("eval")
 }
@@ -1362,18 +1362,18 @@ fn plan_bytecode_locals(
   use_local_slots~ : Bool,
 ) -> BytecodeLocalPlan {
   let names : Array[String] = []
-  let indices : Map[String, Int] = {}
+  let indices : Map[String, Int] = Map([])
   let env_names : Array[String] = []
-  let env_indices : Map[String, Int] = {}
+  let env_indices : Map[String, Int] = Map([])
   let refs_arguments = bytecode_body_references_outer_arguments(body)
   if use_local_slots &&
     !bytecode_body_references_eval(body) &&
     !bytecode_body_contains_destructure_assign(body) {
-    let captured : Map[String, Bool] = {}
+    let captured : Map[String, Bool] = Map([])
     collect_nested_function_refs_from_stmts(body, captured)
-    let current_refs : Map[String, Bool] = {}
+    let current_refs : Map[String, Bool] = Map([])
     collect_current_function_name_refs_from_stmts(body, current_refs)
-    let param_names : Map[String, Bool] = {}
+    let param_names : Map[String, Bool] = Map([])
     for param in params {
       param_names[param] = true
       if !captured.contains(param) && !refs_arguments {

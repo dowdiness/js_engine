@@ -87,7 +87,7 @@ fn setup_number_builtins(
     setter: None,
     is_accessor: false,
   }
-  let number_proto_props : Map[String, Value] = {}
+  let number_proto_props : Map[String, Value] = Map([])
   number_proto_props["toFixed"] = @runtime.make_interp_method_func(
     realm_state=Some(realm_state),
     name="toFixed",
@@ -418,7 +418,7 @@ fn setup_number_builtins(
     },
   )
   let num_method_desc = @runtime.builtin_method_desc()
-  let number_proto_descs : Map[String, PropDescriptor] = {}
+  let number_proto_descs : Map[String, PropDescriptor] = Map([])
   number_proto_descs["toString"] = num_method_desc
   number_proto_descs["toLocaleString"] = num_method_desc
   number_proto_descs["toFixed"] = num_method_desc
@@ -429,13 +429,13 @@ fn setup_number_builtins(
   let number_proto : Value = Value::Object({
     bag: {
       properties: number_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: number_proto_descs,
-      symbol_descriptors: {},
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([
         (@runtime.NumberData, Value::Number(0.0)),
       ]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -445,7 +445,7 @@ fn setup_number_builtins(
   })
   // Store Number.prototype for ToObject wrapping
   env.def_builtin("[[NumberPrototype]]", number_proto)
-  let number_props : Map[String, Value] = {}
+  let number_props : Map[String, Value] = Map([])
   number_props["prototype"] = number_proto
   number_props["MAX_SAFE_INTEGER"] = Value::Number(9007199254740991.0)
   number_props["MIN_SAFE_INTEGER"] = Value::Number(-9007199254740991.0)
@@ -531,7 +531,7 @@ fn setup_number_builtins(
     setter: None,
     is_accessor: false,
   }
-  let number_descs : Map[String, PropDescriptor] = {}
+  let number_descs : Map[String, PropDescriptor] = Map([])
   number_descs["name"] = nf_desc
   number_descs["length"] = nf_desc
   number_descs["MAX_SAFE_INTEGER"] = const_desc
@@ -560,11 +560,11 @@ fn setup_number_builtins(
   let number_ctor : Value = Value::Object({
     bag: {
       properties: number_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: number_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -580,14 +580,14 @@ fn setup_number_builtins(
           // new Value::Number(value) → boxed Number object
           Value::Object({
             bag: {
-              properties: {},
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
+              properties: Map([]),
+              symbol_properties: Map([]),
+              descriptors: Map([]),
+              symbol_descriptors: Map([]),
               internal_slots: Map::from_array([
                 (@runtime.NumberData, Value::Number(n)),
               ]),
-              host_slots: {},
+              host_slots: Map([]),
             },
             prototype: number_proto,
             callable: None,

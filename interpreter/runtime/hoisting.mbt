@@ -214,7 +214,7 @@ fn validate_block_statement_list_early_errors(
   include_function_decls_in_var_names? : Bool = false,
 ) -> Unit raise Error {
   let lexical_names = @set.Set::default()
-  let block_function_kinds : Map[String, Int] = {}
+  let block_function_kinds : Map[String, Int] = Map([])
   for stmt in stmts {
     collect_block_lexical_decl_names_from_stmt(
       stmt,

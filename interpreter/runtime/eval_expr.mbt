@@ -1494,10 +1494,10 @@ fn Interpreter::eval_expr(
     YieldExpr(argument, delegate, _) =>
       self.eval_yield(ctx, argument, delegate, env)
     ObjectLit(props, obj_loc) => {
-      let properties : Map[String, Value] = {}
-      let symbol_properties : Map[Int, Value] = {}
-      let descriptors : Map[String, PropDescriptor] = {}
-      let symbol_descriptors : Map[Int, PropDescriptor] = {}
+      let properties : Map[String, Value] = Map([])
+      let symbol_properties : Map[Int, Value] = Map([])
+      let descriptors : Map[String, PropDescriptor] = Map([])
+      let symbol_descriptors : Map[Int, PropDescriptor] = Map([])
       // Build the object eagerly so methods captured during the prop loop can
       // reference it as [[HomeObject]] (ES2022 §13.2.5.5). The bag's Maps are
       // shared by reference, so later inserts populate the live object; the
@@ -1512,8 +1512,8 @@ fn Interpreter::eval_expr(
           symbol_properties,
           descriptors,
           symbol_descriptors,
-          internal_slots: {},
-          host_slots: {},
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: default_obj_proto,
         callable: None,
@@ -1758,11 +1758,11 @@ fn Interpreter::eval_expr(
               "name": String_(""),
               "length": Number(params.length().to_double()),
             },
-            symbol_properties: {},
+            symbol_properties: Map([]),
             descriptors: { "name": nf_desc, "length": nf_desc },
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: get_func_proto(realm_state=Some(self.realm_state)),
           callable: Some(ArrowFunc(func_data)),
@@ -1808,11 +1808,11 @@ fn Interpreter::eval_expr(
               "name": String_(""),
               "length": Number(arrow_len.to_double()),
             },
-            symbol_properties: {},
+            symbol_properties: Map([]),
             descriptors: { "name": nf_desc, "length": nf_desc },
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: get_func_proto(realm_state=Some(self.realm_state)),
           callable: Some(ArrowFuncExt(func_data)),

@@ -306,10 +306,10 @@ pub fn make_typedarray_object(
   }
   Value::Object({
     bag: {
-      properties: {},
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
+      properties: Map([]),
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([
         (@runtime.TypedArrayName, Value::String_(type_name)),
         (@runtime.ViewedArrayBuffer, buffer),
@@ -318,7 +318,7 @@ pub fn make_typedarray_object(
         (@runtime.ByteLength, Value::Number(byte_length.to_double())),
         (@runtime.ArrayLength, Value::Number(length.to_double())),
       ]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: proto,
     callable: None,
@@ -361,9 +361,9 @@ fn install_shape_only_bigint_typedarray_constructor(
   func_proto : Value,
 ) -> Unit {
   let bpe = typed_array_bytes_per_element(type_name)
-  let per_proto_props : Map[String, Value] = {}
+  let per_proto_props : Map[String, Value] = Map([])
   per_proto_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
-  let per_proto_descs : Map[String, PropDescriptor] = {}
+  let per_proto_descs : Map[String, PropDescriptor] = Map([])
   per_proto_descs["BYTES_PER_ELEMENT"] = typedarray_data_desc(
     writable=false,
     configurable=false,
@@ -371,11 +371,11 @@ fn install_shape_only_bigint_typedarray_constructor(
   let per_proto : Value = Value::Object({
     bag: {
       properties: per_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: per_proto_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: ta_proto,
     callable: None,
@@ -383,12 +383,12 @@ fn install_shape_only_bigint_typedarray_constructor(
     extensible: true,
     arraybuffer_state: None,
   })
-  let ctor_props : Map[String, Value] = {}
+  let ctor_props : Map[String, Value] = Map([])
   ctor_props["prototype"] = per_proto
   ctor_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
   ctor_props["name"] = Value::String_(type_name)
   ctor_props["length"] = Value::Number(3.0)
-  let ctor_descs : Map[String, PropDescriptor] = {}
+  let ctor_descs : Map[String, PropDescriptor] = Map([])
   ctor_descs["prototype"] = typedarray_data_desc(
     writable=false,
     configurable=false,
@@ -402,11 +402,11 @@ fn install_shape_only_bigint_typedarray_constructor(
   let ctor : Value = Value::Object({
     bag: {
       properties: ctor_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: ctor_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: func_proto,
     callable: Some(
@@ -464,10 +464,10 @@ fn make_typedarray_from_buffer(
   let byte_length = length * bpe
   Value::Object({
     bag: {
-      properties: {},
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
+      properties: Map([]),
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([
         (@runtime.TypedArrayName, Value::String_(type_name)),
         (@runtime.ViewedArrayBuffer, buffer),
@@ -476,7 +476,7 @@ fn make_typedarray_from_buffer(
         (@runtime.ByteLength, Value::Number(byte_length.to_double())),
         (@runtime.ArrayLength, Value::Number(length.to_double())),
       ]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: proto,
     callable: None,
@@ -934,8 +934,8 @@ pub fn setup_typedarray_builtins(
   }
 
   // Create %TypedArray%.prototype (shared prototype for all typed array instances)
-  let ta_proto_props : Map[String, Value] = {}
-  let ta_proto_descs : Map[String, PropDescriptor] = {}
+  let ta_proto_props : Map[String, Value] = Map([])
+  let ta_proto_descs : Map[String, PropDescriptor] = Map([])
 
   // --- Prototype getters ---
   let getter_props = [
@@ -1811,17 +1811,17 @@ pub fn setup_typedarray_builtins(
           let value = typedarray_get_index(data, idx, realm_state)
           index_ref.val = idx + 1
           let pair = @runtime.make_array([Value::Number(idx.to_double()), value])
-          let result_props : Map[String, Value] = {}
+          let result_props : Map[String, Value] = Map([])
           result_props["value"] = pair
           result_props["done"] = Value::Bool(false)
           Value::Object({
             bag: {
               properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-              host_slots: {},
+              symbol_properties: Map([]),
+              descriptors: Map([]),
+              symbol_descriptors: Map([]),
+              internal_slots: Map([]),
+              host_slots: Map([]),
             },
             prototype: Null,
             callable: None,
@@ -1830,17 +1830,17 @@ pub fn setup_typedarray_builtins(
             arraybuffer_state: None,
           })
         } else {
-          let result_props : Map[String, Value] = {}
+          let result_props : Map[String, Value] = Map([])
           result_props["value"] = Undefined
           result_props["done"] = Value::Bool(true)
           Value::Object({
             bag: {
               properties: result_props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
-              internal_slots: {},
-              host_slots: {},
+              symbol_properties: Map([]),
+              descriptors: Map([]),
+              symbol_descriptors: Map([]),
+              internal_slots: Map([]),
+              host_slots: Map([]),
             },
             prototype: Null,
             callable: None,
@@ -1850,7 +1850,7 @@ pub fn setup_typedarray_builtins(
           })
         }
       })
-      let iter_props : Map[String, Value] = {}
+      let iter_props : Map[String, Value] = Map([])
       iter_props["next"] = @runtime.stamp_function_realm(
         next_method,
         realm_state=Some(realm_state),
@@ -1858,11 +1858,11 @@ pub fn setup_typedarray_builtins(
       Value::Object({
         bag: {
           properties: iter_props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-          host_slots: {},
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: realm_state.get_array_iterator_proto(),
         callable: None,
@@ -1902,17 +1902,17 @@ pub fn setup_typedarray_builtins(
       let idx = index_ref.val
       if idx < len {
         index_ref.val = idx + 1
-        let result_props : Map[String, Value] = {}
+        let result_props : Map[String, Value] = Map([])
         result_props["value"] = Value::Number(idx.to_double())
         result_props["done"] = Value::Bool(false)
         Value::Object({
           bag: {
             properties: result_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_properties: Map([]),
+            descriptors: Map([]),
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: Null,
           callable: None,
@@ -1921,17 +1921,17 @@ pub fn setup_typedarray_builtins(
           arraybuffer_state: None,
         })
       } else {
-        let result_props : Map[String, Value] = {}
+        let result_props : Map[String, Value] = Map([])
         result_props["value"] = Undefined
         result_props["done"] = Value::Bool(true)
         Value::Object({
           bag: {
             properties: result_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_properties: Map([]),
+            descriptors: Map([]),
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: Null,
           callable: None,
@@ -1941,7 +1941,7 @@ pub fn setup_typedarray_builtins(
         })
       }
     })
-    let iter_props : Map[String, Value] = {}
+    let iter_props : Map[String, Value] = Map([])
     iter_props["next"] = @runtime.stamp_function_realm(
       next_method,
       realm_state=Some(realm_state),
@@ -1949,11 +1949,11 @@ pub fn setup_typedarray_builtins(
     Value::Object({
       bag: {
         properties: iter_props,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_properties: Map([]),
+        descriptors: Map([]),
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: realm_state.get_array_iterator_proto(),
       callable: None,
@@ -1993,17 +1993,17 @@ pub fn setup_typedarray_builtins(
       if idx < len {
         let value = typedarray_get_index(data, idx, realm_state)
         index_ref.val = idx + 1
-        let result_props : Map[String, Value] = {}
+        let result_props : Map[String, Value] = Map([])
         result_props["value"] = value
         result_props["done"] = Value::Bool(false)
         Value::Object({
           bag: {
             properties: result_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_properties: Map([]),
+            descriptors: Map([]),
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: Null,
           callable: None,
@@ -2012,17 +2012,17 @@ pub fn setup_typedarray_builtins(
           arraybuffer_state: None,
         })
       } else {
-        let result_props : Map[String, Value] = {}
+        let result_props : Map[String, Value] = Map([])
         result_props["value"] = Undefined
         result_props["done"] = Value::Bool(true)
         Value::Object({
           bag: {
             properties: result_props,
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_properties: Map([]),
+            descriptors: Map([]),
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: Null,
           callable: None,
@@ -2032,7 +2032,7 @@ pub fn setup_typedarray_builtins(
         })
       }
     })
-    let iter_props : Map[String, Value] = {}
+    let iter_props : Map[String, Value] = Map([])
     iter_props["next"] = @runtime.stamp_function_realm(
       next_method,
       realm_state=Some(realm_state),
@@ -2040,11 +2040,11 @@ pub fn setup_typedarray_builtins(
     Value::Object({
       bag: {
         properties: iter_props,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_properties: Map([]),
+        descriptors: Map([]),
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: realm_state.get_array_iterator_proto(),
       callable: None,
@@ -2693,11 +2693,11 @@ pub fn setup_typedarray_builtins(
   ta_proto_descs["with"] = method_desc
 
   // Create the shared %TypedArray%.prototype
-  let ta_proto_sym_props : Map[Int, Value] = {}
+  let ta_proto_sym_props : Map[Int, Value] = Map([])
   ta_proto_sym_props[iterator_sym.id] = values_fn // [Symbol.iterator] = values
   // Symbol.toStringTag getter - returns the constructor name dynamically
   ta_proto_sym_props[tostringtag_sym.id] = Undefined // placeholder
-  let ta_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let ta_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   ta_proto_sym_descs[iterator_sym.id] = {
     writable: true,
     enumerable: false,
@@ -2736,8 +2736,8 @@ pub fn setup_typedarray_builtins(
       symbol_properties: ta_proto_sym_props,
       descriptors: ta_proto_descs,
       symbol_descriptors: ta_proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: obj_proto,
     callable: None,
@@ -2753,7 +2753,7 @@ pub fn setup_typedarray_builtins(
   // (e.g., Object.getPrototypeOf(Int8Array) === TypedArray).
   // It is NOT directly constructible.
   let func_proto = env.get("[[FunctionPrototype]]") catch { _ => Null }
-  let ta_ctor_props : Map[String, Value] = {}
+  let ta_ctor_props : Map[String, Value] = Map([])
   ta_ctor_props["prototype"] = ta_proto
   ta_ctor_props["name"] = Value::String_("TypedArray")
   ta_ctor_props["length"] = Value::Number(0.0)
@@ -2880,7 +2880,7 @@ pub fn setup_typedarray_builtins(
     result
   })
 
-  let ta_ctor_descs : Map[String, PropDescriptor] = {}
+  let ta_ctor_descs : Map[String, PropDescriptor] = Map([])
   ta_ctor_descs["prototype"] = {
     writable: false,
     enumerable: false,
@@ -2910,11 +2910,11 @@ pub fn setup_typedarray_builtins(
   let ta_ctor : Value = Value::Object({
     bag: {
       properties: ta_ctor_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: ta_ctor_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: func_proto,
     callable: Some(
@@ -2966,9 +2966,9 @@ pub fn setup_typedarray_builtins(
     let bpe = typed_array_bytes_per_element(type_name)
 
     // Per-type prototype inheriting from %TypedArray%.prototype
-    let per_proto_props : Map[String, Value] = {}
+    let per_proto_props : Map[String, Value] = Map([])
     per_proto_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
-    let per_proto_descs : Map[String, PropDescriptor] = {}
+    let per_proto_descs : Map[String, PropDescriptor] = Map([])
     per_proto_descs["BYTES_PER_ELEMENT"] = {
       writable: false,
       enumerable: false,
@@ -2981,11 +2981,11 @@ pub fn setup_typedarray_builtins(
     let per_proto : Value = Value::Object({
       bag: {
         properties: per_proto_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: per_proto_descs,
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: ta_proto,
       callable: None,
@@ -2995,13 +2995,13 @@ pub fn setup_typedarray_builtins(
     })
 
     // Constructor
-    let ctor_props : Map[String, Value] = {}
+    let ctor_props : Map[String, Value] = Map([])
     ctor_props["prototype"] = per_proto
     ctor_props["BYTES_PER_ELEMENT"] = Value::Number(bpe.to_double())
     ctor_props["name"] = Value::String_(type_name)
     ctor_props["length"] = Value::Number(3.0) // TypedArray constructors have length 3
 
-    let ctor_descs : Map[String, PropDescriptor] = {}
+    let ctor_descs : Map[String, PropDescriptor] = Map([])
     ctor_descs["prototype"] = {
       writable: false,
       enumerable: false,
@@ -3038,11 +3038,11 @@ pub fn setup_typedarray_builtins(
     let ctor : Value = Value::Object({
       bag: {
         properties: ctor_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: ctor_descs,
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: ta_ctor,
       callable: Some(

@@ -8,12 +8,12 @@ const MODULE_NAMESPACE_CACHE_CLASS = "ModuleNamespaceCache"
 fn make_module_namespace_cache(ns_obj : Value) -> Value {
   Object({
     bag: {
-      properties: {},
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
+      properties: Map([]),
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([(NamespaceObject, ns_obj)]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -30,15 +30,15 @@ fn make_module_namespace_cache_with_export(
 ) -> Value {
   Object({
     bag: {
-      properties: {},
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
+      properties: Map([]),
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([
         (NamespaceObject, ns_obj),
         (ExportValue, export_value),
       ]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -112,12 +112,12 @@ fn module_export_entry_is_live_cell(value : Value) -> Bool {
 fn make_module_tdz_marker(export_name : String) -> Value {
   Object({
     bag: {
-      properties: {},
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
+      properties: Map([]),
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([(ExportName, String_(export_name))]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -226,8 +226,8 @@ fn Interpreter::create_module_namespace_object(
       }
     None => ()
   }
-  let ns_props : Map[String, Value] = {}
-  let ns_descs : Map[String, PropDescriptor] = {}
+  let ns_props : Map[String, Value] = Map([])
+  let ns_descs : Map[String, PropDescriptor] = Map([])
   module_exports.each(fn(k, v) {
     if is_private_module_export_entry(k, v) {
       return
@@ -242,8 +242,8 @@ fn Interpreter::create_module_namespace_object(
       is_accessor: true,
     }
   })
-  let symbol_props : Map[Int, Value] = {}
-  let symbol_descs : Map[Int, PropDescriptor] = {}
+  let symbol_props : Map[Int, Value] = Map([])
+  let symbol_descs : Map[Int, PropDescriptor] = Map([])
   let tag_sym = self.symbols.well_known_symbols().to_string_tag
   symbol_props[tag_sym.id] = String_("Module")
   symbol_descs[tag_sym.id] = {
@@ -260,8 +260,8 @@ fn Interpreter::create_module_namespace_object(
       symbol_properties: symbol_props,
       descriptors: ns_descs,
       symbol_descriptors: symbol_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,

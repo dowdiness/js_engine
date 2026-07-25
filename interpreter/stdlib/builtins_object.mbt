@@ -33,7 +33,7 @@ pub fn setup_object_builtins(
   }
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
-  let obj_proto_props : Map[String, Value] = {}
+  let obj_proto_props : Map[String, Value] = Map([])
   obj_proto_props["toString"] = @runtime.make_method_func(
     name="toString",
     length=0,
@@ -561,7 +561,7 @@ pub fn setup_object_builtins(
       Undefined
     },
   )
-  let obj_proto_descs : Map[String, PropDescriptor] = {}
+  let obj_proto_descs : Map[String, PropDescriptor] = Map([])
   let obj_method_desc = @runtime.builtin_method_desc()
   obj_proto_descs["toString"] = obj_method_desc
   obj_proto_descs["valueOf"] = obj_method_desc
@@ -584,11 +584,11 @@ pub fn setup_object_builtins(
   let obj_proto : Value = Value::Object({
     bag: {
       properties: obj_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: obj_proto_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -688,14 +688,14 @@ pub fn setup_object_builtins(
               Value::Number(n) =>
                 Value::Object({
                   bag: {
-                    properties: {},
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
+                    properties: Map([]),
+                    symbol_properties: Map([]),
+                    descriptors: Map([]),
+                    symbol_descriptors: Map([]),
                     internal_slots: Map::from_array([
                       (@runtime.NumberData, Value::Number(n)),
                     ]),
-                    host_slots: {},
+                    host_slots: Map([]),
                   },
                   prototype: realm_state.get_number_proto(),
                   callable: None,
@@ -706,14 +706,14 @@ pub fn setup_object_builtins(
               Value::Bool(b) =>
                 Value::Object({
                   bag: {
-                    properties: {},
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
+                    properties: Map([]),
+                    symbol_properties: Map([]),
+                    descriptors: Map([]),
+                    symbol_descriptors: Map([]),
                     internal_slots: Map::from_array([
                       (@runtime.BooleanData, Value::Bool(b)),
                     ]),
-                    host_slots: {},
+                    host_slots: Map([]),
                   },
                   prototype: realm_state.get_boolean_proto(),
                   callable: None,
@@ -722,7 +722,7 @@ pub fn setup_object_builtins(
                   arraybuffer_state: None,
                 })
               Value::String_(s) => {
-                let props : Map[String, Value] = {}
+                let props : Map[String, Value] = Map([])
                 props["length"] = Value::Number(s.length().to_double())
                 let chars = s.to_array()
                 for i = 0; i < chars.length(); i = i + 1 {
@@ -730,7 +730,7 @@ pub fn setup_object_builtins(
                   buf.write_char(chars[i])
                   props[i.to_string()] = Value::String_(buf.to_string())
                 }
-                let descs : Map[String, PropDescriptor] = {}
+                let descs : Map[String, PropDescriptor] = Map([])
                 descs["length"] = {
                   writable: false,
                   enumerable: false,
@@ -752,13 +752,13 @@ pub fn setup_object_builtins(
                 Value::Object({
                   bag: {
                     properties: props,
-                    symbol_properties: {},
+                    symbol_properties: Map([]),
                     descriptors: descs,
-                    symbol_descriptors: {},
+                    symbol_descriptors: Map([]),
                     internal_slots: Map::from_array([
                       (@runtime.StringData, Value::String_(s)),
                     ]),
-                    host_slots: {},
+                    host_slots: Map([]),
                   },
                   prototype: realm_state.get_string_proto(),
                   callable: None,
@@ -770,14 +770,14 @@ pub fn setup_object_builtins(
               Symbol(_) =>
                 Value::Object({
                   bag: {
-                    properties: {},
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
+                    properties: Map([]),
+                    symbol_properties: Map([]),
+                    descriptors: Map([]),
+                    symbol_descriptors: Map([]),
                     internal_slots: Map::from_array([
                       (@runtime.SymbolData, raw_target),
                     ]),
-                    host_slots: {},
+                    host_slots: Map([]),
                   },
                   prototype: realm_state.get_symbol_proto(),
                   callable: None,
@@ -1153,7 +1153,7 @@ pub fn setup_object_builtins(
           ),
           "defineProperties": make_define_properties_func(),
         },
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: {
           "name": nf_desc,
           "length": nf_desc,
@@ -1189,9 +1189,9 @@ pub fn setup_object_builtins(
           "hasOwn": obj_method_desc,
           "groupBy": obj_method_desc,
         },
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: Null,
       callable: Some(
@@ -1214,12 +1214,12 @@ pub fn setup_object_builtins(
               let string_proto = env.get("[[StringPrototype]]") catch {
                 _ => Null
               }
-              let props : Map[String, Value] = {}
+              let props : Map[String, Value] = Map([])
               props["length"] = Value::Number(s.length().to_double())
               for i = 0; i < s.length(); i = i + 1 {
                 props[i.to_string()] = Value::String_(s[i:i + 1].to_owned())
               }
-              let descs : Map[String, PropDescriptor] = {}
+              let descs : Map[String, PropDescriptor] = Map([])
               descs["length"] = {
                 writable: false,
                 enumerable: false,
@@ -1241,13 +1241,13 @@ pub fn setup_object_builtins(
               Value::Object({
                 bag: {
                   properties: props,
-                  symbol_properties: {},
+                  symbol_properties: Map([]),
                   descriptors: descs,
-                  symbol_descriptors: {},
+                  symbol_descriptors: Map([]),
                   internal_slots: Map::from_array([
                     (@runtime.StringData, Value::String_(s)),
                   ]),
-                  host_slots: {},
+                  host_slots: Map([]),
                 },
                 prototype: string_proto,
                 callable: None,
@@ -1263,14 +1263,14 @@ pub fn setup_object_builtins(
               }
               Value::Object({
                 bag: {
-                  properties: {},
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
+                  properties: Map([]),
+                  symbol_properties: Map([]),
+                  descriptors: Map([]),
+                  symbol_descriptors: Map([]),
                   internal_slots: Map::from_array([
                     (@runtime.NumberData, Value::Number(n)),
                   ]),
-                  host_slots: {},
+                  host_slots: Map([]),
                 },
                 prototype: number_proto,
                 callable: None,
@@ -1286,14 +1286,14 @@ pub fn setup_object_builtins(
               }
               Value::Object({
                 bag: {
-                  properties: {},
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
+                  properties: Map([]),
+                  symbol_properties: Map([]),
+                  descriptors: Map([]),
+                  symbol_descriptors: Map([]),
                   internal_slots: Map::from_array([
                     (@runtime.BooleanData, Value::Bool(b)),
                   ]),
-                  host_slots: {},
+                  host_slots: Map([]),
                 },
                 prototype: boolean_proto,
                 callable: None,
@@ -1309,12 +1309,12 @@ pub fn setup_object_builtins(
               }
               Value::Object({
                 bag: {
-                  properties: {},
-                  symbol_properties: {},
-                  descriptors: {},
-                  symbol_descriptors: {},
+                  properties: Map([]),
+                  symbol_properties: Map([]),
+                  descriptors: Map([]),
+                  symbol_descriptors: Map([]),
                   internal_slots: Map::from_array([(@runtime.SymbolData, val)]),
-                  host_slots: {},
+                  host_slots: Map([]),
                 },
                 prototype: symbol_proto,
                 callable: None,

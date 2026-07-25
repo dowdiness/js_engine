@@ -206,8 +206,22 @@ test "Array proto walk via Object-with-Array-prototype dispatches per realm" {
   )
   let arr_a : Value = @runtime.make_array([])
   let arr_b : Value = @runtime.make_array([])
-  let obj_a : Value = @runtime.make_object({}, arr_a, None, "Object", {}, true)
-  let obj_b : Value = @runtime.make_object({}, arr_b, None, "Object", {}, true)
+  let obj_a : Value = @runtime.make_object(
+    Map([]),
+    arr_a,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let obj_b : Value = @runtime.make_object(
+    Map([]),
+    arr_b,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
   let result_a = realm_a.get_property(
     obj_a,
     "__array_chain_marker__",
@@ -241,8 +255,22 @@ test "Array proto walk via computed-property on Object-with-Array-prototype disp
   )
   let arr_a : Value = @runtime.make_array([])
   let arr_b : Value = @runtime.make_array([])
-  let obj_a : Value = @runtime.make_object({}, arr_a, None, "Object", {}, true)
-  let obj_b : Value = @runtime.make_object({}, arr_b, None, "Object", {}, true)
+  let obj_a : Value = @runtime.make_object(
+    Map([]),
+    arr_a,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let obj_b : Value = @runtime.make_object(
+    Map([]),
+    arr_b,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
   let result_a = realm_a.get_computed_property(
     obj_a,
     String_("__array_computed_marker__"),

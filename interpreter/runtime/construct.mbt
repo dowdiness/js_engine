@@ -190,11 +190,11 @@ fn Interpreter::install_instance_fields(
                   "enumerable": Bool(true),
                   "configurable": Bool(true),
                 },
-                symbol_properties: {},
-                descriptors: {},
-                symbol_descriptors: {},
-                internal_slots: {},
-                host_slots: {},
+                symbol_properties: Map([]),
+                descriptors: Map([]),
+                symbol_descriptors: Map([]),
+                internal_slots: Map([]),
+                host_slots: Map([]),
               },
               prototype: Null,
               callable: None,
@@ -624,8 +624,8 @@ fn make_arguments_object(
   mapped_names? : Array[String] = [],
   mapped_env? : Environment? = None,
 ) -> Value {
-  let new_args_props : Map[String, Value] = {}
-  let new_args_descs : Map[String, PropDescriptor] = {}
+  let new_args_props : Map[String, Value] = Map([])
+  let new_args_descs : Map[String, PropDescriptor] = Map([])
   // §10.4.4.1: sloppy simple-param lists get live-mapped accessor slots so
   // mutations to arguments[i] reflect in the named param binding and vice versa.
   let map_count = if strict {
@@ -646,7 +646,7 @@ fn make_arguments_object(
   }
   // §10.4.4.7: walk backwards so only the last occurrence of each param name
   // gets an accessor; earlier occurrences of duplicates stay as data properties.
-  let mapped_indices : Map[Int, Bool] = {}
+  let mapped_indices : Map[Int, Bool] = Map([])
   match mapped_env {
     Some(_) => {
       let mapped_set = @set.Set::default()
@@ -775,8 +775,8 @@ fn make_arguments_object(
   // Add Symbol.iterator using the realm's %ArrayProto_values% intrinsic;
   // each next() observes the live arguments object length and indexed props.
   let iter_sym = well_known_symbols.iterator
-  let new_args_sym_props : Map[Int, Value] = {}
-  let new_args_sym_descs : Map[Int, PropDescriptor] = {}
+  let new_args_sym_props : Map[Int, Value] = Map([])
+  let new_args_sym_descs : Map[Int, PropDescriptor] = Map([])
   new_args_sym_props[iter_sym.id] = arguments_iterator_value(realm_state)
   new_args_sym_descs[iter_sym.id] = {
     writable: true,
@@ -792,8 +792,8 @@ fn make_arguments_object(
       symbol_properties: new_args_sym_props,
       descriptors: new_args_descs,
       symbol_descriptors: new_args_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: get_obj_proto(realm_state=Some(realm_state)),
     callable: None,

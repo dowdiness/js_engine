@@ -2,7 +2,7 @@
 
 ///|
 fn test_proto(label : String) -> Value {
-  make_object({ "label": String_(label) }, Null, None, "Object", {}, true)
+  make_object({ "label": String_(label) }, Null, None, "Object", Map([]), true)
 }
 
 ///|

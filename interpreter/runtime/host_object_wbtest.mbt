@@ -126,7 +126,7 @@ test "make_host_object non_writable and frozen data props" {
 ///|
 test "make_host_object host_slots round-trip and stay off properties" {
   let key = HostSlotKey::reserve()
-  let slots : Map[HostSlotKey, Value] = {}
+  let slots : Map[HostSlotKey, Value] = Map([])
   slots[key] = Number(99.0)
   let obj = make_host_object(name="Element", host_slots=slots)
   let data = host_obj_data(obj)
