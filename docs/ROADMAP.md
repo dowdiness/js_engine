@@ -141,10 +141,12 @@ Each diagnostic must provide these portable semantics:
 `reusable` means that runtime invariants remain valid. It does not mean that
 state was rolled back or that repeating the failed operation is safe.
 
-The exact public types require a focused compatibility decision before
-implementation. New diagnostic variants must follow the error-evolution policy
-defined by the execution contract rather than being treated as automatically
-source-compatible.
+The [compatibility decision](decisions/engine-diagnostic-contract.md) selects an
+additive detailed operation surface while preserving every existing
+`EngineError` variant, payload, and operation signature. Implementation has not
+started, and the first structured-diagnostic delivery remains required before
+Stage 3. New diagnostic kinds must follow that decision's evolution rules
+rather than being treated as automatically source-compatible.
 
 ### Completed baseline — v0.6.0 release
 
