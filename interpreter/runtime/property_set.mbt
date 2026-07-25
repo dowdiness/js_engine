@@ -2178,7 +2178,24 @@ pub fn Interpreter::set_computed_property(
     }
     _ =>
       match key {
-        Symbol(_) =>
+        Symbol(_) => {
+          let proto = match obj {
+            String_(_) => Some(self.realm_state.get_string_proto())
+            Number(_) => Some(self.realm_state.get_number_proto())
+            Bool(_) => Some(self.realm_state.get_boolean_proto())
+            _ => None
+          }
+          match proto {
+            Some(primitive_proto) =>
+              match
+                self.set_key_via_map_set_prototype_chain(
+                  primitive_proto, receiver, key, value, loc, strict,
+                ) {
+                Some(result) => return result
+                None => ()
+              }
+            None => ()
+          }
           if strict {
             raise @errors.TypeError(
               message="Cannot set property of \{type_of(obj)}",
@@ -2186,6 +2203,7 @@ pub fn Interpreter::set_computed_property(
           } else {
             value
           }
+        }
         _ => {
           let prop = to_js_string(key, interp=Some(self))
           self.set_property(obj, prop, value, loc, strict~, receiver~)

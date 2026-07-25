@@ -5554,6 +5554,70 @@ test "use strict: computed inherited setter preserves primitive receiver" {
 }
 
 ///|
+test "use strict: symbol inherited setters preserve primitive receivers" {
+  let src =
+    #|"use strict";
+    #|var key = Symbol("test");
+    #|var stringReceiver;
+    #|var numberReceiver;
+    #|var booleanReceiver;
+    #|Object.defineProperty(String.prototype, key, {
+    #|  set: function(value) { stringReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Number.prototype, key, {
+    #|  set: function(value) { numberReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Boolean.prototype, key, {
+    #|  set: function(value) { booleanReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|"value"[key] = 1;
+    #|(42)[key] = 2;
+    #|true[key] = 3;
+    #|console.log(stringReceiver === "value");
+    #|console.log(numberReceiver === 42);
+    #|console.log(booleanReceiver === true);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
+test "primitive symbol assignment preserves blockers and fallback" {
+  let strict_src =
+    #|"use strict";
+    #|var getterOnly = Symbol("getterOnly");
+    #|var readOnly = Symbol("readOnly");
+    #|var missing = Symbol("missing");
+    #|Object.defineProperty(Number.prototype, getterOnly, {
+    #|  get: function() { return 1; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Boolean.prototype, readOnly, {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: true
+    #|});
+    #|try { (42)[getterOnly] = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+    #|try { true[readOnly] = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+    #|try { "value"[missing] = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+  let strict_output = run_output(strict_src)
+  json_inspect(strict_output, content=["true", "true", "true"])
+  let sloppy_src =
+    #|var missing = Symbol("missing");
+    #|console.log(("value"[missing] = 4) === 4);
+  let sloppy_output = run_output(sloppy_src)
+  json_inspect(sloppy_output, content=["true"])
+}
+
+///|
 test "use strict: primitive assignment preserves inherited blockers" {
   let src =
     #|"use strict";
