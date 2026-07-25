@@ -1,14 +1,13 @@
 ///|
 // Engine-private negative symbol IDs are reserved in docs/development.md.
-// -101 stores a function object's packed home-realm intrinsic prototypes as a
-// 10-element Array[Value] (indices REALM_PROTO_IDX_*), enabling the call_value
-// fast path to do 1 HashMap lookup + 10 array reads instead of 10 HashMap lookups.
-// -102 stores the optional host-supplied source identity of attributable code.
-// -103..-110 are freed. Keep this comment updated if the range changes.
+// -101 stores a function object's packed home-realm intrinsic prototypes and
+// optional host-supplied source identity as an 11-element Array[Value]. This
+// keeps the call_value fast path at 1 HashMap lookup + array reads.
+// -102..-110 are freed. Keep this comment updated if the range changes.
 const FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID = -101
 
 ///|
-const FUNCTION_SOURCE_IDENTITY_SYMBOL_ID = -102
+const FUNCTION_METADATA_SLOT_COUNT = 11
 
 ///|
 const REALM_PROTO_IDX_FUNCTION = 0
@@ -39,6 +38,9 @@ const REALM_PROTO_IDX_SET = 8
 
 ///|
 const REALM_PROTO_IDX_PROMISE = 9
+
+///|
+const FUNCTION_SOURCE_IDENTITY_IDX = 10
 
 ///|
 pub(all) struct FunctionRealmProtos {
@@ -158,9 +160,7 @@ pub fn make_func(data : FuncData) -> Value {
       properties: func_props,
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: function_realm_symbol_descs(
-        realm_protos, source_identity,
-      ),
+      symbol_descriptors: function_realm_symbol_descs(),
       internal_slots: {},
       host_slots: {},
     },
@@ -259,9 +259,7 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
       properties: func_props,
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
-      symbol_descriptors: function_realm_symbol_descs(
-        realm_protos, source_identity,
-      ),
+      symbol_descriptors: function_realm_symbol_descs(),
       internal_slots: {},
       host_slots: {},
     },
@@ -514,9 +512,7 @@ fn build_func_object(
         realm_protos, source_identity,
       ),
       descriptors: { "length": nf_desc, "name": nf_desc },
-      symbol_descriptors: function_realm_symbol_descs(
-        realm_protos, source_identity,
-      ),
+      symbol_descriptors: function_realm_symbol_descs(),
       internal_slots: {},
       host_slots: {},
     },
@@ -589,8 +585,11 @@ fn function_realm_protos_from_realm_state(
 }
 
 ///|
-fn make_realm_protos_packed_array(protos : FunctionRealmProtos) -> Value {
-  let e : Array[Value] = Array::make(10, Null)
+fn make_realm_protos_packed_array(
+  protos : FunctionRealmProtos,
+  source_identity? : String? = None,
+) -> Value {
+  let e : Array[Value] = Array::make(FUNCTION_METADATA_SLOT_COUNT, Null)
   match protos.function_proto {
     Some(v) => e[REALM_PROTO_IDX_FUNCTION] = v
     None => ()
@@ -631,6 +630,10 @@ fn make_realm_protos_packed_array(protos : FunctionRealmProtos) -> Value {
     Some(v) => e[REALM_PROTO_IDX_PROMISE] = v
     None => ()
   }
+  match source_identity {
+    Some(identity) => e[FUNCTION_SOURCE_IDENTITY_IDX] = String_(identity)
+    None => ()
+  }
   Array({
     elements: e,
     bag: PropertyBag(),
@@ -656,12 +659,8 @@ fn function_realm_symbol_props(
   let props : Map[Int, Value] = {}
   props[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = make_realm_protos_packed_array(
     protos,
+    source_identity~,
   )
-  match source_identity {
-    Some(identity) =>
-      props[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = String_(identity)
-    None => ()
-  }
   props
 }
 
@@ -678,15 +677,9 @@ fn function_realm_symbol_desc() -> PropDescriptor {
 }
 
 ///|
-fn function_realm_symbol_descs(
-  _ : FunctionRealmProtos,
-  source_identity : String?,
-) -> Map[Int, PropDescriptor] {
+fn function_realm_symbol_descs() -> Map[Int, PropDescriptor] {
   let descs : Map[Int, PropDescriptor] = {}
   descs[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = function_realm_symbol_desc()
-  if source_identity is Some(_) {
-    descs[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = function_realm_symbol_desc()
-  }
   descs
 }
 
@@ -696,12 +689,19 @@ fn stamp_function_source_identity(
   source_identity : String?,
 ) -> Unit {
   match (value, source_identity) {
-    (Object(data), Some(identity)) if data.callable is Some(_) => {
-      data.bag.symbol_properties[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = String_(
-        identity,
-      )
-      data.bag.symbol_descriptors[FUNCTION_SOURCE_IDENTITY_SYMBOL_ID] = function_realm_symbol_desc()
-    }
+    (Object(data), Some(identity)) if data.callable is Some(_) =>
+      match
+        data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
+        Some(Array(arr_data)) =>
+          arr_data.elements[FUNCTION_SOURCE_IDENTITY_IDX] = String_(identity)
+        _ => {
+          data.bag.symbol_properties[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = make_realm_protos_packed_array(
+            empty_function_realm_protos(),
+            source_identity=Some(identity),
+          )
+          data.bag.symbol_descriptors[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = function_realm_symbol_desc()
+        }
+      }
     _ => ()
   }
 }
@@ -710,8 +710,18 @@ fn stamp_function_source_identity(
 pub fn function_source_identity(value : Value) -> String? {
   match value {
     Object(data) =>
-      match data.bag.symbol_properties.get(FUNCTION_SOURCE_IDENTITY_SYMBOL_ID) {
-        Some(String_(identity)) => Some(identity)
+      match
+        data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
+        Some(Array(arr_data)) =>
+          match arr_data.elements[FUNCTION_SOURCE_IDENTITY_IDX] {
+            String_(identity) => Some(identity)
+            _ =>
+              match data.callable {
+                Some(BoundFunc(target, _, _)) =>
+                  function_source_identity(target)
+                _ => None
+              }
+          }
         _ =>
           match data.callable {
             Some(BoundFunc(target, _, _)) => function_source_identity(target)
@@ -818,9 +828,9 @@ fn usable_realm_proto(proto : Value) -> Value? {
 }
 
 ///|
-// Returns the 10-element packed-proto array elements for the callee, following
-// Proxy targets. Returns None when no packed entry is present (all slots absent).
-fn get_callee_packed_realm_protos(callee : Value) -> Array[Value]? {
+// Returns the packed function-metadata elements for the callee, following Proxy
+// targets. Returns None when no packed entry is present (all slots absent).
+fn get_callee_function_metadata(callee : Value) -> Array[Value]? {
   match callee {
     Object(data) =>
       match
@@ -830,7 +840,7 @@ fn get_callee_packed_realm_protos(callee : Value) -> Array[Value]? {
       }
     Proxy(proxy_data) =>
       match proxy_data.target {
-        Some(target) => get_callee_packed_realm_protos(target)
+        Some(target) => get_callee_function_metadata(target)
         None => None
       }
     _ => None
@@ -900,7 +910,7 @@ fn stamp_realm_proto(
         data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
         Some(Array(arr_data)) => arr_data.elements[idx] = proto
         _ => {
-          let e : Array[Value] = Array::make(10, Null)
+          let e : Array[Value] = Array::make(FUNCTION_METADATA_SLOT_COUNT, Null)
           e[idx] = proto
           data.bag.symbol_properties[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = Array({
               elements: e,
@@ -1096,6 +1106,26 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
 }
 
 ///|
+// The packed slot represents a callable's own identity. Bound functions inherit
+// their target's identity only when their own slot is absent. Proxy traversal is
+// lookup-free here because get_callee_function_metadata already followed it.
+fn inherited_function_source_identity(callee : Value) -> String? {
+  match callee {
+    Object(data) =>
+      match data.callable {
+        Some(BoundFunc(target, _, _)) => function_source_identity(target)
+        _ => None
+      }
+    Proxy(proxy_data) =>
+      match proxy_data.target {
+        Some(target) => inherited_function_source_identity(target)
+        None => None
+      }
+    _ => None
+  }
+}
+
+///|
 // Returns true when call_value can skip both realm-proto wrapper layers.
 // Safe only when every active-override slot is None (no cross-realm context is
 // active) AND every callee realm slot is absent or matches the main realm's
@@ -1104,14 +1134,17 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
 // accepts slots independently.
 fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
   guard !realm_state.observing_source_failure.val else { return false }
-  guard function_source_identity(callee) is None else { return false }
   // Part 1: no active cross-realm override — one Ref read (None = no overrides active)
   guard realm_state.active_overrides.val is None else { return false }
-  // Part 2: every callee stamped proto is absent or pointer-equal to the main realm's.
-  // One HashMap lookup + 10 array reads — avoids rebuilding a FunctionRealmProtos struct.
-  match get_callee_packed_realm_protos(callee) {
-    None => true // no protos stamped at all — all slots absent → same-realm
+  // Part 2: source identity and every stamped proto share one packed lookup.
+  // This avoids both a second HashMap lookup and rebuilding FunctionRealmProtos.
+  match get_callee_function_metadata(callee) {
+    None => inherited_function_source_identity(callee) is None
     Some(e) => {
+      guard e[FUNCTION_SOURCE_IDENTITY_IDX] is Null else { return false }
+      guard inherited_function_source_identity(callee) is None else {
+        return false
+      }
       fn same(idx : Int, main_ref : Ref[Value?]) -> Bool {
         match (e[idx], main_ref.val) {
           (Null, _) => true // absent slot — inherits same-realm semantics

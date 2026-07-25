@@ -60,6 +60,45 @@ test "function realm packed array has Null slots for absent prototypes" {
 }
 
 ///|
+test "source identity shares the packed function metadata lookup" {
+  let realm_state = RealmState()
+  realm_state.active_source_identity.val = Some("source.js")
+  let func = make_native_func(
+    name="identified",
+    realm_state=Some(realm_state),
+    fn(_args) { Undefined },
+  )
+  match func {
+    Object(data) => {
+      if data.bag.symbol_properties.contains(-102) {
+        fail("source identity must not require a second symbol-property lookup")
+      }
+      match
+        data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
+        Some(Array(arr_data)) => {
+          let e = arr_data.elements
+          if e.length() != FUNCTION_METADATA_SLOT_COUNT {
+            fail("expected ten realm slots plus one source-identity slot")
+          }
+          match e[FUNCTION_SOURCE_IDENTITY_IDX] {
+            String_(identity) if identity == "source.js" => ()
+            _ => fail("expected source identity in packed function metadata")
+          }
+        }
+        _ => fail("expected packed function metadata")
+      }
+    }
+    _ => fail("expected function object")
+  }
+  if function_source_identity(func) != Some("source.js") {
+    fail("expected packed source identity to remain observable")
+  }
+  if realm_fast_path_allowed(func, realm_state) {
+    fail("source-attributed functions must use the observation-aware call path")
+  }
+}
+
+///|
 test "unmarked callees clear inherited active realm overrides" {
   let realm_state = RealmState()
   let base_function_proto = test_proto("base function")
