@@ -9,33 +9,33 @@
 // dynamic GeneratorFunction/AsyncFunction constructor call site.
 
 ///|
+// Private tag distinguishing which expression kind the walk is searching for.
+enum EarlyErrorKind {
+  Yield
+  Await
+}
+
+///|
 fn params_contain_yield(params : Array[@ast.Param]) -> Bool {
-  params
-  .iter()
-  .any(fn(p) {
-    let dv = match p.default_val {
-      Some(e) => expr_has_yield(e)
-      None => false
-    }
-    let pt = match p.pattern {
-      Some(pat) => pat_has_yield(pat)
-      None => false
-    }
-    dv || pt
-  })
+  params_contain(params, Yield)
 }
 
 ///|
 fn params_contain_await(params : Array[@ast.Param]) -> Bool {
+  params_contain(params, Await)
+}
+
+///|
+fn params_contain(params : Array[@ast.Param], kind : EarlyErrorKind) -> Bool {
   params
   .iter()
   .any(fn(p) {
     let dv = match p.default_val {
-      Some(e) => expr_has_await(e)
+      Some(e) => expr_contains(e, kind)
       None => false
     }
     let pt = match p.pattern {
-      Some(pat) => pat_has_await(pat)
+      Some(pat) => pat_contains(pat, kind)
       None => false
     }
     dv || pt
@@ -43,66 +43,81 @@ fn params_contain_await(params : Array[@ast.Param]) -> Bool {
 }
 
 ///|
-fn expr_has_yield(expr : @ast.Expr) -> Bool {
+fn expr_contains(expr : @ast.Expr, kind : EarlyErrorKind) -> Bool {
   match expr {
-    YieldExpr(_, _, _) => true
-    Binary(_, a, b, _) => expr_has_yield(a) || expr_has_yield(b)
+    YieldExpr(_, _, _) => kind is Yield
+    AwaitExpr(_, _) => kind is Await
+    Binary(_, a, b, _) => expr_contains(a, kind) || expr_contains(b, kind)
     Unary(_, e, _)
     | UpdateExpr(_, e, _, _)
     | Grouping(e, _)
-    | SpreadExpr(e, _) => expr_has_yield(e)
-    Assign(_, e, _) => expr_has_yield(e)
+    | SpreadExpr(e, _) => expr_contains(e, kind)
+    Assign(_, e, _) => expr_contains(e, kind)
     MemberAssign(obj, _, val, _) | PrivateMemberAssign(obj, _, val, _) =>
-      expr_has_yield(obj) || expr_has_yield(val)
+      expr_contains(obj, kind) || expr_contains(val, kind)
     ComputedAssign(obj, key, val, _) =>
-      expr_has_yield(obj) || expr_has_yield(key) || expr_has_yield(val)
+      expr_contains(obj, kind) ||
+      expr_contains(key, kind) ||
+      expr_contains(val, kind)
     CompoundAssign(_, a, b, _)
     | Comma(a, b, _)
-    | WebCompatCallAssign(a, b, _) => expr_has_yield(a) || expr_has_yield(b)
+    | WebCompatCallAssign(a, b, _) =>
+      expr_contains(a, kind) || expr_contains(b, kind)
     Member(obj, _, _)
     | OptionalMember(obj, _, _)
     | ChainMember(obj, _, _)
-    | PrivateMember(obj, _, _) => expr_has_yield(obj)
+    | PrivateMember(obj, _, _) => expr_contains(obj, kind)
     ComputedMember(obj, key, _)
     | OptionalComputedMember(obj, key, _)
     | ChainComputedMember(obj, key, _) =>
-      expr_has_yield(obj) || expr_has_yield(key)
-    SuperComputedMember(e, _) => expr_has_yield(e)
+      expr_contains(obj, kind) || expr_contains(key, kind)
+    SuperComputedMember(e, _) => expr_contains(e, kind)
     Ternary(cond, t, f, _) =>
-      expr_has_yield(cond) || expr_has_yield(t) || expr_has_yield(f)
+      expr_contains(cond, kind) ||
+      expr_contains(t, kind) ||
+      expr_contains(f, kind)
     Call(f, args, _) | NewExpr(f, args, _) | OptionalCall(f, args, _) =>
-      expr_has_yield(f) || args.iter().any(fn(a) { expr_has_yield(a) })
-    SuperCall(args, _) => args.iter().any(fn(a) { expr_has_yield(a) })
-    ArrayLit(elems, _) => elems.iter().any(fn(e) { expr_has_yield(e) })
+      expr_contains(f, kind) || args.iter().any(fn(a) { expr_contains(a, kind) })
+    SuperCall(args, _) => args.iter().any(fn(a) { expr_contains(a, kind) })
+    ArrayLit(elems, _) => elems.iter().any(fn(e) { expr_contains(e, kind) })
     ObjectLit(props, _) =>
       props
       .iter()
-      .any(fn(p) { expr_has_yield(p.key) || expr_has_yield(p.value) })
-    TemplateLit(_, exprs, _) => exprs.iter().any(fn(e) { expr_has_yield(e) })
+      .any(fn(p) {
+        expr_contains(p.key, kind) || expr_contains(p.value, kind)
+      })
+    TemplateLit(_, exprs, _) =>
+      exprs.iter().any(fn(e) { expr_contains(e, kind) })
     TaggedTemplate(tag, _, exprs, _) =>
-      expr_has_yield(tag) || exprs.iter().any(fn(e) { expr_has_yield(e) })
-    DestructureAssign(pat, rhs, _) => pat_has_yield(pat) || expr_has_yield(rhs)
-    // Arrow param defaults are evaluated in the enclosing generator scope.
-    ArrowFuncExt(params, _, _, _, _) | AsyncArrowFuncExt(params, _, _, _, _) =>
-      params_contain_yield(params)
+      expr_contains(tag, kind) ||
+      exprs.iter().any(fn(e) { expr_contains(e, kind) })
+    DestructureAssign(pat, rhs, _) =>
+      pat_contains(pat, kind) || expr_contains(rhs, kind)
+    // Regular arrow param defaults are evaluated in the enclosing scope for
+    // both yield and await.
+    ArrowFuncExt(params, _, _, _, _) => params_contain(params, kind)
+    // Async arrow param defaults are in the enclosing generator scope (yield
+    // propagates), but an async arrow creates its own await scope (await stops).
+    AsyncArrowFuncExt(params, _, _, _, _) =>
+      (kind is Yield) && params_contain(params, kind)
     // Class heritage and computed member keys are in the enclosing scope.
     ClassExpr(_, superclass, members, _, _) => {
       let h = match superclass {
-        Some(e) => expr_has_yield(e)
+        Some(e) => expr_contains(e, kind)
         None => false
       }
       let m = members
         .iter()
         .any(fn(mbr) {
           match mbr {
-            Method(cm) => cm.computed && expr_has_yield(cm.key)
-            Field(cf) => cf.computed && expr_has_yield(cf.key)
+            Method(cm) => cm.computed && expr_contains(cm.key, kind)
+            Field(cf) => cf.computed && expr_contains(cf.key, kind)
             StaticBlock(_) => false
           }
         })
       h || m
     }
-    // Full function boundaries — yield inside is not the outer generator's.
+    // Full function boundaries — yield/await inside is not the outer scope's.
     ArrowFunc(_, _, _, _)
     | AsyncArrowFunc(_, _, _, _)
     | FuncExpr(_, _, _, _, _)
@@ -119,23 +134,23 @@ fn expr_has_yield(expr : @ast.Expr) -> Bool {
 }
 
 ///|
-fn pat_has_yield(pat : @ast.Pattern) -> Bool {
+fn pat_contains(pat : @ast.Pattern, kind : EarlyErrorKind) -> Bool {
   match pat {
     IdentPat(_) => false
     DefaultPat(inner, default_expr) =>
-      pat_has_yield(inner) || expr_has_yield(default_expr)
-    AssignTarget(e) => expr_has_yield(e)
+      pat_contains(inner, kind) || expr_contains(default_expr, kind)
+    AssignTarget(e) => expr_contains(e, kind)
     ArrayPat(elements, rest) => {
       let ee = elements
         .iter()
         .any(fn(e) {
           match e {
-            Some(p) => pat_has_yield(p)
+            Some(p) => pat_contains(p, kind)
             None => false
           }
         })
       let rr = match rest {
-        Some(r) => pat_has_yield(r)
+        Some(r) => pat_contains(r, kind)
         None => false
       }
       ee || rr
@@ -145,138 +160,17 @@ fn pat_has_yield(pat : @ast.Pattern) -> Bool {
         .iter()
         .any(fn(prop) {
           let ck = match prop.computed_key {
-            Some(e) => expr_has_yield(e)
+            Some(e) => expr_contains(e, kind)
             None => false
           }
           let dv = match prop.default_val {
-            Some(e) => expr_has_yield(e)
+            Some(e) => expr_contains(e, kind)
             None => false
           }
-          ck || dv || pat_has_yield(prop.value)
+          ck || dv || pat_contains(prop.value, kind)
         })
       let rr = match rest {
-        Some(r) => pat_has_yield(r)
-        None => false
-      }
-      pp || rr
-    }
-  }
-}
-
-///|
-fn expr_has_await(expr : @ast.Expr) -> Bool {
-  match expr {
-    AwaitExpr(_, _) => true
-    Binary(_, a, b, _) => expr_has_await(a) || expr_has_await(b)
-    Unary(_, e, _)
-    | UpdateExpr(_, e, _, _)
-    | Grouping(e, _)
-    | SpreadExpr(e, _) => expr_has_await(e)
-    Assign(_, e, _) => expr_has_await(e)
-    MemberAssign(obj, _, val, _) | PrivateMemberAssign(obj, _, val, _) =>
-      expr_has_await(obj) || expr_has_await(val)
-    ComputedAssign(obj, key, val, _) =>
-      expr_has_await(obj) || expr_has_await(key) || expr_has_await(val)
-    CompoundAssign(_, a, b, _)
-    | Comma(a, b, _)
-    | WebCompatCallAssign(a, b, _) => expr_has_await(a) || expr_has_await(b)
-    Member(obj, _, _)
-    | OptionalMember(obj, _, _)
-    | ChainMember(obj, _, _)
-    | PrivateMember(obj, _, _) => expr_has_await(obj)
-    ComputedMember(obj, key, _)
-    | OptionalComputedMember(obj, key, _)
-    | ChainComputedMember(obj, key, _) =>
-      expr_has_await(obj) || expr_has_await(key)
-    SuperComputedMember(e, _) => expr_has_await(e)
-    Ternary(cond, t, f, _) =>
-      expr_has_await(cond) || expr_has_await(t) || expr_has_await(f)
-    Call(f, args, _) | NewExpr(f, args, _) | OptionalCall(f, args, _) =>
-      expr_has_await(f) || args.iter().any(fn(a) { expr_has_await(a) })
-    SuperCall(args, _) => args.iter().any(fn(a) { expr_has_await(a) })
-    ArrayLit(elems, _) => elems.iter().any(fn(e) { expr_has_await(e) })
-    ObjectLit(props, _) =>
-      props
-      .iter()
-      .any(fn(p) { expr_has_await(p.key) || expr_has_await(p.value) })
-    TemplateLit(_, exprs, _) => exprs.iter().any(fn(e) { expr_has_await(e) })
-    TaggedTemplate(tag, _, exprs, _) =>
-      expr_has_await(tag) || exprs.iter().any(fn(e) { expr_has_await(e) })
-    DestructureAssign(pat, rhs, _) => pat_has_await(pat) || expr_has_await(rhs)
-    // Regular arrow param defaults are in the enclosing async scope.
-    ArrowFuncExt(params, _, _, _, _) => params_contain_await(params)
-    // Class heritage and computed member keys are in the enclosing scope.
-    ClassExpr(_, superclass, members, _, _) => {
-      let h = match superclass {
-        Some(e) => expr_has_await(e)
-        None => false
-      }
-      let m = members
-        .iter()
-        .any(fn(mbr) {
-          match mbr {
-            Method(cm) => cm.computed && expr_has_await(cm.key)
-            Field(cf) => cf.computed && expr_has_await(cf.key)
-            StaticBlock(_) => false
-          }
-        })
-      h || m
-    }
-    // Full function/async boundaries — await inside is not the outer async's.
-    ArrowFunc(_, _, _, _)
-    | AsyncArrowFunc(_, _, _, _)
-    | AsyncArrowFuncExt(_, _, _, _, _)
-    | FuncExpr(_, _, _, _, _)
-    | FuncExprExt(_, _, _, _, _, _)
-    | GeneratorExpr(_, _, _, _, _)
-    | GeneratorExprExt(_, _, _, _, _, _)
-    | AsyncFuncExpr(_, _, _, _, _)
-    | AsyncFuncExprExt(_, _, _, _, _, _)
-    | AsyncGeneratorExpr(_, _, _, _, _)
-    | AsyncGeneratorExprExt(_, _, _, _, _, _) => false
-    PrivateIdent(_, _) => false
-    _ => false
-  }
-}
-
-///|
-fn pat_has_await(pat : @ast.Pattern) -> Bool {
-  match pat {
-    IdentPat(_) => false
-    DefaultPat(inner, default_expr) =>
-      pat_has_await(inner) || expr_has_await(default_expr)
-    AssignTarget(e) => expr_has_await(e)
-    ArrayPat(elements, rest) => {
-      let ee = elements
-        .iter()
-        .any(fn(e) {
-          match e {
-            Some(p) => pat_has_await(p)
-            None => false
-          }
-        })
-      let rr = match rest {
-        Some(r) => pat_has_await(r)
-        None => false
-      }
-      ee || rr
-    }
-    ObjectPat(props, rest) => {
-      let pp = props
-        .iter()
-        .any(fn(prop) {
-          let ck = match prop.computed_key {
-            Some(e) => expr_has_await(e)
-            None => false
-          }
-          let dv = match prop.default_val {
-            Some(e) => expr_has_await(e)
-            None => false
-          }
-          ck || dv || pat_has_await(prop.value)
-        })
-      let rr = match rest {
-        Some(r) => pat_has_await(r)
+        Some(r) => pat_contains(r, kind)
         None => false
       }
       pp || rr
