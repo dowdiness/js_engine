@@ -53,6 +53,7 @@ const HONO_ACCEPTANCE_SCENARIO =
   #|const middlewareOrder = [];
   #|app.use("*", async (c, next) => {
   #|  middlewareOrder.push("before");
+  #|  await Promise.resolve();
   #|  await next();
   #|  middlewareOrder.push("after");
   #|});
@@ -65,8 +66,7 @@ const HONO_ACCEPTANCE_SCENARIO =
   #|});
   #|let honoAcceptanceResult = null;
   #|function readHonoAcceptanceResult() { return honoAcceptanceResult; }
-  #|(async () => {
-  #|  const response = await app.request("http://localhost/hello/Ada?lang=moon");
+  #|app.request("http://localhost/hello/Ada?lang=moon").then(async (response) => {
   #|  const headers = {};
   #|  response.headers.forEach((value, name) => { headers[name] = value; });
   #|  honoAcceptanceResult = {
@@ -75,7 +75,7 @@ const HONO_ACCEPTANCE_SCENARIO =
   #|    body: await response.text(),
   #|    order: middlewareOrder,
   #|  };
-  #|})().catch((error) => {
+  #|}).catch((error) => {
   #|  honoAcceptanceResult = {
   #|    error: `${error.name}: ${error.message}`,
   #|    order: middlewareOrder,
