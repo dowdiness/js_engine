@@ -34,6 +34,7 @@ test "function realm packed array has Null slots for absent prototypes" {
               failure.val = Some(
                 "identity-free metadata should contain only realm slots",
               )
+              return
             }
             match e[REALM_PROTO_IDX_FUNCTION] {
               Null => ()
@@ -114,18 +115,48 @@ test "source observation blocks the fast path and restores its barrier" {
   if !realm_fast_path_allowed(func, realm_state) {
     fail("identity-free same-realm function should start on the fast path")
   }
-  let observed = observe_source_failure(realm_state, fn() raise {
-    if realm_fast_path_allowed(func, realm_state) {
-      fail("source observation must force the failure-recording call path")
-    }
+  let fast_path_allowed_during_observation : Ref[Bool] = { val: false }
+  let observed = observe_source_failure(realm_state, fn() {
+    fast_path_allowed_during_observation.val = realm_fast_path_allowed(
+      func, realm_state,
+    )
     Undefined
   })
   guard observed is Ok(_) else { fail("observation should succeed") }
+  if fast_path_allowed_during_observation.val {
+    fail("source observation must force the failure-recording call path")
+  }
   if realm_state.active_overrides.val is Some(_) {
     fail("source observation must restore the previous override state")
   }
   if !realm_fast_path_allowed(func, realm_state) {
     fail("fast path should be restored after source observation")
+  }
+}
+
+///|
+test "unattributed nested failure is claimed by an identified outer frame" {
+  let realm_state = RealmState()
+  realm_state.active_source_identity.val = Some("outer.js")
+  let identified = make_native_func(
+    name="identified",
+    realm_state=Some(realm_state),
+    fn(_args) { Undefined },
+  )
+  realm_state.active_source_identity.val = None
+  let observed = observe_source_failure(realm_state, fn() raise {
+    with_active_callee_realm_value(realm_state, identified, fn() raise {
+      with_active_callee_realm_value(realm_state, unmarked_callable(), fn() raise {
+        fail("nested failure")
+      })
+    })
+  })
+  match observed {
+    Err(failure) =>
+      if failure.source_identity() != Some("outer.js") {
+        fail("identified outer frame should claim the nested failure")
+      }
+    Ok(_) => fail("expected nested failure")
   }
 }
 

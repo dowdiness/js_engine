@@ -1258,8 +1258,9 @@ fn with_active_callee_realm_value(
 ) -> Value raise Error {
   let prev = active_realm_protos(realm_state)
   let previous_source_identity = realm_state.active_source_identity.val
+  let callee_source_identity = function_source_identity(callee)
   apply_active_realm_protos(realm_state, callee_realm_protos(callee))
-  realm_state.active_source_identity.val = function_source_identity(callee)
+  realm_state.active_source_identity.val = callee_source_identity
   try {
     let result = eval()
     apply_active_realm_protos(realm_state, prev)
@@ -1268,15 +1269,17 @@ fn with_active_callee_realm_value(
   } catch {
     e => {
       if realm_state.observing_source_failure.val {
-        let should_record = match realm_state.observed_source_failure.val {
-          Some(observed) => !physical_equal(observed, e)
-          None => true
+        let should_record = match callee_source_identity {
+          Some(_) =>
+            match realm_state.observed_source_failure.val {
+              Some(observed) => !physical_equal(observed, e)
+              None => true
+            }
+          None => false
         }
         if should_record {
           realm_state.observed_source_failure.val = Some(e)
-          realm_state.observed_source_identity.val = function_source_identity(
-            callee,
-          )
+          realm_state.observed_source_identity.val = callee_source_identity
         }
       }
       apply_active_realm_protos(realm_state, prev)

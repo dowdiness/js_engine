@@ -142,9 +142,8 @@ Each diagnostic must provide these portable semantics:
 state was rolled back or that repeating the failed operation is safe.
 
 The [compatibility decision](decisions/engine-diagnostic-contract.md) selects an
-additive detailed operation surface while preserving every existing
-`EngineError` variant, payload, and operation signature. The first
-structured-diagnostic delivery now covers the current stable-facade failure
+additive detailed operation surface while preserving the existing stable
+facade. The first structured-diagnostic delivery now covers its current failure
 categories. New diagnostic kinds must follow that decision's evolution rules
 rather than being treated as automatically source-compatible.
 
@@ -212,10 +211,10 @@ expensive to retrofit:
 These decisions belong under `docs/decisions/`. They must be settled from the
 embedder contract rather than inherited accidentally from internal helpers.
 
-The first structured-diagnostic delivery for the current `EngineError`
-categories includes a source-aware evaluation entry point. Stages 4 and 5
-extend that model with limit, interruption, and host failures; they must not
-introduce a second diagnostic model.
+The first structured-diagnostic delivery covers the current stable-facade
+failure categories, including source-aware evaluation. Stages 4 and 5 extend
+that model with limit, interruption, and host failures; they must not introduce
+a second diagnostic model.
 
 ### 3. Inject host-owned JSON data
 

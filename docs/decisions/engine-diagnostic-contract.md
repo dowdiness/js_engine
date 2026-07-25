@@ -331,15 +331,15 @@ with a stronger value.
 
 The first implementation:
 
-1. add the opaque diagnostic and source-location types, the three frozen state
+1. added the opaque diagnostic and source-location types, the three frozen state
    enums, accessors, stable codes, and the parallel detailed operations;
-2. preserve all existing `EngineError` signatures and behavior;
-3. attach optional source identity without inventing a location;
-4. capture operation and phase before the current error classification loses
+2. preserved all existing `EngineError` signatures and behavior;
+3. attached optional source identity without inventing a location;
+4. captured operation and phase before the current error classification loses
    them;
-5. report the matrix values above, retaining `unknown` where evidence is
+5. reported the matrix values above, retaining `unknown` where evidence is
    missing; and
-6. add equivalent classification tests on native, JavaScript, Wasm, and
+6. added equivalent classification tests on native, JavaScript, Wasm, and
    Wasm-GC, including an external-consumer use of the new surface.
 
 Parser/runtime location propagation, one-shot retained-effects

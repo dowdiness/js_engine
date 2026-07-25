@@ -207,38 +207,16 @@ fn Engine::eval_runtime_failure(
   err : Error,
   source_id : String?,
 ) -> EngineDiagnostic {
-  match @errors.name_message_if_js_error(err) {
-    Some(("InternalError", message)) =>
-      EngineDiagnostic(
-        failure_kind_code="internal-error",
-        message~,
-        operation_code="eval",
-        phase_code="execute",
-        source_identity=source_id,
-        engine_integrity=EngineIntegrity::Discard,
-        retained_effects=RetainedEffects::Unknown,
-        pending_jobs=PendingJobs::Unknown,
-      )
-    Some((name, message)) =>
-      self.eval_failure(
-        "javascript-exception",
-        name + ": " + message,
-        "execute",
-        source_id,
-        RetainedEffects::MayRemain,
-      )
-    None =>
-      EngineDiagnostic(
-        failure_kind_code="internal-error",
-        message=err.to_string(),
-        operation_code="eval",
-        phase_code="execute",
-        source_identity=source_id,
-        engine_integrity=EngineIntegrity::Discard,
-        retained_effects=RetainedEffects::Unknown,
-        pending_jobs=PendingJobs::Unknown,
-      )
-  }
+  runtime_engine_diagnostic(
+    err,
+    operation="eval",
+    phase="execute",
+    source_identity=source_id,
+    javascript_integrity=EngineIntegrity::Reusable,
+    javascript_effects=RetainedEffects::MayRemain,
+    javascript_jobs=self.pending_jobs_snapshot(),
+    internal_integrity=EngineIntegrity::Discard,
+  )
 }
 
 ///|
@@ -294,14 +272,14 @@ pub fn Engine::eval_diagnostic(
 
 ///|
 fn make_engine_diagnostic(
-  failure_kind_code : String,
-  message : String,
-  operation_code : String,
-  phase_code : String,
-  source_identity : String?,
-  engine_integrity : EngineIntegrity,
-  retained_effects : RetainedEffects,
-  pending_jobs : PendingJobs,
+  failure_kind_code~ : String,
+  message~ : String,
+  operation_code~ : String,
+  phase_code~ : String,
+  source_identity~ : String?,
+  engine_integrity~ : EngineIntegrity,
+  retained_effects~ : RetainedEffects,
+  pending_jobs~ : PendingJobs,
 ) -> EngineDiagnostic {
   EngineDiagnostic(
     failure_kind_code~,
@@ -318,60 +296,60 @@ fn make_engine_diagnostic(
 ///|
 fn runtime_engine_diagnostic(
   err : Error,
-  operation : String,
-  phase : String,
-  source_identity : String?,
-  javascript_integrity : EngineIntegrity,
-  javascript_effects : RetainedEffects,
-  javascript_jobs : PendingJobs,
-  internal_integrity : EngineIntegrity,
+  operation~ : String,
+  phase~ : String,
+  source_identity~ : String?,
+  javascript_integrity~ : EngineIntegrity,
+  javascript_effects~ : RetainedEffects,
+  javascript_jobs~ : PendingJobs,
+  internal_integrity~ : EngineIntegrity,
 ) -> EngineDiagnostic {
   match err {
     @runtime.JsException(value) =>
       make_engine_diagnostic(
-        "javascript-exception",
-        value.to_string(),
-        operation,
-        phase,
-        source_identity,
-        javascript_integrity,
-        javascript_effects,
-        javascript_jobs,
+        failure_kind_code="javascript-exception",
+        message=value.to_string(),
+        operation_code=operation,
+        phase_code=phase,
+        source_identity~,
+        engine_integrity=javascript_integrity,
+        retained_effects=javascript_effects,
+        pending_jobs=javascript_jobs,
       )
     other =>
       match @errors.name_message_if_js_error(other) {
         Some(("InternalError", message)) =>
           make_engine_diagnostic(
-            "internal-error",
-            message,
-            operation,
-            phase,
-            source_identity,
-            internal_integrity,
-            RetainedEffects::Unknown,
-            PendingJobs::Unknown,
+            failure_kind_code="internal-error",
+            message~,
+            operation_code=operation,
+            phase_code=phase,
+            source_identity~,
+            engine_integrity=internal_integrity,
+            retained_effects=RetainedEffects::Unknown,
+            pending_jobs=PendingJobs::Unknown,
           )
         Some((name, message)) =>
           make_engine_diagnostic(
-            "javascript-exception",
-            name + ": " + message,
-            operation,
-            phase,
-            source_identity,
-            javascript_integrity,
-            javascript_effects,
-            javascript_jobs,
+            failure_kind_code="javascript-exception",
+            message=name + ": " + message,
+            operation_code=operation,
+            phase_code=phase,
+            source_identity~,
+            engine_integrity=javascript_integrity,
+            retained_effects=javascript_effects,
+            pending_jobs=javascript_jobs,
           )
         None =>
           make_engine_diagnostic(
-            "internal-error",
-            other.to_string(),
-            operation,
-            phase,
-            source_identity,
-            internal_integrity,
-            RetainedEffects::Unknown,
-            PendingJobs::Unknown,
+            failure_kind_code="internal-error",
+            message=other.to_string(),
+            operation_code=operation,
+            phase_code=phase,
+            source_identity~,
+            engine_integrity=internal_integrity,
+            retained_effects=RetainedEffects::Unknown,
+            pending_jobs=PendingJobs::Unknown,
           )
       }
   }
@@ -410,27 +388,27 @@ fn Engine::call_json_lookup_diagnostic(
         MissingGlobal(message) =>
           Err(
             make_engine_diagnostic(
-              "missing-global",
-              message,
-              "call-json",
-              "lookup",
-              None,
-              EngineIntegrity::Reusable,
-              RetainedEffects::None,
-              PendingJobs::Unknown,
+              failure_kind_code="missing-global",
+              message~,
+              operation_code="call-json",
+              phase_code="lookup",
+              source_identity=None,
+              engine_integrity=EngineIntegrity::Reusable,
+              retained_effects=RetainedEffects::None,
+              pending_jobs=PendingJobs::Unknown,
             ),
           )
         other =>
           Err(
             runtime_engine_diagnostic(
               other,
-              "call-json",
-              "lookup",
-              failure.source_identity(),
-              EngineIntegrity::Reusable,
-              RetainedEffects::MayRemain,
-              self.pending_jobs_snapshot(),
-              EngineIntegrity::Discard,
+              operation="call-json",
+              phase="lookup",
+              source_identity=failure.source_identity(),
+              javascript_integrity=EngineIntegrity::Reusable,
+              javascript_effects=RetainedEffects::MayRemain,
+              javascript_jobs=self.pending_jobs_snapshot(),
+              internal_integrity=EngineIntegrity::Discard,
             ),
           )
       }
@@ -451,14 +429,14 @@ pub fn Engine::call_json_diagnostic(
   guard @runtime.is_callable(callee) else {
     return Err(
       make_engine_diagnostic(
-        "not-callable",
-        name,
-        "call-json",
-        "lookup",
-        None,
-        EngineIntegrity::Reusable,
-        RetainedEffects::MayRemain,
-        PendingJobs::Unknown,
+        failure_kind_code="not-callable",
+        message=name,
+        operation_code="call-json",
+        phase_code="lookup",
+        source_identity=None,
+        engine_integrity=EngineIntegrity::Reusable,
+        retained_effects=RetainedEffects::MayRemain,
+        pending_jobs=PendingJobs::Unknown,
       ),
     )
   }
@@ -468,14 +446,14 @@ pub fn Engine::call_json_diagnostic(
       @runtime.JsonBridgeFailure(message) =>
         return Err(
           make_engine_diagnostic(
-            "json-conversion-error",
-            message,
-            "call-json",
-            "argument-conversion",
-            None,
-            EngineIntegrity::Reusable,
-            RetainedEffects::MayRemain,
-            self.pending_jobs_snapshot(),
+            failure_kind_code="json-conversion-error",
+            message~,
+            operation_code="call-json",
+            phase_code="argument-conversion",
+            source_identity=None,
+            engine_integrity=EngineIntegrity::Reusable,
+            retained_effects=RetainedEffects::MayRemain,
+            pending_jobs=self.pending_jobs_snapshot(),
           ),
         )
     }
@@ -495,13 +473,13 @@ pub fn Engine::call_json_diagnostic(
       return Err(
         runtime_engine_diagnostic(
           failure.cause(),
-          "call-json",
-          "execute",
-          failure.source_identity(),
-          EngineIntegrity::Reusable,
-          RetainedEffects::MayRemain,
-          self.pending_jobs_snapshot(),
-          EngineIntegrity::Discard,
+          operation="call-json",
+          phase="execute",
+          source_identity=failure.source_identity(),
+          javascript_integrity=EngineIntegrity::Reusable,
+          javascript_effects=RetainedEffects::MayRemain,
+          javascript_jobs=self.pending_jobs_snapshot(),
+          internal_integrity=EngineIntegrity::Discard,
         ),
       )
   }
@@ -509,14 +487,14 @@ pub fn Engine::call_json_diagnostic(
     @runtime.JsonBridgeFailure(message) =>
       return Err(
         make_engine_diagnostic(
-          "json-conversion-error",
-          message,
-          "call-json",
-          "result-conversion",
-          None,
-          EngineIntegrity::Reusable,
-          RetainedEffects::MayRemain,
-          self.pending_jobs_snapshot(),
+          failure_kind_code="json-conversion-error",
+          message~,
+          operation_code="call-json",
+          phase_code="result-conversion",
+          source_identity=None,
+          engine_integrity=EngineIntegrity::Reusable,
+          retained_effects=RetainedEffects::MayRemain,
+          pending_jobs=self.pending_jobs_snapshot(),
         ),
       )
   }
@@ -533,13 +511,13 @@ pub fn Engine::run_microtask_checkpoint_diagnostic(
       return Err(
         runtime_engine_diagnostic(
           err,
-          "microtask-checkpoint",
-          "microtask-dispatch",
-          None,
-          EngineIntegrity::Discard,
-          RetainedEffects::MayRemain,
-          self.pending_jobs_snapshot(),
-          EngineIntegrity::Discard,
+          operation="microtask-checkpoint",
+          phase="microtask-dispatch",
+          source_identity=None,
+          javascript_integrity=EngineIntegrity::Discard,
+          javascript_effects=RetainedEffects::MayRemain,
+          javascript_jobs=self.pending_jobs_snapshot(),
+          internal_integrity=EngineIntegrity::Discard,
         ),
       )
   }
@@ -549,13 +527,13 @@ pub fn Engine::run_microtask_checkpoint_diagnostic(
       return Err(
         runtime_engine_diagnostic(
           failure.cause(),
-          "microtask-checkpoint",
-          "microtask-dispatch",
-          failure.source_identity(),
-          EngineIntegrity::Discard,
-          RetainedEffects::MayRemain,
-          self.pending_jobs_snapshot(),
-          EngineIntegrity::Discard,
+          operation="microtask-checkpoint",
+          phase="microtask-dispatch",
+          source_identity=failure.source_identity(),
+          javascript_integrity=EngineIntegrity::Discard,
+          javascript_effects=RetainedEffects::MayRemain,
+          javascript_jobs=self.pending_jobs_snapshot(),
+          internal_integrity=EngineIntegrity::Discard,
         ),
       )
   }
@@ -576,13 +554,13 @@ fn timer_failure_phase_code(phase : @runtime.TimerRunFailurePhase) -> String {
 fn timer_dispatch_diagnostic(err : Error) -> EngineDiagnostic {
   runtime_engine_diagnostic(
     err,
-    "timer-checkpoint",
-    "timer-dispatch",
-    None,
-    EngineIntegrity::Discard,
-    RetainedEffects::Unknown,
-    PendingJobs::Unknown,
-    EngineIntegrity::Discard,
+    operation="timer-checkpoint",
+    phase="timer-dispatch",
+    source_identity=None,
+    javascript_integrity=EngineIntegrity::Discard,
+    javascript_effects=RetainedEffects::Unknown,
+    javascript_jobs=PendingJobs::Unknown,
+    internal_integrity=EngineIntegrity::Discard,
   )
 }
 
@@ -601,13 +579,13 @@ pub fn Engine::run_timer_checkpoint_diagnostic(
       Err(
         runtime_engine_diagnostic(
           failure.cause(),
-          "timer-checkpoint",
-          phase,
-          failure.source_identity(),
-          EngineIntegrity::Discard,
-          RetainedEffects::MayRemain,
-          self.pending_jobs_snapshot(),
-          EngineIntegrity::Discard,
+          operation="timer-checkpoint",
+          phase~,
+          source_identity=failure.source_identity(),
+          javascript_integrity=EngineIntegrity::Discard,
+          javascript_effects=RetainedEffects::MayRemain,
+          javascript_jobs=self.pending_jobs_snapshot(),
+          internal_integrity=EngineIntegrity::Discard,
         ),
       )
     }
@@ -623,13 +601,13 @@ fn run_operation_diagnostic(
 ) -> EngineDiagnostic {
   runtime_engine_diagnostic(
     err,
-    "run",
-    phase,
-    source_identity,
-    EngineIntegrity::NotApplicable,
-    effects,
-    PendingJobs::Unknown,
-    EngineIntegrity::NotApplicable,
+    operation="run",
+    phase~,
+    source_identity~,
+    javascript_integrity=EngineIntegrity::NotApplicable,
+    javascript_effects=effects,
+    javascript_jobs=PendingJobs::Unknown,
+    internal_integrity=EngineIntegrity::NotApplicable,
   )
 }
 
@@ -645,14 +623,14 @@ pub fn run_diagnostic(
     err =>
       return Err(
         make_engine_diagnostic(
-          "parse-error",
-          err.to_string(),
-          "run",
-          "parse",
-          source_id,
-          EngineIntegrity::NotApplicable,
-          RetainedEffects::None,
-          PendingJobs::Unknown,
+          failure_kind_code="parse-error",
+          message=err.to_string(),
+          operation_code="run",
+          phase_code="parse",
+          source_identity=source_id,
+          engine_integrity=EngineIntegrity::NotApplicable,
+          retained_effects=RetainedEffects::None,
+          pending_jobs=PendingJobs::Unknown,
         ),
       )
   }
