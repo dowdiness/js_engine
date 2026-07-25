@@ -80,9 +80,9 @@ pub(all) struct SymbolState {
 pub fn SymbolState::new() -> SymbolState {
   {
     symbol_id_counter: { val: 0 },
-    all_symbols: {},
-    global_symbol_registry: {},
-    symbol_registry_reverse: {},
+    all_symbols: Map([]),
+    global_symbol_registry: Map([]),
+    symbol_registry_reverse: Map([]),
     well_known_symbols_cache: { val: None },
   }
 }

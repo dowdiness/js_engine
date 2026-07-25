@@ -35,7 +35,7 @@ pub fn json_to_realm_value(
       make_array(values)
     }
     Json::Object(entries) => {
-      let properties : Map[String, Value] = {}
+      let properties : Map[String, Value] = Map([])
       for entry in entries.iter() {
         let (key, value) = entry
         properties[key] = json_to_realm_value(realm_state, value)
@@ -45,7 +45,7 @@ pub fn json_to_realm_value(
         realm_state.get_obj_proto(),
         None,
         "Object",
-        {},
+        Map([]),
         true,
       )
     }
@@ -145,7 +145,7 @@ fn json_bridge_value_to_json(
         )
       }
       json_bridge_push_unique(stack, value)
-      let entries : Map[String, Json] = {}
+      let entries : Map[String, Json] = Map([])
       for entry in data.bag.properties.iter() {
         let (key, property) = entry
         match data.bag.descriptors.get(key) {

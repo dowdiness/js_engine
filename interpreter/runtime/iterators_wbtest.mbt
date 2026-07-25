@@ -238,7 +238,7 @@ test "array iterators read live length" {
     elements: [Number(1.0)],
     bag: PropertyBag(),
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   let growing_iter = realm_state.make_array_iterator_value(growing_data)
@@ -267,7 +267,7 @@ test "array iterators read live length" {
     elements: [Number(1.0), Number(2.0)],
     bag: PropertyBag(),
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   let shrinking_iter = realm_state.make_array_iterator_value(shrinking_data)

@@ -128,8 +128,8 @@ pub fn make_func(data : FuncData) -> Value {
     setter: None,
     is_accessor: false,
   }
-  let func_props : Map[String, Value] = {}
-  let func_descs : Map[String, PropDescriptor] = {}
+  let func_props : Map[String, Value] = Map([])
+  let func_descs : Map[String, PropDescriptor] = Map([])
   if !data.is_method {
     func_props["prototype"] = proto
     func_descs["prototype"] = {
@@ -152,8 +152,8 @@ pub fn make_func(data : FuncData) -> Value {
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
       symbol_descriptors: function_realm_symbol_descs(realm_protos),
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: function_proto,
     callable: Some(UserFunc(data)),
@@ -224,8 +224,8 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
     setter: None,
     is_accessor: false,
   }
-  let func_props : Map[String, Value] = {}
-  let func_descs : Map[String, PropDescriptor] = {}
+  let func_props : Map[String, Value] = Map([])
+  let func_descs : Map[String, PropDescriptor] = Map([])
   if !data.is_method {
     func_props["prototype"] = proto
     func_descs["prototype"] = {
@@ -248,8 +248,8 @@ pub fn make_func_ext(data : FuncDataExt) -> Value {
       symbol_properties: func_symbol_props,
       descriptors: func_descs,
       symbol_descriptors: function_realm_symbol_descs(realm_protos),
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: function_proto,
     callable: Some(UserFuncExt(data)),
@@ -498,8 +498,8 @@ fn build_func_object(
       symbol_properties: function_realm_symbol_props(realm_protos),
       descriptors: { "length": nf_desc, "name": nf_desc },
       symbol_descriptors: function_realm_symbol_descs(realm_protos),
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: function_proto,
     callable: Some(callable),
@@ -616,14 +616,14 @@ fn make_realm_protos_packed_array(protos : FunctionRealmProtos) -> Value {
     elements: e,
     bag: PropertyBag(),
     length_writable: false,
-    holes: {},
+    holes: Map([]),
     extensible: false,
   })
 }
 
 ///|
 fn function_realm_symbol_props(protos : FunctionRealmProtos) -> Map[Int, Value] {
-  let props : Map[Int, Value] = {}
+  let props : Map[Int, Value] = Map([])
   props[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = make_realm_protos_packed_array(
     protos,
   )
@@ -646,7 +646,7 @@ fn function_realm_symbol_desc() -> PropDescriptor {
 fn function_realm_symbol_descs(
   _ : FunctionRealmProtos,
 ) -> Map[Int, PropDescriptor] {
-  let descs : Map[Int, PropDescriptor] = {}
+  let descs : Map[Int, PropDescriptor] = Map([])
   descs[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = function_realm_symbol_desc()
   descs
 }
@@ -743,7 +743,7 @@ fn stamp_realm_proto(
               elements: e,
               bag: PropertyBag(),
               length_writable: false,
-              holes: {},
+              holes: Map([]),
               extensible: false,
             },
           )
@@ -1131,11 +1131,11 @@ pub fn make_object(
   Object({
     bag: {
       properties,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype,
     callable,
@@ -1169,14 +1169,14 @@ pub fn make_object(
 pub fn make_host_object(
   name~ : String,
   proto? : Value = Null,
-  methods? : Map[String, Value] = {},
-  accessors? : Map[String, (Value?, Value?)] = {},
-  non_writable? : Map[String, Value] = {},
-  frozen? : Map[String, Value] = {},
-  host_slots? : Map[HostSlotKey, Value] = {},
+  methods? : Map[String, Value] = Map([]),
+  accessors? : Map[String, (Value?, Value?)] = Map([]),
+  non_writable? : Map[String, Value] = Map([]),
+  frozen? : Map[String, Value] = Map([]),
+  host_slots? : Map[HostSlotKey, Value] = Map([]),
   extensible? : Bool = true,
 ) -> Value {
-  let obj = make_object({}, proto, None, name, {}, extensible)
+  let obj = make_object(Map([]), proto, None, name, Map([]), extensible)
   guard obj is Object(data) else {
     abort("make_host_object: make_object must return Object")
   }
@@ -1194,17 +1194,17 @@ pub fn make_host_object(
 ///|
 /// Create an iterator result object { value, done }
 pub fn create_iter_result(value : Value, done : Bool) -> Value {
-  let props : Map[String, Value] = {}
+  let props : Map[String, Value] = Map([])
   props["value"] = value
   props["done"] = Bool(done)
   Object({
     bag: {
       properties: props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: None,
@@ -1235,7 +1235,7 @@ pub fn make_array(elements : Array[Value]) -> Value {
     elements,
     bag: PropertyBag(),
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   })
 }

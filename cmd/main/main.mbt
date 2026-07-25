@@ -76,7 +76,7 @@ fn main {
     about="JavaScript interpreter",
     version="0.2.3",
   )
-  let matches = cmd.parse(argv=remaining[:], env={}) catch {
+  let matches = cmd.parse(argv=remaining[:], env=Map([])) catch {
     err => {
       println("\{err}")
       exit_with_error()

@@ -1674,7 +1674,7 @@ fn Interpreter::exec_stmt(
         String_(s) => {
           // Box string primitive to String wrapper object
           let str_proto = env.get("[[StringPrototype]]") catch { _ => Null }
-          let props : Map[String, Value] = {}
+          let props : Map[String, Value] = Map([])
           let utf16_units = string_to_utf16(s)
           props["length"] = Number(utf16_units.length().to_double())
           // Add character indices as properties (UTF-16 code units)
@@ -1690,11 +1690,11 @@ fn Interpreter::exec_stmt(
           Object({
             bag: {
               properties: props,
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
+              symbol_properties: Map([]),
+              descriptors: Map([]),
+              symbol_descriptors: Map([]),
               internal_slots: Map::from_array([(PrimitiveValue, String_(s))]),
-              host_slots: {},
+              host_slots: Map([]),
             },
             prototype: str_proto,
             callable: None,
@@ -1708,12 +1708,12 @@ fn Interpreter::exec_stmt(
           let num_proto = env.get("[[NumberPrototype]]") catch { _ => Null }
           Object({
             bag: {
-              properties: {},
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
+              properties: Map([]),
+              symbol_properties: Map([]),
+              descriptors: Map([]),
+              symbol_descriptors: Map([]),
               internal_slots: Map::from_array([(PrimitiveValue, Number(n))]),
-              host_slots: {},
+              host_slots: Map([]),
             },
             prototype: num_proto,
             callable: None,
@@ -1727,12 +1727,12 @@ fn Interpreter::exec_stmt(
           let bool_proto = env.get("[[BooleanPrototype]]") catch { _ => Null }
           Object({
             bag: {
-              properties: {},
-              symbol_properties: {},
-              descriptors: {},
-              symbol_descriptors: {},
+              properties: Map([]),
+              symbol_properties: Map([]),
+              descriptors: Map([]),
+              symbol_descriptors: Map([]),
               internal_slots: Map::from_array([(PrimitiveValue, Bool(b))]),
-              host_slots: {},
+              host_slots: Map([]),
             },
             prototype: bool_proto,
             callable: None,

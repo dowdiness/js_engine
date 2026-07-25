@@ -15,11 +15,11 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         "name": Value::String_("Proxy"),
         "length": Value::Number(2.0),
       },
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -106,17 +106,17 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         }
         func
       }
-      let result_props : Map[String, Value] = {}
+      let result_props : Map[String, Value] = Map([])
       result_props["proxy"] = proxy_val
       result_props["revoke"] = revoke_func
       Value::Object({
         bag: {
           properties: result_props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-          host_slots: {},
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: Null,
         callable: None,

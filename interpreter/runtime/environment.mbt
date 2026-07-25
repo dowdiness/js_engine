@@ -74,14 +74,14 @@ pub fn Environment::new(parent? : Environment? = None) -> Environment {
     None => (None, None)
   }
   {
-    bindings: {},
+    bindings: Map([]),
     parent,
     is_var_scope: false,
     with_object: None,
     realm_state,
     interpreter_context,
-    error_class_names: {},
-    markers: {},
+    error_class_names: Map([]),
+    markers: Map([]),
   }
 }
 

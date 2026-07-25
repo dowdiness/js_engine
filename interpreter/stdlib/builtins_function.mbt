@@ -82,7 +82,7 @@ fn setup_function_builtins(
   realm_state : @runtime.RealmState,
 ) -> Unit {
   // Create Function.prototype
-  let func_proto_props : Map[String, Value] = {}
+  let func_proto_props : Map[String, Value] = Map([])
 
   // Function.prototype.toString - returns function source or [native code]
   func_proto_props["toString"] = @runtime.make_method_func(
@@ -274,18 +274,18 @@ fn setup_function_builtins(
         setter: None,
         is_accessor: false,
       }
-      let bprops : Map[String, Value] = {}
+      let bprops : Map[String, Value] = Map([])
       bprops["length"] = Value::Number(bound_length)
       bprops["name"] = Value::String_(bound_name)
       @runtime.stamp_function_realm(
         Value::Object({
           bag: {
             properties: bprops,
-            symbol_properties: {},
+            symbol_properties: Map([]),
             descriptors: { "length": nf_desc, "name": nf_desc },
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: target_proto,
           callable: Some(BoundFunc(this_val, bind_this, bound_args)),
@@ -302,7 +302,7 @@ fn setup_function_builtins(
   let throw_type_error : Value = Value::Object({
     bag: {
       properties: { "length": Value::Number(0.0), "name": Value::String_("") },
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "length": {
           writable: false,
@@ -321,9 +321,9 @@ fn setup_function_builtins(
           is_accessor: false,
         },
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -339,7 +339,7 @@ fn setup_function_builtins(
   })
 
   // Install ThrowTypeError accessors on Function.prototype for caller and arguments
-  let func_proto_descs : Map[String, PropDescriptor] = {}
+  let func_proto_descs : Map[String, PropDescriptor] = Map([])
   func_proto_descs["caller"] = {
     writable: false,
     enumerable: false,
@@ -379,11 +379,11 @@ fn setup_function_builtins(
   let func_proto : Value = Value::Object({
     bag: {
       properties: func_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: func_proto_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(NonConstructableCallable("", fn(_args) { Undefined })),
@@ -402,7 +402,7 @@ fn setup_function_builtins(
   env.def_builtin("[[ThrowTypeError]]", throw_type_error)
 
   // Function constructor properties
-  let func_ctor_props : Map[String, Value] = {}
+  let func_ctor_props : Map[String, Value] = Map([])
   func_ctor_props["prototype"] = func_proto
   func_ctor_props["length"] = Value::Number(1.0)
   func_ctor_props["name"] = Value::String_("Function")
@@ -420,15 +420,15 @@ fn setup_function_builtins(
   let func_ctor : Value = Value::Object({
     bag: {
       properties: func_ctor_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "name": nf_desc,
         "length": nf_desc,
         "prototype": prototype_desc,
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -463,7 +463,7 @@ fn setup_function_builtins(
           match prog.stmts[0] {
             FuncDecl(_, params, body, _, _) => {
               let proto = make_function_prototype(realm_state)
-              let fn_props : Map[String, Value] = {}
+              let fn_props : Map[String, Value] = Map([])
               fn_props["length"] = Value::Number(params.length().to_double())
               fn_props["name"] = Value::String_("anonymous")
               fn_props["prototype"] = proto
@@ -480,7 +480,7 @@ fn setup_function_builtins(
                 Value::Object({
                   bag: {
                     properties: fn_props,
-                    symbol_properties: {},
+                    symbol_properties: Map([]),
                     descriptors: {
                       "length": nf_desc,
                       "name": nf_desc,
@@ -493,9 +493,9 @@ fn setup_function_builtins(
                         is_accessor: false,
                       },
                     },
-                    symbol_descriptors: {},
-                    internal_slots: {},
-                    host_slots: {},
+                    symbol_descriptors: Map([]),
+                    internal_slots: Map([]),
+                    host_slots: Map([]),
                   },
                   prototype: func_proto,
                   callable: Some(
@@ -522,7 +522,7 @@ fn setup_function_builtins(
             }
             FuncDeclExt(_, params, rest_param, body, _, _) => {
               let proto = make_function_prototype(realm_state)
-              let fn_props : Map[String, Value] = {}
+              let fn_props : Map[String, Value] = Map([])
               let fn_length = expected_argument_count_ext(params)
               fn_props["length"] = Value::Number(fn_length.to_double())
               fn_props["name"] = Value::String_("anonymous")
@@ -537,7 +537,7 @@ fn setup_function_builtins(
                 Value::Object({
                   bag: {
                     properties: fn_props,
-                    symbol_properties: {},
+                    symbol_properties: Map([]),
                     descriptors: {
                       "length": nf_desc,
                       "name": nf_desc,
@@ -550,9 +550,9 @@ fn setup_function_builtins(
                         is_accessor: false,
                       },
                     },
-                    symbol_descriptors: {},
-                    internal_slots: {},
-                    host_slots: {},
+                    symbol_descriptors: Map([]),
+                    internal_slots: Map([]),
+                    host_slots: Map([]),
                   },
                   prototype: func_proto,
                   callable: Some(
@@ -590,7 +590,7 @@ fn setup_function_builtins(
                 "name": Value::String_("anonymous"),
                 "prototype": fb_proto,
               },
-              symbol_properties: {},
+              symbol_properties: Map([]),
               descriptors: {
                 "length": nf_desc,
                 "name": nf_desc,
@@ -603,9 +603,9 @@ fn setup_function_builtins(
                   is_accessor: false,
                 },
               },
-              symbol_descriptors: {},
-              internal_slots: {},
-              host_slots: {},
+              symbol_descriptors: Map([]),
+              internal_slots: Map([]),
+              host_slots: Map([]),
             },
             prototype: func_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),

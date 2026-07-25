@@ -2,14 +2,21 @@
 
 ///|
 fn has_marker_proto() -> Value {
-  make_object({ "marker": String_("target") }, Null, None, "Object", {}, true)
+  make_object(
+    { "marker": String_("target") },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
 }
 
 ///|
 test "has_property_key uses target Map prototype, not active callee realm" {
   let interp = Interpreter::new()
   let target_proto = has_marker_proto()
-  let active_proto = make_object({}, Null, None, "Object", {}, true)
+  let active_proto = make_object(Map([]), Null, None, "Object", Map([]), true)
   apply_active_realm_protos(
     interp.realm_state,
     FunctionRealmProtos(map_proto=Some(active_proto)),
@@ -22,7 +29,7 @@ test "has_property_key uses target Map prototype, not active callee realm" {
 test "has_property_key uses target Set prototype, not active callee realm" {
   let interp = Interpreter::new()
   let target_proto = has_marker_proto()
-  let active_proto = make_object({}, Null, None, "Object", {}, true)
+  let active_proto = make_object(Map([]), Null, None, "Object", Map([]), true)
   apply_active_realm_protos(
     interp.realm_state,
     FunctionRealmProtos(set_proto=Some(active_proto)),
@@ -35,7 +42,7 @@ test "has_property_key uses target Set prototype, not active callee realm" {
 test "has_property_key uses base Promise prototype, not active callee realm" {
   let interp = Interpreter::new()
   let base_proto = has_marker_proto()
-  let active_proto = make_object({}, Null, None, "Object", {}, true)
+  let active_proto = make_object(Map([]), Null, None, "Object", Map([]), true)
   interp.realm_state.promise_prototype.val = Some(base_proto)
   apply_active_realm_protos(
     interp.realm_state,

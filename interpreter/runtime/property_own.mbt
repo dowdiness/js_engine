@@ -651,7 +651,7 @@ pub fn descriptor_to_value(
   value : Value,
   realm_state? : RealmState? = None,
 ) -> Value {
-  let props : Map[String, Value] = {}
+  let props : Map[String, Value] = Map([])
   if desc.is_accessor {
     props["get"] = desc.getter.unwrap_or(Undefined)
     props["set"] = desc.setter.unwrap_or(Undefined)
@@ -664,11 +664,11 @@ pub fn descriptor_to_value(
   Value::Object({
     bag: {
       properties: props,
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: get_obj_proto(realm_state~),
     extensible: true,

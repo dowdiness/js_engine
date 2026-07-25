@@ -86,7 +86,7 @@ fn setup_iterator_protocol(
           }
           match unscopables_sym_data {
             Some(unscopables_sym2) => {
-              let unscopable_props : Map[String, Value] = {}
+              let unscopable_props : Map[String, Value] = Map([])
               unscopable_props["at"] = Value::Bool(true)
               unscopable_props["copyWithin"] = Value::Bool(true)
               unscopable_props["entries"] = Value::Bool(true)
@@ -106,11 +106,11 @@ fn setup_iterator_protocol(
               proto_data.bag.symbol_properties[unscopables_sym2.id] = Value::Object({
                   bag: {
                     properties: unscopable_props,
-                    symbol_properties: {},
-                    descriptors: {},
-                    symbol_descriptors: {},
-                    internal_slots: {},
-                    host_slots: {},
+                    symbol_properties: Map([]),
+                    descriptors: Map([]),
+                    symbol_descriptors: Map([]),
+                    internal_slots: Map([]),
+                    host_slots: Map([]),
                   },
                   prototype: Null,
                   callable: None,
