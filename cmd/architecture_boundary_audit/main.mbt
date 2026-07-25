@@ -48,7 +48,7 @@ fn main {
     ],
     about="Check Stage 0 architecture import boundaries and representation access against allowlist inventories.",
   )
-  let matches = cmd.parse(argv=program_args(@env.args()), env={}) catch {
+  let matches = cmd.parse(argv=program_args(@env.args()), env=Map([])) catch {
     err => {
       eprintln("\{err}")
       exit_with_error()
