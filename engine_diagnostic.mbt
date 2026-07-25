@@ -260,22 +260,34 @@ pub fn Engine::eval_diagnostic(
         ),
       )
   }
-  ignore(
-    @runtime.with_source_identity(self.interp.realm_state, source_id, fn() raise {
-      self.interp.run(program.stmts)
-    }),
-  ) catch {
-    @runtime.JsException(value) =>
-      return Err(
-        self.eval_failure(
-          "javascript-exception",
-          value.to_string(),
-          "execute",
-          source_id,
-          RetainedEffects::MayRemain,
-        ),
-      )
-    err => return Err(self.eval_runtime_failure(err, source_id))
+  let observed = @runtime.observe_source_failure(self.interp.realm_state, fn() raise {
+    ignore(
+      @runtime.with_source_identity(self.interp.realm_state, source_id, fn() raise {
+        self.interp.run(program.stmts)
+      }),
+    )
+  })
+  match observed {
+    Ok(_) => ()
+    Err(failure) => {
+      let failure_source = match failure.source_identity() {
+        Some(identity) => Some(identity)
+        None => source_id
+      }
+      match failure.cause() {
+        @runtime.JsException(value) =>
+          return Err(
+            self.eval_failure(
+              "javascript-exception",
+              value.to_string(),
+              "execute",
+              failure_source,
+              RetainedEffects::MayRemain,
+            ),
+          )
+        err => return Err(self.eval_runtime_failure(err, failure_source))
+      }
+    }
   }
   Ok(())
 }

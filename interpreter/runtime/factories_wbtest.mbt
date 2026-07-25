@@ -30,6 +30,11 @@ test "function realm packed array has Null slots for absent prototypes" {
           data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
           Some(Array(arr_data)) => {
             let e = arr_data.elements
+            if e.length() != FUNCTION_REALM_PROTO_SLOT_COUNT {
+              failure.val = Some(
+                "identity-free metadata should contain only realm slots",
+              )
+            }
             match e[REALM_PROTO_IDX_FUNCTION] {
               Null => ()
               _ =>
@@ -95,6 +100,32 @@ test "source identity shares the packed function metadata lookup" {
   }
   if realm_fast_path_allowed(func, realm_state) {
     fail("source-attributed functions must use the observation-aware call path")
+  }
+}
+
+///|
+test "source observation blocks the fast path and restores its barrier" {
+  let realm_state = RealmState()
+  let func = make_native_func(
+    name="identity-free",
+    realm_state=Some(realm_state),
+    fn(_args) { Undefined },
+  )
+  if !realm_fast_path_allowed(func, realm_state) {
+    fail("identity-free same-realm function should start on the fast path")
+  }
+  let observed = observe_source_failure(realm_state, fn() raise {
+    if realm_fast_path_allowed(func, realm_state) {
+      fail("source observation must force the failure-recording call path")
+    }
+    Undefined
+  })
+  guard observed is Ok(_) else { fail("observation should succeed") }
+  if realm_state.active_overrides.val is Some(_) {
+    fail("source observation must restore the previous override state")
+  }
+  if !realm_fast_path_allowed(func, realm_state) {
+    fail("fast path should be restored after source observation")
   }
 }
 

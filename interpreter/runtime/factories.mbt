@@ -1,10 +1,14 @@
 ///|
 // Engine-private negative symbol IDs are reserved in docs/development.md.
 // -101 stores a function object's packed home-realm intrinsic prototypes and
-// optional host-supplied source identity as an 11-element Array[Value]. This
-// keeps the call_value fast path at 1 HashMap lookup + array reads.
+// optional host-supplied source identity as a 10- or 11-element Array[Value].
+// Identity-free functions use 10 elements so the call_value fast path can
+// reject identity-bearing metadata with one length check.
 // -102..-110 are freed. Keep this comment updated if the range changes.
 const FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID = -101
+
+///|
+const FUNCTION_REALM_PROTO_SLOT_COUNT = 10
 
 ///|
 const FUNCTION_METADATA_SLOT_COUNT = 11
@@ -589,7 +593,11 @@ fn make_realm_protos_packed_array(
   protos : FunctionRealmProtos,
   source_identity? : String? = None,
 ) -> Value {
-  let e : Array[Value] = Array::make(FUNCTION_METADATA_SLOT_COUNT, Null)
+  let slot_count = match source_identity {
+    Some(_) => FUNCTION_METADATA_SLOT_COUNT
+    None => FUNCTION_REALM_PROTO_SLOT_COUNT
+  }
+  let e : Array[Value] = Array::make(slot_count, Null)
   match protos.function_proto {
     Some(v) => e[REALM_PROTO_IDX_FUNCTION] = v
     None => ()
@@ -693,7 +701,11 @@ fn stamp_function_source_identity(
       match
         data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
         Some(Array(arr_data)) =>
-          arr_data.elements[FUNCTION_SOURCE_IDENTITY_IDX] = String_(identity)
+          if arr_data.elements.length() == FUNCTION_SOURCE_IDENTITY_IDX {
+            arr_data.elements.push(String_(identity))
+          } else if arr_data.elements.length() > FUNCTION_SOURCE_IDENTITY_IDX {
+            arr_data.elements[FUNCTION_SOURCE_IDENTITY_IDX] = String_(identity)
+          }
         _ => {
           data.bag.symbol_properties[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = make_realm_protos_packed_array(
             empty_function_realm_protos(),
@@ -712,16 +724,26 @@ pub fn function_source_identity(value : Value) -> String? {
     Object(data) =>
       match
         data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
-        Some(Array(arr_data)) =>
-          match arr_data.elements[FUNCTION_SOURCE_IDENTITY_IDX] {
-            String_(identity) => Some(identity)
-            _ =>
+        Some(Array(arr_data)) => {
+          let own_identity = if arr_data.elements.length() >
+            FUNCTION_SOURCE_IDENTITY_IDX {
+            match arr_data.elements[FUNCTION_SOURCE_IDENTITY_IDX] {
+              String_(identity) => Some(identity)
+              _ => None
+            }
+          } else {
+            None
+          }
+          match own_identity {
+            Some(_) => own_identity
+            None =>
               match data.callable {
                 Some(BoundFunc(target, _, _)) =>
                   function_source_identity(target)
                 _ => None
               }
           }
+        }
         _ =>
           match data.callable {
             Some(BoundFunc(target, _, _)) => function_source_identity(target)
@@ -766,6 +788,23 @@ pub fn SourceObservedFailure::source_identity(
 }
 
 ///|
+// Preserve the recorded source when a runtime boundary translates an error
+// without handling it. This runs only on the failure path.
+fn remap_observed_source_failure(
+  realm_state : RealmState,
+  previous : Error,
+  translated : Error,
+) -> Unit {
+  if realm_state.observing_source_failure.val {
+    match realm_state.observed_source_failure.val {
+      Some(observed) if physical_equal(observed, previous) =>
+        realm_state.observed_source_failure.val = Some(translated)
+      _ => ()
+    }
+  }
+}
+
+///|
 /// Observe source provenance atomically without changing the raised error.
 /// Nested call wrappers record an error only while this scope is active.
 pub fn[T] observe_source_failure(
@@ -775,14 +814,19 @@ pub fn[T] observe_source_failure(
   let previous_observing = realm_state.observing_source_failure.val
   let previous_failure = realm_state.observed_source_failure.val
   let previous_identity = realm_state.observed_source_identity.val
+  let previous_overrides = realm_state.active_overrides.val
   realm_state.observing_source_failure.val = true
   realm_state.observed_source_failure.val = None
   realm_state.observed_source_identity.val = None
+  if previous_overrides is None {
+    realm_state.active_overrides.val = Some(empty_function_realm_protos())
+  }
   try {
     let result = eval()
     realm_state.observing_source_failure.val = previous_observing
     realm_state.observed_source_failure.val = previous_failure
     realm_state.observed_source_identity.val = previous_identity
+    realm_state.active_overrides.val = previous_overrides
     Ok(result)
   } catch {
     error => {
@@ -794,6 +838,7 @@ pub fn[T] observe_source_failure(
       realm_state.observing_source_failure.val = previous_observing
       realm_state.observed_source_failure.val = previous_failure
       realm_state.observed_source_identity.val = previous_identity
+      realm_state.active_overrides.val = previous_overrides
       Err(SourceObservedFailure(error, source_identity))
     }
   }
@@ -856,10 +901,19 @@ pub fn stamp_function_realm(
     value,
     function_realm_protos_from_state(realm_state~),
   )
-  stamp_function_source_identity(
-    stamped,
-    source_identity_from_state(realm_state~),
-  )
+  let source_identity = match source_identity_from_state(realm_state~) {
+    Some(identity) => Some(identity)
+    None =>
+      match stamped {
+        Object(data) =>
+          match data.callable {
+            Some(BoundFunc(target, _, _)) => function_source_identity(target)
+            _ => None
+          }
+        _ => None
+      }
+  }
+  stamp_function_source_identity(stamped, source_identity)
   stamped
 }
 
@@ -910,7 +964,10 @@ fn stamp_realm_proto(
         data.bag.symbol_properties.get(FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID) {
         Some(Array(arr_data)) => arr_data.elements[idx] = proto
         _ => {
-          let e : Array[Value] = Array::make(FUNCTION_METADATA_SLOT_COUNT, Null)
+          let e : Array[Value] = Array::make(
+            FUNCTION_REALM_PROTO_SLOT_COUNT,
+            Null,
+          )
           e[idx] = proto
           data.bag.symbol_properties[FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID] = Array({
               elements: e,
@@ -1133,7 +1190,6 @@ fn inherited_function_source_identity(callee : Value) -> String? {
 // subset is unsafe because stamp_function_realm_with
 // accepts slots independently.
 fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
-  guard !realm_state.observing_source_failure.val else { return false }
   // Part 1: no active cross-realm override — one Ref read (None = no overrides active)
   guard realm_state.active_overrides.val is None else { return false }
   // Part 2: source identity and every stamped proto share one packed lookup.
@@ -1141,10 +1197,7 @@ fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
   match get_callee_function_metadata(callee) {
     None => inherited_function_source_identity(callee) is None
     Some(e) => {
-      guard e[FUNCTION_SOURCE_IDENTITY_IDX] is Null else { return false }
-      guard inherited_function_source_identity(callee) is None else {
-        return false
-      }
+      guard e.length() == FUNCTION_REALM_PROTO_SLOT_COUNT else { return false }
       fn same(idx : Int, main_ref : Ref[Value?]) -> Bool {
         match (e[idx], main_ref.val) {
           (Null, _) => true // absent slot — inherits same-realm semantics
@@ -1189,7 +1242,12 @@ pub fn apply_active_realm_protos(
     protos.map_proto is Some(_) ||
     protos.set_proto is Some(_) ||
     protos.promise_proto is Some(_)
-  realm_state.active_overrides.val = if any_set { Some(protos) } else { None }
+  realm_state.active_overrides.val = if any_set ||
+    realm_state.observing_source_failure.val {
+    Some(protos)
+  } else {
+    None
+  }
 }
 
 ///|

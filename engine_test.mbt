@@ -356,6 +356,27 @@ test "Engine detailed operations preserve per-origin source identity" {
 }
 
 ///|
+test "Engine detailed eval reports the deepest cross-source failure" {
+  let engine = @js_engine.Engine()
+  assert_true(
+    engine.eval_diagnostic(
+      "function failFromLoadedSource() { throw new Error('loaded'); }",
+      source_id="loaded.js",
+    )
+    is Ok(_),
+  )
+  let diagnostic = expect_engine_diagnostic(
+    engine.eval_diagnostic("failFromLoadedSource();", source_id="entry.js"),
+  )
+  assert_true(diagnostic.source_identity() == Some("loaded.js"))
+  engine.eval("var boundLoadedFailure = failFromLoadedSource.bind(null);")
+  let bound_diagnostic = expect_engine_diagnostic(
+    engine.eval_diagnostic("boundLoadedFailure();", source_id="bound-entry.js"),
+  )
+  assert_true(bound_diagnostic.source_identity() == Some("loaded.js"))
+}
+
+///|
 test "checkpoint diagnostics preserve deepest source identity" {
   let engine = @js_engine.Engine()
   assert_true(
