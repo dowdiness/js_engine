@@ -5510,6 +5510,140 @@ test "use strict: this is undefined in function call" {
 }
 
 ///|
+test "use strict: inherited setters preserve primitive receivers" {
+  let src =
+    #|"use strict";
+    #|var stringReceiver;
+    #|var numberReceiver;
+    #|var booleanReceiver;
+    #|Object.defineProperty(String.prototype, "test", {
+    #|  set: function(value) { stringReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Number.prototype, "test", {
+    #|  set: function(value) { numberReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Boolean.prototype, "test", {
+    #|  set: function(value) { booleanReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|"".test = 1;
+    #|(42).test = 2;
+    #|true.test = 3;
+    #|console.log(stringReceiver === "");
+    #|console.log(numberReceiver === 42);
+    #|console.log(booleanReceiver === true);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
+test "use strict: computed inherited setter preserves primitive receiver" {
+  let src =
+    #|"use strict";
+    #|var receiver;
+    #|Object.defineProperty(String.prototype, "computed", {
+    #|  set: function(value) { receiver = this; },
+    #|  configurable: true
+    #|});
+    #|"value"["computed"] = 1;
+    #|console.log(receiver === "value");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "use strict: symbol inherited setters preserve primitive receivers" {
+  let src =
+    #|"use strict";
+    #|var key = Symbol("test");
+    #|var stringReceiver;
+    #|var numberReceiver;
+    #|var booleanReceiver;
+    #|Object.defineProperty(String.prototype, key, {
+    #|  set: function(value) { stringReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Number.prototype, key, {
+    #|  set: function(value) { numberReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Boolean.prototype, key, {
+    #|  set: function(value) { booleanReceiver = this; },
+    #|  configurable: true
+    #|});
+    #|"value"[key] = 1;
+    #|(42)[key] = 2;
+    #|true[key] = 3;
+    #|console.log(stringReceiver === "value");
+    #|console.log(numberReceiver === 42);
+    #|console.log(booleanReceiver === true);
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
+test "primitive symbol assignment preserves blockers and fallback" {
+  let strict_src =
+    #|"use strict";
+    #|var getterOnly = Symbol("getterOnly");
+    #|var readOnly = Symbol("readOnly");
+    #|var missing = Symbol("missing");
+    #|Object.defineProperty(Number.prototype, getterOnly, {
+    #|  get: function() { return 1; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Boolean.prototype, readOnly, {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: true
+    #|});
+    #|try { (42)[getterOnly] = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+    #|try { true[readOnly] = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+    #|try { "value"[missing] = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+  let strict_output = run_output(strict_src)
+  json_inspect(strict_output, content=["true", "true", "true"])
+  let sloppy_src =
+    #|var missing = Symbol("missing");
+    #|console.log(("value"[missing] = 4) === 4);
+  let sloppy_output = run_output(sloppy_src)
+  json_inspect(sloppy_output, content=["true"])
+}
+
+///|
+test "use strict: primitive assignment preserves inherited blockers" {
+  let src =
+    #|"use strict";
+    #|Object.defineProperty(Number.prototype, "getterOnly", {
+    #|  get: function() { return 1; },
+    #|  configurable: true
+    #|});
+    #|Object.defineProperty(Boolean.prototype, "readOnly", {
+    #|  value: 1,
+    #|  writable: false,
+    #|  configurable: true
+    #|});
+    #|try { (42).getterOnly = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+    #|try { true.readOnly = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+    #|try { "value".missing = 2; } catch (error) {
+    #|  console.log(error instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true", "true"])
+}
+
+///|
 test "use strict: assignment to read-only throws" {
   let src =
     #|"use strict";

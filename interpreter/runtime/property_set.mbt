@@ -21,6 +21,17 @@ fn array_index64_from_string(prop : String) -> Int64? {
 }
 
 ///|
+fn string_primitive_has_own_property(value : String, prop : String) -> Bool {
+  if prop == "length" {
+    return true
+  }
+  match array_index64_from_string(prop) {
+    Some(idx) => idx < utf16_length(value).to_int64()
+    None => false
+  }
+}
+
+///|
 fn Interpreter::set_array_sparse_index64(
   self : Interpreter,
   data : ArrayData,
@@ -622,9 +633,44 @@ pub fn Interpreter::set_property(
       raise @errors.TypeError(
         message="Cannot set properties of undefined (setting '\{prop}')",
       )
-    _ =>
-      // In non-strict mode, setting a property on a primitive is silently ignored
-      // (the temporary wrapper object is discarded). In strict mode, throw TypeError.
+    _ => {
+      // PutValue temporarily boxes String/Number/Boolean, but passes the
+      // original primitive as Receiver to [[Set]]. Avoid allocating that
+      // wrapper: walk the matching intrinsic prototype directly and preserve
+      // the primitive receiver when invoking an inherited setter.
+      //
+      // String wrappers have non-writable own `length` and indexed properties;
+      // those must block a same-named setter higher in the prototype chain.
+      let proto = match obj {
+        String_(string) =>
+          if string_primitive_has_own_property(string, prop) {
+            None
+          } else {
+            Some(self.realm_state.get_string_proto())
+          }
+        Number(_) => Some(self.realm_state.get_number_proto())
+        Bool(_) => Some(self.realm_state.get_boolean_proto())
+        _ => None
+      }
+      match proto {
+        Some(primitive_proto) =>
+          match
+            self.set_key_via_map_set_prototype_chain(
+              primitive_proto,
+              receiver,
+              String_(prop),
+              value,
+              loc,
+              strict,
+            ) {
+            Some(result) => return result
+            None => ()
+          }
+        None => ()
+      }
+      // Without an inherited setter, the temporary primitive wrapper cannot
+      // retain a new own property. Sloppy assignment is ignored; strict
+      // assignment reports failure.
       if strict {
         raise @errors.TypeError(
           message="Cannot set property '\{prop}' of \{type_of(obj)}",
@@ -632,6 +678,7 @@ pub fn Interpreter::set_property(
       } else {
         value
       }
+    }
   }
 }
 
@@ -2130,12 +2177,37 @@ pub fn Interpreter::set_computed_property(
       )
     }
     _ =>
-      if strict {
-        raise @errors.TypeError(
-          message="Cannot set property of \{type_of(obj)}",
-        )
-      } else {
-        value
+      match key {
+        Symbol(_) => {
+          let proto = match obj {
+            String_(_) => Some(self.realm_state.get_string_proto())
+            Number(_) => Some(self.realm_state.get_number_proto())
+            Bool(_) => Some(self.realm_state.get_boolean_proto())
+            _ => None
+          }
+          match proto {
+            Some(primitive_proto) =>
+              match
+                self.set_key_via_map_set_prototype_chain(
+                  primitive_proto, receiver, key, value, loc, strict,
+                ) {
+                Some(result) => return result
+                None => ()
+              }
+            None => ()
+          }
+          if strict {
+            raise @errors.TypeError(
+              message="Cannot set property of \{type_of(obj)}",
+            )
+          } else {
+            value
+          }
+        }
+        _ => {
+          let prop = to_js_string(key, interp=Some(self))
+          self.set_property(obj, prop, value, loc, strict~, receiver~)
+        }
       }
   }
 }
