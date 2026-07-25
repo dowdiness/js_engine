@@ -787,6 +787,106 @@ pub fn Interpreter::call_value(
 }
 
 ///|
+fn box_primitive_call_this(value : Value, realm_state : RealmState) -> Value {
+  match value {
+    String_(s) => {
+      let utf16_units = string_to_utf16(s)
+      let properties : Map[String, Value] = {
+        "length": Number(utf16_units.length().to_double()),
+      }
+      let descriptors : Map[String, PropDescriptor] = {
+        "length": {
+          writable: false,
+          enumerable: false,
+          configurable: false,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        },
+      }
+      for i = 0; i < utf16_units.length(); i = i + 1 {
+        let key = i.to_string()
+        properties[key] = String_(
+          String::make(1, utf16_units[i].unsafe_to_char()),
+        )
+        descriptors[key] = {
+          writable: false,
+          enumerable: true,
+          configurable: false,
+          getter: None,
+          setter: None,
+          is_accessor: false,
+        }
+      }
+      Object({
+        bag: {
+          properties,
+          symbol_properties: Map([]),
+          descriptors,
+          symbol_descriptors: Map([]),
+          internal_slots: Map::from_array([(StringData, String_(s))]),
+          host_slots: Map([]),
+        },
+        prototype: get_string_proto(realm_state=Some(realm_state)),
+        callable: None,
+        class_name: "String",
+        extensible: true,
+        arraybuffer_state: None,
+      })
+    }
+    Number(n) =>
+      Object({
+        bag: {
+          properties: Map([]),
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map::from_array([(NumberData, Number(n))]),
+          host_slots: Map([]),
+        },
+        prototype: get_number_proto(realm_state=Some(realm_state)),
+        callable: None,
+        class_name: "Number",
+        extensible: true,
+        arraybuffer_state: None,
+      })
+    Bool(b) =>
+      Object({
+        bag: {
+          properties: Map([]),
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map::from_array([(BooleanData, Bool(b))]),
+          host_slots: Map([]),
+        },
+        prototype: get_boolean_proto(realm_state=Some(realm_state)),
+        callable: None,
+        class_name: "Boolean",
+        extensible: true,
+        arraybuffer_state: None,
+      })
+    Symbol(sym) =>
+      Object({
+        bag: {
+          properties: Map([]),
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map::from_array([(SymbolData, Symbol(sym))]),
+          host_slots: Map([]),
+        },
+        prototype: get_symbol_proto(realm_state=Some(realm_state)),
+        callable: None,
+        class_name: "Symbol",
+        extensible: true,
+        arraybuffer_state: None,
+      })
+    _ => value
+  }
+}
+
+///|
 fn Interpreter::call_value_impl(
   self : Interpreter,
   callee : Value,
@@ -797,7 +897,7 @@ fn Interpreter::call_value_impl(
   let normalize_sloppy_this = fn(tv : Value) {
     match tv {
       Undefined | Null => self.global_this
-      _ => tv
+      _ => box_primitive_call_this(tv, self.realm_state)
     }
   }
   match callee {
