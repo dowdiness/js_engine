@@ -33,10 +33,37 @@ pub fn Interpreter::enqueue_microtask(
 }
 
 ///|
-/// Run all pending microtasks until the queue is empty.
-/// This is called after each task (script execution) completes.
-/// Implements the microtask checkpoint from WHATWG Event Loop spec.
-pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
+/// A microtask-run failure paired with trustworthy callback provenance.
+pub struct MicrotaskRunFailure {
+  cause_ : Error
+  source_identity_ : String?
+}
+
+///|
+fn MicrotaskRunFailure::MicrotaskRunFailure(
+  cause : Error,
+  source_identity : String?,
+) -> MicrotaskRunFailure {
+  { cause_: cause, source_identity_: source_identity }
+}
+
+///|
+pub fn MicrotaskRunFailure::cause(self : MicrotaskRunFailure) -> Error {
+  self.cause_
+}
+
+///|
+pub fn MicrotaskRunFailure::source_identity(
+  self : MicrotaskRunFailure,
+) -> String? {
+  self.source_identity_
+}
+
+///|
+/// Run all pending microtasks while retaining callback provenance on failure.
+pub fn Interpreter::run_microtasks_observed(
+  self : Interpreter,
+) -> Result[Unit, MicrotaskRunFailure] raise Error {
   with_cleared_active_callee_realm(self.realm_state, fn() raise {
     let policy = MicrotaskQueuePolicy(self.host.microtask_queue)
     while true {
@@ -50,10 +77,19 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
           match obj_data.callable {
             Some(_) => {
               let loc = @token.Loc::default()
-              let _ = self.call_value(task.callback, Undefined, task.args, loc) catch {
-                e => {
+              let call_result = observe_source_failure(self.realm_state, fn() raise {
+                self.call_value(task.callback, Undefined, task.args, loc)
+              })
+              match call_result {
+                Ok(_) => ()
+                Err(failure) => {
                   policy.fail_selected()
-                  raise e
+                  return Err(
+                    MicrotaskRunFailure(
+                      failure.cause(),
+                      failure.source_identity(),
+                    ),
+                  )
                 }
               }
             }
@@ -64,8 +100,20 @@ pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
       policy.complete_selected()
     }
     policy.complete_drain()
+    Ok(())
   }) catch {
     e => raise e
+  }
+}
+
+///|
+/// Run all pending microtasks until the queue is empty.
+/// This is called after each task (script execution) completes.
+/// Implements the microtask checkpoint from WHATWG Event Loop spec.
+pub fn Interpreter::run_microtasks(self : Interpreter) -> Unit raise Error {
+  match self.run_microtasks_observed() {
+    Ok(_) => ()
+    Err(failure) => raise failure.cause()
   }
 }
 
@@ -302,6 +350,58 @@ pub fn create_resolving_functions(
 /// For setInterval, the timer is re-enqueued after each invocation
 /// until cancelled. A safety limit prevents infinite loops.
 pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
+  match self.run_timers_observed() {
+    Ok(_) => ()
+    Err(failure) => raise failure.cause()
+  }
+}
+
+///|
+/// Failure phase retained for the stable root facade's diagnostic adapter.
+pub enum TimerRunFailurePhase {
+  TimerCallback
+  IntervalCallback
+  MicrotaskCheckpoint
+}
+
+///|
+/// A timer-run failure paired atomically with the phase that observed it.
+pub struct TimerRunFailure {
+  cause_ : Error
+  phase_ : TimerRunFailurePhase
+  source_identity_ : String?
+}
+
+///|
+fn TimerRunFailure::TimerRunFailure(
+  cause : Error,
+  phase : TimerRunFailurePhase,
+  source_identity : String?,
+) -> TimerRunFailure {
+  { cause_: cause, phase_: phase, source_identity_: source_identity }
+}
+
+///|
+pub fn TimerRunFailure::cause(self : TimerRunFailure) -> Error {
+  self.cause_
+}
+
+///|
+pub fn TimerRunFailure::phase(self : TimerRunFailure) -> TimerRunFailurePhase {
+  self.phase_
+}
+
+///|
+pub fn TimerRunFailure::source_identity(self : TimerRunFailure) -> String? {
+  self.source_identity_
+}
+
+///|
+/// Run timers while retaining callback-vs-checkpoint context for direct
+/// package dependents. Queue-policy defects still raise as internal failures.
+pub fn Interpreter::run_timers_observed(
+  self : Interpreter,
+) -> Result[Unit, TimerRunFailure] raise Error {
   with_cleared_active_callee_realm(self.realm_state, fn() raise {
     let policy = TimerQueuePolicy(
       self.host.timer_queue,
@@ -316,23 +416,50 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
       }
       // Execute the timer callback
       let loc = @token.Loc::default()
-      let _ = self.call_value(timer.callback, Undefined, timer.args, loc) catch {
-        e => {
+      let call_result = observe_source_failure(self.realm_state, fn() raise {
+        self.call_value(timer.callback, Undefined, timer.args, loc)
+      })
+      match call_result {
+        Ok(_) => ()
+        Err(failure) => {
           policy.callback_failed()
-          raise e
+          let phase = if timer.is_interval {
+            TimerRunFailurePhase::IntervalCallback
+          } else {
+            TimerRunFailurePhase::TimerCallback
+          }
+          return Err(
+            TimerRunFailure(failure.cause(), phase, failure.source_identity()),
+          )
         }
       }
       policy.callback_succeeded()
       // Microtask checkpoint after each task (per WHATWG event loop spec)
-      self.run_microtasks() catch {
+      let microtask_result = self.run_microtasks_observed() catch {
         e => {
           policy.checkpoint_failed()
-          raise e
+          return Err(
+            TimerRunFailure(e, TimerRunFailurePhase::MicrotaskCheckpoint, None),
+          )
+        }
+      }
+      match microtask_result {
+        Ok(_) => ()
+        Err(failure) => {
+          policy.checkpoint_failed()
+          return Err(
+            TimerRunFailure(
+              failure.cause(),
+              TimerRunFailurePhase::MicrotaskCheckpoint,
+              failure.source_identity(),
+            ),
+          )
         }
       }
       policy.checkpoint_succeeded()
     }
     policy.complete_run()
+    Ok(())
   }) catch {
     e => raise e
   }

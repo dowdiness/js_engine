@@ -15,6 +15,8 @@ pub fn run(String, annex_b? : Bool) -> (Array[String], String) raise
 
 pub fn run_compiled(String, annex_b? : Bool) -> (Array[String], String) raise
 
+pub fn run_diagnostic(String, source_id? : String, annex_b? : Bool) -> Result[(Array[String], String), EngineDiagnostic]
+
 pub fn run_microtask_checkpoint(@runtime.Interpreter) -> Bool raise
 
 pub fn run_module(String, annex_b? : Bool) -> (Array[String], Map[String, @runtime.Value]) raise
@@ -42,12 +44,72 @@ pub struct Engine {
 }
 pub fn Engine::Engine(annex_b? : Bool) -> Self
 pub fn Engine::call_json(Self, String, Array[Json]) -> Json raise EngineError
+pub fn Engine::call_json_diagnostic(Self, String, Array[Json]) -> Result[Json, EngineDiagnostic]
 pub fn Engine::eval(Self, String) -> Unit raise EngineError
+pub fn Engine::eval_diagnostic(Self, String, source_id? : String) -> Result[Unit, EngineDiagnostic]
 pub fn Engine::has_pending_microtasks(Self) -> Bool
 pub fn Engine::has_pending_timers(Self) -> Bool
 pub fn Engine::run_microtask_checkpoint(Self) -> Bool raise EngineError
+pub fn Engine::run_microtask_checkpoint_diagnostic(Self) -> Result[Bool, EngineDiagnostic]
 pub fn Engine::run_timer_checkpoint(Self) -> Unit raise EngineError
+pub fn Engine::run_timer_checkpoint_diagnostic(Self) -> Result[Unit, EngineDiagnostic]
 pub fn Engine::take_output(Self) -> Array[String]
+
+pub struct EngineDiagnostic {
+  failure_kind_code_ : String
+  message_ : String
+  operation_code_ : String
+  phase_code_ : String
+  source_identity_ : String?
+  source_location_ : SourceLocation?
+  engine_integrity_ : EngineIntegrity
+  retained_effects_ : RetainedEffects
+  pending_jobs_ : PendingJobs
+}
+pub fn EngineDiagnostic::engine_integrity(Self) -> EngineIntegrity
+pub fn EngineDiagnostic::failure_kind_code(Self) -> String
+pub fn EngineDiagnostic::message(Self) -> String
+pub fn EngineDiagnostic::operation_code(Self) -> String
+pub fn EngineDiagnostic::pending_jobs(Self) -> PendingJobs
+pub fn EngineDiagnostic::phase_code(Self) -> String
+pub fn EngineDiagnostic::retained_effects(Self) -> RetainedEffects
+pub fn EngineDiagnostic::source_identity(Self) -> String?
+pub fn EngineDiagnostic::source_location(Self) -> SourceLocation?
+
+pub(all) enum EngineIntegrity {
+  Reusable
+  Discard
+  Unknown
+  NotApplicable
+}
+
+pub(all) enum PendingJobs {
+  None
+  Present
+  Unknown
+}
+
+pub(all) enum RetainedEffects {
+  None
+  MayRemain
+  Unknown
+}
+
+pub struct SourceLocation {
+  start_ : SourcePosition
+  end_ : SourcePosition?
+}
+pub fn SourceLocation::end(Self) -> SourcePosition?
+pub fn SourceLocation::start(Self) -> SourcePosition
+
+pub struct SourcePosition {
+  line_ : Int
+  column_ : Int
+  offset_ : Int
+}
+pub fn SourcePosition::column(Self) -> Int
+pub fn SourcePosition::line(Self) -> Int
+pub fn SourcePosition::offset(Self) -> Int
 
 // Type aliases
 
