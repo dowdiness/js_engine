@@ -6,7 +6,7 @@ test "lookup: dense element returns Present" {
     elements: [Number(10.0), Number(20.0), Number(30.0)],
     bag: PropertyBag::PropertyBag(),
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   match array_index_lookup_result(data, 1) {
@@ -39,7 +39,7 @@ test "lookup: out-of-range index returns OutOfRange" {
     elements: [Number(10.0)],
     bag: PropertyBag::PropertyBag(),
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   match array_index_lookup_result(data, 5) {
@@ -69,7 +69,7 @@ test "lookup: own accessor with getter returns OwnAccessor(Some)" {
     elements: [Number(10.0)],
     bag,
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   match array_index_lookup_result(data, 0) {
@@ -135,7 +135,7 @@ test "lookup: own write-only accessor returns OwnAccessor(None)" {
     elements: [Number(10.0)],
     bag,
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   match array_index_lookup_result(data, 0) {
@@ -170,7 +170,7 @@ test "to_array_like_length: sparse array index above Int max contributes to leng
     elements: [],
     bag,
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   let len = to_array_like_length(Array(data))
@@ -185,7 +185,7 @@ test "to_array_like_length: array length override remains Int64" {
     elements: [],
     bag: PropertyBag::PropertyBag(),
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   set_array_length_override(data, 9007199254740991L)

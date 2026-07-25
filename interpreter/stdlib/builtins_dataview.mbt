@@ -335,8 +335,8 @@ pub fn setup_dataview_builtins(
   let tostringtag_sym = well_known_symbols.to_string_tag
 
   // DataView.prototype
-  let dv_proto_props : Map[String, Value] = {}
-  let dv_proto_descs : Map[String, PropDescriptor] = {}
+  let dv_proto_props : Map[String, Value] = Map([])
+  let dv_proto_descs : Map[String, PropDescriptor] = Map([])
 
   // Getters: buffer, byteLength, byteOffset
   let dv_getter_props = [
@@ -848,9 +848,9 @@ pub fn setup_dataview_builtins(
   dv_proto_descs["setBigUint64"] = method_desc
 
   // Symbol.toStringTag
-  let dv_proto_sym_props : Map[Int, Value] = {}
+  let dv_proto_sym_props : Map[Int, Value] = Map([])
   dv_proto_sym_props[tostringtag_sym.id] = Value::String_("DataView")
-  let dv_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let dv_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   dv_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -866,8 +866,8 @@ pub fn setup_dataview_builtins(
       symbol_properties: dv_proto_sym_props,
       descriptors: dv_proto_descs,
       symbol_descriptors: dv_proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: obj_proto,
     callable: None,
@@ -886,11 +886,11 @@ pub fn setup_dataview_builtins(
     setter: None,
     is_accessor: false,
   }
-  let dv_ctor_props : Map[String, Value] = {}
+  let dv_ctor_props : Map[String, Value] = Map([])
   dv_ctor_props["prototype"] = dv_proto
   dv_ctor_props["name"] = Value::String_("DataView")
   dv_ctor_props["length"] = Value::Number(1.0)
-  let dv_ctor_descs : Map[String, PropDescriptor] = {}
+  let dv_ctor_descs : Map[String, PropDescriptor] = Map([])
   dv_ctor_descs["prototype"] = {
     writable: false,
     enumerable: false,
@@ -905,11 +905,11 @@ pub fn setup_dataview_builtins(
   let dv_ctor : Value = Value::Object({
     bag: {
       properties: dv_ctor_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: dv_ctor_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -1000,17 +1000,17 @@ pub fn setup_dataview_builtins(
         }
         Value::Object({
           bag: {
-            properties: {},
-            symbol_properties: {},
-            descriptors: {},
-            symbol_descriptors: {},
+            properties: Map([]),
+            symbol_properties: Map([]),
+            descriptors: Map([]),
+            symbol_descriptors: Map([]),
             internal_slots: Map::from_array([
               (@runtime.ViewedArrayBuffer, buffer),
               (@runtime.ArrayBufferID, Value::Number(buf_id.to_double())),
               (@runtime.ByteOffset, Value::Number(byte_offset.to_double())),
               (@runtime.ByteLength, Value::Number(byte_length.to_double())),
             ]),
-            host_slots: {},
+            host_slots: Map([]),
           },
           prototype: proto,
           callable: None,

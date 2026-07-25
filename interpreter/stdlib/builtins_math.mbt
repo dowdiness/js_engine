@@ -3,7 +3,7 @@ fn setup_math_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
 ) -> Unit {
-  let math_props : Map[String, Value] = {}
+  let math_props : Map[String, Value] = Map([])
   math_props["PI"] = Value::Number(3.141592653589793)
   math_props["E"] = Value::Number(2.718281828459045)
   math_props["LN2"] = Value::Number(0.6931471805599453)
@@ -444,7 +444,7 @@ fn setup_math_builtins(
   )
 
   // Set up descriptors for Math properties
-  let math_descs : Map[String, PropDescriptor] = {}
+  let math_descs : Map[String, PropDescriptor] = Map([])
   let const_desc : PropDescriptor = {
     writable: false,
     enumerable: false,
@@ -479,10 +479,10 @@ fn setup_math_builtins(
     math_descs[m] = method_desc
   }
   // Set up Symbol.toStringTag for Math
-  let math_symbol_props : Map[Int, Value] = {}
+  let math_symbol_props : Map[Int, Value] = Map([])
   let tostringtag_sym = well_known_symbols.to_string_tag
   math_symbol_props[tostringtag_sym.id] = Value::String_("Math")
-  let math_symbol_descs : Map[Int, PropDescriptor] = {}
+  let math_symbol_descs : Map[Int, PropDescriptor] = Map([])
   math_symbol_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -499,8 +499,8 @@ fn setup_math_builtins(
         symbol_properties: math_symbol_props,
         descriptors: math_descs,
         symbol_descriptors: math_symbol_descs,
-        internal_slots: {},
-        host_slots: {},
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: match env.bindings.get("[[ObjectPrototype]]") {
         Some(binding) => binding.value

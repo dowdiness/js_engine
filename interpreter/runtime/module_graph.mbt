@@ -145,7 +145,7 @@ fn Interpreter::predeclare_module_exports(
 fn Interpreter::materialize_module_exports(
   self : Interpreter,
 ) -> Map[String, Value] raise Error {
-  let materialized : Map[String, Value] = {}
+  let materialized : Map[String, Value] = Map([])
   self.module_exports.each(fn(k, v) raise {
     if !is_private_module_export_entry(k, v) {
       materialized[k] = resolve_module_export_value(v)
@@ -944,7 +944,7 @@ fn Interpreter::run_module_into(
     env: self.new_module_environment(),
   }
   self.instantiate_module_record(record)
-  self.instantiate_module_indirect_exports(record, {})
+  self.instantiate_module_indirect_exports(record, Map([]))
   self.instantiate_module_imports(record)
   ignore(self.evaluate_module_record(record))
   self.materialize_module_record(record)
@@ -956,7 +956,7 @@ pub fn Interpreter::run_module(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
 ) -> Map[String, Value] raise Error {
-  self.run_module_into(stmts, {})
+  self.run_module_into(stmts, Map([]))
 }
 
 ///|
@@ -972,7 +972,7 @@ pub fn Interpreter::run_modules(
   for pair in modules {
     let (specifier, source) = pair
     let prog = @parser.parse(source)
-    let exports : Map[String, Value] = {}
+    let exports : Map[String, Value] = Map([])
     let record = {
       specifier,
       stmts: prog.stmts,
@@ -989,11 +989,11 @@ pub fn Interpreter::run_modules(
   for record in records {
     self.instantiate_module_record(record)
   }
-  let records_by_specifier : Map[String, ModuleRunRecord] = {}
+  let records_by_specifier : Map[String, ModuleRunRecord] = Map([])
   for record in records {
     records_by_specifier[record.specifier] = record
   }
-  let indirect_state : Map[String, Int] = {}
+  let indirect_state : Map[String, Int] = Map([])
   for record in records {
     self.visit_module_dependencies_first(
       record,
@@ -1007,7 +1007,7 @@ pub fn Interpreter::run_modules(
   for record in records {
     self.instantiate_module_imports(record)
   }
-  let evaluation_state : Map[String, Int] = {}
+  let evaluation_state : Map[String, Int] = Map([])
   for record in records {
     self.visit_module_dependencies_first(
       record,
@@ -1018,6 +1018,6 @@ pub fn Interpreter::run_modules(
   }
   match records.last() {
     Some(last_record) => self.materialize_module_record(last_record)
-    None => {}
+    None => Map([])
   }
 }

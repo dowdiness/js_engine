@@ -21,7 +21,7 @@ fn make_error_value_with_env(
     setter: None,
     is_accessor: false,
   }
-  let err_props : Map[String, Value] = {}
+  let err_props : Map[String, Value] = Map([])
   err_props["message"] = String_(msg)
   err_props["stack"] = String_(name + ": " + msg)
   let err_descs : Map[String, PropDescriptor] = {
@@ -60,11 +60,11 @@ fn make_error_value_with_env(
   Object({
     bag: {
       properties: err_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: err_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: proto,
     callable: None,
@@ -105,7 +105,7 @@ fn make_aggregate_error_value(
     setter: None,
     is_accessor: false,
   }
-  let err_props : Map[String, Value] = {}
+  let err_props : Map[String, Value] = Map([])
   err_props["message"] = String_(msg)
   err_props["stack"] = String_("AggregateError: " + msg)
   // Convert errors array to JavaScript array
@@ -143,11 +143,11 @@ fn make_aggregate_error_value(
   Object({
     bag: {
       properties: err_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: err_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: proto,
     callable: None,

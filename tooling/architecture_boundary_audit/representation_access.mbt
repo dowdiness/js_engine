@@ -183,14 +183,14 @@ fn validate_representation_rules(
   if rules.representation_patterns.length() == 0 {
     schema_error(path, "representation_patterns must list at least one pattern")
   }
-  let seen_patterns : Map[String, Unit] = {}
+  let seen_patterns : Map[String, Unit] = Map([])
   for pattern in rules.representation_patterns {
     if seen_patterns.contains(pattern.id) {
       schema_error(path, "duplicate representation pattern id: \{pattern.id}")
     }
     seen_patterns[pattern.id] = ()
   }
-  let seen_debt : Map[String, Unit] = {}
+  let seen_debt : Map[String, Unit] = Map([])
   for debt in rules.allowlisted_access {
     if !representation_pattern_exists(
         rules.representation_patterns,
@@ -340,6 +340,15 @@ fn representation_signature_line(line : String) -> String {
 }
 
 ///|
+fn is_empty_core_map_literal_at(
+  code : String,
+  token : String,
+  index : Int,
+) -> Bool {
+  token == "Map(" && starts_with_at(code, "Map([])", index)
+}
+
+///|
 fn count_token_in_code_line(line : String, token : String) -> Int {
   let code = code_without_comments(line)
   let len = code.length()
@@ -362,7 +371,9 @@ fn count_token_in_code_line(line : String, token : String) -> Int {
       index += 1
     } else if starts_with_at(code, token, index) &&
       token_match_has_boundaries(code, token, index) {
-      count += 1
+      if !is_empty_core_map_literal_at(code, token, index) {
+        count += 1
+      }
       index += token.length()
     } else {
       index += 1
@@ -525,7 +536,7 @@ fn representation_debt_for_key(
 fn representation_access_counts(
   accesses : Array[RepresentationAccess],
 ) -> Map[String, Int] {
-  let counts : Map[String, Int] = {}
+  let counts : Map[String, Int] = Map([])
   for access in accesses {
     let key = representation_access_key(access)
     let current = match counts.get(key) {
@@ -568,7 +579,7 @@ fn representation_fingerprint(signatures : Array[String]) -> String {
 fn representation_access_fingerprints(
   accesses : Array[RepresentationAccess],
 ) -> Map[String, String] {
-  let signatures_by_key : Map[String, Array[String]] = {}
+  let signatures_by_key : Map[String, Array[String]] = Map([])
   for access in accesses {
     let key = representation_access_key(access)
     match signatures_by_key.get(key) {
@@ -576,7 +587,7 @@ fn representation_access_fingerprints(
       None => signatures_by_key[key] = [access.signature]
     }
   }
-  let fingerprints : Map[String, String] = {}
+  let fingerprints : Map[String, String] = Map([])
   for key, signatures in signatures_by_key {
     fingerprints[key] = representation_fingerprint(signatures)
   }
@@ -628,7 +639,7 @@ fn render_representation_report(
   let unclassified : Array[RepresentationAccess] = []
   let access_counts = representation_access_counts(accesses)
   let access_fingerprints = representation_access_fingerprints(accesses)
-  let seen_counts : Map[String, Int] = {}
+  let seen_counts : Map[String, Int] = Map([])
   for access in accesses {
     let key = representation_access_key(access)
     let ordinal = match seen_counts.get(key) {

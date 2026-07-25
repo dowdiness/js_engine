@@ -151,7 +151,7 @@ pub fn Interpreter::new(
     timer_queue: @priority_queue.PriorityQueue([]),
     timer_id_counter: { val: 1 },
     timer_insertion_counter: { val: 0 },
-    cancelled_timer_ids: {},
+    cancelled_timer_ids: Map([]),
     module_loader,
   }
   let interp : Interpreter = {
@@ -160,10 +160,10 @@ pub fn Interpreter::new(
     global_this,
     annex_b,
     realm_state,
-    module_registry: {},
-    module_exports: {},
+    module_registry: Map([]),
+    module_exports: Map([]),
     module_export_bindings: [],
-    generator_objects: {},
+    generator_objects: Map([]),
     gen_id_counter: { val: 0 },
     symbols,
     stdlib_hooks,

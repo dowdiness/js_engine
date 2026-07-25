@@ -112,10 +112,10 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     arraybuffer_store: arraybuffer_state.store,
     detached_buffers: arraybuffer_state.detached,
     weakmap_id_counter: { val: 0 },
-    weakmap_storage: {},
+    weakmap_storage: Map([]),
     weakmap_id_table: [],
     weakset_id_counter: { val: 0 },
-    weakset_storage: {},
+    weakset_storage: Map([]),
     weakset_id_table: [],
   }
 }

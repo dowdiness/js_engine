@@ -51,7 +51,7 @@ fn RegexParser::new(pattern : String, unicode? : Bool = false) -> RegexParser {
     pos: 0,
     group_count: 0,
     unicode,
-    group_names: {},
+    group_names: Map([]),
     group_name_entries: [],
     has_unterminated_k_backref: false,
     has_bare_k: false,
@@ -125,7 +125,7 @@ fn desugar_named_backrefs_to_literals(node : RegexNode) -> RegexNode {
 fn regex_named_group_indices(
   group_name_entries : Array[(String, Int)],
 ) -> Map[String, Array[Int]] {
-  let indices : Map[String, Array[Int]] = {}
+  let indices : Map[String, Array[Int]] = Map([])
   for entry in group_name_entries {
     let (name, idx) = entry
     match indices.get(name) {
@@ -2643,7 +2643,7 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
     elements,
     bag: @runtime.PropertyBag(),
     length_writable: true,
-    holes: {},
+    holes: Map([]),
     extensible: true,
   }
   // Set named properties on the result
@@ -2655,8 +2655,8 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
   @runtime.set_array_named_prop(arr_data, "input", Value::String_(input))
   // Build groups object if named groups exist
   let groups_val : Value = if m.group_names.length() > 0 {
-    let groups_props : Map[String, Value] = {}
-    let groups_descs : Map[String, PropDescriptor] = {}
+    let groups_props : Map[String, Value] = Map([])
+    let groups_descs : Map[String, PropDescriptor] = Map([])
     for pair in m.group_names {
       let (name, _) = pair
       if !groups_descs.contains(name) {
@@ -2674,11 +2674,11 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
     Object({
       bag: {
         properties: groups_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: groups_descs,
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: Null,
       callable: None,
@@ -2770,7 +2770,7 @@ fn regexp_original_flags(val : Value) -> String? {
 ///|
 fn normalize_regexp_flags(flags : String) -> String raise Error {
   let valid_flags = "gimsuy"
-  let seen_flags : Map[Char, Bool] = {}
+  let seen_flags : Map[Char, Bool] = Map([])
   for ch in flags {
     if !valid_flags.contains(ch.to_string()) {
       raise @errors.SyntaxError(
@@ -3029,11 +3029,11 @@ fn make_regexp_constructor(
         "name": Value::String_("RegExp"),
         "length": Value::Number(2.0),
       },
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: { "name": name_length_desc, "length": name_length_desc },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(
@@ -3321,16 +3321,16 @@ fn make_regexp_object_with_proto(
   prototype : Value,
 ) -> Value raise Error {
   let sorted_flags = normalize_and_validate_regexp(pattern, flags)
-  let props : Map[String, Value] = {}
+  let props : Map[String, Value] = Map([])
   props["lastIndex"] = Value::Number(0.0)
   // RegExp instance state is stored as hidden internal slots. Public accessors
   // live on RegExp.prototype and compute from these slots.
-  let sym_props : Map[Int, Value] = {}
+  let sym_props : Map[Int, Value] = Map([])
   sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
   sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
 
   // Create descriptor map for the only RegExp instance own property.
-  let re_descs : Map[String, PropDescriptor] = {}
+  let re_descs : Map[String, PropDescriptor] = Map([])
   // lastIndex per spec: writable but NOT enumerable and NOT configurable
   re_descs["lastIndex"] = {
     writable: true,
@@ -3341,7 +3341,7 @@ fn make_regexp_object_with_proto(
     is_accessor: false,
   }
 
-  let re_sym_descs : Map[Int, PropDescriptor] = {}
+  let re_sym_descs : Map[Int, PropDescriptor] = Map([])
   re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
 
@@ -3351,8 +3351,8 @@ fn make_regexp_object_with_proto(
       symbol_properties: sym_props,
       descriptors: re_descs,
       symbol_descriptors: re_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype,
     callable: None,
@@ -3692,14 +3692,14 @@ fn regexp_create_string_iterator(
   global : Bool,
   full_unicode : Bool,
 ) -> Value {
-  let sym_props : Map[Int, Value] = {}
+  let sym_props : Map[Int, Value] = Map([])
   sym_props[REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID] = Bool(true)
   sym_props[REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID] = regexp
   sym_props[REGEXP_STRING_ITERATOR_STRING_SYMBOL_ID] = String_(input)
   sym_props[REGEXP_STRING_ITERATOR_GLOBAL_SYMBOL_ID] = Bool(global)
   sym_props[REGEXP_STRING_ITERATOR_UNICODE_SYMBOL_ID] = Bool(full_unicode)
   sym_props[REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID] = Bool(false)
-  let sym_descs : Map[Int, PropDescriptor] = {}
+  let sym_descs : Map[Int, PropDescriptor] = Map([])
   let slot_desc = regexp_internal_slot_descriptor()
   sym_descs[REGEXP_STRING_ITERATOR_BRAND_SYMBOL_ID] = slot_desc
   sym_descs[REGEXP_STRING_ITERATOR_REGEXP_SYMBOL_ID] = slot_desc
@@ -3709,12 +3709,12 @@ fn regexp_create_string_iterator(
   sym_descs[REGEXP_STRING_ITERATOR_DONE_SYMBOL_ID] = slot_desc
   Value::Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: get_regexp_string_iterator_proto(realm_state),
     callable: None,
@@ -4527,7 +4527,7 @@ fn call_replace_fn(
   args.push(Value::String_(input))
   // groups object (if named groups exist)
   if m.group_names.length() > 0 {
-    let groups_props : Map[String, Value] = {}
+    let groups_props : Map[String, Value] = Map([])
     for pair in m.group_names {
       let (name, _) = pair
       if !groups_props.contains(name) {
@@ -4538,11 +4538,11 @@ fn call_replace_fn(
       Value::Object({
         bag: {
           properties: groups_props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-          host_slots: {},
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: Null,
         callable: None,
@@ -4683,12 +4683,12 @@ pub fn get_regexp_string_iterator_proto(
     None => {
       let iterator_sym = well_known_symbols.iterator
       let tostringtag_sym = well_known_symbols.to_string_tag
-      let proto_sym_props : Map[Int, Value] = {}
+      let proto_sym_props : Map[Int, Value] = Map([])
       proto_sym_props[tostringtag_sym.id] = Value::String_(
         "RegExp String Iterator",
       )
-      let proto_props : Map[String, Value] = {}
-      let proto_sym_descs : Map[Int, PropDescriptor] = {}
+      let proto_props : Map[String, Value] = Map([])
+      let proto_sym_descs : Map[Int, PropDescriptor] = Map([])
       proto_sym_descs[tostringtag_sym.id] = {
         writable: false,
         enumerable: false,
@@ -4712,7 +4712,7 @@ pub fn get_regexp_string_iterator_proto(
           regexp_string_iterator_next(interp, this_val)
         },
       )
-      let proto_descs : Map[String, PropDescriptor] = {}
+      let proto_descs : Map[String, PropDescriptor] = Map([])
       proto_descs["next"] = {
         writable: true,
         enumerable: false,
@@ -4727,8 +4727,8 @@ pub fn get_regexp_string_iterator_proto(
           symbol_properties: proto_sym_props,
           descriptors: proto_descs,
           symbol_descriptors: proto_sym_descs,
-          internal_slots: {},
-          host_slots: {},
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: realm_state.get_iterator_proto(),
         callable: None,

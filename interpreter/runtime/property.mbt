@@ -547,18 +547,18 @@ fn Interpreter::get_property_of_object(
                   setter: None,
                   is_accessor: false,
                 }
-                let bprops : Map[String, Value] = {}
+                let bprops : Map[String, Value] = Map([])
                 bprops["name"] = String_(bound_name)
                 bprops["length"] = Number(bound_length.to_double())
                 stamp_function_realm(
                   Object({
                     bag: {
                       properties: bprops,
-                      symbol_properties: {},
+                      symbol_properties: Map([]),
                       descriptors: { "name": nf_desc, "length": nf_desc },
-                      symbol_descriptors: {},
-                      internal_slots: {},
-                      host_slots: {},
+                      symbol_descriptors: Map([]),
+                      internal_slots: Map([]),
+                      host_slots: Map([]),
                     },
                     prototype: target_proto,
                     callable: Some(BoundFunc(target, bind_this, bound_args)),
@@ -1265,18 +1265,18 @@ fn Interpreter::get_computed_property_impl(
                       setter: None,
                       is_accessor: false,
                     }
-                    let bprops : Map[String, Value] = {}
+                    let bprops : Map[String, Value] = Map([])
                     bprops["name"] = String_(bound_name)
                     bprops["length"] = Number(bound_length.to_double())
                     stamp_function_realm(
                       Object({
                         bag: {
                           properties: bprops,
-                          symbol_properties: {},
+                          symbol_properties: Map([]),
                           descriptors: { "name": nf_desc, "length": nf_desc },
-                          symbol_descriptors: {},
-                          internal_slots: {},
-                          host_slots: {},
+                          symbol_descriptors: Map([]),
+                          internal_slots: Map([]),
+                          host_slots: Map([]),
                         },
                         prototype: target_proto,
                         callable: Some(BoundFunc(target, bind_this, bound_args)),

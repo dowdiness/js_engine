@@ -12,7 +12,7 @@ fn register_error_ctor(
     setter: None,
     is_accessor: false,
   }
-  let proto_props : Map[String, Value] = {}
+  let proto_props : Map[String, Value] = Map([])
   proto_props["name"] = Value::String_(name)
   proto_props["message"] = Value::String_("")
   proto_props["toString"] = @runtime.make_interp_method_func(
@@ -63,15 +63,15 @@ fn register_error_ctor(
   let proto_obj : Value = Value::Object({
     bag: {
       properties: proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "name": proto_desc,
         "message": proto_desc,
         "toString": proto_desc,
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: parent_proto,
     callable: None,
@@ -107,15 +107,15 @@ fn register_error_ctor(
           "name": Value::String_(name),
           "length": Value::Number(1.0),
         },
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: {
           "name": nf_desc,
           "length": nf_desc,
           "prototype": proto_nw_desc,
         },
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: ctor_proto,
       callable: Some(
@@ -129,7 +129,7 @@ fn register_error_ctor(
           } else {
             ""
           }
-          let err_props : Map[String, Value] = {}
+          let err_props : Map[String, Value] = Map([])
           if has_message {
             err_props["message"] = Value::String_(message)
           }
@@ -160,11 +160,11 @@ fn register_error_ctor(
           Value::Object({
             bag: {
               properties: err_props,
-              symbol_properties: {},
+              symbol_properties: Map([]),
               descriptors: err_descs,
-              symbol_descriptors: {},
-              internal_slots: {},
-              host_slots: {},
+              symbol_descriptors: Map([]),
+              internal_slots: Map([]),
+              host_slots: Map([]),
             },
             prototype: proto_obj,
             callable: None,
@@ -207,7 +207,7 @@ fn register_aggregate_error_ctor(
     is_accessor: false,
   }
   let name = "AggregateError"
-  let proto_props : Map[String, Value] = {}
+  let proto_props : Map[String, Value] = Map([])
   proto_props["name"] = Value::String_(name)
   proto_props["message"] = Value::String_("")
   proto_props["toString"] = @runtime.make_interp_method_func(
@@ -254,15 +254,15 @@ fn register_aggregate_error_ctor(
   let proto_obj : Value = Value::Object({
     bag: {
       properties: proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: {
         "name": proto_desc,
         "message": proto_desc,
         "toString": proto_desc,
       },
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: parent_proto,
     callable: None,
@@ -292,15 +292,15 @@ fn register_aggregate_error_ctor(
           "length": Value::Number(2.0),
           "name": Value::String_(name),
         },
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: {
           "name": nf_desc,
           "length": nf_desc,
           "prototype": proto_nw_desc,
         },
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: ctor_proto,
       callable: Some(
@@ -319,7 +319,7 @@ fn register_aggregate_error_ctor(
           } else {
             ""
           }
-          let err_props : Map[String, Value] = {}
+          let err_props : Map[String, Value] = Map([])
           err_props["errors"] = errors_value
           err_props["message"] = Value::String_(message)
           err_props["name"] = Value::String_(name)
@@ -353,11 +353,11 @@ fn register_aggregate_error_ctor(
           Value::Object({
             bag: {
               properties: err_props,
-              symbol_properties: {},
+              symbol_properties: Map([]),
               descriptors: err_descs,
-              symbol_descriptors: {},
-              internal_slots: {},
-              host_slots: {},
+              symbol_descriptors: Map([]),
+              internal_slots: Map([]),
+              host_slots: Map([]),
             },
             prototype: proto_obj,
             callable: None,

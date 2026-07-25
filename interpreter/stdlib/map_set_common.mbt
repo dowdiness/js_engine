@@ -175,23 +175,23 @@ fn make_keyed_collection_iterator(
   before_create? : () -> Unit = () => (),
 ) -> Value {
   before_create()
-  let iter_sym_props : Map[Int, Value] = {}
+  let iter_sym_props : Map[Int, Value] = Map([])
   iter_sym_props[slots.next_index] = Value::Number(0.0)
   iter_sym_props[slots.target] = target
   iter_sym_props[slots.kind] = Value::Number(kind.to_double())
-  let iter_sym_descs : Map[Int, PropDescriptor] = {}
+  let iter_sym_descs : Map[Int, PropDescriptor] = Map([])
   let slot_desc = keyed_collection_iterator_internal_slot_descriptor()
   iter_sym_descs[slots.next_index] = slot_desc
   iter_sym_descs[slots.target] = slot_desc
   iter_sym_descs[slots.kind] = slot_desc
   Value::Object({
     bag: {
-      properties: {},
+      properties: Map([]),
       symbol_properties: iter_sym_props,
-      descriptors: {},
+      descriptors: Map([]),
       symbol_descriptors: iter_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: iterator_proto,
     callable: None,
@@ -211,10 +211,10 @@ fn build_keyed_collection_iterator_proto(
   let well_known_symbols = realm_state.well_known_symbols
   let iterator_sym = well_known_symbols.iterator
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let proto_sym_props : Map[Int, Value] = {}
+  let proto_sym_props : Map[Int, Value] = Map([])
   proto_sym_props[tostringtag_sym.id] = Value::String_(iterator_name)
-  let proto_props : Map[String, Value] = {}
-  let proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let proto_props : Map[String, Value] = Map([])
+  let proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -250,8 +250,8 @@ fn build_keyed_collection_iterator_proto(
         },
       },
       symbol_descriptors: proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: realm_state.get_iterator_proto(),
     callable: None,

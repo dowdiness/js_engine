@@ -93,7 +93,7 @@ fn setup_map_builtins(
   let iterator_sym = well_known_symbols.iterator
 
   // Map.prototype methods
-  let map_proto_props : Map[String, Value] = {}
+  let map_proto_props : Map[String, Value] = Map([])
 
   // Map.prototype.get(key)
   map_proto_props["get"] = @runtime.make_method_func(name="get", length=1, fn(
@@ -367,7 +367,7 @@ fn setup_map_builtins(
 
   // Non-enumerable descriptors for Map.prototype methods
   let method_desc = @runtime.builtin_method_desc()
-  let map_proto_descs : Map[String, PropDescriptor] = {}
+  let map_proto_descs : Map[String, PropDescriptor] = Map([])
   map_proto_descs["get"] = method_desc
   map_proto_descs["set"] = method_desc
   map_proto_descs["has"] = method_desc
@@ -405,11 +405,11 @@ fn setup_map_builtins(
   let map_proto : Value = Value::Object({
     bag: {
       properties: map_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: map_proto_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,

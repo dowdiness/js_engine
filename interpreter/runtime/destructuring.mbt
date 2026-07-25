@@ -195,7 +195,7 @@ fn Interpreter::bind_pattern(
         )
       }
       let used_string_keys = @set.Set::default()
-      let used_symbol_keys : Map[Int, Bool] = {}
+      let used_symbol_keys : Map[Int, Bool] = Map([])
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)
         destructuring_mark_used_key(
@@ -238,8 +238,8 @@ fn Interpreter::bind_pattern(
       }
       match rest {
         Some(rest_pat) => {
-          let rest_props : Map[String, Value] = {}
-          let rest_symbol_props : Map[Int, Value] = {}
+          let rest_props : Map[String, Value] = Map([])
+          let rest_symbol_props : Map[Int, Value] = Map([])
           let loc_rest = @token.Loc::default()
           match value {
             Object(data) => {
@@ -279,10 +279,10 @@ fn Interpreter::bind_pattern(
               bag: {
                 properties: rest_props,
                 symbol_properties: rest_symbol_props,
-                descriptors: {},
-                symbol_descriptors: {},
-                internal_slots: {},
-                host_slots: {},
+                descriptors: Map([]),
+                symbol_descriptors: Map([]),
+                internal_slots: Map([]),
+                host_slots: Map([]),
               },
               prototype: get_obj_proto(realm_state=Some(self.realm_state)),
               callable: None,
@@ -608,7 +608,7 @@ fn Interpreter::assign_pattern(
         )
       }
       let used_string_keys = @set.Set::default()
-      let used_symbol_keys : Map[Int, Bool] = {}
+      let used_symbol_keys : Map[Int, Bool] = Map([])
       for prop in props {
         let property_key = self.destructuring_property_key(ctx, prop, env)
         destructuring_mark_used_key(
@@ -641,8 +641,8 @@ fn Interpreter::assign_pattern(
       }
       match rest {
         Some(rest_pat) => {
-          let rest_props : Map[String, Value] = {}
-          let rest_symbol_props : Map[Int, Value] = {}
+          let rest_props : Map[String, Value] = Map([])
+          let rest_symbol_props : Map[Int, Value] = Map([])
           let loc_rest_a = @token.Loc::default()
           match value {
             Object(data) => {
@@ -681,10 +681,10 @@ fn Interpreter::assign_pattern(
               bag: {
                 properties: rest_props,
                 symbol_properties: rest_symbol_props,
-                descriptors: {},
-                symbol_descriptors: {},
-                internal_slots: {},
-                host_slots: {},
+                descriptors: Map([]),
+                symbol_descriptors: Map([]),
+                internal_slots: Map([]),
+                host_slots: Map([]),
               },
               prototype: get_obj_proto(realm_state=Some(self.realm_state)),
               callable: None,

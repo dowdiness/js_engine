@@ -157,15 +157,15 @@ pub fn make_arraybuffer_object(
   let id = alloc_arraybuffer(realm_state.arraybuffer_state, byte_length)
   Value::Object({
     bag: {
-      properties: {},
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
+      properties: Map([]),
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([
         (@runtime.ArrayBufferID, Value::Number(id.to_double())),
         (@runtime.ArrayBufferByteLength, Value::Number(byte_length.to_double())),
       ]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: proto,
     callable: None,
@@ -215,8 +215,8 @@ pub fn setup_arraybuffer_builtins(
   let obj_proto = env.get("[[ObjectPrototype]]") catch { _ => Null }
 
   // ArrayBuffer.prototype
-  let ab_proto_props : Map[String, Value] = {}
-  let ab_proto_descs : Map[String, PropDescriptor] = {}
+  let ab_proto_props : Map[String, Value] = Map([])
+  let ab_proto_descs : Map[String, PropDescriptor] = Map([])
 
   // ArrayBuffer.prototype.byteLength (getter)
   ab_proto_props["byteLength"] = Undefined
@@ -440,9 +440,9 @@ pub fn setup_arraybuffer_builtins(
 
   // Add Symbol.toStringTag
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let ab_proto_sym_props : Map[Int, Value] = {}
+  let ab_proto_sym_props : Map[Int, Value] = Map([])
   ab_proto_sym_props[tostringtag_sym.id] = Value::String_("ArrayBuffer")
-  let ab_proto_sym_descs : Map[Int, PropDescriptor] = {}
+  let ab_proto_sym_descs : Map[Int, PropDescriptor] = Map([])
   ab_proto_sym_descs[tostringtag_sym.id] = {
     writable: false,
     enumerable: false,
@@ -458,8 +458,8 @@ pub fn setup_arraybuffer_builtins(
       symbol_properties: ab_proto_sym_props,
       descriptors: ab_proto_descs,
       symbol_descriptors: ab_proto_sym_descs,
-      internal_slots: {},
-      host_slots: {},
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: obj_proto,
     callable: None,
@@ -470,7 +470,7 @@ pub fn setup_arraybuffer_builtins(
   env.def_builtin("[[ArrayBufferPrototype]]", ab_proto)
 
   // ArrayBuffer constructor
-  let ab_ctor_props : Map[String, Value] = {}
+  let ab_ctor_props : Map[String, Value] = Map([])
   ab_ctor_props["prototype"] = ab_proto
   ab_ctor_props["name"] = Value::String_("ArrayBuffer")
   ab_ctor_props["length"] = Value::Number(1.0)
@@ -499,7 +499,7 @@ pub fn setup_arraybuffer_builtins(
     setter: None,
     is_accessor: false,
   }
-  let ab_ctor_descs : Map[String, PropDescriptor] = {}
+  let ab_ctor_descs : Map[String, PropDescriptor] = Map([])
   ab_ctor_descs["prototype"] = {
     writable: false,
     enumerable: false,
@@ -522,11 +522,11 @@ pub fn setup_arraybuffer_builtins(
   let ab_ctor : Value = Value::Object({
     bag: {
       properties: ab_ctor_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: ab_ctor_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: Null,
     callable: Some(

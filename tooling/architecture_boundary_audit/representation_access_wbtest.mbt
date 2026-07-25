@@ -13,6 +13,12 @@ fn base_representation_json(allowlisted : String) -> String {
     #|      "reason": "object representation constructor"
     #|    },
     #|    {
+    #|      "id": "runtime-map-constructor",
+    #|      "pattern": "Map(",
+    #|      "kind": "constructor",
+    #|      "reason": "map representation constructor"
+    #|    },
+    #|    {
     #|      "id": "representation-bag-field",
     #|      "pattern": ".bag",
     #|      "kind": "field",
@@ -161,6 +167,42 @@ test "new compiler representation access fails" {
       line ==
       "- compiler/bytecode.mbt:3 [compiler] runtime-object-constructor: Object("
     }),
+  )
+}
+
+///|
+test "empty core map literal is not representation access" {
+  let root = "_build/architecture-representation-audit-empty-map-test-\{@env.now()}"
+  ensure_dir("_build")
+  ensure_dir(root)
+  write_file(root, "interpreter/stdlib/empty.mbt", "")
+  let source =
+    #|fn sample(data : Value) -> Unit {
+    #|  let values : Map[String, Int] = Map([])
+    #|  let runtime_value = Map(data)
+    #|  ignore((values, runtime_value))
+    #|}
+    #|
+  write_file(root, "compiler/bytecode.mbt", source)
+  write_file(
+    root,
+    "scripts/architecture_representation_access.json",
+    base_representation_json(""),
+  )
+
+  let (_stdout_lines, stderr_lines, code) = run_representation_access(
+    root~,
+    list_representation=false,
+  )
+  assert_eq(code, 1)
+  assert_true(
+    stderr_lines.any(line => {
+      line ==
+      "- compiler/bytecode.mbt:3 [compiler] runtime-map-constructor: Map("
+    }),
+  )
+  assert_false(
+    stderr_lines.any(line => line.contains("compiler/bytecode.mbt:2")),
   )
 }
 

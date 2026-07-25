@@ -769,7 +769,7 @@ fn run_bytecode_function(
       }
       MakeObject(keys) => {
         let values = pop_args(frame, keys.length())
-        let properties : Map[String, Value] = {}
+        let properties : Map[String, Value] = Map([])
         for i, key in keys {
           properties[key] = values[i]
         }
@@ -777,7 +777,14 @@ fn run_bytecode_function(
           _ => Value::Null
         }
         stack.push(
-          @runtime.make_object(properties, prototype, None, "Object", {}, true),
+          @runtime.make_object(
+            properties,
+            prototype,
+            None,
+            "Object",
+            Map([]),
+            true,
+          ),
         )
       }
       StartObject => {
@@ -785,7 +792,14 @@ fn run_bytecode_function(
           _ => Value::Null
         }
         stack.push(
-          @runtime.make_object({}, prototype, None, "Object", {}, true),
+          @runtime.make_object(
+            Map([]),
+            prototype,
+            None,
+            "Object",
+            Map([]),
+            true,
+          ),
         )
       }
       ObjectSetStatic(key) => {

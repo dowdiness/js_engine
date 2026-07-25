@@ -3,8 +3,8 @@ fn setup_json_builtins(
   env : Environment,
   well_known_symbols : @runtime.WellKnownSymbols,
 ) -> Unit {
-  let json_props : Map[String, Value] = {}
-  let json_descs : Map[String, PropDescriptor] = {}
+  let json_props : Map[String, Value] = Map([])
+  let json_descs : Map[String, PropDescriptor] = Map([])
   let ne_desc : PropDescriptor = {
     writable: true,
     enumerable: false,
@@ -28,9 +28,9 @@ fn setup_json_builtins(
         // Wrap in a root holder object with Object.prototype as prototype
         // and the parsed value as a data property (CreateDataPropertyOrThrow
         // semantics: writable/enumerable/configurable).
-        let root_props : Map[String, Value] = {}
+        let root_props : Map[String, Value] = Map([])
         root_props[""] = result
-        let root_descs : Map[String, PropDescriptor] = {}
+        let root_descs : Map[String, PropDescriptor] = Map([])
         root_descs[""] = {
           writable: true,
           enumerable: true,
@@ -42,11 +42,11 @@ fn setup_json_builtins(
         let root : Value = Value::Object({
           bag: {
             properties: root_props,
-            symbol_properties: {},
+            symbol_properties: Map([]),
             descriptors: root_descs,
-            symbol_descriptors: {},
-            internal_slots: {},
-            host_slots: {},
+            symbol_descriptors: Map([]),
+            internal_slots: Map([]),
+            host_slots: Map([]),
           },
           prototype: interp.realm_state.get_obj_proto(),
           callable: None,
@@ -140,16 +140,16 @@ fn setup_json_builtins(
         None
       }
       // Wrap value in root holder for replacer
-      let root_props : Map[String, Value] = {}
+      let root_props : Map[String, Value] = Map([])
       root_props[""] = val
       let root : Value = Value::Object({
         bag: {
           properties: root_props,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-          host_slots: {},
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: Null,
         callable: None,
@@ -174,8 +174,8 @@ fn setup_json_builtins(
   json_descs["stringify"] = ne_desc
   // Symbol.toStringTag = "JSON"
   let tostringtag_sym = well_known_symbols.to_string_tag
-  let json_sym_props : Map[Int, Value] = {}
-  let json_sym_descs : Map[Int, PropDescriptor] = {}
+  let json_sym_props : Map[Int, Value] = Map([])
+  let json_sym_descs : Map[Int, PropDescriptor] = Map([])
   json_sym_props[tostringtag_sym.id] = Value::String_("JSON")
   json_sym_descs[tostringtag_sym.id] = {
     writable: false,
@@ -197,8 +197,8 @@ fn setup_json_builtins(
         symbol_properties: json_sym_props,
         descriptors: json_descs,
         symbol_descriptors: json_sym_descs,
-        internal_slots: {},
-        host_slots: {},
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: obj_proto,
       callable: None,
@@ -378,18 +378,18 @@ fn json_parse(input : String, interp : Interpreter) -> Value raise Error {
   }
   and parse_object = fn() -> Value raise Error {
     pos[0] += 1 // skip {
-    let properties : Map[String, Value] = {}
+    let properties : Map[String, Value] = Map([])
     skip_ws()
     if pos[0] < len && chars[pos[0]] == '}' {
       pos[0] += 1
       return Value::Object({
         bag: {
           properties,
-          symbol_properties: {},
-          descriptors: {},
-          symbol_descriptors: {},
-          internal_slots: {},
-          host_slots: {},
+          symbol_properties: Map([]),
+          descriptors: Map([]),
+          symbol_descriptors: Map([]),
+          internal_slots: Map([]),
+          host_slots: Map([]),
         },
         prototype: obj_proto,
         callable: None,
@@ -435,11 +435,11 @@ fn json_parse(input : String, interp : Interpreter) -> Value raise Error {
     Value::Object({
       bag: {
         properties,
-        symbol_properties: {},
-        descriptors: {},
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_properties: Map([]),
+        descriptors: Map([]),
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: obj_proto,
       callable: None,

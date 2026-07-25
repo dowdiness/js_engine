@@ -711,12 +711,12 @@ fn set_date_value(this_val : Value, v : Double) -> Unit raise Error {
 fn make_date_object(t : Double, date_proto : Value) -> Value {
   Value::Object({
     bag: {
-      properties: {},
-      symbol_properties: {},
-      descriptors: {},
-      symbol_descriptors: {},
+      properties: Map([]),
+      symbol_properties: Map([]),
+      descriptors: Map([]),
+      symbol_descriptors: Map([]),
       internal_slots: Map::from_array([(@runtime.DateValue, Value::Number(t))]),
-      host_slots: {},
+      host_slots: Map([]),
     },
     prototype: date_proto,
     callable: None,
@@ -775,7 +775,7 @@ pub fn setup_date_builtins(
     setter: None,
     is_accessor: false,
   }
-  let date_proto_props : Map[String, Value] = {}
+  let date_proto_props : Map[String, Value] = Map([])
 
   // Date.prototype.getTime()
   date_proto_props["getTime"] = @runtime.make_method_func(
@@ -1674,7 +1674,7 @@ pub fn setup_date_builtins(
     setter: None,
     is_accessor: false,
   }
-  let date_proto_descs : Map[String, PropDescriptor] = {}
+  let date_proto_descs : Map[String, PropDescriptor] = Map([])
   date_proto_descs["getTime"] = method_desc
   date_proto_descs["getFullYear"] = method_desc
   date_proto_descs["getUTCFullYear"] = method_desc
@@ -1726,11 +1726,11 @@ pub fn setup_date_builtins(
   let date_proto : Value = Value::Object({
     bag: {
       properties: date_proto_props,
-      symbol_properties: {},
+      symbol_properties: Map([]),
       descriptors: date_proto_descs,
-      symbol_descriptors: {},
-      internal_slots: {},
-      host_slots: {},
+      symbol_descriptors: Map([]),
+      internal_slots: Map([]),
+      host_slots: Map([]),
     },
     prototype: @runtime.get_obj_proto(realm_state=Some(realm_state)),
     callable: None,
@@ -1759,7 +1759,7 @@ pub fn setup_date_builtins(
   }
 
   // Static methods
-  let date_props : Map[String, Value] = {}
+  let date_props : Map[String, Value] = Map([])
   date_props["prototype"] = date_proto
   date_props["name"] = Value::String_("Date")
   date_props["length"] = Value::Number(7.0)
@@ -1820,7 +1820,7 @@ pub fn setup_date_builtins(
     Value::Object({
       bag: {
         properties: date_props,
-        symbol_properties: {},
+        symbol_properties: Map([]),
         descriptors: {
           "name": nf_desc,
           "length": nf_desc,
@@ -1857,9 +1857,9 @@ pub fn setup_date_builtins(
             is_accessor: false,
           },
         },
-        symbol_descriptors: {},
-        internal_slots: {},
-        host_slots: {},
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
       },
       prototype: Null,
       callable: Some(
