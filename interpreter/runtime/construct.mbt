@@ -426,7 +426,14 @@ pub fn set_private_field(
   match data.bag.internal_slots.get(PrivateBrandStore) {
     Some(Object(store_data)) =>
       match store_data.bag.properties.get(brand_key) {
-        Some(Object(inner)) => inner.bag.properties[name] = value
+        Some(Object(inner)) =>
+          match inner.bag.properties.get(name) {
+            Some(_) => inner.bag.properties[name] = value
+            None =>
+              raise @errors.TypeError(
+                message="Cannot set private member #\{name} on object",
+              )
+          }
         _ =>
           raise @errors.TypeError(
             message="Cannot set private member #\{name} on object",

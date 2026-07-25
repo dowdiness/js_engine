@@ -134,6 +134,22 @@ fn Interpreter::eval_update(
       let key = self.eval_expr(ctx, key_expr, env)
       self.eval_update_computed_property(ctx, obj, key, op, prefix, mloc, loc)
     }
+    PrivateMember(obj_expr, name, _) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let current = get_private_member(obj, name, env)
+      let num = self.to_number(current)
+      let new_val : Value = match op {
+        Increment => Number(num + 1.0)
+        Decrement => Number(num - 1.0)
+      }
+      let brand = resolve_private_brand(env, name)
+      set_private_field(obj, brand, name, new_val)
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
+    }
     Call(_, _, _) => {
       if ctx.strict {
         raise @errors.SyntaxError(
@@ -253,6 +269,15 @@ fn Interpreter::eval_compound_assign(
       )
       result
     }
+    PrivateMember(obj_expr, name, _) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let current = get_private_member(obj, name, env)
+      let rhs = self.eval_expr(ctx, value_expr, env)
+      let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
+      let brand = resolve_private_brand(env, name)
+      set_private_field(obj, brand, name, result)
+      result
+    }
     Call(_, _, _) => {
       if ctx.strict {
         raise @errors.SyntaxError(
@@ -350,6 +375,18 @@ fn Interpreter::eval_logical_assign(
       if should_assign(current) {
         let rhs = self.eval_expr(ctx, value_expr, env)
         self.set_computed_property(obj, prop_key, rhs, loc, strict=ctx.strict)
+      } else {
+        current
+      }
+    }
+    PrivateMember(obj_expr, name, _) => {
+      let obj = self.eval_expr(ctx, obj_expr, env)
+      let current = get_private_member(obj, name, env)
+      if should_assign(current) {
+        let rhs = self.eval_expr(ctx, value_expr, env)
+        let brand = resolve_private_brand(env, name)
+        set_private_field(obj, brand, name, rhs)
+        rhs
       } else {
         current
       }
