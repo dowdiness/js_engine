@@ -5785,6 +5785,172 @@ test "Object.isSealed on non-sealed object" {
 }
 
 ///|
+/// Error.prototype.toString uses ordinary Get for both fields, including
+/// Proxy receiver identity, abrupt completion, and revoked-proxy behavior.
+test "Proxy get: Error.prototype.toString follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var p;
+    #|p = new Proxy({}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === p));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(Error.prototype.toString.call(p));
+    #|console.log(getLog + "");
+    #|
+    #|var marker = {};
+    #|try {
+    #|  Error.prototype.toString.call(new Proxy({}, {
+    #|    get: function() { throw marker; }
+    #|  }));
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({}, {});
+    #|record.revoke();
+    #|try {
+    #|  Error.prototype.toString.call(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "Error", "name:true,message:true", "true", "true",
+  ])
+}
+
+///|
+/// String.raw obtains cooked.raw, raw.length, and each literal segment with
+/// ordinary Get while keeping the corresponding Proxy as the receiver.
+test "Proxy get: String.raw follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var raw;
+    #|raw = new Proxy({length: 2, 0: "a", 1: "b"}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === raw));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|var cooked;
+    #|cooked = new Proxy({raw: raw}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === cooked));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(String.raw(cooked, "x"));
+    #|console.log(getLog + "");
+    #|
+    #|var marker = {};
+    #|var throwingRaw = new Proxy({length: 1, 0: "a"}, {
+    #|  get: function() { throw marker; }
+    #|});
+    #|try {
+    #|  String.raw({raw: throwingRaw});
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({raw: []}, {});
+    #|record.revoke();
+    #|try {
+    #|  String.raw(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "axb", "raw:true,length:true,0:true,1:true", "true", "true",
+  ])
+}
+
+///|
+/// RegExp.prototype.test delegates to RegExpExec, whose first step gets
+/// `exec` from any object receiver rather than requiring RegExp internals.
+test "Proxy get: RegExp.prototype.test follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var p;
+    #|p = new Proxy({exec: function() { return null; }}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === p));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(RegExp.prototype.test.call(p));
+    #|console.log(getLog + "");
+    #|console.log(RegExp.prototype.test.call({
+    #|  exec: function() { return new Proxy({}, {}); }
+    #|}));
+    #|
+    #|var marker = {};
+    #|try {
+    #|  RegExp.prototype.test.call(new Proxy({}, {
+    #|    get: function() { throw marker; }
+    #|  }));
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({}, {});
+    #|record.revoke();
+    #|try {
+    #|  RegExp.prototype.test.call(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["false", "exec:true", "true", "true", "true"])
+}
+
+///|
+/// Date.prototype.toJSON combines ToPrimitive(number) and Invoke; both stages
+/// must observe Proxy [[Get]] in specification order with the Proxy receiver.
+test "Proxy get: Date.prototype.toJSON follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var p;
+    #|p = new Proxy({toString: Function(), toISOString: Function()}, {
+    #|  get: function(target, key, receiver) {
+    #|    var label = key === Symbol.toPrimitive ? "@@toPrimitive" : key;
+    #|    getLog.push(label + ":" + (receiver === p));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(Date.prototype.toJSON.call(p) === undefined);
+    #|console.log(getLog + "");
+    #|
+    #|var marker = {};
+    #|try {
+    #|  Date.prototype.toJSON.call(new Proxy({toString: Function()}, {
+    #|    get: function(target, key) {
+    #|      if (key === "valueOf") throw marker;
+    #|      return target[key];
+    #|    }
+    #|  }));
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({}, {});
+    #|record.revoke();
+    #|try {
+    #|  Date.prototype.toJSON.call(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "@@toPrimitive:true,valueOf:true,toString:true,toISOString:true", "true",
+    "true",
+  ])
+}
+
+///|
 /// compat-table: Proxy internal `defineProperty` calls / SetIntegrityLevel.
 test "Proxy integrity: freeze invokes defineProperty for every own key" {
   let src =

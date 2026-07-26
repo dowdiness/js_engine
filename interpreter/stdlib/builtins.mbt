@@ -616,71 +616,34 @@ fn setup_builtins_with_realm_state_active(
           interp,
           args,
         ) raise {
-          // String.raw(template, ...substitutions)
-          // Returns raw string content without processing escape sequences
-          if args.length() == 0 {
+          // ES §22.1.2.5: every observable read is an ordinary [[Get]].
+          let template = if args.length() > 0 { args[0] } else { Undefined }
+          let cooked = to_object(template, interp)
+          let raw_value = interp.get_property(
+            cooked,
+            "raw",
+            @token.Loc::default(),
+          )
+          let raw = to_object(raw_value, interp)
+          let literal_segments = @runtime.to_array_like_length_interp(
+            raw, interp,
+          )
+          if literal_segments == 0L {
             return Value::String_("")
           }
-          let template = args[0]
-          match template {
-            Object(_) | Array(_) => {
-              let raw = interp.get_property(
-                template,
-                "raw",
-                @token.Loc::default(),
-              )
-              match raw {
-                Array(raw_data) => {
-                  let buf = StringBuilder::new()
-                  let raw_strings = raw_data.elements
-                  let sub_count = args.length() - 1
-                  for i = 0; i < raw_strings.length(); i = i + 1 {
-                    // Add raw string segment
-                    buf.write_string(raw_strings[i].to_string())
-                    // Add substitution if available
-                    if i < sub_count {
-                      buf.write_string(args[i + 1].to_string())
-                    }
-                  }
-                  Value::String_(buf.to_string())
-                }
-                Object(raw_obj) => {
-                  // Handle object with numeric indices - use length property per spec
-                  let buf = StringBuilder::new()
-                  let sub_count = args.length() - 1
-
-                  // Get length property (treat missing/invalid as 0)
-                  let length = match raw_obj.bag.properties.get("length") {
-                    Some(Value::Number(n)) => n.to_int().max(0)
-                    _ => 0
-                  }
-
-                  // Iterate from 0 to length-1, treating missing indices as Undefined
-                  for i = 0; i < length; i = i + 1 {
-                    let str_val = match
-                      raw_obj.bag.properties.get(i.to_string()) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                    buf.write_string(str_val.to_string())
-                    // Add substitution if available
-                    if i < sub_count {
-                      buf.write_string(args[i + 1].to_string())
-                    }
-                  }
-                  Value::String_(buf.to_string())
-                }
-                _ =>
-                  raise @errors.TypeError(
-                    message="Cannot convert to string template",
-                  )
-              }
+          let substitution_count = args.length() - 1
+          let buf = StringBuilder::new()
+          for i = 0L; i < literal_segments; i = i + 1L {
+            let segment = @runtime.get_array_like_element_interp(interp, raw, i)
+            buf.write_string(interp.to_js_string(segment))
+            if i + 1L == literal_segments {
+              break
             }
-            _ =>
-              raise @errors.TypeError(
-                message="Cannot convert to string template",
-              )
+            if i < substitution_count.to_int64() {
+              buf.write_string(interp.to_js_string(args[i.to_int() + 1]))
+            }
           }
+          Value::String_(buf.to_string())
         }),
       },
       symbol_properties: Map([]),
@@ -1141,7 +1104,7 @@ fn setup_builtins_with_realm_state_active(
         length=1,
         realm_state=Some(realm_state),
         fn(interp, this_val, args) raise {
-          if !(this_val is Object({ class_name: "RegExp", .. })) {
+          if !regexp_this_is_object(this_val) {
             raise @errors.TypeError(
               message="Method RegExp.prototype.test called on incompatible receiver",
             )

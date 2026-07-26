@@ -22,25 +22,23 @@ fn register_error_ctor(
       // Per ES §20.5.3.4: Get(O, "name") / Get(O, "message") walk the prototype
       // chain and invoke accessors. Own-property-only lookup would miss the
       // name that lives on <ErrorType>.prototype.
-      match this_val {
-        Object(_) => ()
-        _ =>
-          raise @errors.TypeError(
-            message="Error.prototype.toString requires that 'this' be an Object",
-          )
+      guard @runtime.is_object_value(this_val) else {
+        raise @errors.TypeError(
+          message="Error.prototype.toString requires that 'this' be an Object",
+        )
       }
       let loc = @token.Loc::default()
       let name_val = interp.get_property(this_val, "name", loc)
       let name_str = match name_val {
         Undefined => "Error"
         Value::String_(s) => s
-        other => other.to_string()
+        other => interp.to_js_string(other)
       }
       let msg_val = interp.get_property(this_val, "message", loc)
       let msg_str = match msg_val {
         Undefined => ""
         Value::String_(s) => s
-        other => other.to_string()
+        other => interp.to_js_string(other)
       }
       if name_str == "" {
         Value::String_(msg_str)
