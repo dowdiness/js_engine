@@ -212,7 +212,7 @@ fn setup_function_builtins(
     fn(interp, this_val, args) raise {
       // Function.prototype.bind - §20.2.3.2
       // Step 1: If IsCallable(this) is false, throw a TypeError exception
-      if !@runtime.is_function_value(this_val) {
+      if !@runtime.is_callable(this_val) {
         raise @errors.TypeError(
           message="Function.prototype.bind called on non-callable",
         )

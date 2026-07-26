@@ -115,6 +115,8 @@ pub fn setup_object_builtins(
         _ => ()
       }
       match this_val {
+        Value::Proxy(_) =>
+          Bool(interp.get_own_property(this_val, prop_key) is Some(_))
         Object(data) =>
           if data.class_name == "Module" {
             Bool(interp.get_own_property(this_val, prop_key) is Some(_))

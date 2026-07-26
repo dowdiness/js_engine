@@ -3907,6 +3907,98 @@ test "object assign" {
 }
 
 ///|
+/// Function.prototype.bind performs HasOwnProperty("length"), Get("length"),
+/// and Get("name") against a callable Proxy in specification order.
+test "Function bind dispatches Proxy length and name internal operations" {
+  let src =
+    #|var get = [];
+    #|var gopd = [];
+    #|var target = Function();
+    #|var proxy = new Proxy(target, {
+    #|  get: function(object, key) {
+    #|    get.push(key);
+    #|    return object[key];
+    #|  },
+    #|  getOwnPropertyDescriptor: function(object, key) {
+    #|    gopd.push(key);
+    #|    return Object.getOwnPropertyDescriptor(object, key);
+    #|  }
+    #|});
+    #|var bound = Function.prototype.bind.call(proxy);
+    #|console.log(get.join(","));
+    #|console.log(gopd.join(","));
+    #|console.log(bound());
+  let output = run_output(src)
+  json_inspect(output, content=["length,name", "length", "undefined"])
+}
+
+///|
+/// Object.prototype.hasOwnProperty delegates HasOwnProperty to the receiver's
+/// [[GetOwnProperty]] internal method, including Proxy trap dispatch.
+test "Object hasOwnProperty dispatches Proxy getOwnPropertyDescriptor" {
+  let src =
+    #|var gopd = [];
+    #|var proxy = new Proxy({foo: 1, bar: 2}, {
+    #|  getOwnPropertyDescriptor: function(object, key) {
+    #|    gopd.push(key);
+    #|    return Object.getOwnPropertyDescriptor(object, key);
+    #|  }
+    #|});
+    #|console.log(proxy.hasOwnProperty("garply"));
+    #|console.log(gopd.join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["false", "garply"])
+}
+
+///|
+/// Proxy traps used by bind and hasOwnProperty preserve abrupt completion;
+/// revoked Proxies fail instead of falling back to the former direct-bag paths.
+test "bind and hasOwnProperty propagate throwing and revoked Proxy operations" {
+  let src =
+    #|function report(label, action) {
+    #|  try {
+    #|    action();
+    #|    console.log(label + ":no throw");
+    #|  } catch (error) {
+    #|    console.log(label + ":" + (error.message || error.name));
+    #|  }
+    #|}
+    #|report("bind-get", function() {
+    #|  var proxy = new Proxy(Function(), {
+    #|    get: function() { throw new Error("get abrupt"); }
+    #|  });
+    #|  Function.prototype.bind.call(proxy);
+    #|});
+    #|report("bind-gopd", function() {
+    #|  var proxy = new Proxy(Function(), {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("gopd abrupt"); }
+    #|  });
+    #|  Function.prototype.bind.call(proxy);
+    #|});
+    #|report("hasOwn-gopd", function() {
+    #|  var proxy = new Proxy({}, {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("hasOwn abrupt"); }
+    #|  });
+    #|  Object.prototype.hasOwnProperty.call(proxy, "x");
+    #|});
+    #|var bindRecord = Proxy.revocable(Function(), {});
+    #|bindRecord.revoke();
+    #|report("bind-revoked", function() {
+    #|  Function.prototype.bind.call(bindRecord.proxy);
+    #|});
+    #|var hasOwnRecord = Proxy.revocable({}, {});
+    #|hasOwnRecord.revoke();
+    #|report("hasOwn-revoked", function() {
+    #|  Object.prototype.hasOwnProperty.call(hasOwnRecord.proxy, "x");
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "bind-get:get abrupt", "bind-gopd:gopd abrupt", "hasOwn-gopd:hasOwn abrupt",
+    "bind-revoked:Cannot perform operation on a proxy that has been revoked", "hasOwn-revoked:Cannot perform operation on a proxy that has been revoked",
+  ])
+}
+
+///|
 /// compat-table: Proxy internal `get` calls / Object.assign.
 test "Object.assign Proxy source invokes get trap" {
   let src =
