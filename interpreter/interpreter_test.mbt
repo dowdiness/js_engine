@@ -7106,6 +7106,41 @@ test "derived super property before super throws ReferenceError" {
 }
 
 ///|
+test "super computed assignment converts the key before evaluating RHS" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let key = { toString() { log.push("key"); return "x"; } };
+      #|let base = { set x(value) {} };
+      #|let object = {
+      #|  __proto__: base,
+      #|  method() { super[key] = (log.push("rhs"), 1); }
+      #|};
+      #|object.method();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["key,rhs"])
+}
+
+///|
+test "super assignment with a null base throws TypeError" {
+  let output = run_output(
+    (
+      #|let object = { method() { super.value = 1; } };
+      #|Object.setPrototypeOf(object, null);
+      #|try {
+      #|  object.method();
+      #|  console.log("no error");
+      #|} catch (error) {
+      #|  console.log(error.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
 test "derived super double init throws when super returns object" {
   let output = run_output(
     (

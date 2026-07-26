@@ -1597,9 +1597,13 @@ fn Interpreter::eval_expr(
       let this_val = eval_this_value(env)
       let super_proto = resolve_super_target(env)
       match super_proto {
-        Null | Undefined =>
+        Undefined =>
           raise @errors.ReferenceError(
             message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          )
+        Null =>
+          raise @errors.TypeError(
+            message="Cannot set property on null super base at line \{loc.line}",
           )
         _ => {
           let value = self.eval_expr(ctx, value_expr, env)
@@ -1618,12 +1622,19 @@ fn Interpreter::eval_expr(
       let this_val = eval_this_value(env)
       let super_proto = resolve_super_target(env)
       match super_proto {
-        Null | Undefined =>
+        Undefined =>
           raise @errors.ReferenceError(
             message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
           )
+        Null =>
+          raise @errors.TypeError(
+            message="Cannot set property on null super base at line \{loc.line}",
+          )
         _ => {
-          let key = self.eval_expr(ctx, key_expr, env)
+          let key = to_property_key(
+            self.eval_expr(ctx, key_expr, env),
+            interp=Some(self),
+          )
           let value = self.eval_expr(ctx, value_expr, env)
           self.set_computed_property(
             super_proto,
