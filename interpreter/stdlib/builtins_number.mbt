@@ -578,6 +578,13 @@ fn setup_number_builtins(
         let n = if args.length() > 0 { interp.to_number(args[0]) } else { 0.0 }
         if context.is_constructing() {
           // new Value::Number(value) → boxed Number object
+          let instance_proto = builtin_constructor_prototype(
+            interp,
+            context,
+            number_proto,
+            @token.Loc::default(),
+            intrinsic_name="Number",
+          )
           Value::Object({
             bag: {
               properties: Map([]),
@@ -589,7 +596,7 @@ fn setup_number_builtins(
               ]),
               host_slots: Map([]),
             },
-            prototype: number_proto,
+            prototype: instance_proto,
             callable: None,
             class_name: "Number",
             extensible: true,

@@ -2160,6 +2160,34 @@ test "bytecode object spread copies enumerable own properties in order" {
 }
 
 ///|
+test "bytecode object spread orders integer keys and invokes symbol getters" {
+  let src =
+    #|var calls = [];
+    #|var source = {
+    #|  get z() { calls.push("z"); return 2; },
+    #|  get a() { calls.push("a"); return 3; }
+    #|};
+    #|Object.defineProperty(source, "1", {
+    #|  get: function() { calls.push("1"); return 1; },
+    #|  enumerable: true
+    #|});
+    #|var sym = Symbol("key");
+    #|Object.defineProperty(source, sym, {
+    #|  get: function() { calls.push("symbol"); return 4; },
+    #|  enumerable: true
+    #|});
+    #|var copy = { ...source };
+    #|var replacement = { get x() { return 0; }, ...{ x: 5 } };
+    #|var desc = Object.getOwnPropertyDescriptor(replacement, "x");
+    #|calls.join(",") + ":" + Object.keys(copy).join(",") + ":" + copy[sym] +
+    #|  ":" + replacement.x + ":" + (desc.get === undefined) + ":" + desc.writable;
+  inspect(
+    bytecode_compare(src),
+    content="value:1,z,a,symbol:1,z,a:4:5:true:true",
+  )
+}
+
+///|
 test "bytecode object spread skips non-enumerable properties and invokes getters" {
   let src =
     #|var log = "";
@@ -3077,6 +3105,39 @@ test "bytecode direct eval inherits caller strictness" {
     #|}
     #|f();
   inspect(bytecode_compare(src), content="value:undefined")
+}
+
+///|
+test "bytecode direct eval stops super context at ordinary functions" {
+  let property_src =
+    #|var obj = {
+    #|  property: function() { eval("super.value"); }
+    #|};
+    #|obj.property();
+  inspect(
+    bytecode_compare(property_src),
+    content="throw:SyntaxError: 'super' property access is not allowed here — eval source contains super.x outside a method",
+  )
+  let nested_src =
+    #|var obj = {
+    #|  method() {
+    #|    function nested() { eval("super.value"); }
+    #|    nested();
+    #|  }
+    #|};
+    #|obj.method();
+  inspect(
+    bytecode_compare(nested_src),
+    content="throw:SyntaxError: 'super' property access is not allowed here — eval source contains super.x outside a method",
+  )
+  let arrow_src =
+    #|var proto = { value: 42 };
+    #|var obj = {
+    #|  __proto__: proto,
+    #|  method() { return (() => eval("super.value"))(); }
+    #|};
+    #|obj.method();
+  inspect(bytecode_compare(arrow_src), content="value:42")
 }
 
 ///|

@@ -2,23 +2,44 @@
 /// Resolve the target of a `super.x` / `super[k]` access (ES2022 §13.3.7.1
 /// MakeSuperPropertyReference).
 ///
-/// Per spec, super resolves via the method's [[HomeObject]] at *call* time:
-/// `Object.getPrototypeOf(homeObject)`. Object-literal methods bind
-/// [[HomeObject]] to the live object, so `Object.setPrototypeOf` after
-/// creation is honored.
-///
-/// Class methods still bind [[SuperPrototype]] (a compile-time snapshot of
-/// the super-class's prototype) for backwards compatibility — a class's
-/// super target rarely shifts after creation, and migrating class machinery
-/// to [[HomeObject]] is left for a separate change.
-fn resolve_super_target(env : Environment) -> Value {
+/// Per spec, super resolves via the method's [[HomeObject]] at *call* time by
+/// invoking its [[GetPrototypeOf]] internal method. The Proxy arm preserves a
+/// possible getPrototypeOf trap before the later property [[Get]]/[[Set]].
+/// [[SuperPrototype]] remains only as a fallback for legacy constructor-call
+/// environments that do not yet carry a [[HomeObject]].
+fn Interpreter::resolve_super_target(
+  self : Interpreter,
+  env : Environment,
+) -> Value raise Error {
   let home = env.get("[[HomeObject]]") catch { _ => Undefined }
   match home {
-    Object(data) => return data.prototype
+    Object(_) | Array(_) | Proxy(_) =>
+      return object_get_prototype_of(self, home)
     _ => ()
   }
   env.get("[[SuperPrototype]]") catch {
     _ => Undefined
+  }
+}
+
+///|
+fn Interpreter::require_super_target(
+  self : Interpreter,
+  env : Environment,
+  access : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match self.resolve_super_target(env) {
+    Undefined =>
+      raise @errors.ReferenceError(
+        message=access +
+          " used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    Null =>
+      raise @errors.TypeError(
+        message=format_loc_context("Cannot convert null to object", loc),
+      )
+    target => target
   }
 }
 
@@ -64,29 +85,6 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
 }
 
 ///|
-// In subclass construction, align a super constructor return value with the
-// calling class instance's prototype for built-in super constructors
-// (Array/Map/Set/Promise).
-fn apply_super_return_prototype(super_result : Value, this_val : Value) -> Unit {
-  let target_proto : Value? = match this_val {
-    Object(data) => Some(data.prototype)
-    _ => None
-  }
-  match target_proto {
-    Some(proto) =>
-      match super_result {
-        Object(data) => data.prototype = proto
-        Array(data) => set_array_prototype_override(data, proto)
-        Map(data) => data.prototype = Some(proto)
-        Set(data) => data.prototype = Some(proto)
-        Promise(data) => data.prototype = Some(proto)
-        _ => ()
-      }
-    None => ()
-  }
-}
-
-///|
 fn Interpreter::get_symbol_property_from_prototype(
   self : Interpreter,
   receiver : Value,
@@ -94,57 +92,7 @@ fn Interpreter::get_symbol_property_from_prototype(
   sym : SymbolData,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let key = Value::Symbol(sym)
-  let mut current = proto
-  while true {
-    match current {
-      Object(data) => {
-        match data.bag.symbol_descriptors.get(sym.id) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match data.bag.symbol_properties.get(sym.id) {
-          Some(value) => return value
-          None => current = data.prototype
-        }
-      }
-      Array(data) => {
-        match data.bag.symbol_descriptors.get(sym.id) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match get_array_symbol_prop(data, sym.id) {
-          Some(value) => return value
-          None => current = get_array_prototype(self.realm_state, data)
-        }
-      }
-      Proxy(proxy_data) =>
-        match get_proxy_trap(proxy_data, "get", self) {
-          Some(trap_fn) => {
-            let target = get_proxy_target(proxy_data)
-            let handler = get_proxy_handler(proxy_data)
-            return self.call_value(
-              trap_fn,
-              handler,
-              [target, key, receiver],
-              loc,
-            )
-          }
-          None => current = get_proxy_target(proxy_data)
-        }
-      Null => return Undefined
-      _ => return self.get_computed_property(current, key, loc)
-    }
-  }
-  Undefined
+  self.get_property_key_with_receiver(proto, Symbol(sym), receiver, loc)
 }
 
 ///|
@@ -155,17 +103,7 @@ fn Interpreter::get_computed_property_from_prototype(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
-  match key {
-    Symbol(sym) =>
-      self.get_symbol_property_from_prototype(receiver, proto, sym, loc)
-    _ =>
-      self.get_property_from_prototype(
-        receiver,
-        proto,
-        to_js_string(key, interp=Some(self)),
-        loc,
-      )
-  }
+  self.get_property_key_with_receiver(proto, key, receiver, loc)
 }
 
 ///|
@@ -175,16 +113,18 @@ pub fn Interpreter::eval_super_property(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => {
-      let this_val = eval_this_value(env)
-      self.get_property_from_prototype(this_val, super_proto, prop, loc)
-    }
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
+    _ => self.get_property_from_prototype(this_val, super_proto, prop, loc)
   }
 }
 
@@ -195,16 +135,19 @@ pub fn Interpreter::eval_super_computed_property(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => {
-      let this_val = eval_this_value(env)
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
+    _ =>
       self.get_computed_property_from_prototype(this_val, super_proto, key, loc)
-    }
   }
 }
 
@@ -215,14 +158,18 @@ pub fn Interpreter::eval_super_property_call_reference(
   prop : String,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
     _ => {
-      let this_val = eval_this_value(env)
       let func_val = self.get_property_from_prototype(
         this_val, super_proto, prop, loc,
       )
@@ -238,14 +185,18 @@ pub fn Interpreter::eval_super_computed_call_reference(
   key : Value,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
     _ => {
-      let this_val = eval_this_value(env)
       let func_val = self.get_computed_property_from_prototype(
         this_val, super_proto, key, loc,
       )
@@ -346,6 +297,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -366,6 +318,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -380,6 +333,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -400,6 +354,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -414,6 +369,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -434,6 +390,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -448,6 +405,38 @@ fn Interpreter::eval_prop_value(
     mark_as_method(strip_self_name_binding(v))
   } else {
     v
+  }
+}
+
+///|
+fn object_literal_inferred_name(key : Value) -> String raise Error {
+  match key {
+    Symbol(sym) =>
+      match sym.description {
+        Some(description) => "[\{description}]"
+        None => ""
+      }
+    _ => to_js_string(key)
+  }
+}
+
+///|
+fn Interpreter::eval_named_prop_value(
+  self : Interpreter,
+  ctx : ExecContext,
+  prop : @ast.Property,
+  method_env : Environment,
+  key : Value,
+) -> Value raise Error {
+  if prop.is_method {
+    self.eval_prop_value(ctx, prop, method_env)
+  } else {
+    self.eval_named_expr(
+      ctx,
+      prop.value,
+      method_env,
+      object_literal_inferred_name(key),
+    )
   }
 }
 
@@ -822,57 +811,37 @@ pub fn Interpreter::copy_object_spread_properties(
   source : Value,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  let (properties, symbol_properties) = match target {
-    Object(data) => (data.bag.properties, data.bag.symbol_properties)
+  match target {
+    Object(_) => ()
     _ =>
       raise @errors.InternalError(
         message="object spread target was not an object",
       )
   }
-  match source {
-    Object(data) => {
-      // Copy all enumerable own properties. Per ES spec, spread invokes [[Get]]
-      // (which triggers getters) and creates data properties (not accessor
-      // descriptors).
-      for key, raw_value in data.bag.properties {
-        match data.bag.descriptors.get(key) {
-          Some(desc) =>
-            if desc.enumerable {
-              let val : Value = match desc.getter {
-                Some(getter) => self.call_value(getter, source, [], loc)
-                None => raw_value
-              }
-              properties[key] = val
-            }
-          None => properties[key] = raw_value
+  // CopyDataProperties: [[OwnPropertyKeys]] → [[GetOwnProperty]] → [[Get]].
+  // The target is a fresh ordinary object, so building its owned maps locally
+  // is the unobservable CreateDataProperty shell around those dispatchers.
+  if source is (Null | Undefined) {
+    return
+  }
+  for key in self.own_property_keys(source) {
+    match self.get_own_property(source, key) {
+      Some((desc, _)) if desc.enumerable => {
+        let value = self.get_computed_property(source, key, loc)
+        let succeeded = self.define_own_property(
+          target,
+          key,
+          PartialDescriptor::data_default(value),
+          loc,
+        )
+        if !succeeded {
+          raise @errors.TypeError(
+            message=format_loc_context("Cannot create data property", loc),
+          )
         }
       }
-      // Copy symbol properties too, matching the existing object-literal spread
-      // path's descriptor handling.
-      for sym_id, value in data.bag.symbol_properties {
-        match data.bag.symbol_descriptors.get(sym_id) {
-          Some(desc) => if desc.enumerable { symbol_properties[sym_id] = value }
-          None => symbol_properties[sym_id] = value
-        }
-      }
+      _ => ()
     }
-    Array(arr_data) =>
-      // Spread array into object: only enumerable own properties. The current
-      // interpreter representation treats dense element slots as enumerable.
-      for i, value in arr_data.elements {
-        properties[i.to_string()] = value
-      }
-    String_(s) => {
-      // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b" }.
-      let mut idx = 0
-      for ch in s {
-        properties[idx.to_string()] = String_(ch.to_string())
-        idx = idx + 1
-      }
-    }
-    Null | Undefined => () // Skip null/undefined per spec.
-    Number(_) | Bool(_) => () // Primitives have no enumerable own properties.
-    _ => ()
   }
 }
 
@@ -1152,6 +1121,34 @@ fn get_private_member(
 }
 
 ///|
+/// Runtime Semantics: NamedEvaluation. Anonymous class expressions need the
+/// inferred name during ClassDefinitionEvaluation (before static elements run),
+/// while the other anonymous function forms can retain their existing
+/// SetFunctionName path after ordinary evaluation.
+fn Interpreter::eval_named_expr(
+  self : Interpreter,
+  ctx : ExecContext,
+  expr : @ast.Expr,
+  env : Environment,
+  inferred_name : String,
+) -> Value raise Error {
+  match expr {
+    Grouping(inner, _) => self.eval_named_expr(ctx, inner, env, inferred_name)
+    ClassExpr(None, superclass, members, _, source_text) =>
+      self.create_class(
+        ctx, inferred_name, superclass, members, env, source_text,
+      )
+    _ => {
+      let value = self.eval_expr(ctx, expr, env)
+      if is_anonymous_function_definition(expr) {
+        set_function_name(value, inferred_name)
+      }
+      value
+    }
+  }
+}
+
+///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -1196,11 +1193,7 @@ fn Interpreter::eval_expr(
     Assign(name, value_expr, _) => {
       @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
       let resolved_env = env.resolve_binding_env(name)
-      let value = self.eval_expr(ctx, value_expr, env)
-      // SetFunctionName for assignments: x = function() {} gives name "x"
-      if is_anonymous_function_definition(value_expr) {
-        set_function_name(value, name)
-      }
+      let value = self.eval_named_expr(ctx, value_expr, env, name)
       // Check if the target is a non-writable property on the global object
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
       // in non-strict mode the assignment is silently ignored.
@@ -1459,7 +1452,9 @@ fn Interpreter::eval_expr(
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
-                  let val = self.eval_prop_value(ctx, prop, method_env)
+                  let val = self.eval_named_prop_value(
+                    ctx, prop, method_env, prop_key,
+                  )
                   apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
@@ -1479,7 +1474,9 @@ fn Interpreter::eval_expr(
             _ =>
               match prop.kind {
                 Init => {
-                  let val = self.eval_prop_value(ctx, prop, method_env)
+                  let val = self.eval_named_prop_value(
+                    ctx, prop, method_env, prop_key,
+                  )
                   apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
@@ -1519,9 +1516,12 @@ fn Interpreter::eval_expr(
                 let val = self.eval_prop_value(ctx, prop, method_env)
                 apply_object_literal_proto_property(home_object, val)
               } else {
-                let val = self.eval_prop_value(ctx, prop, method_env)
-                // SetFunctionName: infer name for anonymous functions
-                set_function_name(val, key_str)
+                let val = self.eval_named_prop_value(
+                  ctx,
+                  prop,
+                  method_env,
+                  String_(key_str),
+                )
                 properties[key_str] = val
               }
             Get => {
@@ -1592,6 +1592,60 @@ fn Interpreter::eval_expr(
       let key = self.eval_expr(ctx, key_expr, env)
       let value = self.eval_expr(ctx, value_expr, env)
       self.set_computed_property(obj, key, value, loc, strict=ctx.strict)
+    }
+    SuperMemberAssign(prop, value_expr, loc) => {
+      let this_val = eval_this_value(env)
+      let super_proto = self.resolve_super_target(env)
+      match super_proto {
+        Undefined =>
+          raise @errors.ReferenceError(
+            message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          )
+        _ => {
+          let value = self.eval_expr(ctx, value_expr, env)
+          if super_proto is Null {
+            raise @errors.TypeError(
+              message="Cannot set property on null super base at line \{loc.line}",
+            )
+          }
+          self.set_property(
+            super_proto,
+            prop,
+            value,
+            loc,
+            strict=ctx.strict,
+            receiver=this_val,
+          )
+        }
+      }
+    }
+    SuperComputedAssign(key_expr, value_expr, loc) => {
+      let this_val = eval_this_value(env)
+      let key = self.eval_expr(ctx, key_expr, env)
+      let super_proto = self.resolve_super_target(env)
+      match super_proto {
+        Undefined =>
+          raise @errors.ReferenceError(
+            message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          )
+        _ => {
+          let value = self.eval_expr(ctx, value_expr, env)
+          if super_proto is Null {
+            raise @errors.TypeError(
+              message="Cannot set property on null super base at line \{loc.line}",
+            )
+          }
+          let prop_key = to_property_key(key, interp=Some(self))
+          self.set_computed_property(
+            super_proto,
+            prop_key,
+            value,
+            loc,
+            strict=ctx.strict,
+            receiver=this_val,
+          )
+        }
+      }
     }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(ctx, callee_expr, arg_exprs, env, loc)
@@ -1952,31 +2006,24 @@ fn Interpreter::eval_expr(
       }
     }
     ClassExpr(name, superclass, methods, _, source_text) => {
-      // For named class expressions, the name is visible inside the class body
-      // but not in the outer scope. Create a new scope for this.
       let class_name = name.unwrap_or("")
-      let class_env = if class_name != "" {
-        let inner = Environment::new(parent=Some(env))
-        // Pre-define the name (will be set after class creation)
-        inner.def(class_name, Undefined, LetBinding)
-        inner
-      } else {
-        env
-      }
-      let class_val = self.create_class(
-        ctx, class_name, superclass, methods, class_env, source_text,
+      self.create_class(
+        ctx,
+        class_name,
+        superclass,
+        methods,
+        env,
+        source_text,
+        class_binding=name,
       )
-      // Set the class name binding in the inner scope
-      if class_name != "" {
-        class_env.assign(class_name, class_val) catch {
-          _ => ()
-        }
-      }
-      class_val
     }
     SuperCall(arg_exprs, loc) => {
+      // SuperCall steps 3-5: read the active class function's current
+      // [[Prototype]] before evaluating Arguments, but defer IsConstructor
+      // validation until after argument evaluation.
+      let super_ctor = get_active_super_constructor(env, loc)
       let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-      self.eval_super_dispatch(args, env, loc)
+      self.eval_super_dispatch(super_ctor, args, env, loc)
     }
     SuperMember(prop, loc) => self.eval_super_property(env, prop, loc)
     SuperComputedMember(key_expr, loc) => {
@@ -1996,17 +2043,86 @@ fn Interpreter::eval_expr(
 }
 
 ///|
-// Dispatch a super() call. Reads [[SuperConstructor]], [[PendingThis]]/this, and
-// <new.target> from `env`, runs the selected constructor, updates env.this, applies
-// env.[[InitInstanceFields]], and returns the resolved this value. Calls itself
-// recursively for implicit derived constructors (None ctor_fn, Some _super_ctor).
+// GetSuperConstructor reads the active class function's live [[Prototype]].
+// The caller performs this before ArgumentListEvaluation, matching SuperCall's
+// required observable ordering.
+fn get_active_super_constructor(
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let active_function = env.get("[[ActiveClassFunction]]") catch {
+    _ =>
+      raise @errors.ReferenceError(
+        message=format_loc_context(
+          "super() called but no active class function is in scope", loc,
+        ),
+      )
+  }
+  match active_function {
+    Object(data) => data.prototype
+    _ =>
+      raise @errors.ReferenceError(
+        message=format_loc_context(
+          "super() called but active class function is invalid", loc,
+        ),
+      )
+  }
+}
+
+///|
+fn Interpreter::construct_and_bind_super(
+  self : Interpreter,
+  super_ctor : Value,
+  args : Array[Value],
+  super_new_target : Value,
+  this_val : Value,
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let super_result = self.construct_value(
+    super_ctor,
+    args,
+    loc,
+    new_target=Some(super_new_target),
+  )
+  match super_result {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+      env.initialize_in_chain("this", super_result)
+      if env.has("[[InitInstanceFields]]") {
+        let init_fn = env.get("[[InitInstanceFields]]")
+        let _ = self.call_value(init_fn, super_result, [], loc)
+      }
+      super_result
+    }
+    _ => {
+      env.initialize_in_chain("this", this_val)
+      if env.has("[[InitInstanceFields]]") {
+        let init_fn = env.get("[[InitInstanceFields]]")
+        let _ = self.call_value(init_fn, this_val, [], loc)
+      }
+      env.get("this")
+    }
+  }
+}
+
+///|
+// Dispatch a super() call. The selected super constructor was captured before
+// argument evaluation. This function validates it afterward, reads
+// [[PendingThis]]/this and <new.target> from `env`, runs the constructor,
+// updates env.this, applies env.[[InitInstanceFields]], and returns the resolved
+// this value. It calls itself recursively for implicit derived constructors.
 fn Interpreter::eval_super_dispatch(
   self : Interpreter,
+  super_ctor : Value,
   args : Array[Value],
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_ctor = env.get("[[SuperConstructor]]")
+  if !is_constructor_value(super_ctor) {
+    raise @errors.TypeError(
+      message=format_loc_context("super constructor is not a constructor", loc),
+    )
+  }
   let this_val = if env.has("[[PendingThis]]") {
     env.get("[[PendingThis]]")
   } else {
@@ -2016,174 +2132,26 @@ fn Interpreter::eval_super_dispatch(
   match super_ctor {
     Object(data) =>
       match data.callable {
-        Some(
-          ClassConstructor(
-            {
-              super_ctor: _super_ctor,
-              instance_fields: super_instance_fields,
-              private_instance_fields: super_private_fields,
-              private_brand: super_brand,
-              ctor_fn,
-              closure: ctor_closure,
-              super_proto,
-              ..,
-            }
+        Some(_) =>
+          // All super constructors, including classes and built-ins, use the
+          // canonical [[Construct]] path. This keeps newTarget forwarding,
+          // allocation timing, return-value replacement, and field setup in a
+          // single implementation.
+          self.construct_and_bind_super(
+            super_ctor, args, super_new_target, this_val, env, loc,
           )
-        ) => {
-          let call_env = Environment::new(parent=Some(ctor_closure))
-          // §10.2.2 step 4: new.target in super constructor = derived class's new.target
-          call_env.def(
-            "<new.target>",
-            env.get("<new.target>") catch {
-              _ => Undefined
-            },
-            LetBinding,
-          )
-          // Mirror construct.mbt: derived super keeps `this` in TDZ until its
-          // own super() call completes; base super gets a live `this` immediately.
-          match _super_ctor {
-            Some(grand_super) => {
-              // §10.2.11 / §15.7.5.1: `this` is TDZ in derived constructors
-              // until super() returns. Store the pending instance in [[PendingThis]]
-              // so the inner SuperCall handler can find it.
-              call_env.def_tdz("this", LetBinding)
-              call_env.def_builtin("[[PendingThis]]", this_val)
-              call_env.def_builtin("[[SuperConstructor]]", grand_super)
-              call_env.def_builtin("[[SuperPrototype]]", super_proto)
-              // Super is also derived: defer its fields until its own super() returns
-              if super_instance_fields.length() > 0 ||
-                super_private_fields.length() > 0 {
-                call_env.def_builtin(
-                  "[[InitInstanceFields]]",
-                  make_instance_fields_init(
-                    super_instance_fields,
-                    super_private_fields,
-                    Some(super_brand),
-                    self.realm_state,
-                  ),
-                )
-              }
-            }
-            None => {
-              // Super is a base class: `this` is live, install fields immediately.
-              // Keep [[SuperPrototype]] directly available to constructor
-              // parameter defaults that evaluate super.prop.
-              call_env.def_builtin("this", this_val)
-              call_env.def_builtin("[[SuperPrototype]]", super_proto)
-              self.install_instance_fields(this_val, super_instance_fields)
-              self.install_private_fields(
-                this_val, super_private_fields, super_brand,
-              )
-            }
-          }
-          // §15.7.5.1 derived constructor return rule: after the body returns
-          // normally or with a non-object value, call_env.this is authoritative.
-          let resolved_this = match ctor_fn {
-            Some((ctor_params, rest_param, ctor_body)) => {
-              let super_ctor_ctx : ExecContext = {
-                strict: true,
-                current_generator: None,
-              }
-              let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
-                ctor_params, rest_param, ctor_body, super_ctor, args, call_env, super_ctor_ctx,
-              )
-              raise_if_break_continue(exec_result)
-              match exec_result {
-                ReturnSignal(v) =>
-                  match v {
-                    Object(_)
-                    | Array(_)
-                    | Map(_)
-                    | Set(_)
-                    | Promise(_)
-                    | Proxy(_) => {
-                      env.initialize_in_chain("this", v)
-                      if env.has("[[InitInstanceFields]]") {
-                        let init_fn = env.get("[[InitInstanceFields]]")
-                        let _ = self.call_value(init_fn, v, [], loc)
-                      }
-                      return v
-                    }
-                    // §15.7.5.1: undefined is the sentinel for "use the bound this"
-                    Undefined => ()
-                    // §15.7.5.1: derived constructors may only return object or undefined
-                    _ =>
-                      if _super_ctor is Some(_) {
-                        raise @errors.TypeError(
-                          message="Derived constructors may only return object or undefined",
-                        )
-                      }
-                  }
-                _ => ()
-              }
-              // The inner SuperCall may have updated call_env.this (e.g. grand-super
-              // returned an object); use that as the resolved 'this' for the caller.
-              eval_this_value(call_env)
-            }
-            // Implicit constructor: forward args up the chain for derived classes;
-            // for base classes the pending instance is already established.
-            None =>
-              match _super_ctor {
-                None => this_val
-                Some(_) => self.eval_super_dispatch(args, call_env, loc)
-              }
-          }
-          // Initialize 'this' in the calling env (may be TDZ for derived classes)
-          env.initialize_in_chain("this", resolved_this)
-          // Apply calling class's instance fields after super() establishes this
-          if env.has("[[InitInstanceFields]]") {
-            let init_fn = env.get("[[InitInstanceFields]]")
-            let actual_this = env.get("this")
-            let _ = self.call_value(init_fn, actual_this, [], loc)
-          }
-          env.get("this")
-        }
-        Some(callable) => {
-          // Support non-class constructible supers (e.g. built-in constructors like Error).
-          // Use constructor semantics (`new`) instead of plain call.
-          let align_builtin_super_result = match callable {
-            NativeCallable(_, _)
-            | NativeCallableWithContext(_, _)
-            | InterpreterCallable(_, _)
-            | InterpreterCallableWithContext(_, _)
-            | ConstructorOnlyCallable(_, _) => true
-            _ => false
-          }
-          let super_result = self.construct_value(
-            super_ctor,
-            args,
-            loc,
-            new_target=Some(super_new_target),
-          )
-          match super_result {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
-              if align_builtin_super_result {
-                apply_super_return_prototype(super_result, this_val)
-              }
-              env.initialize_in_chain("this", super_result)
-              if env.has("[[InitInstanceFields]]") {
-                let init_fn = env.get("[[InitInstanceFields]]")
-                let _ = self.call_value(init_fn, super_result, [], loc)
-              }
-              super_result
-            }
-            _ => {
-              env.initialize_in_chain("this", this_val)
-              if env.has("[[InitInstanceFields]]") {
-                let init_fn = env.get("[[InitInstanceFields]]")
-                let _ = self.call_value(init_fn, this_val, [], loc)
-              }
-              env.get("this")
-            }
-          }
-        }
         _ =>
           raise @errors.ReferenceError(
             message=format_loc_context(
-              "super() called but [[SuperConstructor]] is not a constructor", loc,
+              "super() called but the selected super value is not a constructor",
+              loc,
             ),
           )
       }
+    Proxy(_) =>
+      self.construct_and_bind_super(
+        super_ctor, args, super_new_target, this_val, env, loc,
+      )
     Null =>
       // `extends null`: super() attempts Construct(null, ...) → TypeError
       raise @errors.TypeError(
@@ -2192,7 +2160,7 @@ fn Interpreter::eval_super_dispatch(
     _ =>
       raise @errors.ReferenceError(
         message=format_loc_context(
-          "super() called but no [[SuperConstructor]] in scope", loc,
+          "super() called but no super constructor is in scope", loc,
         ),
       )
   }

@@ -1227,7 +1227,7 @@ fn Interpreter::define_value_on_receiver(
     Proxy(_) =>
       self.landing_via_define_own_property(receiver, key, value, loc, strict)
     Object(rdata) => {
-      if is_typedarray_class(rdata.class_name) {
+      if rdata.class_name == "Module" || is_typedarray_class(rdata.class_name) {
         return self.landing_via_define_own_property(
           receiver, key, value, loc, strict,
         )

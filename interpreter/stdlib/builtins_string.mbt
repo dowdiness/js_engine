@@ -327,17 +327,11 @@ pub fn get_string_method(
         name="includes",
         length=1,
         fn(interp, _this_val, args) raise {
-          // Per spec: throw TypeError if searchString is a RegExp
-          if args.length() > 0 {
-            match args[0] {
-              Object(data) =>
-                if data.class_name == "RegExp" {
-                  raise @errors.TypeError(
-                    message="First argument to String.prototype.includes must not be a regular expression",
-                  )
-                }
-              _ => ()
-            }
+          // Per spec: throw TypeError if IsRegExp(searchString) is true.
+          if args.length() > 0 && regexp_is_regexp(interp, args[0]) {
+            raise @errors.TypeError(
+              message="First argument to String.prototype.includes must not be a regular expression",
+            )
           }
           let search = if args.length() > 0 {
             interp.to_js_string(args[0])
@@ -1029,17 +1023,11 @@ pub fn get_string_method(
         name="startsWith",
         length=1,
         fn(interp, _this_val, args) raise {
-          // Per spec: throw TypeError if searchString is a RegExp
-          if args.length() > 0 {
-            match args[0] {
-              Object(data) =>
-                if data.class_name == "RegExp" {
-                  raise @errors.TypeError(
-                    message="First argument to String.prototype.startsWith must not be a regular expression",
-                  )
-                }
-              _ => ()
-            }
+          // Per spec: throw TypeError if IsRegExp(searchString) is true.
+          if args.length() > 0 && regexp_is_regexp(interp, args[0]) {
+            raise @errors.TypeError(
+              message="First argument to String.prototype.startsWith must not be a regular expression",
+            )
           }
           let search = if args.length() > 0 {
             interp.to_js_string(args[0])
@@ -1080,17 +1068,11 @@ pub fn get_string_method(
         name="endsWith",
         length=1,
         fn(interp, _this_val, args) raise {
-          // Per spec: throw TypeError if searchString is a RegExp
-          if args.length() > 0 {
-            match args[0] {
-              Object(data) =>
-                if data.class_name == "RegExp" {
-                  raise @errors.TypeError(
-                    message="First argument to String.prototype.endsWith must not be a regular expression",
-                  )
-                }
-              _ => ()
-            }
+          // Per spec: throw TypeError if IsRegExp(searchString) is true.
+          if args.length() > 0 && regexp_is_regexp(interp, args[0]) {
+            raise @errors.TypeError(
+              message="First argument to String.prototype.endsWith must not be a regular expression",
+            )
           }
           let search = if args.length() > 0 {
             interp.to_js_string(args[0])

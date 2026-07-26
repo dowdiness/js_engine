@@ -57,6 +57,11 @@ pub(all) struct GeneratorObject {
   // Loop resume tracking — stack of saved loop envs (innermost first, outermost last)
   loop_env_stack : Array[Environment]
   loop_yield_base_stack : Array[Int]
+  // Statement-list resume tracking. Frames are pushed while YieldSignal unwinds,
+  // so the outermost frame is restored first and nested frames follow in LIFO order.
+  stmt_resume_index_stack : Array[Int]
+  stmt_resume_env_stack : Array[Environment]
+  stmt_resume_value_stack : Array[Value]
   // For-of resume state
   mut for_of_iterator : Value // last saved iterator object (compat/debug)
   mut for_of_next : Value // last saved next method (compat/debug)
@@ -100,6 +105,9 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.dstr_iterator_stack.clear()
   gen.loop_env_stack.clear()
   gen.loop_yield_base_stack.clear()
+  gen.stmt_resume_index_stack.clear()
+  gen.stmt_resume_env_stack.clear()
+  gen.stmt_resume_value_stack.clear()
   gen.yield_resume_values.clear()
   // Clear mutable fields to allow GC
   // Note: body/args/closure/this_val are immutable and may be shared
@@ -447,6 +455,7 @@ fn Interpreter::make_generator_function(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let interp = self
@@ -545,6 +554,7 @@ fn Interpreter::make_generator_function(
             strict,
             effective_closure,
             func_prototype,
+            is_method~,
           )
         }),
       ),
@@ -578,6 +588,7 @@ fn Interpreter::make_generator_function_ext(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let interp = self
@@ -676,6 +687,7 @@ fn Interpreter::make_generator_function_ext(
             strict,
             effective_closure,
             func_prototype,
+            is_method~,
           )
         }),
       ),
@@ -712,6 +724,7 @@ fn create_generator_instance(
   strict : Bool,
   closure : Environment,
   func_prototype : Value,
+  is_method? : Bool = false,
   is_arrow? : Bool = false,
   callee? : Value = Undefined,
   is_async? : Bool = false,
@@ -730,6 +743,9 @@ fn create_generator_instance(
   func_env.is_var_scope = true
   // Arrow functions don't rebind `this` (use closure's lexical this).
   if !is_arrow {
+    // Every non-arrow generator-family call is a PerformEval boundary.
+    // Methods authorize their own lexical super; ordinary functions stop lookup.
+    func_env.def_builtin("[[EvalMethodContext]]", Bool(is_method))
     let effective_this = if !strict {
       match this_val {
         Undefined | Null => interp.global_this
@@ -968,6 +984,9 @@ fn create_generator_instance(
       try_resume_pending_error: None,
       loop_env_stack: [],
       loop_yield_base_stack: [],
+      stmt_resume_index_stack: [],
+      stmt_resume_env_stack: [],
+      stmt_resume_value_stack: [],
       for_of_iterator: Undefined,
       for_of_next: Undefined,
       for_of_iterator_stack: [],

@@ -49,15 +49,10 @@ fn Interpreter::bind_pattern(
       }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        let v = self.eval_expr(ctx, default_expr, env)
-        // Per spec, if default is anonymous function and target is identifier, set name
-        if is_anonymous_function_definition(default_expr) {
-          match inner_pat {
-            IdentPat(name) => set_function_name(v, name)
-            _ => ()
-          }
+        match inner_pat {
+          IdentPat(name) => self.eval_named_expr(ctx, default_expr, env, name)
+          _ => self.eval_expr(ctx, default_expr, env)
         }
-        v
       } else {
         value
       }
@@ -218,17 +213,12 @@ fn Interpreter::bind_pattern(
         )
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => {
-              let v = self.eval_expr(ctx, default_expr, env)
-              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
-              if is_anonymous_function_definition(default_expr) {
-                match prop.value {
-                  IdentPat(name) => set_function_name(v, name)
-                  _ => ()
-                }
+            Some(default_expr) =>
+              match prop.value {
+                IdentPat(name) =>
+                  self.eval_named_expr(ctx, default_expr, env, name)
+                _ => self.eval_expr(ctx, default_expr, env)
               }
-              v
-            }
             None => Undefined
           }
         } else {
@@ -325,15 +315,10 @@ fn Interpreter::assign_pattern(
       }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        let v = self.eval_expr(ctx, default_expr, env)
-        // Per spec, if default is anonymous function and target is identifier, set name
-        if is_anonymous_function_definition(default_expr) {
-          match inner_pat {
-            IdentPat(name) => set_function_name(v, name)
-            _ => ()
-          }
+        match inner_pat {
+          IdentPat(name) => self.eval_named_expr(ctx, default_expr, env, name)
+          _ => self.eval_expr(ctx, default_expr, env)
         }
-        v
       } else {
         value
       }
@@ -621,17 +606,12 @@ fn Interpreter::assign_pattern(
         )
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => {
-              let v = self.eval_expr(ctx, default_expr, env)
-              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
-              if is_anonymous_function_definition(default_expr) {
-                match prop.value {
-                  IdentPat(name) => set_function_name(v, name)
-                  _ => ()
-                }
+            Some(default_expr) =>
+              match prop.value {
+                IdentPat(name) =>
+                  self.eval_named_expr(ctx, default_expr, env, name)
+                _ => self.eval_expr(ctx, default_expr, env)
               }
-              v
-            }
             None => Undefined
           }
         } else {
@@ -644,35 +624,32 @@ fn Interpreter::assign_pattern(
           let rest_props : Map[String, Value] = Map([])
           let rest_symbol_props : Map[Int, Value] = Map([])
           let loc_rest_a = @token.Loc::default()
-          match value {
-            Object(data) => {
-              // CopyDataProperties: copy own enumerable properties, invoking getters
-              let all_keys_a = @set.Set::default()
-              data.bag.properties.each(fn(k, _v) { all_keys_a.add(k) })
-              data.bag.descriptors.each(fn(k, _v) { all_keys_a.add(k) })
-              all_keys_a.each(fn(k) raise {
-                if !used_string_keys.contains(k) {
-                  let is_enumerable = match data.bag.descriptors.get(k) {
-                    Some(desc) => desc.enumerable
-                    None => true
-                  }
-                  if is_enumerable {
-                    rest_props[k] = self.get_property(value, k, loc_rest_a)
-                  }
-                }
-              })
-              // Also copy enumerable symbol properties
-              data.bag.symbol_properties.each(fn(k, v) {
-                let is_enumerable = match data.bag.symbol_descriptors.get(k) {
-                  Some(desc) => desc.enumerable
-                  None => true
-                }
-                if is_enumerable && !used_symbol_keys.contains(k) {
-                  rest_symbol_props[k] = v
-                }
-              })
+          // CopyDataProperties: [[OwnPropertyKeys]] → [[GetOwnProperty]] →
+          // [[Get]] in observable order, including String exotic indices and
+          // Proxy dispatch. The target is a fresh ordinary object, so building
+          // its owned maps locally has no observable intermediate state.
+          for key in self.own_property_keys(value) {
+            let excluded = match key {
+              String_(name) => used_string_keys.contains(name)
+              Symbol(sym) => used_symbol_keys.contains(sym.id)
+              _ => false
             }
-            _ => ()
+            if excluded {
+              continue
+            }
+            match self.get_own_property(value, key) {
+              Some((desc, _)) if desc.enumerable => {
+                let property_value = self.get_computed_property(
+                  value, key, loc_rest_a,
+                )
+                match key {
+                  String_(name) => rest_props[name] = property_value
+                  Symbol(sym) => rest_symbol_props[sym.id] = property_value
+                  _ => ()
+                }
+              }
+              _ => ()
+            }
           }
           self.assign_pattern(
             ctx,

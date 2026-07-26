@@ -13,6 +13,7 @@ fn Interpreter::make_async_function(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
   is_arrow? : Bool = false,
 ) -> Value {
@@ -85,6 +86,7 @@ fn Interpreter::make_async_function(
             body,
             strict,
             effective_closure,
+            is_method~,
             is_arrow~,
             callee=self_val[0],
           )
@@ -120,6 +122,7 @@ fn Interpreter::make_async_function_ext(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
   is_arrow? : Bool = false,
 ) -> Value {
@@ -193,6 +196,7 @@ fn Interpreter::make_async_function_ext(
             body,
             strict,
             effective_closure,
+            is_method~,
             is_arrow~,
             callee=self_val_ext[0],
           )
@@ -232,6 +236,7 @@ fn run_async_body(
   body : Array[@ast.Stmt],
   strict : Bool,
   closure : Environment,
+  is_method? : Bool = false,
   is_arrow? : Bool = false,
   callee? : Value = Undefined,
 ) -> Value {
@@ -266,6 +271,7 @@ fn run_async_body(
     strict,
     closure,
     func_proto,
+    is_method~,
     is_arrow~,
     callee~,
     is_async=true,
@@ -454,6 +460,7 @@ fn Interpreter::make_async_generator_function(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
@@ -466,6 +473,7 @@ fn Interpreter::make_async_generator_function(
     strict,
     closure,
     has_name_binding,
+    is_method,
     source_text,
   )
 }
@@ -481,6 +489,7 @@ fn Interpreter::make_async_generator_function_ext(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   make_async_gen_function_inner(
@@ -493,6 +502,7 @@ fn Interpreter::make_async_generator_function_ext(
     strict,
     closure,
     has_name_binding,
+    is_method,
     source_text,
   )
 }
@@ -510,6 +520,7 @@ fn make_async_gen_function_inner(
   strict : Bool,
   closure : Environment,
   has_name_binding : Bool,
+  is_method : Bool,
   source_text : String?,
 ) -> Value {
   // Use the shared %AsyncGeneratorPrototype% singleton (set up during interpreter init).
@@ -611,6 +622,7 @@ fn make_async_gen_function_inner(
             strict,
             effective_closure,
             func_prototype,
+            is_method~,
             is_async=true,
           )
         }),

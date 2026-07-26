@@ -234,6 +234,15 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
       scan.super_property = true
       scan_expr(scan, key)
     }
+    SuperMemberAssign(_, rhs, _) => {
+      scan.super_property = true
+      scan_expr(scan, rhs)
+    }
+    SuperComputedAssign(key, rhs, _) => {
+      scan.super_property = true
+      scan_expr(scan, key)
+      scan_expr(scan, rhs)
+    }
     NewTargetExpr(_) => scan.new_target = true
     Ident("arguments", _) => scan.arguments_ref = true
     PrivateIdent(_, _) => ()

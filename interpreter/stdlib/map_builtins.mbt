@@ -444,8 +444,15 @@ fn setup_map_builtins(
           message="Constructor Map cannot be invoked without 'new'",
         )
       }
+      let instance_proto = builtin_constructor_prototype(
+        interp,
+        context,
+        map_proto,
+        @token.Loc::default(),
+        intrinsic_name="Map",
+      )
       let new_map : Value = Value::Map(
-        @runtime.MapData([], prototype=Some(map_proto)),
+        @runtime.MapData([], prototype=Some(instance_proto)),
       )
       let loc = @token.Loc::default()
 

@@ -358,7 +358,7 @@ fn Interpreter::module_namespace_define_own_property(
             key,
             @token.Loc::default(),
           )
-          Some(same_value_for_vap(current, value))
+          Some(same_value(current, value))
         }
         None => Some(true)
       }

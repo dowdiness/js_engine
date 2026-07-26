@@ -137,6 +137,8 @@ pub(all) enum Expr {
   SuperCall(Array[Expr], @token.Loc)
   SuperMember(String, @token.Loc)
   SuperComputedMember(Expr, @token.Loc)
+  SuperMemberAssign(String, Expr, @token.Loc)
+  SuperComputedAssign(Expr, Expr, @token.Loc)
   NewTargetExpr(@token.Loc)
   TaggedTemplate(Expr, Array[(String, String?)], Array[Expr], @token.Loc)
   GeneratorExpr(String?, Array[String], Array[Stmt], @token.Loc, String?)
