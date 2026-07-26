@@ -505,9 +505,11 @@ pub fn Interpreter::get_prototype_from_constructor(
   match prototype {
     Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => prototype
     _ =>
-      with_active_callee_realm_value(self.realm_state, ctor, fn() {
-        get_obj_proto(realm_state=Some(self.realm_state))
-      })
+      constructor_realm_intrinsic_prototype(
+        ctor,
+        "Object",
+        get_obj_proto(realm_state=Some(self.realm_state)),
+      )
   }
 }
 

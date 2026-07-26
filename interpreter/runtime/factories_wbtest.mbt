@@ -20,6 +20,37 @@ fn unmarked_callable() -> Value {
 }
 
 ///|
+test "constructor realm intrinsic falls back for an unstamped callable" {
+  let fallback = test_proto("current realm Object.prototype")
+  let resolved = constructor_realm_intrinsic_prototype(
+    unmarked_callable(),
+    "Object",
+    fallback,
+  )
+  if !strict_equal(resolved, fallback) {
+    fail("unstamped callable should use the current-realm fallback")
+  }
+}
+
+///|
+test "constructor realm intrinsic preserves explicit Object realm stamps" {
+  let function_proto = test_proto("foreign Function.prototype")
+  let object_proto = test_proto("foreign Object.prototype")
+  let fallback = test_proto("current realm Object.prototype")
+  let callable = stamp_function_realm_with(
+    unmarked_callable(),
+    function_proto,
+    object_proto,
+  )
+  let resolved = constructor_realm_intrinsic_prototype(
+    callable, "Object", fallback,
+  )
+  if !strict_equal(resolved, object_proto) {
+    fail("explicit realm stamp should supply %Object.prototype%")
+  }
+}
+
+///|
 test "function realm packed array has Null slots for absent prototypes" {
   let failure : Ref[String?] = { val: None }
   with_active_realm_state_unit(RealmState(), fn() {

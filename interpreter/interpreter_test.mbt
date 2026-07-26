@@ -7833,6 +7833,42 @@ test "constructor primitive prototype fallback uses the newTarget realm" {
 }
 
 ///|
+test "generic constructor primitive prototype fallback uses GetFunctionRealm" {
+  let output = run_output(
+    (
+      #|let realm = $262.createRealm();
+      #|let foreign = realm.evalScript("(function Foreign() {})");
+      #|let bound = Function.prototype.bind.call(foreign, null);
+      #|Object.defineProperty(bound, "prototype", { value: 1 });
+      #|class Base {}
+      #|let result = Reflect.construct(Base, [], bound);
+      #|console.log(
+      #|  Object.getPrototypeOf(result) === realm.evalScript("Object.prototype"),
+      #|  Object.getPrototypeOf(result) === Object.prototype
+      #|);
+      #|let revocable;
+      #|let prototypeGets = 0;
+      #|revocable = Proxy.revocable(function Target() {}, {
+      #|  get(_target, key) {
+      #|    if (key === "prototype") {
+      #|      prototypeGets++;
+      #|      revocable.revoke();
+      #|      return 1;
+      #|    }
+      #|  }
+      #|});
+      #|try {
+      #|  Reflect.construct(Base, [], revocable.proxy);
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error instanceof TypeError, prototypeGets);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true false", "true 1"])
+}
+
+///|
 test "super computed update preserves reference evaluation order" {
   let output = run_output(
     (

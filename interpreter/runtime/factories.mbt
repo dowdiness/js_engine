@@ -1217,27 +1217,31 @@ pub fn constructor_realm_intrinsic_prototype(
   intrinsic_name : String,
   default_prototype : Value,
 ) -> Value raise Error {
-  fn registry_of(constructor_value : Value) -> Value? raise Error {
+  fn realm_protos_of(
+    constructor_value : Value,
+  ) -> FunctionRealmProtos raise Error {
     match constructor_value {
-      Proxy(proxy_data) => registry_of(get_proxy_target(proxy_data))
+      Proxy(proxy_data) => realm_protos_of(get_proxy_target(proxy_data))
       Object(data) =>
         match data.callable {
-          Some(BoundFunc(target, _, _)) => registry_of(target)
-          Some(_) =>
-            object_data_function_realm_protos(data).constructor_prototype_registry
-          None => None
+          Some(BoundFunc(target, _, _)) => realm_protos_of(target)
+          Some(_) => object_data_function_realm_protos(data)
+          None => empty_function_realm_protos()
         }
-      _ => None
+      _ => empty_function_realm_protos()
     }
   }
 
-  match registry_of(new_target) {
-    Some(Object(registry)) =>
-      match registry.bag.properties.get(intrinsic_name) {
-        Some(prototype) => prototype
-        None => default_prototype
-      }
-    _ => default_prototype
+  let protos = realm_protos_of(new_target)
+  let registered_prototype = match protos.constructor_prototype_registry {
+    Some(Object(registry)) => registry.bag.properties.get(intrinsic_name)
+    _ => None
+  }
+  match registered_prototype {
+    Some(prototype) => prototype
+    None if intrinsic_name == "Object" =>
+      protos.object_proto.unwrap_or(default_prototype)
+    None => default_prototype
   }
 }
 
