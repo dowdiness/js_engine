@@ -2262,7 +2262,9 @@ fn Interpreter::eval_instanceof_values(
       // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
       let has_instance_sym = self.realm_state.well_known_symbols.has_instance
       let has_instance_method = self.get_computed_property(
-        r, Symbol(has_instance_sym), loc,
+        r,
+        Symbol(has_instance_sym),
+        loc,
       )
       match has_instance_method {
         Undefined | Null => {

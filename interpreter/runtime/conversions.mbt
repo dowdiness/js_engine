@@ -450,15 +450,19 @@ fn try_proxy_ordinary_method(
   method_name : String,
 ) -> Value? raise Error {
   let method_val = interp.get_property(
-    obj_val, method_name, @token.Loc::default(),
+    obj_val,
+    method_name,
+    @token.Loc::default(),
   )
   if !is_callable(method_val) {
     return None
   }
-  let result = interp.call_value(
-    method_val, obj_val, [], @token.Loc::default(),
-  )
-  if is_js_object(result) { None } else { Some(result) }
+  let result = interp.call_value(method_val, obj_val, [], @token.Loc::default())
+  if is_js_object(result) {
+    None
+  } else {
+    Some(result)
+  }
 }
 
 ///|
@@ -473,10 +477,13 @@ fn to_primitive_via_dispatch(
   let effective = match resolve_effective_interp(interp) {
     Some(ip) => ip
     None =>
-      return String_(match obj_val {
-        Proxy(data) if data.is_callable => "function proxy() { [native code] }"
-        _ => "[object Object]"
-      })
+      return String_(
+        match obj_val {
+          Proxy(data) if data.is_callable =>
+            "function proxy() { [native code] }"
+          _ => "[object Object]"
+        },
+      )
   }
   let to_prim_sym = effective.realm_state.well_known_symbols.to_primitive
   let exotic = effective.get_computed_property(
@@ -513,7 +520,9 @@ fn to_primitive_via_dispatch(
   match try_proxy_ordinary_method(effective, obj_val, second) {
     Some(result) => result
     None =>
-      raise @errors.TypeError(message="Cannot convert object to primitive value")
+      raise @errors.TypeError(
+        message="Cannot convert object to primitive value",
+      )
   }
 }
 
