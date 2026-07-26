@@ -58,6 +58,66 @@ identical meaning.
   predicates and unsupported-syntax responsibilities. They are evidence of the
   general pressure, not automatic scope.
 
+## Execution record
+
+Executed against baseline `7b6d3b3` on branch `refactor/ast-containment-traversal`.
+
+### Assumptions
+
+- Child traversal is syntax-only; it does not decide whether a node is semantically in scope.
+- Each consumer owns its match, boundary, and descend policy.
+- Callback traversal remains non-allocating and short-circuits immediately.
+
+### Impact audit and semantic matrix
+
+The complete helper/caller audit found eight recursive containment helpers
+plus the parser/runtime parameter scanners, and four public-helper call sites: `parser/early_errors.mbt` calls the shared helper from
+`pat_has_yield` and `pat_has_await`; `interpreter/runtime/eval_expr.mbt` calls
+it from `pattern_may_contain_yield`; and `interpreter/runtime/generator.mbt`
+calls it from `pattern_contains_yield`. Their recursive pattern and expression
+callbacks are all pure `Bool` containment predicates; call paths carry only the
+five `Pattern` variants and the full `Expr` variant set, with local boundary
+matches preserved.
+
+The matrix records these differences: private read/assign receivers and values
+are immediate expression edges; yield and await scan arrow parameter defaults
+only for the extended arrow forms allowed by the enclosing scope, while
+ordinary, generator, async, and async-generator function bodies remain
+boundaries. Parser and generator scans include class heritage and computed
+method/field keys, but exclude field initializers and static blocks; evaluator
+routing additionally scans class method values and field initializers. All
+scanners preserve destructuring computed keys, value patterns, defaults, rest,
+and assignment targets. `AwaitExpr` is a direct match only for the await policy
+and `SuperCall` contributes its argument expressions to the shared traversal;
+other consumers retain their own direct-match policy.
+
+### Regression, design, and validation evidence
+
+Before the refactor, `moon test interpreter --filter '*private receiver replay*'`
+failed with `undefined` instead of `1`; the post-refactor result is `1/1`.
+For this warning, the public AST seam first failed with the recorded order
+`computed, default, value-pattern` instead of `computed, value-pattern,
+default`; moving the value-pattern visit ahead of the default visit fixes it.
+
+The approved narrowed API is the existing AST-level, public,
+representation-neutral `expr_immediate_children_any` /
+`pattern_immediate_children_any` callback traversal: immediate syntax edges,
+explicit Bool short-circuiting, no child arrays or AST copies, and local
+consumer policies. No compiler scanner or visitor hierarchy was added.
+
+Validation evidence includes the pre-warning-fix branch baseline: default
+`2417/2417`, native `2507/2507`, js/wasm/wasm-gc `2417/2417` each, external
+consumer `3/3` each, architecture state `5/5`, architecture boundary `39/39`,
+focused parser `11/11`, private regression `1/1`, and yield `40/40`.
+The warning-fix rerun adds one AST test: default `2418/2418`, native
+`2508/2508`, js/wasm/wasm-gc `2418/2418` each, focused AST `1/1`, external
+consumer `3/3` each, architecture state `5/5`, and architecture boundary
+`39/39`. `moon check`, `moon info` (no `.mbti` drift), scoped
+`moon fmt --check ast/`, and `git diff --check` pass. The repository-wide
+`moon fmt --check` remains red only for the pre-existing out-of-scope
+`moon.pkg` format migration and is not represented as green. The two-commit
+scope/status review is clean.
+
 ## Commands you will need
 
 | Purpose | Command | Expected on success |
@@ -282,22 +342,22 @@ incidental function names.
 
 ## Done criteria
 
-- [ ] Plan 001 is DONE and its regressions remain green.
-- [ ] Complete caller/type audit and three-line assumptions are recorded.
-- [ ] Cross-consumer matrix names every shared and differing semantic axis.
-- [ ] Characterization tests cover all high-risk boundary differences.
-- [ ] A current observable containment drift is captured by an end-to-end test
+- [x] Plan 001 is DONE and its regressions remain green.
+- [x] Complete caller/type audit and three-line assumptions are recorded.
+- [x] Cross-consumer matrix names every shared and differing semantic axis.
+- [x] Characterization tests cover all high-risk boundary differences.
+- [x] A current observable containment drift is captured by an end-to-end test
       that fails before the refactor for the predicted reason and passes after.
-- [ ] Fresh design review approves a non-allocating, syntax-only primitive.
-- [ ] Parser, evaluator, and generator share child traversal mechanics while
+- [x] Fresh design review approves a non-allocating, syntax-only primitive.
+- [x] Parser, evaluator, and generator share child traversal mechanics while
       retaining explicit local policies.
-- [ ] No per-node child arrays, AST copies, or speculative visitor hierarchy were
+- [x] No per-node child arrays, AST copies, or speculative visitor hierarchy were
       introduced.
-- [ ] Compiler scans remain unchanged unless separately reviewed and justified.
-- [ ] Focused tests, `moon test`, and `make architecture-audit` pass.
-- [ ] `moon info` API changes are minimal/intentional; `moon fmt`, final
-      `moon check`, and `git diff --check` pass.
-- [ ] Only in-scope files changed and the plan index status is updated.
+- [x] Compiler scans remain unchanged unless separately reviewed and justified.
+- [x] Focused tests, `moon test`, and `make architecture-audit` pass.
+- [x] `moon info` API changes are minimal/intentional; scoped AST format check,
+      final `moon check`, and `git diff --check` pass.
+- [x] Only in-scope files changed and the plan index status is updated.
 
 ## STOP conditions
 
