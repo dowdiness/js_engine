@@ -349,6 +349,33 @@ test "for loop" {
 }
 
 ///|
+test "for-of contextual let and yield identifiers" {
+  let src =
+    #|var yield;
+    #|var x = 0;
+    #|for ({ yield } of [{ yield: 3 }]) {
+    #|  console.log(yield);
+    #|}
+    #|for (var item of []) let
+    #|{}
+    #|for (var item of []) let
+    #|x = 1;
+    #|console.log(x);
+  let output = run_output(src)
+  json_inspect(output, content=["3", "1"])
+}
+
+///|
+test "for-of contextual identifiers retain strict early errors" {
+  expect_throw(
+    "\"use strict\"; for ({ yield } of []) {}", "SyntaxError: Unexpected strict mode reserved word",
+  )
+  expect_throw(
+    "\"use strict\"; for (var x of []) let\nx = 1;", "SyntaxError: Unexpected strict mode reserved word",
+  )
+}
+
+///|
 test "function declaration and call" {
   let (_, result) = run_js("function add(a, b) { return a + b; } add(3, 4)")
   expect_value_string(result, "7", "function declaration result")
