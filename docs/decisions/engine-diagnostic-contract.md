@@ -282,8 +282,8 @@ current `Engine` boundary does not retain a trustworthy structured location.
 | `ParseError` from `Engine::eval` | `parse-error` | `eval` | `parse` | Host identity when supplied; otherwise omitted | `reusable` | `none` | Dynamic; prior jobs can be `present` | Root facade; "parse failure keeps prior state and queues" test |
 | `JavaScriptException` from `Engine::eval` | `javascript-exception` | `eval` | `execute` | Host identity when supplied; otherwise omitted | `reusable` | `may-remain` | Dynamic | "eval throw retains state and queues" test |
 | `JavaScriptException` from `Engine::call_json` | `javascript-exception` | `call-json` | `lookup` or `execute` | Origin identity only when retained faithfully; otherwise omitted | `reusable` | `may-remain` | Dynamic | Lookup-throw and call-throw tests |
-| `MissingGlobal` | `missing-global` | `call-json` | `lookup` | Omitted | `reusable` | `none` | `unknown` until characterization | Root lookup path; missing/non-callable test |
-| `NotCallable` | `not-callable` | `call-json` | `lookup` | Omitted | `reusable` | `may-remain` because an accessor may have run | `unknown` until characterization | Global accessor and missing/non-callable tests |
+| `MissingGlobal` | `missing-global` | `call-json` | `lookup` | Omitted | `reusable` | `none` | Dynamic; an empty queue is `none`, and a prior microtask is `present` | Empty-queue reuse and pending-microtask preservation tests |
+| `NotCallable` | `not-callable` | `call-json` | `lookup` | Omitted | `reusable` | `may-remain` because an accessor may have run | Dynamic; an empty queue is `none`, and a prior or accessor-enqueued microtask is `present` | Direct-value reuse and pending-microtask preservation tests; accessor-enqueued microtask test |
 | Argument `JsonConversionError` | `json-conversion-error` | `call-json` | `argument-conversion` | Omitted | `reusable` | `may-remain` because lookup precedes conversion | Dynamic | Direct JSON bridge; argument-conversion reuse test |
 | Result `JsonConversionError` | `json-conversion-error` | `call-json` | `result-conversion` | Omitted until returned-value provenance is retained faithfully | `reusable` | `may-remain` | Dynamic | Direct JSON bridge; result-conversion reuse test |
 | `InternalError` | `internal-error` | The public entry operation | The phase that observed it | Only when attribution is trustworthy | `discard` | `unknown` | `unknown` | Runtime classifier; recovery is explicitly unsupported |
@@ -299,12 +299,16 @@ future internal invariant failure during the same operation to use
 `internal-error`. The operation and phase remain the checkpoint context; they
 must not be collapsed into the kind.
 
-The current missing-global and not-callable tests establish classification and
-subsequent usability, but they do not characterize pending queues. A narrow
-characterization-only follow-up must cover both before those rows can report a
-dynamic `none` or `present` value instead of `unknown`. The one-shot facade also
-needs phase-specific characterization if its retained-effects field is to be
-narrowed.
+The missing-global and not-callable characterization establishes the dynamic
+queue snapshot through the public Engine facade. With no pending work, both
+diagnostics report `none` and the Engine remains usable. A pre-existing
+microtask makes either diagnostic report `present`; lookup does not consume the
+job, and an explicit checkpoint runs it afterward. A global accessor that
+enqueues a microtask before returning a non-callable value likewise reports
+`present`, preserves the job after failure, and remains usable for the explicit
+checkpoint. The same tests pass on native, JavaScript, Wasm, and Wasm-GC. The
+one-shot facade still needs phase-specific characterization if its
+retained-effects field is to be narrowed.
 
 ## Error-model evolution
 
@@ -337,16 +341,17 @@ The first implementation:
 3. attached optional source identity without inventing a location;
 4. captured operation and phase before the current error classification loses
    them;
-5. reported the matrix values above, retaining `unknown` where evidence is
+5. reported the initial matrix values, retaining `unknown` where evidence was
    missing; and
 6. added equivalent classification tests on native, JavaScript, Wasm, and
    Wasm-GC, including an external-consumer use of the new surface.
 
-Parser/runtime location propagation, one-shot retained-effects
-characterization, and missing/not-callable queue characterization remain
-separate follow-ups. In particular, the first implementation's one-shot
-retained-effects values must not be narrowed without phase-specific evidence.
-These follow-ups were not hidden inside this delivery.
+The subsequent missing/not-callable queue follow-up completed the dynamic
+snapshot characterization described in the matrix without changing queue
+execution or checkpoint policy. Parser/runtime location propagation and
+one-shot retained-effects characterization remain separate follow-ups. In
+particular, the first implementation's one-shot retained-effects values must
+not be narrowed without phase-specific evidence.
 
 ## Consequences
 
