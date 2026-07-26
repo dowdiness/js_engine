@@ -808,6 +808,57 @@ test "trailing comma after rest param with leading param is SyntaxError" {
 }
 
 ///|
+test "ES2015 arrow functions reject a line terminator before the arrow" {
+  for
+    source in [
+      "x\n=> 2", "()\n=> 2", "(x)\n=> x", "async x\n=> x", "async (x)\n=> x",
+    ] {
+    expect_parse_err(source)
+  }
+}
+
+///|
+test "ES2015 arrow functions have assignment-expression precedence" {
+  expect_parse_err("0 || () => 2")
+}
+
+///|
+test "ES2015 setters reject rest parameters" {
+  for
+    source in [
+      "({ set e(...args) {} })", "({ set e(value, ...rest) {} })", "class C { set e(...args) {} }",
+      "class C { set e(value, ...rest) {} }",
+    ] {
+    expect_parse_err(source)
+  }
+}
+
+///|
+test "ES2015 lexical declarations reject Statement positions" {
+  for
+    source in [
+      "if (true) let x = 1", "if (false) {} else const x = 1", "while (false) let x = 1",
+      "for (; false; ) const x = 1", "do let x = 1; while (false)", "with ({}) const x = 1",
+      "label: let x = 1", "if (true) let [x] = [1]", "if (true) const { x } = { x: 1 }",
+    ] {
+    expect_parse_err(source)
+  }
+}
+
+///|
+test "ES2015 early-error controls remain valid" {
+  for
+    source in [
+      "{ let x = 1; const y = 2; }", "for (let i = 0; i < 1; i++) {}", "function f(...args) { return args; }",
+      "() => 2", "(x) => x", "(a, b) => a + b", "(() => 2)", "0 || (() => 2)", "0 || (x => x)",
+      "async x => x", "async () => 2", "async (x) => x", "({ set e(value) {} })",
+      "class C { set e(value) {} }",
+    ] {
+    expect_parse_ok(source)
+  }
+}
+
+///|
 test "private early error yield in private read receiver of generator param default" {
   expect_parse_err("function* g(a = (yield this).#x) {}")
 }

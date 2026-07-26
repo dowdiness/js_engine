@@ -10597,6 +10597,92 @@ test "syntax: function declaration as do-while body throws SyntaxError" {
   )
 }
 
+///|
+test "compat-table ES2015 arrow rejects line break before arrow" {
+  let src =
+    #|try {
+    #|  Function("x\n => 2")();
+    #|  false;
+    #|} catch (e) {
+    #|  e instanceof SyntaxError;
+    #|}
+  expect_result(run(src), "true")
+}
+
+///|
+test "compat-table ES2015 arrow has correct precedence" {
+  let src =
+    #|try {
+    #|  Function("0 || () => 2")();
+    #|  false;
+    #|} catch (e) {
+    #|  e instanceof SyntaxError;
+    #|}
+  expect_result(run(src), "true")
+}
+
+///|
+test "compat-table ES2015 rest parameters cannot be used in setters" {
+  let src =
+    #|(function (...args) {
+    #|  try {
+    #|    eval("({set e(...args){}})");
+    #|  } catch (e) {
+    #|    return e instanceof SyntaxError;
+    #|  }
+    #|  return false;
+    #|}())
+  expect_result(run(src), "true")
+}
+
+///|
+test "compat-table ES2015 const cannot be in statements" {
+  let src =
+    #|try {
+    #|  Function("if(true) const baz = 1;")();
+    #|  false;
+    #|} catch (e) {
+    #|  e instanceof SyntaxError;
+    #|}
+  expect_result(run(src), "true")
+}
+
+///|
+test "compat-table ES2015 const cannot be in strict statements" {
+  let src =
+    #|try {
+    #|  Function("'use strict'; if(true) const baz = 1;")();
+    #|  false;
+    #|} catch (e) {
+    #|  e instanceof SyntaxError;
+    #|}
+  expect_result(run(src), "true")
+}
+
+///|
+test "compat-table ES2015 let cannot be in statements" {
+  let src =
+    #|try {
+    #|  Function("if(true) let baz = 1;")();
+    #|  false;
+    #|} catch (e) {
+    #|  e instanceof SyntaxError;
+    #|}
+  expect_result(run(src), "true")
+}
+
+///|
+test "compat-table ES2015 let cannot be in strict statements" {
+  let src =
+    #|try {
+    #|  Function("'use strict'; if(true) let baz = 1;")();
+    #|  false;
+    #|} catch (e) {
+    #|  e instanceof SyntaxError;
+    #|}
+  expect_result(run(src), "true")
+}
+
 // ============================================================
 // P6: Strict-Mode Prerequisite Bundle tests
 // ============================================================
