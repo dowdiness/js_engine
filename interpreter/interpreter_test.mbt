@@ -3773,6 +3773,97 @@ test "string startsWith endsWith" {
 }
 
 ///|
+test "String symbol methods route Proxy patterns through GetMethod" {
+  let src =
+    #|function checkDispatch(name, symbol, second) {
+    #|  var gets = [];
+    #|  var calls = [];
+    #|  var target = {};
+    #|  var proxy;
+    #|  target[symbol] = function(string, extra) {
+    #|    calls.push(this === proxy);
+    #|    calls.push(string);
+    #|    calls.push(extra === second);
+    #|    return name + "-result";
+    #|  };
+    #|  proxy = new Proxy(target, {
+    #|    get: function(object, key) {
+    #|      gets.push(key === symbol);
+    #|      return object[key];
+    #|    }
+    #|  });
+    #|  var result = second === undefined
+    #|    ? String.prototype[name].call("subject", proxy)
+    #|    : String.prototype[name].call("subject", proxy, second);
+    #|  console.log(name + ":" + result + ":" + gets.join(",") + ":" + calls.join(","));
+    #|}
+    #|checkDispatch("match", Symbol.match);
+    #|checkDispatch("replace", Symbol.replace, "replacement");
+    #|checkDispatch("search", Symbol.search);
+    #|checkDispatch("split", Symbol.split, 7);
+    #|
+    #|function checkFallback(name, symbol) {
+    #|  var gets = [];
+    #|  var target = {};
+    #|  target[Symbol.toPrimitive] = function() {};
+    #|  var proxy = new Proxy(target, {
+    #|    get: function(object, key) {
+    #|      gets.push(key);
+    #|      return object[key];
+    #|    }
+    #|  });
+    #|  String.prototype[name].call("", proxy);
+    #|  console.log(name + ":" + (gets[0] === symbol) + ":" + (gets[1] === Symbol.toPrimitive) + ":" + gets.length);
+    #|}
+    #|checkFallback("match", Symbol.match);
+    #|checkFallback("replace", Symbol.replace);
+    #|checkFallback("search", Symbol.search);
+    #|checkFallback("split", Symbol.split);
+    #|
+    #|function checkAbrupt(name, symbol) {
+    #|  var after = false;
+    #|  var proxy = new Proxy({}, {
+    #|    get: function(object, key) {
+    #|      if (key === symbol) throw name + "-get";
+    #|      after = true;
+    #|    }
+    #|  });
+    #|  try {
+    #|    String.prototype[name].call("", proxy);
+    #|  } catch (error) {
+    #|    console.log(error + ":" + after);
+    #|  }
+    #|}
+    #|checkAbrupt("match", Symbol.match);
+    #|checkAbrupt("replace", Symbol.replace);
+    #|checkAbrupt("search", Symbol.search);
+    #|checkAbrupt("split", Symbol.split);
+    #|
+    #|function checkRevoked(name) {
+    #|  var record = Proxy.revocable({}, {});
+    #|  record.revoke();
+    #|  try {
+    #|    String.prototype[name].call("", record.proxy);
+    #|    console.log(name + ":no-error");
+    #|  } catch (error) {
+    #|    console.log(name + ":" + (error instanceof TypeError));
+    #|  }
+    #|}
+    #|checkRevoked("match");
+    #|checkRevoked("replace");
+    #|checkRevoked("search");
+    #|checkRevoked("split");
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "match:match-result:true:true,subject,true", "replace:replace-result:true:true,subject,true",
+    "search:search-result:true:true,subject,true", "split:split-result:true:true,subject,true",
+    "match:true:true:2", "replace:true:true:2", "search:true:true:2", "split:true:true:2",
+    "match-get:false", "replace-get:false", "search-get:false", "split-get:false",
+    "match:true", "replace:true", "search:true", "split:true",
+  ])
+}
+
+///|
 test "string repeat" {
   let (_, result) = run_js("\"ab\".repeat(3)")
   expect_result(result, "ababab")
