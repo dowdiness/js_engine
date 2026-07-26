@@ -651,51 +651,53 @@ fn proxy_delete_property_key(
 }
 
 ///|
-/// Implement the Proxy [[Get]] invariant checks per ES §10.5.8.
-pub fn proxy_get(
+/// Implement Proxy [[Get]] for either kind of PropertyKey. Trap-less proxies
+/// delegate to the target's receiver-aware [[Get]] rather than restarting a
+/// normal property access with the target as Receiver.
+fn proxy_get_key(
   interp : Interpreter,
   proxy_data : ProxyData,
-  key : String,
+  key : Value,
   receiver : Value,
 ) -> Value raise Error {
+  let prop_key = to_property_key(key, interp=Some(interp))
   // get_proxy_trap checks revocation and includes trap name in error message
   let trap = get_proxy_trap(proxy_data, "get", interp)
   let target = get_proxy_target(proxy_data)
   match trap {
     None =>
-      match target {
-        Value::Proxy(_) =>
-          interp.get_property(target, key, @token.Loc::default())
-        _ => interp.get_property(target, key, @token.Loc::default())
-      }
+      interp.get_property_key_with_receiver(
+        target,
+        prop_key,
+        receiver,
+        @token.Loc::default(),
+      )
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
       let result = interp.call_value(
         trap_fn,
         handler,
-        [target, String_(key), receiver],
+        [target, prop_key, receiver],
         loc,
       )
       // ES §10.5.8 step 10-11: Invariant checks
-      match target_get_own_descriptor(Some(interp), target, key) {
-        Some(desc) =>
+      match interp.get_own_property(target, prop_key) {
+        Some((desc, target_value)) =>
           if !desc.configurable {
             // Non-configurable data property: trap result must match target value
-            if desc.getter is None && !desc.writable {
-              let target_value = target_get_own_value(Some(interp), target, key)
-              if !strict_equal(result, target_value) {
+            if !desc.is_accessor && !desc.writable {
+              if !same_value(result, target_value) {
                 raise @errors.TypeError(
-                  message="'get' on proxy: property '\{key}' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
+                  message="'get' on proxy: trap did not return the actual value of a read-only non-configurable target property",
                 )
               }
             }
             // Non-configurable accessor with undefined getter: must return undefined
-            if desc.getter is None && desc.setter is Some(_) {
-              // accessor with no getter
-              if !strict_equal(result, Undefined) {
+            if desc.is_accessor && desc.getter is None {
+              if !same_value(result, Undefined) {
                 raise @errors.TypeError(
-                  message="'get' on proxy: property '\{key}' is a non-configurable accessor property on the proxy target and does not have a getter function, but the trap did not return 'undefined'",
+                  message="'get' on proxy: trap returned a value for a non-configurable target accessor without a getter",
                 )
               }
             }
@@ -705,6 +707,17 @@ pub fn proxy_get(
       result
     }
   }
+}
+
+///|
+/// String-key compatibility wrapper for existing [[Get]] call sites.
+pub fn proxy_get(
+  interp : Interpreter,
+  proxy_data : ProxyData,
+  key : String,
+  receiver : Value,
+) -> Value raise Error {
+  proxy_get_key(interp, proxy_data, String_(key), receiver)
 }
 
 ///|
@@ -1376,7 +1389,7 @@ pub fn proxy_get_own_property(
               Some(v) => v
               None => Undefined
             }
-            if !same_value_for_vap(trap_val, cur_val) {
+            if !same_value(trap_val, cur_val) {
               raise @errors.TypeError(
                 message="'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target",
               )

@@ -138,9 +138,9 @@ pub fn validate_non_configurable(
 /// ES §7.2.11 SameValue. Differs from `strict_equal` on two cases:
 /// - SameValue(NaN, NaN) = true        (strict_equal: false)
 /// - SameValue(+0, -0) = false         (strict_equal: true)
-/// VAP §10.1.6.3 step 4.b.iii uses SameValue to check whether a value change
-/// on a non-writable non-configurable data property is a no-op.
-fn same_value_for_vap(a : Value, b : Value) -> Bool {
+/// Shared by ValidateAndApplyPropertyDescriptor and Proxy invariant checks for
+/// non-writable, non-configurable data properties.
+fn same_value(a : Value, b : Value) -> Bool {
   match (a, b) {
     (Number(x), Number(y)) =>
       if x.is_nan() && y.is_nan() {
@@ -431,7 +431,7 @@ fn is_compatible_with_non_configurable(
     // not change (SameValue).
     if partial.has_getter {
       let g_matches = match current.getter {
-        Some(cg) => same_value_for_vap(partial.getter.unwrap_or(Undefined), cg)
+        Some(cg) => same_value(partial.getter.unwrap_or(Undefined), cg)
         None => partial.getter is Some(Undefined) || partial.getter is None
       }
       if !g_matches {
@@ -440,7 +440,7 @@ fn is_compatible_with_non_configurable(
     }
     if partial.has_setter {
       let s_matches = match current.setter {
-        Some(cs) => same_value_for_vap(partial.setter.unwrap_or(Undefined), cs)
+        Some(cs) => same_value(partial.setter.unwrap_or(Undefined), cs)
         None => partial.setter is Some(Undefined) || partial.setter is None
       }
       if !s_matches {
@@ -457,7 +457,7 @@ fn is_compatible_with_non_configurable(
         _ => ()
       }
       match partial.value {
-        Some(v) => if !same_value_for_vap(v, current_value) { return false }
+        Some(v) => if !same_value(v, current_value) { return false }
         None => ()
       }
     }

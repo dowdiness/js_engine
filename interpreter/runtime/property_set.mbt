@@ -564,45 +564,17 @@ pub fn Interpreter::set_property(
       }
       value
     }
-    Promise(data) => {
-      match data.bag.descriptors.get(prop) {
-        Some(desc) =>
-          match desc.setter {
-            Some(setter) => {
-              let _ = self.call_value(setter, receiver, [value], loc)
-              return value
-            }
-            None =>
-              if desc.getter is Some(_) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot set property \{prop} which has only a getter",
-                  )
-                }
-                return value
-              } else if !desc.writable {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot assign to read only property '\{prop}'",
-                  )
-                }
-                return value
-              }
-          }
-        None => ()
-      }
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(
-          receiver,
-          String_(prop),
-          value,
-          loc,
-          strict,
-        )
-      }
-      data.bag.properties[prop] = value
-      value
-    }
+    Promise(data) =>
+      self.set_string_on_map_set_expando(
+        obj,
+        receiver,
+        data.bag,
+        self.promise_instance_prototype_for_set(data),
+        prop,
+        value,
+        loc,
+        strict,
+      )
     Map(data) =>
       self.set_string_on_map_set_expando(
         obj,
@@ -1247,7 +1219,7 @@ fn Interpreter::define_value_on_receiver(
     Proxy(_) =>
       self.landing_via_define_own_property(receiver, key, value, loc, strict)
     Object(rdata) => {
-      if is_typedarray_class(rdata.class_name) {
+      if rdata.class_name == "Module" || is_typedarray_class(rdata.class_name) {
         return self.landing_via_define_own_property(
           receiver, key, value, loc, strict,
         )
@@ -2130,17 +2102,31 @@ pub fn Interpreter::set_computed_property(
       }
     }
     Promise(data) => {
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(receiver, key, value, loc, strict)
-      }
+      let promise_proto = self.promise_instance_prototype_for_set(data)
       match key {
-        Symbol(sym) => {
-          data.bag.symbol_properties[sym.id] = value
-          value
-        }
+        Symbol(sym) =>
+          self.set_symbol_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            promise_proto,
+            sym,
+            value,
+            loc,
+            strict,
+          )
         _ => {
-          data.bag.properties[to_js_string(key, interp=Some(self))] = value
-          value
+          let prop = to_js_string(key, interp=Some(self))
+          self.set_string_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            promise_proto,
+            prop,
+            value,
+            loc,
+            strict,
+          )
         }
       }
     }
