@@ -1643,6 +1643,56 @@ test "ES module: self namespace import observes live export" {
 }
 
 ///|
+test "ES module: super assignment observes namespace export TDZ" {
+  let modules : Array[(String, String)] = [
+    (
+      "./self",
+      (
+        #|import * as ns from './self';
+        #|class A { constructor() { return ns; } }
+        #|class B extends A {
+        #|  constructor() { super(); super.foo = 14; }
+        #|}
+        #|try {
+        #|  new B();
+        #|  console.log("no throw");
+        #|} catch (error) {
+        #|  console.log(error instanceof ReferenceError);
+        #|}
+        #|export let foo = 42;
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "ES module: super setter bypasses namespace export TDZ lookup" {
+  let modules : Array[(String, String)] = [
+    (
+      "./self",
+      (
+        #|import * as ns from './self';
+        #|var setterValue;
+        #|class A {
+        #|  constructor() { return ns; }
+        #|  set foo(value) { setterValue = value; }
+        #|}
+        #|class B extends A {
+        #|  constructor() { super(); super.foo = 14; }
+        #|}
+        #|new B();
+        #|console.log(setterValue);
+        #|export let foo = 42;
+      ),
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["14"])
+}
+
+///|
 test "ES module: imports are available before source-order import declaration" {
   let modules : Array[(String, String)] = [
     (

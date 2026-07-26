@@ -1593,6 +1593,49 @@ fn Interpreter::eval_expr(
       let value = self.eval_expr(ctx, value_expr, env)
       self.set_computed_property(obj, key, value, loc, strict=ctx.strict)
     }
+    SuperMemberAssign(prop, value_expr, loc) => {
+      let this_val = eval_this_value(env)
+      let super_proto = resolve_super_target(env)
+      match super_proto {
+        Null | Undefined =>
+          raise @errors.ReferenceError(
+            message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          )
+        _ => {
+          let value = self.eval_expr(ctx, value_expr, env)
+          self.set_property(
+            super_proto,
+            prop,
+            value,
+            loc,
+            strict=ctx.strict,
+            receiver=this_val,
+          )
+        }
+      }
+    }
+    SuperComputedAssign(key_expr, value_expr, loc) => {
+      let this_val = eval_this_value(env)
+      let super_proto = resolve_super_target(env)
+      match super_proto {
+        Null | Undefined =>
+          raise @errors.ReferenceError(
+            message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          )
+        _ => {
+          let key = self.eval_expr(ctx, key_expr, env)
+          let value = self.eval_expr(ctx, value_expr, env)
+          self.set_computed_property(
+            super_proto,
+            key,
+            value,
+            loc,
+            strict=ctx.strict,
+            receiver=this_val,
+          )
+        }
+      }
+    }
     NewExpr(callee_expr, arg_exprs, loc) =>
       self.eval_new(ctx, callee_expr, arg_exprs, env, loc)
     ThisExpr(_) => eval_this_value(env)
