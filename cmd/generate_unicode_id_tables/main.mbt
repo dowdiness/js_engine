@@ -56,8 +56,12 @@ async fn main {
         "output",
         about="output MoonBit source path (default: repo-root/lexer/unicode_id.mbt)",
       ),
+      @argparse.OptionArg(
+        "case-fold-output",
+        about="case-folding MoonBit source path (default: repo-root/interpreter/stdlib/unicode_case_folding.mbt)",
+      ),
     ],
-    about="Generate lexer/unicode_id.mbt from Unicode DerivedCoreProperties.txt. MoonBit shadow; Python remains authoritative.",
+    about="Generate pinned MoonBit Unicode identifier and RegExp case-folding tables.",
   )
   let raw_args = @env.args()
   let matches = cmd.parse(argv=program_args(raw_args), env={}) catch {
@@ -71,9 +75,19 @@ async fn main {
     Some(path) => path
     None => @helpers.repo_default_path(argv0(raw_args), "lexer/unicode_id.mbt")
   }
+  let case_fold_output = match
+    optional_value(matches.values, "case-fold-output") {
+    Some(path) => path
+    None =>
+      @helpers.repo_default_path(
+        argv0(raw_args),
+        "interpreter/stdlib/unicode_case_folding.mbt",
+      )
+  }
   let config = @helpers.UnicodeConfig(
     unicode_version=first_value(matches.values, "unicode-version", "17.0.0"),
     output~,
+    case_fold_output=Some(case_fold_output),
   )
   let run = @helpers.run_unicode_tables(config) catch {
     err => {
