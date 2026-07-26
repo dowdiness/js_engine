@@ -710,7 +710,7 @@ fn is_hex_digit(c : Char) -> Bool {
 ///|
 /// Whether the cursor starts an exactly four-digit Unicode escape payload.
 fn RegexParser::has_fixed_unicode_escape(self : RegexParser) -> Bool {
-  @lexer.regexp_has_fixed_unicode_escape(self.pattern, self.pos)
+  @regexp_syntax.has_fixed_unicode_escape(self.pattern, self.pos)
 }
 
 ///|
@@ -721,7 +721,7 @@ fn RegexParser::parse_unicode_escape(
   allow_braced? : Bool = true,
   combine_surrogate_pair? : Bool = true,
 ) -> Char raise Error {
-  let (char, next) = @lexer.parse_regexp_unicode_escape(
+  let (char, next) = @regexp_syntax.parse_unicode_escape(
     self.pattern,
     self.pos,
     allow_braced~,

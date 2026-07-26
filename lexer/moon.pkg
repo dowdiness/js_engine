@@ -1,5 +1,6 @@
 import {
   "dowdiness/js_engine/token",
   "dowdiness/js_engine/errors",
+  "dowdiness/js_engine/regexp_syntax",
   "moonbitlang/core/string",
 }
