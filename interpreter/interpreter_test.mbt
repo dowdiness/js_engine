@@ -3862,6 +3862,124 @@ test "Object.assign Proxy source invokes getOwnPropertyDescriptor trap" {
 }
 
 ///|
+/// compat-table: Proxy internal `get` calls / Array.prototype.concat.
+test "Array concat Proxy receiver and argument invoke get traps in order" {
+  let src =
+    #|var get = [];
+    #|var arr = [1];
+    #|arr.constructor = void undefined;
+    #|var p = new Proxy(arr, {
+    #|  get: function(o, k) { get.push(k); return o[k]; }
+    #|});
+    #|Array.prototype.concat.call(p, p);
+    #|console.log(get[0] === "constructor");
+    #|console.log(get[1] === Symbol.isConcatSpreadable);
+    #|console.log(get.slice(2) + "");
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "true", "length,0,Symbol(Symbol.isConcatSpreadable),length,0",
+  ])
+}
+
+///|
+/// Array.prototype.concat propagates abrupt Proxy [[HasProperty]].
+test "Array concat Proxy has trap abrupt completion is observable" {
+  let src =
+    #|var arr = [1];
+    #|arr.constructor = void undefined;
+    #|var p = new Proxy(arr, {
+    #|  has: function() { throw new Error("has abrupt"); }
+    #|});
+    #|try {
+    #|  Array.prototype.concat.call(p);
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["has abrupt"])
+}
+
+///|
+/// Array.from uses CreateDataPropertyOrThrow for elements and Set for length.
+test "Array.from generic Proxy result separates defineProperty and set traps" {
+  let src =
+    #|var traps = [];
+    #|var p = new Proxy({}, {
+    #|  defineProperty: function(o, k, d) {
+    #|    traps.push("define:" + k);
+    #|    Object.defineProperty(o, k, d);
+    #|    return true;
+    #|  },
+    #|  set: function(o, k, v) {
+    #|    traps.push("set:" + k);
+    #|    o[k] = v;
+    #|    return true;
+    #|  }
+    #|});
+    #|var result = Array.from.call(function() { return p; }, {length: 2, 0: 1, 1: 2});
+    #|console.log(traps.join("|"));
+    #|console.log(result === p);
+    #|console.log(result[0] + "," + result[1] + "," + result.length);
+  let output = run_output(src)
+  json_inspect(output, content=["define:0|define:1|set:length", "true", "1,2,2"])
+}
+
+///|
+/// An abrupt CreateDataPropertyOrThrow closes an in-progress iterator.
+test "Array.from closes iterator when Proxy result defineProperty throws" {
+  let src =
+    #|var closed = 0;
+    #|var items = {};
+    #|items[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { return {done: false, value: 1}; },
+    #|    return: function() { closed += 1; return {}; }
+    #|  };
+    #|};
+    #|function C() {
+    #|  return new Proxy({}, {
+    #|    defineProperty: function() { throw new Error("define abrupt"); }
+    #|  });
+    #|}
+    #|try {
+    #|  Array.from.call(C, items);
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.message + ":" + closed);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["define abrupt:1"])
+}
+
+///|
+/// Array.of uses CreateDataPropertyOrThrow for elements and Set for length.
+test "Array.of generic Proxy result separates defineProperty and set traps" {
+  let src =
+    #|var traps = [];
+    #|var p = new Proxy({}, {
+    #|  defineProperty: function(o, k, d) {
+    #|    traps.push("define:" + k);
+    #|    Object.defineProperty(o, k, d);
+    #|    return true;
+    #|  },
+    #|  set: function(o, k, v) {
+    #|    traps.push("set:" + k);
+    #|    o[k] = v;
+    #|    return true;
+    #|  }
+    #|});
+    #|var result = Array.of.call(function() { return p; }, 1, 2, 3);
+    #|console.log(traps.join("|"));
+    #|console.log(result === p);
+    #|console.log(result[0] + "," + result[1] + "," + result[2] + "," + result.length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "define:0|define:1|define:2|set:length", "true", "1,2,3,3",
+  ])
+}
+
+///|
 test "Object.assign Proxy operations follow spec order" {
   let src =
     #|var log = [];

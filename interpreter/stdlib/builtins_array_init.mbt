@@ -1,4 +1,18 @@
 ///|
+fn is_concat_spreadable(
+  interp : Interpreter,
+  value : Value,
+) -> Bool raise Error {
+  guard @runtime.is_object_value(value) else { return false }
+  let symbol = interp.realm_state.well_known_symbols.is_concat_spreadable
+  match
+    interp.get_computed_property(value, Symbol(symbol), @token.Loc::default()) {
+    Undefined => @runtime.is_array(value)
+    spreadable => @runtime.is_truthy(spreadable)
+  }
+}
+
+///|
 fn setup_array_builtins(
   env : Environment,
   realm_state : @runtime.RealmState,
@@ -242,63 +256,24 @@ fn setup_array_builtins(
       let o = to_object(this_val, interp)
       let a = @runtime.array_species_create(interp, o, 0L)
       let mut n = 0L
-      let concat_sym_id = interp.realm_state.well_known_symbols.is_concat_spreadable.id
+      let loc = @token.Loc::default()
       // Process this value and each argument per ES2015 concat spec
       let items : Array[Value] = [o]
       for arg in args {
         items.push(arg)
       }
       for item in items {
-        // Determine spreadability: check @@isConcatSpreadable
-        let spreadable = match item {
-          Object(data) => {
-            // Check own symbol property, then walk prototype chain
-            let sym_val = match data.bag.symbol_properties.get(concat_sym_id) {
-              Some(v) => v
-              None => {
-                let mut found : Value = Undefined
-                let mut cur = data.prototype
-                while true {
-                  match cur {
-                    Object(pd) =>
-                      match pd.bag.symbol_properties.get(concat_sym_id) {
-                        Some(v) => {
-                          found = v
-                          break
-                        }
-                        None => cur = pd.prototype
-                      }
-                    _ => break
-                  }
-                }
-                found
-              }
-            }
-            match sym_val {
-              Undefined => data.class_name == "Array"
-              _ => @runtime.is_truthy(sym_val)
-            }
-          }
-          Array(arr_data) =>
-            match @runtime.get_array_symbol_prop(arr_data, concat_sym_id) {
-              Some(v) =>
-                match v {
-                  Undefined => true // default: arrays are spreadable
-                  _ => @runtime.is_truthy(v)
-                }
-              None => true // default: arrays are spreadable
-            }
-          _ => false
-        }
+        let spreadable = is_concat_spreadable(interp, item)
         if spreadable {
           let len = @runtime.to_array_like_length_interp(item, interp)
           for i = 0L; i < len; i = i + 1L {
-            if @runtime.has_array_like_element(interp, item, i) {
+            let key = i.to_string()
+            if interp.has_property(item, key) {
               @runtime.create_data_property_or_throw(
                 interp,
                 a,
                 n,
-                @runtime.get_array_like_element_interp(interp, item, i),
+                interp.get_property(item, key, loc),
               )
             }
             n += 1
@@ -1178,9 +1153,34 @@ fn setup_array_builtins(
     let val = if args.length() > 0 { args[0] } else { Undefined }
     Value::Bool(@runtime.is_array(val))
   })
-  array_props["of"] = @runtime.make_native_func(name="of", fn(args) {
-    // Array.of() - creates array from arguments
-    @runtime.make_array(args)
+  array_props["of"] = @runtime.make_interp_method_func(name="of", fn(
+    interp,
+    this_val,
+    args,
+  ) raise {
+    let len = args.length()
+    let loc = @token.Loc::default()
+    let result = if @runtime.is_constructor_value(this_val) {
+      interp.construct_value(this_val, [Value::Number(len.to_double())], loc)
+    } else {
+      @runtime.make_array([])
+    }
+    for i, value in args {
+      @runtime.create_data_property_or_throw(
+        interp,
+        result,
+        i.to_int64(),
+        value,
+      )
+    }
+    let _ = interp.set_property(
+      result,
+      "length",
+      Value::Number(len.to_double()),
+      loc,
+      strict=true,
+    )
+    result
   })
   // Array.from with mapFn support using InterpreterCallable
   array_props["from"] = @runtime.make_interp_method_func(
@@ -1213,139 +1213,97 @@ fn setup_array_builtins(
       }
       let this_arg = if args.length() > 2 { args[2] } else { Undefined }
       let loc = @token.Loc::default()
-      let elements : Array[Value] = []
-      // Per spec: first try Symbol.iterator (iterable protocol)
       let iterator_sym = interp.realm_state.well_known_symbols.iterator
-      let mut used_iterator = false
-      let mut constructed_result : Value? = None
       let iterator_method = interp.get_computed_property(
         source,
         Symbol(iterator_sym),
         loc,
       )
-      if @runtime.is_callable(iterator_method) {
-        used_iterator = true
-        if @runtime.is_constructor_value(this_val) {
-          constructed_result = Some(interp.construct_value(this_val, [], loc))
-        }
-        let iterator = interp.call_value(iterator_method, source, [], loc)
-        let next_method = interp.get_iterator_next_method(iterator, loc)
-        let mut k = 0L
-        while true {
-          let iter_result = match
-            interp.iterator_step_result(iterator, next_method, loc) {
-            None => break
-            Some(result) => result
-          }
-          let value = interp.iterator_result_value(iter_result, loc)
-          let mapped = match map_fn {
-            Some(fn_val) =>
-              interp.call_value(
-                fn_val,
-                this_arg,
-                [value, Value::Number(k.to_double())],
-                loc,
-              ) catch {
-                e => {
-                  interp.iterator_close_throw(iterator, loc)
-                  raise e
-                }
-              }
-            None => value
-          }
-          elements.push(mapped)
-          k = k + 1L
-        }
-      }
-      if !used_iterator {
-        // Fallback: array-like behavior
-        match source {
-          Value::Array(data) =>
-            for i = 0; i < data.elements.length(); i = i + 1 {
-              let el = data.elements[i]
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Value::Number(i.to_double())],
-                    loc,
-                  )
-                None => el
-              }
-              elements.push(mapped)
-            }
-          Value::String_(s) => {
-            let chars = s.to_array()
-            for i = 0; i < chars.length(); i = i + 1 {
-              let el = Value::String_(chars[i].to_string())
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Value::Number(i.to_double())],
-                    loc,
-                  )
-                None => el
-              }
-              elements.push(mapped)
-            }
-          }
-          _ => {
-            let o = to_object(source, interp)
-            let len = @runtime.to_array_like_length_interp(o, interp)
-            for i = 0L; i < len; i = i + 1L {
-              let el = interp.get_property(o, i.to_string(), loc)
-              let mapped = match map_fn {
-                Some(fn_val) =>
-                  interp.call_value(
-                    fn_val,
-                    this_arg,
-                    [el, Value::Number(i.to_double())],
-                    loc,
-                  )
-                None => el
-              }
-              elements.push(mapped)
-            }
-          }
-        }
-      }
-      // Per ES §23.1.2.1 step 3–4: if `this` is a constructor, construct through
-      // it so that subclasses (class MyArray extends Array) work correctly.
-      // Otherwise fall back to a plain array.
-      let n = elements.length()
-      if @runtime.is_constructor_value(this_val) {
-        let result = match constructed_result {
-          Some(value) => value
-          None =>
-            interp.construct_value(
-              this_val,
-              [Value::Number(n.to_double())],
-              loc,
+      match iterator_method {
+        Null | Undefined => ()
+        iterator_fn => {
+          if !@runtime.is_callable(iterator_fn) {
+            raise @errors.TypeError(
+              message=@runtime.to_js_string(iterator_fn) + " is not a function",
             )
-        }
-        for i = 0; i < n; i = i + 1 {
+          }
+          let result = if @runtime.is_constructor_value(this_val) {
+            interp.construct_value(this_val, [], loc)
+          } else {
+            @runtime.make_array([])
+          }
+          let iterator = interp.call_value(iterator_fn, source, [], loc)
+          let next_method = interp.get_iterator_next_method(iterator, loc)
+          let mut k = 0L
+          while true {
+            let iter_result = match
+              interp.iterator_step_result(iterator, next_method, loc) {
+              None => break
+              Some(value) => value
+            }
+            let value = interp.iterator_result_value(iter_result, loc)
+            let mapped = match map_fn {
+              Some(fn_val) =>
+                interp.call_value(
+                  fn_val,
+                  this_arg,
+                  [value, Value::Number(k.to_double())],
+                  loc,
+                ) catch {
+                  e => {
+                    interp.iterator_close_throw(iterator, loc)
+                    raise e
+                  }
+                }
+              None => value
+            }
+            @runtime.create_data_property_or_throw(interp, result, k, mapped) catch {
+              e => {
+                interp.iterator_close_throw(iterator, loc)
+                raise e
+              }
+            }
+            k = k + 1L
+          }
           let _ = interp.set_property(
             result,
-            i.to_string(),
-            elements[i],
+            "length",
+            Value::Number(k.to_double()),
             loc,
             strict=true,
           )
+          return result
         }
-        let _ = interp.set_property(
-          result,
-          "length",
-          Value::Number(n.to_double()),
-          loc,
-          strict=true,
-        )
-        result
-      } else {
-        @runtime.make_array(elements)
       }
+      let array_like = to_object(source, interp)
+      let len = @runtime.to_array_like_length_interp(array_like, interp)
+      let result = if @runtime.is_constructor_value(this_val) {
+        interp.construct_value(this_val, [Value::Number(len.to_double())], loc)
+      } else {
+        @runtime.make_array([])
+      }
+      for i = 0L; i < len; i = i + 1L {
+        let value = interp.get_property(array_like, i.to_string(), loc)
+        let mapped = match map_fn {
+          Some(fn_val) =>
+            interp.call_value(
+              fn_val,
+              this_arg,
+              [value, Value::Number(i.to_double())],
+              loc,
+            )
+          None => value
+        }
+        @runtime.create_data_property_or_throw(interp, result, i, mapped)
+      }
+      let _ = interp.set_property(
+        result,
+        "length",
+        Value::Number(len.to_double()),
+        loc,
+        strict=true,
+      )
+      result
     },
   )
   let array_ctor = Value::Object({
