@@ -6407,6 +6407,58 @@ test "Proxy integrity delegates to Map Set and Promise targets" {
 }
 
 ///|
+/// Map, Set, and Promise use ordinary [[Set]] semantics after becoming
+/// non-extensible: new expandos fail, while existing properties, setters, and
+/// writes landing on a different extensible receiver still succeed.
+test "Nonextensible Map Set and Promise reject new ordinary Set properties" {
+  let output = run_output(
+    (
+      #|var factories = [
+      #|  function() { return new Map(); },
+      #|  function() { return new Set(); },
+      #|  function() { return new Promise(function(resolve, reject) {}); }
+      #|];
+      #|for (var i = 0; i < factories.length; i++) {
+      #|  var target = factories[i]();
+      #|  var symbol = Symbol("new");
+      #|  var setterValue = 0;
+      #|  var setterReceiver = false;
+      #|  target.existing = 1;
+      #|  Object.defineProperty(target, "sink", {
+      #|    configurable: true,
+      #|    set: function(value) {
+      #|      setterValue = value;
+      #|      setterReceiver = this === target;
+      #|    }
+      #|  });
+      #|  Object.preventExtensions(target);
+      #|  var stringResult = Reflect.set(target, "newString", 2);
+      #|  console.log(stringResult === false && !Object.hasOwn(target, "newString"));
+      #|  var symbolResult = Reflect.set(target, symbol, 3);
+      #|  console.log(symbolResult === false && !Object.hasOwn(target, symbol));
+      #|  console.log(Reflect.set(target, "existing", 4) && target.existing === 4);
+      #|  console.log(Reflect.set(target, "sink", 5) && setterReceiver && setterValue === 5);
+      #|  var other = {};
+      #|  console.log(Reflect.set(target, "other", 6, other) && other.other === 6 && !Object.hasOwn(target, "other"));
+      #|  var source = {};
+      #|  var landingSymbol = Symbol("landing");
+      #|  var stringLanding = Reflect.set(source, "landing", 7, target);
+      #|  var symbolLanding = Reflect.set(source, landingSymbol, 8, target);
+      #|  console.log(stringLanding === false && symbolLanding === false && !Object.hasOwn(target, "landing") && !Object.hasOwn(target, landingSymbol));
+      #|  var frozen = factories[i]();
+      #|  Object.freeze(frozen);
+      #|  console.log(Reflect.set(frozen, "frozenNew", 9) === false && !Object.hasOwn(frozen, "frozenNew"));
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true",
+  ])
+}
+
+///|
 /// Every invariant must query the nested target's canonical [[IsExtensible]]
 /// result instead of inspecting only the immediate Value variant.
 test "Proxy prototype has and delete traps enforce nested nonextensible target invariants" {
@@ -6461,6 +6513,43 @@ test "Trapless Proxy setPrototypeOf preserves nonextensible Array prototype" {
     ),
   )
   json_inspect(output, content=["false", "true"])
+}
+
+///|
+/// Trapless and nested Proxy forwarding must reach Array's ordinary
+/// [[SetPrototypeOf]] cycle check without swallowing abrupt or revoked
+/// completions from an intermediate Proxy.
+test "Trapless Proxy Array setPrototypeOf rejects cycles through canonical forwarding" {
+  let output = run_output(
+    (
+      #|var target = [];
+      #|var original = Object.getPrototypeOf(target);
+      #|var proxy = new Proxy(new Proxy(target, {}), {});
+      #|var cyclicPrototype = Object.create(target);
+      #|console.log(Reflect.setPrototypeOf(proxy, cyclicPrototype));
+      #|console.log(Object.getPrototypeOf(target) === original);
+      #|var sentinel = {};
+      #|var abruptTarget = new Proxy([], {
+      #|  setPrototypeOf: function() { throw sentinel; }
+      #|});
+      #|try {
+      #|  Reflect.setPrototypeOf(new Proxy(abruptTarget, {}), {});
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error === sentinel);
+      #|}
+      #|var revocable = Proxy.revocable([], {});
+      #|var revokedTarget = new Proxy(revocable.proxy, {});
+      #|revocable.revoke();
+      #|try {
+      #|  Reflect.setPrototypeOf(revokedTarget, {});
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["false", "true", "true", "TypeError"])
 }
 
 ///|

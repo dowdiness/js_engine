@@ -564,45 +564,17 @@ pub fn Interpreter::set_property(
       }
       value
     }
-    Promise(data) => {
-      match data.bag.descriptors.get(prop) {
-        Some(desc) =>
-          match desc.setter {
-            Some(setter) => {
-              let _ = self.call_value(setter, receiver, [value], loc)
-              return value
-            }
-            None =>
-              if desc.getter is Some(_) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot set property \{prop} which has only a getter",
-                  )
-                }
-                return value
-              } else if !desc.writable {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot assign to read only property '\{prop}'",
-                  )
-                }
-                return value
-              }
-          }
-        None => ()
-      }
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(
-          receiver,
-          String_(prop),
-          value,
-          loc,
-          strict,
-        )
-      }
-      data.bag.properties[prop] = value
-      value
-    }
+    Promise(data) =>
+      self.set_string_on_map_set_expando(
+        obj,
+        receiver,
+        data.bag,
+        self.promise_instance_prototype_for_set(data),
+        prop,
+        value,
+        loc,
+        strict,
+      )
     Map(data) =>
       self.set_string_on_map_set_expando(
         obj,
@@ -683,9 +655,9 @@ pub fn Interpreter::set_property(
 }
 
 ///|
-/// Map/Set carry their own prototype slot, so string-key [[Set]] must honor
-/// inherited setters and inherited blocker descriptors before creating an
-/// expando property on the receiver.
+/// Map/Set/Promise carry their own prototype slot, so string-key [[Set]] must
+/// honor inherited setters and inherited blocker descriptors before creating
+/// an expando property on the receiver.
 fn Interpreter::set_string_via_map_set_prototype_chain(
   self : Interpreter,
   proto : Value,
@@ -917,8 +889,13 @@ fn Interpreter::set_string_on_map_set_expando(
       strict,
     )
   }
-  bag.properties[prop] = value
-  value
+  self.landing_via_define_own_property(
+    receiver,
+    String_(prop),
+    value,
+    loc,
+    strict,
+  )
 }
 
 ///|
@@ -1001,8 +978,13 @@ fn Interpreter::set_symbol_on_map_set_expando(
       strict,
     )
   }
-  bag.symbol_properties[sym.id] = value
-  value
+  self.landing_via_define_own_property(
+    receiver,
+    Symbol(sym),
+    value,
+    loc,
+    strict,
+  )
 }
 
 ///|
@@ -1225,11 +1207,9 @@ fn Interpreter::set_missing_array_index_via_proto_chain(
 /// has an existing own descriptor at `key`, accessor or non-writable data
 /// blocks the landing (sloppy returns `value`, strict raises TypeError).
 ///
-/// The Object and Array branches now route through
-/// `landing_via_define_own_property` (the Stage B.2 [[DefineOwnProperty]]
-/// dispatcher). Other receivers (Map/Set/Promise/Null/primitives) still have
-/// inline approximations here. A full dispatcher migration for all receiver
-/// kinds is a Stage B.3+ follow-up.
+/// Object, Array, Map, Set, Promise, and Proxy receivers route through the
+/// canonical `landing_via_define_own_property` dispatcher where their
+/// [[DefineOwnProperty]] semantics decide whether the write succeeds.
 fn Interpreter::define_value_on_receiver(
   self : Interpreter,
   receiver : Value,
@@ -1305,118 +1285,8 @@ fn Interpreter::define_value_on_receiver(
         }
       }
     }
-    Promise(rdata) =>
-      match key {
-        Symbol(sym) => {
-          match rdata.bag.symbol_descriptors.get(sym.id) {
-            Some(desc) =>
-              if existing_receiver_desc_blocks(desc) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-writable or accessor property on receiver",
-                  )
-                }
-                return value
-              }
-            None => ()
-          }
-          rdata.bag.symbol_properties[sym.id] = value
-          value
-        }
-        _ => {
-          let prop = to_js_string(key, interp=Some(self))
-          match rdata.bag.descriptors.get(prop) {
-            Some(desc) =>
-              if existing_receiver_desc_blocks(desc) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
-                  )
-                }
-                return value
-              }
-            None => ()
-          }
-          rdata.bag.properties[prop] = value
-          value
-        }
-      }
-    // Map / Set receivers carry an expando bag for instance fields from
-    // subclasses (e.g. `class D extends Map { constructor() { super(); this.x = 1 } }`)
-    // — the landing helper must write there rather than hitting the primitive
-    // fall-through. Descriptor-blocker check mirrors the Object arm.
-    Map(rdata) =>
-      match key {
-        Symbol(sym) => {
-          match rdata.bag.symbol_descriptors.get(sym.id) {
-            Some(desc) =>
-              if existing_receiver_desc_blocks(desc) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-writable or accessor property on receiver",
-                  )
-                }
-                return value
-              }
-            None => ()
-          }
-          rdata.bag.symbol_properties[sym.id] = value
-          value
-        }
-        _ => {
-          let prop = to_js_string(key, interp=Some(self))
-          match rdata.bag.descriptors.get(prop) {
-            Some(desc) =>
-              if existing_receiver_desc_blocks(desc) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
-                  )
-                }
-                return value
-              }
-            None => ()
-          }
-          rdata.bag.properties[prop] = value
-          value
-        }
-      }
-    Set(rdata) =>
-      match key {
-        Symbol(sym) => {
-          match rdata.bag.symbol_descriptors.get(sym.id) {
-            Some(desc) =>
-              if existing_receiver_desc_blocks(desc) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-writable or accessor property on receiver",
-                  )
-                }
-                return value
-              }
-            None => ()
-          }
-          rdata.bag.symbol_properties[sym.id] = value
-          value
-        }
-        _ => {
-          let prop = to_js_string(key, interp=Some(self))
-          match rdata.bag.descriptors.get(prop) {
-            Some(desc) =>
-              if existing_receiver_desc_blocks(desc) {
-                if strict {
-                  raise @errors.TypeError(
-                    message="Cannot redefine non-writable or accessor property '\{prop}' on receiver",
-                  )
-                }
-                return value
-              }
-            None => ()
-          }
-          rdata.bag.properties[prop] = value
-          value
-        }
-      }
+    Promise(_) | Map(_) | Set(_) =>
+      self.landing_via_define_own_property(receiver, key, value, loc, strict)
     // §10.1.9.2 step 3 via [[DefineOwnProperty]] (§10.4.2.1 / §10.4.2.4 for
     // Array): existing writable `length` → `ArraySetLength` with just {Value};
     // absent index → `CreateDataProperty` with full defaults;
@@ -2130,17 +2000,31 @@ pub fn Interpreter::set_computed_property(
       }
     }
     Promise(data) => {
-      if !strict_equal(obj, receiver) {
-        return self.define_value_on_receiver(receiver, key, value, loc, strict)
-      }
+      let promise_proto = self.promise_instance_prototype_for_set(data)
       match key {
-        Symbol(sym) => {
-          data.bag.symbol_properties[sym.id] = value
-          value
-        }
+        Symbol(sym) =>
+          self.set_symbol_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            promise_proto,
+            sym,
+            value,
+            loc,
+            strict,
+          )
         _ => {
-          data.bag.properties[to_js_string(key, interp=Some(self))] = value
-          value
+          let prop = to_js_string(key, interp=Some(self))
+          self.set_string_on_map_set_expando(
+            obj,
+            receiver,
+            data.bag,
+            promise_proto,
+            prop,
+            value,
+            loc,
+            strict,
+          )
         }
       }
     }

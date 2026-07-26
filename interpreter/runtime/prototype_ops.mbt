@@ -31,8 +31,44 @@ pub fn module_namespace_set_prototype_result(
 }
 
 ///|
+/// OrdinarySetPrototypeOf cycle decision (§10.1.2.1 steps 5-7). The walk
+/// follows Value variants whose [[GetPrototypeOf]] is ordinary and stops at
+/// Proxy, whose internal method is exotic. This helper mutates nothing.
+fn ordinary_prototype_would_cycle(
+  interp : Interpreter,
+  obj : Value,
+  proto : Value,
+) -> Bool {
+  let mut cursor = proto
+  while true {
+    if strict_equal(cursor, obj) {
+      return true
+    }
+    match cursor {
+      Object(data) => cursor = data.prototype
+      Array(data) => cursor = get_array_prototype(interp.realm_state, data)
+      Map(data) =>
+        cursor = data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_map_proto()
+        })
+      Set(data) =>
+        cursor = data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_set_proto()
+        })
+      Promise(data) =>
+        cursor = data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_promise_proto()
+        })
+      Null | Proxy(_) => return false
+      _ => return false
+    }
+  }
+  false
+}
+
+///|
 /// [[SetPrototypeOf]] cycle detection and extensibility guard for ordinary objects
-/// (§10.1.3). Returns true if the prototype was set, false if it would create a
+/// (§10.1.2.1). Returns true if the prototype was set, false if it would create a
 /// cycle or the target is non-extensible. Does NOT handle immutable-prototype
 /// exotic objects (Object.prototype) — callers check before reaching this.
 pub fn ordinary_set_prototype(
@@ -46,18 +82,8 @@ pub fn ordinary_set_prototype(
   if !data.extensible {
     return false
   }
-  // §10.1.3 step 6: walk from proto up the chain checking if data is reachable
-  let mut p = proto
-  while true {
-    if strict_equal(p, Object(data)) {
-      return false
-    }
-    match p {
-      Object(p_data) => p = p_data.prototype
-      Array(p_data) => p = get_array_prototype(interp.realm_state, p_data)
-      Null => break
-      _ => break
-    }
+  if ordinary_prototype_would_cycle(interp, Object(data), proto) {
+    return false
   }
   data.prototype = proto
   true
@@ -108,6 +134,8 @@ pub fn object_set_prototype_of(
       if strict_equal(proto, current) {
         Value::Bool(true)
       } else if !data.extensible {
+        Value::Bool(false)
+      } else if ordinary_prototype_would_cycle(interp, Array(data), proto) {
         Value::Bool(false)
       } else {
         set_array_prototype_override(data, proto)
