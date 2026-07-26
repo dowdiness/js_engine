@@ -8544,6 +8544,34 @@ test "generator: yield inside for-of in generator" {
 }
 
 ///|
+test "generator: for-of resume does not replay statements before yield" {
+  let output = run_output(
+    (
+      #|function* values() { yield 1; yield 1; }
+      #|let before = 0;
+      #|let after = 0;
+      #|let finished = 0;
+      #|function* control() {
+      #|  for (const value of values()) {
+      #|    before += value;
+      #|    yield;
+      #|    after += value;
+      #|  }
+      #|  finished++;
+      #|}
+      #|const iterator = control();
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+    ),
+  )
+  json_inspect(output, content=["1,0,0", "2,1,0", "2,2,1"])
+}
+
+///|
 test "generator: for-of consuming generator inside generator" {
   let output = run_output(
     (
