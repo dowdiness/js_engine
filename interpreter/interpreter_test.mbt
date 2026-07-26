@@ -3816,6 +3816,168 @@ test "object assign" {
 }
 
 ///|
+/// compat-table: Proxy internal `get` calls / Object.assign.
+test "Object.assign Proxy source invokes get trap" {
+  let src =
+    #|var get = [];
+    #|var p = new Proxy({foo: 1, bar: 2}, {
+    #|  get: function(o, k) { get.push(k); return o[k]; }
+    #|});
+    #|Object.assign({}, p);
+    #|console.log(get + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `set` calls / Object.assign.
+test "Object.assign Proxy target invokes set trap" {
+  let src =
+    #|var set = [];
+    #|var p = new Proxy({}, {
+    #|  set: function(o, k, v) { set.push(k); o[k] = v; return true; }
+    #|});
+    #|Object.assign(p, {foo: 1, bar: 2});
+    #|console.log(set + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `getOwnPropertyDescriptor` calls /
+/// Object.assign.
+test "Object.assign Proxy source invokes getOwnPropertyDescriptor trap" {
+  let src =
+    #|var gopd = [];
+    #|var p = new Proxy({foo: 1, bar: 2}, {
+    #|  getOwnPropertyDescriptor: function(o, v) {
+    #|    gopd.push(v);
+    #|    return Object.getOwnPropertyDescriptor(o, v);
+    #|  }
+    #|});
+    #|Object.assign({}, p);
+    #|console.log(gopd + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "Object.assign Proxy operations follow spec order" {
+  let src =
+    #|var log = [];
+    #|var sym = Symbol("s");
+    #|function keyName(k) { return typeof k === "symbol" ? "symbol" : k; }
+    #|var source = {foo: 1};
+    #|Object.defineProperty(source, "hidden", {value: 9, enumerable: false});
+    #|source.bar = 2;
+    #|source[sym] = 3;
+    #|var sourceProxy = new Proxy(source, {
+    #|  ownKeys: function(o) {
+    #|    log.push("ownKeys");
+    #|    return Reflect.ownKeys(o);
+    #|  },
+    #|  getOwnPropertyDescriptor: function(o, k) {
+    #|    log.push("gopd:" + keyName(k));
+    #|    return Object.getOwnPropertyDescriptor(o, k);
+    #|  },
+    #|  get: function(o, k) {
+    #|    log.push("get:" + keyName(k));
+    #|    return o[k];
+    #|  }
+    #|});
+    #|var target = {};
+    #|var targetProxy = new Proxy(target, {
+    #|  set: function(o, k, v) {
+    #|    log.push("set:" + keyName(k));
+    #|    return Reflect.set(o, k, v);
+    #|  }
+    #|});
+    #|Object.assign(targetProxy, sourceProxy);
+    #|console.log(log.join("|"));
+    #|console.log(target.foo + "," + target.bar + "," + target[sym] + "," + target.hidden);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "ownKeys|gopd:foo|get:foo|set:foo|gopd:hidden|gopd:bar|get:bar|set:bar|gopd:symbol|get:symbol|set:symbol",
+    "1,2,3,undefined",
+  ])
+}
+
+///|
+test "Object.assign Proxy traps propagate abrupt completions" {
+  let src =
+    #|function report(label, action) {
+    #|  try {
+    #|    action();
+    #|    console.log(label + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + e.message);
+    #|  }
+    #|}
+    #|report("ownKeys", function() {
+    #|  Object.assign({}, new Proxy({}, {
+    #|    ownKeys: function() { throw new Error("ownKeys"); }
+    #|  }));
+    #|});
+    #|report("gopd", function() {
+    #|  Object.assign({}, new Proxy({x: 1}, {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("gopd"); }
+    #|  }));
+    #|});
+    #|report("get", function() {
+    #|  Object.assign({}, new Proxy({x: 1}, {
+    #|    get: function() { throw new Error("get"); }
+    #|  }));
+    #|});
+    #|report("set", function() {
+    #|  Object.assign(new Proxy({}, {
+    #|    set: function() { throw new Error("set"); }
+    #|  }), {x: 1});
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "ownKeys:ownKeys", "gopd:gopd", "get:get", "set:set",
+  ])
+}
+
+///|
+test "Object.assign rejects revoked Proxy source and target" {
+  let src =
+    #|function report(label, target, source) {
+    #|  try {
+    #|    Object.assign(target, source);
+    #|    console.log(label + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + e.name);
+    #|  }
+    #|}
+    #|var sourceRecord = Proxy.revocable({x: 1}, {});
+    #|sourceRecord.revoke();
+    #|report("source", {}, sourceRecord.proxy);
+    #|var targetRecord = Proxy.revocable({}, {});
+    #|targetRecord.revoke();
+    #|report("target", targetRecord.proxy, {x: 1});
+  let output = run_output(src)
+  json_inspect(output, content=["source:TypeError", "target:TypeError"])
+}
+
+///|
+test "Object.assign treats falsy Proxy set as abrupt completion" {
+  let src =
+    #|var log = [];
+    #|var target = new Proxy({}, {
+    #|  set: function(o, k, v) { log.push(k); return false; }
+    #|});
+    #|try {
+    #|  Object.assign(target, {foo: 1, bar: 2});
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.name + ":" + log.join(","));
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError:foo"])
+}
+
+///|
 test "object create" {
   let src =
     #|var proto = {greet: function() { return "hello"; }};
