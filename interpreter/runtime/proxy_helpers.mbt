@@ -111,19 +111,13 @@ pub fn proxy_is_extensible(
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "isExtensible", interp)
   match trap {
-    None =>
-      // No trap — delegate to target
-      match target {
-        Object(data) => data.extensible
-        Value::Proxy(inner) => proxy_is_extensible(interp, inner)
-        _ => true
-      }
+    None => interp.is_extensible_internal(target)
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
       let result = interp.call_value(trap_fn, handler, [target], loc)
       let trap_result = is_truthy(result)
-      let target_extensible = target_is_extensible(target)
+      let target_extensible = interp.is_extensible_internal(target)
       if trap_result != target_extensible {
         raise @errors.TypeError(
           message="'isExtensible' on proxy: trap result does not reflect extensibility of proxy target (which is '\{target_extensible}')",
@@ -131,81 +125,6 @@ pub fn proxy_is_extensible(
       }
       trap_result
     }
-  }
-}
-
-///|
-/// Check if target has a non-configurable own property with the given string key.
-/// Descriptors live in `bag` for all object-typed values. Arrays synthesize
-/// `length` and consult per-index descriptors stored in ArrayData.bag.
-fn target_has_non_configurable_key(target : Value, key : String) -> Bool {
-  match target {
-    Object(data) =>
-      match data.bag.descriptors.get(key) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Map(data) =>
-      match data.bag.descriptors.get(key) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Set(data) =>
-      match data.bag.descriptors.get(key) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Promise(data) =>
-      match data.bag.descriptors.get(key) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Array(arr) =>
-      if key == "length" {
-        true
-      } else {
-        match arr.bag.descriptors.get(key) {
-          Some(desc) => !desc.configurable
-          None => false
-        }
-      }
-    _ => false
-  }
-}
-
-///|
-/// Check if target has a non-configurable own property with the given symbol
-/// key. Symbol descriptors live in `bag.symbol_descriptors`, keyed by the
-/// symbol's id, for every object-typed value (mirrors the string-keyed
-/// `target_has_non_configurable_key`).
-fn target_has_non_configurable_symbol_key(target : Value, sym_id : Int) -> Bool {
-  match target {
-    Object(data) =>
-      match data.bag.symbol_descriptors.get(sym_id) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Map(data) =>
-      match data.bag.symbol_descriptors.get(sym_id) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Set(data) =>
-      match data.bag.symbol_descriptors.get(sym_id) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Promise(data) =>
-      match data.bag.symbol_descriptors.get(sym_id) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    Array(arr) =>
-      match arr.bag.symbol_descriptors.get(sym_id) {
-        Some(desc) => !desc.configurable
-        None => false
-      }
-    _ => false
   }
 }
 
@@ -398,15 +317,7 @@ pub fn proxy_prevent_extensions(
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "preventExtensions", interp)
   match trap {
-    None =>
-      match target {
-        Object(data) => {
-          data.extensible = false
-          true
-        }
-        Value::Proxy(inner) => proxy_prevent_extensions(interp, inner)
-        _ => true
-      }
+    None => interp.prevent_extensions_internal(target)
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
@@ -414,7 +325,7 @@ pub fn proxy_prevent_extensions(
       let trap_result = is_truthy(result)
       // ES §10.5.4 step 8: If trap returns true, target must not be extensible
       if trap_result {
-        let target_extensible = target_is_extensible(target)
+        let target_extensible = interp.is_extensible_internal(target)
         if target_extensible {
           raise @errors.TypeError(
             message="'preventExtensions' on proxy: trap returned truish but the proxy target is extensible",
@@ -683,17 +594,16 @@ pub fn proxy_get(
         Some(desc) =>
           if !desc.configurable {
             // Non-configurable data property: trap result must match target value
-            if desc.getter is None && !desc.writable {
+            if !desc.is_accessor && !desc.writable {
               let target_value = target_get_own_value(Some(interp), target, key)
-              if !strict_equal(result, target_value) {
+              if !same_value_for_vap(result, target_value) {
                 raise @errors.TypeError(
                   message="'get' on proxy: property '\{key}' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
                 )
               }
             }
             // Non-configurable accessor with undefined getter: must return undefined
-            if desc.getter is None && desc.setter is Some(_) {
-              // accessor with no getter
+            if desc.is_accessor && desc.getter is None {
               if !strict_equal(result, Undefined) {
                 raise @errors.TypeError(
                   message="'get' on proxy: property '\{key}' is a non-configurable accessor property on the proxy target and does not have a getter function, but the trap did not return 'undefined'",
@@ -771,16 +681,16 @@ fn check_proxy_set_trap_invariants_with_interp(
   match desc_opt {
     Some(desc) =>
       if !desc.configurable {
-        if desc.getter is None && !desc.writable {
-          if !strict_equal(value, target_value) {
+        if !desc.is_accessor && !desc.writable {
+          if !same_value_for_vap(value, target_value) {
             raise @errors.TypeError(
               message="'set' on proxy: trap returned truish for property '\{key_display}' which exists in the proxy target as a non-configurable and non-writable data property with a different value",
             )
           }
         }
-        if desc.getter is Some(_) && desc.setter is None {
+        if desc.is_accessor && desc.setter is None {
           raise @errors.TypeError(
-            message="'set' on proxy: trap returned truish for property '\{key_display}' which exists in the proxy target as a non-configurable and non-writable accessor property without a setter",
+            message="'set' on proxy: trap returned truish for property '\{key_display}' which exists in the proxy target as a non-configurable accessor property without a setter",
           )
         }
       }
@@ -861,13 +771,7 @@ pub fn proxy_own_property_keys(
   let trap = get_proxy_trap(proxy_data, "ownKeys", interp)
   // Step 6: If trap is undefined, return target.[[OwnPropertyKeys]]()
   match trap {
-    None =>
-      // If target is itself a Proxy, recursively invoke its [[OwnPropertyKeys]]
-      match target {
-        Value::Proxy(inner_proxy) =>
-          return proxy_own_property_keys(interp, inner_proxy)
-        _ => return make_array(interp.own_property_keys(target))
-      }
+    None => return make_array(interp.own_property_keys(target))
     _ => ()
   }
   let trap_fn = trap.unwrap()
@@ -876,42 +780,22 @@ pub fn proxy_own_property_keys(
   // Step 7: Call trap(handler, target)
   let trap_result = interp.call_value(trap_fn, handler, [target], loc)
   // Step 8: CreateListFromArrayLike(trapResult, « String, Symbol »)
+  guard is_object_type(trap_result) else {
+    raise @errors.TypeError(
+      message="'ownKeys' on proxy: trap returned non-object",
+    )
+  }
   let trap_keys : Array[Value] = []
-  match trap_result {
-    Value::Array(arr) =>
-      for elem in arr.elements {
-        match elem {
-          Value::String_(_) | Value::Symbol(_) => trap_keys.push(elem)
-          _ =>
-            raise @errors.TypeError(
-              message="'ownKeys' on proxy: trap result must contain only Strings and Symbols",
-            )
-        }
-      }
-    Object(data) => {
-      // Array-like object: read "length" and indexed properties
-      let len = match data.bag.properties.get("length") {
-        Some(Value::Number(n)) => n.to_int()
-        _ => 0
-      }
-      for i = 0; i < len; i = i + 1 {
-        let elem = match data.bag.properties.get(i.to_string()) {
-          Some(v) => v
-          None => Undefined
-        }
-        match elem {
-          Value::String_(_) | Value::Symbol(_) => trap_keys.push(elem)
-          _ =>
-            raise @errors.TypeError(
-              message="'ownKeys' on proxy: trap result must contain only Strings and Symbols",
-            )
-        }
-      }
+  let trap_result_len = to_array_like_length_interp(trap_result, interp)
+  for i = 0L; i < trap_result_len; i = i + 1L {
+    let elem = get_array_like_element_interp(interp, trap_result, i)
+    match elem {
+      Value::String_(_) | Value::Symbol(_) => trap_keys.push(elem)
+      _ =>
+        raise @errors.TypeError(
+          message="'ownKeys' on proxy: trap result must contain only Strings and Symbols",
+        )
     }
-    _ =>
-      raise @errors.TypeError(
-        message="'ownKeys' on proxy: trap returned non-object",
-      )
   }
   // Step 9: If trapResult contains any duplicate entries, throw TypeError
   let seen_strings = @set.Set::default()
@@ -938,26 +822,20 @@ pub fn proxy_own_property_keys(
     }
   }
   // Step 10: Get extensibleTarget
-  let extensible_target = target_is_extensible(target)
+  let extensible_target = interp.is_extensible_internal(target)
   // Step 11-12: Get target keys, split into non-configurable and configurable
   let target_keys = interp.own_property_keys(target)
   let target_nonconfigurable_keys : Array[Value] = []
   let target_configurable_keys : Array[Value] = []
   for key in target_keys {
-    match key {
-      Value::String_(s) =>
-        if target_has_non_configurable_key(target, s) {
-          target_nonconfigurable_keys.push(key)
-        } else {
-          target_configurable_keys.push(key)
-        }
-      Value::Symbol(sym) =>
-        if target_has_non_configurable_symbol_key(target, sym.id) {
-          target_nonconfigurable_keys.push(key)
-        } else {
-          target_configurable_keys.push(key)
-        }
-      _ => target_configurable_keys.push(key)
+    let non_configurable = match interp.get_own_property(target, key) {
+      Some((desc, _)) => !desc.configurable
+      None => false
+    }
+    if non_configurable {
+      target_nonconfigurable_keys.push(key)
+    } else {
+      target_configurable_keys.push(key)
     }
   }
   // Step 15: If extensibleTarget is true and targetNonconfigurableKeys is empty, return
@@ -1051,7 +929,10 @@ pub fn proxy_own_property_keys(
 /// be passed to a Proxy defineProperty trap as the `Descriptor` argument.
 /// Per ES §6.2.5.4 FromPropertyDescriptor, only present fields are emitted
 /// (absent fields don't appear on the object).
-fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
+fn partial_desc_to_value(
+  partial : PartialDescriptor,
+  realm_state : RealmState,
+) -> Value {
   let props : Map[String, Value] = Map([])
   match partial.value {
     Some(v) => props["value"] = v
@@ -1084,7 +965,7 @@ fn partial_desc_to_value(partial : PartialDescriptor) -> Value {
       internal_slots: Map([]),
       host_slots: Map([]),
     },
-    prototype: Null,
+    prototype: realm_state.get_obj_proto(),
     extensible: true,
     arraybuffer_state: None,
     callable: None,
@@ -1224,14 +1105,7 @@ pub fn proxy_get_own_property(
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "getOwnPropertyDescriptor", interp)
   match trap {
-    None =>
-      // Delegate to the target's own [[GetOwnProperty]]. For Proxy-of-Proxy
-      // this recurses; otherwise route through the dispatcher so TypedArray
-      // integer-index descriptors are synthesized.
-      match target {
-        Value::Proxy(inner) => proxy_get_own_property(interp, inner, key)
-        _ => interp.get_own_property(target, key)
-      }
+    None => interp.get_own_property(target, key)
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
@@ -1274,7 +1148,7 @@ pub fn proxy_get_own_property(
               )
             }
             // Step 10.c: target must be extensible.
-            if !target_is_extensible(target) {
+            if !interp.is_extensible_internal(target) {
               raise @errors.TypeError(
                 message="'getOwnPropertyDescriptor' on proxy: trap returned undefined for property which exists on a non-extensible proxy target",
               )
@@ -1290,7 +1164,7 @@ pub fn proxy_get_own_property(
       } else {
         None
       }
-      let target_extensible = target_is_extensible(target)
+      let target_extensible = interp.is_extensible_internal(target)
       match target_desc {
         None => {
           // §10.5.5 step 17.c: target has no own desc; target must be
@@ -1440,18 +1314,7 @@ pub fn proxy_define_property(
   let trap = get_proxy_trap(proxy_data, "defineProperty", interp)
   match trap {
     None =>
-      // Delegate: Proxy-of-Proxy recurses; otherwise route through dispatcher.
-      match target {
-        Value::Proxy(inner) =>
-          proxy_define_property(interp, inner, key, partial)
-        _ =>
-          interp.ordinary_define_own_property(
-            target,
-            key,
-            partial,
-            @token.Loc::default(),
-          )
-      }
+      interp.define_own_property(target, key, partial, @token.Loc::default())
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
@@ -1462,7 +1325,7 @@ pub fn proxy_define_property(
         Symbol(_) => key
         _ => Value::String_(to_js_string(key))
       }
-      let desc_val = partial_desc_to_value(partial)
+      let desc_val = partial_desc_to_value(partial, interp.realm_state)
       let result = interp.call_value(
         trap_fn,
         handler,
@@ -1478,7 +1341,7 @@ pub fn proxy_define_property(
         Some((desc, _)) => Some(desc)
         None => None
       }
-      let target_extensible = target_is_extensible(target)
+      let target_extensible = interp.is_extensible_internal(target)
       // is_new: key is absent as an own property. Use the target's real
       // [[GetOwnProperty]] dispatcher so synthetic TypedArray integer-index
       // descriptors count as existing.

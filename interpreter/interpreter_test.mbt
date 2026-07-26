@@ -6359,6 +6359,226 @@ test "Proxy integrity operations reject revoked proxies" {
 }
 
 ///|
+/// A trapless Proxy delegates [[PreventExtensions]] and [[IsExtensible]] to
+/// its Array target. The target must become non-extensible, so a subsequent
+/// [[DefineOwnProperty]] landing through the Proxy is rejected.
+test "Proxy integrity delegates to Array target internal methods" {
+  let output = run_output(
+    (
+      #|var target = [];
+      #|var proxy = new Proxy(target, {});
+      #|console.log(Reflect.preventExtensions(proxy));
+      #|console.log(Object.isExtensible(proxy));
+      #|console.log(Object.isExtensible(target));
+      #|console.log(Reflect.defineProperty(proxy, "x", { value: 1 }));
+      #|console.log(target.x);
+    ),
+  )
+  json_inspect(output, content=["true", "false", "false", "false", "undefined"])
+}
+
+///|
+/// The outer Proxy must validate an ownKeys result against its target Proxy's
+/// canonical [[GetOwnProperty]] result, including a non-configurable property
+/// reached through a trapless inner Proxy.
+test "Proxy ownKeys rejects omission of nested non-configurable key" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", { value: 1, configurable: false });
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, { ownKeys: function() { return []; } });
+      #|try {
+      #|  Reflect.ownKeys(outer);
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// CreateListFromArrayLike accepts every object kind. A Proxy result from the
+/// ownKeys trap must expose its length and indexed entries through observable
+/// [[Get]] operations in order.
+test "Proxy ownKeys accepts Proxy array-like trap result via observable Get" {
+  let output = run_output(
+    (
+      #|var log = [];
+      #|var key = Symbol("key");
+      #|var result = new Proxy({ 0: "name", 1: key, length: 2 }, {
+      #|  get: function(target, property, receiver) {
+      #|    log.push(property);
+      #|    return Reflect.get(target, property, receiver);
+      #|  }
+      #|});
+      #|var proxy = new Proxy({}, { ownKeys: function() { return result; } });
+      #|var keys = Reflect.ownKeys(proxy);
+      #|console.log(keys[0]);
+      #|console.log(keys[1] === key);
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["name", "true", "length,0,1"])
+}
+
+///|
+/// The outer getOwnPropertyDescriptor trap cannot invent a property when its
+/// target is a trapless Proxy over a non-extensible object.
+test "Proxy GOPD enforces nested target non-extensibility" {
+  let output = run_output(
+    (
+      #|var base = Object.preventExtensions({});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  getOwnPropertyDescriptor: function() {
+      #|    return { value: 1, writable: true, enumerable: true, configurable: true };
+      #|  }
+      #|});
+      #|try {
+      #|  Reflect.getOwnPropertyDescriptor(outer, "phantom");
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// The outer defineProperty trap cannot claim success for a new property when
+/// its target is a trapless Proxy over a non-extensible object.
+test "Proxy defineProperty enforces nested target non-extensibility" {
+  let output = run_output(
+    (
+      #|var base = Object.preventExtensions({});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  defineProperty: function() { return true; }
+      #|});
+      #|try {
+      #|  Reflect.defineProperty(outer, "phantom", { value: 1 });
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// FromPropertyDescriptor creates an ordinary object in the current realm.
+/// The descriptor passed to Proxy defineProperty traps during freeze/seal
+/// therefore inherits from that realm's Object.prototype.
+test "Proxy integrity defineProperty descriptor uses current Object prototype" {
+  let output = run_output(
+    (
+      #|var prototypes = [];
+      #|function handler() {
+      #|  return {
+      #|    preventExtensions: function(target) {
+      #|      Object.preventExtensions(target);
+      #|      return true;
+      #|    },
+      #|    defineProperty: function(target, key, descriptor) {
+      #|      prototypes.push(Object.getPrototypeOf(descriptor) === Object.prototype);
+      #|      return Reflect.defineProperty(target, key, descriptor);
+      #|    }
+      #|  };
+      #|}
+      #|Object.freeze(new Proxy({ frozen: 1 }, handler()));
+      #|Object.seal(new Proxy({ sealed: 1 }, handler()));
+      #|console.log(prototypes.join(","));
+    ),
+  )
+  json_inspect(output, content=["true,true"])
+}
+
+///|
+/// Proxy [[Get]]/[[Set]] invariants compare frozen data-property values with
+/// SameValue: NaN equals NaN, while +0 and -0 are distinct.
+test "Proxy Get and Set frozen-data invariants use SameValue" {
+  let output = run_output(
+    (
+      #|function report(label, action) {
+      #|  try {
+      #|    action();
+      #|    console.log(label + ":ok");
+      #|  } catch (e) {
+      #|    console.log(label + ":" + e.name);
+      #|  }
+      #|}
+      #|var nanTarget = {};
+      #|Object.defineProperty(nanTarget, "fixed", {
+      #|  value: NaN, writable: false, configurable: false
+      #|});
+      #|var nanProxy = new Proxy(nanTarget, {
+      #|  get: function() { return NaN; },
+      #|  set: function() { return true; }
+      #|});
+      #|report("get-nan", function() { nanProxy.fixed; });
+      #|report("set-nan", function() { nanProxy.fixed = NaN; });
+      #|var zeroTarget = {};
+      #|Object.defineProperty(zeroTarget, "fixed", {
+      #|  value: 0, writable: false, configurable: false
+      #|});
+      #|var zeroProxy = new Proxy(zeroTarget, {
+      #|  get: function() { return -0; },
+      #|  set: function() { return true; }
+      #|});
+      #|report("get-zero", function() { zeroProxy.fixed; });
+      #|report("set-zero", function() { zeroProxy.fixed = -0; });
+    ),
+  )
+  json_inspect(output, content=[
+    "get-nan:ok", "set-nan:ok", "get-zero:TypeError", "set-zero:TypeError",
+  ])
+}
+
+///|
+/// Proxy [[Set]] distinguishes accessor descriptors from data descriptors:
+/// a non-configurable accessor with a setter permits a truthy trap result,
+/// while an accessor whose setter is undefined must reject even `undefined`.
+test "Proxy Set invariants classify non-configurable accessors" {
+  let output = run_output(
+    (
+      #|var withSetter = {};
+      #|Object.defineProperty(withSetter, "value", {
+      #|  configurable: false,
+      #|  set: function(value) {}
+      #|});
+      #|var accepting = new Proxy(withSetter, {
+      #|  set: function() { return true; }
+      #|});
+      #|try {
+      #|  console.log(Reflect.set(accepting, "value", 1));
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+      #|var withoutSetter = {};
+      #|Object.defineProperty(withoutSetter, "value", {
+      #|  configurable: false,
+      #|  get: undefined
+      #|});
+      #|var rejecting = new Proxy(withoutSetter, {
+      #|  set: function() { return true; }
+      #|});
+      #|try {
+      #|  rejecting.value = undefined;
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "TypeError"])
+}
+
+///|
 test "Object.isExtensible on regular object" {
   let src =
     #|var obj = {};
