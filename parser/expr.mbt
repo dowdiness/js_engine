@@ -26,6 +26,13 @@ fn inner_call_of_grouping(expr : @ast.Expr) -> @ast.Expr? {
 }
 
 ///|
+fn Parser::at_arrow_without_line_terminator(self : Parser) -> Bool {
+  self.at(Arrow) &&
+  self.pos > 0 &&
+  self.tokens[self.pos - 1].loc.line == self.peek().loc.line
+}
+
+///|
 fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
   // yield expression in generator context (very low precedence, near assignment)
   if self.at(Yield) && self.in_generator() {
@@ -38,7 +45,8 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
     // async arrow: async [no LT] ident =>
     if self.peek_kind_at(1) is Ident(_) &&
       self.tokens[self.pos + 1].loc.line == async_line &&
-      self.peek_kind_at(2) == Arrow {
+      self.peek_kind_at(2) == Arrow &&
+      self.tokens[self.pos + 2].loc.line == async_line {
       let loc = self.advance().loc // consume 'async'
       let start = loc.offset
       let name = self.expect_ident()
@@ -61,7 +69,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
       }
       match try_ext {
         Some((ext_params, rest_param)) =>
-          if self.at(Arrow) {
+          if self.at_arrow_without_line_terminator() {
             let _ = self.advance() // consume =>
             let body = self.parse_arrow_body(is_async=true)
             let has_ext = rest_param is Some(_) ||
@@ -97,7 +105,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
   match self.peek_kind() {
     Ident(name) =>
       match self.peek_kind_at(1) {
-        Arrow => {
+        Arrow if self.tokens[self.pos + 1].loc.line == self.peek().loc.line => {
           let loc = self.advance().loc // consume ident
           let start = loc.offset
           let _ = self.advance() // consume =>
@@ -115,7 +123,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
         _ => abort("unreachable")
       }
       match self.peek_kind_at(1) {
-        Arrow => {
+        Arrow if self.tokens[self.pos + 1].loc.line == self.peek().loc.line => {
           let loc = self.advance().loc // consume keyword
           let start = loc.offset
           let _ = self.advance() // consume =>
@@ -138,7 +146,7 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
     }
     match try_ext {
       Some((ext_params, rest_param)) =>
-        if self.at(Arrow) {
+        if self.at_arrow_without_line_terminator() {
           // Check if this has defaults or rest
           let has_ext = rest_param is Some(_) ||
             ext_params
@@ -174,27 +182,31 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
     }
   }
   let expr = self.parse_ternary()
-  // Check for multi-param arrow: (a, b) => ... parsed as Grouping/Comma/Ident then Arrow
-  match self.peek_kind() {
-    Arrow => {
-      let loc = self.advance().loc // consume =>
-      // Try simple params first, fall back to extended params for defaults/destructuring
-      let simple_params : Array[String]? = Some(extract_arrow_params(expr)) catch {
-        _ => None
-      }
-      match simple_params {
-        Some(params) => {
-          let body = self.parse_arrow_body()
-          return ArrowFunc(params, body, loc, None)
+  // Only a parenthesized parameter list can reach this fallback. In
+  // particular, an arbitrary conditional expression must not be reinterpreted
+  // as arrow parameters.
+  if self.at_arrow_without_line_terminator() {
+    match expr {
+      Grouping(_, _) => {
+        let loc = self.advance().loc // consume =>
+        // Try simple params first, fall back to extended params for defaults/destructuring
+        let simple_params : Array[String]? = Some(extract_arrow_params(expr)) catch {
+          _ => None
         }
-        None => {
-          let (ext_params, rest_param) = expr_to_ext_arrow_params(expr)
-          let body = self.parse_arrow_body()
-          return ArrowFuncExt(ext_params, rest_param, body, loc, None)
+        match simple_params {
+          Some(params) => {
+            let body = self.parse_arrow_body()
+            return ArrowFunc(params, body, loc, None)
+          }
+          None => {
+            let (ext_params, rest_param) = expr_to_ext_arrow_params(expr)
+            let body = self.parse_arrow_body()
+            return ArrowFuncExt(ext_params, rest_param, body, loc, None)
+          }
         }
       }
+      _ => ()
     }
-    _ => ()
   }
   // Plain assignment
   if self.at(Assign) {
@@ -836,25 +848,12 @@ fn Parser::parse_primary(self : Parser) -> @ast.Expr raise Error {
     New => self.parse_new_expr()
     LParen => {
       let _ = self.advance()
-      // Check for empty parens arrow: () =>
+      // Valid empty-parameter arrows are recognized at assignment-expression
+      // precedence before primary-expression parsing. Empty grouping is invalid.
       if self.at(RParen) {
-        let _ = self.advance() // consume )
-        match self.peek_kind() {
-          Arrow => {
-            let _ = self.advance() // consume =>
-            let body = self.parse_arrow_body()
-            return ArrowFunc(
-              [],
-              body,
-              tok.loc,
-              self.consume_source_text(tok.loc.offset),
-            )
-          }
-          _ =>
-            raise @errors.SyntaxError(
-              message="Unexpected ) at line \{tok.loc.line}, col \{tok.loc.col}",
-            )
-        }
+        raise @errors.SyntaxError(
+          message="Unexpected ) at line \{tok.loc.line}, col \{tok.loc.col}",
+        )
       }
       let expr = self.parse_expr()
       let _ = self.expect(RParen)
@@ -1486,6 +1485,14 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
                 self.pop_generator_context()
                 raise e
               }
+            }
+            if prop_kind == @ast.Set &&
+              (ext_params.length() != 1 || rest_param is Some(_)) {
+              self.pop_async_context()
+              self.pop_generator_context()
+              raise @errors.SyntaxError(
+                message="Setter must have exactly one non-rest parameter",
+              )
             }
             if obj_is_async && params_contain_await(ext_params) {
               self.pop_async_context()
@@ -2525,9 +2532,9 @@ fn Parser::parse_class_member(self : Parser) -> @ast.ClassMember raise Error {
               )
             }
           @ast.Set =>
-            if ext_params.length() != 1 {
+            if ext_params.length() != 1 || rest_param is Some(_) {
               raise @errors.SyntaxError(
-                message="Setter must have exactly one parameter",
+                message="Setter must have exactly one non-rest parameter",
               )
             }
           @ast.Init | @ast.Spread => ()

@@ -135,13 +135,38 @@ fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
 
 ///|
 fn expect_parse_err(source : String) -> Unit raise Error {
-  let result = Ok(@parser.parse(source)) catch { _ => Err(()) }
-  expect_err(result)
+  let result = Ok(@parser.parse(source)) catch {
+    @errors.SyntaxError(_) => Err(())
+    error =>
+      fail(
+        "expected SyntaxError for " +
+        source.escape() +
+        ", got " +
+        error.to_string(),
+      )
+  }
+  match result {
+    Ok(_) =>
+      fail(
+        "expected SyntaxError for " +
+        source.escape() +
+        ", but parsing succeeded",
+      )
+    Err(_) => ()
+  }
 }
 
 ///|
 fn expect_parse_ok(source : String) -> Unit raise Error {
-  let _ = @parser.parse(source)
+  let _ = @parser.parse(source) catch {
+    error =>
+      fail(
+        "expected parse success for " +
+        source.escape() +
+        ", got " +
+        error.to_string(),
+      )
+  }
 }
 
 ///|
@@ -805,6 +830,57 @@ test "trailing comma after rest param with leading param is SyntaxError" {
     _ => Err(())
   }
   expect_err(result)
+}
+
+///|
+test "ES2015 arrow functions reject a line terminator before the arrow" {
+  for
+    source in [
+      "x\n=> 2", "()\n=> 2", "(x)\n=> x", "async x\n=> x", "async (x)\n=> x",
+    ] {
+    expect_parse_err(source)
+  }
+}
+
+///|
+test "ES2015 arrow functions have assignment-expression precedence" {
+  expect_parse_err("0 || () => 2")
+}
+
+///|
+test "ES2015 setters reject rest parameters" {
+  for
+    source in [
+      "({ set e(...args) {} })", "({ set e(value, ...rest) {} })", "class C { set e(...args) {} }",
+      "class C { set e(value, ...rest) {} }",
+    ] {
+    expect_parse_err(source)
+  }
+}
+
+///|
+test "ES2015 lexical declarations reject Statement positions" {
+  for
+    source in [
+      "if (true) let x = 1", "if (false) {} else const x = 1", "while (false) let x = 1",
+      "for (; false; ) const x = 1", "do let x = 1; while (false)", "with ({}) const x = 1",
+      "label: let x = 1", "if (true) let [x] = [1]", "if (true) const { x } = { x: 1 }",
+    ] {
+    expect_parse_err(source)
+  }
+}
+
+///|
+test "ES2015 early-error controls remain valid" {
+  for
+    source in [
+      "{ let x = 1; const y = 2; }", "for (let i = 0; i < 1; i++) {}", "function f(...args) { return args; }",
+      "() => 2", "(x) => x", "(a, b) => a + b", "(() => 2)", "0 || (() => 2)", "0 || (x => x)",
+      "async x => x", "async () => 2", "async (x) => x", "({ set e(value) {} })",
+      "class C { set e(value) {} }",
+    ] {
+    expect_parse_ok(source)
+  }
 }
 
 ///|
