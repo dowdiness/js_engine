@@ -1964,22 +1964,17 @@ fn Interpreter::eval_expr(
       let class_name = name.unwrap_or("")
       let class_env = if class_name != "" {
         let inner = Environment::new(parent=Some(env))
-        // Pre-define the name (will be set after class creation)
-        inner.def(class_name, Undefined, LetBinding)
+        // ClassDefinitionEvaluation creates the inner name binding before
+        // heritage evaluation, but leaves it uninitialized until the class
+        // constructor has been created.
+        inner.def_tdz(class_name, ConstBinding)
         inner
       } else {
         env
       }
-      let class_val = self.create_class(
+      self.create_class(
         ctx, class_name, superclass, methods, class_env, source_text,
       )
-      // Set the class name binding in the inner scope
-      if class_name != "" {
-        class_env.assign(class_name, class_val) catch {
-          _ => ()
-        }
-      }
-      class_val
     }
     SuperCall(arg_exprs, loc) => {
       let args = self.eval_args_with_spread(ctx, arg_exprs, env)

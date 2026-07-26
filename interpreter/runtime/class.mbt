@@ -629,6 +629,12 @@ fn Interpreter::create_class(
     }),
     realm_state=Some(self.realm_state),
   )
+  // The inner class-name binding remains in TDZ while heritage and computed
+  // element names are evaluated. Once the constructor exists, initialize it
+  // before static fields and blocks run.
+  if name != "" {
+    env.initialize(name, class_obj)
+  }
   // Method closures share these mutable environments, so binding the completed
   // home objects here makes GetSuperBase observe their live [[Prototype]] values
   // on every evaluation, including after Object.setPrototypeOf.
@@ -683,17 +689,10 @@ fn Interpreter::create_class(
     }
     _ => ()
   }
-  // Evaluate static field initializers (run once at class definition time)
-  // Per ES2022 spec, static fields are initialized after the class object is created.
-  // We also bind the class name here so self-referential initializers like
-  // `class C { static self = C }` can resolve C during evaluation.
-  let static_init_base : Environment = if name != "" {
-    let e = Environment::new(parent=Some(static_method_env))
-    e.def_builtin(name, class_obj)
-    e
-  } else {
-    static_method_env
-  }
+  // Evaluate static field initializers (run once at class definition time).
+  // `static_method_env` reaches the now-initialized immutable class-name
+  // binding, so self-reference does not need a mutable shadow binding.
+  let static_init_base = static_method_env
   // Class bodies are strict, but field initializers are not generator bodies.
   let static_field_ctx : ExecContext = { strict: true, current_generator: None }
   for sf in static_fields {

@@ -202,6 +202,11 @@ fn collect_block_lexical_decl_names_from_stmt(
         include_block_functions~,
         allow_duplicate_block_functions~,
       )
+    ExportDefaultDecl(expr, _) =>
+      match module_default_export_binding(expr) {
+        LocalDefaultBinding(name) => add_lexical_decl_name(lexical_names, name)
+        SyntheticDefaultBinding => ()
+      }
     _ => ()
   }
 }
@@ -2305,6 +2310,15 @@ fn hoist_block_tdz(
         let inner_stmts : Array[@ast.Stmt] = [decl]
         hoist_block_tdz(inner_stmts, env)
       }
+      // A named default class contributes a module-local lexical binding.
+      ExportDefaultDecl(expr, _) =>
+        match (module_default_export_binding(expr), expr) {
+          (LocalDefaultBinding(name), ClassExpr(_, _, _, _, _)) =>
+            if !env.bindings.contains(name) {
+              env.def_tdz(name, LetBinding)
+            }
+          _ => ()
+        }
       _ => ()
     }
   }

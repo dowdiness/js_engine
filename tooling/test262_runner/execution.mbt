@@ -239,7 +239,13 @@ async fn run_single_test(
   }
   let is_annex_b = test_path.contains("annexB")
   let cmd = append_engine_flags(
-    engine_cmd, test_path, source, is_module, is_annex_b,
+    engine_cmd,
+    test_path,
+    source,
+    is_module,
+    is_annex_b,
+    test262_dir~,
+    harness_options~,
   ) catch {
     err =>
       return TestResult(path=test_path, status="error", reason="\{err}", mode~)

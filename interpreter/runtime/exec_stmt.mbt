@@ -1675,8 +1675,10 @@ fn Interpreter::exec_stmt(
         other => other
       }
     ClassDecl(name, superclass, methods, _, source_text) => {
+      let class_env = Environment::new(parent=Some(env))
+      class_env.def_tdz(name, ConstBinding)
       let class_val = self.create_class(
-        ctx, name, superclass, methods, env, source_text,
+        ctx, name, superclass, methods, class_env, source_text,
       )
       // Class was hoisted with TDZ, initialize it now
       if env.bindings.contains(name) {
@@ -1702,34 +1704,24 @@ fn Interpreter::exec_stmt(
       if is_anonymous_function_definition(expr) {
         set_function_name(value, "default")
       }
-      self.module_exports["default"] = value
-      // Named default exports also bind the name locally
-      match expr {
-        FuncExpr(Some(name), _, _, _, _)
-        | FuncExprExt(Some(name), _, _, _, _, _) =>
-          if !env.bindings.contains(name) {
-            env.def(name, value, LetBinding)
+      // Named declarations were predeclared as live cells backed by their
+      // local binding. Preserve that cell and initialize only the local name;
+      // synthetic defaults own their value directly in the exports map.
+      match module_default_export_binding(expr) {
+        LocalDefaultBinding(name) =>
+          match expr {
+            ClassExpr(_, _, _, _, _) =>
+              if env.bindings.contains(name) {
+                env.initialize(name, value)
+              } else {
+                env.def(name, value, LetBinding)
+              }
+            _ =>
+              if !env.bindings.contains(name) {
+                env.def(name, value, LetBinding)
+              }
           }
-        GeneratorExpr(Some(name), _, _, _, _)
-        | GeneratorExprExt(Some(name), _, _, _, _, _) =>
-          if !env.bindings.contains(name) {
-            env.def(name, value, LetBinding)
-          }
-        AsyncFuncExpr(Some(name), _, _, _, _)
-        | AsyncFuncExprExt(Some(name), _, _, _, _, _) =>
-          if !env.bindings.contains(name) {
-            env.def(name, value, LetBinding)
-          }
-        AsyncGeneratorExpr(Some(name), _, _, _, _)
-        | AsyncGeneratorExprExt(Some(name), _, _, _, _, _) =>
-          if !env.bindings.contains(name) {
-            env.def(name, value, LetBinding)
-          }
-        ClassExpr(Some(name), _, _, _, _) =>
-          if !env.bindings.contains(name) {
-            env.def(name, value, LetBinding)
-          }
-        _ => ()
+        SyntheticDefaultBinding => self.module_exports["default"] = value
       }
       Normal(Undefined)
     }
