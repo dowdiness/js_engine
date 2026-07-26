@@ -574,6 +574,38 @@ test "harness helpers and module fixture resolution are shadow-compatible" {
     ("./from_FIXTURE.js", "import './nested_FIXTURE.js';\n"),
     ("./import_FIXTURE.js", "export const value = 1;\n"),
   ])
+
+  let sibling_main = @path_utils.join_path(test_dir, "sibling-main.js")
+  let sibling = @path_utils.join_path(test_dir, "sibling.js")
+  let raw_sibling = @path_utils.join_path(test_dir, "raw-sibling.js")
+  let dependency_helper = @path_utils.join_path(
+    harness_dir, "dependencyOnly.js",
+  )
+  let sibling_source = "/*---\nflags: [module, async]\nincludes: [dependencyOnly.js]\n---*/\nimport './sibling.js';\nassert.sameValue(typeof foo, 'object');\n"
+  let raw_sibling_source = "/*---\nflags: [module, raw]\n---*/\nexport const raw = true;\n"
+  write_text(dependency_helper, "// dependency-only harness\n")
+  write_text(
+    sibling_main, "import './sibling.js';\nimport './raw-sibling.js';\n",
+  )
+  write_text(sibling, sibling_source)
+  write_text(raw_sibling, raw_sibling_source)
+  let sibling_harness = load_harness(
+    root,
+    ["dependencyOnly.js"],
+    false,
+    is_async=true,
+  )
+  json_inspect(
+    resolve_fixtures(
+      sibling_main,
+      @fs.read_file_to_string(sibling_main),
+      test262_dir=root,
+    ),
+    content=[
+      ("./sibling.js", sibling_harness + "\n" + sibling_source),
+      ("./raw-sibling.js", raw_sibling_source),
+    ],
+  )
 }
 
 ///|

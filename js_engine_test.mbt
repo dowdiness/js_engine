@@ -1134,6 +1134,27 @@ test "ES module: ambiguous export star makes named import throw" {
 }
 
 ///|
+test "ES module: equal-valued distinct star bindings remain ambiguous" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 1;"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x);"),
+  ]
+  let result = try {
+    let _ = @js_engine.run_modules(modules)
+    "no error thrown"
+  } catch {
+    e => e.to_string()
+  }
+  expect_bool(
+    result.contains("does not export 'x'"),
+    true,
+    "equal-valued ambiguous star named import error",
+  )
+}
+
+///|
 test "ES module: duplicate stars to same binding are unambiguous" {
   let modules : Array[(String, String)] = [
     ("./base", "export const x = 1;"),
@@ -1144,6 +1165,45 @@ test "ES module: duplicate stars to same binding are unambiguous" {
   ]
   let (output, _) = @js_engine.run_modules(modules)
   json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: imported local re-export propagates binding identity through stars" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export const foo = 2;"),
+    ("./via-export", "export { foo } from './base';"),
+    ("./via-import", "import { foo } from './base'; export { foo };"),
+    ("./barrel", "export * from './via-export'; export * from './via-import';"),
+    ("./main", "import { foo } from './barrel'; console.log(foo);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["2"])
+}
+
+///|
+test "ES module: namespace import re-export remains unambiguous through stars" {
+  let modules : Array[(String, String)] = [
+    ("./empty", ""),
+    ("./a", "import * as foo from './empty'; export { foo };"),
+    ("./b", "import * as foo from './empty'; export { foo };"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { foo } from './barrel'; console.log(typeof foo);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["object"])
+}
+
+///|
+test "ES module: export-star-as and namespace import re-export share identity" {
+  let modules : Array[(String, String)] = [
+    ("./empty", ""),
+    ("./via-export", "export * as foo from './empty';"),
+    ("./via-import", "import * as foo from './empty'; export { foo };"),
+    ("./barrel", "export * from './via-export'; export * from './via-import';"),
+    ("./main", "import { foo } from './barrel'; console.log(typeof foo);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["object"])
 }
 
 ///|
