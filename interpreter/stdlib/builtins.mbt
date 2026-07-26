@@ -18,6 +18,26 @@ pub fn setup_builtins(
 const REALM_STAMP_VISITED_SYMBOL_ID = -111
 
 ///|
+fn builtin_constructor_prototype(
+  interp : Interpreter,
+  context : @runtime.CallContext,
+  default_prototype : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match context.new_target() {
+    Some(new_target) => {
+      let prototype = interp.get_property(new_target, "prototype", loc)
+      if @runtime.is_object_value(prototype) {
+        prototype
+      } else {
+        default_prototype
+      }
+    }
+    None => default_prototype
+  }
+}
+
+///|
 fn stamp_realm_reachable_value(
   value : Value,
   realm_state : @runtime.RealmState,
@@ -728,6 +748,12 @@ fn setup_builtins_with_realm_state_active(
         }
         if context.is_constructing() {
           // new String(value) → boxed String object
+          let instance_proto = builtin_constructor_prototype(
+            interp,
+            context,
+            string_proto,
+            @token.Loc::default(),
+          )
           let props : Map[String, Value] = Map([])
           props["length"] = Value::Number(str.length().to_double())
           // Add indexed character properties
@@ -766,7 +792,7 @@ fn setup_builtins_with_realm_state_active(
               ]),
               host_slots: Map([]),
             },
-            prototype: string_proto,
+            prototype: instance_proto,
             callable: None,
             class_name: "String",
             extensible: true,
@@ -906,11 +932,22 @@ fn setup_builtins_with_realm_state_active(
     },
     prototype: Null,
     callable: Some(
-      NativeCallableWithContext("Boolean", fn(context, args) {
+      InterpreterCallableWithContext("Boolean", fn(
+        interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
         let val = if args.length() > 0 { args[0] } else { Undefined }
         let b = @runtime.is_truthy(val)
         if context.is_constructing() {
           // new Boolean(value) → boxed Boolean object
+          let instance_proto = builtin_constructor_prototype(
+            interp,
+            context,
+            boolean_proto,
+            @token.Loc::default(),
+          )
           Value::Object({
             bag: {
               properties: Map([]),
@@ -922,7 +959,7 @@ fn setup_builtins_with_realm_state_active(
               ]),
               host_slots: Map([]),
             },
-            prototype: boolean_proto,
+            prototype: instance_proto,
             callable: None,
             class_name: "Boolean",
             extensible: true,

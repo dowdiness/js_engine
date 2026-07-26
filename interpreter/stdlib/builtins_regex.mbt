@@ -3013,9 +3013,18 @@ fn regexp_constructor_call(
   } else {
     flags_arg
   }
+  let default_proto = match realm_state.regexp_prototype.val {
+    Some(prototype) => prototype
+    None => Null
+  }
+  let instance_proto = if context.is_constructing() {
+    builtin_constructor_prototype(interp, context, default_proto, loc)
+  } else {
+    default_proto
+  }
   let pattern = regexp_constructor_string(interp, pattern_source)
   let flags = regexp_constructor_string(interp, flags_value)
-  make_regexp_object_with_realm_state(pattern, flags, realm_state)
+  make_regexp_object_with_proto(pattern, flags, instance_proto)
 }
 
 ///|

@@ -7439,6 +7439,339 @@ test "super call uses Proxy construct semantics" {
 }
 
 ///|
+test "default derived constructor adopts Proxy Construct completion" {
+  let output = run_output(
+    (
+      #|let fieldRuns = 0;
+      #|let log = [];
+      #|let expectedNewTarget;
+      #|let returned = { marker: "trap" };
+      #|function Base() {}
+      #|let proxy = new Proxy(Base, {
+      #|  construct(target, args, newTarget) {
+      #|    log.push(args.join(","), newTarget === expectedNewTarget);
+      #|    if (args[0] === "throw") throw new Error("default trap abrupt");
+      #|    if (args[0] === "primitive") return 1;
+      #|    return returned;
+      #|  }
+      #|});
+      #|class Success extends proxy {
+      #|  field = (fieldRuns++, "field");
+      #|}
+      #|expectedNewTarget = Success;
+      #|let result = new Success("ok", "tail");
+      #|console.log(
+      #|  result === returned,
+      #|  result.field,
+      #|  Object.getPrototypeOf(result) === Object.prototype,
+      #|  result instanceof Success
+      #|);
+      #|class Throwing extends proxy {
+      #|  field = (fieldRuns++, "throw-field");
+      #|}
+      #|expectedNewTarget = Throwing;
+      #|try { new Throwing("throw"); }
+      #|catch (e) { console.log(e.message); }
+      #|class Primitive extends proxy {
+      #|  field = (fieldRuns++, "primitive-field");
+      #|}
+      #|expectedNewTarget = Primitive;
+      #|try { new Primitive("primitive"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|let revocable = Proxy.revocable(Base, {});
+      #|class Revoked extends revocable.proxy {
+      #|  field = (fieldRuns++, "revoked-field");
+      #|}
+      #|revocable.revoke();
+      #|try { new Revoked(); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|console.log(fieldRuns);
+      #|console.log(log.join("|"));
+    ),
+  )
+  json_inspect(output, content=[
+    "true field true false", "default trap abrupt", "true", "true", "1", "ok,tail|true|throw|true|primitive|true",
+  ])
+}
+
+///|
+test "Proxy no-trap Construct preserves derived newTarget prototypes" {
+  let output = run_output(
+    (
+      #|let baseCalls = 0;
+      #|class Base {
+      #|  constructor(value) {
+      #|    baseCalls++;
+      #|    this.value = value;
+      #|  }
+      #|}
+      #|let BaseProxy = new Proxy(Base, {});
+      #|class ExplicitObject extends BaseProxy {
+      #|  field = "explicit-object";
+      #|  constructor(value) { super(value); }
+      #|}
+      #|class DefaultObject extends BaseProxy {
+      #|  field = "default-object";
+      #|}
+      #|let explicitObject = new ExplicitObject(1);
+      #|let defaultObject = new DefaultObject(2);
+      #|console.log(
+      #|  Object.getPrototypeOf(explicitObject) === ExplicitObject.prototype,
+      #|  explicitObject instanceof ExplicitObject,
+      #|  explicitObject instanceof Base,
+      #|  explicitObject.value,
+      #|  explicitObject.field
+      #|);
+      #|console.log(
+      #|  Object.getPrototypeOf(defaultObject) === DefaultObject.prototype,
+      #|  defaultObject instanceof DefaultObject,
+      #|  defaultObject instanceof Base,
+      #|  defaultObject.value,
+      #|  defaultObject.field
+      #|);
+      #|let ArrayProxy = new Proxy(Array, {});
+      #|class ExplicitArray extends ArrayProxy {
+      #|  field = "explicit-array";
+      #|  constructor(first, second) { super(first, second); }
+      #|}
+      #|class DefaultArray extends ArrayProxy {
+      #|  field = "default-array";
+      #|}
+      #|let explicitArray = new ExplicitArray(3, 4);
+      #|let defaultArray = new DefaultArray(5, 6);
+      #|console.log(
+      #|  Array.isArray(explicitArray),
+      #|  Object.getPrototypeOf(explicitArray) === ExplicitArray.prototype,
+      #|  explicitArray instanceof ExplicitArray,
+      #|  explicitArray.join(","),
+      #|  explicitArray.field
+      #|);
+      #|console.log(
+      #|  Array.isArray(defaultArray),
+      #|  Object.getPrototypeOf(defaultArray) === DefaultArray.prototype,
+      #|  defaultArray instanceof DefaultArray,
+      #|  defaultArray.join(","),
+      #|  defaultArray.field
+      #|);
+      #|console.log(baseCalls);
+    ),
+  )
+  json_inspect(output, content=[
+    "true true true 1 explicit-object", "true true true 2 default-object", "true true true 3,4 explicit-array",
+    "true true true 5,6 default-array", "2",
+  ])
+}
+
+///|
+test "Proxy no-trap Array gets newTarget prototype before length validation" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let ArrayProxy = new Proxy(Array, {});
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() {
+      #|    log.push("prototype");
+      #|    throw new Error("prototype abrupt");
+      #|  }
+      #|});
+      #|try { Reflect.construct(ArrayProxy, [-1], newTarget); }
+      #|catch (e) { log.push(e.message); }
+      #|console.log(log.join("|"));
+    ),
+  )
+  json_inspect(output, content=["prototype|prototype abrupt"])
+}
+
+///|
+test "Proxy no-trap context constructor reads newTarget prototype once" {
+  let output = run_output(
+    (
+      #|let calls = 0;
+      #|let proto = {};
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() {
+      #|    calls++;
+      #|    return proto;
+      #|  }
+      #|});
+      #|let ArrayBufferProxy = new Proxy(ArrayBuffer, {});
+      #|let result = Reflect.construct(ArrayBufferProxy, [8], newTarget);
+      #|console.log(
+      #|  calls,
+      #|  Object.getPrototypeOf(result) === proto
+      #|);
+    ),
+  )
+  json_inspect(output, content=["1 true"])
+}
+
+///|
+test "Proxy no-trap derived class observes newTarget prototype at base allocation" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|class Base {}
+      #|class Derived extends Base {
+      #|  constructor(value = (log.push("parameter"), 0)) {
+      #|    log.push("body");
+      #|    super();
+      #|  }
+      #|}
+      #|let DerivedProxy = new Proxy(Derived, {});
+      #|let prototype = {};
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() {
+      #|    log.push("prototype");
+      #|    return prototype;
+      #|  }
+      #|});
+      #|let result = Reflect.construct(DerivedProxy, [], newTarget);
+      #|console.log(log.join("|"));
+      #|console.log(Object.getPrototypeOf(result) === prototype);
+    ),
+  )
+  json_inspect(output, content=["parameter|body|prototype", "true"])
+}
+
+///|
+test "Proxy no-trap context constructors honor derived newTarget prototypes" {
+  let output = run_output(
+    (
+      #|let MapProxy = new Proxy(Map, {});
+      #|let SetProxy = new Proxy(Set, {});
+      #|let StringProxy = new Proxy(String, {});
+      #|let NumberProxy = new Proxy(Number, {});
+      #|let BooleanProxy = new Proxy(Boolean, {});
+      #|let DateProxy = new Proxy(Date, {});
+      #|let RegExpProxy = new Proxy(RegExp, {});
+      #|let ErrorProxy = new Proxy(Error, {});
+      #|let ObjectProxy = new Proxy(Object, {});
+      #|let FunctionProxy = new Proxy(Function, {});
+      #|class DerivedMap extends MapProxy {}
+      #|class DerivedSet extends SetProxy {}
+      #|class DerivedString extends StringProxy {}
+      #|class DerivedNumber extends NumberProxy {}
+      #|class DerivedBoolean extends BooleanProxy {}
+      #|class DerivedDate extends DateProxy {}
+      #|class DerivedRegExp extends RegExpProxy {}
+      #|class DerivedError extends ErrorProxy {}
+      #|class DerivedObject extends ObjectProxy {}
+      #|class DerivedFunction extends FunctionProxy {}
+      #|let input = {};
+      #|let derivedObject = new DerivedObject(input);
+      #|let derivedFunction = new DerivedFunction("return 7");
+      #|console.log(
+      #|  Object.getPrototypeOf(new DerivedMap()) === DerivedMap.prototype,
+      #|  Object.getPrototypeOf(new DerivedSet()) === DerivedSet.prototype,
+      #|  Object.getPrototypeOf(new DerivedString("x")) === DerivedString.prototype,
+      #|  Object.getPrototypeOf(new DerivedNumber(1)) === DerivedNumber.prototype,
+      #|  Object.getPrototypeOf(new DerivedBoolean(true)) === DerivedBoolean.prototype,
+      #|  Object.getPrototypeOf(new DerivedDate(0)) === DerivedDate.prototype,
+      #|  Object.getPrototypeOf(new DerivedRegExp("x")) === DerivedRegExp.prototype,
+      #|  Object.getPrototypeOf(new DerivedError("x")) === DerivedError.prototype,
+      #|  Object.getPrototypeOf(derivedObject) === DerivedObject.prototype,
+      #|  derivedObject !== input,
+      #|  Object.getPrototypeOf(derivedFunction) === DerivedFunction.prototype,
+      #|  derivedFunction()
+      #|);
+      #|let OriginalObject = Object;
+      #|let ordinaryInput = {};
+      #|Object = function Replacement() {};
+      #|console.log(new OriginalObject(ordinaryInput) === ordinaryInput);
+    ),
+  )
+  json_inspect(output, content=[
+    "true true true true true true true true true true true 7", "true",
+  ])
+}
+
+///|
+test "Proxy no-trap constructor prototype getter ordering matrix" {
+  let output = run_output(
+    (
+      #|function probe(ctor, makeArgument) {
+      #|  let log = [];
+      #|  let argument = makeArgument(log);
+      #|  let newTarget = function() {}.bind(null);
+      #|  Object.defineProperty(newTarget, "prototype", {
+      #|    get() {
+      #|      log.push("prototype");
+      #|      throw new Error("stop");
+      #|    }
+      #|  });
+      #|  let nested = new Proxy(new Proxy(ctor, {}), {});
+      #|  try { Reflect.construct(nested, [argument], newTarget); }
+      #|  catch (e) { log.push(e.message); }
+      #|  return log.join("|");
+      #|}
+      #|let convertsWithToString = log => ({
+      #|  toString() { log.push("convert"); return "1"; }
+      #|});
+      #|let convertsWithValueOf = log => ({
+      #|  valueOf() { log.push("convert"); return 1; }
+      #|});
+      #|let iterable = log => {
+      #|  let value = {};
+      #|  Object.defineProperty(value, Symbol.iterator, {
+      #|    get() { log.push("iterate"); return function() {}; }
+      #|  });
+      #|  return value;
+      #|};
+      #|console.log(probe(Error, convertsWithToString));
+      #|console.log(probe(Number, convertsWithValueOf));
+      #|console.log(probe(RegExp, convertsWithToString));
+      #|console.log(probe(Date, convertsWithValueOf));
+      #|console.log(probe(Map, iterable));
+      #|console.log(probe(Set, iterable));
+    ),
+  )
+  json_inspect(output, content=[
+    "prototype|stop", "convert|prototype|stop", "prototype|stop", "convert|prototype|stop",
+    "prototype|stop", "prototype|stop",
+  ])
+}
+
+///|
+test "Proxy no-trap constructors handle revocation and primitive prototype fallback" {
+  let output = run_output(
+    (
+      #|function fallback(ctor, args, intrinsicPrototype) {
+      #|  let calls = 0;
+      #|  let newTarget = function() {}.bind(null);
+      #|  Object.defineProperty(newTarget, "prototype", {
+      #|    get() { calls++; return 1; }
+      #|  });
+      #|  let nested = new Proxy(new Proxy(ctor, {}), {});
+      #|  let result = Reflect.construct(nested, args, newTarget);
+      #|  return calls === 1 &&
+      #|    Object.getPrototypeOf(result) === intrinsicPrototype;
+      #|}
+      #|console.log(
+      #|  fallback(Error, ["x"], Error.prototype),
+      #|  fallback(Number, [1], Number.prototype),
+      #|  fallback(RegExp, ["x"], RegExp.prototype),
+      #|  fallback(Date, [0], Date.prototype),
+      #|  fallback(Map, [], Map.prototype),
+      #|  fallback(Set, [], Set.prototype)
+      #|);
+      #|let getterCalls = 0;
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() { getterCalls++; return {}; }
+      #|});
+      #|let revocable = Proxy.revocable(new Proxy(Number, {}), {});
+      #|revocable.revoke();
+      #|try { Reflect.construct(revocable.proxy, [1], newTarget); }
+      #|catch (e) { console.log(e instanceof TypeError, getterCalls); }
+    ),
+  )
+  json_inspect(output, content=["true true true true true true", "true 0"])
+}
+
+///|
 test "super computed update preserves reference evaluation order" {
   let output = run_output(
     (

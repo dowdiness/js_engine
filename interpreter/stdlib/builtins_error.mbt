@@ -119,7 +119,20 @@ fn register_error_ctor(
       },
       prototype: ctor_proto,
       callable: Some(
-        NativeCallable(name, fn(args) {
+        InterpreterCallableWithContext(name, fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
+          // Error allocates before message/options processing, so an abrupt
+          // newTarget.prototype getter must prevent those conversions.
+          let instance_proto = builtin_constructor_prototype(
+            interp,
+            context,
+            proto_obj,
+            @token.Loc::default(),
+          )
           let has_message = args.length() > 0 && !(args[0] is Undefined)
           let message = if has_message {
             match args[0] {
@@ -166,7 +179,7 @@ fn register_error_ctor(
               internal_slots: Map([]),
               host_slots: Map([]),
             },
-            prototype: proto_obj,
+            prototype: instance_proto,
             callable: None,
             class_name: name,
             extensible: true,
@@ -304,7 +317,18 @@ fn register_aggregate_error_ctor(
       },
       prototype: ctor_proto,
       callable: Some(
-        NativeCallable(name, fn(args) {
+        InterpreterCallableWithContext(name, fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
+          let instance_proto = builtin_constructor_prototype(
+            interp,
+            context,
+            proto_obj,
+            @token.Loc::default(),
+          )
           let errors_value : Value = if args.length() > 0 {
             args[0]
           } else {
@@ -359,7 +383,7 @@ fn register_aggregate_error_ctor(
               internal_slots: Map([]),
               host_slots: Map([]),
             },
-            prototype: proto_obj,
+            prototype: instance_proto,
             callable: None,
             class_name: name,
             extensible: true,

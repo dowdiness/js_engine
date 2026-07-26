@@ -1516,6 +1516,25 @@ pub fn make_array(elements : Array[Value]) -> Value {
 }
 
 ///|
+/// Wrap an Array[Value] with an explicit instance prototype.
+/// Constructor adapters use this after resolving newTarget.prototype and
+/// before exposing the newly allocated Array value.
+pub fn make_array_with_prototype(
+  elements : Array[Value],
+  prototype : Value,
+) -> Value {
+  let data : ArrayData = {
+    elements,
+    bag: PropertyBag(),
+    length_writable: true,
+    holes: Map([]),
+    extensible: true,
+  }
+  set_array_prototype_override(data, prototype)
+  Array(data)
+}
+
+///|
 /// Wrap an Array[Value] and mark selected indices as array holes.
 pub fn make_array_with_holes(
   elements : Array[Value],

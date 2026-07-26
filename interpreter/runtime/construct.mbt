@@ -48,32 +48,6 @@ fn apply_class_constructor_return(
 }
 
 ///|
-/// For subclass construction, align a built-in/special constructor return value
-/// with the derived class instance prototype when `new.target` points to a
-/// subclass constructor (Array/Map/Set/Promise).
-fn set_derived_instance_prototype(
-  super_result : Value,
-  pending_this : Value,
-) -> Unit {
-  let target_proto : Value? = match pending_this {
-    Object(data) => Some(data.prototype)
-    _ => None
-  }
-  match target_proto {
-    Some(proto) =>
-      match super_result {
-        Object(data) => data.prototype = proto
-        Array(data) => set_array_prototype_override(data, proto)
-        Map(data) => data.prototype = Some(proto)
-        Set(data) => data.prototype = Some(proto)
-        Promise(data) => data.prototype = Some(proto)
-        _ => ()
-      }
-    None => ()
-  }
-}
-
-///|
 /// Install instance field initializers onto `this_arg`.
 /// Used for base-class construction (before constructor body) and for
 /// derived-class implicit constructors (after super() returns).
@@ -1278,7 +1252,25 @@ fn Interpreter::construct_value_impl(
           // Create the new instance with the class prototype
           let result = {
             // Create the new instance with the class prototype
-            let new_obj = make_constructor_instance(proto, class_name)
+            // Base constructors allocate their receiver here, so this is the
+            // point where OrdinaryCreateFromConstructor observes newTarget.
+            // Derived constructors allocate only when super() reaches a base
+            // constructor; their local object is an unobservable fallback used
+            // by the evaluator and must not read newTarget.prototype early.
+            let instance_proto = match super_ctor {
+              Some(_) => proto
+              None =>
+                match proto_override {
+                  Some(value) => value
+                  None =>
+                    if physical_equal(new_target, ctor) {
+                      proto
+                    } else {
+                      self.get_prototype_from_constructor(new_target, loc)
+                    }
+                }
+            }
+            let new_obj = make_constructor_instance(instance_proto, class_name)
             // Set up the constructor environment
             let ctor_env = Environment::new(parent=Some(closure))
             ctor_env.is_var_scope = true
@@ -1355,7 +1347,11 @@ fn Interpreter::construct_value_impl(
                 }
               }
               None => {
-                // No explicit constructor - if there's a super class, call super()
+                // The default derived constructor is specified as
+                // `constructor(...args) { super(...args); }`. Re-enter the
+                // canonical [[Construct]] path so Proxy traps, forwarded
+                // newTarget, nested derived classes, and abrupt completions all
+                // share exactly the same behavior as an explicit super() call.
                 match super_ctor {
                   Some(_) => {
                     let sc = obj_data.prototype
@@ -1364,172 +1360,19 @@ fn Interpreter::construct_value_impl(
                         message="super constructor is not a constructor",
                       )
                     }
-                    match sc {
-                      Object(super_data) =>
-                        match super_data.callable {
-                          Some(
-                            ClassConstructor(
-                              {
-                                super_ctor: grand_super,
-                                instance_fields: super_instance_fields,
-                                private_instance_fields: super_private_fields,
-                                private_brand: super_brand,
-                                ctor_fn: ctor,
-                                closure: senv,
-                                super_proto: sproto,
-                                ..,
-                              }
-                            )
-                          ) => {
-                            let super_env = Environment::new(parent=Some(senv))
-                            super_env.def_builtin("this", new_obj)
-                            super_env.def(
-                              "<new.target>",
-                              new_target,
-                              LetBinding,
-                            )
-                            match grand_super {
-                              Some(_) => {
-                                super_env.def_builtin(
-                                  "[[ActiveClassFunction]]", sc,
-                                )
-                                super_env.def_builtin(
-                                  "[[SuperPrototype]]", sproto,
-                                )
-                                // B is derived: defer B's fields to after B's own super()
-                                if super_instance_fields.length() > 0 ||
-                                  super_private_fields.length() > 0 {
-                                  super_env.def_builtin(
-                                    "[[InitInstanceFields]]",
-                                    make_instance_fields_init(
-                                      super_instance_fields,
-                                      super_private_fields,
-                                      Some(super_brand),
-                                      self.realm_state,
-                                    ),
-                                  )
-                                }
-                              }
-                              None => {
-                                // B is a base class: initialize B's fields before its body
-                                self.install_instance_fields(
-                                  new_obj, super_instance_fields,
-                                )
-                                self.install_private_fields(
-                                  new_obj, super_private_fields, super_brand,
-                                )
-                              }
-                            }
-                            match ctor {
-                              Some((params, rest_param, body)) => {
-                                let exec_result = self.bind_class_ctor_params_and_exec_body_signal(
-                                  params, rest_param, body, sc, args, super_env,
-                                  class_ctx,
-                                )
-                                match exec_result {
-                                  ReturnSignal(v) =>
-                                    if is_object_like_for_constructor_return(v) {
-                                      self.install_instance_fields(
-                                        v, instance_fields,
-                                      )
-                                      self.install_private_fields(
-                                        v, private_instance_fields, private_brand,
-                                      )
-                                      return v
-                                    }
-                                  _ => ()
-                                }
-                              }
-                              None => ()
-                            }
-                          }
-                          Some(UserFunc(_))
-                          | Some(UserFuncExt(_))
-                          | Some(BoundFunc(_, _, _)) => {
-                            let super_result = self.construct_value(
-                              sc,
-                              args,
-                              @token.Loc::default(),
-                              new_target=Some(new_target),
-                            )
-                            if is_object_like_for_constructor_return(
-                                super_result,
-                              ) {
-                              self.install_instance_fields(
-                                super_result, instance_fields,
-                              )
-                              self.install_private_fields(
-                                super_result, private_instance_fields, private_brand,
-                              )
-                              return super_result
-                            }
-                          }
-                          Some(ConstructorOnlyCallable(_, super_func)) => {
-                            let super_result = super_func(self, args)
-                            if is_object_like_for_constructor_return(
-                                super_result,
-                              ) {
-                              set_derived_instance_prototype(
-                                super_result, new_obj,
-                              )
-                              self.install_instance_fields(
-                                super_result, instance_fields,
-                              )
-                              self.install_private_fields(
-                                super_result, private_instance_fields, private_brand,
-                              )
-                              return super_result
-                            }
-                          }
-                          Some(NativeCallable(_, _))
-                          | Some(NativeCallableWithContext(_, _))
-                          | Some(InterpreterCallable(_, _))
-                          | Some(InterpreterCallableWithContext(_, _)) => {
-                            // Built-in constructors like Error, Map, Set, etc.
-                            let super_result = self.construct_value(
-                              sc,
-                              args,
-                              @token.Loc::default(),
-                              new_target=Some(new_target),
-                            )
-                            if is_object_like_for_constructor_return(
-                                super_result,
-                              ) {
-                              set_derived_instance_prototype(
-                                super_result, new_obj,
-                              )
-                              self.install_instance_fields(
-                                super_result, instance_fields,
-                              )
-                              self.install_private_fields(
-                                super_result, private_instance_fields, private_brand,
-                              )
-                              return super_result
-                            }
-                          }
-                          _ => ()
-                        }
-                      _ => {
-                        // Non-Object super (e.g. `extends null`): attempt
-                        // Construct(sc, args) — construct_value throws TypeError
-                        // for non-constructors like null, matching spec behaviour.
-                        let _ = self.construct_value(
-                          sc,
-                          args,
-                          @token.Loc::default(),
-                          new_target=Some(new_target),
-                        )
-                      }
-                    }
+                    let super_result = self.construct_value(
+                      sc,
+                      args,
+                      @token.Loc::default(),
+                      new_target=Some(new_target),
+                    )
+                    self.install_instance_fields(super_result, instance_fields)
+                    self.install_private_fields(
+                      super_result, private_instance_fields, private_brand,
+                    )
+                    return super_result
                   }
                   None => ()
-                }
-                // Apply derived class instance fields after implicit super() call
-                if super_ctor is Some(_) {
-                  self.install_instance_fields(new_obj, instance_fields)
-                  self.install_private_fields(
-                    new_obj, private_instance_fields, private_brand,
-                  )
                 }
                 new_obj
               }

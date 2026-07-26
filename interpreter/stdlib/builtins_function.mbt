@@ -432,7 +432,12 @@ fn setup_function_builtins(
     },
     prototype: Null,
     callable: Some(
-      InterpreterCallable("Function", fn(interp, _this, args) raise {
+      InterpreterCallableWithContext("Function", fn(
+        interp,
+        context,
+        _this,
+        args,
+      ) raise {
         // §20.2.1.1.1 CreateDynamicFunction: coerce params first (step 5a), body second (step 6).
         // Order matters: a throwing body toString must not suppress param toString side-effects.
         let param_count = if args.length() == 0 { 0 } else { args.length() - 1 }
@@ -476,6 +481,12 @@ fn setup_function_builtins(
                 body,
               )
               interp.validate_block_early_errors(body, body_strict)
+              let instance_proto = builtin_constructor_prototype(
+                interp,
+                context,
+                func_proto,
+                @token.Loc::default(),
+              )
               let result = @runtime.stamp_function_realm(
                 Value::Object({
                   bag: {
@@ -497,7 +508,7 @@ fn setup_function_builtins(
                     internal_slots: Map([]),
                     host_slots: Map([]),
                   },
-                  prototype: func_proto,
+                  prototype: instance_proto,
                   callable: Some(
                     UserFunc({
                       name: Some("anonymous"),
@@ -533,6 +544,12 @@ fn setup_function_builtins(
                 params, rest_param, body,
               )
               interp.validate_block_early_errors(body, body_strict)
+              let instance_proto = builtin_constructor_prototype(
+                interp,
+                context,
+                func_proto,
+                @token.Loc::default(),
+              )
               let result = @runtime.stamp_function_realm(
                 Value::Object({
                   bag: {
@@ -554,7 +571,7 @@ fn setup_function_builtins(
                     internal_slots: Map([]),
                     host_slots: Map([]),
                   },
-                  prototype: func_proto,
+                  prototype: instance_proto,
                   callable: Some(
                     UserFuncExt({
                       name: Some("anonymous"),
@@ -582,6 +599,12 @@ fn setup_function_builtins(
         }
         // Fallback: empty function (defensive — synthesized source always parses)
         let fb_proto = make_function_prototype(realm_state)
+        let instance_proto = builtin_constructor_prototype(
+          interp,
+          context,
+          func_proto,
+          @token.Loc::default(),
+        )
         let fb_result = @runtime.stamp_function_realm(
           Value::Object({
             bag: {
@@ -607,7 +630,7 @@ fn setup_function_builtins(
               internal_slots: Map([]),
               host_slots: Map([]),
             },
-            prototype: func_proto,
+            prototype: instance_proto,
             callable: Some(NativeCallable("anonymous", fn(_) { Undefined })),
             class_name: "Function",
             extensible: true,
