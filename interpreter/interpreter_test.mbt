@@ -18670,6 +18670,124 @@ test "Map and Set bracket access uses prototype accessors" {
 }
 
 ///|
+test "keyed collection zero: exact compat-table forEach probes" {
+  let src =
+    #|console.log((function () {
+    #|  var map = new Map();
+    #|  map.set(-0, "foo");
+    #|  var k;
+    #|  map.forEach(function (value, key) {
+    #|    k = 1 / key;
+    #|  });
+    #|  return k === Infinity && map.get(+0) === "foo";
+    #|})());
+    #|console.log((function () {
+    #|  var set = new Set();
+    #|  set.add(-0);
+    #|  var k;
+    #|  set.forEach(function (value) {
+    #|    k = 1 / value;
+    #|  });
+    #|  return k === Infinity && set.has(+0);
+    #|})());
+  let output = run_output(src)
+  json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "keyed collection zero: Map storage invariant matrix" {
+  let src =
+    #|var first = new Map();
+    #|first.set(-0, "first");
+    #|var firstKey = first.keys().next().value;
+    #|console.log(first.size + "|" + first.get(+0) + "|" + first.has(+0) + "|" + (1 / firstKey));
+    #|
+    #|var overwritten = new Map();
+    #|overwritten.set(+0, "zero");
+    #|overwritten.set("tail", "tail");
+    #|overwritten.set(-0, "updated");
+    #|var overwrittenKeys = Array.from(overwritten.keys());
+    #|var callbackKey;
+    #|overwritten.forEach(function(value, key) {
+    #|  if (value === "updated") callbackKey = key;
+    #|});
+    #|console.log(overwritten.size + "|" + overwritten.get(+0) + "|" + overwritten.has(-0) + "|" + (1 / overwrittenKeys[0]) + "|" + (1 / callbackKey) + "|" + overwrittenKeys[1]);
+    #|
+    #|overwritten.delete(+0);
+    #|overwritten.set(-0, "readded");
+    #|var readdedKeys = Array.from(overwritten.keys());
+    #|console.log(readdedKeys[0] + "|" + (1 / readdedKeys[1]) + "|" + overwritten.size);
+    #|
+    #|var constructed = new Map([[-0, "constructed"]]);
+    #|console.log((1 / constructed.keys().next().value) + "|" + constructed.get(+0));
+    #|
+    #|var inserted = new Map();
+    #|var insertedFirst = inserted.getOrInsert(-0, "inserted");
+    #|var insertedAgain = inserted.getOrInsert(+0, "ignored");
+    #|console.log(insertedFirst + "|" + insertedAgain + "|" + inserted.size + "|" + (1 / inserted.keys().next().value));
+    #|
+    #|var computed = new Map();
+    #|var computedKey;
+    #|var computedCalls = 0;
+    #|var computedFirst = computed.getOrInsertComputed(-0, function(key) {
+    #|  computedCalls++;
+    #|  computedKey = key;
+    #|  return "computed";
+    #|});
+    #|var computedAgain = computed.getOrInsertComputed(+0, function() {
+    #|  computedCalls++;
+    #|  return "ignored";
+    #|});
+    #|console.log(computedFirst + "|" + computedAgain + "|" + computedCalls + "|" + (1 / computedKey) + "|" + (1 / computed.keys().next().value));
+    #|
+    #|var objectKey = {};
+    #|var controls = new Map();
+    #|controls.set(-2, "nonzero");
+    #|controls.set(NaN, "nan");
+    #|controls.set(objectKey, "object");
+    #|var controlKeys = Array.from(controls.keys());
+    #|console.log((1 / controlKeys[0]) + "|" + (controlKeys[1] !== controlKeys[1]) + "|" + (controlKeys[2] === objectKey) + "|" + controls.has({}) + "|" + controls.size);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "1|first|true|Infinity", "2|updated|true|Infinity|Infinity|tail", "tail|Infinity|2",
+    "Infinity|constructed", "inserted|inserted|1|Infinity", "computed|computed|1|Infinity|Infinity",
+    "-0.5|true|true|false|3",
+  ])
+}
+
+///|
+test "keyed collection zero: Set storage invariant matrix" {
+  let src =
+    #|var set = new Set();
+    #|set.add(-0);
+    #|set.add(2);
+    #|set.add(+0);
+    #|var firstValue = set.values().next().value;
+    #|var callbackValue;
+    #|set.forEach(function(value) {
+    #|  if (value === 0) callbackValue = value;
+    #|});
+    #|console.log(set.size + "|" + set.has(+0) + "|" + (1 / firstValue) + "|" + (1 / callbackValue));
+    #|
+    #|set.delete(+0);
+    #|set.add(-0);
+    #|var readdedValues = Array.from(set.values());
+    #|console.log(readdedValues[0] + "|" + (1 / readdedValues[1]) + "|" + set.size);
+    #|
+    #|var constructed = new Set([-0]);
+    #|console.log((1 / constructed.values().next().value) + "|" + constructed.has(+0));
+    #|
+    #|var objectValue = {};
+    #|var controls = new Set([-2, NaN, objectValue]);
+    #|var controlValues = Array.from(controls.values());
+    #|console.log((1 / controlValues[0]) + "|" + (controlValues[1] !== controlValues[1]) + "|" + (controlValues[2] === objectValue) + "|" + controls.has({}) + "|" + controls.size);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "2|true|Infinity|Infinity", "2|Infinity|2", "Infinity|true", "-0.5|true|true|false|3",
+  ])
+}
+
+///|
 test "Map.prototype.forEach validates callback and visits readded keys" {
   let src =
     #|try {

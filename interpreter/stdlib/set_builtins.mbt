@@ -124,7 +124,8 @@ fn setup_set_builtins(
   ) raise {
     match this_val {
       Value::Set(data) => {
-        let value = if args.length() > 0 { args[0] } else { Undefined }
+        let raw_value = if args.length() > 0 { args[0] } else { Undefined }
+        let value = canonicalize_keyed_collection_key(raw_value)
         // Only skip if the value exists at a non-tombstoned index. A tombstoned
         // slot is logically deleted, so delete+add during forEach must append.
         let already_live = match data.tombstones {
