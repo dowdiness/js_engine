@@ -20055,7 +20055,8 @@ test "regex char class: \\0 null escape with following decimal digits" {
   // \00, \07: consumed as 2-digit octal (non-unicode)
   // \000:     consumed as 3-digit octal (non-unicode)
   // \08:      NUL + '8' as separate class char (8 is not octal)
-  // \00 in unicode mode: SyntaxError (decimal escape not allowed)
+  // Unicode-mode rejection is covered separately at the parser seam because
+  // a literal early error cannot be caught by JavaScript try/catch.
   let output = run_output(
     (
       #|console.log(/[\0]/.test('\x00'));       // true -- plain \0 = NUL
@@ -20066,27 +20067,27 @@ test "regex char class: \\0 null escape with following decimal digits" {
       #|console.log(/[\000]/.test('0'));        // false -- '0' consumed
       #|console.log(/[\08]/.test('\x00'));      // true -- \0=NUL; 8 not octal
       #|console.log(/[\08]/.test('8'));         // true -- '8' is separate class char
-      #|try { /[\00]/u; console.log('no error') } catch(e) { console.log(e instanceof SyntaxError) }
     ),
   )
   json_inspect(output, content=[
-    "true", "true", "false", "true", "true", "false", "true", "true", "true",
+    "true", "true", "false", "true", "true", "false", "true", "true",
   ])
 }
 
 ///|
-test "regex char class: unicode mode strict errors for malformed \\x and \\u" {
-  // In Unicode mode (/u flag), malformed \x and \u must throw SyntaxError.
+test "RegExp constructor: unicode mode strict errors for malformed \\x and \\u" {
+  // Constructor pattern strings are validated when the call is evaluated, so
+  // their SyntaxErrors remain catchable by JavaScript try/catch.
   let output = run_output(
     (
       #|var threw = 0;
-      #|try { /[\x]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\u]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\u1]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\x4]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\x]", "u") }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\u]", "u") }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\u1]", "u") }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\x4]", "u") }  catch(e) { if (e instanceof SyntaxError) threw++ }
       #|console.log(threw);   // 4 -- all four must throw
-      #|try { /[\xA0]/u; console.log(true) } catch(e) { console.log(false) }
-      #|try { /[A]/u; console.log(true) } catch(e) { console.log(false) }
+      #|try { new RegExp("[\\xA0]", "u"); console.log(true) } catch(e) { console.log(false) }
+      #|try { new RegExp("[A]", "u"); console.log(true) } catch(e) { console.log(false) }
     ),
   )
   json_inspect(output, content=["4", "true", "true"])
@@ -20111,6 +20112,259 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
   )
   json_inspect(output, content=[
     "true", "true", "false", "false", "true", "false",
+  ])
+}
+
+///|
+test "RegExp u-mode invalid literal is an early SyntaxError (#576)" {
+  let invalid_literals = [
+    // HexEscapeSequence must contain exactly two hexadecimal digits.
+    (
+      #|/\x/u;
+    ),
+    (
+      #|/\x1/u;
+    ),
+    (
+      #|/[\x]/u;
+    ),
+    (
+      #|/[\x1]/u;
+    ),
+    // `c` must be followed by an ASCII letter in both escape contexts.
+    (
+      #|/\c/u;
+    ),
+    (
+      #|/\c0/u;
+    ),
+    (
+      #|/[\c]/u;
+    ),
+    (
+      #|/[\c0]/u;
+    ),
+    // Unicode IdentityEscape is restricted to syntax characters and `/`.
+    (
+      #|/\M/u;
+    ),
+    (
+      #|/[\M]/u;
+    ),
+    (
+      #|/\_/u;
+    ),
+    (
+      #|/[\_]/u;
+    ),
+    // Legacy decimal/octal escapes are forbidden in Unicode character classes.
+    (
+      #|/\00/u;
+    ),
+    (
+      #|/\1/u;
+    ),
+    (
+      #|/\8/u;
+    ),
+    (
+      #|/[\00]/u;
+    ),
+    (
+      #|/[\1]/u;
+    ),
+    (
+      #|/[\B]/u;
+    ),
+    // CharacterClassEscape cannot be either endpoint of a Unicode-mode range.
+    (
+      #|/[\d-a]/u;
+    ),
+    (
+      #|/[a-\D]/u;
+    ),
+    (
+      #|/[\w-\s]/u;
+    ),
+    // Incomplete CharacterClassEscape and named-backreference prefixes are not identities.
+    (
+      #|/\p/u;
+    ),
+    (
+      #|/[\p]/u;
+    ),
+    (
+      #|/\k/u;
+    ),
+    (
+      #|/\k<a>/u;
+    ),
+    (
+      #|/\k<\u0062>(?<a>a)/u;
+    ),
+    (
+      #|/(?<\u0061>a)\k<b>/u;
+    ),
+    (
+      #|/\k<a/u;
+    ),
+    (
+      #|/\k<>/u;
+    ),
+    (
+      #|/(?<a>a)\k<1>/u;
+    ),
+    (
+      #|/[\k]/u;
+    ),
+    (
+      #|/\u{110000}/u;
+    ),
+    (
+      #|/\u{}/u;
+    ),
+    (
+      #|/\u{1,}/u;
+    ),
+    (
+      #|/\u{41/u;
+    ),
+  ]
+  for literal in invalid_literals {
+    let interp = new_interpreter()
+    let observed = try {
+      let source = (
+          #|console.log('started');
+          #|try {
+        ) +
+        literal +
+        (
+          #|
+          #|  console.log('after literal');
+          #|} catch (e) {
+          #|  console.log('caught');
+          #|}
+        )
+      let prog = @parser.parse(source)
+      let _ = interp.run(prog.stmts)
+      "no error"
+    } catch {
+      @errors.SyntaxError(_) => "early SyntaxError"
+      @runtime.JsException(_) => "runtime SyntaxError"
+      error => error.to_string()
+    }
+    json_inspect([observed, interp.host.output.join(",")], content=[
+      "early SyntaxError", "",
+    ])
+  }
+}
+
+///|
+test "RegExp constructor invalid u escape remains catchable (#576)" {
+  let output = run_output(
+    (
+      #|var invalid = [
+      #|  "\\x", "\\x1", "[\\x]", "[\\x1]",
+      #|  "\\c", "\\c0", "[\\c]", "[\\c0]",
+      #|  "\\M", "[\\M]", "\\_", "[\\_]",
+      #|  "\\00", "\\1", "\\8", "[\\00]", "[\\1]", "[\\B]",
+      #|  "[\\d-a]", "[a-\\D]", "[\\w-\\s]",
+      #|  "\\p", "[\\p]", "\\k", "\\k<a>",
+      #|  "\\k<\\u0062>(?<a>a)", "(?<\\u0061>a)\\k<b>",
+      #|  "\\k<a", "\\k<>", "(?<a>a)\\k<1>", "[\\k]",
+      #|  "\\u{110000}"
+      #|];
+      #|var caught = 0;
+      #|for (var i = 0; i < invalid.length; i++) {
+      #|  try {
+      #|    new RegExp(invalid[i], "u");
+      #|  } catch (e) {
+      #|    if (e instanceof SyntaxError) caught++;
+      #|  }
+      #|}
+      #|console.log(caught);
+      #|console.log('continued');
+    ),
+  )
+  json_inspect(output, content=["32", "continued"])
+}
+
+///|
+test "RegExp u-mode valid CharacterEscape and IdentityEscape forms (#576)" {
+  let output = run_output(
+    (
+      #|console.log(/\x41/u.test('A'));          // HexEscapeSequence
+      #|console.log(/\cA/u.test('\x01'));       // control escape in an atom
+      #|console.log(/[\cZ]/u.test('\x1A'));     // control escape in a class
+      #|console.log(/\0/u.test('\x00'));        // NUL not followed by a digit
+      #|console.log(/\^/u.test('^'));            // SyntaxCharacter identity
+      #|console.log(/\//u.test('/'));            // solidus identity
+      #|console.log(/[\-]/u.test('-'));          // class-only hyphen escape
+      #|console.log(/(a)\1/u.test('aa'));        // in-bounds DecimalEscape
+      #|console.log(/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\10/u.test('abcdefghijj'));
+      #|console.log(/\k<a>(?<a>b)\w\k<a>/u.test('bab')); // forward named reference
+      #|console.log(/(?<\u0061>a)\k<a>/u.test('aa')); // escaped capture name
+      #|console.log(/\k<\u0061>(?<a>a)/u.test('a')); // escaped reference name
+      #|console.log(/(?<\u0061>a)(b)\2/u.test('abb')); // name cursor preserves group count
+      #|console.log(/\k<a>/.test('k<a>'));       // Annex B non-u identity
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true",
+  ])
+}
+
+///|
+test "RegExp u-mode Unicode code-point escapes (#576)" {
+  let output = run_output(
+    (
+      #|console.log('\u{1d306}'.match(/\u{1d306}/u)[0].length === 2); // exact compat-table probe
+      #|console.log(/\u{0}/u.test('\x00'));          // minimum scalar
+      #|console.log(/\u0041/u.test('A'));            // fixed BMP escape
+      #|console.log(/\u{41}/u.test('A'));            // braced BMP escape
+      #|console.log(/\u{1F600}/u.test('\u{1F600}')); // astral scalar
+      #|console.log(/\u{10FFFF}/u.test('\u{10FFFF}')); // maximum scalar
+      #|console.log(/\u{000000003f}/u.test('?'));     // leading zeroes
+      #|console.log(/\u/.test('u'));                 // non-u identity escape
+      #|console.log(/\u0041/.test('A'));             // legacy fixed escape
+      #|console.log(/\u{41}/.test('u'.repeat(41)));  // non-u identity + quantifier
+      #|console.log(/\u{41}/.test('A'));             // no braced form without u
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "false",
+  ])
+}
+
+///|
+test "RegExp iu-mode Unicode simple case folding (#576)" {
+  let output = run_output(
+    (
+      #|console.log(!!('\u017F'.match(/S/iu) && 'S'.match(/\u017F/iu))); // exact compat probe
+      #|console.log(/S/iu.test('\u017F'));            // compat-table direction 1
+      #|console.log(/\u017F/iu.test('S'));            // compat-table direction 2
+      #|console.log(/[S]/iu.test('\u017F'));          // singleton class
+      #|console.log(/[\u017F]/iu.test('S'));          // reciprocal singleton class
+      #|console.log(/[A-Z]/iu.test('\u017F'));        // folded range membership
+      #|console.log(/(S)\1/iu.test('S\u017F'));       // backreference comparison
+      #|console.log('x\u017F'.search(/S/iu));         // literal candidate search
+      #|console.log('x\u017F'.search(/[S]/iu));       // class candidate search
+      #|console.log(/K/iu.test('\u212A'));            // Kelvin sign C mapping
+      #|console.log(/\u03C9/iu.test('\u2126'));       // Ohm sign C mapping
+      #|console.log(/\u{10400}/iu.test('\u{10428}')); // astral simple fold
+      #|console.log(/^\w$/iu.test('\u017F'));         // Unicode word class
+      #|console.log(/\bS/iu.test('\u017F'));          // Unicode word boundary
+      #|console.log(/S/i.test('\u017F'));             // no Unicode folding
+      #|console.log(/S/u.test('\u017F'));             // no ignoreCase folding
+      #|console.log(/[S]/i.test('\u017F'));           // class non-u control
+      #|console.log(/\bS/i.test('\u017F'));           // boundary non-u control
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "1", "1", "true", "true",
+    "true", "true", "true", "false", "false", "false", "false",
   ])
 }
 

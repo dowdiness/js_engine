@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/regexp_syntax"
+
+// Values
+pub fn has_fixed_unicode_escape(Array[Char], Int) -> Bool
+
+pub fn parse_unicode_escape(Array[Char], Int, allow_braced? : Bool, combine_surrogate_pair? : Bool) -> (Char, Int) raise
+
+pub fn parse_unicode_mode_character_escape(Array[Char], Int, in_character_class? : Bool) -> (Char, Int) raise
+
+pub fn parse_unicode_mode_decimal_escape(Array[Char], Int) -> (Int, Int) raise
+
+pub fn validate_unicode_mode_regexp_escapes(Array[Char], (Char) -> Bool, (Char) -> Bool) -> Unit raise
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits
+
