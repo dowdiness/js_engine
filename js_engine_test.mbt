@@ -1193,6 +1193,53 @@ test "ES module: named default class aliases converge through export stars" {
 }
 
 ///|
+test "ES module: named default class stays in TDZ across a cycle" {
+  let modules : Array[(String, String)] = [
+    ("./a", "import './b'; export default class Object {};"),
+    ("./b", "import D from './a'; console.log(D === Object);"),
+    ("./main", "import './a';"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.ReferenceError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class cycle TDZ")
+}
+
+///|
+test "ES module: named default class local binding starts in TDZ" {
+  let modules : Array[(String, String)] = [
+    ("./main", "console.log(typeof C); export default class C {};"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.ReferenceError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class local TDZ")
+}
+
+///|
+test "ES module: named default class conflicts with a lexical declaration" {
+  let modules : Array[(String, String)] = [
+    ("./main", "export default class C {}; let C;"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.SyntaxError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class duplicate declaration")
+}
+
+///|
 test "ES module: imported local re-export propagates binding identity through stars" {
   let modules : Array[(String, String)] = [
     ("./base", "export const foo = 2;"),

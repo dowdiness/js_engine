@@ -1649,7 +1649,9 @@ fn Interpreter::exec_stmt(
             env.def(name, value, LetBinding)
           }
         ClassExpr(Some(name), _, _, _, _) =>
-          if !env.bindings.contains(name) {
+          if env.bindings.contains(name) {
+            env.initialize(name, value)
+          } else {
             env.def(name, value, LetBinding)
           }
         _ => ()
