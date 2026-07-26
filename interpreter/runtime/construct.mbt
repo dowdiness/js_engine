@@ -1228,7 +1228,19 @@ fn Interpreter::construct_value_impl(
               message=format_loc_context(_name + " is not a constructor", loc),
             )
           }
-          func(self, Undefined, args)
+          let result = func(self, Undefined, args)
+          if _name == "Function" {
+            // CreateDynamicFunction obtains the created function object's
+            // [[Prototype]] from the active newTarget after argument parsing.
+            let result_proto = self.get_prototype_from_constructor(
+              new_target, loc,
+            )
+            match result {
+              Object(result_data) => result_data.prototype = result_proto
+              _ => ()
+            }
+          }
+          result
         }
         Some(InterpreterCallableWithContext(_name, func)) => {
           if !interpreter_callable_is_constructor(obj_data) {

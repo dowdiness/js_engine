@@ -5628,6 +5628,73 @@ test "Proxy integrity: isFrozen invokes ownKeys exactly once" {
 }
 
 ///|
+test "Proxy core abstract operations use observable Get order" {
+  let output = run_output(
+    (
+      #|let gets = [];
+      #|let primitiveProxy = new Proxy({ toString: Function() }, {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|primitiveProxy + 3;
+      #|console.log(gets[0] === Symbol.toPrimitive, gets.slice(1).join(","));
+      #|gets = [];
+      #|let instanceofProxy = new Proxy(Function(), {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|({}) instanceof instanceofProxy;
+      #|console.log(gets[0] === Symbol.hasInstance, gets.slice(1).join(","));
+      #|gets = [];
+      #|let dynamicProxy = new Proxy(Function, {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|new dynamicProxy();
+      #|console.log(gets.join(","));
+      #|gets = [];
+      #|let descriptorProxy = new Proxy({
+      #|  enumerable: true,
+      #|  configurable: true,
+      #|  value: true,
+      #|  writable: true,
+      #|  get: Function(),
+      #|  set: Function()
+      #|}, {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|try { Object.defineProperty({}, "x", descriptorProxy); } catch (_) {}
+      #|console.log(gets.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "true valueOf,toString", "true prototype", "prototype", "enumerable,configurable,value,writable,get,set",
+  ])
+}
+
+///|
+test "Proxy core abstract operation Get failures propagate" {
+  let output = run_output(
+    (
+      #|let sentinel = {};
+      #|let throwing = new Proxy(Function(), {
+      #|  get() { throw sentinel; }
+      #|});
+      #|try { throwing + 1; } catch (e) { console.log(e === sentinel); }
+      #|try { ({}) instanceof throwing; } catch (e) { console.log(e === sentinel); }
+      #|try { new throwing(); } catch (e) { console.log(e === sentinel); }
+      #|let descriptor = new Proxy({ enumerable: true }, {
+      #|  get() { throw sentinel; }
+      #|});
+      #|try { Object.defineProperty({}, "x", descriptor); }
+      #|catch (e) { console.log(e === sentinel); }
+      #|let revoked = Proxy.revocable({}, {});
+      #|revoked.revoke();
+      #|try { revoked.proxy + 1; }
+      #|catch (e) { console.log(e instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true", "true"])
+}
+
+///|
 test "Proxy integrity operations follow internal-method order" {
   let src =
     #|function freezingHandler(log) {
