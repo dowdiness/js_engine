@@ -57,6 +57,11 @@ pub(all) struct GeneratorObject {
   // Loop resume tracking — stack of saved loop envs (innermost first, outermost last)
   loop_env_stack : Array[Environment]
   loop_yield_base_stack : Array[Int]
+  // Statement-list resume tracking. Frames are pushed while YieldSignal unwinds,
+  // so the outermost frame is restored first and nested frames follow in LIFO order.
+  stmt_resume_index_stack : Array[Int]
+  stmt_resume_env_stack : Array[Environment]
+  stmt_resume_value_stack : Array[Value]
   // For-of resume state
   mut for_of_iterator : Value // last saved iterator object (compat/debug)
   mut for_of_next : Value // last saved next method (compat/debug)
@@ -100,6 +105,9 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
   gen.dstr_iterator_stack.clear()
   gen.loop_env_stack.clear()
   gen.loop_yield_base_stack.clear()
+  gen.stmt_resume_index_stack.clear()
+  gen.stmt_resume_env_stack.clear()
+  gen.stmt_resume_value_stack.clear()
   gen.yield_resume_values.clear()
   // Clear mutable fields to allow GC
   // Note: body/args/closure/this_val are immutable and may be shared
@@ -968,6 +976,9 @@ fn create_generator_instance(
       try_resume_pending_error: None,
       loop_env_stack: [],
       loop_yield_base_stack: [],
+      stmt_resume_index_stack: [],
+      stmt_resume_env_stack: [],
+      stmt_resume_value_stack: [],
       for_of_iterator: Undefined,
       for_of_next: Undefined,
       for_of_iterator_stack: [],

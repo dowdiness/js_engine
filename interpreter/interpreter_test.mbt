@@ -349,6 +349,33 @@ test "for loop" {
 }
 
 ///|
+test "for-of contextual let and yield identifiers" {
+  let src =
+    #|var yield;
+    #|var x = 0;
+    #|for ({ yield } of [{ yield: 3 }]) {
+    #|  console.log(yield);
+    #|}
+    #|for (var item of []) let
+    #|{}
+    #|for (var item of []) let
+    #|x = 1;
+    #|console.log(x);
+  let output = run_output(src)
+  json_inspect(output, content=["3", "1"])
+}
+
+///|
+test "for-of contextual identifiers retain strict early errors" {
+  expect_throw(
+    "\"use strict\"; for ({ yield } of []) {}", "SyntaxError: Unexpected strict mode reserved word",
+  )
+  expect_throw(
+    "\"use strict\"; for (var x of []) let\nx = 1;", "SyntaxError: Unexpected strict mode reserved word",
+  )
+}
+
+///|
 test "function declaration and call" {
   let (_, result) = run_js("function add(a, b) { return a + b; } add(3, 4)")
   expect_value_string(result, "7", "function declaration result")
@@ -2607,6 +2634,54 @@ test "function bind method" {
   expect_result(result, "Hi Bob")
 }
 
+///|
+test "compat-table ES2015 bound functions preserve target prototype matrix" {
+  let output = run_output(
+    (
+      #|function check(kind, target) {
+      #|  var prototypes = [Function.prototype, { marker: kind }, null];
+      #|  for (var i = 0; i < prototypes.length; i++) {
+      #|    var prototype = prototypes[i];
+      #|    Object.setPrototypeOf(target, prototype);
+      #|    var bound = Function.prototype.bind.call(target, null);
+      #|    console.log(kind + ":" + i + ":" + (Object.getPrototypeOf(bound) === prototype));
+      #|  }
+      #|}
+      #|check("function", function ordinary() {});
+      #|check("generator", function* generator() {});
+      #|check("arrow", () => 1);
+      #|check("class", class BoundTarget {});
+    ),
+  )
+  json_inspect(output, content=[
+    "function:0:true", "function:1:true", "function:2:true", "generator:0:true",
+    "generator:1:true", "generator:2:true", "arrow:0:true", "arrow:1:true", "arrow:2:true",
+    "class:0:true", "class:1:true", "class:2:true",
+  ])
+}
+
+///|
+test "bound functions retain call and construct behavior with null prototype" {
+  let output = run_output(
+    (
+      #|function add(left, right) { return this.base + left + right; }
+      #|Object.setPrototypeOf(add, null);
+      #|var boundAdd = Function.prototype.bind.call(add, { base: 10 }, 2);
+      #|console.log(boundAdd(3));
+      #|class Pair {
+      #|  constructor(left, right) { this.left = left; this.right = right; }
+      #|  total() { return this.left + this.right; }
+      #|}
+      #|Object.setPrototypeOf(Pair, null);
+      #|var BoundPair = Function.prototype.bind.call(Pair, { ignored: true }, 4);
+      #|var pair = new BoundPair(5);
+      #|console.log(pair.total());
+      #|console.log(Object.getPrototypeOf(pair) === Pair.prototype);
+    ),
+  )
+  json_inspect(output, content=["15", "9", "true"])
+}
+
 // ====== Promise Constructor/Species Regression Tests ======
 
 ///|
@@ -3770,6 +3845,69 @@ test "string startsWith endsWith" {
     #|console.log("hello".startsWith("llo"));
   let output = run_output(src)
   json_inspect(output, content=["true", "true", "false"])
+}
+
+///|
+test "string startsWith endsWith includes use IsRegExp via Symbol.match" {
+  let src =
+    #|function outcome(method, receiver, search, position) {
+    #|  try {
+    #|    var result = position === undefined
+    #|      ? String.prototype[method].call(receiver, search)
+    #|      : String.prototype[method].call(receiver, search, position);
+    #|    return "return:" + result;
+    #|  } catch (error) {
+    #|    return error instanceof TypeError ? "throw:TypeError" : "throw:" + error;
+    #|  }
+    #|}
+    #|function check(method, receiver) {
+    #|  var regexp = /x/;
+    #|  console.log(method + ":regexp:" + outcome(method, receiver, regexp));
+    #|  regexp[Symbol.match] = false;
+    #|  console.log(method + ":disabled:" + outcome(method, receiver, regexp));
+    #|
+    #|  var custom = { toString: function() { return "x"; } };
+    #|  custom[Symbol.match] = 1;
+    #|  console.log(method + ":custom:" + outcome(method, receiver, custom));
+    #|
+    #|  var throwing = { toString: function() { return "x"; } };
+    #|  Object.defineProperty(throwing, Symbol.match, {
+    #|    get: function() { throw "match-getter"; }
+    #|  });
+    #|  console.log(method + ":getter:" + outcome(method, receiver, throwing));
+    #|  console.log(method + ":string:" + outcome(method, receiver, "x"));
+    #|
+    #|  var order = [];
+    #|  var thisValue = {
+    #|    toString: function() { order.push("this"); return "x"; }
+    #|  };
+    #|  var search = {
+    #|    toString: function() { order.push("search"); return "x"; }
+    #|  };
+    #|  Object.defineProperty(search, Symbol.match, {
+    #|    get: function() { order.push("match"); return false; }
+    #|  });
+    #|  var position = {
+    #|    valueOf: function() {
+    #|      order.push("position");
+    #|      return method === "endsWith" ? 1 : 0;
+    #|    }
+    #|  };
+    #|  var ordered = String.prototype[method].call(thisValue, search, position);
+    #|  console.log(method + ":order:" + ordered + ":" + order.join(","));
+    #|}
+    #|check("startsWith", "/x/ suffix");
+    #|check("endsWith", "prefix /x/");
+    #|check("includes", "prefix /x/ suffix");
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "startsWith:regexp:throw:TypeError", "startsWith:disabled:return:true", "startsWith:custom:throw:TypeError",
+    "startsWith:getter:throw:match-getter", "startsWith:string:return:false", "startsWith:order:true:this,match,search,position",
+    "endsWith:regexp:throw:TypeError", "endsWith:disabled:return:true", "endsWith:custom:throw:TypeError",
+    "endsWith:getter:throw:match-getter", "endsWith:string:return:false", "endsWith:order:true:this,match,search,position",
+    "includes:regexp:throw:TypeError", "includes:disabled:return:true", "includes:custom:throw:TypeError",
+    "includes:getter:throw:match-getter", "includes:string:return:true", "includes:order:true:this,match,search,position",
+  ])
 }
 
 ///|
@@ -6852,6 +6990,39 @@ test "object rest in destructuring" {
   json_inspect(output, content=["1", "2", "3"])
 }
 
+///|
+test "object rest follows own-key order and boxes string sources" {
+  let output = run_output(
+    (
+      #|const calls = [];
+      #|const symbolKey = Symbol("key");
+      #|const source = {
+      #|  get z() { calls.push("z"); return 2; },
+      #|  get a() { calls.push("a"); return 3; }
+      #|};
+      #|Object.defineProperty(source, "1", {
+      #|  get() { calls.push("1"); return 1; }, enumerable: true
+      #|});
+      #|Object.defineProperty(source, symbolKey, {
+      #|  get() { calls.push("symbol"); return 4; }, enumerable: true
+      #|});
+      #|let rest;
+      #|for ({ ...rest } of [source]) {}
+      #|console.log(calls.join(","));
+      #|console.log(rest["1"] + "," + rest.z + "," + rest.a + "," + rest[symbolKey]);
+      #|let chars;
+      #|for ({ ...chars } of ["foo"]) {}
+      #|console.log(chars["0"] + chars["1"] + chars["2"] + ":" + Object.keys(chars).length);
+      #|let astral;
+      #|for ({ ...astral } of ["𝌆"]) {}
+      #|console.log(Object.keys(astral).length + ":" + astral["0"].charCodeAt(0) + ":" + astral["1"].charCodeAt(0));
+    ),
+  )
+  json_inspect(output, content=[
+    "1,z,a,symbol", "1,2,3,4", "foo:3", "2:55348:57094",
+  ])
+}
+
 // =============================================================================
 // Phase 5: new.target meta-property
 // =============================================================================
@@ -7125,6 +7296,571 @@ test "super computed assignment resolves its reference in specification order" {
     ),
   )
   json_inspect(output, content=["rhs,key,new"])
+}
+
+///|
+test "super computed assignment canonicalizes its key before [[Set]]" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let key = { toString() { log.push("key"); return "x"; } };
+      #|let handler = new Proxy(
+      #|  { set(target, property, value, receiver) {
+      #|      log.push("trap:" + property); return true;
+      #|    } },
+      #|  { get(target, property, receiver) {
+      #|      log.push("handler:" + property); return target[property];
+      #|    } }
+      #|);
+      #|let base = new Proxy({}, handler);
+      #|let object = {
+      #|  method() { super[key] = (log.push("rhs"), 1); }
+      #|};
+      #|Object.setPrototypeOf(object, base);
+      #|object.method();
+      #|
+      #|let symbol = Symbol("s");
+      #|let symbolKey = {
+      #|  [Symbol.toPrimitive]() { log.push("symbol-key"); return symbol; }
+      #|};
+      #|let symbolBase = {
+      #|  set [symbol](value) { log.push("symbol-set"); }
+      #|};
+      #|let symbolObject = {
+      #|  method() { super[symbolKey] = (log.push("symbol-rhs"), 2); }
+      #|};
+      #|Object.setPrototypeOf(symbolObject, symbolBase);
+      #|try { symbolObject.method(); } catch (error) {
+      #|  log.push("symbol-" + error.name);
+      #|}
+      #|
+      #|let abruptKey = {
+      #|  [Symbol.toPrimitive]() {
+      #|    log.push("abrupt-key"); throw new RangeError("key");
+      #|  }
+      #|};
+      #|let abruptHandler = new Proxy(
+      #|  { set() { log.push("unexpected-trap"); return true; } },
+      #|  { get(target, property, receiver) {
+      #|      log.push("unexpected-handler:" + property);
+      #|      return target[property];
+      #|    } }
+      #|);
+      #|let abruptBase = new Proxy({}, abruptHandler);
+      #|let abruptObject = {
+      #|  method() { super[abruptKey] = (log.push("abrupt-rhs"), 3); }
+      #|};
+      #|Object.setPrototypeOf(abruptObject, abruptBase);
+      #|try { abruptObject.method(); } catch (error) { log.push(error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "rhs,key,handler:set,trap:x,symbol-rhs,symbol-key,symbol-set,abrupt-rhs,abrupt-key,RangeError",
+  ])
+}
+
+///|
+test "super computed assignment ToPropertyKey supports Proxy keys" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("proxy-key");
+      #|let keyTarget = {
+      #|  [Symbol.toPrimitive](hint) {
+      #|    log.push("primitive:" + hint);
+      #|    return symbol;
+      #|  }
+      #|};
+      #|let key = new Proxy(keyTarget, {});
+      #|let base = {
+      #|  set [symbol](value) { log.push("set:" + value); }
+      #|};
+      #|let object = {
+      #|  method(propertyKey, value) {
+      #|    super[propertyKey] = (log.push("rhs"), value);
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(object, base);
+      #|object.method(key, 1);
+      #|
+      #|let revoked = Proxy.revocable(keyTarget, {});
+      #|revoked.revoke();
+      #|try { object.method(revoked.proxy, 2); }
+      #|catch (error) { log.push(error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["rhs,primitive:string,set:1,rhs,TypeError"])
+}
+
+///|
+test "super computed assignment ToPropertyKey covers every object variant" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let labels = ["object", "array", "map", "set", "promise", "proxy"];
+      #|let keys = [{}, [], new Map(), new Set(), Promise.resolve(0), new Proxy({}, {})];
+      #|for (let index = 0; index < keys.length; index = index + 1) {
+      #|  let label = labels[index];
+      #|  keys[index][Symbol.toPrimitive] = function(hint) {
+      #|    log.push("primitive:" + label + ":" + hint);
+      #|    return label;
+      #|  };
+      #|}
+      #|let fallback = new Map();
+      #|fallback.toString = function() {
+      #|  log.push("fallback:toString"); return {};
+      #|};
+      #|fallback.valueOf = function() {
+      #|  log.push("fallback:valueOf"); return "fallback";
+      #|};
+      #|let object = {
+      #|  write(key, label) {
+      #|    super[key] = (log.push("rhs:" + label), label);
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(object, {});
+      #|for (let index = 0; index < keys.length; index = index + 1) {
+      #|  object.write(keys[index], labels[index]);
+      #|}
+      #|object.write(fallback, "fallback");
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "rhs:object,primitive:object:string,rhs:array,primitive:array:string,rhs:map,primitive:map:string,rhs:set,primitive:set:string,rhs:promise,primitive:promise:string,rhs:proxy,primitive:proxy:string,rhs:fallback,fallback:toString,fallback:valueOf",
+  ])
+}
+
+///|
+test "super ToPropertyKey observes Proxy target toStringTag" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|function makeKey(target, label) {
+      #|  let key;
+      #|  if (label === "object") {
+      #|    Object.defineProperty(target, Symbol.toStringTag, {
+      #|      get() {
+      #|        log.push(label + ":getter:" + (this === key));
+      #|        return "ObjectTag";
+      #|      }
+      #|    });
+      #|  }
+      #|  key = new Proxy(target, {
+      #|    get(target, property, receiver) {
+      #|      if (property === Symbol.toPrimitive) {
+      #|        log.push(label + ":primitive:" + (receiver === key));
+      #|      } else if (property === "toString") {
+      #|        log.push(label + ":toString:" + (receiver === key));
+      #|      } else if (property === Symbol.toStringTag) {
+      #|        log.push(label + ":tag:" + (receiver === key));
+      #|        if (label === "abrupt") throw new RangeError("tag");
+      #|      }
+      #|      return Reflect.get(target, property, receiver);
+      #|    }
+      #|  });
+      #|  return key;
+      #|}
+      #|let base = {
+      #|  set "[object ObjectTag]"(value) { log.push("object:set:" + value); },
+      #|  set "[object Map]"(value) { log.push("map:set:" + value); },
+      #|  set "[object Set]"(value) { log.push("set:set:" + value); },
+      #|  set "[object Promise]"(value) { log.push("promise:set:" + value); },
+      #|  set "[object Object]"(value) { log.push("wrong:set:" + value); }
+      #|};
+      #|let home = {
+      #|  write(key, label) { super[key] = (log.push(label + ":rhs"), label); }
+      #|};
+      #|Object.setPrototypeOf(home, base);
+      #|home.write(makeKey({}, "object"), "object");
+      #|home.write(makeKey(new Map(), "map"), "map");
+      #|home.write(makeKey(new Set(), "set"), "set");
+      #|home.write(makeKey(Promise.resolve(0), "promise"), "promise");
+      #|try { home.write(makeKey({}, "abrupt"), "abrupt"); }
+      #|catch (error) { log.push("abrupt:" + error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "object:rhs,object:primitive:true,object:toString:true,object:tag:true,object:getter:true,object:set:object,map:rhs,map:primitive:true,map:toString:true,map:tag:true,map:set:map,set:rhs,set:primitive:true,set:toString:true,set:tag:true,set:set:set,promise:rhs,promise:primitive:true,promise:toString:true,promise:tag:true,promise:set:promise,abrupt:rhs,abrupt:primitive:true,abrupt:toString:true,abrupt:tag:true,abrupt:RangeError",
+  ])
+}
+
+///|
+test "Object.prototype.toString gets toStringTag with the original receiver" {
+  let output = run_output(
+    (
+      #|Object.defineProperty(Map.prototype, Symbol.toStringTag, {
+      #|  value: "CustomMap", configurable: true
+      #|});
+      #|Object.defineProperty(Set.prototype, Symbol.toStringTag, {
+      #|  value: "CustomSet", configurable: true
+      #|});
+      #|let array = [];
+      #|let receiverIsArray = false;
+      #|let arrayPrototype = new Proxy({}, {
+      #|  get(target, property, receiver) {
+      #|    if (property === Symbol.toStringTag) {
+      #|      receiverIsArray = receiver === array;
+      #|      return "TaggedArray";
+      #|    }
+      #|    return Reflect.get(target, property, receiver);
+      #|  }
+      #|});
+      #|Object.setPrototypeOf(array, arrayPrototype);
+      #|console.log([
+      #|  Object.prototype.toString.call(new Map()),
+      #|  Object.prototype.toString.call(new Set()),
+      #|  Object.prototype.toString.call(array),
+      #|  "receiver:" + receiverIsArray
+      #|].join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "[object CustomMap],[object CustomSet],[object TaggedArray],receiver:true",
+  ])
+}
+
+///|
+test "class super properties observe the live home object prototype" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|class OldBase {
+      #|  get value() { log.push("old-get"); return "old"; }
+      #|  method() { log.push("old-call"); return "old"; }
+      #|  set x(value) { log.push("old-set:" + value); }
+      #|}
+      #|class Derived extends OldBase {
+      #|  read() { let value = super.value; log.push("value:" + value); }
+      #|  call() { let value = super.method(); log.push("call:" + value); }
+      #|  write() { super.x = 3; }
+      #|}
+      #|let newBase = {
+      #|  get value() { log.push("new-get"); return "new"; },
+      #|  method() { log.push("new-call"); return "new"; },
+      #|  set x(value) { log.push("new-set:" + value); }
+      #|};
+      #|let proxyBase = new Proxy(newBase, {
+      #|  get(target, property, receiver) {
+      #|    log.push("proxy-get:" + property); return target[property];
+      #|  },
+      #|  set(target, property, value, receiver) {
+      #|    log.push("proxy-set:" + property); target[property] = value;
+      #|    return true;
+      #|  }
+      #|});
+      #|Object.setPrototypeOf(Derived.prototype, proxyBase);
+      #|let derived = new Derived();
+      #|derived.read();
+      #|derived.call();
+      #|derived.write();
+      #|
+      #|class OldStatic {}
+      #|OldStatic.value = "old-static";
+      #|OldStatic.method = function() { log.push("old-static-call"); };
+      #|class StaticDerived extends OldStatic {
+      #|  static read() { log.push("static-value:" + super.value); }
+      #|  static call() { super.method(); }
+      #|  static write() { super.x = 4; }
+      #|}
+      #|let newStaticBase = {
+      #|  value: "new-static",
+      #|  method() { log.push("new-static-call"); },
+      #|  set x(value) { log.push("new-static-set:" + value); }
+      #|};
+      #|Object.setPrototypeOf(StaticDerived, newStaticBase);
+      #|StaticDerived.read();
+      #|StaticDerived.call();
+      #|StaticDerived.write();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "proxy-get:value,new-get,value:new,proxy-get:method,new-call,call:new,proxy-set:x,new-set:3,static-value:new-static,new-static-call,new-static-set:4",
+  ])
+}
+
+///|
+test "super [[Get]] preserves receiver through Map prototype nodes" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let instanceBase = new Map();
+      #|Object.defineProperty(instanceBase, "value", {
+      #|  get() { log.push("instance-get:" + (this === instance)); return 1; }
+      #|});
+      #|Object.defineProperty(instanceBase, "callable", {
+      #|  get() {
+      #|    log.push("instance-call-get:" + (this === instance));
+      #|    return function() { log.push("instance-call:" + (this === instance)); };
+      #|  }
+      #|});
+      #|class Derived {
+      #|  read() { return super.value + super["value"]; }
+      #|  call() { super.callable(); super["callable"](); }
+      #|  static readStatic() { return super.value + super["value"]; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, instanceBase);
+      #|let instance = new Derived();
+      #|instance.read();
+      #|instance.call();
+      #|
+      #|let staticBase = new Map();
+      #|Object.defineProperty(staticBase, "value", {
+      #|  get() { log.push("static-get:" + (this === Derived)); return 1; }
+      #|});
+      #|Object.setPrototypeOf(Derived, staticBase);
+      #|Derived.readStatic();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-get:true,instance-get:true,instance-call-get:true,instance-call:true,instance-call-get:true,instance-call:true,static-get:true,static-get:true",
+  ])
+}
+
+///|
+test "super [[Get]] handles typed-array indices and Symbol receivers" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("typed");
+      #|let instanceBase = new Uint8Array([42]);
+      #|Object.defineProperty(instanceBase, symbol, {
+      #|  get() { log.push("instance-symbol:" + (this === instance)); return 1; }
+      #|});
+      #|class Derived {
+      #|  read() { log.push("instance-index:" + super[0]); return super[symbol]; }
+      #|  static read() { log.push("static-index:" + super[0]); return super[symbol]; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, instanceBase);
+      #|let instance = new Derived();
+      #|instance.read();
+      #|
+      #|let staticBase = new Uint8Array([43]);
+      #|Object.defineProperty(staticBase, symbol, {
+      #|  get() { log.push("static-symbol:" + (this === Derived)); return 1; }
+      #|});
+      #|Object.setPrototypeOf(Derived, staticBase);
+      #|Derived.read();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-index:42,instance-symbol:true,static-index:43,static-symbol:true",
+  ])
+}
+
+///|
+test "super [[Get]] receiver matrix covers ordinary and exotic bases" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("receiver");
+      #|let labels = ["object", "array", "map", "set", "promise"];
+      #|let bases = [{}, [], new Map(), new Set(), Promise.resolve(0)];
+      #|for (let index = 0; index < bases.length; index = index + 1) {
+      #|  let label = labels[index];
+      #|  let base = bases[index];
+      #|  let receiver;
+      #|  Object.defineProperty(base, "value", {
+      #|    get() { log.push(label + "-direct:" + (this === receiver)); return 1; }
+      #|  });
+      #|  Object.defineProperty(base, symbol, {
+      #|    get() { log.push(label + "-symbol:" + (this === receiver)); return 1; }
+      #|  });
+      #|  Object.defineProperty(base, "callable", {
+      #|    get() {
+      #|      log.push(label + "-call-get:" + (this === receiver));
+      #|      return function() { log.push(label + "-call:" + (this === receiver)); };
+      #|    }
+      #|  });
+      #|  let home = {
+      #|    read() { return super.value + super["value"] + super[symbol]; },
+      #|    call() { super.callable(); }
+      #|  };
+      #|  Object.setPrototypeOf(home, base);
+      #|  receiver = Object.create(home);
+      #|  receiver.read();
+      #|  receiver.call();
+      #|}
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "object-direct:true,object-direct:true,object-symbol:true,object-call-get:true,object-call:true,array-direct:true,array-direct:true,array-symbol:true,array-call-get:true,array-call:true,map-direct:true,map-direct:true,map-symbol:true,map-call-get:true,map-call:true,set-direct:true,set-direct:true,set-symbol:true,set-call-get:true,set-call:true,promise-direct:true,promise-direct:true,promise-symbol:true,promise-call-get:true,promise-call:true",
+  ])
+}
+
+///|
+test "super [[Get]] preserves receiver through trapless Proxy" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let target = {};
+      #|Object.defineProperty(target, "value", {
+      #|  get() { log.push("get:" + (this === instance)); return 1; }
+      #|});
+      #|let base = new Proxy(target, {});
+      #|class Derived {
+      #|  read() { return super.value + super["value"]; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, base);
+      #|let instance = new Derived();
+      #|instance.read();
+      #|
+      #|let nestedReceiver;
+      #|let nestedTarget = {};
+      #|Object.defineProperty(nestedTarget, "value", {
+      #|  get() { log.push("nested:" + (this === nestedReceiver)); return 1; }
+      #|});
+      #|let nestedBase = new Proxy(new Proxy(nestedTarget, {}), { get: undefined });
+      #|nestedReceiver = Object.create(nestedBase);
+      #|nestedReceiver["value"];
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["get:true,get:true,nested:true"])
+}
+
+///|
+test "Proxy [[Get]] enforces invariants for Symbol keys including super" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("fixed");
+      #|let target = {};
+      #|Object.defineProperty(target, symbol, {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|let proxy = new Proxy(target, { get() { return 2; } });
+      #|try { proxy[symbol]; }
+      #|catch (error) { log.push("direct:" + error.name); }
+      #|class Derived { read() { return super[symbol]; } }
+      #|Object.setPrototypeOf(Derived.prototype, proxy);
+      #|try { new Derived().read(); }
+      #|catch (error) { log.push("super:" + error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["direct:TypeError,super:TypeError"])
+}
+
+///|
+test "Proxy [[Get]] invariants use SameValue for string and Symbol keys" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|function read(proxy, key, label) {
+      #|  if (label === "string") return proxy.fixed;
+      #|  return proxy[key];
+      #|}
+      #|function check(key, label) {
+      #|  let nanTarget = {};
+      #|  Object.defineProperty(nanTarget, key, {
+      #|    value: NaN, writable: false, configurable: false
+      #|  });
+      #|  let nanProxy = new Proxy(nanTarget, { get() { return NaN; } });
+      #|  try { log.push(label + ":nan:" + Number.isNaN(read(nanProxy, key, label))); }
+      #|  catch (error) { log.push(label + ":nan:" + error.name); }
+      #|
+      #|  let zeroTarget = {};
+      #|  Object.defineProperty(zeroTarget, key, {
+      #|    value: 0, writable: false, configurable: false
+      #|  });
+      #|  let zeroProxy = new Proxy(zeroTarget, { get() { return -0; } });
+      #|  try { read(zeroProxy, key, label); log.push(label + ":zero:no-throw"); }
+      #|  catch (error) { log.push(label + ":zero:" + error.name); }
+      #|}
+      #|check("fixed", "string");
+      #|check(Symbol("fixed"), "symbol");
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "string:nan:true,string:zero:TypeError,symbol:nan:true,symbol:zero:TypeError",
+  ])
+}
+
+///|
+test "super [[Set]] walks Promise prototypes with the derived receiver" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("promise-set");
+      #|let instanceBase = Promise.resolve(0);
+      #|let instanceSetters = {
+      #|  set direct(value) { log.push("instance-direct:" + (this === instance)); },
+      #|  set computed(value) { log.push("instance-computed:" + (this === instance)); }
+      #|};
+      #|Object.defineProperty(instanceSetters, symbol, {
+      #|  set(value) { log.push("instance-symbol:" + (this === instance)); }
+      #|});
+      #|Object.setPrototypeOf(instanceBase, instanceSetters);
+      #|class Derived {
+      #|  write() { super.direct = 1; super["computed"] = 2; super[symbol] = 3; }
+      #|  static write() { super.direct = 4; super["computed"] = 5; super[symbol] = 6; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, instanceBase);
+      #|let instance = new Derived();
+      #|instance.write();
+      #|log.push("instance-own:" + instance.hasOwnProperty("direct") + ":" + instance.hasOwnProperty("computed"));
+      #|
+      #|let staticBase = Promise.resolve(0);
+      #|let staticSetters = {
+      #|  set direct(value) { log.push("static-direct:" + (this === Derived)); },
+      #|  set computed(value) { log.push("static-computed:" + (this === Derived)); }
+      #|};
+      #|Object.defineProperty(staticSetters, symbol, {
+      #|  set(value) { log.push("static-symbol:" + (this === Derived)); }
+      #|});
+      #|Object.setPrototypeOf(staticBase, staticSetters);
+      #|Object.setPrototypeOf(Derived, staticBase);
+      #|Derived.write();
+      #|log.push("static-own:" + Derived.hasOwnProperty("direct") + ":" + Derived.hasOwnProperty("computed"));
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-direct:true,instance-computed:true,instance-symbol:true,instance-own:false:false,static-direct:true,static-computed:true,static-symbol:true,static-own:false:false",
+  ])
+}
+
+///|
+test "super [[Get]] distinguishes null base from missing super binding" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let object = {
+      #|  direct() { return super.value; },
+      #|  computed() { return super["value"]; },
+      #|  call() { return super.value(); }
+      #|};
+      #|Object.setPrototypeOf(object, null);
+      #|for (let name of ["direct", "computed", "call"]) {
+      #|  try { object[name](); }
+      #|  catch (error) { log.push("instance-" + name + ":" + error.name); }
+      #|}
+      #|
+      #|class StaticDerived {
+      #|  static direct() { return super.value; }
+      #|  static computed() { return super["value"]; }
+      #|  static call() { return super.value(); }
+      #|}
+      #|Object.setPrototypeOf(StaticDerived, null);
+      #|for (let name of ["direct", "computed", "call"]) {
+      #|  try { StaticDerived[name](); }
+      #|  catch (error) { log.push("static-" + name + ":" + error.name); }
+      #|}
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-direct:TypeError,instance-computed:TypeError,instance-call:TypeError,static-direct:TypeError,static-computed:TypeError,static-call:TypeError",
+  ])
 }
 
 ///|
@@ -8586,6 +9322,34 @@ test "generator: yield inside for-of in generator" {
     ),
   )
   json_inspect(output, content=["10", "20", "30", "true"])
+}
+
+///|
+test "generator: for-of resume does not replay statements before yield" {
+  let output = run_output(
+    (
+      #|function* values() { yield 1; yield 1; }
+      #|let before = 0;
+      #|let after = 0;
+      #|let finished = 0;
+      #|function* control() {
+      #|  for (const value of values()) {
+      #|    before += value;
+      #|    yield;
+      #|    after += value;
+      #|  }
+      #|  finished++;
+      #|}
+      #|const iterator = control();
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+    ),
+  )
+  json_inspect(output, content=["1,0,0", "2,1,0", "2,2,1"])
 }
 
 ///|
@@ -10515,6 +11279,219 @@ test "strict: block function does not overwrite outer var" {
 }
 
 ///|
+test "strict: block function is initialized before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return 1; }
+      #|console.log(f());
+      #|{
+      #|  console.log(f());
+      #|  function f() { return 2; }
+      #|  console.log(f());
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["1", "2", "2", "1"])
+}
+
+///|
+test "strict: extended block function is initialized before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return "outer"; }
+      #|{
+      #|  console.log(f());
+      #|  function f(value = "inner") { return value; }
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["inner", "outer"])
+}
+
+///|
+test "strict: block generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  console.log(before === g);
+      #|  function* g() { yield "inner"; }
+      #|  console.log(before === g);
+      #|  console.log(g().next().value);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "inner", "outer"])
+}
+
+///|
+test "strict: extended block generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  function* g(value = "inner") { yield value; }
+      #|  console.log(before === g);
+      #|  console.log(g().next().value);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "inner", "outer"])
+}
+
+///|
+test "strict: block async function is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return "outer"; }
+      #|{
+      #|  const before = f;
+      #|  console.log(f.toString().startsWith("async function"));
+      #|  async function f() { return "inner"; }
+      #|  console.log(before === f);
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: extended block async function is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return "outer"; }
+      #|{
+      #|  const before = f;
+      #|  console.log(f.toString().startsWith("async function"));
+      #|  async function f(value = "inner") { return value; }
+      #|  console.log(before === f);
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: block async generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  console.log(g.toString().startsWith("async function*"));
+      #|  async function* g() { yield "inner"; }
+      #|  console.log(before === g);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: extended block async generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  console.log(g.toString().startsWith("async function*"));
+      #|  async function* g(value = "inner") { yield value; }
+      #|  console.log(before === g);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: switch block function is initialized before case execution" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return 1; }
+      #|switch (0) {
+      #|  case 0:
+      #|    console.log(f());
+      #|    function f() { return 2; }
+      #|    console.log(f());
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["2", "2", "1"])
+}
+
+///|
+test "strict: switch case selection observes instantiated block function" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return 1; }
+      #|switch (2) {
+      #|  case f():
+      #|    function f() { return 2; }
+      #|    console.log("hit");
+      #|}
+    ),
+  )
+  json_inspect(output, content=["hit"])
+}
+
+///|
+test "strict: duplicate switch block functions throw SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|"use strict";
+        #|switch (0) {
+        #|  case 0: function f() {}
+        #|  case 1: function f() {}
+        #|}
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  expect_error_message(
+    err_msg, "SyntaxError: Identifier 'f' has already been declared",
+  )
+}
+
+///|
+test "sloppy: standard block function is initialized and remains lexical" {
+  let output = run_output(
+    (
+      #|{
+      #|  console.log(f());
+      #|  function f() { return 2; }
+      #|}
+      #|console.log(typeof f);
+    ),
+  )
+  json_inspect(output, content=["2", "undefined"])
+}
+
+///|
 test "sloppy: duplicate block function declarations are allowed" {
   let output = run_output(
     (
@@ -10527,6 +11504,93 @@ test "sloppy: duplicate block function declarations are allowed" {
     ),
   )
   json_inspect(output, content=["ok"])
+}
+
+///|
+test "sloppy: duplicate block functions initialize the last declaration" {
+  let output = run_output(
+    (
+      #|{
+      #|  console.log(f());
+      #|  function f() { return 1; }
+      #|  function f() { return 2; }
+      #|}
+    ),
+  )
+  json_inspect(output, content=["2"])
+}
+
+///|
+test "strict: duplicate block function declarations throw SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|"use strict"; { function f() {} function f() {} }
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  expect_error_message(
+    err_msg, "SyntaxError: Identifier 'f' has already been declared",
+  )
+}
+
+///|
+test "annex-b: block function propagation preserves instantiated identity" {
+  let output = run_output_annex_b(
+    (
+      #|var saved;
+      #|var f = function() { return "outer"; };
+      #|{
+      #|  saved = f;
+      #|  console.log(f());
+      #|  function f() { return "inner"; }
+      #|  console.log(saved === f);
+      #|}
+      #|console.log(saved === f);
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["inner", "true", "true", "inner"])
+}
+
+///|
+test "strict: block hoistable declarations do not overwrite later assignments" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|{
+      #|  g = 1;
+      #|  function* g() {}
+      #|  console.log(g);
+      #|  a = 2;
+      #|  async function a() {}
+      #|  console.log(a);
+      #|  ag = 3;
+      #|  async function* ag() {}
+      #|  console.log(ag);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["1", "2", "3"])
+}
+
+///|
+test "annex-b: block function propagates its current binding value" {
+  let output = run_output_annex_b(
+    (
+      #|var f = "outer";
+      #|{
+      #|  f = 1;
+      #|  function f() {}
+      #|}
+      #|console.log(f);
+    ),
+  )
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -11687,6 +12751,29 @@ test "test262: ArrayBuffer allocation limit throws RangeError" {
     ),
   )
   json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "test262: ArrayBuffer observes NewTarget prototype before allocation failure" {
+  let output = run_output(
+    (
+      #|function DummyError() {}
+      #|var newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get: function() { throw new DummyError(); }
+      #|});
+      #|try {
+      #|  Reflect.construct(
+      #|    ArrayBuffer,
+      #|    [7 * 1125899906842624],
+      #|    newTarget
+      #|  );
+      #|} catch (e) {
+      #|  console.log(e instanceof DummyError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -19578,7 +20665,8 @@ test "regex char class: \\0 null escape with following decimal digits" {
   // \00, \07: consumed as 2-digit octal (non-unicode)
   // \000:     consumed as 3-digit octal (non-unicode)
   // \08:      NUL + '8' as separate class char (8 is not octal)
-  // \00 in unicode mode: SyntaxError (decimal escape not allowed)
+  // Unicode-mode rejection is covered separately at the parser seam because
+  // a literal early error cannot be caught by JavaScript try/catch.
   let output = run_output(
     (
       #|console.log(/[\0]/.test('\x00'));       // true -- plain \0 = NUL
@@ -19589,27 +20677,27 @@ test "regex char class: \\0 null escape with following decimal digits" {
       #|console.log(/[\000]/.test('0'));        // false -- '0' consumed
       #|console.log(/[\08]/.test('\x00'));      // true -- \0=NUL; 8 not octal
       #|console.log(/[\08]/.test('8'));         // true -- '8' is separate class char
-      #|try { /[\00]/u; console.log('no error') } catch(e) { console.log(e instanceof SyntaxError) }
     ),
   )
   json_inspect(output, content=[
-    "true", "true", "false", "true", "true", "false", "true", "true", "true",
+    "true", "true", "false", "true", "true", "false", "true", "true",
   ])
 }
 
 ///|
-test "regex char class: unicode mode strict errors for malformed \\x and \\u" {
-  // In Unicode mode (/u flag), malformed \x and \u must throw SyntaxError.
+test "RegExp constructor: unicode mode strict errors for malformed \\x and \\u" {
+  // Constructor pattern strings are validated when the call is evaluated, so
+  // their SyntaxErrors remain catchable by JavaScript try/catch.
   let output = run_output(
     (
       #|var threw = 0;
-      #|try { /[\x]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\u]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\u1]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\x4]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\x]", "u") }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\u]", "u") }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\u1]", "u") }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\x4]", "u") }  catch(e) { if (e instanceof SyntaxError) threw++ }
       #|console.log(threw);   // 4 -- all four must throw
-      #|try { /[\xA0]/u; console.log(true) } catch(e) { console.log(false) }
-      #|try { /[A]/u; console.log(true) } catch(e) { console.log(false) }
+      #|try { new RegExp("[\\xA0]", "u"); console.log(true) } catch(e) { console.log(false) }
+      #|try { new RegExp("[A]", "u"); console.log(true) } catch(e) { console.log(false) }
     ),
   )
   json_inspect(output, content=["4", "true", "true"])
@@ -19634,6 +20722,259 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
   )
   json_inspect(output, content=[
     "true", "true", "false", "false", "true", "false",
+  ])
+}
+
+///|
+test "RegExp u-mode invalid literal is an early SyntaxError (#576)" {
+  let invalid_literals = [
+    // HexEscapeSequence must contain exactly two hexadecimal digits.
+    (
+      #|/\x/u;
+    ),
+    (
+      #|/\x1/u;
+    ),
+    (
+      #|/[\x]/u;
+    ),
+    (
+      #|/[\x1]/u;
+    ),
+    // `c` must be followed by an ASCII letter in both escape contexts.
+    (
+      #|/\c/u;
+    ),
+    (
+      #|/\c0/u;
+    ),
+    (
+      #|/[\c]/u;
+    ),
+    (
+      #|/[\c0]/u;
+    ),
+    // Unicode IdentityEscape is restricted to syntax characters and `/`.
+    (
+      #|/\M/u;
+    ),
+    (
+      #|/[\M]/u;
+    ),
+    (
+      #|/\_/u;
+    ),
+    (
+      #|/[\_]/u;
+    ),
+    // Legacy decimal/octal escapes are forbidden in Unicode character classes.
+    (
+      #|/\00/u;
+    ),
+    (
+      #|/\1/u;
+    ),
+    (
+      #|/\8/u;
+    ),
+    (
+      #|/[\00]/u;
+    ),
+    (
+      #|/[\1]/u;
+    ),
+    (
+      #|/[\B]/u;
+    ),
+    // CharacterClassEscape cannot be either endpoint of a Unicode-mode range.
+    (
+      #|/[\d-a]/u;
+    ),
+    (
+      #|/[a-\D]/u;
+    ),
+    (
+      #|/[\w-\s]/u;
+    ),
+    // Incomplete CharacterClassEscape and named-backreference prefixes are not identities.
+    (
+      #|/\p/u;
+    ),
+    (
+      #|/[\p]/u;
+    ),
+    (
+      #|/\k/u;
+    ),
+    (
+      #|/\k<a>/u;
+    ),
+    (
+      #|/\k<\u0062>(?<a>a)/u;
+    ),
+    (
+      #|/(?<\u0061>a)\k<b>/u;
+    ),
+    (
+      #|/\k<a/u;
+    ),
+    (
+      #|/\k<>/u;
+    ),
+    (
+      #|/(?<a>a)\k<1>/u;
+    ),
+    (
+      #|/[\k]/u;
+    ),
+    (
+      #|/\u{110000}/u;
+    ),
+    (
+      #|/\u{}/u;
+    ),
+    (
+      #|/\u{1,}/u;
+    ),
+    (
+      #|/\u{41/u;
+    ),
+  ]
+  for literal in invalid_literals {
+    let interp = new_interpreter()
+    let observed = try {
+      let source = (
+          #|console.log('started');
+          #|try {
+        ) +
+        literal +
+        (
+          #|
+          #|  console.log('after literal');
+          #|} catch (e) {
+          #|  console.log('caught');
+          #|}
+        )
+      let prog = @parser.parse(source)
+      let _ = interp.run(prog.stmts)
+      "no error"
+    } catch {
+      @errors.SyntaxError(_) => "early SyntaxError"
+      @runtime.JsException(_) => "runtime SyntaxError"
+      error => error.to_string()
+    }
+    json_inspect([observed, interp.host.output.join(",")], content=[
+      "early SyntaxError", "",
+    ])
+  }
+}
+
+///|
+test "RegExp constructor invalid u escape remains catchable (#576)" {
+  let output = run_output(
+    (
+      #|var invalid = [
+      #|  "\\x", "\\x1", "[\\x]", "[\\x1]",
+      #|  "\\c", "\\c0", "[\\c]", "[\\c0]",
+      #|  "\\M", "[\\M]", "\\_", "[\\_]",
+      #|  "\\00", "\\1", "\\8", "[\\00]", "[\\1]", "[\\B]",
+      #|  "[\\d-a]", "[a-\\D]", "[\\w-\\s]",
+      #|  "\\p", "[\\p]", "\\k", "\\k<a>",
+      #|  "\\k<\\u0062>(?<a>a)", "(?<\\u0061>a)\\k<b>",
+      #|  "\\k<a", "\\k<>", "(?<a>a)\\k<1>", "[\\k]",
+      #|  "\\u{110000}"
+      #|];
+      #|var caught = 0;
+      #|for (var i = 0; i < invalid.length; i++) {
+      #|  try {
+      #|    new RegExp(invalid[i], "u");
+      #|  } catch (e) {
+      #|    if (e instanceof SyntaxError) caught++;
+      #|  }
+      #|}
+      #|console.log(caught);
+      #|console.log('continued');
+    ),
+  )
+  json_inspect(output, content=["32", "continued"])
+}
+
+///|
+test "RegExp u-mode valid CharacterEscape and IdentityEscape forms (#576)" {
+  let output = run_output(
+    (
+      #|console.log(/\x41/u.test('A'));          // HexEscapeSequence
+      #|console.log(/\cA/u.test('\x01'));       // control escape in an atom
+      #|console.log(/[\cZ]/u.test('\x1A'));     // control escape in a class
+      #|console.log(/\0/u.test('\x00'));        // NUL not followed by a digit
+      #|console.log(/\^/u.test('^'));            // SyntaxCharacter identity
+      #|console.log(/\//u.test('/'));            // solidus identity
+      #|console.log(/[\-]/u.test('-'));          // class-only hyphen escape
+      #|console.log(/(a)\1/u.test('aa'));        // in-bounds DecimalEscape
+      #|console.log(/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\10/u.test('abcdefghijj'));
+      #|console.log(/\k<a>(?<a>b)\w\k<a>/u.test('bab')); // forward named reference
+      #|console.log(/(?<\u0061>a)\k<a>/u.test('aa')); // escaped capture name
+      #|console.log(/\k<\u0061>(?<a>a)/u.test('a')); // escaped reference name
+      #|console.log(/(?<\u0061>a)(b)\2/u.test('abb')); // name cursor preserves group count
+      #|console.log(/\k<a>/.test('k<a>'));       // Annex B non-u identity
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true",
+  ])
+}
+
+///|
+test "RegExp u-mode Unicode code-point escapes (#576)" {
+  let output = run_output(
+    (
+      #|console.log('\u{1d306}'.match(/\u{1d306}/u)[0].length === 2); // exact compat-table probe
+      #|console.log(/\u{0}/u.test('\x00'));          // minimum scalar
+      #|console.log(/\u0041/u.test('A'));            // fixed BMP escape
+      #|console.log(/\u{41}/u.test('A'));            // braced BMP escape
+      #|console.log(/\u{1F600}/u.test('\u{1F600}')); // astral scalar
+      #|console.log(/\u{10FFFF}/u.test('\u{10FFFF}')); // maximum scalar
+      #|console.log(/\u{000000003f}/u.test('?'));     // leading zeroes
+      #|console.log(/\u/.test('u'));                 // non-u identity escape
+      #|console.log(/\u0041/.test('A'));             // legacy fixed escape
+      #|console.log(/\u{41}/.test('u'.repeat(41)));  // non-u identity + quantifier
+      #|console.log(/\u{41}/.test('A'));             // no braced form without u
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "false",
+  ])
+}
+
+///|
+test "RegExp iu-mode Unicode simple case folding (#576)" {
+  let output = run_output(
+    (
+      #|console.log(!!('\u017F'.match(/S/iu) && 'S'.match(/\u017F/iu))); // exact compat probe
+      #|console.log(/S/iu.test('\u017F'));            // compat-table direction 1
+      #|console.log(/\u017F/iu.test('S'));            // compat-table direction 2
+      #|console.log(/[S]/iu.test('\u017F'));          // singleton class
+      #|console.log(/[\u017F]/iu.test('S'));          // reciprocal singleton class
+      #|console.log(/[A-Z]/iu.test('\u017F'));        // folded range membership
+      #|console.log(/(S)\1/iu.test('S\u017F'));       // backreference comparison
+      #|console.log('x\u017F'.search(/S/iu));         // literal candidate search
+      #|console.log('x\u017F'.search(/[S]/iu));       // class candidate search
+      #|console.log(/K/iu.test('\u212A'));            // Kelvin sign C mapping
+      #|console.log(/\u03C9/iu.test('\u2126'));       // Ohm sign C mapping
+      #|console.log(/\u{10400}/iu.test('\u{10428}')); // astral simple fold
+      #|console.log(/^\w$/iu.test('\u017F'));         // Unicode word class
+      #|console.log(/\bS/iu.test('\u017F'));          // Unicode word boundary
+      #|console.log(/S/i.test('\u017F'));             // no Unicode folding
+      #|console.log(/S/u.test('\u017F'));             // no ignoreCase folding
+      #|console.log(/[S]/i.test('\u017F'));           // class non-u control
+      #|console.log(/\bS/i.test('\u017F'));           // boundary non-u control
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "1", "1", "true", "true",
+    "true", "true", "true", "false", "false", "false", "false",
   ])
 }
 

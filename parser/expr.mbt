@@ -1401,14 +1401,18 @@ fn Parser::parse_object_literal(self : Parser) -> @ast.Expr raise Error {
         }
         match kw_name {
           Some(name) => {
+            let is_ident_key = self.at(Yield) &&
+              !self.in_generator() &&
+              self.allow_yield_identifier()
             let kloc = self.advance().loc
-            // Keywords are not valid IdentifierReference, so is_ident_key = false
-            // This prevents `{ for }` or `{ for = 42 }` shorthand syntax
+            // `yield` is an IdentifierReference outside generator contexts;
+            // strict-mode rejection is handled by the early-error walker.
+            // Other keywords remain invalid shorthand property names.
             (
               StringLit(name, false, @token.LexForm::LexNormal, kloc),
               name,
               false,
-              false,
+              is_ident_key,
             )
           }
           None => {

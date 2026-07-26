@@ -247,6 +247,21 @@ fn validate_block_statement_list_early_errors(
 }
 
 ///|
+/// CaseBlock declarations share one lexical environment even though the AST
+/// stores each case body separately.
+fn flatten_case_block_statements(
+  cases : Array[@ast.SwitchCase],
+) -> Array[@ast.Stmt] {
+  let stmts : Array[@ast.Stmt] = []
+  for case in cases {
+    for stmt in case.body {
+      stmts.push(stmt)
+    }
+  }
+  stmts
+}
+
+///|
 fn validate_pattern_early_errors(
   pattern : @ast.Pattern,
   strict_context : Bool,
@@ -784,6 +799,11 @@ fn validate_block_early_errors_stmt(
     ThrowStmt(expr, _) => validate_block_early_errors_expr(expr, strict_context)
     SwitchStmt(discriminant, cases, _) => {
       validate_block_early_errors_expr(discriminant, strict_context)
+      validate_block_statement_list_early_errors(
+        flatten_case_block_statements(cases),
+        include_block_functions=true,
+        allow_duplicate_block_functions=!strict_context,
+      )
       for case_ in cases {
         match case_.condition {
           Some(expr) => validate_block_early_errors_expr(expr, strict_context)
@@ -2299,6 +2319,190 @@ fn hoist_block_tdz(
             }
           _ => ()
         }
+      _ => ()
+    }
+  }
+}
+
+///|
+fn ensure_block_function_binding(
+  env : Environment,
+  name : String,
+) -> Unit raise Error {
+  if !env.bindings.contains(name) {
+    env.def_tdz(name, LetBinding)
+  }
+}
+
+///|
+fn initialize_block_function_binding(
+  env : Environment,
+  name : String,
+  value : Value,
+) -> Unit raise Error {
+  match env.bindings.get(name) {
+    Some(binding) =>
+      if binding.initialized {
+        env.assign(name, value)
+      } else {
+        env.initialize(name, value)
+      }
+    None => abort("unreachable: block function binding was not created")
+  }
+}
+
+///|
+/// Instantiate the lexical declarations owned by a Block or CaseBlock.
+/// Function declarations are initialized before statement execution and close
+/// over the block environment, per BlockDeclarationInstantiation.
+fn Interpreter::instantiate_block_declarations(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  env : Environment,
+  strict : Bool,
+) -> Unit raise Error {
+  hoist_block_tdz(stmts, env)
+  for stmt in stmts {
+    match stmt {
+      FuncDecl(name, params, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature(strict, Some(name), params, body)
+        let func_val = make_func({
+          name: Some(name),
+          params,
+          body,
+          closure: env,
+          strict: is_function_strict(strict, body),
+          has_name_binding: false,
+          is_method: false,
+          source_text,
+        })
+        initialize_block_function_binding(env, name, func_val)
+      }
+      FuncDeclExt(name, params, rest_param, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature_ext(
+          strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let func_val = make_func_ext({
+          name: Some(name),
+          params,
+          rest_param,
+          body,
+          closure: env,
+          strict: is_function_strict(strict, body),
+          has_name_binding: false,
+          is_method: false,
+          source_text,
+        })
+        initialize_block_function_binding(env, name, func_val)
+      }
+      GeneratorDecl(name, params, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature(strict, Some(name), params, body)
+        let func_val = self.make_generator_function(
+          Some(name),
+          params,
+          None,
+          body,
+          is_function_strict(strict, body),
+          env,
+          source_text~,
+        )
+        initialize_block_function_binding(env, name, func_val)
+      }
+      GeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature_ext(
+          strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let func_val = self.make_generator_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          is_function_strict(strict, body),
+          env,
+          source_text~,
+        )
+        initialize_block_function_binding(env, name, func_val)
+      }
+      AsyncFuncDecl(name, params, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature(strict, Some(name), params, body)
+        let func_val = self.make_async_function(
+          Some(name),
+          params,
+          None,
+          body,
+          is_function_strict(strict, body),
+          env,
+          source_text~,
+        )
+        initialize_block_function_binding(env, name, func_val)
+      }
+      AsyncFuncDeclExt(name, params, rest_param, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature_ext(
+          strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let func_val = self.make_async_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          is_function_strict(strict, body),
+          env,
+          source_text~,
+        )
+        initialize_block_function_binding(env, name, func_val)
+      }
+      AsyncGeneratorDecl(name, params, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature(strict, Some(name), params, body)
+        let func_val = self.make_async_generator_function(
+          Some(name),
+          params,
+          None,
+          body,
+          is_function_strict(strict, body),
+          env,
+          source_text~,
+        )
+        initialize_block_function_binding(env, name, func_val)
+      }
+      AsyncGeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
+        ensure_block_function_binding(env, name)
+        validate_function_signature_ext(
+          strict,
+          Some(name),
+          params,
+          rest_param,
+          body,
+        )
+        let func_val = self.make_async_generator_function_ext(
+          Some(name),
+          params,
+          rest_param,
+          body,
+          is_function_strict(strict, body),
+          env,
+          source_text~,
+        )
+        initialize_block_function_binding(env, name, func_val)
+      }
       _ => ()
     }
   }

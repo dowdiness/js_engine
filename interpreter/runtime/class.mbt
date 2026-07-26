@@ -104,9 +104,9 @@ fn Interpreter::create_class(
   let private_static_fields : Array[ClassFieldInit] = []
   // Collect private methods for this class (shared across all instances)
   let private_methods : Map[String, Value] = Map([])
-  // Create method environments with [[SuperPrototype]] for super.method() support.
-  // Base classes (no extends) still need these bindings: instance methods resolve
-  // super against Object.prototype; static methods against Function.prototype.
+  // Create shared method environments before their [[HomeObject]] values exist.
+  // The snapshot bindings remain as legacy/direct-eval markers and as fallbacks
+  // for constructor-call environments; normal class methods use [[HomeObject]].
   let instance_method_env : Environment = {
     let menv = Environment::new(parent=Some(env))
     let instance_super : Value = match super_ctor {
@@ -635,6 +635,11 @@ fn Interpreter::create_class(
   if name != "" {
     env.initialize(name, class_obj)
   }
+  // Method closures share these mutable environments, so binding the completed
+  // home objects here makes GetSuperBase observe their live [[Prototype]] values
+  // on every evaluation, including after Object.setPrototypeOf.
+  instance_method_env.def_builtin("[[HomeObject]]", proto)
+  static_method_env.def_builtin("[[HomeObject]]", class_obj)
   // Set prototype.constructor to point to the class (non-enumerable per spec)
   if !constructor_overridden {
     match proto {

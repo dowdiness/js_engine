@@ -6,6 +6,10 @@
       "packages": ["token", "errors", "ast", "lexer", "parser"]
     },
     {
+      "name": "syntax-core",
+      "packages": ["regexp_syntax"]
+    },
+    {
       "name": "runtime",
       "packages": ["interpreter/runtime"]
     },
@@ -118,6 +122,18 @@
       "reason": "lexer reports shared JavaScript parse errors"
     },
     {
+      "from": "lexer",
+      "to": "regexp_syntax",
+      "scope": "prod",
+      "reason": "lexer validates RegExp literal escapes through the shared pure syntax core"
+    },
+    {
+      "from": "regexp_syntax",
+      "to": "errors",
+      "scope": "prod",
+      "reason": "RegExp syntax decoding reports shared JavaScript SyntaxErrors"
+    },
+    {
       "from": "parser",
       "to": "token",
       "scope": "prod",
@@ -218,6 +234,12 @@
       "to": "errors",
       "scope": "prod",
       "reason": "stdlib raises shared JavaScript errors"
+    },
+    {
+      "from": "interpreter/stdlib",
+      "to": "regexp_syntax",
+      "scope": "prod",
+      "reason": "RegExp construction reuses the shared pure syntax core"
     },
     {
       "from": "interpreter",

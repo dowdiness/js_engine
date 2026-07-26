@@ -233,6 +233,8 @@ pub fn make_array(Array[Value]) -> Value
 
 pub fn make_array_with_holes(Array[Value], Array[Int]) -> Value
 
+pub fn make_bound_func(Value, Value, Array[Value], prototype~ : Value, name~ : String, length~ : Double, realm_state? : RealmState?) -> Value
+
 pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value
@@ -612,6 +614,9 @@ pub(all) struct GeneratorObject {
   mut try_resume_pending_error : Error?
   loop_env_stack : Array[Environment]
   loop_yield_base_stack : Array[Int]
+  stmt_resume_index_stack : Array[Int]
+  stmt_resume_env_stack : Array[Environment]
+  stmt_resume_value_stack : Array[Value]
   mut for_of_iterator : Value
   mut for_of_next : Value
   for_of_iterator_stack : Array[Value]
@@ -708,6 +713,7 @@ pub fn Interpreter::get_console_member(Self, String) -> Value raise
 pub fn Interpreter::get_iterator_next_method(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::get_own_property(Self, Value, Value) -> (PropDescriptor, Value)? raise
 pub fn Interpreter::get_property(Self, Value, String, @token.Loc) -> Value raise
+pub fn Interpreter::get_property_key_with_receiver(Self, Value, Value, Value, @token.Loc) -> Value raise
 pub fn Interpreter::get_prototype_from_constructor(Self, Value, @token.Loc) -> Value raise
 pub fn Interpreter::has_property(Self, Value, String) -> Bool raise
 pub fn Interpreter::has_property_key(Self, Value, Value) -> Bool raise

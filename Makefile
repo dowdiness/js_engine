@@ -281,7 +281,8 @@ validate-docs-skip-policy: validate-docs-skip-policy-test
 validate-docs-skip-policy-test:
 	python3 -m unittest scripts/test_validate_docs_skip_policy.py -v
 
-# Regenerate lexer/unicode_id.mbt from DerivedCoreProperties.txt.
+# Regenerate lexer/unicode_id.mbt and interpreter/stdlib/unicode_case_folding.mbt
+# from DerivedCoreProperties.txt and CaseFolding.txt.
 # Pass UNICODE_VERSION=X.Y.Z to target a specific Unicode release (default: 17.0.0).
 # MoonBit native is authoritative.
 unicode-tables: subprocess-helpers-mbt-test
@@ -293,7 +294,7 @@ unicode-tables-mbt: subprocess-helpers-mbt-test
 	@if [ -n "$(ARGS)" ]; then \
 		./_build/native/debug/build/cmd/generate_unicode_id_tables/generate_unicode_id_tables.exe $(ARGS); \
 	else \
-		echo "built cmd/generate_unicode_id_tables (pass ARGS='--output /tmp/unicode_id.mbt' to fetch/generate)"; \
+		echo "built cmd/generate_unicode_id_tables (pass ARGS='--output /tmp/unicode_id.mbt --case-fold-output /tmp/unicode_case_folding.mbt' to fetch/generate)"; \
 	fi
 
 # Clean build artifacts

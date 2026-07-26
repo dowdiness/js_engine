@@ -2,19 +2,19 @@
 /// Resolve the target of a `super.x` / `super[k]` access (ES2022 §13.3.7.1
 /// MakeSuperPropertyReference).
 ///
-/// Per spec, super resolves via the method's [[HomeObject]] at *call* time:
-/// `Object.getPrototypeOf(homeObject)`. Object-literal methods bind
-/// [[HomeObject]] to the live object, so `Object.setPrototypeOf` after
-/// creation is honored.
-///
-/// Class methods still bind [[SuperPrototype]] (a compile-time snapshot of
-/// the super-class's prototype) for backwards compatibility — a class's
-/// super target rarely shifts after creation, and migrating class machinery
-/// to [[HomeObject]] is left for a separate change.
-fn resolve_super_target(env : Environment) -> Value {
+/// Per spec, super resolves via the method's [[HomeObject]] at *call* time by
+/// invoking its [[GetPrototypeOf]] internal method. The Proxy arm preserves a
+/// possible getPrototypeOf trap before the later property [[Get]]/[[Set]].
+/// [[SuperPrototype]] remains only as a fallback for legacy constructor-call
+/// environments that do not yet carry a [[HomeObject]].
+fn Interpreter::resolve_super_target(
+  self : Interpreter,
+  env : Environment,
+) -> Value raise Error {
   let home = env.get("[[HomeObject]]") catch { _ => Undefined }
   match home {
-    Object(data) => return data.prototype
+    Object(_) | Array(_) | Proxy(_) =>
+      return object_get_prototype_of(self, home)
     _ => ()
   }
   env.get("[[SuperPrototype]]") catch {
@@ -94,57 +94,7 @@ fn Interpreter::get_symbol_property_from_prototype(
   sym : SymbolData,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let key = Value::Symbol(sym)
-  let mut current = proto
-  while true {
-    match current {
-      Object(data) => {
-        match data.bag.symbol_descriptors.get(sym.id) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match data.bag.symbol_properties.get(sym.id) {
-          Some(value) => return value
-          None => current = data.prototype
-        }
-      }
-      Array(data) => {
-        match data.bag.symbol_descriptors.get(sym.id) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match get_array_symbol_prop(data, sym.id) {
-          Some(value) => return value
-          None => current = get_array_prototype(self.realm_state, data)
-        }
-      }
-      Proxy(proxy_data) =>
-        match get_proxy_trap(proxy_data, "get", self) {
-          Some(trap_fn) => {
-            let target = get_proxy_target(proxy_data)
-            let handler = get_proxy_handler(proxy_data)
-            return self.call_value(
-              trap_fn,
-              handler,
-              [target, key, receiver],
-              loc,
-            )
-          }
-          None => current = get_proxy_target(proxy_data)
-        }
-      Null => return Undefined
-      _ => return self.get_computed_property(current, key, loc)
-    }
-  }
-  Undefined
+  self.get_property_key_with_receiver(proto, Symbol(sym), receiver, loc)
 }
 
 ///|
@@ -155,17 +105,7 @@ fn Interpreter::get_computed_property_from_prototype(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
-  match key {
-    Symbol(sym) =>
-      self.get_symbol_property_from_prototype(receiver, proto, sym, loc)
-    _ =>
-      self.get_property_from_prototype(
-        receiver,
-        proto,
-        to_js_string(key, interp=Some(self)),
-        loc,
-      )
-  }
+  self.get_property_key_with_receiver(proto, key, receiver, loc)
 }
 
 ///|
@@ -175,16 +115,18 @@ pub fn Interpreter::eval_super_property(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => {
-      let this_val = eval_this_value(env)
-      self.get_property_from_prototype(this_val, super_proto, prop, loc)
-    }
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
+    _ => self.get_property_from_prototype(this_val, super_proto, prop, loc)
   }
 }
 
@@ -195,16 +137,19 @@ pub fn Interpreter::eval_super_computed_property(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => {
-      let this_val = eval_this_value(env)
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
+    _ =>
       self.get_computed_property_from_prototype(this_val, super_proto, key, loc)
-    }
   }
 }
 
@@ -215,14 +160,18 @@ pub fn Interpreter::eval_super_property_call_reference(
   prop : String,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
     _ => {
-      let this_val = eval_this_value(env)
       let func_val = self.get_property_from_prototype(
         this_val, super_proto, prop, loc,
       )
@@ -238,14 +187,18 @@ pub fn Interpreter::eval_super_computed_call_reference(
   key : Value,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let super_proto = resolve_super_target(env)
+  let this_val = eval_this_value(env)
+  let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
     _ => {
-      let this_val = eval_this_value(env)
       let func_val = self.get_computed_property_from_prototype(
         this_val, super_proto, key, loc,
       )
@@ -1595,7 +1548,7 @@ fn Interpreter::eval_expr(
     }
     SuperMemberAssign(prop, value_expr, loc) => {
       let this_val = eval_this_value(env)
-      let super_proto = resolve_super_target(env)
+      let super_proto = self.resolve_super_target(env)
       match super_proto {
         Undefined =>
           raise @errors.ReferenceError(
@@ -1622,7 +1575,7 @@ fn Interpreter::eval_expr(
     SuperComputedAssign(key_expr, value_expr, loc) => {
       let this_val = eval_this_value(env)
       let key = self.eval_expr(ctx, key_expr, env)
-      let super_proto = resolve_super_target(env)
+      let super_proto = self.resolve_super_target(env)
       match super_proto {
         Undefined =>
           raise @errors.ReferenceError(
@@ -1635,9 +1588,10 @@ fn Interpreter::eval_expr(
               message="Cannot set property on null super base at line \{loc.line}",
             )
           }
+          let prop_key = to_property_key(key, interp=Some(self))
           self.set_computed_property(
             super_proto,
-            key,
+            prop_key,
             value,
             loc,
             strict=ctx.strict,
