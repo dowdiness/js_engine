@@ -189,8 +189,12 @@ that parses workflow source in the MoonBit suite.
       unchanged.
 - [x] Actionlint exits 0.
 - [x] `moon check`, `moon test`, and `make architecture-audit` exit 0.
-- [x] The workflow-only change caused no public API drift; `git diff --check`
-      passes.
+- [x] `moon info` exits 0; generated-interface diff review shows no
+      `pkg.generated.mbti` changes.
+- [x] `moon fmt` exits 0 in isolated verification. Its 13 rewrites are
+      pre-existing `moon.pkg` formatting drift outside this workflow-only plan,
+      so they were discarded rather than added to its scope.
+- [x] `git diff --check origin/main...main` exits 0.
 - [x] Only the in-scope workflow file changed and the plan index is updated.
 
 ## STOP conditions
@@ -217,6 +221,10 @@ Current `main` at `c050d09` has exactly one combined invocation and no redundant
 state-only invocation. Reconciliation reran `actionlint -color`, `moon check`,
 `moon test` (2423/2423), and `make architecture-audit` (state 5/5; boundary
 39/39; import, representation, and surface checks green); all exited 0.
+`moon info` also exited 0 and generated-interface diff review found no
+`pkg.generated.mbti` changes. Isolated `moon fmt` verification exited 0 but
+surfaced 13 pre-existing, out-of-scope `moon.pkg` rewrites, which were discarded.
+`git diff --check origin/main...main` exited 0.
 
 Assumptions: the combined Make target remains authoritative; the existing CI job
 continues to provide its MoonBit/native prerequisites; the audit does not mutate
