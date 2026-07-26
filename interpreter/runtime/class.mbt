@@ -338,6 +338,7 @@ fn Interpreter::create_class(
               true,
               method_closure,
               has_name_binding=false,
+              is_method=true,
               source_text=method_source_text,
             )
           }
@@ -354,6 +355,7 @@ fn Interpreter::create_class(
               true,
               method_closure,
               has_name_binding=false,
+              is_method=true,
               source_text=method_source_text,
             )
           }
@@ -368,6 +370,7 @@ fn Interpreter::create_class(
               true,
               method_closure,
               has_name_binding=false,
+              is_method=true,
               source_text=method_source_text,
             )
           }
@@ -384,6 +387,7 @@ fn Interpreter::create_class(
               true,
               method_closure,
               has_name_binding=false,
+              is_method=true,
               source_text=method_source_text,
             )
           }
@@ -398,6 +402,7 @@ fn Interpreter::create_class(
               true,
               method_closure,
               has_name_binding=false,
+              is_method=true,
               source_text=method_source_text,
             )
           }
@@ -421,6 +426,7 @@ fn Interpreter::create_class(
               true,
               method_closure,
               has_name_binding=false,
+              is_method=true,
               source_text=method_source_text,
             )
           }

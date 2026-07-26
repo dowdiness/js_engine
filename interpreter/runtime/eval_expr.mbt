@@ -195,8 +195,8 @@ pub fn Interpreter::eval_super_property(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_proto = require_super_target(env, "super.prop", loc)
   let this_val = eval_this_value(env)
+  let super_proto = require_super_target(env, "super.prop", loc)
   self.get_property_from_prototype(this_val, super_proto, prop, loc)
 }
 
@@ -219,8 +219,8 @@ pub fn Interpreter::eval_super_property_call_reference(
   prop : String,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let super_proto = require_super_target(env, "super.prop", loc)
   let this_val = eval_this_value(env)
+  let super_proto = require_super_target(env, "super.prop", loc)
   let func_val = self.get_property_from_prototype(
     this_val, super_proto, prop, loc,
   )
@@ -334,6 +334,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -354,6 +355,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -368,6 +370,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -388,6 +391,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -402,6 +406,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }
@@ -422,6 +427,7 @@ fn Interpreter::eval_prop_value(
           strict,
           method_env,
           has_name_binding=false,
+          is_method=true,
           source_text~,
         )
       }

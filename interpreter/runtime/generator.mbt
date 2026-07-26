@@ -455,6 +455,7 @@ fn Interpreter::make_generator_function(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let interp = self
@@ -553,6 +554,7 @@ fn Interpreter::make_generator_function(
             strict,
             effective_closure,
             func_prototype,
+            is_method~,
           )
         }),
       ),
@@ -586,6 +588,7 @@ fn Interpreter::make_generator_function_ext(
   strict : Bool,
   closure : Environment,
   has_name_binding? : Bool = false,
+  is_method? : Bool = false,
   source_text? : String? = None,
 ) -> Value {
   let interp = self
@@ -684,6 +687,7 @@ fn Interpreter::make_generator_function_ext(
             strict,
             effective_closure,
             func_prototype,
+            is_method~,
           )
         }),
       ),
@@ -720,6 +724,7 @@ fn create_generator_instance(
   strict : Bool,
   closure : Environment,
   func_prototype : Value,
+  is_method? : Bool = false,
   is_arrow? : Bool = false,
   callee? : Value = Undefined,
   is_async? : Bool = false,
@@ -738,6 +743,9 @@ fn create_generator_instance(
   func_env.is_var_scope = true
   // Arrow functions don't rebind `this` (use closure's lexical this).
   if !is_arrow {
+    // Every non-arrow generator-family call is a PerformEval boundary.
+    // Methods authorize their own lexical super; ordinary functions stop lookup.
+    func_env.def_builtin("[[EvalMethodContext]]", Bool(is_method))
     let effective_this = if !strict {
       match this_val {
         Undefined | Null => interp.global_this

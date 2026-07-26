@@ -7269,6 +7269,38 @@ test "derived super property before super throws ReferenceError" {
 }
 
 ///|
+test "super dot access gets this binding before null super base" {
+  let output = run_output(
+    (
+      #|class C extends null {
+      #|  constructor() { super.x; }
+      #|}
+      #|try { new C(); }
+      #|catch (e) {
+      #|  console.log(e instanceof ReferenceError, e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true false"])
+}
+
+///|
+test "super dot call gets this binding before null super base" {
+  let output = run_output(
+    (
+      #|class C extends null {
+      #|  constructor() { super.x(); }
+      #|}
+      #|try { new C(); }
+      #|catch (e) {
+      #|  console.log(e instanceof ReferenceError, e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true false"])
+}
+
+///|
 test "super property with null base throws TypeError" {
   let output = run_output(
     (
@@ -18611,6 +18643,106 @@ test "direct eval uses the current non-arrow function's super binding" {
     ),
   )
   json_inspect(output, content=["false SyntaxError,SyntaxError 42"])
+}
+
+///|
+test "direct eval super context stops at ordinary generator functions" {
+  let output = run_output(
+    (
+      #|let executed = false;
+      #|let caught;
+      #|let proto = { value: 42 };
+      #|let object = {
+      #|  __proto__: proto,
+      #|  method() {
+      #|    function* nested() {
+      #|      try { return eval("executed = true; super.value"); }
+      #|      catch (e) { caught = e.name; return "caught"; }
+      #|    }
+      #|    return nested().next().value;
+      #|  },
+      #|  *generatorMethod(unused = 0) { return eval("super.value"); }
+      #|};
+      #|class Base { get value() { return 43; } }
+      #|class Derived extends Base {
+      #|  *generatorMethod() { return eval("super.value"); }
+      #|}
+      #|console.log(object.method(), executed, caught);
+      #|console.log(object.generatorMethod().next().value);
+      #|console.log(new Derived().generatorMethod().next().value);
+    ),
+  )
+  json_inspect(output, content=["caught false SyntaxError", "42", "43"])
+}
+
+///|
+test "direct eval super context stops at ordinary async functions" {
+  let output = run_output_async(
+    (
+      #|let executed = false;
+      #|let proto = { value: 42 };
+      #|let object = {
+      #|  __proto__: proto,
+      #|  method() {
+      #|    async function nested() {
+      #|      return eval("executed = true; super.value");
+      #|    }
+      #|    return nested();
+      #|  },
+      #|  async asyncMethod(unused = 0) { return eval("super.value"); },
+      #|  asyncArrow() { return (async () => eval("super.value"))(); }
+      #|};
+      #|class Base { get value() { return 43; } }
+      #|class Derived extends Base {
+      #|  async asyncMethod() { return eval("super.value"); }
+      #|}
+      #|object.method().then(
+      #|  value => console.log("unexpected", value, executed),
+      #|  error => console.log(error.name, executed)
+      #|);
+      #|object.asyncMethod().then(value => console.log(value));
+      #|object.asyncArrow().then(value => console.log(value));
+      #|new Derived().asyncMethod().then(value => console.log(value));
+    ),
+  )
+  json_inspect(output, content=["SyntaxError false", "42", "42", "43"])
+}
+
+///|
+test "direct eval super context stops at ordinary async generator functions" {
+  let output = run_output_async(
+    (
+      #|let executed = false;
+      #|let proto = { value: 42 };
+      #|let object = {
+      #|  __proto__: proto,
+      #|  method() {
+      #|    async function* nested() {
+      #|      return eval("executed = true; super.value");
+      #|    }
+      #|    return nested().next();
+      #|  },
+      #|  async *asyncGeneratorMethod(unused = 0) {
+      #|    return eval("super.value");
+      #|  }
+      #|};
+      #|class Base { get value() { return 43; } }
+      #|class Derived extends Base {
+      #|  async *asyncGeneratorMethod() { return eval("super.value"); }
+      #|}
+      #|object.method().then(
+      #|  result => console.log("unexpected", result.value, executed),
+      #|  error => console.log(error.name, executed)
+      #|);
+      #|object.asyncGeneratorMethod().next().then(
+      #|  result => console.log(result.value)
+      #|);
+      #|new Derived().asyncGeneratorMethod().next().then(
+      #|  result => console.log(result.value)
+      #|);
+    ),
+  )
+  json_inspect(output, content=["SyntaxError false", "42", "43"])
 }
 
 ///|
