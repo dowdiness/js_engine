@@ -13,9 +13,11 @@
 - **Priority**: P1
 - **Effort**: S
 - **Risk**: LOW
-- **Depends on**: `plans/002-json-stringify-semantic-ops.md`
+- **Depends on**: `plans/002-json-stringify-semantic-ops.md` (DONE)
 - **Category**: dx
 - **Planned at**: commit `f806f28`, 2026-07-13
+- **Completed**: PR #538, merge commit `71bb6286410041f8cf69f4d4332db1ed2515151d`, 2026-07-13
+- **Verified**: commit `c050d09`, 2026-07-26
 
 ## Why this matters
 
@@ -177,18 +179,19 @@ that parses workflow source in the MoonBit suite.
 
 ## Done criteria
 
-- [ ] Plan 002 is complete and `make architecture-audit` was green before YAML
+- [x] Plan 002 is complete and `make architecture-audit` was green before YAML
       editing.
-- [ ] Caller/prerequisite audit and three-line assumptions are recorded.
-- [ ] Pre-change detector proved the combined target was absent.
-- [ ] The unit-test job runs `make architecture-audit` exactly once.
-- [ ] No redundant state-only audit invocation remains in that job.
-- [ ] Workflow permissions, caches, triggers, matrix, and unrelated steps are
+- [x] Caller/prerequisite audit and three-line assumptions are recorded.
+- [x] Pre-change detector proved the combined target was absent.
+- [x] The unit-test job runs `make architecture-audit` exactly once.
+- [x] No redundant state-only audit invocation remains in that job.
+- [x] Workflow permissions, caches, triggers, matrix, and unrelated steps are
       unchanged.
-- [ ] Actionlint exits 0.
-- [ ] `moon check`, `moon test`, and `make architecture-audit` exit 0.
-- [ ] `moon info` shows no API change; `moon fmt` and `git diff --check` pass.
-- [ ] Only in-scope files changed and the plan index status is updated.
+- [x] Actionlint exits 0.
+- [x] `moon check`, `moon test`, and `make architecture-audit` exit 0.
+- [x] The workflow-only change caused no public API drift; `git diff --check`
+      passes.
+- [x] Only the in-scope workflow file changed and the plan index is updated.
 
 ## STOP conditions
 
@@ -201,6 +204,23 @@ Stop and report if:
 - Making CI green appears to require weakening an audit or expanding an
   allowlist.
 - A workflow verification fails twice after a reasonable correction.
+
+## Reconciliation record
+
+At baseline `f806f28`, the workflow contained one
+`make architecture-state-audit` invocation and no combined audit invocation.
+PR #538 changed only `.github/workflows/test262.yml`, renaming that step and
+calling `make architecture-audit`; all recorded PR checks, including actionlint
+and the unit-test job, passed.
+
+Current `main` at `c050d09` has exactly one combined invocation and no redundant
+state-only invocation. Reconciliation reran `actionlint -color`, `moon check`,
+`moon test` (2423/2423), and `make architecture-audit` (state 5/5; boundary
+39/39; import, representation, and surface checks green); all exited 0.
+
+Assumptions: the combined Make target remains authoritative; the existing CI job
+continues to provide its MoonBit/native prerequisites; the audit does not mutate
+tracked files.
 
 ## Maintenance notes
 
