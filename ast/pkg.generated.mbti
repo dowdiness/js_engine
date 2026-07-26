@@ -7,6 +7,9 @@ import {
 }
 
 // Values
+pub fn expr_immediate_children_any(Expr, (Expr) -> Bool) -> Bool
+
+pub fn pattern_immediate_children_any(Pattern, (Pattern) -> Bool, (Expr) -> Bool) -> Bool
 
 // Errors
 

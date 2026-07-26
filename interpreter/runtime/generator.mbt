@@ -118,54 +118,8 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 fn expr_contains_yield(expr : @ast.Expr) -> Bool {
   match expr {
     YieldExpr(_, _, _) => true
-    Binary(_, a, b, _) => expr_contains_yield(a) || expr_contains_yield(b)
-    Unary(_, e, _)
-    | UpdateExpr(_, e, _, _)
-    | Grouping(e, _)
-    | SpreadExpr(e, _) => expr_contains_yield(e)
-    Assign(_, e, _) => expr_contains_yield(e)
-    MemberAssign(obj, _, val, _) =>
-      expr_contains_yield(obj) || expr_contains_yield(val)
-    ComputedAssign(obj, key, val, _) =>
-      expr_contains_yield(obj) ||
-      expr_contains_yield(key) ||
-      expr_contains_yield(val)
-    CompoundAssign(_, a, b, _)
-    | Comma(a, b, _)
-    | WebCompatCallAssign(a, b, _) =>
-      expr_contains_yield(a) || expr_contains_yield(b)
-    Member(obj, _, _) | OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
-      expr_contains_yield(obj)
-    ComputedMember(obj, key, _)
-    | OptionalComputedMember(obj, key, _)
-    | ChainComputedMember(obj, key, _) =>
-      expr_contains_yield(obj) || expr_contains_yield(key)
-    SuperComputedMember(e, _) => expr_contains_yield(e)
-    Ternary(cond, t, f, _) =>
-      expr_contains_yield(cond) ||
-      expr_contains_yield(t) ||
-      expr_contains_yield(f)
-    Call(f, args, _) | NewExpr(f, args, _) | OptionalCall(f, args, _) =>
-      expr_contains_yield(f) ||
-      args.iter().any(fn(a) { expr_contains_yield(a) })
-    SuperCall(args, _) => args.iter().any(fn(a) { expr_contains_yield(a) })
-    ArrayLit(elems, _) => elems.iter().any(fn(e) { expr_contains_yield(e) })
-    ObjectLit(props, _) =>
-      props
-      .iter()
-      .any(fn(p) { expr_contains_yield(p.key) || expr_contains_yield(p.value) })
-    TemplateLit(_, exprs, _) =>
-      exprs.iter().any(fn(e) { expr_contains_yield(e) })
-    TaggedTemplate(tag, _, exprs, _) =>
-      expr_contains_yield(tag) ||
-      exprs.iter().any(fn(e) { expr_contains_yield(e) })
-    // DestructureAssign LHS pattern can contain computed keys or defaults with
-    // yield expressions ({[yield]: a} = {}, {a = yield} = {}) — scan both sides.
-    DestructureAssign(pat, rhs, _) =>
-      pattern_contains_yield(pat) || expr_contains_yield(rhs)
     // Arrow params (including defaults) are evaluated in the enclosing scope,
     // so ArrowFuncExt/AsyncArrowFuncExt are NOT full boundaries for yield.
-    // Simple ArrowFunc/AsyncArrowFunc have no defaults, so false is safe.
     ArrowFuncExt(params, _, _, _, _) | AsyncArrowFuncExt(params, _, _, _, _) =>
       params_contain_yield(params)
     // Nested function boundaries — yield inside is not the outer generator's
@@ -197,7 +151,12 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
         })
       heritage || computed
     }
-    _ => false
+    // DestructureAssign LHS pattern can contain computed keys or defaults with
+    // yield expressions ({[yield]: a} = {}, {a = yield} = {}) — scan both sides.
+    DestructureAssign(pat, _, _) =>
+      pattern_contains_yield(pat) ||
+      @ast.expr_immediate_children_any(expr, expr_contains_yield)
+    _ => @ast.expr_immediate_children_any(expr, expr_contains_yield)
   }
 }
 
@@ -206,49 +165,9 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
 // property keys. Property name strings (e.g. the "yield" in {yield: x}) are
 // not expressions and are intentionally not flagged here.
 fn pattern_contains_yield(pat : @ast.Pattern) -> Bool {
-  match pat {
-    IdentPat(_) => false
-    DefaultPat(inner, default_expr) =>
-      pattern_contains_yield(inner) || expr_contains_yield(default_expr)
-    ArrayPat(elements, rest) => {
-      let elems_yield = elements
-        .iter()
-        .any(fn(e) {
-          match e {
-            Some(p) => pattern_contains_yield(p)
-            None => false
-          }
-        })
-      let rest_yield = match rest {
-        Some(r) => pattern_contains_yield(r)
-        None => false
-      }
-      elems_yield || rest_yield
-    }
-    AssignTarget(e) => expr_contains_yield(e)
-    ObjectPat(props, rest) => {
-      let props_yield = props
-        .iter()
-        .any(fn(prop) {
-          // Check computed key expression (e.g. {[yield]: x}), shorthand or
-          // keyed default (e.g. {x = yield} or {a: b = yield}), and nested pat.
-          let computed_yield = match prop.computed_key {
-            Some(e) => expr_contains_yield(e)
-            None => false
-          }
-          let default_yield = match prop.default_val {
-            Some(e) => expr_contains_yield(e)
-            None => false
-          }
-          computed_yield || default_yield || pattern_contains_yield(prop.value)
-        })
-      let rest_yield = match rest {
-        Some(r) => pattern_contains_yield(r)
-        None => false
-      }
-      props_yield || rest_yield
-    }
-  }
+  @ast.pattern_immediate_children_any(
+    pat, pattern_contains_yield, expr_contains_yield,
+  )
 }
 
 ///|

@@ -8127,6 +8127,24 @@ test "generator: computed class name resume does not replay prefix effects" {
 }
 
 ///|
+test "generator: private receiver replay visits post-yield effects" {
+  let output = run_output(
+    (
+      #|let n = 0;
+      #|class C {
+      #|  #x = 42;
+      #|  *g() { return ((yield this, (n++, this)).#x, yield n); }
+      #|}
+      #|const it = new C().g();
+      #|console.log(it.next().value instanceof C);
+      #|console.log(it.next().value);
+      #|console.log(it.next().done);
+    ),
+  )
+  json_inspect(output, content=["true", "1", "true"])
+}
+
+///|
 test "generator: yield in conditional" {
   let output = run_output(
     (
