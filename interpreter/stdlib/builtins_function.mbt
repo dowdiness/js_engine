@@ -218,14 +218,9 @@ fn setup_function_builtins(
         )
       }
       let loc = @token.Loc::default()
-      let target_proto = match this_val {
-        Object(data) =>
-          match data.prototype {
-            Null => @runtime.get_func_proto(realm_state=Some(realm_state))
-            proto => proto
-          }
-        _ => @runtime.get_func_proto(realm_state=Some(realm_state))
-      }
+      // §10.4.1.3 BoundFunctionCreate steps 1 and 4: preserve the exact
+      // [[GetPrototypeOf]] result, including null.
+      let target_proto = @runtime.object_get_prototype_of(interp, this_val)
       let bind_this = if args.length() > 0 { args[0] } else { Undefined }
       let bound_args : Array[Value] = []
       for i = 1; i < args.length(); i = i + 1 {
@@ -266,33 +261,13 @@ fn setup_function_builtins(
         Value::String_(s) => "bound " + s
         _ => "bound "
       }
-      let nf_desc : PropDescriptor = {
-        writable: false,
-        enumerable: false,
-        configurable: true,
-        getter: None,
-        setter: None,
-        is_accessor: false,
-      }
-      let bprops : Map[String, Value] = Map([])
-      bprops["length"] = Value::Number(bound_length)
-      bprops["name"] = Value::String_(bound_name)
-      @runtime.stamp_function_realm(
-        Value::Object({
-          bag: {
-            properties: bprops,
-            symbol_properties: Map([]),
-            descriptors: { "length": nf_desc, "name": nf_desc },
-            symbol_descriptors: Map([]),
-            internal_slots: Map([]),
-            host_slots: Map([]),
-          },
-          prototype: target_proto,
-          callable: Some(BoundFunc(this_val, bind_this, bound_args)),
-          class_name: "Function",
-          extensible: true,
-          arraybuffer_state: None,
-        }),
+      @runtime.make_bound_func(
+        this_val,
+        bind_this,
+        bound_args,
+        prototype=target_proto,
+        name=bound_name,
+        length=bound_length,
         realm_state=Some(realm_state),
       )
     },

@@ -237,6 +237,8 @@ pub fn make_array_with_holes(Array[Value], Array[Int]) -> Value
 
 pub fn make_array_with_prototype(Array[Value], Value) -> Value
 
+pub fn make_bound_func(Value, Value, Array[Value], prototype~ : Value, name~ : String, length~ : Double, realm_state? : RealmState?) -> Value
+
 pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value

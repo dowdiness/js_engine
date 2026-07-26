@@ -654,9 +654,12 @@ pub fn tokenize(source : String) -> Array[@token.Token] raise Error {
             offset += 1
             col += 1
           }
+          let pattern = pattern_buf.to_string()
+          let flags = flags_buf.to_string()
+          validate_regexp_literal_unicode_escapes(pattern, flags)
           tokens.push(
             @token.Token(
-              Regex(pattern_buf.to_string(), flags_buf.to_string()),
+              Regex(pattern, flags),
               rloc,
               "",
               end_offset=utf16_pos(),

@@ -22,6 +22,11 @@
       "reason": "tokenize is an implementation detail; users call the root facade"
     },
     {
+      "package": "dowdiness/js_engine/regexp_syntax",
+      "category": "internal_api",
+      "reason": "shared RegExp syntax operations are interpreter implementation details"
+    },
+    {
       "package": "dowdiness/js_engine/parser",
       "category": "internal_api",
       "reason": "parser types and functions are implementation details"

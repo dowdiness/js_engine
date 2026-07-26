@@ -258,6 +258,13 @@ fn validate_numeric_backreferences(
 
 ///|
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
+  if self.unicode {
+    @regexp_syntax.validate_unicode_mode_regexp_escapes(
+      self.pattern,
+      is_id_start_char,
+      is_id_continue_char,
+    )
+  }
   let result = self.parse_alternation()
   let named_group_indices = regex_named_group_indices(self.group_name_entries)
   let resolved = if !self.group_names.is_empty() {
@@ -429,6 +436,27 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'f' => Literal('\u000C') // form feed
     'v' => Literal('\u000B') // vertical tab
     '0' => Literal('\u0000') // null
+    'x' | 'c' =>
+      if self.unicode {
+        Literal(self.parse_unicode_mode_character_escape())
+      } else {
+        Literal(ch)
+      }
+    'u' =>
+      if self.unicode {
+        Literal(self.parse_unicode_mode_character_escape())
+      } else if self.has_fixed_unicode_escape() {
+        // Legacy RegExp patterns accept only the fixed-width form here.
+        // Keep braced escapes as Annex B identity escapes for `u`.
+        Literal(
+          self.parse_unicode_escape(
+            allow_braced=false,
+            combine_surrogate_pair=false,
+          ),
+        )
+      } else {
+        Literal('u')
+      }
     'k' =>
       if self.pos < self.pattern.length() && self.pattern[self.pos] == '<' {
         // Named backreference \k<name> — interpret \u escapes in name
@@ -444,7 +472,7 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
             let escape_pos = self.pos
             self.pos += 2 // skip \u
             try {
-              let c = self.parse_unicode_escape_in_name()
+              let c = self.parse_unicode_escape()
               name_buf.write_char(c)
             } catch {
               _ => {
@@ -489,9 +517,18 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
       }
     _ =>
       if ch >= '1' && ch <= '9' {
-        // Backreference \1-\9
-        let group_num = ch.to_int() - '0'.to_int()
-        Backreference(group_num)
+        if self.unicode {
+          let (group_num, next) = @regexp_syntax.parse_unicode_mode_decimal_escape(
+            self.pattern,
+            self.pos - 1,
+          )
+          self.pos = next
+          Backreference(group_num)
+        } else {
+          // Legacy parsing currently supports single-digit backreferences.
+          let group_num = ch.to_int() - '0'.to_int()
+          Backreference(group_num)
+        }
       } else {
         Literal(ch) // literal escape (e.g., \., \*, etc.)
       }
@@ -510,50 +547,42 @@ fn RegexParser::parse_class_single_escape(
   match escaped {
     'u' =>
       if self.unicode {
-        self.parse_unicode_escape_in_name()
-      } else {
+        self.parse_unicode_mode_character_escape(in_character_class=true)
+      } else if self.has_fixed_unicode_escape() {
         // Annex B: parse exactly 4 hex digits, no {…} form, no surrogate-pair folding.
         // In non-unicode char classes, \uD83D and \uDE00 are separate code-unit atoms —
         // combining them into a scalar would remove both surrogates from the class.
-        let saved = self.pos
-        let mut cp = 0
-        let mut ok = true
-        for i = 0; i < 4; i = i + 1 {
-          if self.pos >= self.pattern.length() ||
-            !is_hex_digit(self.pattern[self.pos]) {
-            ok = false
-            break
-          }
-          cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
-          self.pos += 1
-        }
-        if ok {
-          cp.unsafe_to_char()
-        } else {
-          self.pos = saved
-          'u'
-        }
-      }
-    'x' => {
-      // Lookahead: both hex digits must be present before consuming any
-      let has_2_hex = self.pos + 1 < self.pattern.length() &&
-        is_hex_digit(self.pattern[self.pos]) &&
-        is_hex_digit(self.pattern[self.pos + 1])
-      if !has_2_hex {
-        if self.unicode {
-          raise @errors.SyntaxError(
-            message="Invalid regex: invalid hex escape in character class",
-          )
-        }
-        // Annex B: identity escape — return 'x' without consuming anything
-        'x'
+        self.parse_unicode_escape(
+          allow_braced=false,
+          combine_surrogate_pair=false,
+        )
       } else {
-        let cp = hex_digit_value(self.pattern[self.pos]) * 16 +
-          hex_digit_value(self.pattern[self.pos + 1])
-        self.pos += 2
-        cp.unsafe_to_char()
+        'u'
       }
-    }
+    'x' =>
+      if self.unicode {
+        self.parse_unicode_mode_character_escape(in_character_class=true)
+      } else {
+        // Lookahead: both hex digits must be present before consuming any
+        let has_2_hex = self.pos + 1 < self.pattern.length() &&
+          is_hex_digit(self.pattern[self.pos]) &&
+          is_hex_digit(self.pattern[self.pos + 1])
+        if !has_2_hex {
+          // Annex B: identity escape — return 'x' without consuming anything
+          'x'
+        } else {
+          let cp = hex_digit_value(self.pattern[self.pos]) * 16 +
+            hex_digit_value(self.pattern[self.pos + 1])
+          self.pos += 2
+          cp.unsafe_to_char()
+        }
+      }
+    'c' =>
+      if self.unicode {
+        self.parse_unicode_mode_character_escape(in_character_class=true)
+      } else {
+        'c'
+      }
     'n' => '\n'
     'r' => '\r'
     't' => '\t'
@@ -705,85 +734,42 @@ fn is_hex_digit(c : Char) -> Bool {
 }
 
 ///|
-/// Parse a Unicode escape sequence (\uXXXX or \u{XXXXX}) from self.pattern
-/// starting at self.pos (which should point just past the 'u').
-/// Returns the decoded character and advances self.pos past the escape.
-fn RegexParser::parse_unicode_escape_in_name(
+/// Whether the cursor starts an exactly four-digit Unicode escape payload.
+fn RegexParser::has_fixed_unicode_escape(self : RegexParser) -> Bool {
+  @regexp_syntax.has_fixed_unicode_escape(self.pattern, self.pos)
+}
+
+///|
+/// Decode a Unicode-mode CharacterEscape whose escape letter was just consumed.
+fn RegexParser::parse_unicode_mode_character_escape(
   self : RegexParser,
+  in_character_class? : Bool = false,
 ) -> Char raise Error {
-  if self.pos < self.pattern.length() && self.pattern[self.pos] == '{' {
-    // \u{XXXXX} extended form
-    self.pos += 1
-    let mut cp = 0
-    let mut count = 0
-    while self.pos < self.pattern.length() &&
-          is_hex_digit(self.pattern[self.pos]) {
-      cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
-      self.pos += 1
-      count += 1
-    }
-    if count == 0 ||
-      count > 6 ||
-      self.pos >= self.pattern.length() ||
-      self.pattern[self.pos] != '}' {
-      raise @errors.SyntaxError(
-        message="Invalid regex: invalid Unicode escape in group name",
-      )
-    }
-    self.pos += 1 // skip '}'
-    if cp > 0x10FFFF {
-      raise @errors.SyntaxError(
-        message="Invalid regex: Unicode code point out of range in group name",
-      )
-    }
-    cp.unsafe_to_char()
-  } else {
-    // \uXXXX — exactly 4 hex digits
-    let mut cp = 0
-    for i = 0; i < 4; i = i + 1 {
-      if self.pos >= self.pattern.length() ||
-        !is_hex_digit(self.pattern[self.pos]) {
-        raise @errors.SyntaxError(
-          message="Invalid regex: invalid Unicode escape in group name",
-        )
-      }
-      cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
-      self.pos += 1
-    }
-    // Surrogate pair: if high surrogate, check for \uDCxx low surrogate
-    if cp >= 0xD800 && cp <= 0xDBFF {
-      if self.pos + 5 < self.pattern.length() &&
-        self.pattern[self.pos] == '\\' &&
-        self.pattern[self.pos + 1] == 'u' {
-        let saved = self.pos
-        self.pos += 2 // skip \u
-        let mut low = 0
-        let mut ok = true
-        for i = 0; i < 4; i = i + 1 {
-          if self.pos >= self.pattern.length() ||
-            !is_hex_digit(self.pattern[self.pos]) {
-            ok = false
-            break
-          }
-          low = low * 16 + hex_digit_value(self.pattern[self.pos])
-          self.pos += 1
-        }
-        if ok && low >= 0xDC00 && low <= 0xDFFF {
-          // Valid surrogate pair — combine
-          let combined = (cp - 0xD800) * 0x400 + (low - 0xDC00) + 0x10000
-          combined.unsafe_to_char()
-        } else {
-          // Not a valid low surrogate — backtrack
-          self.pos = saved
-          cp.unsafe_to_char()
-        }
-      } else {
-        cp.unsafe_to_char()
-      }
-    } else {
-      cp.unsafe_to_char()
-    }
-  }
+  let (char, next) = @regexp_syntax.parse_unicode_mode_character_escape(
+    self.pattern,
+    self.pos - 1,
+    in_character_class~,
+  )
+  self.pos = next
+  char
+}
+
+///|
+/// Parse a Unicode escape payload starting just after `\u`. The pure decoder is
+/// shared with RegExp literal early-error validation in the lexer.
+fn RegexParser::parse_unicode_escape(
+  self : RegexParser,
+  allow_braced? : Bool = true,
+  combine_surrogate_pair? : Bool = true,
+) -> Char raise Error {
+  let (char, next) = @regexp_syntax.parse_unicode_escape(
+    self.pattern,
+    self.pos,
+    allow_braced~,
+    combine_surrogate_pair~,
+  )
+  self.pos = next
+  char
 }
 
 ///|
@@ -1117,7 +1103,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
           self.pos + 1 < self.pattern.length() &&
           self.pattern[self.pos + 1] == 'u' {
           self.pos += 2 // skip \u
-          self.parse_unicode_escape_in_name()
+          self.parse_unicode_escape()
         } else {
           let c = self.pattern[self.pos]
           self.pos += 1
@@ -1133,7 +1119,7 @@ fn RegexParser::parse_group(self : RegexParser) -> RegexNode raise Error {
             self.pos + 1 < self.pattern.length() &&
             self.pattern[self.pos + 1] == 'u' {
             self.pos += 2 // skip \u
-            self.parse_unicode_escape_in_name()
+            self.parse_unicode_escape()
           } else {
             let ch = self.pattern[self.pos]
             self.pos += 1
@@ -1438,11 +1424,37 @@ fn RegexExecState::clear_capture(
 }
 
 ///|
-fn is_word_char(c : Char) -> Bool {
+priv struct RegexFlags {
+  icase : Bool
+  multiline : Bool
+  dot_all : Bool
+  sticky : Bool
+  unicode : Bool
+}
+
+///|
+/// ECMA-262 RegExp Canonicalize. Unicode mode uses the pinned C/S mappings
+/// from CaseFolding.txt; legacy mode preserves the engine's ASCII folding.
+fn regexp_canonicalize(ch : Char, flags : RegexFlags) -> Char {
+  guard flags.icase else { return ch }
+  if flags.unicode {
+    unicode_simple_fold(ch.to_int()).unsafe_to_char()
+  } else {
+    ch.to_ascii_lowercase()
+  }
+}
+
+///|
+fn is_ascii_word_char(c : Char) -> Bool {
   (c >= 'a' && c <= 'z') ||
   (c >= 'A' && c <= 'Z') ||
   (c >= '0' && c <= '9') ||
   c == '_'
+}
+
+///|
+fn is_word_char(c : Char, flags : RegexFlags) -> Bool {
+  is_ascii_word_char(regexp_canonicalize(c, flags))
 }
 
 ///|
@@ -1452,25 +1464,11 @@ fn is_line_terminator(c : Char) -> Bool {
 }
 
 ///|
-fn char_eq_icase(a : Char, b : Char, icase : Bool) -> Bool {
+fn char_eq_icase(a : Char, b : Char, flags : RegexFlags) -> Bool {
   if a == b {
     return true
   }
-  if !icase {
-    return false
-  }
-  // Compare lowercased
-  let al = if a >= 'A' && a <= 'Z' {
-    (a.to_int() + 32).unsafe_to_char()
-  } else {
-    a
-  }
-  let bl = if b >= 'A' && b <= 'Z' {
-    (b.to_int() + 32).unsafe_to_char()
-  } else {
-    b
-  }
-  al == bl
+  regexp_canonicalize(a, flags) == regexp_canonicalize(b, flags)
 }
 
 ///|
@@ -1478,39 +1476,33 @@ fn match_char_class_icase(
   ch : Char,
   ranges : Array[(Char, Char)],
   negated : Bool,
-  icase : Bool,
+  flags : RegexFlags,
 ) -> Bool {
-  let c = if icase {
-    // Lowercase for range comparison
-    if ch >= 'A' && ch <= 'Z' {
-      (ch.to_int() + 32).unsafe_to_char()
-    } else {
-      ch
-    }
-  } else {
-    ch
-  }
+  let c = regexp_canonicalize(ch, flags)
   let mut matched = false
   for range in ranges {
     let (lo, hi) = range
-    let lo2 = if icase && lo >= 'A' && lo <= 'Z' {
-      (lo.to_int() + 32).unsafe_to_char()
+    if flags.icase && flags.unicode {
+      if unicode_simple_fold_equivalent_in_range(
+          c.to_int(),
+          lo.to_int(),
+          hi.to_int(),
+        ) {
+        matched = true
+        break
+      }
     } else {
-      lo
-    }
-    let hi2 = if icase && hi >= 'A' && hi <= 'Z' {
-      (hi.to_int() + 32).unsafe_to_char()
-    } else {
-      hi
-    }
-    if c.to_int() >= lo2.to_int() && c.to_int() <= hi2.to_int() {
-      matched = true
-      break
-    }
-    // Also check original (non-lowered) char against original range for non-alpha ranges
-    if icase && ch.to_int() >= lo.to_int() && ch.to_int() <= hi.to_int() {
-      matched = true
-      break
+      let lo2 = regexp_canonicalize(lo, flags)
+      let hi2 = regexp_canonicalize(hi, flags)
+      if c.to_int() >= lo2.to_int() && c.to_int() <= hi2.to_int() {
+        matched = true
+        break
+      }
+      // Preserve direct membership when legacy endpoint folding changes order.
+      if flags.icase && ch.to_int() >= lo.to_int() && ch.to_int() <= hi.to_int() {
+        matched = true
+        break
+      }
     }
   }
   if negated {
@@ -1518,15 +1510,6 @@ fn match_char_class_icase(
   } else {
     matched
   }
-}
-
-///|
-/// Regex flags struct for passing multiple flags through the matcher
-priv struct RegexFlags {
-  icase : Bool
-  multiline : Bool
-  dot_all : Bool
-  sticky : Bool
 }
 
 ///|
@@ -1541,7 +1524,7 @@ fn match_backreference_capture(
     return None
   }
   for i = 0; i < cap_chars.length(); i = i + 1 {
-    if !char_eq_icase(input[pos + i], cap_chars[i], flags.icase) {
+    if !char_eq_icase(input[pos + i], cap_chars[i], flags) {
       return None
     }
   }
@@ -1594,7 +1577,7 @@ fn regex_exec_single(
   // Match a single non-sequence node
   match node {
     Literal(ch) =>
-      if pos < input.length() && char_eq_icase(input[pos], ch, flags.icase) {
+      if pos < input.length() && char_eq_icase(input[pos], ch, flags) {
         Some(pos + 1)
       } else {
         None
@@ -1611,7 +1594,7 @@ fn regex_exec_single(
       }
     CharClass(ranges, negated) =>
       if pos < input.length() &&
-        match_char_class_icase(input[pos], ranges, negated, flags.icase) {
+        match_char_class_icase(input[pos], ranges, negated, flags) {
         Some(pos + 1)
       } else {
         None
@@ -1646,8 +1629,8 @@ fn regex_exec_single(
           }
       }
     WordBoundary(is_boundary) => {
-      let left_word = pos > 0 && is_word_char(input[pos - 1])
-      let right_word = pos < input.length() && is_word_char(input[pos])
+      let left_word = pos > 0 && is_word_char(input[pos - 1], flags)
+      let right_word = pos < input.length() && is_word_char(input[pos], flags)
       let at_boundary = left_word != right_word
       if is_boundary == at_boundary {
         Some(pos)
@@ -1926,7 +1909,7 @@ fn advance_to_candidate(
     Literal(ch) => {
       let mut i = pos
       while i < input.length() {
-        if char_eq_icase(input[i], ch, flags.icase) {
+        if char_eq_icase(input[i], ch, flags) {
           return i
         }
         i += 1
@@ -1936,33 +1919,8 @@ fn advance_to_candidate(
     CharClass(ranges, false) => {
       let mut i = pos
       while i < input.length() {
-        let ch = input[i]
-        for k in 0..<ranges.length() {
-          let (lo, hi) = ranges[k]
-          if ch.to_int() >= lo.to_int() && ch.to_int() <= hi.to_int() {
-            return i
-          }
-          if flags.icase {
-            let lowered = if ch >= 'A' && ch <= 'Z' {
-              (ch.to_int() + 32).unsafe_to_char()
-            } else {
-              ch
-            }
-            let lowered_lo = if lo >= 'A' && lo <= 'Z' {
-              (lo.to_int() + 32).unsafe_to_char()
-            } else {
-              lo
-            }
-            let lowered_hi = if hi >= 'A' && hi <= 'Z' {
-              (hi.to_int() + 32).unsafe_to_char()
-            } else {
-              hi
-            }
-            if lowered.to_int() >= lowered_lo.to_int() &&
-              lowered.to_int() <= lowered_hi.to_int() {
-              return i
-            }
-          }
+        if match_char_class_icase(input[i], ranges, false, flags) {
+          return i
         }
         i += 1
       }
@@ -2428,6 +2386,7 @@ fn make_regex_flags(flags : String) -> RegexFlags {
     multiline: flags.contains("m"),
     dot_all: flags.contains("s"),
     sticky: flags.contains("y"),
+    unicode: flags.contains("u"),
   }
 }
 

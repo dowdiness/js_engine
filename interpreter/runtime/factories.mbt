@@ -551,6 +551,51 @@ fn build_func_object(
 }
 
 ///|
+/// Create the shared object representation for an ECMAScript bound function.
+///
+/// `prototype` is the exact result of the target's `[[GetPrototypeOf]]`
+/// operation (§10.4.1.3 BoundFunctionCreate), so `Null` must not be replaced
+/// with the realm's `Function.prototype`.
+pub fn make_bound_func(
+  target : Value,
+  bound_this : Value,
+  bound_args : Array[Value],
+  prototype~ : Value,
+  name~ : String,
+  length~ : Double,
+  realm_state? : RealmState? = None,
+) -> Value {
+  let nf_desc : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  stamp_function_realm_impl(
+    Object({
+      bag: {
+        properties: { "length": Number(length), "name": String_(name) },
+        symbol_properties: Map([]),
+        descriptors: { "length": nf_desc, "name": nf_desc },
+        symbol_descriptors: Map([]),
+        internal_slots: Map([]),
+        host_slots: Map([]),
+      },
+      prototype,
+      callable: Some(BoundFunc(target, bound_this, bound_args.copy())),
+      class_name: "Function",
+      extensible: true,
+      arraybuffer_state: None,
+    }),
+    function_realm_protos_from_state(realm_state~),
+    source_identity_from_state(realm_state~),
+    false,
+  )
+}
+
+///|
 fn function_realm_protos_from_state(
   realm_state? : RealmState? = None,
 ) -> FunctionRealmProtos {
@@ -925,15 +970,16 @@ fn get_callee_function_metadata(callee : Value) -> Array[Value]? {
 }
 
 ///|
-pub fn stamp_function_realm(
+fn stamp_function_realm_impl(
   value : Value,
-  realm_state? : RealmState? = None,
+  protos : FunctionRealmProtos,
+  active_source_identity : String?,
+  set_function_prototype : Bool,
 ) -> Value {
   let stamped = stamp_function_realm_with_protos(
-    value,
-    function_realm_protos_from_state(realm_state~),
+    value, protos, set_function_prototype,
   )
-  let source_identity = match source_identity_from_state(realm_state~) {
+  let source_identity = match active_source_identity {
     Some(identity) => Some(identity)
     None =>
       match stamped {
@@ -950,6 +996,19 @@ pub fn stamp_function_realm(
 }
 
 ///|
+pub fn stamp_function_realm(
+  value : Value,
+  realm_state? : RealmState? = None,
+) -> Value {
+  stamp_function_realm_impl(
+    value,
+    function_realm_protos_from_state(realm_state~),
+    source_identity_from_state(realm_state~),
+    true,
+  )
+}
+
+///|
 pub fn stamp_function_realm_with(
   value : Value,
   function_proto : Value,
@@ -963,19 +1022,23 @@ pub fn stamp_function_realm_with(
   set_proto? : Value = Null,
   promise_proto? : Value = Null,
 ) -> Value {
-  stamp_function_realm_with_protos(value, {
-    function_proto: usable_realm_proto(function_proto),
-    object_proto: usable_realm_proto(object_proto),
-    string_proto: usable_realm_proto(string_proto),
-    number_proto: usable_realm_proto(number_proto),
-    boolean_proto: usable_realm_proto(boolean_proto),
-    symbol_proto: usable_realm_proto(symbol_proto),
-    array_proto: usable_realm_proto(array_proto),
-    map_proto: usable_realm_proto(map_proto),
-    set_proto: usable_realm_proto(set_proto),
-    promise_proto: usable_realm_proto(promise_proto),
-    constructor_prototype_registry: None,
-  })
+  stamp_function_realm_with_protos(
+    value,
+    {
+      function_proto: usable_realm_proto(function_proto),
+      object_proto: usable_realm_proto(object_proto),
+      string_proto: usable_realm_proto(string_proto),
+      number_proto: usable_realm_proto(number_proto),
+      boolean_proto: usable_realm_proto(boolean_proto),
+      symbol_proto: usable_realm_proto(symbol_proto),
+      array_proto: usable_realm_proto(array_proto),
+      map_proto: usable_realm_proto(map_proto),
+      set_proto: usable_realm_proto(set_proto),
+      promise_proto: usable_realm_proto(promise_proto),
+      constructor_prototype_registry: None,
+    },
+    true,
+  )
 }
 
 ///|
@@ -1048,6 +1111,7 @@ fn stamp_realm_proto_if_unstamped(
 fn stamp_function_realm_with_protos(
   value : Value,
   protos : FunctionRealmProtos,
+  set_function_prototype : Bool,
 ) -> Value {
   match value {
     Object(data) =>
@@ -1057,7 +1121,7 @@ fn stamp_function_realm_with_protos(
             data,
             REALM_PROTO_IDX_FUNCTION,
             protos.function_proto,
-            set_function_prototype=true,
+            set_function_prototype~,
           )
           stamp_realm_proto(data, REALM_PROTO_IDX_OBJECT, protos.object_proto)
           stamp_realm_proto(data, REALM_PROTO_IDX_STRING, protos.string_proto)
