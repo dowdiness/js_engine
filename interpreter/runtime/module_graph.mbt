@@ -34,6 +34,12 @@ priv enum ModuleImportTarget {
 }
 
 ///|
+priv enum ModuleDefaultExportBinding {
+  LocalDefaultBinding(String)
+  SyntheticDefaultBinding
+}
+
+///|
 fn Interpreter::predeclare_module_export_tdz(
   self : Interpreter,
   export_name : String,
@@ -158,7 +164,12 @@ fn Interpreter::predeclare_module_exports(
       }
       ExportDefaultDecl(expr, _) =>
         if !self.predeclare_default_function_export(expr, env) {
-          self.predeclare_module_export_tdz("default")
+          match module_default_export_binding(expr) {
+            LocalDefaultBinding(local_name) =>
+              self.predeclare_module_export_cell("default", local_name, env)
+            SyntheticDefaultBinding =>
+              self.predeclare_module_export_tdz("default")
+          }
         }
       ExportAllDecl(Some(ns_name), _, _, _) =>
         self.predeclare_module_export_tdz(ns_name)
@@ -608,7 +619,9 @@ fn ModuleRunRecord::import_target_for_local_name(
 }
 
 ///|
-fn module_default_export_binding_name(expr : @ast.Expr) -> String {
+fn module_default_export_binding(
+  expr : @ast.Expr,
+) -> ModuleDefaultExportBinding {
   match expr {
     FuncExpr(Some(name), _, _, _, _)
     | FuncExprExt(Some(name), _, _, _, _, _)
@@ -618,8 +631,16 @@ fn module_default_export_binding_name(expr : @ast.Expr) -> String {
     | AsyncFuncExprExt(Some(name), _, _, _, _, _)
     | AsyncGeneratorExpr(Some(name), _, _, _, _)
     | AsyncGeneratorExprExt(Some(name), _, _, _, _, _)
-    | ClassExpr(Some(name), _, _, _, _) => name
-    _ => MODULE_DEFAULT_BINDING_NAME
+    | ClassExpr(Some(name), _, _, _, _) => LocalDefaultBinding(name)
+    _ => SyntheticDefaultBinding
+  }
+}
+
+///|
+fn module_default_export_binding_name(expr : @ast.Expr) -> String {
+  match module_default_export_binding(expr) {
+    LocalDefaultBinding(name) => name
+    SyntheticDefaultBinding => MODULE_DEFAULT_BINDING_NAME
   }
 }
 

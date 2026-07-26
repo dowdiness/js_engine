@@ -1180,6 +1180,19 @@ test "ES module: named default export keeps its local binding identity" {
 }
 
 ///|
+test "ES module: named default class aliases converge through export stars" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export default class C {}; export { C as x };"),
+    ("./via-default", "export { default as y } from './base';"),
+    ("./via-named", "export { x as y } from './base';"),
+    ("./barrel", "export * from './via-default'; export * from './via-named';"),
+    ("./main", "import { y } from './barrel'; console.log(y.name);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["C"])
+}
+
+///|
 test "ES module: imported local re-export propagates binding identity through stars" {
   let modules : Array[(String, String)] = [
     ("./base", "export const foo = 2;"),
