@@ -848,6 +848,7 @@ pub(all) struct ProxyData {
   mut target : Value?
   mut handler : Value?
   is_callable : Bool
+  is_constructor : Bool
 }
 
 pub(all) struct RealmState {

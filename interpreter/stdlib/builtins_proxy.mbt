@@ -51,6 +51,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
           target: Some(target),
           handler: Some(handler),
           is_callable: @runtime.is_callable(target),
+          is_constructor: @runtime.is_constructor_value(target),
         })
       }),
     ),
@@ -91,6 +92,7 @@ fn setup_proxy_builtins(env : Environment) -> Unit {
         target: Some(target),
         handler: Some(handler),
         is_callable: @runtime.is_callable(target),
+        is_constructor: @runtime.is_constructor_value(target),
       }
       let proxy_val : Value = Value::Proxy(proxy_data)
       // Create revoke function that nullifies both slots

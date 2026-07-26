@@ -65,8 +65,9 @@ pub fn get_proxy_handler(proxy_data : ProxyData) -> Value raise Error {
 
 ///|
 /// Revoke a proxy by nullifying its target and handler slots. The cached
-/// is_callable flag is intentionally left untouched: a revoked proxy still
-/// reports as callable, matching the pre-revocation classification.
+/// The cached call/construct classifications are intentionally left untouched:
+/// revocation clears the target and handler slots, not the Proxy's internal
+/// [[Call]] and [[Construct]] methods.
 pub fn revoke_proxy(proxy_data : ProxyData) -> Unit {
   proxy_data.target = None
   proxy_data.handler = None

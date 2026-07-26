@@ -453,6 +453,7 @@ pub(all) struct ProxyData {
   mut target : Value? // None when revoked
   mut handler : Value? // None when revoked
   is_callable : Bool // Set at creation time, persists after revocation
+  is_constructor : Bool // Set at creation time, persists after revocation
 }
 
 ///|

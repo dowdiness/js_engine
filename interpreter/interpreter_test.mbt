@@ -4163,6 +4163,57 @@ test "Array.of generic Proxy result separates defineProperty and set traps" {
 }
 
 ///|
+/// IsConstructor remains true for a revoked Proxy whose target was a
+/// constructor; the subsequent Construct operation is what throws.
+test "Array factories reject revoked constructable Proxy receivers" {
+  let src =
+    #|function revokedConstructor() {
+    #|  var record = Proxy.revocable(function() {}, {});
+    #|  record.revoke();
+    #|  return record.proxy;
+    #|}
+    #|function report(label, operation) {
+    #|  try {
+    #|    operation();
+    #|    console.log(label + ":allowed");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + (e instanceof TypeError));
+    #|  }
+    #|}
+    #|report("of", function() {
+    #|  Array.of.call(revokedConstructor(), 1);
+    #|});
+    #|report("from-iterable", function() {
+    #|  Array.from.call(revokedConstructor(), [1]);
+    #|});
+    #|report("from-array-like", function() {
+    #|  Array.from.call(revokedConstructor(), {0: 1, length: 1});
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "of:true", "from-iterable:true", "from-array-like:true",
+  ])
+}
+
+///|
+/// A Proxy copies the target's [[Construct]] classification at creation time.
+test "nested Proxy remains constructable after target revocation" {
+  let src =
+    #|var inner = Proxy.revocable(function() {}, {});
+    #|var outer = new Proxy(inner.proxy, {
+    #|  construct: function() { return {ok: true}; }
+    #|});
+    #|inner.revoke();
+    #|try {
+    #|  console.log("nested:" + (new outer()).ok);
+    #|} catch (e) {
+    #|  console.log("nested:threw");
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["nested:true"])
+}
+
+///|
 test "Object.assign Proxy operations follow spec order" {
   let src =
     #|var log = [];
