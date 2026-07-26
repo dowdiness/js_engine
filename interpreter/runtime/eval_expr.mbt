@@ -24,99 +24,15 @@ fn resolve_super_target(env : Environment) -> Value {
 
 ///|
 fn pattern_may_contain_yield(pattern : @ast.Pattern) -> Bool {
-  match pattern {
-    IdentPat(_) => false
-    ArrayPat(elements, rest) => {
-      let elements_have_yield = elements
-        .iter()
-        .any(fn(pat) {
-          match pat {
-            Some(pat) => pattern_may_contain_yield(pat)
-            None => false
-          }
-        })
-      let rest_has_yield = match rest {
-        Some(pat) => pattern_may_contain_yield(pat)
-        None => false
-      }
-      elements_have_yield || rest_has_yield
-    }
-    ObjectPat(props, rest) => {
-      let props_have_yield = props
-        .iter()
-        .any(fn(prop) {
-          let key_has_yield = match prop.computed_key {
-            Some(expr) => expr_may_contain_yield(expr)
-            None => false
-          }
-          let default_has_yield = match prop.default_val {
-            Some(expr) => expr_may_contain_yield(expr)
-            None => false
-          }
-          key_has_yield ||
-          default_has_yield ||
-          pattern_may_contain_yield(prop.value)
-        })
-      let rest_has_yield = match rest {
-        Some(pat) => pattern_may_contain_yield(pat)
-        None => false
-      }
-      props_have_yield || rest_has_yield
-    }
-    DefaultPat(inner, default_expr) =>
-      pattern_may_contain_yield(inner) || expr_may_contain_yield(default_expr)
-    AssignTarget(expr) => expr_may_contain_yield(expr)
-  }
+  @ast.pattern_immediate_children_any(
+    pattern, pattern_may_contain_yield, expr_may_contain_yield,
+  )
 }
 
 ///|
 fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
   match expr {
     YieldExpr(_, _, _) => true
-    Grouping(inner, _)
-    | Unary(_, inner, _)
-    | SpreadExpr(inner, _)
-    | AwaitExpr(inner, _) => expr_may_contain_yield(inner)
-    Binary(_, left, right, _)
-    | Comma(left, right, _)
-    | ComputedMember(left, right, _)
-    | MemberAssign(left, _, right, _)
-    | PrivateMemberAssign(left, _, right, _)
-    | CompoundAssign(_, left, right, _)
-    | WebCompatCallAssign(left, right, _) =>
-      expr_may_contain_yield(left) || expr_may_contain_yield(right)
-    Ternary(cond, then_expr, else_expr, _) =>
-      expr_may_contain_yield(cond) ||
-      expr_may_contain_yield(then_expr) ||
-      expr_may_contain_yield(else_expr)
-    Assign(_, value, _)
-    | Member(value, _, _)
-    | UpdateExpr(_, value, _, _)
-    | SuperComputedMember(value, _) => expr_may_contain_yield(value)
-    DestructureAssign(pattern, value, _) =>
-      pattern_may_contain_yield(pattern) || expr_may_contain_yield(value)
-    ComputedAssign(obj, key, value, _) =>
-      expr_may_contain_yield(obj) ||
-      expr_may_contain_yield(key) ||
-      expr_may_contain_yield(value)
-    Call(callee, args, _)
-    | NewExpr(callee, args, _)
-    | OptionalCall(callee, args, _) =>
-      expr_may_contain_yield(callee) || args.iter().any(expr_may_contain_yield)
-    ArrayLit(elements, _) => elements.iter().any(expr_may_contain_yield)
-    ObjectLit(props, _) =>
-      props
-      .iter()
-      .any(fn(prop) {
-        expr_may_contain_yield(prop.key) || expr_may_contain_yield(prop.value)
-      })
-    OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
-      expr_may_contain_yield(obj)
-    OptionalComputedMember(obj, key, _) | ChainComputedMember(obj, key, _) =>
-      expr_may_contain_yield(obj) || expr_may_contain_yield(key)
-    TemplateLit(_, exprs, _) => exprs.iter().any(expr_may_contain_yield)
-    TaggedTemplate(tag, _, exprs, _) =>
-      expr_may_contain_yield(tag) || exprs.iter().any(expr_may_contain_yield)
     ClassExpr(_, superclass, members, _, _) => {
       let super_has_yield = match superclass {
         Some(expr) => expr_may_contain_yield(expr)
@@ -140,7 +56,10 @@ fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
         })
       super_has_yield || members_have_yield
     }
-    _ => false
+    DestructureAssign(pattern, _, _) =>
+      pattern_may_contain_yield(pattern) ||
+      @ast.expr_immediate_children_any(expr, expr_may_contain_yield)
+    _ => @ast.expr_immediate_children_any(expr, expr_may_contain_yield)
   }
 }
 

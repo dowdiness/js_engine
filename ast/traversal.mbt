@@ -11,17 +11,13 @@
 ///
 /// The node itself is not passed to `visit`, and this function never recurses.
 /// Children are visited left-to-right and stop at the first `true` result.
-pub fn expr_immediate_children_any(
-  expr : Expr,
-  visit : (Expr) -> Bool,
-) -> Bool {
+pub fn expr_immediate_children_any(expr : Expr, visit : (Expr) -> Bool) -> Bool {
   match expr {
     Binary(_, left, right, _)
     | Comma(left, right, _)
     | ComputedMember(left, right, _)
     | OptionalComputedMember(left, right, _)
-    | ChainComputedMember(left, right, _) =>
-      visit(left) || visit(right)
+    | ChainComputedMember(left, right, _) => visit(left) || visit(right)
     ComputedAssign(obj, key, value, _) =>
       visit(obj) || visit(key) || visit(value)
     Unary(_, inner, _)
@@ -38,13 +34,12 @@ pub fn expr_immediate_children_any(
     MemberAssign(obj, _, value, _)
     | PrivateMemberAssign(obj, _, value, _)
     | CompoundAssign(_, obj, value, _)
-    | WebCompatCallAssign(obj, value, _) =>
-      visit(obj) || visit(value)
+    | WebCompatCallAssign(obj, value, _) => visit(obj) || visit(value)
     Ternary(condition, then_expr, else_expr, _) =>
       visit(condition) || visit(then_expr) || visit(else_expr)
     Call(callee, args, _)
     | NewExpr(callee, args, _)
-    | OptionalCall(callee, args, _) => {
+    | OptionalCall(callee, args, _) =>
       if visit(callee) {
         true
       } else {
@@ -56,7 +51,6 @@ pub fn expr_immediate_children_any(
           false
         }
       }
-    }
     SuperCall(args, _) =>
       for arg in args {
         if visit(arg) {
@@ -89,7 +83,7 @@ pub fn expr_immediate_children_any(
       } nobreak {
         false
       }
-    TaggedTemplate(tag, _, expressions, _) => {
+    TaggedTemplate(tag, _, expressions, _) =>
       if visit(tag) {
         true
       } else {
@@ -101,16 +95,17 @@ pub fn expr_immediate_children_any(
           false
         }
       }
-    }
     DestructureAssign(_, value, _) => visit(value)
-    YieldExpr(argument, _, _) => match argument {
-      Some(argument) => visit(argument)
-      None => false
-    }
-    ClassExpr(_, superclass, _, _, _) => match superclass {
-      Some(superclass) => visit(superclass)
-      None => false
-    }
+    YieldExpr(argument, _, _) =>
+      match argument {
+        Some(argument) => visit(argument)
+        None => false
+      }
+    ClassExpr(_, superclass, _, _, _) =>
+      match superclass {
+        Some(superclass) => visit(superclass)
+        None => false
+      }
     NumberLit(_, _, _)
     | StringLit(_, _, _, _)
     | BoolLit(_, _)
@@ -160,10 +155,7 @@ pub fn pattern_immediate_children_any(
     ArrayPat(elements, rest) => {
       let elements_result = for element in elements {
         match element {
-          Some(element) =>
-            if visit_pattern(element) {
-              break true
-            }
+          Some(element) => if visit_pattern(element) { break true }
           None => ()
         }
       } nobreak {
@@ -180,20 +172,16 @@ pub fn pattern_immediate_children_any(
     }
     ObjectPat(properties, rest) => {
       let properties_result = for property in properties {
-        if (
-          match property.computed_key {
+        if (match property.computed_key {
             Some(key) => visit_expr(key)
             None => false
-          }
-        ) {
+          }) {
           break true
         }
-        if (
-          match property.default_val {
+        if (match property.default_val {
             Some(default_expr) => visit_expr(default_expr)
             None => false
-          }
-        ) {
+          }) {
           break true
         }
         if visit_pattern(property.value) {
