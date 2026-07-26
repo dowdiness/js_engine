@@ -7377,6 +7377,68 @@ test "super call reads the active class prototype before each argument list" {
 }
 
 ///|
+test "super call uses Proxy construct semantics" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let fieldRuns = 0;
+      #|let expectedNewTarget;
+      #|function Base() {}
+      #|let proxy = new Proxy(Base, {
+      #|  construct(target, args, newTarget) {
+      #|    log.push(target === Base, args.join(","), newTarget === expectedNewTarget);
+      #|    if (args[0] === "throw") throw new Error("trap abrupt");
+      #|    if (args[0] === "primitive") return 1;
+      #|    return { value: args[0] };
+      #|  }
+      #|});
+      #|class Success extends Base {
+      #|  field = (fieldRuns++, "field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Success, proxy);
+      #|    super("ok", (Object.setPrototypeOf(Success, Base), "tail"));
+      #|  }
+      #|}
+      #|expectedNewTarget = Success;
+      #|let result = new Success();
+      #|console.log(result.value, result.field);
+      #|class Throwing extends Base {
+      #|  field = (fieldRuns++, "throw-field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Throwing, proxy);
+      #|    super("throw");
+      #|  }
+      #|}
+      #|expectedNewTarget = Throwing;
+      #|try { new Throwing(); } catch (e) { console.log(e.message); }
+      #|class Primitive extends Base {
+      #|  field = (fieldRuns++, "primitive-field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Primitive, proxy);
+      #|    super("primitive");
+      #|  }
+      #|}
+      #|expectedNewTarget = Primitive;
+      #|try { new Primitive(); } catch (e) { console.log(e instanceof TypeError); }
+      #|let revocable = Proxy.revocable(Base, {});
+      #|class Revoked extends Base {
+      #|  field = (fieldRuns++, "revoked-field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Revoked, revocable.proxy);
+      #|    super((revocable.revoke(), "revoked"));
+      #|  }
+      #|}
+      #|try { new Revoked(); } catch (e) { console.log(e instanceof TypeError); }
+      #|console.log(fieldRuns);
+      #|console.log(log.join("|"));
+    ),
+  )
+  json_inspect(output, content=[
+    "ok field", "trap abrupt", "true", "true", "1", "true|ok,tail|true|true|throw|true|true|primitive|true",
+  ])
+}
+
+///|
 test "super computed update preserves reference evaluation order" {
   let output = run_output(
     (

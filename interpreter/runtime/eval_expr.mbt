@@ -2053,6 +2053,46 @@ fn get_active_super_constructor(
 }
 
 ///|
+fn Interpreter::construct_and_bind_super(
+  self : Interpreter,
+  super_ctor : Value,
+  args : Array[Value],
+  super_new_target : Value,
+  this_val : Value,
+  env : Environment,
+  loc : @token.Loc,
+  align_builtin_super_result : Bool,
+) -> Value raise Error {
+  let super_result = self.construct_value(
+    super_ctor,
+    args,
+    loc,
+    new_target=Some(super_new_target),
+  )
+  match super_result {
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+      if align_builtin_super_result {
+        apply_super_return_prototype(super_result, this_val)
+      }
+      env.initialize_in_chain("this", super_result)
+      if env.has("[[InitInstanceFields]]") {
+        let init_fn = env.get("[[InitInstanceFields]]")
+        let _ = self.call_value(init_fn, super_result, [], loc)
+      }
+      super_result
+    }
+    _ => {
+      env.initialize_in_chain("this", this_val)
+      if env.has("[[InitInstanceFields]]") {
+        let init_fn = env.get("[[InitInstanceFields]]")
+        let _ = self.call_value(init_fn, this_val, [], loc)
+      }
+      env.get("this")
+    }
+  }
+}
+
+///|
 // Dispatch a super() call. The selected super constructor was captured before
 // argument evaluation. This function validates it afterward, reads
 // [[PendingThis]]/this and <new.target> from `env`, runs the constructor,
@@ -2217,33 +2257,9 @@ fn Interpreter::eval_super_dispatch(
             | ConstructorOnlyCallable(_, _) => true
             _ => false
           }
-          let super_result = self.construct_value(
-            super_ctor,
-            args,
-            loc,
-            new_target=Some(super_new_target),
+          self.construct_and_bind_super(
+            super_ctor, args, super_new_target, this_val, env, loc, align_builtin_super_result,
           )
-          match super_result {
-            Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
-              if align_builtin_super_result {
-                apply_super_return_prototype(super_result, this_val)
-              }
-              env.initialize_in_chain("this", super_result)
-              if env.has("[[InitInstanceFields]]") {
-                let init_fn = env.get("[[InitInstanceFields]]")
-                let _ = self.call_value(init_fn, super_result, [], loc)
-              }
-              super_result
-            }
-            _ => {
-              env.initialize_in_chain("this", this_val)
-              if env.has("[[InitInstanceFields]]") {
-                let init_fn = env.get("[[InitInstanceFields]]")
-                let _ = self.call_value(init_fn, this_val, [], loc)
-              }
-              env.get("this")
-            }
-          }
         }
         _ =>
           raise @errors.ReferenceError(
@@ -2253,6 +2269,10 @@ fn Interpreter::eval_super_dispatch(
             ),
           )
       }
+    Proxy(_) =>
+      self.construct_and_bind_super(
+        super_ctor, args, super_new_target, this_val, env, loc, false,
+      )
     Null =>
       // `extends null`: super() attempts Construct(null, ...) → TypeError
       raise @errors.TypeError(
