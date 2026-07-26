@@ -90,19 +90,6 @@ fn is_typedarray_own_index_key(key : String, length : Int) -> Bool {
 }
 
 ///|
-/// Check if target object is extensible. Arrays, Maps, Sets, Promises have
-/// no `extensible` field in their data structs today (tracked as a known
-/// gap from Stage B.1 — `isExtensible` 2/22 Array failures); they behave
-/// as always-extensible.
-fn target_is_extensible(target : Value) -> Bool {
-  match target {
-    Object(data) => data.extensible
-    Array(_) | Map(_) | Set(_) | Promise(_) => true
-    _ => true
-  }
-}
-
-///|
 /// Implement the Proxy [[IsExtensible]] internal method per ES §10.5.3.
 pub fn proxy_is_extensible(
   interp : Interpreter,
@@ -309,6 +296,35 @@ fn target_get_own_value(
 }
 
 ///|
+/// Resolve the target's canonical [[GetOwnProperty]] descriptor/value pair
+/// when an interpreter is available. The interpreter-free fallback exists for
+/// the legacy public invariant helper and cannot observe Proxy internals.
+fn target_get_own_property_pair_for_invariant(
+  interp : Interpreter?,
+  target : Value,
+  key : Value,
+) -> (PropDescriptor, Value)? raise Error {
+  match interp {
+    Some(ip) => ip.get_own_property(target, key)
+    None =>
+      match key {
+        String_(name) =>
+          match target_get_own_descriptor(None, target, name) {
+            Some(desc) => Some((desc, target_get_own_value(None, target, name)))
+            None => None
+          }
+        Symbol(_) =>
+          match ordinary_get_own_property(target, key) {
+            Some(desc) =>
+              Some((desc, ordinary_get_own_value_for_descriptor(target, key)))
+            None => None
+          }
+        _ => None
+      }
+  }
+}
+
+///|
 /// Implement the Proxy [[PreventExtensions]] internal method per ES §10.5.4.
 pub fn proxy_prevent_extensions(
   interp : Interpreter,
@@ -346,13 +362,7 @@ pub fn proxy_get_prototype_of(
   let target = get_proxy_target(proxy_data)
   let trap = get_proxy_trap(proxy_data, "getPrototypeOf", interp)
   match trap {
-    None =>
-      match target {
-        Object(data) => data.prototype
-        Array(data) => get_array_prototype(interp.realm_state, data)
-        Value::Proxy(inner) => proxy_get_prototype_of(interp, inner)
-        _ => Null
-      }
+    None => object_get_prototype_of(interp, target)
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
       let loc = @token.Loc::default()
@@ -366,13 +376,9 @@ pub fn proxy_get_prototype_of(
           )
       }
       // Step 9-10: If target is non-extensible, result must match target's prototype
-      let extensible = target_is_extensible(target)
+      let extensible = interp.is_extensible_internal(target)
       if !extensible {
-        let target_proto = match target {
-          Object(data) => data.prototype
-          Array(data) => get_array_prototype(interp.realm_state, data)
-          _ => Null
-        }
+        let target_proto = object_get_prototype_of(interp, target)
         if !strict_equal(result, target_proto) {
           raise @errors.TypeError(
             message="'getPrototypeOf' on proxy: proxy target is non-extensible but the trap did not return its actual prototype",
@@ -395,20 +401,9 @@ pub fn proxy_set_prototype_of(
   let trap = get_proxy_trap(proxy_data, "setPrototypeOf", interp)
   match trap {
     None =>
-      match target {
-        Object(data) => {
-          if !data.extensible && !strict_equal(proto, data.prototype) {
-            return false
-          }
-          data.prototype = proto
-          true
-        }
-        Array(data) => {
-          set_array_prototype_override(data, proto)
-          true
-        }
-        Value::Proxy(inner) => proxy_set_prototype_of(interp, inner, proto)
-        _ => true
+      match object_set_prototype_of(interp, target, proto) {
+        Bool(result) => result
+        _ => false
       }
     Some(trap_fn) => {
       let handler = get_proxy_handler(proxy_data)
@@ -417,12 +412,9 @@ pub fn proxy_set_prototype_of(
       let trap_result = is_truthy(result)
       // Step 10-11: If target non-extensible, proto must match target's prototype
       if trap_result {
-        let extensible = target_is_extensible(target)
+        let extensible = interp.is_extensible_internal(target)
         if !extensible {
-          let target_proto = match target {
-            Object(data) => data.prototype
-            _ => Null
-          }
+          let target_proto = object_get_prototype_of(interp, target)
           if !strict_equal(proto, target_proto) {
             raise @errors.TypeError(
               message="'setPrototypeOf' on proxy: trap returned truish for setting a new prototype on a non-extensible proxy target",
@@ -483,7 +475,7 @@ pub fn proxy_has_property_key(
           None => ()
         }
         // Cannot report an own property as non-existent on non-extensible target
-        if !target_is_extensible(target) && target_desc is Some(_) {
+        if !interp.is_extensible_internal(target) && target_desc is Some(_) {
           raise @errors.TypeError(
             message="'has' on proxy: trap returned falsish for property '\{key_display}' but the proxy target is not extensible",
           )
@@ -551,7 +543,7 @@ fn proxy_delete_property_key(
           None => ()
         }
         // Step 12: Cannot delete own property of non-extensible target
-        if !target_is_extensible(target) && target_desc is Some(_) {
+        if !interp.is_extensible_internal(target) && target_desc is Some(_) {
           raise @errors.TypeError(
             message="'deleteProperty' on proxy: trap returned truish for property '\{key_display}' on a non-extensible proxy target",
           )
@@ -590,12 +582,16 @@ pub fn proxy_get(
         loc,
       )
       // ES §10.5.8 step 10-11: Invariant checks
-      match target_get_own_descriptor(Some(interp), target, key) {
-        Some(desc) =>
+      match
+        target_get_own_property_pair_for_invariant(
+          Some(interp),
+          target,
+          String_(key),
+        ) {
+        Some((desc, target_value)) =>
           if !desc.configurable {
             // Non-configurable data property: trap result must match target value
             if !desc.is_accessor && !desc.writable {
-              let target_value = target_get_own_value(Some(interp), target, key)
               if !same_value_for_vap(result, target_value) {
                 raise @errors.TypeError(
                   message="'get' on proxy: property '\{key}' is a read-only and non-configurable data property on the proxy target but the proxy did not return its actual value",
@@ -629,54 +625,17 @@ fn check_proxy_set_trap_invariants_with_interp(
   key : Value,
   value : Value,
 ) -> Unit raise Error {
-  let (desc_opt, target_value, key_display) = match key {
-    String_(k) =>
-      (
-        target_get_own_descriptor(interp, target, k),
-        target_get_own_value(interp, target, k),
-        k,
-      )
-    Symbol(sym) =>
-      (
-        match target {
-          Object(data) => data.bag.symbol_descriptors.get(sym.id)
-          Map(data) => data.bag.symbol_descriptors.get(sym.id)
-          Set(data) => data.bag.symbol_descriptors.get(sym.id)
-          Promise(data) => data.bag.symbol_descriptors.get(sym.id)
-          Array(arr) => arr.bag.symbol_descriptors.get(sym.id)
-          _ => None
-        },
-        match target {
-          Object(data) =>
-            match data.bag.symbol_properties.get(sym.id) {
-              Some(v) => v
-              None => Undefined
-            }
-          Map(data) =>
-            match data.bag.symbol_properties.get(sym.id) {
-              Some(v) => v
-              None => Undefined
-            }
-          Set(data) =>
-            match data.bag.symbol_properties.get(sym.id) {
-              Some(v) => v
-              None => Undefined
-            }
-          Promise(data) =>
-            match data.bag.symbol_properties.get(sym.id) {
-              Some(v) => v
-              None => Undefined
-            }
-          Array(arr) =>
-            match arr.bag.symbol_properties.get(sym.id) {
-              Some(v) => v
-              None => Undefined
-            }
-          _ => Undefined
-        },
-        "Symbol(\{sym.description.unwrap_or_default()})",
-      )
-    _ => (None, Undefined, "")
+  let key_display = match key {
+    String_(name) => name
+    Symbol(sym) => "Symbol(\{sym.description.unwrap_or_default()})"
+    _ => ""
+  }
+  let target_entry = target_get_own_property_pair_for_invariant(
+    interp, target, key,
+  )
+  let (desc_opt, target_value) = match target_entry {
+    Some((desc, current_value)) => (Some(desc), current_value)
+    None => (None, Undefined)
   }
   match desc_opt {
     Some(desc) =>
@@ -1132,7 +1091,8 @@ pub fn proxy_get_own_property(
             )
           }
       }
-      let target_desc = match interp.get_own_property(target, key_val) {
+      let target_entry = interp.get_own_property(target, key_val)
+      let target_desc = match target_entry {
         Some((desc, _)) => Some(desc)
         None => None
       }
@@ -1215,37 +1175,9 @@ pub fn proxy_get_own_property(
             existing_is_data &&
             !existing.configurable &&
             !existing.writable {
-            let cur_val = match key {
-              Symbol(sym) =>
-                match target {
-                  Object(data) =>
-                    match data.bag.symbol_properties.get(sym.id) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                  Map(data) =>
-                    match data.bag.symbol_properties.get(sym.id) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                  Set(data) =>
-                    match data.bag.symbol_properties.get(sym.id) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                  Promise(data) =>
-                    match data.bag.symbol_properties.get(sym.id) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                  Array(arr) =>
-                    match get_array_symbol_prop(arr, sym.id) {
-                      Some(v) => v
-                      None => Undefined
-                    }
-                  _ => Undefined
-                }
-              _ => target_get_own_value(Some(interp), target, key.to_string())
+            let cur_val = match target_entry {
+              Some((_, value)) => value
+              None => Undefined
             }
             let trap_val = match trap_value_opt {
               Some(v) => v
@@ -1337,7 +1269,8 @@ pub fn proxy_define_property(
         return false
       }
       // Invariant checks: §10.5.6 step 14+.
-      let target_desc = match interp.get_own_property(target, key_val) {
+      let target_entry = interp.get_own_property(target, key_val)
+      let target_desc = match target_entry {
         Some((desc, _)) => Some(desc)
         None => None
       }
@@ -1395,39 +1328,9 @@ pub fn proxy_define_property(
         }
         // Step 18.c full compatibility when existing is non-configurable.
         if !current.configurable {
-          // Key-aware current-value lookup — Symbol keys must not coerce
-          // through key.to_string() (would read a different slot).
-          let cur_val = match key {
-            Symbol(sym) =>
-              match target {
-                Object(data) =>
-                  match data.bag.symbol_properties.get(sym.id) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                Map(data) =>
-                  match data.bag.symbol_properties.get(sym.id) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                Set(data) =>
-                  match data.bag.symbol_properties.get(sym.id) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                Promise(data) =>
-                  match data.bag.symbol_properties.get(sym.id) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                Array(arr) =>
-                  match get_array_symbol_prop(arr, sym.id) {
-                    Some(v) => v
-                    None => Undefined
-                  }
-                _ => Undefined
-              }
-            _ => target_get_own_value(Some(interp), target, key.to_string())
+          let cur_val = match target_entry {
+            Some((_, value)) => value
+            None => Undefined
           }
           if !is_compatible_with_non_configurable(current, partial, cur_val) {
             raise @errors.TypeError(

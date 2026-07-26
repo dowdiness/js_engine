@@ -6378,6 +6378,92 @@ test "Proxy integrity delegates to Array target internal methods" {
 }
 
 ///|
+/// Map, Set, and Promise keep their own [[Extensible]] state so every
+/// canonical operation observes the same transition through a Proxy.
+test "Proxy integrity delegates to Map Set and Promise targets" {
+  let output = run_output(
+    (
+      #|var targets = [
+      #|  new Map(),
+      #|  new Set(),
+      #|  new Promise(function(resolve, reject) {})
+      #|];
+      #|for (var i = 0; i < targets.length; i++) {
+      #|  var target = targets[i];
+      #|  var proxy = new Proxy(target, {});
+      #|  console.log(Object.isExtensible(proxy));
+      #|  console.log(Reflect.preventExtensions(proxy));
+      #|  console.log(Object.isExtensible(proxy));
+      #|  console.log(Object.isExtensible(target));
+      #|  console.log(Reflect.defineProperty(proxy, "x", { value: 1 }));
+      #|  console.log(target.x);
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "false", "false", "false", "undefined", "true", "true", "false",
+    "false", "false", "undefined", "true", "true", "false", "false", "false", "undefined",
+  ])
+}
+
+///|
+/// Every invariant must query the nested target's canonical [[IsExtensible]]
+/// result instead of inspecting only the immediate Value variant.
+test "Proxy prototype has and delete traps enforce nested nonextensible target invariants" {
+  let output = run_output(
+    (
+      #|function report(label, action) {
+      #|  try {
+      #|    action();
+      #|    console.log(label + ":no throw");
+      #|  } catch (e) {
+      #|    console.log(label + ":" + e.name);
+      #|  }
+      #|}
+      #|var base = { x: 1 };
+      #|Object.preventExtensions(base);
+      #|var inner = new Proxy(base, {});
+      #|report("getPrototypeOf", function() {
+      #|  Reflect.getPrototypeOf(new Proxy(inner, {
+      #|    getPrototypeOf: function() { return {}; }
+      #|  }));
+      #|});
+      #|report("setPrototypeOf", function() {
+      #|  Reflect.setPrototypeOf(new Proxy(inner, {
+      #|    setPrototypeOf: function() { return true; }
+      #|  }), {});
+      #|});
+      #|report("has", function() {
+      #|  "x" in new Proxy(inner, { has: function() { return false; } });
+      #|});
+      #|report("deleteProperty", function() {
+      #|  Reflect.deleteProperty(new Proxy(inner, {
+      #|    deleteProperty: function() { return true; }
+      #|  }), "x");
+      #|});
+    ),
+  )
+  json_inspect(output, content=[
+    "getPrototypeOf:TypeError", "setPrototypeOf:TypeError", "has:TypeError", "deleteProperty:TypeError",
+  ])
+}
+
+///|
+test "Trapless Proxy setPrototypeOf preserves nonextensible Array prototype" {
+  let output = run_output(
+    (
+      #|var target = [];
+      #|var original = Object.getPrototypeOf(target);
+      #|Object.preventExtensions(target);
+      #|var proxy = new Proxy(target, {});
+      #|console.log(Reflect.setPrototypeOf(proxy, {}));
+      #|console.log(Object.getPrototypeOf(target) === original);
+    ),
+  )
+  json_inspect(output, content=["false", "true"])
+}
+
+///|
 /// The outer Proxy must validate an ownKeys result against its target Proxy's
 /// canonical [[GetOwnProperty]] result, including a non-configurable property
 /// reached through a trapless inner Proxy.
@@ -6576,6 +6662,97 @@ test "Proxy Set invariants classify non-configurable accessors" {
     ),
   )
   json_inspect(output, content=["true", "TypeError"])
+}
+
+///|
+/// An outer Proxy's [[Set]] invariant must use the descriptor/value pair
+/// reported by its Proxy target, not treat that target as descriptor-less.
+test "Proxy Set enforces frozen data invariant through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  set: function() { return true; }
+      #|});
+      #|try {
+      #|  outer.fixed = 2;
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+test "Proxy Get enforces frozen data invariant through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  get: function() { return 2; }
+      #|});
+      #|try {
+      #|  console.log(outer.fixed);
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// The invariant comparison must retain the value returned by the nested
+/// target's canonical [[GetOwnProperty]] operation.
+test "Proxy getOwnPropertyDescriptor accepts matching frozen value through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, enumerable: true, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  getOwnPropertyDescriptor: function() {
+      #|    return {
+      #|      value: 1, writable: false, enumerable: true, configurable: false
+      #|    };
+      #|  }
+      #|});
+      #|console.log(Object.prototype.hasOwnProperty.call(outer, "fixed"));
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// A no-op redefinition of a frozen property is compatible even when the
+/// immediate Proxy target is another Proxy.
+test "Proxy defineProperty accepts matching frozen value through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  defineProperty: function() { return true; }
+      #|});
+      #|console.log(Reflect.defineProperty(outer, "fixed", { value: 1 }));
+    ),
+  )
+  json_inspect(output, content=["true"])
 }
 
 ///|

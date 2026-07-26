@@ -336,15 +336,14 @@ fn ordinary_get_own_string_desc(
 }
 
 ///|
-/// Is `val` extensible per ES §10.1.3? Only ObjectData tracks extensibility;
-/// Array/Map/Set/Promise lack a per-instance extensibility slot and are
-/// always reported extensible. Adding extensibility tracking to those four
-/// variants is a structural follow-up tracked alongside their general
-/// prototype-slot gap.
+/// Is `val` extensible per ES §10.1.3?
 fn ordinary_is_extensible(val : Value) -> Bool {
   match val {
     Object(data) => data.extensible
-    Array(_) | Map(_) | Set(_) | Promise(_) => true
+    Array(data) => data.extensible
+    Map(data) => data.extensible
+    Set(data) => data.extensible
+    Promise(data) => data.extensible
     _ => false
   }
 }

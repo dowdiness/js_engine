@@ -750,6 +750,7 @@ pub(all) struct MapData {
   mut next_entry_id : Int
   mut prototype : Value?
   bag : PropertyBag
+  mut extensible : Bool
 }
 pub fn MapData::MapData(Array[(Value, Value)], prototype? : Value?) -> Self
 
@@ -800,6 +801,7 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction]
   mut is_handled : Bool
   bag : PropertyBag
+  mut extensible : Bool
   mut prototype : Value?
 }
 
@@ -942,6 +944,7 @@ pub(all) struct SetData {
   mut iteration_depth : Int
   mut prototype : Value?
   bag : PropertyBag
+  mut extensible : Bool
 }
 pub fn SetData::SetData(Array[Value], prototype? : Value?) -> Self
 pub fn SetData::effective_size(Self) -> Int

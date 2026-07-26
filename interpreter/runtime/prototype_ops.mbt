@@ -5,16 +5,14 @@
 /// prototype / extensibility representation internals (architecture redesign
 /// Stage 8, following #335 own-property-keys and #338 integrity ops).
 ///
-/// These reproduce the existing Reflect.getPrototypeOf / Reflect.setPrototypeOf
-/// behavior verbatim, including the existing latent asymmetries that are
-/// preserved here and NOT "fixed": both operations only handle
-/// Object / Array / Proxy targets and raise TypeError for Map / Set / Promise
-/// targets even though those are objects whose `[[GetPrototypeOf]]` /
-/// `[[SetPrototypeOf]]` should succeed. Object.getPrototypeOf /
-/// Object.setPrototypeOf carry a richer (coercing, throw-on-non-extensible)
-/// dispatch by design and intentionally do NOT route through these ops.
-/// Aligning the Map/Set/Promise/Array arms is behavior-changing work tracked
-/// for the enumerator-unification / internal-slot follow-ups (#336 / #337).
+/// These operations currently handle Object / Array / Proxy targets. The
+/// remaining latent asymmetry is that Map / Set / Promise targets raise
+/// TypeError even though their `[[GetPrototypeOf]]` / `[[SetPrototypeOf]]`
+/// operations should succeed. Object.getPrototypeOf / Object.setPrototypeOf
+/// carry a richer coercing dispatch and intentionally do not route through
+/// these operations. Aligning the Map/Set/Promise arms is behavior-changing
+/// work tracked for the enumerator-unification / internal-slot follow-ups
+/// (#336 / #337).
 
 ///|
 /// Module-namespace exotic object `[[SetPrototypeOf]]` shortcut (§28.3 /
@@ -106,8 +104,15 @@ pub fn object_set_prototype_of(
         None => Value::Bool(ordinary_set_prototype(interp, data, proto))
       }
     Array(data) => {
-      set_array_prototype_override(data, proto)
-      Value::Bool(true)
+      let current = get_array_prototype(interp.realm_state, data)
+      if strict_equal(proto, current) {
+        Value::Bool(true)
+      } else if !data.extensible {
+        Value::Bool(false)
+      } else {
+        set_array_prototype_override(data, proto)
+        Value::Bool(true)
+      }
     }
     _ =>
       raise @errors.TypeError(

@@ -57,7 +57,18 @@ fn Interpreter::prevent_extensions_internal(
       data.extensible = false
       true
     }
-    Map(_) | Set(_) | Promise(_) => true
+    Map(data) => {
+      data.extensible = false
+      true
+    }
+    Set(data) => {
+      data.extensible = false
+      true
+    }
+    Promise(data) => {
+      data.extensible = false
+      true
+    }
     _ => true
   }
 }
@@ -72,6 +83,9 @@ fn Interpreter::is_extensible_internal(
   match obj {
     Object(data) => data.extensible
     Array(data) => data.extensible
+    Map(data) => data.extensible
+    Set(data) => data.extensible
+    Promise(data) => data.extensible
     Value::Proxy(proxy_data) => proxy_is_extensible(self, proxy_data)
     _ => false
   }
