@@ -19593,6 +19593,65 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
 }
 
 ///|
+test "RegExp u-mode Unicode code-point escapes (#576)" {
+  let output = run_output(
+    (
+      #|console.log('\u{1d306}'.match(/\u{1d306}/u)[0].length === 2); // exact compat-table probe
+      #|console.log(/\u{0}/u.test('\x00'));          // minimum scalar
+      #|console.log(/\u0041/u.test('A'));            // fixed BMP escape
+      #|console.log(/\u{41}/u.test('A'));            // braced BMP escape
+      #|console.log(/\u{1F600}/u.test('\u{1F600}')); // astral scalar
+      #|console.log(/\u{10FFFF}/u.test('\u{10FFFF}')); // maximum scalar
+      #|console.log(/\u{000000003f}/u.test('?'));     // leading zeroes
+      #|var syntaxErrors = 0;
+      #|try { /\u{110000}/u } catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
+      #|try { /\u{}/u }       catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
+      #|try { /\u{1,}/u }     catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
+      #|try { /\u{41/u }      catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
+      #|console.log(syntaxErrors);
+      #|console.log(/\u/.test('u'));                 // non-u identity escape
+      #|console.log(/\u0041/.test('A'));             // legacy fixed escape
+      #|console.log(/\u{41}/.test('u'.repeat(41)));  // non-u identity + quantifier
+      #|console.log(/\u{41}/.test('A'));             // no braced form without u
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "4", "true", "true",
+    "true", "false",
+  ])
+}
+
+///|
+test "RegExp iu-mode Unicode simple case folding (#576)" {
+  let output = run_output(
+    (
+      #|console.log(!!('\u017F'.match(/S/iu) && 'S'.match(/\u017F/iu))); // exact compat probe
+      #|console.log(/S/iu.test('\u017F'));            // compat-table direction 1
+      #|console.log(/\u017F/iu.test('S'));            // compat-table direction 2
+      #|console.log(/[S]/iu.test('\u017F'));          // singleton class
+      #|console.log(/[\u017F]/iu.test('S'));          // reciprocal singleton class
+      #|console.log(/[A-Z]/iu.test('\u017F'));        // folded range membership
+      #|console.log(/(S)\1/iu.test('S\u017F'));       // backreference comparison
+      #|console.log('x\u017F'.search(/S/iu));         // literal candidate search
+      #|console.log('x\u017F'.search(/[S]/iu));       // class candidate search
+      #|console.log(/K/iu.test('\u212A'));            // Kelvin sign C mapping
+      #|console.log(/\u03C9/iu.test('\u2126'));       // Ohm sign C mapping
+      #|console.log(/\u{10400}/iu.test('\u{10428}')); // astral simple fold
+      #|console.log(/^\w$/iu.test('\u017F'));         // Unicode word class
+      #|console.log(/\bS/iu.test('\u017F'));          // Unicode word boundary
+      #|console.log(/S/i.test('\u017F'));             // no Unicode folding
+      #|console.log(/S/u.test('\u017F'));             // no ignoreCase folding
+      #|console.log(/[S]/i.test('\u017F'));           // class non-u control
+      #|console.log(/\bS/i.test('\u017F'));           // boundary non-u control
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "1", "1", "true", "true",
+    "true", "true", "true", "false", "false", "false", "false",
+  ])
+}
+
+///|
 // Positive control: Array null prototype detaches the chain. Oracle for #452.
 test "Object.setPrototypeOf(array, null) detaches array prototype chain" {
   let output = run_output(
