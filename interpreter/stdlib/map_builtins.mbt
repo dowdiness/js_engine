@@ -123,8 +123,9 @@ fn setup_map_builtins(
   ) raise {
     match this_val {
       Value::Map(data) => {
-        let key = if args.length() > 0 { args[0] } else { Undefined }
+        let raw_key = if args.length() > 0 { args[0] } else { Undefined }
         let value = if args.length() > 1 { args[1] } else { Undefined }
+        let key = canonicalize_keyed_collection_key(raw_key)
         // Find existing key using SameValueZero
         match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
           Some(i) => {
@@ -305,8 +306,9 @@ fn setup_map_builtins(
     fn(this_val, args) raise {
       match this_val {
         Value::Map(data) => {
-          let key = if args.length() > 0 { args[0] } else { Undefined }
+          let raw_key = if args.length() > 0 { args[0] } else { Undefined }
           let value = if args.length() > 1 { args[1] } else { Undefined }
+          let key = canonicalize_keyed_collection_key(raw_key)
           // If key exists, return existing value
           match data.entries.search_by(entry => same_value_zero(entry.0, key)) {
             Some(i) => return data.entries[i].1
