@@ -218,6 +218,8 @@ fn Parser::parse_assignment(self : Parser) -> @ast.Expr raise Error {
       PrivateMember(obj, name, _) =>
         return PrivateMemberAssign(obj, name, value, loc)
       ComputedMember(obj, key, _) => return ComputedAssign(obj, key, value, loc)
+      SuperMember(prop, _) => return SuperMemberAssign(prop, value, loc)
+      SuperComputedMember(key, _) => return SuperComputedAssign(key, value, loc)
       ArrayLit(_, _) | ObjectLit(_, _) => {
         let pattern = expr_to_pattern(expr)
         return DestructureAssign(pattern, value, loc)
