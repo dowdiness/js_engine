@@ -1182,14 +1182,37 @@ test "ES module: named default export keeps its local binding identity" {
 ///|
 test "ES module: named default class aliases converge through export stars" {
   let modules : Array[(String, String)] = [
-    ("./base", "export default class C {}; export { C as x };"),
+    ("./base", "export default class C {}; export { C as x }; C = 1;"),
     ("./via-default", "export { default as y } from './base';"),
     ("./via-named", "export { x as y } from './base';"),
     ("./barrel", "export * from './via-default'; export * from './via-named';"),
-    ("./main", "import { y } from './barrel'; console.log(y.name);"),
+    ("./main", "import { y } from './barrel'; console.log(y);"),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  json_inspect(output, content=["C"])
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: named default class export follows local reassignment" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export default class C {}; C = 1;"),
+    ("./main", "import D from './base'; console.log(D);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: named default class stays live through a cycle" {
+  let modules : Array[(String, String)] = [
+    (
+      "./a", "import { read } from './b'; export default class C {}; C = 1; export { read };",
+    ),
+    ("./b", "import D from './a'; export function read() { return D; }"),
+    ("./main", "import { read } from './a'; console.log(read());"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -1309,12 +1332,14 @@ test "ES module: named default declarations conflict with local declarations" {
 test "ES module: named default function stays hoisted and live" {
   let modules : Array[(String, String)] = [
     (
-      "./base", "console.log(typeof F); export default function F() {}; export { F };",
+      "./base", "console.log(typeof F); export default function F() {}; export { F }; F = 1;",
     ),
-    ("./main", "import D, { F } from './base'; console.log(D === F);"),
+    (
+      "./main", "import D, { F } from './base'; console.log(D === F); console.log(D);",
+    ),
   ]
   let (output, _) = @js_engine.run_modules(modules)
-  json_inspect(output, content=["function", "true"])
+  json_inspect(output, content=["function", "true", "1"])
 }
 
 ///|
@@ -1328,6 +1353,19 @@ test "ES module: anonymous defaults do not create local lexical names" {
     let (output, _) = @js_engine.run_modules(modules)
     json_inspect(output, content=["1"])
   }
+}
+
+///|
+test "ES module: anonymous defaults retain synthetic export values" {
+  let modules : Array[(String, String)] = [
+    ("./class", "export default class {};"),
+    ("./value", "export default 7;"),
+    (
+      "./main", "import C from './class'; import value from './value'; console.log(C.name); console.log(value);",
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["default", "7"])
 }
 
 ///|

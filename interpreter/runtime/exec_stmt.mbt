@@ -1627,8 +1627,9 @@ fn Interpreter::exec_stmt(
       if is_anonymous_function_definition(expr) {
         set_function_name(value, "default")
       }
-      self.module_exports["default"] = value
-      // Named default exports also bind the name locally
+      // Named declarations were predeclared as live cells backed by their
+      // local binding. Preserve that cell and initialize only the local name;
+      // synthetic defaults own their value directly in the exports map.
       match module_default_export_binding(expr) {
         LocalDefaultBinding(name) =>
           match expr {
@@ -1643,7 +1644,7 @@ fn Interpreter::exec_stmt(
                 env.def(name, value, LetBinding)
               }
           }
-        SyntheticDefaultBinding => ()
+        SyntheticDefaultBinding => self.module_exports["default"] = value
       }
       Normal(Undefined)
     }
