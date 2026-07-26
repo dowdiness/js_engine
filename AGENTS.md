@@ -97,7 +97,7 @@ The rest of this file is project-agnostic MoonBit conventions. Inlined here so t
 | Empty callback body        | `() => ()`                          | `() => {}` (map literal!)     |
 | Higher-order callback      | `xs.map(x => f(x))`                 | `xs.map(fn(x) { f(x) })`      |
 | Tuple field access         | `.0`                                | `._` (deprecated)             |
-| Fallible return type       | `T!Error` with `!` propagation      | `try?` (won't catch abort)    |
+| Fallible return type       | `T raise MyError`; normal calls propagate | deprecated `try?`        |
 | Iteration                  | `for .. in`                         | `loop` (deprecated)           |
 | Visibility default         | `pub`                               | `pub(all)` unless needed      |
 | Re-export from dependency    | `pub using @pkg { type T }`       | manual wrapper functions      |
@@ -290,7 +290,13 @@ grep -rn '\.(map|filter|fold|each)\(fn(' <pkg>/*.mbt # HOF callbacks should use 
 
 - **Trait impl:** `pub impl Trait for Type with method(self) { ... }` — one method per impl block.
 - **Orphan rule** (error 4061): can't impl foreign trait for foreign type — use a private tuple-struct wrapper.
-- **Error handling:** use `Unit!Error` or `T!Error` for fallible return types. Normal calls auto-propagate errors (zero syntax cost). `try?` converts to `Result[T, E]` (preserves concrete `E`). `abort` is NOT catchable — prefer `fail("msg")` for defect detection (catchable + source location).
+- **Error handling:** use `Unit raise MyError` or `T raise MyError` for fallible
+  return types. Normal calls auto-propagate errors. To materialize a raised error
+  as `Result[T, E]`, use
+  `let result : Result[T, E] = Ok(fallible_call()) catch { error => Err(error) }`.
+  `raise?` is for error-polymorphic higher-order functions. `abort` is NOT
+  catchable — prefer `fail("msg")` for defect detection (catchable + source
+  location).
 - **TODO syntax:** `...` is a placeholder for unimplemented code. It type-checks as any type but aborts at runtime. Do not leave `...` in committed code.
 
 ## Testing
@@ -309,7 +315,8 @@ grep -rn '\.(map|filter|fold|each)\(fn(' <pkg>/*.mbt # HOF callbacks should use 
 - `ref` is a reserved keyword — do not use as variable/field names.
 - `() => {}` is a map literal, not an empty function body — use `() => ()`.
 - `loop` keyword is deprecated — use `for .. in`.
-- `try?` does not catch `abort`.
+- `try?` is deprecated. Use explicit `Ok(expr) catch { error => Err(error) }`
+  when a first-class `Result` is required; `catch` cannot catch `abort`.
 - `let EnumVariant(x) = expr` performs a partial match and will **not compile** for
   non-exhaustive patterns — use `match expr { EnumVariant(x) => x, _ => ... }`
   or `guard expr is EnumVariant(_) else { ... }; let EnumVariant(x) = expr`.
