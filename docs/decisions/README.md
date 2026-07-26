@@ -7,4 +7,5 @@ Architecture-decision-record-style documents and project contracts.
 - [engine-checkpoint-failure-policy.md](engine-checkpoint-failure-policy.md) — accepted at-most-once queue-dispatch policy; private policy extraction is complete for microtasks, timers, and intervals.
 - [engine-diagnostic-contract.md](engine-diagnostic-contract.md) — accepted and implemented operation-aware structured diagnostic contract and source-compatible public API evolution.
 - [engine-json-injection-contract.md](engine-json-injection-contract.md) — immutable host-owned JSON injection, collision policy, and structured failure contract.
+- [engine-execution-guardrail-contract.md](engine-execution-guardrail-contract.md) — accepted, not-yet-implemented operation-scoped step budget, stack-depth guard, cooperative interruption, queue, and diagnostic contract.
 - [tooling-migration-contracts.md](tooling-migration-contracts.md) — parity contract for migrating Python scripts to MoonBit.

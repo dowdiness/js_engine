@@ -11945,6 +11945,29 @@ test "test262: ArrayBuffer allocation limit throws RangeError" {
 }
 
 ///|
+test "test262: ArrayBuffer observes NewTarget prototype before allocation failure" {
+  let output = run_output(
+    (
+      #|function DummyError() {}
+      #|var newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get: function() { throw new DummyError(); }
+      #|});
+      #|try {
+      #|  Reflect.construct(
+      #|    ArrayBuffer,
+      #|    [7 * 1125899906842624],
+      #|    newTarget
+      #|  );
+      #|} catch (e) {
+      #|  console.log(e instanceof DummyError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
 test "test262: ArrayBuffer constructor uses NewTarget prototype" {
   let output = run_output(
     (
