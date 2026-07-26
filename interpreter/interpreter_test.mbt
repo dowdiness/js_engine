@@ -2607,6 +2607,54 @@ test "function bind method" {
   expect_result(result, "Hi Bob")
 }
 
+///|
+test "compat-table ES2015 bound functions preserve target prototype matrix" {
+  let output = run_output(
+    (
+      #|function check(kind, target) {
+      #|  var prototypes = [Function.prototype, { marker: kind }, null];
+      #|  for (var i = 0; i < prototypes.length; i++) {
+      #|    var prototype = prototypes[i];
+      #|    Object.setPrototypeOf(target, prototype);
+      #|    var bound = Function.prototype.bind.call(target, null);
+      #|    console.log(kind + ":" + i + ":" + (Object.getPrototypeOf(bound) === prototype));
+      #|  }
+      #|}
+      #|check("function", function ordinary() {});
+      #|check("generator", function* generator() {});
+      #|check("arrow", () => 1);
+      #|check("class", class BoundTarget {});
+    ),
+  )
+  json_inspect(output, content=[
+    "function:0:true", "function:1:true", "function:2:true", "generator:0:true",
+    "generator:1:true", "generator:2:true", "arrow:0:true", "arrow:1:true", "arrow:2:true",
+    "class:0:true", "class:1:true", "class:2:true",
+  ])
+}
+
+///|
+test "bound functions retain call and construct behavior with null prototype" {
+  let output = run_output(
+    (
+      #|function add(left, right) { return this.base + left + right; }
+      #|Object.setPrototypeOf(add, null);
+      #|var boundAdd = Function.prototype.bind.call(add, { base: 10 }, 2);
+      #|console.log(boundAdd(3));
+      #|class Pair {
+      #|  constructor(left, right) { this.left = left; this.right = right; }
+      #|  total() { return this.left + this.right; }
+      #|}
+      #|Object.setPrototypeOf(Pair, null);
+      #|var BoundPair = Function.prototype.bind.call(Pair, { ignored: true }, 4);
+      #|var pair = new BoundPair(5);
+      #|console.log(pair.total());
+      #|console.log(Object.getPrototypeOf(pair) === Pair.prototype);
+    ),
+  )
+  json_inspect(output, content=["15", "9", "true"])
+}
+
 // ====== Promise Constructor/Species Regression Tests ======
 
 ///|
