@@ -790,6 +790,73 @@ test "stage0: created realm globals and prototypes stay separate" {
 }
 
 ///|
+test "sloppy function calls box primitive this values in the callee realm" {
+  let src =
+    #|String.prototype.thisMarker = "outer-string";
+    #|Number.prototype.thisMarker = "outer-number";
+    #|Boolean.prototype.thisMarker = "outer-boolean";
+    #|function sloppy() { return this.thisMarker; }
+    #|function sloppyExt(value = 0) { return this.thisMarker; }
+    #|function isBoxed() { return this === Object(this); }
+    #|function strict() { 'use strict'; return typeof this; }
+    #|var arrow = () => this === globalThis;
+    #|console.log(sloppy.call("value"));
+    #|console.log(sloppy.apply(1, []));
+    #|console.log(sloppy.bind(true)());
+    #|console.log(sloppyExt.call("extended"));
+    #|console.log(isBoxed.call("value"));
+    #|console.log(isBoxed.call(1));
+    #|console.log(isBoxed.call(true));
+    #|console.log(strict.call("strict"));
+    #|console.log(arrow.call("arrow"));
+    #|var realm = $262.createRealm();
+    #|realm.evalScript(
+    #|  'String.prototype.thisMarker = "inner-string";' +
+    #|  'function innerSloppy() { return this.thisMarker; }'
+    #|);
+    #|console.log(realm.global.innerSloppy.call("cross-realm"));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "outer-string", "outer-number", "outer-boolean", "outer-string", "true", "true",
+    "true", "string", "true", "inner-string",
+  ])
+}
+
+///|
+test "sloppy function this boxing preserves UTF-16 string indices and Symbol realms" {
+  let src =
+    #|function unicodeThis() {
+    #|  console.log(typeof this);
+    #|  console.log(this.length);
+    #|  console.log(this[0].charCodeAt(0));
+    #|  console.log(this[1].charCodeAt(0));
+    #|}
+    #|function symbolThis() {
+    #|  console.log(typeof this);
+    #|  console.log(this === Object(this));
+    #|  console.log(this.thisMarker);
+    #|}
+    #|Symbol.prototype.thisMarker = "outer-symbol";
+    #|unicodeThis.call("𝄞");
+    #|symbolThis.call(Symbol("outer"));
+    #|var realm = $262.createRealm();
+    #|realm.evalScript(
+    #|  'Symbol.prototype.thisMarker = "inner-symbol";' +
+    #|  'function innerSymbolThis() {' +
+    #|  '  console.log(typeof this);' +
+    #|  '  console.log(this === Object(this));' +
+    #|  '  console.log(this.thisMarker);' +
+    #|  '}'
+    #|);
+    #|realm.global.innerSymbolThis.call(Symbol("cross-realm"));
+  let (output, _) = @js_engine.run(src)
+  json_inspect(output, content=[
+    "object", "2", "55348", "56606", "object", "true", "outer-symbol", "object",
+    "true", "inner-symbol",
+  ])
+}
+
+///|
 test "stage0: realm backing stores and weak collections do not cross-contaminate" {
   let src =
     #|var outerBuffer = new ArrayBuffer(4);
