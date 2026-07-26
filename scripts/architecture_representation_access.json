@@ -2043,8 +2043,8 @@
     {
       "path": "interpreter/stdlib/builtins_string.mbt",
       "pattern_id": "runtime-object-constructor",
-      "allowed_count": 15,
-      "fingerprint": "15:363:768054:339838",
+      "allowed_count": 12,
+      "fingerprint": "12:294:746826:67501",
       "owner": "stdlib runtime operation migration",
       "retire_by_stage": "Stage 7-12",
       "reason": "builtin implementation still uses runtime representation before operation families and runtime-internal packages hide it"

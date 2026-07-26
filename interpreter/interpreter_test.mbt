@@ -3773,6 +3773,69 @@ test "string startsWith endsWith" {
 }
 
 ///|
+test "string startsWith endsWith includes use IsRegExp via Symbol.match" {
+  let src =
+    #|function outcome(method, receiver, search, position) {
+    #|  try {
+    #|    var result = position === undefined
+    #|      ? String.prototype[method].call(receiver, search)
+    #|      : String.prototype[method].call(receiver, search, position);
+    #|    return "return:" + result;
+    #|  } catch (error) {
+    #|    return error instanceof TypeError ? "throw:TypeError" : "throw:" + error;
+    #|  }
+    #|}
+    #|function check(method, receiver) {
+    #|  var regexp = /x/;
+    #|  console.log(method + ":regexp:" + outcome(method, receiver, regexp));
+    #|  regexp[Symbol.match] = false;
+    #|  console.log(method + ":disabled:" + outcome(method, receiver, regexp));
+    #|
+    #|  var custom = { toString: function() { return "x"; } };
+    #|  custom[Symbol.match] = 1;
+    #|  console.log(method + ":custom:" + outcome(method, receiver, custom));
+    #|
+    #|  var throwing = { toString: function() { return "x"; } };
+    #|  Object.defineProperty(throwing, Symbol.match, {
+    #|    get: function() { throw "match-getter"; }
+    #|  });
+    #|  console.log(method + ":getter:" + outcome(method, receiver, throwing));
+    #|  console.log(method + ":string:" + outcome(method, receiver, "x"));
+    #|
+    #|  var order = [];
+    #|  var thisValue = {
+    #|    toString: function() { order.push("this"); return "x"; }
+    #|  };
+    #|  var search = {
+    #|    toString: function() { order.push("search"); return "x"; }
+    #|  };
+    #|  Object.defineProperty(search, Symbol.match, {
+    #|    get: function() { order.push("match"); return false; }
+    #|  });
+    #|  var position = {
+    #|    valueOf: function() {
+    #|      order.push("position");
+    #|      return method === "endsWith" ? 1 : 0;
+    #|    }
+    #|  };
+    #|  var ordered = String.prototype[method].call(thisValue, search, position);
+    #|  console.log(method + ":order:" + ordered + ":" + order.join(","));
+    #|}
+    #|check("startsWith", "/x/ suffix");
+    #|check("endsWith", "prefix /x/");
+    #|check("includes", "prefix /x/ suffix");
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "startsWith:regexp:throw:TypeError", "startsWith:disabled:return:true", "startsWith:custom:throw:TypeError",
+    "startsWith:getter:throw:match-getter", "startsWith:string:return:false", "startsWith:order:true:this,match,search,position",
+    "endsWith:regexp:throw:TypeError", "endsWith:disabled:return:true", "endsWith:custom:throw:TypeError",
+    "endsWith:getter:throw:match-getter", "endsWith:string:return:false", "endsWith:order:true:this,match,search,position",
+    "includes:regexp:throw:TypeError", "includes:disabled:return:true", "includes:custom:throw:TypeError",
+    "includes:getter:throw:match-getter", "includes:string:return:true", "includes:order:true:this,match,search,position",
+  ])
+}
+
+///|
 test "string repeat" {
   let (_, result) = run_js("\"ab\".repeat(3)")
   expect_result(result, "ababab")
