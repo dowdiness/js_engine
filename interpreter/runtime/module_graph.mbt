@@ -2,6 +2,9 @@
 const MODULE_NAMESPACE_BINDING_NAME = "*namespace*"
 
 ///|
+const MODULE_DEFAULT_BINDING_NAME = "*default*"
+
+///|
 priv struct ResolvedModuleExport {
   value : Value
   module_specifier : String
@@ -605,6 +608,22 @@ fn ModuleRunRecord::import_target_for_local_name(
 }
 
 ///|
+fn module_default_export_binding_name(expr : @ast.Expr) -> String {
+  match expr {
+    FuncExpr(Some(name), _, _, _, _)
+    | FuncExprExt(Some(name), _, _, _, _, _)
+    | GeneratorExpr(Some(name), _, _, _, _)
+    | GeneratorExprExt(Some(name), _, _, _, _, _)
+    | AsyncFuncExpr(Some(name), _, _, _, _)
+    | AsyncFuncExprExt(Some(name), _, _, _, _, _)
+    | AsyncGeneratorExpr(Some(name), _, _, _, _)
+    | AsyncGeneratorExprExt(Some(name), _, _, _, _, _)
+    | ClassExpr(Some(name), _, _, _, _) => name
+    _ => MODULE_DEFAULT_BINDING_NAME
+  }
+}
+
+///|
 fn module_direct_export_binding_name_from_stmt(
   record : ModuleRunRecord,
   stmt : @ast.Stmt,
@@ -628,9 +647,9 @@ fn module_direct_export_binding_name_from_stmt(
       }
       None
     }
-    ExportDefaultDecl(_, _) =>
+    ExportDefaultDecl(expr, _) =>
       if export_name == "default" {
-        Some("default")
+        Some(module_default_export_binding_name(expr))
       } else {
         None
       }

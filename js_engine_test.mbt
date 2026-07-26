@@ -1168,6 +1168,18 @@ test "ES module: duplicate stars to same binding are unambiguous" {
 }
 
 ///|
+test "ES module: named default export keeps its local binding identity" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export default function f() {}; export { f as x };"),
+    ("./b", "export { default as x } from './a';"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x.name);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["f"])
+}
+
+///|
 test "ES module: imported local re-export propagates binding identity through stars" {
   let modules : Array[(String, String)] = [
     ("./base", "export const foo = 2;"),
