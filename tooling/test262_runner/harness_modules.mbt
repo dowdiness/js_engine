@@ -106,6 +106,8 @@ fn visit_fixture(
   spec : String,
   importer_dir : String,
   test_abs : String,
+  test262_dir : String,
+  harness_options : HarnessOptions,
   visited : Map[String, (String, String)],
   stack : @set.Set[String],
   order : Array[String],
@@ -128,13 +130,37 @@ fn visit_fixture(
       nested_spec,
       @path_utils.dirname(abs_path),
       test_abs,
+      test262_dir,
+      harness_options,
       visited,
       stack,
       order,
     )
   }
   stack.remove(abs_path)
-  visited[abs_path] = (spec, fixture_src)
+  // A relative module dependency can itself be a Test262 test instead of a
+  // conventional *_FIXTURE.js file. Give that module its own harness scope so
+  // assertions executed while evaluating the dependency remain available.
+  let dependency_harness = if test262_dir != "" &&
+    fixture_src.contains("/*---") &&
+    fixture_src.contains("---*/") {
+    let metadata = parse_metadata(fixture_src)
+    load_harness(
+      test262_dir,
+      metadata.includes,
+      metadata.raw,
+      is_async=metadata.flags.any(flag => flag == "async"),
+      harness_options~,
+    )
+  } else {
+    ""
+  }
+  let registered_source = if dependency_harness == "" {
+    fixture_src
+  } else {
+    dependency_harness + "\n" + fixture_src
+  }
+  visited[abs_path] = (spec, registered_source)
   order.push(abs_path)
 }
 
@@ -142,6 +168,8 @@ fn visit_fixture(
 fn resolve_fixtures(
   test_path : String,
   source : String,
+  test262_dir? : String = "",
+  harness_options? : HarnessOptions = HarnessOptions(),
 ) -> Array[(String, String)] raise {
   let test_abs = @path_utils.absolute_path(test_path)
   let test_dir = @path_utils.dirname(test_abs)
@@ -149,7 +177,9 @@ fn resolve_fixtures(
   let stack = @set.Set::default()
   let order : Array[String] = []
   for spec in import_relative_specifiers(source) {
-    visit_fixture(spec, test_dir, test_abs, visited, stack, order)
+    visit_fixture(
+      spec, test_dir, test_abs, test262_dir, harness_options, visited, stack, order,
+    )
   }
   order.map(path => visited[path])
 }
@@ -170,6 +200,8 @@ fn append_engine_flags(
   source : String,
   is_module : Bool,
   is_annex_b : Bool,
+  test262_dir? : String = "",
+  harness_options? : HarnessOptions = HarnessOptions(),
 ) -> Array[String] raise {
   let cmd = copy_args(engine_cmd)
   if is_module {
@@ -177,7 +209,13 @@ fn append_engine_flags(
     cmd.push("--module")
     cmd.push("--module-specifier")
     cmd.push(main_specifier)
-    for fixture in resolve_fixtures(test_path, source) {
+    for
+      fixture in resolve_fixtures(
+        test_path,
+        source,
+        test262_dir~,
+        harness_options~,
+      ) {
       cmd.push("--fixture")
       cmd.push(fixture.0)
       cmd.push(fixture.1)

@@ -1134,6 +1134,27 @@ test "ES module: ambiguous export star makes named import throw" {
 }
 
 ///|
+test "ES module: equal-valued distinct star bindings remain ambiguous" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export const x = 1;"),
+    ("./b", "export const x = 1;"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x);"),
+  ]
+  let result = try {
+    let _ = @js_engine.run_modules(modules)
+    "no error thrown"
+  } catch {
+    e => e.to_string()
+  }
+  expect_bool(
+    result.contains("does not export 'x'"),
+    true,
+    "equal-valued ambiguous star named import error",
+  )
+}
+
+///|
 test "ES module: duplicate stars to same binding are unambiguous" {
   let modules : Array[(String, String)] = [
     ("./base", "export const x = 1;"),
@@ -1144,6 +1165,246 @@ test "ES module: duplicate stars to same binding are unambiguous" {
   ]
   let (output, _) = @js_engine.run_modules(modules)
   json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: named default export keeps its local binding identity" {
+  let modules : Array[(String, String)] = [
+    ("./a", "export default function f() {}; export { f as x };"),
+    ("./b", "export { default as x } from './a';"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { x } from './barrel'; console.log(x.name);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["f"])
+}
+
+///|
+test "ES module: named default class aliases converge through export stars" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export default class C {}; export { C as x }; C = 1;"),
+    ("./via-default", "export { default as y } from './base';"),
+    ("./via-named", "export { x as y } from './base';"),
+    ("./barrel", "export * from './via-default'; export * from './via-named';"),
+    ("./main", "import { y } from './barrel'; console.log(y);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: named default class export follows local reassignment" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export default class C {}; C = 1;"),
+    ("./main", "import D from './base'; console.log(D);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: named default class stays live through a cycle" {
+  let modules : Array[(String, String)] = [
+    (
+      "./a", "import { read } from './b'; export default class C {}; C = 1; export { read };",
+    ),
+    ("./b", "import D from './a'; export function read() { return D; }"),
+    ("./main", "import { read } from './a'; console.log(read());"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["1"])
+}
+
+///|
+test "ES module: named default class stays in TDZ across a cycle" {
+  let modules : Array[(String, String)] = [
+    ("./a", "import './b'; export default class Object {};"),
+    ("./b", "import D from './a'; console.log(D === Object);"),
+    ("./main", "import './a';"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.ReferenceError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class cycle TDZ")
+}
+
+///|
+test "ES module: named default class local binding starts in TDZ" {
+  let modules : Array[(String, String)] = [
+    ("./main", "console.log(typeof C); export default class C {};"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.ReferenceError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class local TDZ")
+}
+
+///|
+test "ES module: named default class conflicts with a lexical declaration" {
+  let modules : Array[(String, String)] = [
+    ("./main", "export default class C {}; let C;"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.SyntaxError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class duplicate declaration")
+}
+
+///|
+test "class name stays in TDZ while evaluating its heritage" {
+  let sources = [
+    "class C extends C {};", "let C = Object; let D = class C extends C {};",
+  ]
+  for source in sources {
+    let outcome = run_outcome(source)
+    expect_bool(
+      outcome.contains("ReferenceError"),
+      true,
+      "class heritage self-reference TDZ: " + source,
+    )
+  }
+}
+
+///|
+test "named class expression keeps its inner self binding" {
+  let source =
+    #|let C = "outer";
+    #|let K = class C {
+    #|  static self = C;
+    #|  value() { return C; }
+    #|};
+    #|console.log(C);
+    #|console.log(K.self === K);
+    #|console.log(new K().value() === K);
+  let (output, _) = @js_engine.run(source)
+  json_inspect(output, content=["outer", "true", "true"])
+}
+
+///|
+test "ES module: named default class name is in TDZ during heritage" {
+  let modules : Array[(String, String)] = [
+    ("./main", "export default class C extends C {};"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.ReferenceError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class heritage TDZ")
+}
+
+///|
+test "ES module: named default declarations conflict with local declarations" {
+  let sources = [
+    "export default function C() {}; let C;", "export default function C() {}; class C {};",
+    "export default function C() {}; function C() {};", "export default function* C() {}; let C;",
+    "export default async function C() {}; class C {};", "export default async function* C() {}; function C() {};",
+    "export default class C {}; function C() {};",
+  ]
+  for source in sources {
+    let modules : Array[(String, String)] = [("./main", source)]
+    let raised = try {
+      ignore(@js_engine.run_modules(modules))
+      false
+    } catch {
+      @errors.SyntaxError(_) => true
+      _ => false
+    }
+    expect_bool(raised, true, "named default declaration conflict")
+  }
+}
+
+///|
+test "ES module: named default function stays hoisted and live" {
+  let modules : Array[(String, String)] = [
+    (
+      "./base", "console.log(typeof F); export default function F() {}; export { F }; F = 1;",
+    ),
+    (
+      "./main", "import D, { F } from './base'; console.log(D === F); console.log(D);",
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["function", "true", "1"])
+}
+
+///|
+test "ES module: anonymous defaults do not create local lexical names" {
+  let sources = [
+    "export default function () {}; let C = 1; console.log(C);", "export default class {}; let C = 1; console.log(C);",
+    "export default (class C {}); let C = 1; console.log(C);", "export default 0; let C = 1; console.log(C);",
+  ]
+  for source in sources {
+    let modules : Array[(String, String)] = [("./main", source)]
+    let (output, _) = @js_engine.run_modules(modules)
+    json_inspect(output, content=["1"])
+  }
+}
+
+///|
+test "ES module: anonymous defaults retain synthetic export values" {
+  let modules : Array[(String, String)] = [
+    ("./class", "export default class {};"),
+    ("./value", "export default 7;"),
+    (
+      "./main", "import C from './class'; import value from './value'; console.log(C.name); console.log(value);",
+    ),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["default", "7"])
+}
+
+///|
+test "ES module: imported local re-export propagates binding identity through stars" {
+  let modules : Array[(String, String)] = [
+    ("./base", "export const foo = 2;"),
+    ("./via-export", "export { foo } from './base';"),
+    ("./via-import", "import { foo } from './base'; export { foo };"),
+    ("./barrel", "export * from './via-export'; export * from './via-import';"),
+    ("./main", "import { foo } from './barrel'; console.log(foo);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["2"])
+}
+
+///|
+test "ES module: namespace import re-export remains unambiguous through stars" {
+  let modules : Array[(String, String)] = [
+    ("./empty", ""),
+    ("./a", "import * as foo from './empty'; export { foo };"),
+    ("./b", "import * as foo from './empty'; export { foo };"),
+    ("./barrel", "export * from './a'; export * from './b';"),
+    ("./main", "import { foo } from './barrel'; console.log(typeof foo);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["object"])
+}
+
+///|
+test "ES module: export-star-as and namespace import re-export share identity" {
+  let modules : Array[(String, String)] = [
+    ("./empty", ""),
+    ("./via-export", "export * as foo from './empty';"),
+    ("./via-import", "import * as foo from './empty'; export { foo };"),
+    ("./barrel", "export * from './via-export'; export * from './via-import';"),
+    ("./main", "import { foo } from './barrel'; console.log(typeof foo);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["object"])
 }
 
 ///|
