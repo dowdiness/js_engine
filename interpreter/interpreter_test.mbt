@@ -7106,38 +7106,48 @@ test "derived super property before super throws ReferenceError" {
 }
 
 ///|
-test "super computed assignment converts the key before evaluating RHS" {
+test "super computed assignment resolves its reference in specification order" {
   let output = run_output(
     (
       #|let log = [];
       #|let key = { toString() { log.push("key"); return "x"; } };
-      #|let base = { set x(value) {} };
+      #|let oldBase = { set x(value) { log.push("old"); } };
+      #|let newBase = { set x(value) { log.push("new"); } };
       #|let object = {
-      #|  __proto__: base,
-      #|  method() { super[key] = (log.push("rhs"), 1); }
+      #|  __proto__: oldBase,
+      #|  method() {
+      #|    super[(Object.setPrototypeOf(object, newBase), key)] =
+      #|      (log.push("rhs"), 1);
+      #|  }
       #|};
       #|object.method();
       #|console.log(log.join(","));
     ),
   )
-  json_inspect(output, content=["key,rhs"])
+  json_inspect(output, content=["rhs,key,new"])
 }
 
 ///|
-test "super assignment with a null base throws TypeError" {
+test "super assignment with a null base evaluates RHS before TypeError" {
   let output = run_output(
     (
-      #|let object = { method() { super.value = 1; } };
+      #|let log = [];
+      #|let key = { toString() { log.push("coerce"); return "value"; } };
+      #|let object = {
+      #|  method() {
+      #|    super[(log.push("key-expr"), key)] = (log.push("rhs"), 1);
+      #|  }
+      #|};
       #|Object.setPrototypeOf(object, null);
       #|try {
       #|  object.method();
-      #|  console.log("no error");
       #|} catch (error) {
-      #|  console.log(error.name);
+      #|  log.push(error.name);
       #|}
+      #|console.log(log.join(","));
     ),
   )
-  json_inspect(output, content=["TypeError"])
+  json_inspect(output, content=["key-expr,rhs,TypeError"])
 }
 
 ///|

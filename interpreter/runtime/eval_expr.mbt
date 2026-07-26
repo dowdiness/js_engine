@@ -1601,12 +1601,13 @@ fn Interpreter::eval_expr(
           raise @errors.ReferenceError(
             message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
           )
-        Null =>
-          raise @errors.TypeError(
-            message="Cannot set property on null super base at line \{loc.line}",
-          )
         _ => {
           let value = self.eval_expr(ctx, value_expr, env)
+          if super_proto is Null {
+            raise @errors.TypeError(
+              message="Cannot set property on null super base at line \{loc.line}",
+            )
+          }
           self.set_property(
             super_proto,
             prop,
@@ -1620,22 +1621,20 @@ fn Interpreter::eval_expr(
     }
     SuperComputedAssign(key_expr, value_expr, loc) => {
       let this_val = eval_this_value(env)
+      let key = self.eval_expr(ctx, key_expr, env)
       let super_proto = resolve_super_target(env)
       match super_proto {
         Undefined =>
           raise @errors.ReferenceError(
             message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
           )
-        Null =>
-          raise @errors.TypeError(
-            message="Cannot set property on null super base at line \{loc.line}",
-          )
         _ => {
-          let key = to_property_key(
-            self.eval_expr(ctx, key_expr, env),
-            interp=Some(self),
-          )
           let value = self.eval_expr(ctx, value_expr, env)
+          if super_proto is Null {
+            raise @errors.TypeError(
+              message="Cannot set property on null super base at line \{loc.line}",
+            )
+          }
           self.set_computed_property(
             super_proto,
             key,
