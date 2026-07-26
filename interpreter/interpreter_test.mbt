@@ -7128,6 +7128,128 @@ test "super computed assignment resolves its reference in specification order" {
 }
 
 ///|
+test "super computed assignment canonicalizes its key before [[Set]]" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let key = { toString() { log.push("key"); return "x"; } };
+      #|let handler = new Proxy(
+      #|  { set(target, property, value, receiver) {
+      #|      log.push("trap:" + property); return true;
+      #|    } },
+      #|  { get(target, property, receiver) {
+      #|      log.push("handler:" + property); return target[property];
+      #|    } }
+      #|);
+      #|let base = new Proxy({}, handler);
+      #|let object = {
+      #|  method() { super[key] = (log.push("rhs"), 1); }
+      #|};
+      #|Object.setPrototypeOf(object, base);
+      #|object.method();
+      #|
+      #|let symbol = Symbol("s");
+      #|let symbolKey = {
+      #|  [Symbol.toPrimitive]() { log.push("symbol-key"); return symbol; }
+      #|};
+      #|let symbolBase = {
+      #|  set [symbol](value) { log.push("symbol-set"); }
+      #|};
+      #|let symbolObject = {
+      #|  method() { super[symbolKey] = (log.push("symbol-rhs"), 2); }
+      #|};
+      #|Object.setPrototypeOf(symbolObject, symbolBase);
+      #|try { symbolObject.method(); } catch (error) {
+      #|  log.push("symbol-" + error.name);
+      #|}
+      #|
+      #|let abruptKey = {
+      #|  [Symbol.toPrimitive]() {
+      #|    log.push("abrupt-key"); throw new RangeError("key");
+      #|  }
+      #|};
+      #|let abruptHandler = new Proxy(
+      #|  { set() { log.push("unexpected-trap"); return true; } },
+      #|  { get(target, property, receiver) {
+      #|      log.push("unexpected-handler:" + property);
+      #|      return target[property];
+      #|    } }
+      #|);
+      #|let abruptBase = new Proxy({}, abruptHandler);
+      #|let abruptObject = {
+      #|  method() { super[abruptKey] = (log.push("abrupt-rhs"), 3); }
+      #|};
+      #|Object.setPrototypeOf(abruptObject, abruptBase);
+      #|try { abruptObject.method(); } catch (error) { log.push(error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "rhs,key,handler:set,trap:x,symbol-rhs,symbol-key,symbol-set,abrupt-rhs,abrupt-key,RangeError",
+  ])
+}
+
+///|
+test "class super properties observe the live home object prototype" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|class OldBase {
+      #|  get value() { log.push("old-get"); return "old"; }
+      #|  method() { log.push("old-call"); return "old"; }
+      #|  set x(value) { log.push("old-set:" + value); }
+      #|}
+      #|class Derived extends OldBase {
+      #|  read() { let value = super.value; log.push("value:" + value); }
+      #|  call() { let value = super.method(); log.push("call:" + value); }
+      #|  write() { super.x = 3; }
+      #|}
+      #|let newBase = {
+      #|  get value() { log.push("new-get"); return "new"; },
+      #|  method() { log.push("new-call"); return "new"; },
+      #|  set x(value) { log.push("new-set:" + value); }
+      #|};
+      #|let proxyBase = new Proxy(newBase, {
+      #|  get(target, property, receiver) {
+      #|    log.push("proxy-get:" + property); return target[property];
+      #|  },
+      #|  set(target, property, value, receiver) {
+      #|    log.push("proxy-set:" + property); target[property] = value;
+      #|    return true;
+      #|  }
+      #|});
+      #|Object.setPrototypeOf(Derived.prototype, proxyBase);
+      #|let derived = new Derived();
+      #|derived.read();
+      #|derived.call();
+      #|derived.write();
+      #|
+      #|class OldStatic {}
+      #|OldStatic.value = "old-static";
+      #|OldStatic.method = function() { log.push("old-static-call"); };
+      #|class StaticDerived extends OldStatic {
+      #|  static read() { log.push("static-value:" + super.value); }
+      #|  static call() { super.method(); }
+      #|  static write() { super.x = 4; }
+      #|}
+      #|let newStaticBase = {
+      #|  value: "new-static",
+      #|  method() { log.push("new-static-call"); },
+      #|  set x(value) { log.push("new-static-set:" + value); }
+      #|};
+      #|Object.setPrototypeOf(StaticDerived, newStaticBase);
+      #|StaticDerived.read();
+      #|StaticDerived.call();
+      #|StaticDerived.write();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "proxy-get:value,new-get,value:new,proxy-get:method,new-call,call:new,proxy-set:x,new-set:3,static-value:new-static,new-static-call,new-static-set:4",
+  ])
+}
+
+///|
 test "super assignment with a null base evaluates RHS before TypeError" {
   let output = run_output(
     (
