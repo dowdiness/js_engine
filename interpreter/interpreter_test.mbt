@@ -7263,6 +7263,61 @@ test "super computed assignment ToPropertyKey covers every object variant" {
 }
 
 ///|
+test "super ToPropertyKey observes Proxy target toStringTag" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|function makeKey(target, label) {
+      #|  let key;
+      #|  if (label === "object") {
+      #|    Object.defineProperty(target, Symbol.toStringTag, {
+      #|      get() {
+      #|        log.push(label + ":getter:" + (this === key));
+      #|        return "ObjectTag";
+      #|      }
+      #|    });
+      #|  }
+      #|  key = new Proxy(target, {
+      #|    get(target, property, receiver) {
+      #|      if (property === Symbol.toPrimitive) {
+      #|        log.push(label + ":primitive:" + (receiver === key));
+      #|      } else if (property === "toString") {
+      #|        log.push(label + ":toString:" + (receiver === key));
+      #|      } else if (property === Symbol.toStringTag) {
+      #|        log.push(label + ":tag:" + (receiver === key));
+      #|        if (label === "abrupt") throw new RangeError("tag");
+      #|      }
+      #|      return Reflect.get(target, property, receiver);
+      #|    }
+      #|  });
+      #|  return key;
+      #|}
+      #|let base = {
+      #|  set "[object ObjectTag]"(value) { log.push("object:set:" + value); },
+      #|  set "[object Map]"(value) { log.push("map:set:" + value); },
+      #|  set "[object Set]"(value) { log.push("set:set:" + value); },
+      #|  set "[object Promise]"(value) { log.push("promise:set:" + value); },
+      #|  set "[object Object]"(value) { log.push("wrong:set:" + value); }
+      #|};
+      #|let home = {
+      #|  write(key, label) { super[key] = (log.push(label + ":rhs"), label); }
+      #|};
+      #|Object.setPrototypeOf(home, base);
+      #|home.write(makeKey({}, "object"), "object");
+      #|home.write(makeKey(new Map(), "map"), "map");
+      #|home.write(makeKey(new Set(), "set"), "set");
+      #|home.write(makeKey(Promise.resolve(0), "promise"), "promise");
+      #|try { home.write(makeKey({}, "abrupt"), "abrupt"); }
+      #|catch (error) { log.push("abrupt:" + error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "object:rhs,object:primitive:true,object:toString:true,object:tag:true,object:getter:true,object:set:object,map:rhs,map:primitive:true,map:toString:true,map:tag:true,map:set:map,set:rhs,set:primitive:true,set:toString:true,set:tag:true,set:set:set,promise:rhs,promise:primitive:true,promise:toString:true,promise:tag:true,promise:set:promise,abrupt:rhs,abrupt:primitive:true,abrupt:toString:true,abrupt:tag:true,abrupt:RangeError",
+  ])
+}
+
+///|
 test "class super properties observe the live home object prototype" {
   let output = run_output(
     (
@@ -7486,6 +7541,42 @@ test "Proxy [[Get]] enforces invariants for Symbol keys including super" {
     ),
   )
   json_inspect(output, content=["direct:TypeError,super:TypeError"])
+}
+
+///|
+test "Proxy [[Get]] invariants use SameValue for string and Symbol keys" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|function read(proxy, key, label) {
+      #|  if (label === "string") return proxy.fixed;
+      #|  return proxy[key];
+      #|}
+      #|function check(key, label) {
+      #|  let nanTarget = {};
+      #|  Object.defineProperty(nanTarget, key, {
+      #|    value: NaN, writable: false, configurable: false
+      #|  });
+      #|  let nanProxy = new Proxy(nanTarget, { get() { return NaN; } });
+      #|  try { log.push(label + ":nan:" + Number.isNaN(read(nanProxy, key, label))); }
+      #|  catch (error) { log.push(label + ":nan:" + error.name); }
+      #|
+      #|  let zeroTarget = {};
+      #|  Object.defineProperty(zeroTarget, key, {
+      #|    value: 0, writable: false, configurable: false
+      #|  });
+      #|  let zeroProxy = new Proxy(zeroTarget, { get() { return -0; } });
+      #|  try { read(zeroProxy, key, label); log.push(label + ":zero:no-throw"); }
+      #|  catch (error) { log.push(label + ":zero:" + error.name); }
+      #|}
+      #|check("fixed", "string");
+      #|check(Symbol("fixed"), "symbol");
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "string:nan:true,string:zero:TypeError,symbol:nan:true,symbol:zero:TypeError",
+  ])
 }
 
 ///|

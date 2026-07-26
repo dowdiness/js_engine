@@ -3458,6 +3458,10 @@ fn BytecodeBuilder::compile_expr(
     }
     SuperComputedMember(key, loc) => {
       self.has_this = true
+      // GetThisBinding precedes evaluation of the computed key. Pop preserves
+      // the existing LoadSuperComputed stack contract (key only).
+      let _ = self.emit(LoadThis)
+      let _ = self.emit(Pop)
       self.compile_expr(key)
       let _ = self.emit(LoadSuperComputed(loc))
     }
@@ -3822,6 +3826,10 @@ fn BytecodeBuilder::compile_expr(
     }
     Call(SuperComputedMember(key, member_loc), args, loc) => {
       self.has_this = true
+      // GetThisBinding precedes evaluation of the computed key. Pop preserves
+      // PrepareSuperComputedCall's existing key-only stack contract.
+      let _ = self.emit(LoadThis)
+      let _ = self.emit(Pop)
       self.compile_expr(key)
       let _ = self.emit(PrepareSuperComputedCall(member_loc))
       self.emit_call_with_receiver(args, loc)

@@ -687,7 +687,7 @@ fn proxy_get_key(
           if !desc.configurable {
             // Non-configurable data property: trap result must match target value
             if !desc.is_accessor && !desc.writable {
-              if !strict_equal(result, target_value) {
+              if !same_value(result, target_value) {
                 raise @errors.TypeError(
                   message="'get' on proxy: trap did not return the actual value of a read-only non-configurable target property",
                 )
@@ -695,7 +695,7 @@ fn proxy_get_key(
             }
             // Non-configurable accessor with undefined getter: must return undefined
             if desc.is_accessor && desc.getter is None {
-              if !strict_equal(result, Undefined) {
+              if !same_value(result, Undefined) {
                 raise @errors.TypeError(
                   message="'get' on proxy: trap returned a value for a non-configurable target accessor without a getter",
                 )
@@ -1389,7 +1389,7 @@ pub fn proxy_get_own_property(
               Some(v) => v
               None => Undefined
             }
-            if !same_value_for_vap(trap_val, cur_val) {
+            if !same_value(trap_val, cur_val) {
               raise @errors.TypeError(
                 message="'getOwnPropertyDescriptor' on proxy: trap reported different value for non-configurable non-writable data property on proxy target",
               )

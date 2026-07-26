@@ -866,6 +866,46 @@ test "bytecode lowers super property access and calls inside methods" {
 }
 
 ///|
+test "bytecode gets this before computed super read and call keys" {
+  let bytecode = parse_bytecode_for_wb(
+    "var readKey = 'x'; var callKey = 'f'; var o = { m() { super[readKey]; super[callKey](); } };",
+  )
+  guard bytecode.main.children.length() == 1 else {
+    abort("expected one method child")
+  }
+  let mut stage = 0
+  let mut saw_guarded_read = false
+  let mut saw_guarded_call = false
+  for instr in bytecode.main.children[0].code {
+    match instr {
+      LoadThis => stage = 1
+      Pop => stage = if stage == 1 { 2 } else { 0 }
+      LoadName("readKey") => stage = if stage == 2 { 3 } else { 0 }
+      LoadSuperComputed(_) => {
+        if stage == 3 {
+          saw_guarded_read = true
+        }
+        stage = 0
+      }
+      LoadName("callKey") => stage = if stage == 2 { 4 } else { 0 }
+      PrepareSuperComputedCall(_) => {
+        if stage == 4 {
+          saw_guarded_call = true
+        }
+        stage = 0
+      }
+      _ => stage = 0
+    }
+  }
+  guard saw_guarded_read else {
+    abort("expected LoadThis; Pop before computed super read key")
+  }
+  guard saw_guarded_call else {
+    abort("expected LoadThis; Pop before computed super call key")
+  }
+}
+
+///|
 test "bytecode treats names inside nested super computed keys as captured" {
   let src =
     #|function outer() {
