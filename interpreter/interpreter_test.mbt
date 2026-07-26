@@ -6553,6 +6553,36 @@ test "Trapless Proxy Array setPrototypeOf rejects cycles through canonical forwa
 }
 
 ///|
+/// A pre-existing cycle that does not contain the new target must still
+/// terminate the OrdinarySetPrototypeOf walk and reject the mutation.
+test "Object setPrototypeOf rejects a pre-existing ordinary prototype cycle" {
+  let output = run_output(
+    (
+      #|var object = {};
+      #|var array = [];
+      #|var map = new Map();
+      #|var set = new Set();
+      #|var promise = new Promise(function(resolve, reject) {});
+      #|Object.setPrototypeOf(object, array);
+      #|Object.setPrototypeOf(array, map);
+      #|Object.setPrototypeOf(map, set);
+      #|Object.setPrototypeOf(set, promise);
+      #|Object.setPrototypeOf(promise, object);
+      #|var target = {};
+      #|var original = Object.getPrototypeOf(target);
+      #|try {
+      #|  Object.setPrototypeOf(target, object);
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error.name);
+      #|}
+      #|console.log(Object.getPrototypeOf(target) === original);
+    ),
+  )
+  json_inspect(output, content=["TypeError", "true"])
+}
+
+///|
 /// The outer Proxy must validate an ownKeys result against its target Proxy's
 /// canonical [[GetOwnProperty]] result, including a non-configurable property
 /// reached through a trapless inner Proxy.

@@ -33,17 +33,31 @@ pub fn module_namespace_set_prototype_result(
 ///|
 /// OrdinarySetPrototypeOf cycle decision (§10.1.2.1 steps 5-7). The walk
 /// follows Value variants whose [[GetPrototypeOf]] is ordinary and stops at
-/// Proxy, whose internal method is exotic. This helper mutates nothing.
+/// Proxy, whose internal method is exotic. A repeated ordinary object means
+/// the input chain already contains a cycle, which is rejected to guarantee
+/// termination. The visited state is local; this helper has no external effect.
 fn ordinary_prototype_would_cycle(
   interp : Interpreter,
   obj : Value,
   proto : Value,
 ) -> Bool {
   let mut cursor = proto
+  let visited : Array[Value] = []
   while true {
     if strict_equal(cursor, obj) {
       return true
     }
+    match cursor {
+      Null | Proxy(_) => return false
+      Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+      _ => return false
+    }
+    for seen in visited {
+      if strict_equal(seen, cursor) {
+        return true
+      }
+    }
+    visited.push(cursor)
     match cursor {
       Object(data) => cursor = data.prototype
       Array(data) => cursor = get_array_prototype(interp.realm_state, data)
@@ -59,7 +73,6 @@ fn ordinary_prototype_would_cycle(
         cursor = data.prototype.unwrap_or_else(fn() {
           interp.realm_state.get_promise_proto()
         })
-      Null | Proxy(_) => return false
       _ => return false
     }
   }
