@@ -1,14 +1,14 @@
 {
   "comment": "Regression baseline \u2014 CI fails if passed count drops below these minimums",
-  "updated": "2026-07-05",
+  "updated": "2026-07-27",
   "test262_commit": "2b2ecead6e82",
   "non-strict": {
-    "passed_min": 30487
+    "passed_min": 33456
   },
   "strict": {
-    "passed_min": 28672
+    "passed_min": 31635
   },
   "combined": {
-    "passed_min": 59259
+    "passed_min": 65191
   }
 }
