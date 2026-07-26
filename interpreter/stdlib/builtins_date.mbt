@@ -1476,83 +1476,18 @@ pub fn setup_date_builtins(
     name="toJSON",
     length=1,
     fn(interp, this_val, _args) raise {
-      // Step 1: Let O = ToObject(this)
-      let o = match this_val {
-        Object(_) | Array(_) => this_val
-        _ => this_val // Primitives will be handled by ToPrimitive
-      }
-      // Step 2: Let tv = ToPrimitive(O, number)
-      let tv = match o {
-        Object(data) =>
-          @runtime.to_primitive_number(o, data, interp=Some(interp))
-        _ => o
-      }
-      // Step 3: If tv is a Number and is not finite, return null
+      let o = to_object(this_val, interp, realm_state=Some(realm_state))
+      let tv = interp.to_primitive_value(o, "number")
       match tv {
         Value::Number(n) => if n.is_nan() || n.is_inf() { return Null }
         _ => ()
       }
-      // Step 4: Return Invoke(O, "toISOString")
-      // Look up toISOString on the object
-      let to_iso = match o {
-        Object(_) => {
-          let mut found : Value = Undefined
-          let mut cur : Value = o
-          while true {
-            match cur {
-              Object(cur_data) =>
-                match cur_data.bag.properties.get("toISOString") {
-                  Some(v) => {
-                    found = v
-                    break
-                  }
-                  None => cur = cur_data.prototype
-                }
-              _ => break
-            }
-          }
-          // Also check for getter if not found via properties
-          match found {
-            Undefined => {
-              let mut cur2 : Value = o
-              while true {
-                match cur2 {
-                  Object(cur_data) =>
-                    match cur_data.bag.descriptors.get("toISOString") {
-                      Some(desc) =>
-                        match desc.getter {
-                          Some(getter) => {
-                            found = interp.call_value(
-                              getter,
-                              o,
-                              [],
-                              @token.Loc::default(),
-                            )
-                            break
-                          }
-                          None => cur2 = cur_data.prototype
-                        }
-                      None => cur2 = cur_data.prototype
-                    }
-                  _ => break
-                }
-              }
-            }
-            _ => ()
-          }
-          found
-        }
-        _ => Undefined
+      let loc = @token.Loc::default()
+      let to_iso = interp.get_property(o, "toISOString", loc)
+      if !@runtime.is_callable(to_iso) {
+        raise @errors.TypeError(message="toISOString is not a function")
       }
-      match to_iso {
-        Object(fn_data) =>
-          match fn_data.callable {
-            Some(_) => interp.call_value(to_iso, o, [], @token.Loc::default())
-            None =>
-              raise @errors.TypeError(message="toISOString is not a function")
-          }
-        _ => raise @errors.TypeError(message="toISOString is not a function")
-      }
+      interp.call_value(to_iso, o, [], loc)
     },
   )
 

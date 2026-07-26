@@ -2229,27 +2229,13 @@ fn Interpreter::eval_instanceof_values(
     Proxy(proxy_data) => {
       // Step 1: Check for Symbol.hasInstance on the proxy (via get trap)
       let has_instance_sym = self.realm_state.well_known_symbols.has_instance
-      let has_instance_method = get_symbol_method(r, has_instance_sym.id)
+      let has_instance_method = self.get_computed_property(
+        r,
+        Symbol(has_instance_sym),
+        loc,
+      )
       match has_instance_method {
-        Some(has_instance_fn) =>
-          match has_instance_fn {
-            Object(fn_data) =>
-              match fn_data.callable {
-                Some(_) => {
-                  let result = self.call_value(has_instance_fn, r, [l], loc)
-                  Bool(is_truthy(result))
-                }
-                None =>
-                  raise @errors.TypeError(
-                    message="Symbol.hasInstance is not a function",
-                  )
-              }
-            _ =>
-              raise @errors.TypeError(
-                message="Symbol.hasInstance is not a function",
-              )
-          }
-        None => {
+        Undefined | Null => {
           // Step 2: Fall back to prototype chain check
           let target = get_proxy_target(proxy_data)
           let proto = self.get_property(r, "prototype", loc)
@@ -2269,6 +2255,15 @@ fn Interpreter::eval_instanceof_values(
                 _ => Bool(false)
               }
           }
+        }
+        has_instance_fn => {
+          if !is_callable(has_instance_fn) {
+            raise @errors.TypeError(
+              message="Symbol.hasInstance is not a function",
+            )
+          }
+          let result = self.call_value(has_instance_fn, r, [l], loc)
+          Bool(is_truthy(result))
         }
       }
     }
@@ -2440,6 +2435,7 @@ pub fn eval_binary_op(
       // ToPrimitive with hint "default" per spec (+ operator uses no preferred type)
       let lp = match l {
         Object(data) => p_default(l, data)
+        Proxy(_) => to_primitive_via_dispatch(l, "default", interp~)
         Array(arr_data) => {
           let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
           String_(s)
@@ -2448,6 +2444,7 @@ pub fn eval_binary_op(
       }
       let rp = match r {
         Object(data) => p_default(r, data)
+        Proxy(_) => to_primitive_via_dispatch(r, "default", interp~)
         Array(arr_data) => {
           let s = arr_data.elements.map(fn(v) { v.to_string() }).join(",")
           String_(s)
@@ -2530,27 +2527,6 @@ pub fn eval_binary_op(
         message="Internal error: logical operators should be short-circuited",
       )
   }
-}
-
-///|
-/// GetMethod for symbol keys - walks prototype chain to find a symbol-keyed method (spec 7.3.9)
-fn get_symbol_method(obj : Value, symbol_id : Int) -> Value? {
-  let mut current = obj
-  while true {
-    match current {
-      Object(data) =>
-        match data.bag.symbol_properties.get(symbol_id) {
-          Some(val) =>
-            match val {
-              Null | Undefined => return None
-              _ => return Some(val)
-            }
-          None => current = data.prototype
-        }
-      _ => return None
-    }
-  }
-  None
 }
 
 ///|

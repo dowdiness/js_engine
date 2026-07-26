@@ -139,6 +139,8 @@ pub fn setup_object_builtins(
         _ => ()
       }
       match this_val {
+        Value::Proxy(_) =>
+          Bool(interp.get_own_property(this_val, prop_key) is Some(_))
         Object(data) =>
           if data.class_name == "Module" {
             Bool(interp.get_own_property(this_val, prop_key) is Some(_))
@@ -702,354 +704,65 @@ pub fn setup_object_builtins(
             args,
           ) raise {
             let raw_target = if args.length() > 0 { args[0] } else { Undefined }
-            // Step 1: ToObject(target) — throw for null/undefined, wrap primitives
-            let target : Value = match raw_target {
-              Null | Undefined =>
-                raise @errors.TypeError(
-                  message="Cannot convert undefined or null to object",
-                )
-              Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
-                raw_target
-              Value::Number(n) =>
-                Value::Object({
-                  bag: {
-                    properties: Map([]),
-                    symbol_properties: Map([]),
-                    descriptors: Map([]),
-                    symbol_descriptors: Map([]),
-                    internal_slots: Map::from_array([
-                      (@runtime.NumberData, Value::Number(n)),
-                    ]),
-                    host_slots: Map([]),
-                  },
-                  prototype: realm_state.get_number_proto(),
-                  callable: None,
-                  class_name: "Number",
-                  extensible: true,
-                  arraybuffer_state: None,
-                })
-              Value::Bool(b) =>
-                Value::Object({
-                  bag: {
-                    properties: Map([]),
-                    symbol_properties: Map([]),
-                    descriptors: Map([]),
-                    symbol_descriptors: Map([]),
-                    internal_slots: Map::from_array([
-                      (@runtime.BooleanData, Value::Bool(b)),
-                    ]),
-                    host_slots: Map([]),
-                  },
-                  prototype: realm_state.get_boolean_proto(),
-                  callable: None,
-                  class_name: "Boolean",
-                  extensible: true,
-                  arraybuffer_state: None,
-                })
-              Value::String_(s) => {
-                let props : Map[String, Value] = Map([])
-                props["length"] = Value::Number(s.length().to_double())
-                let chars = s.to_array()
-                for i = 0; i < chars.length(); i = i + 1 {
-                  let buf = StringBuilder::new()
-                  buf.write_char(chars[i])
-                  props[i.to_string()] = Value::String_(buf.to_string())
-                }
-                let descs : Map[String, PropDescriptor] = Map([])
-                descs["length"] = {
-                  writable: false,
-                  enumerable: false,
-                  configurable: false,
-                  getter: None,
-                  setter: None,
-                  is_accessor: false,
-                }
-                for i = 0; i < chars.length(); i = i + 1 {
-                  descs[i.to_string()] = {
-                    writable: false,
-                    enumerable: true,
-                    configurable: false,
-                    getter: None,
-                    setter: None,
-                    is_accessor: false,
+            let target = to_object(
+              raw_target,
+              interp,
+              realm_state=Some(realm_state),
+            )
+            let loc = @token.Loc::default()
+            for i = 1; i < args.length(); i = i + 1 {
+              match args[i] {
+                Null | Undefined => ()
+                next_source => {
+                  let source = to_object(
+                    next_source,
+                    interp,
+                    realm_state=Some(realm_state),
+                  )
+                  let keys = interp.own_property_keys(source)
+                  for key in keys {
+                    match interp.get_own_property(source, key) {
+                      Some((desc, _)) if desc.enumerable => {
+                        let property_value = match key {
+                          String_(prop) =>
+                            interp.get_property(source, prop, loc)
+                          Symbol(_) =>
+                            interp.get_computed_property(source, key, loc)
+                          _ =>
+                            raise @errors.TypeError(
+                              message="Object.assign received a non-property key",
+                            )
+                        }
+                        let _ = match key {
+                          String_(prop) =>
+                            interp.set_property(
+                              target,
+                              prop,
+                              property_value,
+                              loc,
+                              strict=true,
+                            )
+                          Symbol(_) =>
+                            interp.set_computed_property(
+                              target,
+                              key,
+                              property_value,
+                              loc,
+                              strict=true,
+                            )
+                          _ =>
+                            raise @errors.TypeError(
+                              message="Object.assign received a non-property key",
+                            )
+                        }
+                      }
+                      _ => ()
+                    }
                   }
                 }
-                Value::Object({
-                  bag: {
-                    properties: props,
-                    symbol_properties: Map([]),
-                    descriptors: descs,
-                    symbol_descriptors: Map([]),
-                    internal_slots: Map::from_array([
-                      (@runtime.StringData, Value::String_(s)),
-                    ]),
-                    host_slots: Map([]),
-                  },
-                  prototype: realm_state.get_string_proto(),
-                  callable: None,
-                  class_name: "String",
-                  extensible: true,
-                  arraybuffer_state: None,
-                })
               }
-              Symbol(_) =>
-                Value::Object({
-                  bag: {
-                    properties: Map([]),
-                    symbol_properties: Map([]),
-                    descriptors: Map([]),
-                    symbol_descriptors: Map([]),
-                    internal_slots: Map::from_array([
-                      (@runtime.SymbolData, raw_target),
-                    ]),
-                    host_slots: Map([]),
-                  },
-                  prototype: realm_state.get_symbol_proto(),
-                  callable: None,
-                  class_name: "Symbol",
-                  extensible: true,
-                  arraybuffer_state: None,
-                })
             }
-            match target {
-              Object(data) => {
-                for i = 1; i < args.length(); i = i + 1 {
-                  match args[i] {
-                    // ToObject conversion: skip null and undefined
-                    Null | Undefined => ()
-                    // ToObject conversion: String primitives enumerate characters
-                    Value::String_(s) => {
-                      let chars = s.to_array()
-                      for idx = 0; idx < chars.length(); idx = idx + 1 {
-                        let k = idx.to_string()
-                        let v = Value::String_(chars[idx].to_string())
-                        // Check writable on target property
-                        let can_write = match data.bag.descriptors.get(k) {
-                          Some(d) => d.writable
-                          None => true
-                        }
-                        let exists = data.bag.properties.contains(k)
-                        if !can_write {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read-only property '\{k}'",
-                          )
-                        }
-                        if !exists && !data.extensible {
-                          raise @errors.TypeError(
-                            message="Cannot add property '\{k}' to non-extensible object",
-                          )
-                        }
-                        data.bag.properties[k] = v
-                      }
-                    }
-                    // ToObject conversion: Arrays enumerate elements as indexed properties
-                    Array(src) => {
-                      // Copy array elements as indexed properties
-                      let loc = @token.Loc::default()
-                      for idx = 0; idx < src.elements.length(); idx = idx + 1 {
-                        if src.holes.contains(idx) {
-                          continue
-                        }
-                        let k = idx.to_string()
-                        let v = match src.bag.descriptors.get(k) {
-                          Some({ enumerable: false, .. }) => continue
-                          Some({ getter: Some(g), .. }) =>
-                            interp.call_value(g, args[i], [], loc)
-                          _ => src.elements[idx]
-                        }
-                        let can_write = match data.bag.descriptors.get(k) {
-                          Some(d) => d.writable
-                          None => true
-                        }
-                        let exists = data.bag.properties.contains(k)
-                        if !can_write {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read-only property '\{k}'",
-                          )
-                        }
-                        if !exists && !data.extensible {
-                          raise @errors.TypeError(
-                            message="Cannot add property '\{k}' to non-extensible object",
-                          )
-                        }
-                        data.bag.properties[k] = v
-                      }
-                    }
-                    // Regular objects have properties and descriptors
-                    Object(src) => {
-                      // Copy enumerable string properties
-                      let loc = @token.Loc::default()
-                      src.bag.properties.each(fn(k, v) raise {
-                        let enumerable = match src.bag.descriptors.get(k) {
-                          Some(d) => d.enumerable
-                          None => true
-                        }
-                        if enumerable {
-                          let _ = interp.set_property(
-                            target,
-                            k,
-                            v,
-                            loc,
-                            strict=true,
-                          )
-                        }
-                      })
-                      // Copy enumerable symbol properties
-                      src.bag.symbol_properties.each(fn(sym_id, v) raise {
-                        let enumerable = match
-                          src.bag.symbol_descriptors.get(sym_id) {
-                          Some(d) => d.enumerable
-                          None => true
-                        }
-                        if enumerable {
-                          // Check writable on target property
-                          let can_write = match
-                            data.bag.symbol_descriptors.get(sym_id) {
-                            Some(d) => d.writable
-                            None => true
-                          }
-                          // Check extensibility if property doesn't exist
-                          let exists = data.bag.symbol_properties.contains(
-                            sym_id,
-                          )
-                          // Per ECMAScript spec, Object.assign throws TypeError on Set failure
-                          if !can_write {
-                            raise @errors.TypeError(
-                              message="Cannot assign to read-only symbol property",
-                            )
-                          }
-                          if !exists && !data.extensible {
-                            raise @errors.TypeError(
-                              message="Cannot add symbol property to non-extensible object",
-                            )
-                          }
-                          data.bag.symbol_properties[sym_id] = v
-                        }
-                      })
-                    }
-                    // Promises have properties but no descriptors
-                    Promise(src) => {
-                      // Copy all string properties (no descriptors to check)
-                      src.bag.properties.each(fn(k, v) raise {
-                        let can_write = match data.bag.descriptors.get(k) {
-                          Some(d) => d.writable
-                          None => true
-                        }
-                        let exists = data.bag.properties.contains(k)
-                        if !can_write {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read-only property '\{k}'",
-                          )
-                        }
-                        if !exists && !data.extensible {
-                          raise @errors.TypeError(
-                            message="Cannot add property '\{k}' to non-extensible object",
-                          )
-                        }
-                        data.bag.properties[k] = v
-                      })
-                      // Copy symbol properties
-                      src.bag.symbol_properties.each(fn(sym_id, v) raise {
-                        let can_write = match
-                          data.bag.symbol_descriptors.get(sym_id) {
-                          Some(d) => d.writable
-                          None => true
-                        }
-                        let exists = data.bag.symbol_properties.contains(sym_id)
-                        if !can_write {
-                          raise @errors.TypeError(
-                            message="Cannot assign to read-only symbol property",
-                          )
-                        }
-                        if !exists && !data.extensible {
-                          raise @errors.TypeError(
-                            message="Cannot add symbol property to non-extensible object",
-                          )
-                        }
-                        data.bag.symbol_properties[sym_id] = v
-                      })
-                    }
-                    // Proxy sources: unwrap to target and copy enumerable properties
-                    Value::Proxy(proxy_data) =>
-                      match proxy_data.target {
-                        Some(target) =>
-                          match target {
-                            Object(src) => {
-                              src.bag.properties.each(fn(k, v) raise {
-                                let enumerable = match
-                                  src.bag.descriptors.get(k) {
-                                  Some(d) => d.enumerable
-                                  None => true
-                                }
-                                if enumerable {
-                                  let can_write = match
-                                    data.bag.descriptors.get(k) {
-                                    Some(d) => d.writable
-                                    None => true
-                                  }
-                                  let exists = data.bag.properties.contains(k)
-                                  if !can_write {
-                                    raise @errors.TypeError(
-                                      message="Cannot assign to read-only property '\{k}'",
-                                    )
-                                  }
-                                  if !exists && !data.extensible {
-                                    raise @errors.TypeError(
-                                      message="Cannot add property '\{k}' to non-extensible object",
-                                    )
-                                  }
-                                  data.bag.properties[k] = v
-                                }
-                              })
-                              // Copy enumerable symbol properties from Proxy target
-                              src.bag.symbol_properties.each(fn(
-                                sym_id,
-                                v,
-                              ) raise {
-                                let enumerable = match
-                                  src.bag.symbol_descriptors.get(sym_id) {
-                                  Some(d) => d.enumerable
-                                  None => true
-                                }
-                                if enumerable {
-                                  let can_write = match
-                                    data.bag.symbol_descriptors.get(sym_id) {
-                                    Some(d) => d.writable
-                                    None => true
-                                  }
-                                  let exists = data.bag.symbol_properties.contains(
-                                    sym_id,
-                                  )
-                                  if !can_write {
-                                    raise @errors.TypeError(
-                                      message="Cannot assign to read-only symbol property",
-                                    )
-                                  }
-                                  if !exists && !data.extensible {
-                                    raise @errors.TypeError(
-                                      message="Cannot add symbol property to non-extensible object",
-                                    )
-                                  }
-                                  data.bag.symbol_properties[sym_id] = v
-                                }
-                              })
-                            }
-                            _ => ()
-                          }
-                        None =>
-                          raise @errors.TypeError(
-                            message="Cannot perform 'ownKeys' on a proxy that has been revoked",
-                          )
-                      }
-                    // ToObject conversion: Map, Set, Number, Bool, Symbol have no enumerable own string properties
-                    Map(_) | Set(_) | Value::Number(_) | Bool(_) | Symbol(_) =>
-                      ()
-                  }
-                }
-                target
-              }
-              _ => target
-            }
+            target
           }),
           "getPrototypeOf": @runtime.make_interp_static_func(
             name="getPrototypeOf",

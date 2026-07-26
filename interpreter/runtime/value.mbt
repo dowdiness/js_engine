@@ -326,6 +326,7 @@ pub(all) struct MapData {
   mut prototype : Value?
   // Expando properties: stores instance fields from subclasses (class D extends Map)
   bag : PropertyBag
+  mut extensible : Bool
 }
 
 ///|
@@ -344,6 +345,7 @@ pub fn MapData::MapData(
     next_entry_id: entries.length(),
     prototype,
     bag: PropertyBag(),
+    extensible: true,
   }
 }
 
@@ -367,6 +369,7 @@ pub(all) struct SetData {
   mut prototype : Value?
   // Expando properties: stores instance fields from subclasses (class D extends Set)
   bag : PropertyBag
+  mut extensible : Bool
 }
 
 ///|
@@ -381,6 +384,7 @@ pub fn SetData::SetData(
     iteration_depth: 0,
     prototype,
     bag: PropertyBag(),
+    extensible: true,
   }
 }
 
@@ -429,6 +433,7 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction] // Called when rejected
   mut is_handled : Bool // Whether .catch or second arg to .then was provided
   bag : PropertyBag
+  mut extensible : Bool
   // None = use realm's Promise.prototype; Some(Null) = explicit null; Some(v) = override
   mut prototype : Value?
 }
@@ -443,6 +448,7 @@ pub fn new_promise_data() -> PromiseData {
     reject_reactions: [],
     is_handled: false,
     bag: PropertyBag(),
+    extensible: true,
     prototype: None,
   }
 }
@@ -453,6 +459,7 @@ pub(all) struct ProxyData {
   mut target : Value? // None when revoked
   mut handler : Value? // None when revoked
   is_callable : Bool // Set at creation time, persists after revocation
+  is_constructor : Bool // Set at creation time, persists after revocation
 }
 
 ///|

@@ -1,7 +1,11 @@
 ///|
 /// ToObject (ES spec 7.1.13): convert primitives to their wrapper objects.
 /// Throws TypeError for null/undefined. Objects/Arrays/etc pass through unchanged.
-fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
+fn to_object(
+  val : Value,
+  interp : Interpreter,
+  realm_state? : @runtime.RealmState? = None,
+) -> Value raise Error {
   match val {
     Null | Undefined =>
       raise @errors.TypeError(
@@ -9,8 +13,9 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       )
     Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => val
     Value::String_(s) => {
-      let string_proto = interp.global.get("[[StringPrototype]]") catch {
-        _ => Null
+      let string_proto = match realm_state {
+        Some(realm) => realm.get_string_proto()
+        None => interp.global.get("[[StringPrototype]]") catch { _ => Null }
       }
       let props : Map[String, Value] = Map([])
       props["length"] = Value::Number(s.length().to_double())
@@ -58,8 +63,9 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       })
     }
     Value::Number(n) => {
-      let number_proto = interp.global.get("[[NumberPrototype]]") catch {
-        _ => Null
+      let number_proto = match realm_state {
+        Some(realm) => realm.get_number_proto()
+        None => interp.global.get("[[NumberPrototype]]") catch { _ => Null }
       }
       Value::Object({
         bag: {
@@ -80,8 +86,9 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       })
     }
     Value::Bool(b) => {
-      let boolean_proto = interp.global.get("[[BooleanPrototype]]") catch {
-        _ => Null
+      let boolean_proto = match realm_state {
+        Some(realm) => realm.get_boolean_proto()
+        None => interp.global.get("[[BooleanPrototype]]") catch { _ => Null }
       }
       Value::Object({
         bag: {
@@ -102,8 +109,9 @@ fn to_object(val : Value, interp : Interpreter) -> Value raise Error {
       })
     }
     Symbol(_) => {
-      let symbol_proto = interp.global.get("[[SymbolPrototype]]") catch {
-        _ => Null
+      let symbol_proto = match realm_state {
+        Some(realm) => realm.get_symbol_proto()
+        None => interp.global.get("[[SymbolPrototype]]") catch { _ => Null }
       }
       Value::Object({
         bag: {

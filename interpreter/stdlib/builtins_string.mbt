@@ -92,6 +92,22 @@ pub fn utf16_length(s : String) -> Int {
 }
 
 ///|
+/// GetMethod for the well-known symbol hooks used by String methods.
+/// The canonical computed-property dispatcher preserves Proxy [[Get]],
+/// accessor, revocation, and abrupt-completion semantics.
+fn string_symbol_method(
+  interp : Interpreter,
+  value : Value,
+  symbol : Value,
+) -> Value? raise Error {
+  guard @runtime.is_object_value(value) else { return None }
+  match interp.get_computed_property(value, symbol, @token.Loc::default()) {
+    Null | Undefined => None
+    method_value => Some(method_value)
+  }
+}
+
+///|
 pub fn get_string_method(
   s : String,
   prop : String,
@@ -626,37 +642,21 @@ pub fn get_string_method(
         interp,
         args,
       ) raise {
-        // Per spec: check for [Symbol.split] method on the argument first
+        // §22.1.3.23: GetMethod(separator, @@split) before coercing separator.
         if args.length() > 0 {
-          match args[0] {
-            Object(data) => {
-              let split_sym = well_known_symbols.split
-              let split_fn = @runtime.lookup_symbol_property_chain(
-                args[0],
-                data,
-                split_sym.id,
+          let separator = args[0]
+          let split_sym = Value::Symbol(well_known_symbols.split)
+          match string_symbol_method(interp, separator, split_sym) {
+            Some(splitter) => {
+              let limit = if args.length() > 1 { args[1] } else { Undefined }
+              return @runtime.call_callable_direct(
+                splitter,
+                separator,
+                [Value::String_(str), limit],
                 interp=Some(interp),
               )
-              match split_fn {
-                Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-                Some(fn_val) => {
-                  let limit = if args.length() > 1 {
-                    args[1]
-                  } else {
-                    Undefined
-                  }
-                  let result = @runtime.call_callable_direct(
-                    fn_val,
-                    args[0],
-                    [Value::String_(str), limit],
-                    interp=Some(interp),
-                  )
-                  return result
-                }
-                _ => ()
-              }
             }
-            _ => ()
+            None => ()
           }
         }
         // Get limit parameter (default: 2^32 - 1 per ES spec)
@@ -756,30 +756,24 @@ pub fn get_string_method(
         if args.length() == 0 {
           return Value::String_(str)
         }
-        // Per spec: check for [Symbol.replace] method on the argument
-        match args[0] {
-          Object(data) => {
-            let replace_sym = well_known_symbols.replace
-            let replace_fn = @runtime.lookup_symbol_property_chain(
-              args[0],
-              data,
-              replace_sym.id,
+        let search_value = args[0]
+        // §22.1.3.19: GetMethod(searchValue, @@replace) before fallback
+        // ToString(searchValue).
+        let replace_sym = Value::Symbol(well_known_symbols.replace)
+        match string_symbol_method(interp, search_value, replace_sym) {
+          Some(replacer) => {
+            let rep = if args.length() > 1 { args[1] } else { Undefined }
+            return @runtime.call_callable_direct(
+              replacer,
+              search_value,
+              [Value::String_(str), rep],
               interp=Some(interp),
             )
-            match replace_fn {
-              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-              Some(fn_val) => {
-                let rep = if args.length() > 1 { args[1] } else { Undefined }
-                let result = @runtime.call_callable_direct(
-                  fn_val,
-                  args[0],
-                  [Value::String_(str), rep],
-                  interp=Some(interp),
-                )
-                return result
-              }
-              _ => ()
-            }
+          }
+          None => ()
+        }
+        match search_value {
+          Object(data) =>
             if data.class_name == "RegExp" {
               let pattern = match data.bag.properties.get("source") {
                 Some(Value::String_(s)) => s
@@ -796,10 +790,9 @@ pub fn get_string_method(
               }
               return string_replace_regex(str, pattern, flags, replacement)
             }
-          }
           _ => ()
         }
-        let search = interp.to_js_string(args[0])
+        let search = interp.to_js_string(search_value)
         let replace_val = if args.length() > 1 { args[1] } else { Undefined }
         let is_func = @runtime.is_callable(replace_val)
         let slen = str.length()
@@ -868,38 +861,29 @@ pub fn get_string_method(
         if args.length() == 0 {
           return Null
         }
-        // Per spec: check for [Symbol.match] method on the argument
-        match args[0] {
-          Object(data) => {
-            let match_sym = well_known_symbols.match_sym
-            let match_fn = @runtime.lookup_symbol_property_chain(
-              args[0],
-              data,
-              match_sym.id,
+        let regexp = args[0]
+        // §22.1.3.13: GetMethod(regexp, @@match) before RegExpCreate.
+        let match_sym = Value::Symbol(well_known_symbols.match_sym)
+        match string_symbol_method(interp, regexp, match_sym) {
+          Some(matcher) =>
+            return @runtime.call_callable_direct(
+              matcher,
+              regexp,
+              [Value::String_(str)],
               interp=Some(interp),
             )
-            match match_fn {
-              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-              Some(fn_val) => {
-                let result = @runtime.call_callable_direct(
-                  fn_val,
-                  args[0],
-                  [Value::String_(str)],
-                  interp=Some(interp),
-                )
-                return result
-              }
-              _ => ()
-            }
+          None => ()
+        }
+        match regexp {
+          Object(data) =>
             if data.class_name == "RegExp" {
-              let (pattern, flags) = extract_regexp_source_flags(args[0])
+              let (pattern, flags) = extract_regexp_source_flags(regexp)
               return string_match_regex(str, pattern, flags)
             }
-          }
           _ => ()
         }
         // If not a RegExp, treat as string pattern
-        let pattern = interp.to_js_string(args[0])
+        let pattern = interp.to_js_string(regexp)
         string_match_regex(str, pattern, "")
       })
     }
@@ -1000,29 +984,21 @@ pub fn get_string_method(
         if args.length() == 0 {
           return Value::Number(0.0)
         }
-        // Per spec: check for [Symbol.search] method on the argument
-        match args[0] {
-          Object(data) => {
-            let search_sym = well_known_symbols.search
-            let search_fn = @runtime.lookup_symbol_property_chain(
-              args[0],
-              data,
-              search_sym.id,
+        let regexp = args[0]
+        // §22.1.3.21: GetMethod(regexp, @@search) before RegExpCreate.
+        let search_sym = Value::Symbol(well_known_symbols.search)
+        match string_symbol_method(interp, regexp, search_sym) {
+          Some(searcher) =>
+            return @runtime.call_callable_direct(
+              searcher,
+              regexp,
+              [Value::String_(str)],
               interp=Some(interp),
             )
-            match search_fn {
-              Some(Null) | Some(Undefined) => () // GetMethod: null/undefined means no method
-              Some(fn_val) => {
-                let result = @runtime.call_callable_direct(
-                  fn_val,
-                  args[0],
-                  [Value::String_(str)],
-                  interp=Some(interp),
-                )
-                return result
-              }
-              _ => ()
-            }
+          None => ()
+        }
+        match regexp {
+          Object(data) =>
             if data.class_name == "RegExp" {
               let pattern = match data.bag.properties.get("source") {
                 Some(Value::String_(s)) => s
@@ -1034,10 +1010,9 @@ pub fn get_string_method(
               }
               return string_search_regex(str, pattern, flags)
             }
-          }
           _ => ()
         }
-        let pattern = interp.to_js_string(args[0])
+        let pattern = interp.to_js_string(regexp)
         string_search_regex(str, pattern, "")
       })
     }

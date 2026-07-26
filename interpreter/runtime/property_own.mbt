@@ -373,15 +373,14 @@ fn ordinary_get_own_string_desc(
 }
 
 ///|
-/// Is `val` extensible per ES §10.1.3? Only ObjectData tracks extensibility;
-/// Array/Map/Set/Promise lack a per-instance extensibility slot and are
-/// always reported extensible. Adding extensibility tracking to those four
-/// variants is a structural follow-up tracked alongside their general
-/// prototype-slot gap.
+/// Is `val` extensible per ES §10.1.3?
 fn ordinary_is_extensible(val : Value) -> Bool {
   match val {
     Object(data) => data.extensible
-    Array(_) | Map(_) | Set(_) | Promise(_) => true
+    Array(data) => data.extensible
+    Map(data) => data.extensible
+    Set(data) => data.extensible
+    Promise(data) => data.extensible
     _ => false
   }
 }
@@ -597,74 +596,66 @@ pub fn Interpreter::partial_descriptor_from_attrs(
       message="Property description must be an object: \{attrs.to_string()}",
     )
   }
-  let has_value = has_property(attrs, "value", interp=Some(self))
-  let has_writable = has_property(attrs, "writable", interp=Some(self))
-  let has_get = has_property(attrs, "get", interp=Some(self))
-  let has_set = has_property(attrs, "set", interp=Some(self))
-  if (has_value || has_writable) && (has_get || has_set) {
+  let mut enumerable : Bool? = None
+  let mut configurable : Bool? = None
+  let mut value : Value? = None
+  let mut writable : Bool? = None
+  let mut getter : Value? = None
+  let mut setter : Value? = None
+  let mut has_value = false
+  let mut has_writable = false
+  let mut has_getter = false
+  let mut has_setter = false
+  if self.has_property(attrs, "enumerable") {
+    enumerable = Some(is_truthy(self.get_property(attrs, "enumerable", loc)))
+  }
+  if self.has_property(attrs, "configurable") {
+    configurable = Some(
+      is_truthy(self.get_property(attrs, "configurable", loc)),
+    )
+  }
+  if self.has_property(attrs, "value") {
+    has_value = true
+    value = Some(self.get_property(attrs, "value", loc))
+  }
+  if self.has_property(attrs, "writable") {
+    has_writable = true
+    writable = Some(is_truthy(self.get_property(attrs, "writable", loc)))
+  }
+  if self.has_property(attrs, "get") {
+    has_getter = true
+    let get_val = self.get_property(attrs, "get", loc)
+    match get_val {
+      Undefined => ()
+      _ => {
+        if !is_callable(get_val) {
+          raise @errors.TypeError(
+            message="Getter must be a function: \{get_val.to_string()}",
+          )
+        }
+        getter = Some(get_val)
+      }
+    }
+  }
+  if self.has_property(attrs, "set") {
+    has_setter = true
+    let set_val = self.get_property(attrs, "set", loc)
+    match set_val {
+      Undefined => ()
+      _ => {
+        if !is_callable(set_val) {
+          raise @errors.TypeError(
+            message="Setter must be a function: \{set_val.to_string()}",
+          )
+        }
+        setter = Some(set_val)
+      }
+    }
+  }
+  if (has_value || has_writable) && (has_getter || has_setter) {
     raise @errors.TypeError(
       message="Invalid property descriptor. Cannot both specify accessors and a value or writable attribute",
     )
-  }
-  let value = if has_value {
-    Some(self.get_property(attrs, "value", loc))
-  } else {
-    None
-  }
-  let writable = if has_writable {
-    Some(is_truthy(self.get_property(attrs, "writable", loc)))
-  } else {
-    None
-  }
-  let enumerable = if has_property(attrs, "enumerable", interp=Some(self)) {
-    Some(is_truthy(self.get_property(attrs, "enumerable", loc)))
-  } else {
-    None
-  }
-  let configurable = if has_property(attrs, "configurable", interp=Some(self)) {
-    Some(is_truthy(self.get_property(attrs, "configurable", loc)))
-  } else {
-    None
-  }
-  let getter = if has_get {
-    let g = self.get_property(attrs, "get", loc)
-    match g {
-      Undefined => None
-      Object(data) => {
-        if data.callable is None {
-          raise @errors.TypeError(
-            message="Getter must be a function: \{g.to_string()}",
-          )
-        }
-        Some(g)
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="Getter must be a function: \{g.to_string()}",
-        )
-    }
-  } else {
-    None
-  }
-  let setter = if has_set {
-    let s = self.get_property(attrs, "set", loc)
-    match s {
-      Undefined => None
-      Object(data) => {
-        if data.callable is None {
-          raise @errors.TypeError(
-            message="Setter must be a function: \{s.to_string()}",
-          )
-        }
-        Some(s)
-      }
-      _ =>
-        raise @errors.TypeError(
-          message="Setter must be a function: \{s.to_string()}",
-        )
-    }
-  } else {
-    None
   }
   {
     value,
@@ -673,8 +664,8 @@ pub fn Interpreter::partial_descriptor_from_attrs(
     configurable,
     getter,
     setter,
-    has_getter: has_get,
-    has_setter: has_set,
+    has_getter,
+    has_setter,
   }
 }
 

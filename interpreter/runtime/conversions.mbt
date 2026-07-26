@@ -459,6 +459,113 @@ fn ordinary_to_primitive_number(
 }
 
 ///|
+fn try_proxy_ordinary_method(
+  interp : Interpreter,
+  obj_val : Value,
+  method_name : String,
+) -> Value? raise Error {
+  let method_val = interp.get_property(
+    obj_val,
+    method_name,
+    @token.Loc::default(),
+  )
+  if !is_callable(method_val) {
+    return None
+  }
+  let result = interp.call_value(method_val, obj_val, [], @token.Loc::default())
+  if is_js_object(result) {
+    None
+  } else {
+    Some(result)
+  }
+}
+
+///|
+/// Proxy-aware ToPrimitive shell. Observable property access stays behind the
+/// interpreter's canonical [[Get]] dispatcher, while the decision order is a
+/// deterministic translation of §7.1.1 / OrdinaryToPrimitive.
+fn to_primitive_via_dispatch(
+  obj_val : Value,
+  hint : String,
+  interp? : Interpreter? = None,
+) -> Value raise Error {
+  let effective = match resolve_effective_interp(interp) {
+    Some(ip) => ip
+    None =>
+      return String_(
+        match obj_val {
+          Proxy(data) if data.is_callable =>
+            "function proxy() { [native code] }"
+          _ => "[object Object]"
+        },
+      )
+  }
+  let to_prim_sym = effective.realm_state.well_known_symbols.to_primitive
+  let exotic = effective.get_computed_property(
+    obj_val,
+    Symbol(to_prim_sym),
+    @token.Loc::default(),
+  )
+  match exotic {
+    Undefined | Null => ()
+    _ => {
+      if !is_callable(exotic) {
+        raise @errors.TypeError(message="Symbol.toPrimitive is not a function")
+      }
+      let result = effective.call_value(
+        exotic,
+        obj_val,
+        [String_(hint)],
+        @token.Loc::default(),
+      )
+      if is_js_object(result) {
+        raise @errors.TypeError(
+          message="Cannot convert object to primitive value",
+        )
+      }
+      return result
+    }
+  }
+  let first = if hint == "string" { "toString" } else { "valueOf" }
+  let second = if hint == "string" { "valueOf" } else { "toString" }
+  match try_proxy_ordinary_method(effective, obj_val, first) {
+    Some(result) => return result
+    None => ()
+  }
+  match try_proxy_ordinary_method(effective, obj_val, second) {
+    Some(result) => result
+    None =>
+      raise @errors.TypeError(
+        message="Cannot convert object to primitive value",
+      )
+  }
+}
+
+///|
+/// Canonical ToPrimitive entry point for callers that hold an arbitrary
+/// ECMAScript value. Primitive inputs pass through; object families that need
+/// observable property access use the interpreter dispatchers.
+pub fn Interpreter::to_primitive_value(
+  self : Interpreter,
+  value : Value,
+  hint : String,
+) -> Value raise Error {
+  match value {
+    Object(data) =>
+      if hint == "string" {
+        to_primitive_string(value, interp=Some(self))
+      } else if hint == "number" {
+        to_primitive_number(value, data, interp=Some(self))
+      } else {
+        to_primitive_default(value, data, interp=Some(self))
+      }
+    Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+      to_primitive_via_dispatch(value, hint, interp=Some(self))
+    _ => value
+  }
+}
+
+///|
 /// ToPrimitive(input, hint "default") - for + operator.
 /// Same as "number" except passes "default" to @@toPrimitive.
 pub fn to_primitive_default(
@@ -717,7 +824,9 @@ pub fn to_number(
         }
       }
     }
-    Undefined | Map(_) | Set(_) | Promise(_) | Proxy(_) => 0.0 / 0.0
+    Proxy(_) =>
+      to_number(to_primitive_via_dispatch(val, "number", interp~), interp~)
+    Undefined | Map(_) | Set(_) | Promise(_) => 0.0 / 0.0
     Symbol(_) =>
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a number",

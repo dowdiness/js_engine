@@ -33,11 +33,7 @@ pub fn is_constructor_value(v : Value) -> Bool {
         Some(FuncCallMethod(_)) | Some(FuncApplyMethod(_)) => false
         None => false
       }
-    Proxy(pd) =>
-      match pd.target {
-        Some(inner) => is_constructor_value(inner)
-        None => false
-      }
+    Proxy(pd) => pd.is_constructor
     _ => false
   }
 }

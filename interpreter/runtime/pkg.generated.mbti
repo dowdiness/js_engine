@@ -345,9 +345,9 @@ pub fn set_function_name(Value, String) -> Unit
 
 pub fn set_host_slot(ObjectData, HostSlotKey, Value) -> Unit
 
-pub fn set_integrity_frozen(Value) -> Value raise
+pub fn set_integrity_frozen(Interpreter, Value) -> Value raise
 
-pub fn set_integrity_sealed(Value) -> Value
+pub fn set_integrity_sealed(Interpreter, Value) -> Value raise
 
 pub fn set_keyed_collection_iterator_next_index(ObjectData, Int, Value) -> Unit
 
@@ -371,9 +371,9 @@ pub fn string_to_utf16(String) -> Array[Int]
 
 pub fn strip_self_name_binding(Value) -> Value
 
-pub fn test_integrity_frozen(Value) -> Value
+pub fn test_integrity_frozen(Interpreter, Value) -> Value raise
 
-pub fn test_integrity_sealed(Value) -> Value
+pub fn test_integrity_sealed(Interpreter, Value) -> Value raise
 
 pub fn to_array_like_elements(Value) -> Array[Value] raise
 
@@ -749,6 +749,7 @@ pub fn Interpreter::to_js_string(Self, Value) -> String raise
 pub fn Interpreter::to_number(Self, Value) -> Double raise
 pub fn Interpreter::to_object_literal_property_key(Self, Value) -> Value raise
 pub fn Interpreter::to_primitive_default(Self, Value, ObjectData) -> Value raise
+pub fn Interpreter::to_primitive_value(Self, Value, String) -> Value raise
 pub fn Interpreter::typeof_compiled_name(Self, ExecContext, Environment, String) -> Value raise
 pub fn Interpreter::update_compiled_name(Self, ExecContext, Environment, String, @ast.UpdateOp, Bool, @token.Loc) -> Value raise
 pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) -> Unit raise
@@ -760,6 +761,7 @@ pub(all) struct MapData {
   mut next_entry_id : Int
   mut prototype : Value?
   bag : PropertyBag
+  mut extensible : Bool
 }
 pub fn MapData::MapData(Array[(Value, Value)], prototype? : Value?) -> Self
 
@@ -810,6 +812,7 @@ pub(all) struct PromiseData {
   reject_reactions : Array[PromiseReaction]
   mut is_handled : Bool
   bag : PropertyBag
+  mut extensible : Bool
   mut prototype : Value?
 }
 
@@ -858,6 +861,7 @@ pub(all) struct ProxyData {
   mut target : Value?
   mut handler : Value?
   is_callable : Bool
+  is_constructor : Bool
 }
 
 pub(all) struct RealmState {
@@ -953,6 +957,7 @@ pub(all) struct SetData {
   mut iteration_depth : Int
   mut prototype : Value?
   bag : PropertyBag
+  mut extensible : Bool
 }
 pub fn SetData::SetData(Array[Value], prototype? : Value?) -> Self
 pub fn SetData::effective_size(Self) -> Int

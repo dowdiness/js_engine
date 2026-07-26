@@ -5,16 +5,14 @@
 /// prototype / extensibility representation internals (architecture redesign
 /// Stage 8, following #335 own-property-keys and #338 integrity ops).
 ///
-/// These reproduce the existing Reflect.getPrototypeOf / Reflect.setPrototypeOf
-/// behavior verbatim, including the existing latent asymmetries that are
-/// preserved here and NOT "fixed": both operations only handle
-/// Object / Array / Proxy targets and raise TypeError for Map / Set / Promise
-/// targets even though those are objects whose `[[GetPrototypeOf]]` /
-/// `[[SetPrototypeOf]]` should succeed. Object.getPrototypeOf /
-/// Object.setPrototypeOf carry a richer (coercing, throw-on-non-extensible)
-/// dispatch by design and intentionally do NOT route through these ops.
-/// Aligning the Map/Set/Promise/Array arms is behavior-changing work tracked
-/// for the enumerator-unification / internal-slot follow-ups (#336 / #337).
+/// These operations currently handle Object / Array / Proxy targets. The
+/// remaining latent asymmetry is that Map / Set / Promise targets raise
+/// TypeError even though their `[[GetPrototypeOf]]` / `[[SetPrototypeOf]]`
+/// operations should succeed. Object.getPrototypeOf / Object.setPrototypeOf
+/// carry a richer coercing dispatch and intentionally do not route through
+/// these operations. Aligning the Map/Set/Promise arms is behavior-changing
+/// work tracked for the enumerator-unification / internal-slot follow-ups
+/// (#336 / #337).
 
 ///|
 /// Module-namespace exotic object `[[SetPrototypeOf]]` shortcut (§28.3 /
@@ -33,8 +31,57 @@ pub fn module_namespace_set_prototype_result(
 }
 
 ///|
+/// OrdinarySetPrototypeOf cycle decision (§10.1.2.1 steps 5-7). The walk
+/// follows Value variants whose [[GetPrototypeOf]] is ordinary and stops at
+/// Proxy, whose internal method is exotic. A repeated ordinary object means
+/// the input chain already contains a cycle, which is rejected to guarantee
+/// termination. The visited state is local; this helper has no external effect.
+fn ordinary_prototype_would_cycle(
+  interp : Interpreter,
+  obj : Value,
+  proto : Value,
+) -> Bool {
+  let mut cursor = proto
+  let visited : Array[Value] = []
+  while true {
+    if strict_equal(cursor, obj) {
+      return true
+    }
+    match cursor {
+      Null | Proxy(_) => return false
+      Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) => ()
+      _ => return false
+    }
+    for seen in visited {
+      if strict_equal(seen, cursor) {
+        return true
+      }
+    }
+    visited.push(cursor)
+    match cursor {
+      Object(data) => cursor = data.prototype
+      Array(data) => cursor = get_array_prototype(interp.realm_state, data)
+      Map(data) =>
+        cursor = data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_map_proto()
+        })
+      Set(data) =>
+        cursor = data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_set_proto()
+        })
+      Promise(data) =>
+        cursor = data.prototype.unwrap_or_else(fn() {
+          interp.realm_state.get_promise_proto()
+        })
+      _ => return false
+    }
+  }
+  false
+}
+
+///|
 /// [[SetPrototypeOf]] cycle detection and extensibility guard for ordinary objects
-/// (§10.1.3). Returns true if the prototype was set, false if it would create a
+/// (§10.1.2.1). Returns true if the prototype was set, false if it would create a
 /// cycle or the target is non-extensible. Does NOT handle immutable-prototype
 /// exotic objects (Object.prototype) — callers check before reaching this.
 pub fn ordinary_set_prototype(
@@ -48,18 +95,8 @@ pub fn ordinary_set_prototype(
   if !data.extensible {
     return false
   }
-  // §10.1.3 step 6: walk from proto up the chain checking if data is reachable
-  let mut p = proto
-  while true {
-    if strict_equal(p, Object(data)) {
-      return false
-    }
-    match p {
-      Object(p_data) => p = p_data.prototype
-      Array(p_data) => p = get_array_prototype(interp.realm_state, p_data)
-      Null => break
-      _ => break
-    }
+  if ordinary_prototype_would_cycle(interp, Object(data), proto) {
+    return false
   }
   data.prototype = proto
   true
@@ -106,8 +143,17 @@ pub fn object_set_prototype_of(
         None => Value::Bool(ordinary_set_prototype(interp, data, proto))
       }
     Array(data) => {
-      set_array_prototype_override(data, proto)
-      Value::Bool(true)
+      let current = get_array_prototype(interp.realm_state, data)
+      if strict_equal(proto, current) {
+        Value::Bool(true)
+      } else if !data.extensible {
+        Value::Bool(false)
+      } else if ordinary_prototype_would_cycle(interp, Array(data), proto) {
+        Value::Bool(false)
+      } else {
+        set_array_prototype_override(data, proto)
+        Value::Bool(true)
+      }
     }
     _ =>
       raise @errors.TypeError(

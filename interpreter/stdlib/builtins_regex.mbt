@@ -3554,12 +3554,12 @@ fn regexp_exec_for_symbol_method(
       [Value::String_(input)],
       interp=Some(interp),
     )
-    match result {
-      Null | Object(_) | Array(_) => result
-      _ =>
-        raise @errors.TypeError(
-          message="RegExp exec method returned neither object nor null",
-        )
+    if result is Null || @runtime.is_object_value(result) {
+      result
+    } else {
+      raise @errors.TypeError(
+        message="RegExp exec method returned neither object nor null",
+      )
     }
   } else {
     regexp_builtin_exec(interp, rx, input, loc)

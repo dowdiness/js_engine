@@ -3848,6 +3848,97 @@ test "string startsWith endsWith" {
 }
 
 ///|
+test "String symbol methods route Proxy patterns through GetMethod" {
+  let src =
+    #|function checkDispatch(name, symbol, second) {
+    #|  var gets = [];
+    #|  var calls = [];
+    #|  var target = {};
+    #|  var proxy;
+    #|  target[symbol] = function(string, extra) {
+    #|    calls.push(this === proxy);
+    #|    calls.push(string);
+    #|    calls.push(extra === second);
+    #|    return name + "-result";
+    #|  };
+    #|  proxy = new Proxy(target, {
+    #|    get: function(object, key) {
+    #|      gets.push(key === symbol);
+    #|      return object[key];
+    #|    }
+    #|  });
+    #|  var result = second === undefined
+    #|    ? String.prototype[name].call("subject", proxy)
+    #|    : String.prototype[name].call("subject", proxy, second);
+    #|  console.log(name + ":" + result + ":" + gets.join(",") + ":" + calls.join(","));
+    #|}
+    #|checkDispatch("match", Symbol.match);
+    #|checkDispatch("replace", Symbol.replace, "replacement");
+    #|checkDispatch("search", Symbol.search);
+    #|checkDispatch("split", Symbol.split, 7);
+    #|
+    #|function checkFallback(name, symbol) {
+    #|  var gets = [];
+    #|  var target = {};
+    #|  target[Symbol.toPrimitive] = function() {};
+    #|  var proxy = new Proxy(target, {
+    #|    get: function(object, key) {
+    #|      gets.push(key);
+    #|      return object[key];
+    #|    }
+    #|  });
+    #|  String.prototype[name].call("", proxy);
+    #|  console.log(name + ":" + (gets[0] === symbol) + ":" + (gets[1] === Symbol.toPrimitive) + ":" + gets.length);
+    #|}
+    #|checkFallback("match", Symbol.match);
+    #|checkFallback("replace", Symbol.replace);
+    #|checkFallback("search", Symbol.search);
+    #|checkFallback("split", Symbol.split);
+    #|
+    #|function checkAbrupt(name, symbol) {
+    #|  var after = false;
+    #|  var proxy = new Proxy({}, {
+    #|    get: function(object, key) {
+    #|      if (key === symbol) throw name + "-get";
+    #|      after = true;
+    #|    }
+    #|  });
+    #|  try {
+    #|    String.prototype[name].call("", proxy);
+    #|  } catch (error) {
+    #|    console.log(error + ":" + after);
+    #|  }
+    #|}
+    #|checkAbrupt("match", Symbol.match);
+    #|checkAbrupt("replace", Symbol.replace);
+    #|checkAbrupt("search", Symbol.search);
+    #|checkAbrupt("split", Symbol.split);
+    #|
+    #|function checkRevoked(name) {
+    #|  var record = Proxy.revocable({}, {});
+    #|  record.revoke();
+    #|  try {
+    #|    String.prototype[name].call("", record.proxy);
+    #|    console.log(name + ":no-error");
+    #|  } catch (error) {
+    #|    console.log(name + ":" + (error instanceof TypeError));
+    #|  }
+    #|}
+    #|checkRevoked("match");
+    #|checkRevoked("replace");
+    #|checkRevoked("search");
+    #|checkRevoked("split");
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "match:match-result:true:true,subject,true", "replace:replace-result:true:true,subject,true",
+    "search:search-result:true:true,subject,true", "split:split-result:true:true,subject,true",
+    "match:true:true:2", "replace:true:true:2", "search:true:true:2", "split:true:true:2",
+    "match-get:false", "replace-get:false", "search-get:false", "split-get:false",
+    "match:true", "replace:true", "search:true", "split:true",
+  ])
+}
+
+///|
 test "string startsWith endsWith includes use IsRegExp via Symbol.match" {
   let src =
     #|function outcome(method, receiver, search, position) {
@@ -3951,6 +4042,429 @@ test "object assign" {
     #|console.log(Object.keys(target).join(","));
   let output = run_output(src)
   json_inspect(output, content=["a,b,c"])
+}
+
+///|
+/// Function.prototype.bind performs HasOwnProperty("length"), Get("length"),
+/// and Get("name") against a callable Proxy in specification order.
+test "Function bind dispatches Proxy length and name internal operations" {
+  let src =
+    #|var get = [];
+    #|var gopd = [];
+    #|var target = Function();
+    #|var proxy = new Proxy(target, {
+    #|  get: function(object, key) {
+    #|    get.push(key);
+    #|    return object[key];
+    #|  },
+    #|  getOwnPropertyDescriptor: function(object, key) {
+    #|    gopd.push(key);
+    #|    return Object.getOwnPropertyDescriptor(object, key);
+    #|  }
+    #|});
+    #|var bound = Function.prototype.bind.call(proxy);
+    #|console.log(get.join(","));
+    #|console.log(gopd.join(","));
+    #|console.log(bound());
+  let output = run_output(src)
+  json_inspect(output, content=["length,name", "length", "undefined"])
+}
+
+///|
+/// Object.prototype.hasOwnProperty delegates HasOwnProperty to the receiver's
+/// [[GetOwnProperty]] internal method, including Proxy trap dispatch.
+test "Object hasOwnProperty dispatches Proxy getOwnPropertyDescriptor" {
+  let src =
+    #|var gopd = [];
+    #|var proxy = new Proxy({foo: 1, bar: 2}, {
+    #|  getOwnPropertyDescriptor: function(object, key) {
+    #|    gopd.push(key);
+    #|    return Object.getOwnPropertyDescriptor(object, key);
+    #|  }
+    #|});
+    #|console.log(proxy.hasOwnProperty("garply"));
+    #|console.log(gopd.join(","));
+  let output = run_output(src)
+  json_inspect(output, content=["false", "garply"])
+}
+
+///|
+/// Proxy traps used by bind and hasOwnProperty preserve abrupt completion;
+/// revoked Proxies fail instead of falling back to the former direct-bag paths.
+test "bind and hasOwnProperty propagate throwing and revoked Proxy operations" {
+  let src =
+    #|function report(label, action) {
+    #|  try {
+    #|    action();
+    #|    console.log(label + ":no throw");
+    #|  } catch (error) {
+    #|    console.log(label + ":" + (error.message || error.name));
+    #|  }
+    #|}
+    #|report("bind-get", function() {
+    #|  var proxy = new Proxy(Function(), {
+    #|    get: function() { throw new Error("get abrupt"); }
+    #|  });
+    #|  Function.prototype.bind.call(proxy);
+    #|});
+    #|report("bind-gopd", function() {
+    #|  var proxy = new Proxy(Function(), {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("gopd abrupt"); }
+    #|  });
+    #|  Function.prototype.bind.call(proxy);
+    #|});
+    #|report("hasOwn-gopd", function() {
+    #|  var proxy = new Proxy({}, {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("hasOwn abrupt"); }
+    #|  });
+    #|  Object.prototype.hasOwnProperty.call(proxy, "x");
+    #|});
+    #|var bindRecord = Proxy.revocable(Function(), {});
+    #|bindRecord.revoke();
+    #|report("bind-revoked", function() {
+    #|  Function.prototype.bind.call(bindRecord.proxy);
+    #|});
+    #|var hasOwnRecord = Proxy.revocable({}, {});
+    #|hasOwnRecord.revoke();
+    #|report("hasOwn-revoked", function() {
+    #|  Object.prototype.hasOwnProperty.call(hasOwnRecord.proxy, "x");
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "bind-get:get abrupt", "bind-gopd:gopd abrupt", "hasOwn-gopd:hasOwn abrupt",
+    "bind-revoked:Cannot perform operation on a proxy that has been revoked", "hasOwn-revoked:Cannot perform operation on a proxy that has been revoked",
+  ])
+}
+
+///|
+/// compat-table: Proxy internal `get` calls / Object.assign.
+test "Object.assign Proxy source invokes get trap" {
+  let src =
+    #|var get = [];
+    #|var p = new Proxy({foo: 1, bar: 2}, {
+    #|  get: function(o, k) { get.push(k); return o[k]; }
+    #|});
+    #|Object.assign({}, p);
+    #|console.log(get + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `set` calls / Object.assign.
+test "Object.assign Proxy target invokes set trap" {
+  let src =
+    #|var set = [];
+    #|var p = new Proxy({}, {
+    #|  set: function(o, k, v) { set.push(k); o[k] = v; return true; }
+    #|});
+    #|Object.assign(p, {foo: 1, bar: 2});
+    #|console.log(set + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `getOwnPropertyDescriptor` calls /
+/// Object.assign.
+test "Object.assign Proxy source invokes getOwnPropertyDescriptor trap" {
+  let src =
+    #|var gopd = [];
+    #|var p = new Proxy({foo: 1, bar: 2}, {
+    #|  getOwnPropertyDescriptor: function(o, v) {
+    #|    gopd.push(v);
+    #|    return Object.getOwnPropertyDescriptor(o, v);
+    #|  }
+    #|});
+    #|Object.assign({}, p);
+    #|console.log(gopd + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `get` calls / Array.prototype.concat.
+test "Array concat Proxy receiver and argument invoke get traps in order" {
+  let src =
+    #|var get = [];
+    #|var arr = [1];
+    #|arr.constructor = void undefined;
+    #|var p = new Proxy(arr, {
+    #|  get: function(o, k) { get.push(k); return o[k]; }
+    #|});
+    #|Array.prototype.concat.call(p, p);
+    #|console.log(get[0] === "constructor");
+    #|console.log(get[1] === Symbol.isConcatSpreadable);
+    #|console.log(get.slice(2) + "");
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "true", "length,0,Symbol(Symbol.isConcatSpreadable),length,0",
+  ])
+}
+
+///|
+/// Array.prototype.concat propagates abrupt Proxy [[HasProperty]].
+test "Array concat Proxy has trap abrupt completion is observable" {
+  let src =
+    #|var arr = [1];
+    #|arr.constructor = void undefined;
+    #|var p = new Proxy(arr, {
+    #|  has: function() { throw new Error("has abrupt"); }
+    #|});
+    #|try {
+    #|  Array.prototype.concat.call(p);
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.message);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["has abrupt"])
+}
+
+///|
+/// Array.from uses CreateDataPropertyOrThrow for elements and Set for length.
+test "Array.from generic Proxy result separates defineProperty and set traps" {
+  let src =
+    #|var traps = [];
+    #|var p = new Proxy({}, {
+    #|  defineProperty: function(o, k, d) {
+    #|    traps.push("define:" + k);
+    #|    Object.defineProperty(o, k, d);
+    #|    return true;
+    #|  },
+    #|  set: function(o, k, v) {
+    #|    traps.push("set:" + k);
+    #|    o[k] = v;
+    #|    return true;
+    #|  }
+    #|});
+    #|var result = Array.from.call(function() { return p; }, {length: 2, 0: 1, 1: 2});
+    #|console.log(traps.join("|"));
+    #|console.log(result === p);
+    #|console.log(result[0] + "," + result[1] + "," + result.length);
+  let output = run_output(src)
+  json_inspect(output, content=["define:0|define:1|set:length", "true", "1,2,2"])
+}
+
+///|
+/// An abrupt CreateDataPropertyOrThrow closes an in-progress iterator.
+test "Array.from closes iterator when Proxy result defineProperty throws" {
+  let src =
+    #|var closed = 0;
+    #|var items = {};
+    #|items[Symbol.iterator] = function() {
+    #|  return {
+    #|    next: function() { return {done: false, value: 1}; },
+    #|    return: function() { closed += 1; return {}; }
+    #|  };
+    #|};
+    #|function C() {
+    #|  return new Proxy({}, {
+    #|    defineProperty: function() { throw new Error("define abrupt"); }
+    #|  });
+    #|}
+    #|try {
+    #|  Array.from.call(C, items);
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.message + ":" + closed);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["define abrupt:1"])
+}
+
+///|
+/// Array.of uses CreateDataPropertyOrThrow for elements and Set for length.
+test "Array.of generic Proxy result separates defineProperty and set traps" {
+  let src =
+    #|var traps = [];
+    #|var p = new Proxy({}, {
+    #|  defineProperty: function(o, k, d) {
+    #|    traps.push("define:" + k);
+    #|    Object.defineProperty(o, k, d);
+    #|    return true;
+    #|  },
+    #|  set: function(o, k, v) {
+    #|    traps.push("set:" + k);
+    #|    o[k] = v;
+    #|    return true;
+    #|  }
+    #|});
+    #|var result = Array.of.call(function() { return p; }, 1, 2, 3);
+    #|console.log(traps.join("|"));
+    #|console.log(result === p);
+    #|console.log(result[0] + "," + result[1] + "," + result[2] + "," + result.length);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "define:0|define:1|define:2|set:length", "true", "1,2,3,3",
+  ])
+}
+
+///|
+/// IsConstructor remains true for a revoked Proxy whose target was a
+/// constructor; the subsequent Construct operation is what throws.
+test "Array factories reject revoked constructable Proxy receivers" {
+  let src =
+    #|function revokedConstructor() {
+    #|  var record = Proxy.revocable(function() {}, {});
+    #|  record.revoke();
+    #|  return record.proxy;
+    #|}
+    #|function report(label, operation) {
+    #|  try {
+    #|    operation();
+    #|    console.log(label + ":allowed");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + (e instanceof TypeError));
+    #|  }
+    #|}
+    #|report("of", function() {
+    #|  Array.of.call(revokedConstructor(), 1);
+    #|});
+    #|report("from-iterable", function() {
+    #|  Array.from.call(revokedConstructor(), [1]);
+    #|});
+    #|report("from-array-like", function() {
+    #|  Array.from.call(revokedConstructor(), {0: 1, length: 1});
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "of:true", "from-iterable:true", "from-array-like:true",
+  ])
+}
+
+///|
+/// A Proxy copies the target's [[Construct]] classification at creation time.
+test "nested Proxy remains constructable after target revocation" {
+  let src =
+    #|var inner = Proxy.revocable(function() {}, {});
+    #|var outer = new Proxy(inner.proxy, {
+    #|  construct: function() { return {ok: true}; }
+    #|});
+    #|inner.revoke();
+    #|try {
+    #|  console.log("nested:" + (new outer()).ok);
+    #|} catch (e) {
+    #|  console.log("nested:threw");
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["nested:true"])
+}
+
+///|
+test "Object.assign Proxy operations follow spec order" {
+  let src =
+    #|var log = [];
+    #|var sym = Symbol("s");
+    #|function keyName(k) { return typeof k === "symbol" ? "symbol" : k; }
+    #|var source = {foo: 1};
+    #|Object.defineProperty(source, "hidden", {value: 9, enumerable: false});
+    #|source.bar = 2;
+    #|source[sym] = 3;
+    #|var sourceProxy = new Proxy(source, {
+    #|  ownKeys: function(o) {
+    #|    log.push("ownKeys");
+    #|    return Reflect.ownKeys(o);
+    #|  },
+    #|  getOwnPropertyDescriptor: function(o, k) {
+    #|    log.push("gopd:" + keyName(k));
+    #|    return Object.getOwnPropertyDescriptor(o, k);
+    #|  },
+    #|  get: function(o, k) {
+    #|    log.push("get:" + keyName(k));
+    #|    return o[k];
+    #|  }
+    #|});
+    #|var target = {};
+    #|var targetProxy = new Proxy(target, {
+    #|  set: function(o, k, v) {
+    #|    log.push("set:" + keyName(k));
+    #|    return Reflect.set(o, k, v);
+    #|  }
+    #|});
+    #|Object.assign(targetProxy, sourceProxy);
+    #|console.log(log.join("|"));
+    #|console.log(target.foo + "," + target.bar + "," + target[sym] + "," + target.hidden);
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "ownKeys|gopd:foo|get:foo|set:foo|gopd:hidden|gopd:bar|get:bar|set:bar|gopd:symbol|get:symbol|set:symbol",
+    "1,2,3,undefined",
+  ])
+}
+
+///|
+test "Object.assign Proxy traps propagate abrupt completions" {
+  let src =
+    #|function report(label, action) {
+    #|  try {
+    #|    action();
+    #|    console.log(label + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + e.message);
+    #|  }
+    #|}
+    #|report("ownKeys", function() {
+    #|  Object.assign({}, new Proxy({}, {
+    #|    ownKeys: function() { throw new Error("ownKeys"); }
+    #|  }));
+    #|});
+    #|report("gopd", function() {
+    #|  Object.assign({}, new Proxy({x: 1}, {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("gopd"); }
+    #|  }));
+    #|});
+    #|report("get", function() {
+    #|  Object.assign({}, new Proxy({x: 1}, {
+    #|    get: function() { throw new Error("get"); }
+    #|  }));
+    #|});
+    #|report("set", function() {
+    #|  Object.assign(new Proxy({}, {
+    #|    set: function() { throw new Error("set"); }
+    #|  }), {x: 1});
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "ownKeys:ownKeys", "gopd:gopd", "get:get", "set:set",
+  ])
+}
+
+///|
+test "Object.assign rejects revoked Proxy source and target" {
+  let src =
+    #|function report(label, target, source) {
+    #|  try {
+    #|    Object.assign(target, source);
+    #|    console.log(label + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + e.name);
+    #|  }
+    #|}
+    #|var sourceRecord = Proxy.revocable({x: 1}, {});
+    #|sourceRecord.revoke();
+    #|report("source", {}, sourceRecord.proxy);
+    #|var targetRecord = Proxy.revocable({}, {});
+    #|targetRecord.revoke();
+    #|report("target", targetRecord.proxy, {x: 1});
+  let output = run_output(src)
+  json_inspect(output, content=["source:TypeError", "target:TypeError"])
+}
+
+///|
+test "Object.assign treats falsy Proxy set as abrupt completion" {
+  let src =
+    #|var log = [];
+    #|var target = new Proxy({}, {
+    #|  set: function(o, k, v) { log.push(k); return false; }
+    #|});
+    #|try {
+    #|  Object.assign(target, {foo: 1, bar: 2});
+    #|  console.log("no throw");
+    #|} catch (e) {
+    #|  console.log(e.name + ":" + log.join(","));
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["TypeError:foo"])
 }
 
 ///|
@@ -5549,6 +6063,953 @@ test "Object.isSealed on non-sealed object" {
     #|console.log(Object.isSealed(obj));
   let output = run_output(src)
   json_inspect(output, content=["false"])
+}
+
+///|
+/// Error.prototype.toString uses ordinary Get for both fields, including
+/// Proxy receiver identity, abrupt completion, and revoked-proxy behavior.
+test "Proxy get: Error.prototype.toString follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var p;
+    #|p = new Proxy({}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === p));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(Error.prototype.toString.call(p));
+    #|console.log(getLog + "");
+    #|
+    #|var marker = {};
+    #|try {
+    #|  Error.prototype.toString.call(new Proxy({}, {
+    #|    get: function() { throw marker; }
+    #|  }));
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({}, {});
+    #|record.revoke();
+    #|try {
+    #|  Error.prototype.toString.call(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "Error", "name:true,message:true", "true", "true",
+  ])
+}
+
+///|
+/// String.raw obtains cooked.raw, raw.length, and each literal segment with
+/// ordinary Get while keeping the corresponding Proxy as the receiver.
+test "Proxy get: String.raw follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var raw;
+    #|raw = new Proxy({length: 2, 0: "a", 1: "b"}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === raw));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|var cooked;
+    #|cooked = new Proxy({raw: raw}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === cooked));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(String.raw(cooked, "x"));
+    #|console.log(getLog + "");
+    #|
+    #|var marker = {};
+    #|var throwingRaw = new Proxy({length: 1, 0: "a"}, {
+    #|  get: function() { throw marker; }
+    #|});
+    #|try {
+    #|  String.raw({raw: throwingRaw});
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({raw: []}, {});
+    #|record.revoke();
+    #|try {
+    #|  String.raw(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "axb", "raw:true,length:true,0:true,1:true", "true", "true",
+  ])
+}
+
+///|
+/// RegExp.prototype.test delegates to RegExpExec, whose first step gets
+/// `exec` from any object receiver rather than requiring RegExp internals.
+test "Proxy get: RegExp.prototype.test follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var p;
+    #|p = new Proxy({exec: function() { return null; }}, {
+    #|  get: function(target, key, receiver) {
+    #|    getLog.push(key + ":" + (receiver === p));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(RegExp.prototype.test.call(p));
+    #|console.log(getLog + "");
+    #|console.log(RegExp.prototype.test.call({
+    #|  exec: function() { return new Proxy({}, {}); }
+    #|}));
+    #|
+    #|var marker = {};
+    #|try {
+    #|  RegExp.prototype.test.call(new Proxy({}, {
+    #|    get: function() { throw marker; }
+    #|  }));
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({}, {});
+    #|record.revoke();
+    #|try {
+    #|  RegExp.prototype.test.call(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=["false", "exec:true", "true", "true", "true"])
+}
+
+///|
+/// Date.prototype.toJSON combines ToPrimitive(number) and Invoke; both stages
+/// must observe Proxy [[Get]] in specification order with the Proxy receiver.
+test "Proxy get: Date.prototype.toJSON follows generic Get" {
+  let src =
+    #|var getLog = [];
+    #|var p;
+    #|p = new Proxy({toString: Function(), toISOString: Function()}, {
+    #|  get: function(target, key, receiver) {
+    #|    var label = key === Symbol.toPrimitive ? "@@toPrimitive" : key;
+    #|    getLog.push(label + ":" + (receiver === p));
+    #|    return target[key];
+    #|  }
+    #|});
+    #|console.log(Date.prototype.toJSON.call(p) === undefined);
+    #|console.log(getLog + "");
+    #|
+    #|var marker = {};
+    #|try {
+    #|  Date.prototype.toJSON.call(new Proxy({toString: Function()}, {
+    #|    get: function(target, key) {
+    #|      if (key === "valueOf") throw marker;
+    #|      return target[key];
+    #|    }
+    #|  }));
+    #|} catch (e) {
+    #|  console.log(e === marker);
+    #|}
+    #|
+    #|var record = Proxy.revocable({}, {});
+    #|record.revoke();
+    #|try {
+    #|  Date.prototype.toJSON.call(record.proxy);
+    #|} catch (e) {
+    #|  console.log(e instanceof TypeError);
+    #|}
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "true", "@@toPrimitive:true,valueOf:true,toString:true,toISOString:true", "true",
+    "true",
+  ])
+}
+
+///|
+/// compat-table: Proxy internal `defineProperty` calls / SetIntegrityLevel.
+test "Proxy integrity: freeze invokes defineProperty for every own key" {
+  let src =
+    #|var def = [];
+    #|var p = new Proxy({foo: 1, bar: 2}, {
+    #|  defineProperty(o, v, desc) {
+    #|    def.push(v);
+    #|    Object.defineProperty(o, v, desc);
+    #|    return true;
+    #|  }
+    #|});
+    #|Object.freeze(p);
+    #|console.log(def + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `ownKeys` calls / SetIntegrityLevel.
+test "Proxy integrity: freeze invokes ownKeys exactly once" {
+  let src =
+    #|var ownKeysCalled = 0;
+    #|var p = new Proxy({}, {
+    #|  ownKeys(o) {
+    #|    ownKeysCalled++;
+    #|    return Object.keys(o);
+    #|  }
+    #|});
+    #|Object.freeze(p);
+    #|console.log(ownKeysCalled === 1);
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `ownKeys` calls / TestIntegrityLevel.
+test "Proxy integrity: isFrozen invokes ownKeys exactly once" {
+  let src =
+    #|var ownKeysCalled = 0;
+    #|var p = new Proxy(Object.preventExtensions({}), {
+    #|  ownKeys(o) {
+    #|    ownKeysCalled++;
+    #|    return Object.keys(o);
+    #|  }
+    #|});
+    #|Object.isFrozen(p);
+    #|console.log(ownKeysCalled === 1);
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "Proxy core abstract operations use observable Get order" {
+  let output = run_output(
+    (
+      #|let gets = [];
+      #|let primitiveProxy = new Proxy({ toString: Function() }, {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|primitiveProxy + 3;
+      #|console.log(gets[0] === Symbol.toPrimitive, gets.slice(1).join(","));
+      #|gets = [];
+      #|let instanceofProxy = new Proxy(Function(), {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|({}) instanceof instanceofProxy;
+      #|console.log(gets[0] === Symbol.hasInstance, gets.slice(1).join(","));
+      #|gets = [];
+      #|let dynamicProxy = new Proxy(Function, {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|new dynamicProxy();
+      #|console.log(gets.join(","));
+      #|gets = [];
+      #|let descriptorProxy = new Proxy({
+      #|  enumerable: true,
+      #|  configurable: true,
+      #|  value: true,
+      #|  writable: true,
+      #|  get: Function(),
+      #|  set: Function()
+      #|}, {
+      #|  get(target, key) { gets.push(key); return target[key]; }
+      #|});
+      #|try { Object.defineProperty({}, "x", descriptorProxy); } catch (_) {}
+      #|console.log(gets.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "true valueOf,toString", "true prototype", "prototype", "enumerable,configurable,value,writable,get,set",
+  ])
+}
+
+///|
+test "Proxy core abstract operation Get failures propagate" {
+  let output = run_output(
+    (
+      #|let sentinel = {};
+      #|let throwing = new Proxy(Function(), {
+      #|  get() { throw sentinel; }
+      #|});
+      #|try { throwing + 1; } catch (e) { console.log(e === sentinel); }
+      #|try { ({}) instanceof throwing; } catch (e) { console.log(e === sentinel); }
+      #|try { new throwing(); } catch (e) { console.log(e === sentinel); }
+      #|let descriptor = new Proxy({ enumerable: true }, {
+      #|  get() { throw sentinel; }
+      #|});
+      #|try { Object.defineProperty({}, "x", descriptor); }
+      #|catch (e) { console.log(e === sentinel); }
+      #|let revoked = Proxy.revocable({}, {});
+      #|revoked.revoke();
+      #|try { revoked.proxy + 1; }
+      #|catch (e) { console.log(e instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=["true", "true", "true", "true", "true"])
+}
+
+///|
+test "Proxy integrity operations follow internal-method order" {
+  let src =
+    #|function freezingHandler(log) {
+    #|  return {
+    #|    preventExtensions: function(o) {
+    #|      log.push("preventExtensions");
+    #|      Object.preventExtensions(o);
+    #|      return true;
+    #|    },
+    #|    ownKeys: function(o) {
+    #|      log.push("ownKeys");
+    #|      return Reflect.ownKeys(o);
+    #|    },
+    #|    getOwnPropertyDescriptor: function(o, k) {
+    #|      log.push("getOwnPropertyDescriptor:" + k);
+    #|      return Object.getOwnPropertyDescriptor(o, k);
+    #|    },
+    #|    defineProperty: function(o, k, d) {
+    #|      log.push("defineProperty:" + k);
+    #|      return Reflect.defineProperty(o, k, d);
+    #|    }
+    #|  };
+    #|}
+    #|var freezeLog = [];
+    #|Object.freeze(new Proxy({foo: 1, bar: 2}, freezingHandler(freezeLog)));
+    #|console.log(freezeLog.join("|"));
+    #|var sealLog = [];
+    #|Object.seal(new Proxy({foo: 1, bar: 2}, freezingHandler(sealLog)));
+    #|console.log(sealLog.join("|"));
+    #|function testingHandler(log) {
+    #|  return {
+    #|    isExtensible: function(o) {
+    #|      log.push("isExtensible");
+    #|      return Reflect.isExtensible(o);
+    #|    },
+    #|    ownKeys: function(o) {
+    #|      log.push("ownKeys");
+    #|      return Reflect.ownKeys(o);
+    #|    },
+    #|    getOwnPropertyDescriptor: function(o, k) {
+    #|      log.push("getOwnPropertyDescriptor:" + k);
+    #|      return Object.getOwnPropertyDescriptor(o, k);
+    #|    }
+    #|  };
+    #|}
+    #|var frozenLog = [];
+    #|Object.isFrozen(new Proxy(Object.freeze({foo: 1, bar: 2}), testingHandler(frozenLog)));
+    #|console.log(frozenLog.join("|"));
+    #|var sealedLog = [];
+    #|Object.isSealed(new Proxy(Object.seal({foo: 1, bar: 2}), testingHandler(sealedLog)));
+    #|console.log(sealedLog.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "preventExtensions|ownKeys|getOwnPropertyDescriptor:foo|defineProperty:foo|getOwnPropertyDescriptor:bar|defineProperty:bar",
+    "preventExtensions|ownKeys|defineProperty:foo|defineProperty:bar", "isExtensible|ownKeys|getOwnPropertyDescriptor:foo|getOwnPropertyDescriptor:bar",
+    "isExtensible|ownKeys|getOwnPropertyDescriptor:foo|getOwnPropertyDescriptor:bar",
+  ])
+}
+
+///|
+test "Proxy integrity operations propagate abrupt trap completions" {
+  let src =
+    #|function report(label, action) {
+    #|  try {
+    #|    action();
+    #|    console.log(label + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + e.message);
+    #|  }
+    #|}
+    #|report("freeze-ownKeys", function() {
+    #|  Object.freeze(new Proxy({}, {
+    #|    preventExtensions: function(o) { Object.preventExtensions(o); return true; },
+    #|    ownKeys: function() { throw new Error("freeze-ownKeys"); }
+    #|  }));
+    #|});
+    #|report("seal-defineProperty", function() {
+    #|  Object.seal(new Proxy({x: 1}, {
+    #|    defineProperty: function() { throw new Error("seal-defineProperty"); }
+    #|  }));
+    #|});
+    #|report("isFrozen-getOwnPropertyDescriptor", function() {
+    #|  Object.isFrozen(new Proxy(Object.preventExtensions({x: 1}), {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("isFrozen-getOwnPropertyDescriptor"); }
+    #|  }));
+    #|});
+    #|report("isSealed-ownKeys", function() {
+    #|  Object.isSealed(new Proxy(Object.preventExtensions({}), {
+    #|    ownKeys: function() { throw new Error("isSealed-ownKeys"); }
+    #|  }));
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "freeze-ownKeys:freeze-ownKeys", "seal-defineProperty:seal-defineProperty", "isFrozen-getOwnPropertyDescriptor:isFrozen-getOwnPropertyDescriptor",
+    "isSealed-ownKeys:isSealed-ownKeys",
+  ])
+}
+
+///|
+test "Proxy integrity operations stop after failed preventExtensions" {
+  let src =
+    #|function check(name, operation) {
+    #|  var log = [];
+    #|  var proxy = new Proxy({}, {
+    #|    preventExtensions: function() { log.push("preventExtensions"); return false; },
+    #|    ownKeys: function() { log.push("ownKeys"); return []; }
+    #|  });
+    #|  try {
+    #|    operation(proxy);
+    #|    console.log(name + ":no throw:" + log.join("|"));
+    #|  } catch (e) {
+    #|    console.log(name + ":" + e.name + ":" + log.join("|"));
+    #|  }
+    #|}
+    #|check("freeze", function(p) { Object.freeze(p); });
+    #|check("seal", function(p) { Object.seal(p); });
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "freeze:TypeError:preventExtensions", "seal:TypeError:preventExtensions",
+  ])
+}
+
+///|
+test "Proxy integrity operations reject revoked proxies" {
+  let src =
+    #|function check(name, operation) {
+    #|  var record = Proxy.revocable({}, {});
+    #|  record.revoke();
+    #|  try {
+    #|    operation(record.proxy);
+    #|    console.log(name + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(name + ":" + e.name);
+    #|  }
+    #|}
+    #|check("freeze", function(p) { Object.freeze(p); });
+    #|check("seal", function(p) { Object.seal(p); });
+    #|check("isFrozen", function(p) { Object.isFrozen(p); });
+    #|check("isSealed", function(p) { Object.isSealed(p); });
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "freeze:TypeError", "seal:TypeError", "isFrozen:TypeError", "isSealed:TypeError",
+  ])
+}
+
+///|
+/// A trapless Proxy delegates [[PreventExtensions]] and [[IsExtensible]] to
+/// its Array target. The target must become non-extensible, so a subsequent
+/// [[DefineOwnProperty]] landing through the Proxy is rejected.
+test "Proxy integrity delegates to Array target internal methods" {
+  let output = run_output(
+    (
+      #|var target = [];
+      #|var proxy = new Proxy(target, {});
+      #|console.log(Reflect.preventExtensions(proxy));
+      #|console.log(Object.isExtensible(proxy));
+      #|console.log(Object.isExtensible(target));
+      #|console.log(Reflect.defineProperty(proxy, "x", { value: 1 }));
+      #|console.log(target.x);
+    ),
+  )
+  json_inspect(output, content=["true", "false", "false", "false", "undefined"])
+}
+
+///|
+/// Map, Set, and Promise keep their own [[Extensible]] state so every
+/// canonical operation observes the same transition through a Proxy.
+test "Proxy integrity delegates to Map Set and Promise targets" {
+  let output = run_output(
+    (
+      #|var targets = [
+      #|  new Map(),
+      #|  new Set(),
+      #|  new Promise(function(resolve, reject) {})
+      #|];
+      #|for (var i = 0; i < targets.length; i++) {
+      #|  var target = targets[i];
+      #|  var proxy = new Proxy(target, {});
+      #|  console.log(Object.isExtensible(proxy));
+      #|  console.log(Reflect.preventExtensions(proxy));
+      #|  console.log(Object.isExtensible(proxy));
+      #|  console.log(Object.isExtensible(target));
+      #|  console.log(Reflect.defineProperty(proxy, "x", { value: 1 }));
+      #|  console.log(target.x);
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "false", "false", "false", "undefined", "true", "true", "false",
+    "false", "false", "undefined", "true", "true", "false", "false", "false", "undefined",
+  ])
+}
+
+///|
+/// Map, Set, and Promise use ordinary [[Set]] semantics after becoming
+/// non-extensible: new expandos fail, while existing properties, setters, and
+/// writes landing on a different extensible receiver still succeed.
+test "Nonextensible Map Set and Promise reject new ordinary Set properties" {
+  let output = run_output(
+    (
+      #|var factories = [
+      #|  function() { return new Map(); },
+      #|  function() { return new Set(); },
+      #|  function() { return new Promise(function(resolve, reject) {}); }
+      #|];
+      #|for (var i = 0; i < factories.length; i++) {
+      #|  var target = factories[i]();
+      #|  var symbol = Symbol("new");
+      #|  var setterValue = 0;
+      #|  var setterReceiver = false;
+      #|  target.existing = 1;
+      #|  Object.defineProperty(target, "sink", {
+      #|    configurable: true,
+      #|    set: function(value) {
+      #|      setterValue = value;
+      #|      setterReceiver = this === target;
+      #|    }
+      #|  });
+      #|  Object.preventExtensions(target);
+      #|  var stringResult = Reflect.set(target, "newString", 2);
+      #|  console.log(stringResult === false && !Object.hasOwn(target, "newString"));
+      #|  var symbolResult = Reflect.set(target, symbol, 3);
+      #|  console.log(symbolResult === false && !Object.hasOwn(target, symbol));
+      #|  console.log(Reflect.set(target, "existing", 4) && target.existing === 4);
+      #|  console.log(Reflect.set(target, "sink", 5) && setterReceiver && setterValue === 5);
+      #|  var other = {};
+      #|  console.log(Reflect.set(target, "other", 6, other) && other.other === 6 && !Object.hasOwn(target, "other"));
+      #|  var source = {};
+      #|  var landingSymbol = Symbol("landing");
+      #|  var stringLanding = Reflect.set(source, "landing", 7, target);
+      #|  var symbolLanding = Reflect.set(source, landingSymbol, 8, target);
+      #|  console.log(stringLanding === false && symbolLanding === false && !Object.hasOwn(target, "landing") && !Object.hasOwn(target, landingSymbol));
+      #|  var frozen = factories[i]();
+      #|  Object.freeze(frozen);
+      #|  console.log(Reflect.set(frozen, "frozenNew", 9) === false && !Object.hasOwn(frozen, "frozenNew"));
+      #|}
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true",
+  ])
+}
+
+///|
+/// Every invariant must query the nested target's canonical [[IsExtensible]]
+/// result instead of inspecting only the immediate Value variant.
+test "Proxy prototype has and delete traps enforce nested nonextensible target invariants" {
+  let output = run_output(
+    (
+      #|function report(label, action) {
+      #|  try {
+      #|    action();
+      #|    console.log(label + ":no throw");
+      #|  } catch (e) {
+      #|    console.log(label + ":" + e.name);
+      #|  }
+      #|}
+      #|var base = { x: 1 };
+      #|Object.preventExtensions(base);
+      #|var inner = new Proxy(base, {});
+      #|report("getPrototypeOf", function() {
+      #|  Reflect.getPrototypeOf(new Proxy(inner, {
+      #|    getPrototypeOf: function() { return {}; }
+      #|  }));
+      #|});
+      #|report("setPrototypeOf", function() {
+      #|  Reflect.setPrototypeOf(new Proxy(inner, {
+      #|    setPrototypeOf: function() { return true; }
+      #|  }), {});
+      #|});
+      #|report("has", function() {
+      #|  "x" in new Proxy(inner, { has: function() { return false; } });
+      #|});
+      #|report("deleteProperty", function() {
+      #|  Reflect.deleteProperty(new Proxy(inner, {
+      #|    deleteProperty: function() { return true; }
+      #|  }), "x");
+      #|});
+    ),
+  )
+  json_inspect(output, content=[
+    "getPrototypeOf:TypeError", "setPrototypeOf:TypeError", "has:TypeError", "deleteProperty:TypeError",
+  ])
+}
+
+///|
+test "Trapless Proxy setPrototypeOf preserves nonextensible Array prototype" {
+  let output = run_output(
+    (
+      #|var target = [];
+      #|var original = Object.getPrototypeOf(target);
+      #|Object.preventExtensions(target);
+      #|var proxy = new Proxy(target, {});
+      #|console.log(Reflect.setPrototypeOf(proxy, {}));
+      #|console.log(Object.getPrototypeOf(target) === original);
+    ),
+  )
+  json_inspect(output, content=["false", "true"])
+}
+
+///|
+/// Trapless and nested Proxy forwarding must reach Array's ordinary
+/// [[SetPrototypeOf]] cycle check without swallowing abrupt or revoked
+/// completions from an intermediate Proxy.
+test "Trapless Proxy Array setPrototypeOf rejects cycles through canonical forwarding" {
+  let output = run_output(
+    (
+      #|var target = [];
+      #|var original = Object.getPrototypeOf(target);
+      #|var proxy = new Proxy(new Proxy(target, {}), {});
+      #|var cyclicPrototype = Object.create(target);
+      #|console.log(Reflect.setPrototypeOf(proxy, cyclicPrototype));
+      #|console.log(Object.getPrototypeOf(target) === original);
+      #|var sentinel = {};
+      #|var abruptTarget = new Proxy([], {
+      #|  setPrototypeOf: function() { throw sentinel; }
+      #|});
+      #|try {
+      #|  Reflect.setPrototypeOf(new Proxy(abruptTarget, {}), {});
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error === sentinel);
+      #|}
+      #|var revocable = Proxy.revocable([], {});
+      #|var revokedTarget = new Proxy(revocable.proxy, {});
+      #|revocable.revoke();
+      #|try {
+      #|  Reflect.setPrototypeOf(revokedTarget, {});
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["false", "true", "true", "TypeError"])
+}
+
+///|
+/// A pre-existing cycle that does not contain the new target must still
+/// terminate the OrdinarySetPrototypeOf walk and reject the mutation.
+test "Object setPrototypeOf rejects a pre-existing ordinary prototype cycle" {
+  let output = run_output(
+    (
+      #|var object = {};
+      #|var array = [];
+      #|var map = new Map();
+      #|var set = new Set();
+      #|var promise = new Promise(function(resolve, reject) {});
+      #|Object.setPrototypeOf(object, array);
+      #|Object.setPrototypeOf(array, map);
+      #|Object.setPrototypeOf(map, set);
+      #|Object.setPrototypeOf(set, promise);
+      #|Object.setPrototypeOf(promise, object);
+      #|var target = {};
+      #|var original = Object.getPrototypeOf(target);
+      #|try {
+      #|  Object.setPrototypeOf(target, object);
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error.name);
+      #|}
+      #|console.log(Object.getPrototypeOf(target) === original);
+    ),
+  )
+  json_inspect(output, content=["TypeError", "true"])
+}
+
+///|
+/// The outer Proxy must validate an ownKeys result against its target Proxy's
+/// canonical [[GetOwnProperty]] result, including a non-configurable property
+/// reached through a trapless inner Proxy.
+test "Proxy ownKeys rejects omission of nested non-configurable key" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", { value: 1, configurable: false });
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, { ownKeys: function() { return []; } });
+      #|try {
+      #|  Reflect.ownKeys(outer);
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// CreateListFromArrayLike accepts every object kind. A Proxy result from the
+/// ownKeys trap must expose its length and indexed entries through observable
+/// [[Get]] operations in order.
+test "Proxy ownKeys accepts Proxy array-like trap result via observable Get" {
+  let output = run_output(
+    (
+      #|var log = [];
+      #|var key = Symbol("key");
+      #|var result = new Proxy({ 0: "name", 1: key, length: 2 }, {
+      #|  get: function(target, property, receiver) {
+      #|    log.push(property);
+      #|    return Reflect.get(target, property, receiver);
+      #|  }
+      #|});
+      #|var proxy = new Proxy({}, { ownKeys: function() { return result; } });
+      #|var keys = Reflect.ownKeys(proxy);
+      #|console.log(keys[0]);
+      #|console.log(keys[1] === key);
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["name", "true", "length,0,1"])
+}
+
+///|
+/// The outer getOwnPropertyDescriptor trap cannot invent a property when its
+/// target is a trapless Proxy over a non-extensible object.
+test "Proxy GOPD enforces nested target non-extensibility" {
+  let output = run_output(
+    (
+      #|var base = Object.preventExtensions({});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  getOwnPropertyDescriptor: function() {
+      #|    return { value: 1, writable: true, enumerable: true, configurable: true };
+      #|  }
+      #|});
+      #|try {
+      #|  Reflect.getOwnPropertyDescriptor(outer, "phantom");
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// The outer defineProperty trap cannot claim success for a new property when
+/// its target is a trapless Proxy over a non-extensible object.
+test "Proxy defineProperty enforces nested target non-extensibility" {
+  let output = run_output(
+    (
+      #|var base = Object.preventExtensions({});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  defineProperty: function() { return true; }
+      #|});
+      #|try {
+      #|  Reflect.defineProperty(outer, "phantom", { value: 1 });
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// FromPropertyDescriptor creates an ordinary object in the current realm.
+/// The descriptor passed to Proxy defineProperty traps during freeze/seal
+/// therefore inherits from that realm's Object.prototype.
+test "Proxy integrity defineProperty descriptor uses current Object prototype" {
+  let output = run_output(
+    (
+      #|var prototypes = [];
+      #|function handler() {
+      #|  return {
+      #|    preventExtensions: function(target) {
+      #|      Object.preventExtensions(target);
+      #|      return true;
+      #|    },
+      #|    defineProperty: function(target, key, descriptor) {
+      #|      prototypes.push(Object.getPrototypeOf(descriptor) === Object.prototype);
+      #|      return Reflect.defineProperty(target, key, descriptor);
+      #|    }
+      #|  };
+      #|}
+      #|Object.freeze(new Proxy({ frozen: 1 }, handler()));
+      #|Object.seal(new Proxy({ sealed: 1 }, handler()));
+      #|console.log(prototypes.join(","));
+    ),
+  )
+  json_inspect(output, content=["true,true"])
+}
+
+///|
+/// Proxy [[Get]]/[[Set]] invariants compare frozen data-property values with
+/// SameValue: NaN equals NaN, while +0 and -0 are distinct.
+test "Proxy Get and Set frozen-data invariants use SameValue" {
+  let output = run_output(
+    (
+      #|function report(label, action) {
+      #|  try {
+      #|    action();
+      #|    console.log(label + ":ok");
+      #|  } catch (e) {
+      #|    console.log(label + ":" + e.name);
+      #|  }
+      #|}
+      #|var nanTarget = {};
+      #|Object.defineProperty(nanTarget, "fixed", {
+      #|  value: NaN, writable: false, configurable: false
+      #|});
+      #|var nanProxy = new Proxy(nanTarget, {
+      #|  get: function() { return NaN; },
+      #|  set: function() { return true; }
+      #|});
+      #|report("get-nan", function() { nanProxy.fixed; });
+      #|report("set-nan", function() { nanProxy.fixed = NaN; });
+      #|var zeroTarget = {};
+      #|Object.defineProperty(zeroTarget, "fixed", {
+      #|  value: 0, writable: false, configurable: false
+      #|});
+      #|var zeroProxy = new Proxy(zeroTarget, {
+      #|  get: function() { return -0; },
+      #|  set: function() { return true; }
+      #|});
+      #|report("get-zero", function() { zeroProxy.fixed; });
+      #|report("set-zero", function() { zeroProxy.fixed = -0; });
+    ),
+  )
+  json_inspect(output, content=[
+    "get-nan:ok", "set-nan:ok", "get-zero:TypeError", "set-zero:TypeError",
+  ])
+}
+
+///|
+/// Proxy [[Set]] distinguishes accessor descriptors from data descriptors:
+/// a non-configurable accessor with a setter permits a truthy trap result,
+/// while an accessor whose setter is undefined must reject even `undefined`.
+test "Proxy Set invariants classify non-configurable accessors" {
+  let output = run_output(
+    (
+      #|var withSetter = {};
+      #|Object.defineProperty(withSetter, "value", {
+      #|  configurable: false,
+      #|  set: function(value) {}
+      #|});
+      #|var accepting = new Proxy(withSetter, {
+      #|  set: function() { return true; }
+      #|});
+      #|try {
+      #|  console.log(Reflect.set(accepting, "value", 1));
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+      #|var withoutSetter = {};
+      #|Object.defineProperty(withoutSetter, "value", {
+      #|  configurable: false,
+      #|  get: undefined
+      #|});
+      #|var rejecting = new Proxy(withoutSetter, {
+      #|  set: function() { return true; }
+      #|});
+      #|try {
+      #|  rejecting.value = undefined;
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true", "TypeError"])
+}
+
+///|
+/// An outer Proxy's [[Set]] invariant must use the descriptor/value pair
+/// reported by its Proxy target, not treat that target as descriptor-less.
+test "Proxy Set enforces frozen data invariant through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  set: function() { return true; }
+      #|});
+      #|try {
+      #|  outer.fixed = 2;
+      #|  console.log("no throw");
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+test "Proxy Get enforces frozen data invariant through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  get: function() { return 2; }
+      #|});
+      #|try {
+      #|  console.log(outer.fixed);
+      #|} catch (e) {
+      #|  console.log(e.name);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["TypeError"])
+}
+
+///|
+/// The invariant comparison must retain the value returned by the nested
+/// target's canonical [[GetOwnProperty]] operation.
+test "Proxy getOwnPropertyDescriptor accepts matching frozen value through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, enumerable: true, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  getOwnPropertyDescriptor: function() {
+      #|    return {
+      #|      value: 1, writable: false, enumerable: true, configurable: false
+      #|    };
+      #|  }
+      #|});
+      #|console.log(Object.prototype.hasOwnProperty.call(outer, "fixed"));
+    ),
+  )
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// A no-op redefinition of a frozen property is compatible even when the
+/// immediate Proxy target is another Proxy.
+test "Proxy defineProperty accepts matching frozen value through nested target" {
+  let output = run_output(
+    (
+      #|var base = {};
+      #|Object.defineProperty(base, "fixed", {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|var inner = new Proxy(base, {});
+      #|var outer = new Proxy(inner, {
+      #|  defineProperty: function() { return true; }
+      #|});
+      #|console.log(Reflect.defineProperty(outer, "fixed", { value: 1 }));
+    ),
+  )
+  json_inspect(output, content=["true"])
 }
 
 ///|
