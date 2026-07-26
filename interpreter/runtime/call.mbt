@@ -264,14 +264,18 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
             self.param_default_eval_var_conflicts = Some(
               param_default_conflicts,
             )
-            let v = self.eval_expr(func_ctx, default_expr, param_env)
+            let v = match param.pattern {
+              None =>
+                self.eval_named_expr(
+                  func_ctx,
+                  default_expr,
+                  param_env,
+                  param.name,
+                )
+              Some(_) => self.eval_expr(func_ctx, default_expr, param_env)
+            }
             self.in_nonarrow_param_default_eval = false
             self.param_default_eval_var_conflicts = None
-            // Set function name for anonymous function defaults
-            if param.pattern is None &&
-              is_anonymous_function_definition(default_expr) {
-              set_function_name(v, param.name)
-            }
             v
           }
           None =>
@@ -383,6 +387,33 @@ fn Interpreter::bind_ext_params_and_exec_body(
 }
 
 ///|
+/// Resolve PerformEval's super permissions from the current this environment.
+/// Ordinary functions install an explicit boundary; arrows do not, so only
+/// arrows inherit the surrounding method or constructor's lexical super.
+fn current_eval_super_context(env : Environment) -> (Bool, Bool) {
+  match env.bindings.get("[[EvalMethodContext]]") {
+    Some(binding) =>
+      match binding.value {
+        Bool(is_method) => (is_method, false)
+        _ => (false, false)
+      }
+    None => {
+      if env.bindings.contains("[[ActiveClassFunction]]") {
+        return (true, true)
+      }
+      if env.bindings.contains("[[SuperPrototype]]") ||
+        env.bindings.contains("[[InClassFieldInitializer]]") {
+        return (true, false)
+      }
+      match env.parent {
+        Some(parent) => current_eval_super_context(parent)
+        None => (false, false)
+      }
+    }
+  }
+}
+
+///|
 /// Execute eval code in a given environment.
 /// If `direct` is true, executes in the caller's environment (direct eval).
 /// If `direct` is false, executes in the global environment (indirect eval).
@@ -424,15 +455,10 @@ pub fn Interpreter::perform_eval(
   // four flags are false and any of the predicates triggers the error.
   // Direct eval looks at the caller's env chain via existing markers.
   let in_function = if direct { caller_env.has("<new.target>") } else { false }
-  let in_method = if direct {
-    caller_env.has("[[SuperPrototype]]")
+  let (in_method, in_derived_constructor) = if direct {
+    current_eval_super_context(caller_env)
   } else {
-    false
-  }
-  let in_derived_constructor = if direct {
-    caller_env.has("[[SuperConstructor]]")
-  } else {
-    false
+    (false, false)
   }
   let in_class_field_initializer = if direct {
     caller_env.has("[[InClassFieldInitializer]]")
@@ -773,8 +799,9 @@ pub fn Interpreter::call_value(
 ) -> Value raise Error {
   // Fast path: skip both realm-proto wrapper layers when every active-override
   // slot is None and every callee stamped proto matches the main realm's (or is
-  // absent). Checks all 10 slots so it is safe even when stamp_function_realm_with
-  // sets slots independently or when a non-function override is active.
+  // absent). Checks every packed realm slot so it is safe even when
+  // stamp_function_realm_with sets slots independently or when a non-function
+  // override is active.
   if realm_fast_path_allowed(callee, self.realm_state) {
     self.call_value_impl(callee, this_val, args, loc)
   } else {
@@ -946,6 +973,7 @@ fn Interpreter::call_value_impl(
           let result : Value = try {
             let func_env = Environment::new(parent=Some(data.closure))
             func_env.is_var_scope = true
+            func_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
             let func_strict = data.strict
             let func_ctx : ExecContext = {
               strict: func_strict,
@@ -1097,6 +1125,7 @@ fn Interpreter::call_value_impl(
           }
           let param_env = Environment::new(parent=Some(self_name_env))
           param_env.is_var_scope = true
+          param_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
           let func_strict = data.strict
           let func_ctx : ExecContext = {
             strict: func_strict,

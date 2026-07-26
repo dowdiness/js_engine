@@ -623,6 +623,7 @@ pub fn setup_object_builtins(
   // Store Object.prototype so plain objects {} can link to it
   env.def_builtin("[[ObjectPrototype]]", obj_proto)
   realm_state.object_prototype.val = Some(obj_proto)
+  let object_ctor_ref : Ref[Value] = { val: Undefined }
   env.def_builtin(
     "Object",
     Value::Object({
@@ -1219,8 +1220,38 @@ pub fn setup_object_builtins(
       },
       prototype: Null,
       callable: Some(
-        NativeCallable("Object", fn(args) {
+        InterpreterCallableWithContext("Object", fn(
+          interp,
+          context,
+          _this_val,
+          args,
+        ) raise {
           let val = if args.length() > 0 { args[0] } else { Undefined }
+          // §20.1.1.1 step 1: only an explicit, different newTarget takes the
+          // OrdinaryCreateFromConstructor branch. In particular,
+          // `new Object(existing)` still returns `existing`, while construction
+          // through a Proxy or subclass allocates a fresh receiver.
+          match context.new_target() {
+            Some(new_target) =>
+              if !physical_equal(new_target, object_ctor_ref.val) {
+                let instance_proto = builtin_constructor_prototype(
+                  interp,
+                  context,
+                  obj_proto,
+                  @token.Loc::default(),
+                  intrinsic_name="Object",
+                )
+                return @runtime.make_object(
+                  Map([]),
+                  instance_proto,
+                  None,
+                  "Object",
+                  Map([]),
+                  true,
+                )
+              }
+            None => ()
+          }
           match val {
             Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
               val
@@ -1355,6 +1386,7 @@ pub fn setup_object_builtins(
       arraybuffer_state: None,
     }),
   )
+  object_ctor_ref.val = env.get("Object") catch { _ => Undefined }
 
   // Set Object.prototype.constructor = Object
   match obj_proto {

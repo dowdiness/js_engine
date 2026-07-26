@@ -269,16 +269,7 @@ fn Interpreter::exec_stmt(
         VarKind => VarBinding
       }
       let value : Value = match init {
-        Some(expr) => {
-          let v = self.eval_expr(ctx, expr, env)
-          // SetFunctionName for variable declarations
-          // Per spec, only set name for IsAnonymousFunctionDefinition
-          // Comma expressions, parenthesized expressions are NOT anonymous function definitions
-          if is_anonymous_function_definition(expr) {
-            set_function_name(v, name)
-          }
-          v
-        }
+        Some(expr) => self.eval_named_expr(ctx, expr, env, name)
         None => Undefined
       }
       // For var declarations that were hoisted, use assign instead of def.
@@ -1675,10 +1666,14 @@ fn Interpreter::exec_stmt(
         other => other
       }
     ClassDecl(name, superclass, methods, _, source_text) => {
-      let class_env = Environment::new(parent=Some(env))
-      class_env.def_tdz(name, ConstBinding)
       let class_val = self.create_class(
-        ctx, name, superclass, methods, class_env, source_text,
+        ctx,
+        name,
+        superclass,
+        methods,
+        env,
+        source_text,
+        class_binding=Some(name),
       )
       // Class was hoisted with TDZ, initialize it now
       if env.bindings.contains(name) {
@@ -1700,10 +1695,7 @@ fn Interpreter::exec_stmt(
         self.module_exports.contains("default") {
         return Normal(Undefined)
       }
-      let value = self.eval_expr(ctx, expr, env)
-      if is_anonymous_function_definition(expr) {
-        set_function_name(value, "default")
-      }
+      let value = self.eval_named_expr(ctx, expr, env, "default")
       // Named declarations were predeclared as live cells backed by their
       // local binding. Preserve that cell and initialize only the local name;
       // synthetic defaults own their value directly in the exports map.

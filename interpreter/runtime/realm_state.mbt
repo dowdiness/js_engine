@@ -36,15 +36,19 @@ pub(all) struct RealmState {
   symbols : SymbolState
   well_known_symbols : WellKnownSymbols
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
-  // Single Ref holds all 10 active cross-realm prototype overrides together.
+  // Single Ref holds all active cross-realm prototype/registry overrides.
   // None means no cross-realm context is active; Some(protos) means at least
-  // one override is set. Collapsing 10 individual Refs into one means the
+  // one override is set. Collapsing the individual values into one means the
   // "any active?" check is `active_overrides.val is Some(_)` — one Ref read —
   // with no separate Bool cache that could become stale.
   active_overrides : Ref[FunctionRealmProtos?]
   // Source identity active while evaluating or invoking attributable code.
   // Function factories copy this into engine-private function metadata.
   active_source_identity : Ref[String?]
+  // Shared, engine-private lookup table for this realm's intrinsic constructor
+  // prototypes. Function metadata retains this object so GetFunctionRealm-style
+  // fallback can recover `%Name.prototype%` without another realm environment.
+  constructor_prototype_registry : Value
   // Detailed operations enable this only while atomically observing a failure.
   // The error object distinguishes unhandled propagation from a later throw.
   observing_source_failure : Ref[Bool]
@@ -85,12 +89,21 @@ pub fn RealmState::RealmState() -> RealmState {
 ///|
 pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
   let arraybuffer_state = ArrayBufferState()
+  let constructor_prototype_registry = Object({
+    bag: PropertyBag(),
+    prototype: Null,
+    callable: None,
+    class_name: "ConstructorPrototypeRegistry",
+    extensible: false,
+    arraybuffer_state: None,
+  })
   {
     symbols,
     well_known_symbols: symbols.well_known_symbols(),
     runtime_iterator_prototypes: RuntimeIteratorPrototypeCaches(),
     active_overrides: { val: None },
     active_source_identity: { val: None },
+    constructor_prototype_registry,
     observing_source_failure: { val: false },
     observed_source_failure: { val: None },
     observed_source_identity: { val: None },
@@ -117,6 +130,28 @@ pub fn RealmState::from_symbols(symbols : SymbolState) -> RealmState {
     weakset_id_counter: { val: 0 },
     weakset_storage: Map([]),
     weakset_id_table: [],
+  }
+}
+
+///|
+/// Record a builtin constructor's intrinsic prototype in this realm's private
+/// table. The table is shared by functions created before and after setup.
+pub fn RealmState::register_constructor_prototype(
+  self : RealmState,
+  name : String,
+  constructor_value : Value,
+) -> Unit {
+  match constructor_value {
+    Object(constructor_data) if constructor_data.callable is Some(_) =>
+      match constructor_data.bag.properties.get("prototype") {
+        Some(prototype) if is_object_value(prototype) =>
+          match self.constructor_prototype_registry {
+            Object(registry) => registry.bag.properties[name] = prototype
+            _ => ()
+          }
+        _ => ()
+      }
+    _ => ()
   }
 }
 

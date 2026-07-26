@@ -7204,6 +7204,109 @@ test "class accessors allow line terminator after get and set" {
 }
 
 ///|
+test "class constructors expose spec name descriptors (#206)" {
+  let output = run_output(
+    (
+      #|function describe(ctor) {
+      #|  var desc = Object.getOwnPropertyDescriptor(ctor, "name");
+      #|  console.log(desc.value + "/" + desc.writable + "/" + desc.enumerable + "/" + desc.configurable);
+      #|}
+      #|describe(class {});
+      #|describe(class Explicit {});
+    ),
+  )
+  json_inspect(output, content=[
+    "/false/false/true", "Explicit/false/false/true",
+  ])
+}
+
+///|
+test "for-of destructuring infers only anonymous class names (#206)" {
+  let output = run_output(
+    (
+      #|function describe(ctor) {
+      #|  var desc = Object.getOwnPropertyDescriptor(ctor, "name");
+      #|  console.log(desc.value + "/" + desc.writable + "/" + desc.enumerable + "/" + desc.configurable);
+      #|}
+      #|var arrayCls, objectIdCls, objectPropCls;
+      #|for ([arrayCls = class {}] of [[]]) {}
+      #|for ({objectIdCls = class {}} of [{}]) {}
+      #|for ({x: objectPropCls = class {}} of [{}]) {}
+      #|describe(arrayCls);
+      #|describe(objectIdCls);
+      #|describe(objectPropCls);
+      #|var explicit = class Inner {};
+      #|var staticName = class { static name() {} };
+      #|console.log(explicit.name);
+      #|console.log(typeof staticName.name);
+    ),
+  )
+  json_inspect(output, content=[
+    "arrayCls/false/false/true", "objectIdCls/false/false/true", "objectPropCls/false/false/true",
+    "Inner", "function",
+  ])
+}
+
+///|
+test "anonymous class inferred names exist before static initialization (#206)" {
+  let output = run_output(
+    (
+      #|var Variable = class { static seen = this.name; };
+      #|var Assigned;
+      #|Assigned = class { static seen = this.name; };
+      #|var Destructured;
+      #|[Destructured = class { static seen = this.name; }] = [];
+      #|var Explicit = class Inner { static seen = this.name; };
+      #|var StaticName = class {
+      #|  static name() {}
+      #|  static seen = typeof this.name;
+      #|};
+      #|console.log(Variable.seen + "/" + Variable.name);
+      #|console.log(Assigned.seen + "/" + Assigned.name);
+      #|console.log(Destructured.seen + "/" + Destructured.name);
+      #|console.log(Explicit.seen + "/" + Explicit.name);
+      #|console.log(StaticName.seen + "/" + typeof StaticName.name);
+    ),
+  )
+  json_inspect(output, content=[
+    "Variable/Variable", "Assigned/Assigned", "Destructured/Destructured", "Inner/Inner",
+    "function/function",
+  ])
+}
+
+///|
+test "class names use an immutable inner lexical binding (#206)" {
+  let output = run_output(
+    (
+      #|try { class TdzDecl extends TdzDecl {} } catch (e) { console.log(e.name); }
+      #|try { var TdzExpr = class Inner extends Inner {}; } catch (e) { console.log(e.name); }
+      #|var heritageProbe;
+      #|var Expr = class Inner extends (
+      #|  heritageProbe = function() { return Inner; },
+      #|  Object
+      #|) {
+      #|  probe() { return Inner; }
+      #|  mutate() { Inner = null; }
+      #|};
+      #|console.log(heritageProbe() === Expr);
+      #|console.log(new Expr().probe() === Expr);
+      #|try { new Expr().mutate(); } catch (e) { console.log(e.name); }
+      #|class Decl {
+      #|  probe() { return Decl; }
+      #|  mutate() { Decl = null; }
+      #|}
+      #|var saved = Decl;
+      #|Decl = null;
+      #|console.log(new saved().probe() === saved);
+      #|try { new saved().mutate(); } catch (e) { console.log(e.name); }
+    ),
+  )
+  json_inspect(output, content=[
+    "ReferenceError", "ReferenceError", "true", "true", "TypeError", "true", "TypeError",
+  ])
+}
+
+///|
 test "class field initializer yield is rejected inside generator" {
   let result = run_throws(
     (
@@ -7273,6 +7376,176 @@ test "derived super property before super throws ReferenceError" {
   )
   json_inspect(output, content=[
     "ReferenceError", "Must call super constructor in derived class before accessing 'this' or returning from derived constructor",
+  ])
+}
+
+///|
+test "super dot access gets this binding before null super base" {
+  let output = run_output(
+    (
+      #|class C extends null {
+      #|  constructor() { super.x; }
+      #|}
+      #|try { new C(); }
+      #|catch (e) {
+      #|  console.log(e instanceof ReferenceError, e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true false"])
+}
+
+///|
+test "super dot call gets this binding before null super base" {
+  let output = run_output(
+    (
+      #|class C extends null {
+      #|  constructor() { super.x(); }
+      #|}
+      #|try { new C(); }
+      #|catch (e) {
+      #|  console.log(e instanceof ReferenceError, e instanceof TypeError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true false"])
+}
+
+///|
+test "super property with null base throws TypeError" {
+  let output = run_output(
+    (
+      #|let caught = [];
+      #|class C extends null {
+      #|  method() {
+      #|    try { super.x; } catch (e) { caught.push(e instanceof TypeError); }
+      #|    try { super["x"]; } catch (e) { caught.push(e instanceof TypeError); }
+      #|  }
+      #|}
+      #|C.prototype.method();
+      #|let obj = {
+      #|  method() {
+      #|    try { super.x; } catch (e) { caught.push(e instanceof TypeError); }
+      #|    try { super["x"]; } catch (e) { caught.push(e instanceof TypeError); }
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(obj, null);
+      #|obj.method();
+      #|console.log(caught.join(","));
+    ),
+  )
+  json_inspect(output, content=["true,true,true,true"])
+}
+
+///|
+test "super call observes current class prototype after argument evaluation" {
+  let output = run_output(
+    (
+      #|let evaluated = false;
+      #|let caught;
+      #|class C extends Object {
+      #|  constructor() {
+      #|    try { super(evaluated = true); } catch (e) { caught = e; }
+      #|  }
+      #|}
+      #|Object.setPrototypeOf(C, parseInt);
+      #|try { new C(); } catch (_) {}
+      #|console.log(evaluated, caught instanceof TypeError);
+    ),
+  )
+  json_inspect(output, content=["true true"])
+}
+
+///|
+test "super call reads the active class prototype before each argument list" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|class Base {
+      #|  constructor(value) { log.push("base:" + value); }
+      #|}
+      #|class Retry extends Base {
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Retry, null);
+      #|    try { super(log.push("first")); }
+      #|    catch (e) { log.push(e.name); }
+      #|    Object.setPrototypeOf(Retry, Base);
+      #|    super(log.push("second"));
+      #|  }
+      #|}
+      #|try { new Retry(); }
+      #|catch (e) { log.push("outer:" + e.name); }
+      #|class Stable extends Base {
+      #|  constructor() {
+      #|    super((Object.setPrototypeOf(Stable, null), "stable"));
+      #|  }
+      #|}
+      #|new Stable();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["first,TypeError,second,base:3,base:stable"])
+}
+
+///|
+test "super call uses Proxy construct semantics" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let fieldRuns = 0;
+      #|let expectedNewTarget;
+      #|function Base() {}
+      #|let proxy = new Proxy(Base, {
+      #|  construct(target, args, newTarget) {
+      #|    log.push(target === Base, args.join(","), newTarget === expectedNewTarget);
+      #|    if (args[0] === "throw") throw new Error("trap abrupt");
+      #|    if (args[0] === "primitive") return 1;
+      #|    return { value: args[0] };
+      #|  }
+      #|});
+      #|class Success extends Base {
+      #|  field = (fieldRuns++, "field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Success, proxy);
+      #|    super("ok", (Object.setPrototypeOf(Success, Base), "tail"));
+      #|  }
+      #|}
+      #|expectedNewTarget = Success;
+      #|let result = new Success();
+      #|console.log(result.value, result.field);
+      #|class Throwing extends Base {
+      #|  field = (fieldRuns++, "throw-field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Throwing, proxy);
+      #|    super("throw");
+      #|  }
+      #|}
+      #|expectedNewTarget = Throwing;
+      #|try { new Throwing(); } catch (e) { console.log(e.message); }
+      #|class Primitive extends Base {
+      #|  field = (fieldRuns++, "primitive-field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Primitive, proxy);
+      #|    super("primitive");
+      #|  }
+      #|}
+      #|expectedNewTarget = Primitive;
+      #|try { new Primitive(); } catch (e) { console.log(e instanceof TypeError); }
+      #|let revocable = Proxy.revocable(Base, {});
+      #|class Revoked extends Base {
+      #|  field = (fieldRuns++, "revoked-field");
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Revoked, revocable.proxy);
+      #|    super((revocable.revoke(), "revoked"));
+      #|  }
+      #|}
+      #|try { new Revoked(); } catch (e) { console.log(e instanceof TypeError); }
+      #|console.log(fieldRuns);
+      #|console.log(log.join("|"));
+    ),
+  )
+  json_inspect(output, content=[
+    "ok field", "trap abrupt", "true", "true", "1", "true|ok,tail|true|true|throw|true|true|primitive|true",
   ])
 }
 
@@ -7524,6 +7797,62 @@ test "Object.prototype.toString gets toStringTag with the original receiver" {
 }
 
 ///|
+test "default derived constructor adopts Proxy Construct completion" {
+  let output = run_output(
+    (
+      #|let fieldRuns = 0;
+      #|let log = [];
+      #|let expectedNewTarget;
+      #|let returned = { marker: "trap" };
+      #|function Base() {}
+      #|let proxy = new Proxy(Base, {
+      #|  construct(target, args, newTarget) {
+      #|    log.push(args.join(","), newTarget === expectedNewTarget);
+      #|    if (args[0] === "throw") throw new Error("default trap abrupt");
+      #|    if (args[0] === "primitive") return 1;
+      #|    return returned;
+      #|  }
+      #|});
+      #|class Success extends proxy {
+      #|  field = (fieldRuns++, "field");
+      #|}
+      #|expectedNewTarget = Success;
+      #|let result = new Success("ok", "tail");
+      #|console.log(
+      #|  result === returned,
+      #|  result.field,
+      #|  Object.getPrototypeOf(result) === Object.prototype,
+      #|  result instanceof Success
+      #|);
+      #|class Throwing extends proxy {
+      #|  field = (fieldRuns++, "throw-field");
+      #|}
+      #|expectedNewTarget = Throwing;
+      #|try { new Throwing("throw"); }
+      #|catch (e) { console.log(e.message); }
+      #|class Primitive extends proxy {
+      #|  field = (fieldRuns++, "primitive-field");
+      #|}
+      #|expectedNewTarget = Primitive;
+      #|try { new Primitive("primitive"); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|let revocable = Proxy.revocable(Base, {});
+      #|class Revoked extends revocable.proxy {
+      #|  field = (fieldRuns++, "revoked-field");
+      #|}
+      #|revocable.revoke();
+      #|try { new Revoked(); }
+      #|catch (e) { console.log(e instanceof TypeError); }
+      #|console.log(fieldRuns);
+      #|console.log(log.join("|"));
+    ),
+  )
+  json_inspect(output, content=[
+    "true field true false", "default trap abrupt", "true", "true", "1", "ok,tail|true|throw|true|primitive|true",
+  ])
+}
+
+///|
 test "class super properties observe the live home object prototype" {
   let output = run_output(
     (
@@ -7584,6 +7913,200 @@ test "class super properties observe the live home object prototype" {
 }
 
 ///|
+test "Proxy no-trap Construct preserves derived newTarget prototypes" {
+  let output = run_output(
+    (
+      #|let baseCalls = 0;
+      #|class Base {
+      #|  constructor(value) {
+      #|    baseCalls++;
+      #|    this.value = value;
+      #|  }
+      #|}
+      #|let BaseProxy = new Proxy(Base, {});
+      #|class ExplicitObject extends BaseProxy {
+      #|  field = "explicit-object";
+      #|  constructor(value) { super(value); }
+      #|}
+      #|class DefaultObject extends BaseProxy {
+      #|  field = "default-object";
+      #|}
+      #|let explicitObject = new ExplicitObject(1);
+      #|let defaultObject = new DefaultObject(2);
+      #|console.log(
+      #|  Object.getPrototypeOf(explicitObject) === ExplicitObject.prototype,
+      #|  explicitObject instanceof ExplicitObject,
+      #|  explicitObject instanceof Base,
+      #|  explicitObject.value,
+      #|  explicitObject.field
+      #|);
+      #|console.log(
+      #|  Object.getPrototypeOf(defaultObject) === DefaultObject.prototype,
+      #|  defaultObject instanceof DefaultObject,
+      #|  defaultObject instanceof Base,
+      #|  defaultObject.value,
+      #|  defaultObject.field
+      #|);
+      #|let ArrayProxy = new Proxy(Array, {});
+      #|class ExplicitArray extends ArrayProxy {
+      #|  field = "explicit-array";
+      #|  constructor(first, second) { super(first, second); }
+      #|}
+      #|class DefaultArray extends ArrayProxy {
+      #|  field = "default-array";
+      #|}
+      #|let explicitArray = new ExplicitArray(3, 4);
+      #|let defaultArray = new DefaultArray(5, 6);
+      #|console.log(
+      #|  Array.isArray(explicitArray),
+      #|  Object.getPrototypeOf(explicitArray) === ExplicitArray.prototype,
+      #|  explicitArray instanceof ExplicitArray,
+      #|  explicitArray.join(","),
+      #|  explicitArray.field
+      #|);
+      #|console.log(
+      #|  Array.isArray(defaultArray),
+      #|  Object.getPrototypeOf(defaultArray) === DefaultArray.prototype,
+      #|  defaultArray instanceof DefaultArray,
+      #|  defaultArray.join(","),
+      #|  defaultArray.field
+      #|);
+      #|console.log(baseCalls);
+    ),
+  )
+  json_inspect(output, content=[
+    "true true true 1 explicit-object", "true true true 2 default-object", "true true true 3,4 explicit-array",
+    "true true true 5,6 default-array", "2",
+  ])
+}
+
+///|
+test "Proxy no-trap Array gets newTarget prototype before length validation" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let ArrayProxy = new Proxy(Array, {});
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() {
+      #|    log.push("prototype");
+      #|    throw new Error("prototype abrupt");
+      #|  }
+      #|});
+      #|try { Reflect.construct(ArrayProxy, [-1], newTarget); }
+      #|catch (e) { log.push(e.message); }
+      #|console.log(log.join("|"));
+    ),
+  )
+  json_inspect(output, content=["prototype|prototype abrupt"])
+}
+
+///|
+test "Proxy no-trap context constructor reads newTarget prototype once" {
+  let output = run_output(
+    (
+      #|let calls = 0;
+      #|let proto = {};
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() {
+      #|    calls++;
+      #|    return proto;
+      #|  }
+      #|});
+      #|let ArrayBufferProxy = new Proxy(ArrayBuffer, {});
+      #|let result = Reflect.construct(ArrayBufferProxy, [8], newTarget);
+      #|console.log(
+      #|  calls,
+      #|  Object.getPrototypeOf(result) === proto
+      #|);
+    ),
+  )
+  json_inspect(output, content=["1 true"])
+}
+
+///|
+test "Proxy no-trap derived class observes newTarget prototype at base allocation" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|class Base {}
+      #|class Derived extends Base {
+      #|  constructor(value = (log.push("parameter"), 0)) {
+      #|    log.push("body");
+      #|    super();
+      #|  }
+      #|}
+      #|let DerivedProxy = new Proxy(Derived, {});
+      #|let prototype = {};
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() {
+      #|    log.push("prototype");
+      #|    return prototype;
+      #|  }
+      #|});
+      #|let result = Reflect.construct(DerivedProxy, [], newTarget);
+      #|console.log(log.join("|"));
+      #|console.log(Object.getPrototypeOf(result) === prototype);
+    ),
+  )
+  json_inspect(output, content=["parameter|body|prototype", "true"])
+}
+
+///|
+test "Proxy no-trap context constructors honor derived newTarget prototypes" {
+  let output = run_output(
+    (
+      #|let MapProxy = new Proxy(Map, {});
+      #|let SetProxy = new Proxy(Set, {});
+      #|let StringProxy = new Proxy(String, {});
+      #|let NumberProxy = new Proxy(Number, {});
+      #|let BooleanProxy = new Proxy(Boolean, {});
+      #|let DateProxy = new Proxy(Date, {});
+      #|let RegExpProxy = new Proxy(RegExp, {});
+      #|let ErrorProxy = new Proxy(Error, {});
+      #|let ObjectProxy = new Proxy(Object, {});
+      #|let FunctionProxy = new Proxy(Function, {});
+      #|class DerivedMap extends MapProxy {}
+      #|class DerivedSet extends SetProxy {}
+      #|class DerivedString extends StringProxy {}
+      #|class DerivedNumber extends NumberProxy {}
+      #|class DerivedBoolean extends BooleanProxy {}
+      #|class DerivedDate extends DateProxy {}
+      #|class DerivedRegExp extends RegExpProxy {}
+      #|class DerivedError extends ErrorProxy {}
+      #|class DerivedObject extends ObjectProxy {}
+      #|class DerivedFunction extends FunctionProxy {}
+      #|let input = {};
+      #|let derivedObject = new DerivedObject(input);
+      #|let derivedFunction = new DerivedFunction("return 7");
+      #|console.log(
+      #|  Object.getPrototypeOf(new DerivedMap()) === DerivedMap.prototype,
+      #|  Object.getPrototypeOf(new DerivedSet()) === DerivedSet.prototype,
+      #|  Object.getPrototypeOf(new DerivedString("x")) === DerivedString.prototype,
+      #|  Object.getPrototypeOf(new DerivedNumber(1)) === DerivedNumber.prototype,
+      #|  Object.getPrototypeOf(new DerivedBoolean(true)) === DerivedBoolean.prototype,
+      #|  Object.getPrototypeOf(new DerivedDate(0)) === DerivedDate.prototype,
+      #|  Object.getPrototypeOf(new DerivedRegExp("x")) === DerivedRegExp.prototype,
+      #|  Object.getPrototypeOf(new DerivedError("x")) === DerivedError.prototype,
+      #|  Object.getPrototypeOf(derivedObject) === DerivedObject.prototype,
+      #|  derivedObject !== input,
+      #|  Object.getPrototypeOf(derivedFunction) === DerivedFunction.prototype,
+      #|  derivedFunction()
+      #|);
+      #|let OriginalObject = Object;
+      #|let ordinaryInput = {};
+      #|Object = function Replacement() {};
+      #|console.log(new OriginalObject(ordinaryInput) === ordinaryInput);
+    ),
+  )
+  json_inspect(output, content=[
+    "true true true true true true true true true true true 7", "true",
+  ])
+}
+
+///|
 test "super [[Get]] preserves receiver through Map prototype nodes" {
   let output = run_output(
     (
@@ -7619,6 +8142,52 @@ test "super [[Get]] preserves receiver through Map prototype nodes" {
   )
   json_inspect(output, content=[
     "instance-get:true,instance-get:true,instance-call-get:true,instance-call:true,instance-call-get:true,instance-call:true,static-get:true,static-get:true",
+  ])
+}
+
+///|
+test "Proxy no-trap constructor prototype getter ordering matrix" {
+  let output = run_output(
+    (
+      #|function probe(ctor, makeArgument) {
+      #|  let log = [];
+      #|  let argument = makeArgument(log);
+      #|  let newTarget = function() {}.bind(null);
+      #|  Object.defineProperty(newTarget, "prototype", {
+      #|    get() {
+      #|      log.push("prototype");
+      #|      throw new Error("stop");
+      #|    }
+      #|  });
+      #|  let nested = new Proxy(new Proxy(ctor, {}), {});
+      #|  try { Reflect.construct(nested, [argument], newTarget); }
+      #|  catch (e) { log.push(e.message); }
+      #|  return log.join("|");
+      #|}
+      #|let convertsWithToString = log => ({
+      #|  toString() { log.push("convert"); return "1"; }
+      #|});
+      #|let convertsWithValueOf = log => ({
+      #|  valueOf() { log.push("convert"); return 1; }
+      #|});
+      #|let iterable = log => {
+      #|  let value = {};
+      #|  Object.defineProperty(value, Symbol.iterator, {
+      #|    get() { log.push("iterate"); return function() {}; }
+      #|  });
+      #|  return value;
+      #|};
+      #|console.log(probe(Error, convertsWithToString));
+      #|console.log(probe(Number, convertsWithValueOf));
+      #|console.log(probe(RegExp, convertsWithToString));
+      #|console.log(probe(Date, convertsWithValueOf));
+      #|console.log(probe(Map, iterable));
+      #|console.log(probe(Set, iterable));
+    ),
+  )
+  json_inspect(output, content=[
+    "prototype|stop", "convert|prototype|stop", "prototype|stop", "convert|prototype|stop",
+    "prototype|stop", "prototype|stop",
   ])
 }
 
@@ -7692,6 +8261,104 @@ test "super [[Get]] receiver matrix covers ordinary and exotic bases" {
   )
   json_inspect(output, content=[
     "object-direct:true,object-direct:true,object-symbol:true,object-call-get:true,object-call:true,array-direct:true,array-direct:true,array-symbol:true,array-call-get:true,array-call:true,map-direct:true,map-direct:true,map-symbol:true,map-call-get:true,map-call:true,set-direct:true,set-direct:true,set-symbol:true,set-call-get:true,set-call:true,promise-direct:true,promise-direct:true,promise-symbol:true,promise-call-get:true,promise-call:true",
+  ])
+}
+
+///|
+test "Proxy no-trap constructors handle revocation and primitive prototype fallback" {
+  let output = run_output(
+    (
+      #|function fallback(ctor, args, intrinsicPrototype) {
+      #|  let calls = 0;
+      #|  let newTarget = function() {}.bind(null);
+      #|  Object.defineProperty(newTarget, "prototype", {
+      #|    get() { calls++; return 1; }
+      #|  });
+      #|  let nested = new Proxy(new Proxy(ctor, {}), {});
+      #|  let result = Reflect.construct(nested, args, newTarget);
+      #|  return calls === 1 &&
+      #|    Object.getPrototypeOf(result) === intrinsicPrototype;
+      #|}
+      #|console.log(
+      #|  fallback(Error, ["x"], Error.prototype),
+      #|  fallback(Number, [1], Number.prototype),
+      #|  fallback(RegExp, ["x"], RegExp.prototype),
+      #|  fallback(Date, [0], Date.prototype),
+      #|  fallback(Map, [], Map.prototype),
+      #|  fallback(Set, [], Set.prototype)
+      #|);
+      #|let getterCalls = 0;
+      #|let newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get() { getterCalls++; return {}; }
+      #|});
+      #|let revocable = Proxy.revocable(new Proxy(Number, {}), {});
+      #|revocable.revoke();
+      #|try { Reflect.construct(revocable.proxy, [1], newTarget); }
+      #|catch (e) { console.log(e instanceof TypeError, getterCalls); }
+    ),
+  )
+  json_inspect(output, content=["true true true true true true", "true 0"])
+}
+
+///|
+test "constructor primitive prototype fallback uses the newTarget realm" {
+  let output = run_output(
+    (
+      #|let realm = $262.createRealm();
+      #|let newTarget = realm.evalScript("(function Foreign() {})");
+      #|newTarget.prototype = 1;
+      #|function check(name, constructor, args) {
+      #|  let foreignPrototype = realm.evalScript(name + ".prototype");
+      #|  let result = Reflect.construct(
+      #|    new Proxy(constructor, {}),
+      #|    args,
+      #|    newTarget
+      #|  );
+      #|  console.log(
+      #|    name,
+      #|    Object.getPrototypeOf(result) === foreignPrototype,
+      #|    Object.getPrototypeOf(result) === constructor.prototype
+      #|  );
+      #|}
+      #|check("Object", Object, []);
+      #|check("Function", Function, []);
+      #|check("Array", Array, []);
+      #|check("String", String, ["x"]);
+      #|check("Number", Number, [1]);
+      #|check("Boolean", Boolean, [true]);
+      #|check("Date", Date, [0]);
+      #|check("RegExp", RegExp, ["x"]);
+      #|check("Error", Error, ["x"]);
+      #|check("TypeError", TypeError, ["x"]);
+      #|check("AggregateError", AggregateError, [[]]);
+      #|check("Map", Map, []);
+      #|check("Set", Set, []);
+      #|function checkWrappedNewTarget(label, wrappedNewTarget) {
+      #|  let result = Reflect.construct(Number, [1], wrappedNewTarget);
+      #|  console.log(
+      #|    label,
+      #|    Object.getPrototypeOf(result) === realm.evalScript("Number.prototype"),
+      #|    Object.getPrototypeOf(result) === Number.prototype
+      #|  );
+      #|}
+      #|checkWrappedNewTarget("proxy", new Proxy(newTarget, {}));
+      #|let boundNewTarget = Function.prototype.bind.call(newTarget, null);
+      #|Object.defineProperty(boundNewTarget, "prototype", { value: 1 });
+      #|checkWrappedNewTarget("bound", boundNewTarget);
+      #|let revocable;
+      #|revocable = Proxy.revocable(newTarget, {
+      #|  get() { revocable.revoke(); return 1; }
+      #|});
+      #|try { Reflect.construct(Number, [1], revocable.proxy); }
+      #|catch (error) { console.log("revoked", error instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=[
+    "Object true false", "Function true false", "Array true false", "String true false",
+    "Number true false", "Boolean true false", "Date true false", "RegExp true false",
+    "Error true false", "TypeError true false", "AggregateError true false", "Map true false",
+    "Set true false", "proxy true false", "bound true false", "revoked true",
   ])
 }
 
@@ -7783,6 +8450,106 @@ test "Proxy [[Get]] invariants use SameValue for string and Symbol keys" {
   json_inspect(output, content=[
     "string:nan:true,string:zero:TypeError,symbol:nan:true,symbol:zero:TypeError",
   ])
+}
+
+///|
+test "generic constructor primitive prototype fallback uses GetFunctionRealm" {
+  let output = run_output(
+    (
+      #|let realm = $262.createRealm();
+      #|let foreign = realm.evalScript("(function Foreign() {})");
+      #|let bound = Function.prototype.bind.call(foreign, null);
+      #|Object.defineProperty(bound, "prototype", { value: 1 });
+      #|class Base {}
+      #|let result = Reflect.construct(Base, [], bound);
+      #|console.log(
+      #|  Object.getPrototypeOf(result) === realm.evalScript("Object.prototype"),
+      #|  Object.getPrototypeOf(result) === Object.prototype
+      #|);
+      #|let revocable;
+      #|let prototypeGets = 0;
+      #|revocable = Proxy.revocable(function Target() {}, {
+      #|  get(_target, key) {
+      #|    if (key === "prototype") {
+      #|      prototypeGets++;
+      #|      revocable.revoke();
+      #|      return 1;
+      #|    }
+      #|  }
+      #|});
+      #|try {
+      #|  Reflect.construct(Base, [], revocable.proxy);
+      #|  console.log("no throw");
+      #|} catch (error) {
+      #|  console.log(error instanceof TypeError, prototypeGets);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true false", "true 1"])
+}
+
+///|
+test "super computed update preserves reference evaluation order" {
+  let output = run_output(
+    (
+      #|let keyEvaluated = false;
+      #|class Base {}
+      #|class Derived extends Base {
+      #|  constructor() {
+      #|    try { super[(keyEvaluated = true, "p")]++; }
+      #|    catch (e) { console.log(e.name, keyEvaluated); }
+      #|  }
+      #|}
+      #|try { new Derived(); } catch (_) {}
+      #|let proto1 = { p: 1 };
+      #|let proto2 = { p: -1 };
+      #|let obj1 = {
+      #|  __proto__: proto1,
+      #|  increment() { return ++super[key1]; }
+      #|};
+      #|let key1 = {
+      #|  toString() {
+      #|    Object.setPrototypeOf(obj1, proto2);
+      #|    return "p";
+      #|  }
+      #|};
+      #|let obj2 = {
+      #|  __proto__: proto1,
+      #|  compound() { return super[key2] += 1; }
+      #|};
+      #|let key2 = {
+      #|  toString() {
+      #|    Object.setPrototypeOf(obj2, proto2);
+      #|    return "p";
+      #|  }
+      #|};
+      #|console.log(obj1.increment(), obj2.compound());
+    ),
+  )
+  json_inspect(output, content=["ReferenceError false", "2 2"])
+}
+
+///|
+test "direct eval preserves object method super binding" {
+  let output = run_output(
+    (
+      #|let fromA;
+      #|let fromB;
+      #|let a = { fromA: "a", fromB: "a" };
+      #|let b = { fromB: "b" };
+      #|Object.setPrototypeOf(b, a);
+      #|let obj = {
+      #|  method() {
+      #|    fromA = eval("super.fromA");
+      #|    fromB = eval("super['fromB']");
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(obj, b);
+      #|obj.method();
+      #|console.log(fromA, fromB);
+    ),
+  )
+  json_inspect(output, content=["a b"])
 }
 
 ///|
@@ -8302,6 +9069,36 @@ test "spread invokes getters and creates data properties" {
     ),
   )
   json_inspect(output, content=["42", "42", "undefined"])
+}
+
+///|
+test "object spread follows own property key order including symbols" {
+  let output = run_output(
+    (
+      #|let calls = [];
+      #|let source = {
+      #|  get z() { calls.push("z"); return 2; },
+      #|  get a() { calls.push("a"); return 3; }
+      #|};
+      #|Object.defineProperty(source, "1", {
+      #|  get() { calls.push("1"); return 1; },
+      #|  enumerable: true
+      #|});
+      #|let sym = Symbol("key");
+      #|Object.defineProperty(source, sym, {
+      #|  get() { calls.push("symbol"); return 4; },
+      #|  enumerable: true
+      #|});
+      #|let copy = { ...source };
+      #|console.log(calls.join(","));
+      #|console.log(Object.keys(copy).join(","));
+      #|console.log(copy[sym]);
+      #|let replacement = { get x() { return 0; }, ...{ x: 5 } };
+      #|let desc = Object.getOwnPropertyDescriptor(replacement, "x");
+      #|console.log(replacement.x, desc.get === undefined, desc.writable);
+    ),
+  )
+  json_inspect(output, content=["1,z,a,symbol", "1,z,a", "4", "5 true true"])
 }
 
 ///|
@@ -19319,6 +20116,30 @@ test "direct eval in derived constructor: super() allowed" {
 }
 
 ///|
+test "direct eval super call crosses arrows but not ordinary functions" {
+  let output = run_output(
+    (
+      #|let executed = false;
+      #|let caught;
+      #|class B {}
+      #|class D extends B {
+      #|  constructor() {
+      #|    (() => eval("super()"))();
+      #|    function nested() {
+      #|      try { eval("executed = true; super()"); }
+      #|      catch (e) { caught = e.name; }
+      #|    }
+      #|    nested();
+      #|  }
+      #|}
+      #|new D();
+      #|console.log(executed, caught);
+    ),
+  )
+  json_inspect(output, content=["false SyntaxError"])
+}
+
+///|
 test "direct eval in method: super.x allowed" {
   let src =
     #|class B { foo() { return 'B.foo'; } }
@@ -19328,6 +20149,136 @@ test "direct eval in method: super.x allowed" {
     #|new D().bar()
   let result = run(src)
   expect_result(result, "B.foo")
+}
+
+///|
+test "direct eval uses the current non-arrow function's super binding" {
+  let output = run_output(
+    (
+      #|let executed = false;
+      #|let errors = [];
+      #|let proto = { value: 42 };
+      #|let obj = {
+      #|  __proto__: proto,
+      #|  property: function() {
+      #|    try { eval("executed = true; super.value"); }
+      #|    catch (e) { errors.push(e.name); }
+      #|  },
+      #|  method() {
+      #|    function nested() {
+      #|      try { eval("executed = true; super.value"); }
+      #|      catch (e) { errors.push(e.name); }
+      #|    }
+      #|    nested();
+      #|  },
+      #|  arrow() { return (() => eval("super.value"))(); }
+      #|};
+      #|obj.property();
+      #|obj.method();
+      #|console.log(executed, errors.join(","), obj.arrow());
+    ),
+  )
+  json_inspect(output, content=["false SyntaxError,SyntaxError 42"])
+}
+
+///|
+test "direct eval super context stops at ordinary generator functions" {
+  let output = run_output(
+    (
+      #|let executed = false;
+      #|let caught;
+      #|let proto = { value: 42 };
+      #|let object = {
+      #|  __proto__: proto,
+      #|  method() {
+      #|    function* nested() {
+      #|      try { return eval("executed = true; super.value"); }
+      #|      catch (e) { caught = e.name; return "caught"; }
+      #|    }
+      #|    return nested().next().value;
+      #|  },
+      #|  *generatorMethod(unused = 0) { return eval("super.value"); }
+      #|};
+      #|class Base { get value() { return 43; } }
+      #|class Derived extends Base {
+      #|  *generatorMethod() { return eval("super.value"); }
+      #|}
+      #|console.log(object.method(), executed, caught);
+      #|console.log(object.generatorMethod().next().value);
+      #|console.log(new Derived().generatorMethod().next().value);
+    ),
+  )
+  json_inspect(output, content=["caught false SyntaxError", "42", "43"])
+}
+
+///|
+test "direct eval super context stops at ordinary async functions" {
+  let output = run_output_async(
+    (
+      #|let executed = false;
+      #|let proto = { value: 42 };
+      #|let object = {
+      #|  __proto__: proto,
+      #|  method() {
+      #|    async function nested() {
+      #|      return eval("executed = true; super.value");
+      #|    }
+      #|    return nested();
+      #|  },
+      #|  async asyncMethod(unused = 0) { return eval("super.value"); },
+      #|  asyncArrow() { return (async () => eval("super.value"))(); }
+      #|};
+      #|class Base { get value() { return 43; } }
+      #|class Derived extends Base {
+      #|  async asyncMethod() { return eval("super.value"); }
+      #|}
+      #|object.method().then(
+      #|  value => console.log("unexpected", value, executed),
+      #|  error => console.log(error.name, executed)
+      #|);
+      #|object.asyncMethod().then(value => console.log(value));
+      #|object.asyncArrow().then(value => console.log(value));
+      #|new Derived().asyncMethod().then(value => console.log(value));
+    ),
+  )
+  json_inspect(output, content=["SyntaxError false", "42", "42", "43"])
+}
+
+///|
+test "direct eval super context stops at ordinary async generator functions" {
+  let output = run_output_async(
+    (
+      #|let executed = false;
+      #|let proto = { value: 42 };
+      #|let object = {
+      #|  __proto__: proto,
+      #|  method() {
+      #|    async function* nested() {
+      #|      return eval("executed = true; super.value");
+      #|    }
+      #|    return nested().next();
+      #|  },
+      #|  async *asyncGeneratorMethod(unused = 0) {
+      #|    return eval("super.value");
+      #|  }
+      #|};
+      #|class Base { get value() { return 43; } }
+      #|class Derived extends Base {
+      #|  async *asyncGeneratorMethod() { return eval("super.value"); }
+      #|}
+      #|object.method().then(
+      #|  result => console.log("unexpected", result.value, executed),
+      #|  error => console.log(error.name, executed)
+      #|);
+      #|object.asyncGeneratorMethod().next().then(
+      #|  result => console.log(result.value)
+      #|);
+      #|new Derived().asyncGeneratorMethod().next().then(
+      #|  result => console.log(result.value)
+      #|);
+    ),
+  )
+  json_inspect(output, content=["SyntaxError false", "42", "43"])
 }
 
 ///|

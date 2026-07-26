@@ -134,6 +134,58 @@ fn Interpreter::eval_update(
       let key = self.eval_expr(ctx, key_expr, env)
       self.eval_update_computed_property(ctx, obj, key, op, prefix, mloc, loc)
     }
+    SuperMember(prop, mloc) => {
+      let this_val = eval_this_value(env)
+      let super_proto = self.require_super_target(env, "super.prop", mloc)
+      let current = self.get_property_from_prototype(
+        this_val, super_proto, prop, mloc,
+      )
+      let num = self.to_number(current)
+      let new_val : Value = match op {
+        Increment => Number(num + 1.0)
+        Decrement => Number(num - 1.0)
+      }
+      let _ = self.set_property(
+        super_proto,
+        prop,
+        new_val,
+        loc,
+        strict=ctx.strict,
+        receiver=this_val,
+      )
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
+    }
+    SuperComputedMember(key_expr, mloc) => {
+      let this_val = eval_this_value(env)
+      let key = self.eval_expr(ctx, key_expr, env)
+      let super_proto = self.require_super_target(env, "super[expr]", mloc)
+      let prop_key = to_property_key(key, interp=Some(self))
+      let current = self.get_computed_property_from_prototype(
+        this_val, super_proto, prop_key, mloc,
+      )
+      let num = self.to_number(current)
+      let new_val : Value = match op {
+        Increment => Number(num + 1.0)
+        Decrement => Number(num - 1.0)
+      }
+      let _ = self.set_computed_property(
+        super_proto,
+        prop_key,
+        new_val,
+        loc,
+        strict=ctx.strict,
+        receiver=this_val,
+      )
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
+    }
     PrivateMember(obj_expr, name, _) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       let current = get_private_member(obj, name, env)
@@ -269,6 +321,44 @@ fn Interpreter::eval_compound_assign(
       )
       result
     }
+    SuperMember(prop, mloc) => {
+      let this_val = eval_this_value(env)
+      let super_proto = self.require_super_target(env, "super.prop", mloc)
+      let current = self.get_property_from_prototype(
+        this_val, super_proto, prop, mloc,
+      )
+      let rhs = self.eval_expr(ctx, value_expr, env)
+      let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
+      let _ = self.set_property(
+        super_proto,
+        prop,
+        result,
+        loc,
+        strict=ctx.strict,
+        receiver=this_val,
+      )
+      result
+    }
+    SuperComputedMember(key_expr, mloc) => {
+      let this_val = eval_this_value(env)
+      let key = self.eval_expr(ctx, key_expr, env)
+      let super_proto = self.require_super_target(env, "super[expr]", mloc)
+      let prop_key = to_property_key(key, interp=Some(self))
+      let current = self.get_computed_property_from_prototype(
+        this_val, super_proto, prop_key, mloc,
+      )
+      let rhs = self.eval_expr(ctx, value_expr, env)
+      let result = eval_binary_op(bin_op, current, rhs, loc, interp=Some(self))
+      let _ = self.set_computed_property(
+        super_proto,
+        prop_key,
+        result,
+        loc,
+        strict=ctx.strict,
+        receiver=this_val,
+      )
+      result
+    }
     PrivateMember(obj_expr, name, _) => {
       let obj = self.eval_expr(ctx, obj_expr, env)
       let current = get_private_member(obj, name, env)
@@ -332,10 +422,7 @@ fn Interpreter::eval_logical_assign(
     Ident(name, _) => {
       let current = get_assignment_name_value(ctx, env, name)
       if should_assign(current) {
-        let rhs = self.eval_expr(ctx, value_expr, env)
-        if is_anonymous_function_definition(value_expr) {
-          set_function_name(rhs, name)
-        }
+        let rhs = self.eval_named_expr(ctx, value_expr, env, name)
         if self.is_immutable_global(name) {
           if ctx.strict {
             raise @errors.TypeError(

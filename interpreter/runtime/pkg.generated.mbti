@@ -43,6 +43,8 @@ pub fn collect_for_in_keys(Value, Interpreter) -> Array[String] raise
 
 pub fn compound_assign_binary_op(@ast.CompoundOp) -> @ast.BinOp?
 
+pub fn constructor_realm_intrinsic_prototype(Value, String, Value) -> Value raise
+
 pub fn create_data_property_or_throw(Interpreter, Value, Int64, Value) -> Unit raise
 
 pub fn create_iter_result(Value, Bool) -> Value
@@ -232,6 +234,8 @@ pub fn lookup_symbol_property_chain(Value, ObjectData, Int, interp? : Interprete
 pub fn make_array(Array[Value]) -> Value
 
 pub fn make_array_with_holes(Array[Value], Array[Int]) -> Value
+
+pub fn make_array_with_prototype(Array[Value], Value) -> Value
 
 pub fn make_bound_func(Value, Value, Array[Value], prototype~ : Value, name~ : String, length~ : Double, realm_state? : RealmState?) -> Value
 
@@ -578,8 +582,9 @@ pub(all) struct FunctionRealmProtos {
   map_proto : Value?
   set_proto : Value?
   promise_proto : Value?
+  constructor_prototype_registry : Value?
 }
-pub fn FunctionRealmProtos::FunctionRealmProtos(function_proto? : Value?, object_proto? : Value?, string_proto? : Value?, number_proto? : Value?, boolean_proto? : Value?, symbol_proto? : Value?, array_proto? : Value?, map_proto? : Value?, set_proto? : Value?, promise_proto? : Value?) -> Self
+pub fn FunctionRealmProtos::FunctionRealmProtos(function_proto? : Value?, object_proto? : Value?, string_proto? : Value?, number_proto? : Value?, boolean_proto? : Value?, symbol_proto? : Value?, array_proto? : Value?, map_proto? : Value?, set_proto? : Value?, promise_proto? : Value?, constructor_prototype_registry? : Value?) -> Self
 
 pub(all) enum GenState {
   SuspendedStart
@@ -861,6 +866,7 @@ pub(all) struct RealmState {
   runtime_iterator_prototypes : RuntimeIteratorPrototypeCaches
   active_overrides : @ref.Ref[FunctionRealmProtos?]
   active_source_identity : @ref.Ref[String?]
+  constructor_prototype_registry : Value
   observing_source_failure : @ref.Ref[Bool]
   observed_source_failure : @ref.Ref[Error?]
   observed_source_identity : @ref.Ref[String?]
@@ -915,6 +921,7 @@ pub fn RealmState::make_array_keys_iterator_value(Self, Value) -> Value raise
 pub fn RealmState::make_array_like_iterator_value(Self, Value) -> Value raise
 pub fn RealmState::make_array_values_iterator_value(Self, Value) -> Value raise
 pub fn RealmState::make_string_iterator_value(Self, String) -> Value
+pub fn RealmState::register_constructor_prototype(Self, String, Value) -> Unit
 pub fn RealmState::set_array_proto_values_intrinsic(Self, Value) -> Unit
 
 pub(all) enum ResumeAction {

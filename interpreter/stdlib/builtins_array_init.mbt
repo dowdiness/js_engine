@@ -1373,7 +1373,22 @@ fn setup_array_builtins(
     },
     prototype: Null,
     callable: Some(
-      NativeCallable("Array", fn(args) raise {
+      InterpreterCallableWithContext("Array", fn(
+        interp,
+        context,
+        _this_val,
+        args,
+      ) raise {
+        // §23.1.1.1 steps 1-2: resolve the instance prototype before ArrayCreate
+        // validates a single numeric length. A Proxy newTarget getter can throw,
+        // and that abrupt completion must win over an invalid-length RangeError.
+        let instance_proto = builtin_constructor_prototype(
+          interp,
+          context,
+          array_proto,
+          @token.Loc::default(),
+          intrinsic_name="Array",
+        )
         // Array constructor behavior
         if args.length() == 1 {
           match args[0] {
@@ -1412,12 +1427,13 @@ fn setup_array_builtins(
               if len64 > arr_data.elements.length().to_int64() {
                 @runtime.set_array_length_override(arr_data, len64)
               }
+              @runtime.set_array_prototype_override(arr_data, instance_proto)
               Value::Array(arr_data)
             }
-            _ => @runtime.make_array(args)
+            _ => @runtime.make_array_with_prototype(args, instance_proto)
           }
         } else {
-          @runtime.make_array(args)
+          @runtime.make_array_with_prototype(args, instance_proto)
         }
       }),
     ),

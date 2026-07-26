@@ -1927,7 +1927,14 @@ pub fn setup_date_builtins(
               time_clip(make_date_value(d, time))
             }
           }
-          make_date_object(t, date_proto_ref)
+          let instance_proto = builtin_constructor_prototype(
+            interp,
+            context,
+            date_proto_ref,
+            @token.Loc::default(),
+            intrinsic_name="Date",
+          )
+          make_date_object(t, instance_proto)
         }),
       ),
       class_name: "Function",

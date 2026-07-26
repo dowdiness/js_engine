@@ -975,8 +975,15 @@ fn setup_set_builtins(
           message="Constructor Set cannot be invoked without 'new'",
         )
       }
+      let instance_proto = builtin_constructor_prototype(
+        interp,
+        context,
+        set_proto,
+        @token.Loc::default(),
+        intrinsic_name="Set",
+      )
       let new_set : Value = Value::Set(
-        @runtime.SetData([], prototype=Some(set_proto)),
+        @runtime.SetData([], prototype=Some(instance_proto)),
       )
       let loc = @token.Loc::default()
 

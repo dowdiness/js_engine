@@ -1411,6 +1411,7 @@ fn make_compiled_func(
               new_target~,
               call_self_name~,
               define_arguments_object~,
+              is_method=!constructable,
               bytecode_func~,
             )
             if is_constructor_return_object(result) {
@@ -1431,6 +1432,7 @@ fn make_compiled_func(
               rest_param~,
               call_self_name~,
               define_arguments_object~,
+              is_method=!constructable,
               bytecode_func~,
             )
           }
@@ -1532,6 +1534,7 @@ fn call_compiled_func(
   new_target? : Value? = None,
   call_self_name? : Bool = false,
   define_arguments_object? : Bool = true,
+  is_method? : Bool = false,
   bytecode_func? : BytecodeFunction? = None,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
@@ -1556,6 +1559,7 @@ fn call_compiled_func(
       _ => {
         let func_env = Environment::new(parent=Some(closure))
         func_env.is_var_scope = true
+        func_env.def_builtin("[[EvalMethodContext]]", Value::Bool(is_method))
         let effective_this = if strict {
           this_val
         } else {
