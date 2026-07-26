@@ -70,14 +70,17 @@ Executed against baseline `7b6d3b3` on branch `refactor/ast-containment-traversa
 
 ### Impact audit and semantic matrix
 
-The complete helper/caller audit found eight recursive containment helpers
-plus the parser/runtime parameter scanners, and four public-helper call sites: `parser/early_errors.mbt` calls the shared helper from
-`pat_has_yield` and `pat_has_await`; `interpreter/runtime/eval_expr.mbt` calls
-it from `pattern_may_contain_yield`; and `interpreter/runtime/generator.mbt`
-calls it from `pattern_contains_yield`. Their recursive pattern and expression
-callbacks are all pure `Bool` containment predicates; call paths carry only the
-five `Pattern` variants and the full `Expr` variant set, with local boundary
-matches preserved.
+The complete helper/caller audit found eight recursive containment predicates
+(parser expression/pattern yield+await, evaluator expression/pattern yield, and
+generator expression/pattern yield) plus three parameter scanners (parser
+yield+await and generator yield). Across those predicates,
+`expr_immediate_children_any` appears at eight syntactic call sites (destructure/
+fallback pairs for the four expression predicates), and
+`pattern_immediate_children_any` appears at four call sites (one per pattern
+predicate), for twelve shared-helper call sites total. Their recursive pattern
+and expression callbacks are all pure `Bool` containment predicates; call paths
+carry only the five `Pattern` variants and the full `Expr` variant set, with
+local boundary matches preserved.
 
 The matrix records these differences: private read/assign receivers and values
 are immediate expression edges; yield and await scan arrow parameter defaults
