@@ -1030,6 +1030,7 @@ fn Interpreter::construct_value_impl(
           let new_obj = make_constructor_instance(proto, "Object")
           let func_env = Environment::new(parent=Some(data.closure))
           func_env.is_var_scope = true
+          func_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
           func_env.def("this", new_obj, LetBinding)
           func_env.def("<new.target>", new_target, LetBinding)
           for i = 0; i < data.params.length(); i = i + 1 {
@@ -1136,6 +1137,7 @@ fn Interpreter::construct_value_impl(
           }
           let param_env = Environment::new(parent=Some(self_name_env))
           param_env.is_var_scope = true
+          param_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
           param_env.def("this", new_obj, LetBinding)
           param_env.def("<new.target>", new_target, LetBinding)
           if !ext_params_include_arguments(data.params, data.rest_param) {
@@ -1285,9 +1287,10 @@ fn Interpreter::construct_value_impl(
               Some(_) => {
                 // Put 'this' in TDZ - will be initialized by super() call
                 ctor_env.def_tdz("this", LetBinding)
-                // GetSuperConstructor observes the active class function's
-                // [[Prototype]] at call time; Object.setPrototypeOf can change it.
-                ctor_env.def_builtin("[[SuperConstructor]]", obj_data.prototype)
+                // Keep the active class function, not a snapshot of its
+                // [[Prototype]]. Each SuperCall performs GetSuperConstructor
+                // immediately before evaluating that call's arguments.
+                ctor_env.def_builtin("[[ActiveClassFunction]]", ctor)
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
                 // Store the new instance for super() to use
                 ctor_env.def_builtin("[[PendingThis]]", new_obj)
@@ -1388,8 +1391,7 @@ fn Interpreter::construct_value_impl(
                             match grand_super {
                               Some(_) => {
                                 super_env.def_builtin(
-                                  "[[SuperConstructor]]",
-                                  super_data.prototype,
+                                  "[[ActiveClassFunction]]", sc,
                                 )
                                 super_env.def_builtin(
                                   "[[SuperPrototype]]", sproto,

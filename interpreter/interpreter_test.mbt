@@ -7314,6 +7314,37 @@ test "super call observes current class prototype after argument evaluation" {
 }
 
 ///|
+test "super call reads the active class prototype before each argument list" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|class Base {
+      #|  constructor(value) { log.push("base:" + value); }
+      #|}
+      #|class Retry extends Base {
+      #|  constructor() {
+      #|    Object.setPrototypeOf(Retry, null);
+      #|    try { super(log.push("first")); }
+      #|    catch (e) { log.push(e.name); }
+      #|    Object.setPrototypeOf(Retry, Base);
+      #|    super(log.push("second"));
+      #|  }
+      #|}
+      #|try { new Retry(); }
+      #|catch (e) { log.push("outer:" + e.name); }
+      #|class Stable extends Base {
+      #|  constructor() {
+      #|    super((Object.setPrototypeOf(Stable, null), "stable"));
+      #|  }
+      #|}
+      #|new Stable();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["first,TypeError,second,base:3,base:stable"])
+}
+
+///|
 test "super computed update preserves reference evaluation order" {
   let output = run_output(
     (
@@ -18517,6 +18548,30 @@ test "direct eval in derived constructor: super() allowed" {
 }
 
 ///|
+test "direct eval super call crosses arrows but not ordinary functions" {
+  let output = run_output(
+    (
+      #|let executed = false;
+      #|let caught;
+      #|class B {}
+      #|class D extends B {
+      #|  constructor() {
+      #|    (() => eval("super()"))();
+      #|    function nested() {
+      #|      try { eval("executed = true; super()"); }
+      #|      catch (e) { caught = e.name; }
+      #|    }
+      #|    nested();
+      #|  }
+      #|}
+      #|new D();
+      #|console.log(executed, caught);
+    ),
+  )
+  json_inspect(output, content=["false SyntaxError"])
+}
+
+///|
 test "direct eval in method: super.x allowed" {
   let src =
     #|class B { foo() { return 'B.foo'; } }
@@ -18526,6 +18581,36 @@ test "direct eval in method: super.x allowed" {
     #|new D().bar()
   let result = run(src)
   expect_result(result, "B.foo")
+}
+
+///|
+test "direct eval uses the current non-arrow function's super binding" {
+  let output = run_output(
+    (
+      #|let executed = false;
+      #|let errors = [];
+      #|let proto = { value: 42 };
+      #|let obj = {
+      #|  __proto__: proto,
+      #|  property: function() {
+      #|    try { eval("executed = true; super.value"); }
+      #|    catch (e) { errors.push(e.name); }
+      #|  },
+      #|  method() {
+      #|    function nested() {
+      #|      try { eval("executed = true; super.value"); }
+      #|      catch (e) { errors.push(e.name); }
+      #|    }
+      #|    nested();
+      #|  },
+      #|  arrow() { return (() => eval("super.value"))(); }
+      #|};
+      #|obj.property();
+      #|obj.method();
+      #|console.log(executed, errors.join(","), obj.arrow());
+    ),
+  )
+  json_inspect(output, content=["false SyntaxError,SyntaxError 42"])
 }
 
 ///|

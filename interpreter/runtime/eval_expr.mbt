@@ -1995,8 +1995,12 @@ fn Interpreter::eval_expr(
       )
     }
     SuperCall(arg_exprs, loc) => {
+      // SuperCall steps 3-5: read the active class function's current
+      // [[Prototype]] before evaluating Arguments, but defer IsConstructor
+      // validation until after argument evaluation.
+      let super_ctor = get_active_super_constructor(env, loc)
       let args = self.eval_args_with_spread(ctx, arg_exprs, env)
-      self.eval_super_dispatch(args, env, loc)
+      self.eval_super_dispatch(super_ctor, args, env, loc)
     }
     SuperMember(prop, loc) => self.eval_super_property(env, prop, loc)
     SuperComputedMember(key_expr, loc) => {
@@ -2016,17 +2020,45 @@ fn Interpreter::eval_expr(
 }
 
 ///|
-// Dispatch a super() call. Reads [[SuperConstructor]], [[PendingThis]]/this, and
-// <new.target> from `env`, runs the selected constructor, updates env.this, applies
-// env.[[InitInstanceFields]], and returns the resolved this value. Calls itself
-// recursively for implicit derived constructors (None ctor_fn, Some _super_ctor).
+// GetSuperConstructor reads the active class function's live [[Prototype]].
+// The caller performs this before ArgumentListEvaluation, matching SuperCall's
+// required observable ordering.
+fn get_active_super_constructor(
+  env : Environment,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let active_function = env.get("[[ActiveClassFunction]]") catch {
+    _ =>
+      raise @errors.ReferenceError(
+        message=format_loc_context(
+          "super() called but no active class function is in scope", loc,
+        ),
+      )
+  }
+  match active_function {
+    Object(data) => data.prototype
+    _ =>
+      raise @errors.ReferenceError(
+        message=format_loc_context(
+          "super() called but active class function is invalid", loc,
+        ),
+      )
+  }
+}
+
+///|
+// Dispatch a super() call. The selected super constructor was captured before
+// argument evaluation. This function validates it afterward, reads
+// [[PendingThis]]/this and <new.target> from `env`, runs the constructor,
+// updates env.this, applies env.[[InitInstanceFields]], and returns the resolved
+// this value. It calls itself recursively for implicit derived constructors.
 fn Interpreter::eval_super_dispatch(
   self : Interpreter,
+  super_ctor : Value,
   args : Array[Value],
   env : Environment,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_ctor = env.get("[[SuperConstructor]]")
   if !is_constructor_value(super_ctor) {
     raise @errors.TypeError(
       message=format_loc_context("super constructor is not a constructor", loc),
@@ -2073,7 +2105,7 @@ fn Interpreter::eval_super_dispatch(
               // so the inner SuperCall handler can find it.
               call_env.def_tdz("this", LetBinding)
               call_env.def_builtin("[[PendingThis]]", this_val)
-              call_env.def_builtin("[[SuperConstructor]]", data.prototype)
+              call_env.def_builtin("[[ActiveClassFunction]]", super_ctor)
               call_env.def_builtin("[[SuperPrototype]]", super_proto)
               // Super is also derived: defer its fields until its own super() returns
               if super_instance_fields.length() > 0 ||
@@ -2150,7 +2182,12 @@ fn Interpreter::eval_super_dispatch(
             None =>
               match _super_ctor {
                 None => this_val
-                Some(_) => self.eval_super_dispatch(args, call_env, loc)
+                Some(_) => {
+                  let next_super_ctor = get_active_super_constructor(
+                    call_env, loc,
+                  )
+                  self.eval_super_dispatch(next_super_ctor, args, call_env, loc)
+                }
               }
           }
           // Initialize 'this' in the calling env (may be TDZ for derived classes)
@@ -2205,7 +2242,8 @@ fn Interpreter::eval_super_dispatch(
         _ =>
           raise @errors.ReferenceError(
             message=format_loc_context(
-              "super() called but [[SuperConstructor]] is not a constructor", loc,
+              "super() called but the selected super value is not a constructor",
+              loc,
             ),
           )
       }
@@ -2217,7 +2255,7 @@ fn Interpreter::eval_super_dispatch(
     _ =>
       raise @errors.ReferenceError(
         message=format_loc_context(
-          "super() called but no [[SuperConstructor]] in scope", loc,
+          "super() called but no super constructor is in scope", loc,
         ),
       )
   }

@@ -3108,6 +3108,39 @@ test "bytecode direct eval inherits caller strictness" {
 }
 
 ///|
+test "bytecode direct eval stops super context at ordinary functions" {
+  let property_src =
+    #|var obj = {
+    #|  property: function() { eval("super.value"); }
+    #|};
+    #|obj.property();
+  inspect(
+    bytecode_compare(property_src),
+    content="throw:SyntaxError: 'super' property access is not allowed here — eval source contains super.x outside a method",
+  )
+  let nested_src =
+    #|var obj = {
+    #|  method() {
+    #|    function nested() { eval("super.value"); }
+    #|    nested();
+    #|  }
+    #|};
+    #|obj.method();
+  inspect(
+    bytecode_compare(nested_src),
+    content="throw:SyntaxError: 'super' property access is not allowed here — eval source contains super.x outside a method",
+  )
+  let arrow_src =
+    #|var proto = { value: 42 };
+    #|var obj = {
+    #|  __proto__: proto,
+    #|  method() { return (() => eval("super.value"))(); }
+    #|};
+    #|obj.method();
+  inspect(bytecode_compare(arrow_src), content="value:42")
+}
+
+///|
 test "bytecode nested direct eval can update outer bindings" {
   let src =
     #|function outer() {
