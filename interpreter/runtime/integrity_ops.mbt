@@ -1,226 +1,196 @@
 ///|
-/// Object integrity operations (SetIntegrityLevel / TestIntegrityLevel /
-/// `[[PreventExtensions]]` / `[[IsExtensible]]`) relocated from
-/// `interpreter/stdlib/builtins_object_integrity.mbt` so that stdlib calls a
-/// runtime operation instead of reaching into PropertyBag / ArrayData /
-/// extensibility representation internals (architecture redesign Stage 8).
-///
-/// These reproduce the existing Object.freeze / seal / preventExtensions /
-/// isFrozen / isSealed / isExtensible behavior verbatim, including the existing
-/// asymmetries: freeze/seal do not invoke proxy traps, while preventExtensions
-/// and isExtensible do; and isFrozen/isSealed treat arrays through the
-/// non-object fallback (vacuously true) even though freeze genuinely freezes
-/// array index slots. Preserving that behavior verbatim is intentional.
+/// Object integrity abstract operations. All observable object operations go
+/// through the canonical internal-method dispatchers so Proxy traps run in the
+/// order required by SetIntegrityLevel / TestIntegrityLevel.
 
 ///|
-/// Default descriptor for a key with no own descriptor: a plain
-/// writable+enumerable+configurable data property.
-fn default_descriptor() -> PropDescriptor {
-  {
-    writable: true,
-    enumerable: true,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
+priv enum IntegrityLevel {
+  Sealed
+  Frozen
+}
+
+///|
+/// The descriptor applied by SetIntegrityLevel for one existing property.
+/// Accessors have no writable attribute, so freezing only clears configurable.
+fn integrity_descriptor(
+  level : IntegrityLevel,
+  current : PropDescriptor?,
+) -> PartialDescriptor {
+  match (level, current) {
+    (Frozen, Some(desc)) if !desc.is_accessor =>
+      {
+        ..PartialDescriptor::empty(),
+        writable: Some(false),
+        configurable: Some(false),
+      }
+    _ => { ..PartialDescriptor::empty(), configurable: Some(false) }
   }
 }
 
 ///|
-/// SetIntegrityLevel(frozen): force a data property non-writable and
-/// non-configurable while preserving every other slot.
-fn frozen_descriptor(existing : PropDescriptor?) -> PropDescriptor {
-  {
-    ..existing.unwrap_or(default_descriptor()),
-    writable: false,
-    configurable: false,
+/// Pure TestIntegrityLevel decision for one present own descriptor.
+fn descriptor_has_integrity(
+  level : IntegrityLevel,
+  desc : PropDescriptor,
+) -> Bool {
+  guard !desc.configurable else { return false }
+  match level {
+    Frozen => desc.is_accessor || !desc.writable
+    Sealed => true
   }
 }
 
 ///|
-/// SetIntegrityLevel(sealed): force a property non-configurable while
-/// preserving writability and every other slot.
-fn sealed_descriptor(existing : PropDescriptor?) -> PropDescriptor {
-  { ..existing.unwrap_or(default_descriptor()), configurable: false }
+/// Canonical `[[PreventExtensions]]` dispatcher used by Object integrity
+/// builtins. Proxy paths invoke the trap and preserve its Boolean completion.
+fn Interpreter::prevent_extensions_internal(
+  self : Interpreter,
+  obj : Value,
+) -> Bool raise Error {
+  match obj {
+    Value::Proxy(proxy_data) => proxy_prevent_extensions(self, proxy_data)
+    Object(data) => {
+      data.extensible = false
+      true
+    }
+    Array(data) => {
+      data.extensible = false
+      true
+    }
+    Map(_) | Set(_) | Promise(_) => true
+    _ => true
+  }
 }
 
 ///|
-fn freeze_string_properties(bag : PropertyBag) -> Unit {
-  // Own string keys plus accessor/descriptor-only keys not in `properties`.
-  let keys : Array[String] = [
-    ..bag.properties.keys(),
-    ..bag.descriptors.keys().filter(fn(k) { !bag.properties.contains(k) }),
-  ]
+/// Canonical `[[IsExtensible]]` dispatcher used by TestIntegrityLevel and
+/// Object.isExtensible. Proxy paths invoke the trap.
+fn Interpreter::is_extensible_internal(
+  self : Interpreter,
+  obj : Value,
+) -> Bool raise Error {
+  match obj {
+    Object(data) => data.extensible
+    Array(data) => data.extensible
+    Value::Proxy(proxy_data) => proxy_is_extensible(self, proxy_data)
+    _ => false
+  }
+}
+
+///|
+/// ES §7.3.15 SetIntegrityLevel.
+fn Interpreter::set_integrity_level(
+  self : Interpreter,
+  obj : Value,
+  level : IntegrityLevel,
+) -> Value raise Error {
+  guard is_object_value(obj) else { return obj }
+  guard self.prevent_extensions_internal(obj) else {
+    raise @errors.TypeError(message="Cannot prevent extensions on object")
+  }
+  let keys = self.own_property_keys(obj)
   for key in keys {
-    bag.descriptors[key] = frozen_descriptor(bag.descriptors.get(key))
-  }
-}
-
-///|
-fn freeze_symbol_properties(bag : PropertyBag) -> Unit {
-  let sym_ids : Array[Int] = [..bag.symbol_properties.keys()]
-  for id in sym_ids {
-    bag.symbol_descriptors[id] = frozen_descriptor(
-      bag.symbol_descriptors.get(id),
+    let current = match level {
+      Sealed => None
+      Frozen =>
+        match self.get_own_property(obj, key) {
+          Some((desc, _)) => Some(desc)
+          None => None
+        }
+    }
+    // Frozen skips keys that disappeared after [[OwnPropertyKeys]]. Sealed
+    // follows the spec and still attempts DefinePropertyOrThrow for each key.
+    if level is Frozen && current is None {
+      continue
+    }
+    let succeeded = self.define_own_property(
+      obj,
+      key,
+      integrity_descriptor(level, current),
+      @token.Loc::default(),
     )
-  }
-}
-
-///|
-fn freeze_array_index_properties(data : ArrayData) -> Unit {
-  for i in 0..<data.elements.length() {
-    if !data.holes.contains(i) {
-      let key = i.to_string()
-      data.bag.descriptors[key] = frozen_descriptor(
-        data.bag.descriptors.get(key),
-      )
+    guard succeeded else {
+      raise @errors.TypeError(message="Cannot set object integrity level")
     }
   }
+  obj
+}
+
+///|
+/// ES §7.3.16 TestIntegrityLevel.
+fn Interpreter::test_integrity_level(
+  self : Interpreter,
+  obj : Value,
+  level : IntegrityLevel,
+) -> Value raise Error {
+  guard is_object_value(obj) else { return Bool(true) }
+  guard !self.is_extensible_internal(obj) else { return Bool(false) }
+  let keys = self.own_property_keys(obj)
+  for key in keys {
+    match self.get_own_property(obj, key) {
+      Some((desc, _)) if !descriptor_has_integrity(level, desc) =>
+        return Bool(false)
+      _ => ()
+    }
+  }
+  Bool(true)
 }
 
 ///|
 /// SetIntegrityLevel(O, frozen) backing for Object.freeze (§20.1.2.6).
-pub fn set_integrity_frozen(obj : Value) -> Value raise Error {
-  match obj {
-    Object(data) => {
-      if data.class_name == "Module" {
-        let mut has_string_export = false
-        data.bag.properties.each(fn(_, _) { has_string_export = true })
-        if has_string_export {
-          raise @errors.TypeError(
-            message="Cannot freeze module namespace object",
-          )
-        }
-      }
-      data.extensible = false
-      freeze_string_properties(data.bag)
-      freeze_symbol_properties(data.bag)
-      obj
-    }
-    Array(data) => {
-      data.extensible = false
-      data.length_writable = false
-      freeze_array_index_properties(data)
-      freeze_string_properties(data.bag)
-      freeze_symbol_properties(data.bag)
-      obj
-    }
-    _ => obj
-  }
+pub fn set_integrity_frozen(
+  interp : Interpreter,
+  obj : Value,
+) -> Value raise Error {
+  interp.set_integrity_level(obj, Frozen)
 }
 
 ///|
 /// SetIntegrityLevel(O, sealed) backing for Object.seal (§20.1.2.20).
-pub fn set_integrity_sealed(obj : Value) -> Value {
-  match obj {
-    Object(data) => {
-      data.extensible = false
-      // Seal string properties. Unlike freeze, seal iterates own *properties*
-      // only — descriptor-only keys are intentionally left as-is (preserved
-      // pre-existing behavior).
-      let keys : Array[String] = [..data.bag.properties.keys()]
-      for key in keys {
-        data.bag.descriptors[key] = sealed_descriptor(
-          data.bag.descriptors.get(key),
-        )
-      }
-      // Seal symbol properties
-      let sym_ids : Array[Int] = [..data.bag.symbol_properties.keys()]
-      for id in sym_ids {
-        data.bag.symbol_descriptors[id] = sealed_descriptor(
-          data.bag.symbol_descriptors.get(id),
-        )
-      }
-      obj
-    }
-    _ => obj
-  }
+pub fn set_integrity_sealed(
+  interp : Interpreter,
+  obj : Value,
+) -> Value raise Error {
+  interp.set_integrity_level(obj, Sealed)
 }
 
 ///|
 /// O.`[[PreventExtensions]]`() backing for Object.preventExtensions
-/// (§20.1.2.17). Invokes the proxy trap for Proxy targets.
+/// (§20.1.2.17). A falsy Proxy trap result is an exceptional completion here.
 pub fn object_prevent_extensions(
   interp : Interpreter,
   obj : Value,
 ) -> Value raise Error {
-  match obj {
-    Value::Proxy(proxy_data) => {
-      let _ = proxy_prevent_extensions(interp, proxy_data)
-      obj
-    }
-    Object(data) => {
-      data.extensible = false
-      obj
-    }
-    Array(data) => {
-      data.extensible = false
-      obj
-    }
-    _ => obj
+  guard is_object_value(obj) else { return obj }
+  guard interp.prevent_extensions_internal(obj) else {
+    raise @errors.TypeError(message="Cannot prevent extensions on object")
   }
+  obj
 }
 
 ///|
 /// TestIntegrityLevel(O, frozen) backing for Object.isFrozen (§20.1.2.13).
-pub fn test_integrity_frozen(obj : Value) -> Value {
-  match obj {
-    Object(data) => {
-      if data.extensible {
-        return Value::Bool(false)
-      }
-      if data.class_name == "Module" {
-        let mut has_string_export = false
-        data.bag.properties.each(fn(_, _) { has_string_export = true })
-        if has_string_export {
-          return Value::Bool(false)
-        }
-      }
-      let mut frozen = true
-      data.bag.properties.each(fn(k, _v) {
-        match data.bag.descriptors.get(k) {
-          Some(d) => if d.writable || d.configurable { frozen = false }
-          None => frozen = false // No descriptor = writable+configurable
-        }
-      })
-      Bool(frozen)
-    }
-    _ => Value::Bool(true) // Non-objects are vacuously frozen
-  }
+pub fn test_integrity_frozen(
+  interp : Interpreter,
+  obj : Value,
+) -> Value raise Error {
+  interp.test_integrity_level(obj, Frozen)
 }
 
 ///|
 /// TestIntegrityLevel(O, sealed) backing for Object.isSealed (§20.1.2.15).
-pub fn test_integrity_sealed(obj : Value) -> Value {
-  match obj {
-    Object(data) => {
-      if data.extensible {
-        return Value::Bool(false)
-      }
-      let mut is_sealed = true
-      data.bag.properties.each(fn(k, _v) {
-        match data.bag.descriptors.get(k) {
-          Some(d) => if d.configurable { is_sealed = false }
-          None => is_sealed = false
-        }
-      })
-      Bool(is_sealed)
-    }
-    _ => Value::Bool(true)
-  }
+pub fn test_integrity_sealed(
+  interp : Interpreter,
+  obj : Value,
+) -> Value raise Error {
+  interp.test_integrity_level(obj, Sealed)
 }
 
 ///|
 /// O.`[[IsExtensible]]`() backing for Object.isExtensible (§20.1.2.12).
-/// Invokes the proxy trap for Proxy targets.
 pub fn object_is_extensible(
   interp : Interpreter,
   obj : Value,
 ) -> Value raise Error {
-  match obj {
-    Object(data) => Bool(data.extensible)
-    Array(data) => Bool(data.extensible)
-    Value::Proxy(proxy_data) => Bool(proxy_is_extensible(interp, proxy_data))
-    _ => Value::Bool(false)
-  }
+  Bool(interp.is_extensible_internal(obj))
 }

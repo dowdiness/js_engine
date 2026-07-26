@@ -339,9 +339,9 @@ pub fn set_function_name(Value, String) -> Unit
 
 pub fn set_host_slot(ObjectData, HostSlotKey, Value) -> Unit
 
-pub fn set_integrity_frozen(Value) -> Value raise
+pub fn set_integrity_frozen(Interpreter, Value) -> Value raise
 
-pub fn set_integrity_sealed(Value) -> Value
+pub fn set_integrity_sealed(Interpreter, Value) -> Value raise
 
 pub fn set_keyed_collection_iterator_next_index(ObjectData, Int, Value) -> Unit
 
@@ -365,9 +365,9 @@ pub fn string_to_utf16(String) -> Array[Int]
 
 pub fn strip_self_name_binding(Value) -> Value
 
-pub fn test_integrity_frozen(Value) -> Value
+pub fn test_integrity_frozen(Interpreter, Value) -> Value raise
 
-pub fn test_integrity_sealed(Value) -> Value
+pub fn test_integrity_sealed(Interpreter, Value) -> Value raise
 
 pub fn to_array_like_elements(Value) -> Array[Value] raise
 

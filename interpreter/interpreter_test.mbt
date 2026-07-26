@@ -5414,6 +5414,204 @@ test "Object.isSealed on non-sealed object" {
 }
 
 ///|
+/// compat-table: Proxy internal `defineProperty` calls / SetIntegrityLevel.
+test "Proxy integrity: freeze invokes defineProperty for every own key" {
+  let src =
+    #|var def = [];
+    #|var p = new Proxy({foo: 1, bar: 2}, {
+    #|  defineProperty(o, v, desc) {
+    #|    def.push(v);
+    #|    Object.defineProperty(o, v, desc);
+    #|    return true;
+    #|  }
+    #|});
+    #|Object.freeze(p);
+    #|console.log(def + '' === "foo,bar");
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `ownKeys` calls / SetIntegrityLevel.
+test "Proxy integrity: freeze invokes ownKeys exactly once" {
+  let src =
+    #|var ownKeysCalled = 0;
+    #|var p = new Proxy({}, {
+    #|  ownKeys(o) {
+    #|    ownKeysCalled++;
+    #|    return Object.keys(o);
+    #|  }
+    #|});
+    #|Object.freeze(p);
+    #|console.log(ownKeysCalled === 1);
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+/// compat-table: Proxy internal `ownKeys` calls / TestIntegrityLevel.
+test "Proxy integrity: isFrozen invokes ownKeys exactly once" {
+  let src =
+    #|var ownKeysCalled = 0;
+    #|var p = new Proxy(Object.preventExtensions({}), {
+    #|  ownKeys(o) {
+    #|    ownKeysCalled++;
+    #|    return Object.keys(o);
+    #|  }
+    #|});
+    #|Object.isFrozen(p);
+    #|console.log(ownKeysCalled === 1);
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
+}
+
+///|
+test "Proxy integrity operations follow internal-method order" {
+  let src =
+    #|function freezingHandler(log) {
+    #|  return {
+    #|    preventExtensions: function(o) {
+    #|      log.push("preventExtensions");
+    #|      Object.preventExtensions(o);
+    #|      return true;
+    #|    },
+    #|    ownKeys: function(o) {
+    #|      log.push("ownKeys");
+    #|      return Reflect.ownKeys(o);
+    #|    },
+    #|    getOwnPropertyDescriptor: function(o, k) {
+    #|      log.push("getOwnPropertyDescriptor:" + k);
+    #|      return Object.getOwnPropertyDescriptor(o, k);
+    #|    },
+    #|    defineProperty: function(o, k, d) {
+    #|      log.push("defineProperty:" + k);
+    #|      return Reflect.defineProperty(o, k, d);
+    #|    }
+    #|  };
+    #|}
+    #|var freezeLog = [];
+    #|Object.freeze(new Proxy({foo: 1, bar: 2}, freezingHandler(freezeLog)));
+    #|console.log(freezeLog.join("|"));
+    #|var sealLog = [];
+    #|Object.seal(new Proxy({foo: 1, bar: 2}, freezingHandler(sealLog)));
+    #|console.log(sealLog.join("|"));
+    #|function testingHandler(log) {
+    #|  return {
+    #|    isExtensible: function(o) {
+    #|      log.push("isExtensible");
+    #|      return Reflect.isExtensible(o);
+    #|    },
+    #|    ownKeys: function(o) {
+    #|      log.push("ownKeys");
+    #|      return Reflect.ownKeys(o);
+    #|    },
+    #|    getOwnPropertyDescriptor: function(o, k) {
+    #|      log.push("getOwnPropertyDescriptor:" + k);
+    #|      return Object.getOwnPropertyDescriptor(o, k);
+    #|    }
+    #|  };
+    #|}
+    #|var frozenLog = [];
+    #|Object.isFrozen(new Proxy(Object.freeze({foo: 1, bar: 2}), testingHandler(frozenLog)));
+    #|console.log(frozenLog.join("|"));
+    #|var sealedLog = [];
+    #|Object.isSealed(new Proxy(Object.seal({foo: 1, bar: 2}), testingHandler(sealedLog)));
+    #|console.log(sealedLog.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "preventExtensions|ownKeys|getOwnPropertyDescriptor:foo|defineProperty:foo|getOwnPropertyDescriptor:bar|defineProperty:bar",
+    "preventExtensions|ownKeys|defineProperty:foo|defineProperty:bar", "isExtensible|ownKeys|getOwnPropertyDescriptor:foo|getOwnPropertyDescriptor:bar",
+    "isExtensible|ownKeys|getOwnPropertyDescriptor:foo|getOwnPropertyDescriptor:bar",
+  ])
+}
+
+///|
+test "Proxy integrity operations propagate abrupt trap completions" {
+  let src =
+    #|function report(label, action) {
+    #|  try {
+    #|    action();
+    #|    console.log(label + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(label + ":" + e.message);
+    #|  }
+    #|}
+    #|report("freeze-ownKeys", function() {
+    #|  Object.freeze(new Proxy({}, {
+    #|    preventExtensions: function(o) { Object.preventExtensions(o); return true; },
+    #|    ownKeys: function() { throw new Error("freeze-ownKeys"); }
+    #|  }));
+    #|});
+    #|report("seal-defineProperty", function() {
+    #|  Object.seal(new Proxy({x: 1}, {
+    #|    defineProperty: function() { throw new Error("seal-defineProperty"); }
+    #|  }));
+    #|});
+    #|report("isFrozen-getOwnPropertyDescriptor", function() {
+    #|  Object.isFrozen(new Proxy(Object.preventExtensions({x: 1}), {
+    #|    getOwnPropertyDescriptor: function() { throw new Error("isFrozen-getOwnPropertyDescriptor"); }
+    #|  }));
+    #|});
+    #|report("isSealed-ownKeys", function() {
+    #|  Object.isSealed(new Proxy(Object.preventExtensions({}), {
+    #|    ownKeys: function() { throw new Error("isSealed-ownKeys"); }
+    #|  }));
+    #|});
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "freeze-ownKeys:freeze-ownKeys", "seal-defineProperty:seal-defineProperty", "isFrozen-getOwnPropertyDescriptor:isFrozen-getOwnPropertyDescriptor",
+    "isSealed-ownKeys:isSealed-ownKeys",
+  ])
+}
+
+///|
+test "Proxy integrity operations stop after failed preventExtensions" {
+  let src =
+    #|function check(name, operation) {
+    #|  var log = [];
+    #|  var proxy = new Proxy({}, {
+    #|    preventExtensions: function() { log.push("preventExtensions"); return false; },
+    #|    ownKeys: function() { log.push("ownKeys"); return []; }
+    #|  });
+    #|  try {
+    #|    operation(proxy);
+    #|    console.log(name + ":no throw:" + log.join("|"));
+    #|  } catch (e) {
+    #|    console.log(name + ":" + e.name + ":" + log.join("|"));
+    #|  }
+    #|}
+    #|check("freeze", function(p) { Object.freeze(p); });
+    #|check("seal", function(p) { Object.seal(p); });
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "freeze:TypeError:preventExtensions", "seal:TypeError:preventExtensions",
+  ])
+}
+
+///|
+test "Proxy integrity operations reject revoked proxies" {
+  let src =
+    #|function check(name, operation) {
+    #|  var record = Proxy.revocable({}, {});
+    #|  record.revoke();
+    #|  try {
+    #|    operation(record.proxy);
+    #|    console.log(name + ":no throw");
+    #|  } catch (e) {
+    #|    console.log(name + ":" + e.name);
+    #|  }
+    #|}
+    #|check("freeze", function(p) { Object.freeze(p); });
+    #|check("seal", function(p) { Object.seal(p); });
+    #|check("isFrozen", function(p) { Object.isFrozen(p); });
+    #|check("isSealed", function(p) { Object.isSealed(p); });
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "freeze:TypeError", "seal:TypeError", "isFrozen:TypeError", "isSealed:TypeError",
+  ])
+}
+
+///|
 test "Object.isExtensible on regular object" {
   let src =
     #|var obj = {};

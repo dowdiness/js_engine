@@ -8,17 +8,23 @@
 
 ///|
 fn make_freeze_func() -> Value {
-  @runtime.make_native_func(name="freeze", length=1, fn(args) raise {
+  @runtime.make_interp_static_func(name="freeze", length=1, fn(
+    interp,
+    args,
+  ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    @runtime.set_integrity_frozen(obj)
+    @runtime.set_integrity_frozen(interp, obj)
   })
 }
 
 ///|
 fn make_seal_func() -> Value {
-  @runtime.make_native_func(name="seal", length=1, fn(args) {
+  @runtime.make_interp_static_func(name="seal", length=1, fn(
+    interp,
+    args,
+  ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    @runtime.set_integrity_sealed(obj)
+    @runtime.set_integrity_sealed(interp, obj)
   })
 }
 
@@ -35,17 +41,23 @@ fn make_prevent_extensions_func() -> Value {
 
 ///|
 fn make_is_frozen_func() -> Value {
-  @runtime.make_native_func(name="isFrozen", length=1, fn(args) {
+  @runtime.make_interp_static_func(name="isFrozen", length=1, fn(
+    interp,
+    args,
+  ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    @runtime.test_integrity_frozen(obj)
+    @runtime.test_integrity_frozen(interp, obj)
   })
 }
 
 ///|
 fn make_is_sealed_func() -> Value {
-  @runtime.make_native_func(name="isSealed", length=1, fn(args) {
+  @runtime.make_interp_static_func(name="isSealed", length=1, fn(
+    interp,
+    args,
+  ) raise {
     let obj = if args.length() > 0 { args[0] } else { Undefined }
-    @runtime.test_integrity_sealed(obj)
+    @runtime.test_integrity_sealed(interp, obj)
   })
 }
 
