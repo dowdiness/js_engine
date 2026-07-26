@@ -216,6 +216,12 @@ failure categories, including source-aware evaluation. Stages 4 and 5 extend
 that model with limit, interruption, and host failures; they must not introduce
 a second diagnostic model.
 
+The [execution guardrail contract](decisions/engine-execution-guardrail-contract.md)
+now selects operation-scoped bounded APIs and fixes step, stack-depth,
+interruption, queue, and diagnostic semantics. This is a contract decision
+only: the bounded runtime and public APIs remain unimplemented, so Stage 4 is
+still pending.
+
 ### 3. Inject host-owned JSON data — implemented
 
 `Engine::inject_json` copies host-owned `Json` through the direct realm bridge
@@ -230,7 +236,7 @@ Proxy traps, `toJSON`, microtasks, or timers. The accepted collision,
 descriptor, copying, and failure policy is recorded in the
 [JSON injection contract](decisions/engine-json-injection-contract.md).
 
-### 4. Add minimum execution guardrails
+### 4. Add minimum execution guardrails — contract accepted, implementation pending
 
 Implement the minimum execution controls before granting JavaScript synchronous
 host capabilities:

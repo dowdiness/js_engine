@@ -14,6 +14,23 @@ fn function_decl_is_hoisted_noop(env : Environment, name : String) -> Bool {
 }
 
 ///|
+/// Return the current value of a HoistableDeclaration binding created by
+/// BlockDeclarationInstantiation. Block environments are not var scopes, and
+/// their mutable lexical binding may have been assigned a non-function value
+/// before execution reaches the declaration's no-op evaluation step.
+fn instantiated_block_function_value(
+  env : Environment,
+  name : String,
+) -> Value? {
+  guard !env.is_var_scope else { return None }
+  match env.bindings.get(name) {
+    Some(binding) if binding.kind == LetBinding && binding.initialized =>
+      Some(binding.value)
+    _ => None
+  }
+}
+
+///|
 /// Bind a FunctionDeclaration's value into `env` per §B.3.3.3 step 2.b.i and
 /// the runtime side of §10.2 FunctionDeclarationInstantiation, then propagate
 /// the value to the outer var scope when Annex B hoisting tagged it.
@@ -196,6 +213,42 @@ fn restore_for_of_loop_env(
 }
 
 ///|
+fn save_stmt_resume_frame(
+  gen_opt : GeneratorObject?,
+  index : Int,
+  env : Environment,
+  last : Value,
+) -> Unit {
+  match gen_opt {
+    Some(g) => {
+      g.stmt_resume_index_stack.push(index)
+      g.stmt_resume_env_stack.push(env)
+      g.stmt_resume_value_stack.push(last)
+    }
+    None => ()
+  }
+}
+
+///|
+fn restore_stmt_resume_frame(
+  gen_opt : GeneratorObject?,
+  fallback_env : Environment,
+) -> (Int, Environment, Value) {
+  match gen_opt {
+    Some(g) =>
+      if g.resuming && g.stmt_resume_index_stack.length() > 0 {
+        let index = g.stmt_resume_index_stack.pop().unwrap()
+        let saved_env = g.stmt_resume_env_stack.pop().unwrap()
+        let last = g.stmt_resume_value_stack.pop().unwrap()
+        (index, saved_env, last)
+      } else {
+        (0, fallback_env, Undefined)
+      }
+    None => (0, fallback_env, Undefined)
+  }
+}
+
+///|
 fn Interpreter::exec_stmt(
   self : Interpreter,
   ctx : ExecContext,
@@ -288,8 +341,7 @@ fn Interpreter::exec_stmt(
     }
     Block(stmts, _) => {
       let block_env = Environment::new(parent=Some(env))
-      // Hoist let/const with TDZ markers
-      hoist_block_tdz(stmts, block_env)
+      self.instantiate_block_declarations(stmts, block_env, ctx.strict)
       self.exec_stmts(ctx, stmts, block_env)
     }
     StmtList(stmts, _) =>
@@ -525,28 +577,35 @@ fn Interpreter::exec_stmt(
     }
     FuncDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
-      // FunctionDeclaration at the top of a var scope is fully handled during
-      // hoisting (the func value was already bound there); execution is a
-      // no-op. See `function_decl_is_hoisted_noop` + `bind_function_decl_value`.
-      if function_decl_is_hoisted_noop(env, name) {
-        Normal(Undefined)
-      } else {
-        let func_data : FuncData = {
-          name: Some(name),
-          params,
-          body,
-          closure: env,
-          strict: is_function_strict(ctx.strict, body),
-          // FunctionDeclaration execution path — name binds in enclosing
-          // VarEnvironment, no dedicated funcEnv.
-          has_name_binding: false,
-          is_method: false,
-          source_text,
+      match instantiated_block_function_value(env, name) {
+        Some(func_val) => {
+          // Standard block instantiation already initialized the lexical
+          // binding. The execution step only performs Annex B propagation.
+          self.bind_function_decl_value(ctx, env, name, func_val)
+          return Normal(Undefined)
         }
-        let func_val = make_func(func_data)
-        self.bind_function_decl_value(ctx, env, name, func_val)
-        Normal(Undefined)
+        None => ()
       }
+      // FunctionDeclaration at the top of a var scope is fully handled during
+      // hoisting; its execution is a no-op.
+      guard !function_decl_is_hoisted_noop(env, name) else {
+        return Normal(Undefined)
+      }
+      let func_data : FuncData = {
+        name: Some(name),
+        params,
+        body,
+        closure: env,
+        strict: is_function_strict(ctx.strict, body),
+        // FunctionDeclaration execution path — name binds in enclosing
+        // VarEnvironment, no dedicated funcEnv.
+        has_name_binding: false,
+        is_method: false,
+        source_text,
+      }
+      let func_val = make_func(func_data)
+      self.bind_function_decl_value(ctx, env, name, func_val)
+      Normal(Undefined)
     }
     ReturnStmt(expr, _) => {
       let value : Value = match expr {
@@ -567,13 +626,16 @@ fn Interpreter::exec_stmt(
       )
     SwitchStmt(discriminant, cases, _) => {
       let disc_val = self.eval_expr(ctx, discriminant, env)
+      let switch_env = Environment::new(parent=Some(env))
+      let block_stmts = flatten_case_block_statements(cases)
+      self.instantiate_block_declarations(block_stmts, switch_env, ctx.strict)
       let mut match_idx = -1
       let mut default_idx = -1
       for i = 0; i < cases.length(); i = i + 1 {
         match cases[i].condition {
           Some(test_expr) =>
             if match_idx < 0 {
-              let test_val = self.eval_expr(ctx, test_expr, env)
+              let test_val = self.eval_expr(ctx, test_expr, switch_env)
               if strict_equal(disc_val, test_val) {
                 match_idx = i
               }
@@ -588,9 +650,6 @@ fn Interpreter::exec_stmt(
       } else {
         cases.length()
       }
-      // Create a new lexical environment for the switch block
-      // so that let/const declarations are scoped to the switch
-      let switch_env = Environment::new(parent=Some(env))
       let mut completion : Value = Undefined
       for i = start; i < cases.length(); i = i + 1 {
         for stmt in cases[i].body {
@@ -1422,48 +1481,54 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
-      if function_decl_is_hoisted_noop(env, name) {
-        Normal(Undefined)
-      } else {
-        let func_data : FuncDataExt = {
-          name: Some(name),
-          params,
-          rest_param,
-          body,
-          closure: env,
-          strict: is_function_strict(ctx.strict, body),
-          has_name_binding: false,
-          is_method: false,
-          source_text,
+      match instantiated_block_function_value(env, name) {
+        Some(func_val) => {
+          self.bind_function_decl_value(ctx, env, name, func_val)
+          return Normal(Undefined)
         }
-        let func_val = make_func_ext(func_data)
-        self.bind_function_decl_value(ctx, env, name, func_val)
-        Normal(Undefined)
+        None => ()
       }
+      guard !function_decl_is_hoisted_noop(env, name) else {
+        return Normal(Undefined)
+      }
+      let func_data : FuncDataExt = {
+        name: Some(name),
+        params,
+        rest_param,
+        body,
+        closure: env,
+        strict: is_function_strict(ctx.strict, body),
+        has_name_binding: false,
+        is_method: false,
+        source_text,
+      }
+      let func_val = make_func_ext(func_data)
+      self.bind_function_decl_value(ctx, env, name, func_val)
+      Normal(Undefined)
     }
     GeneratorDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
-      if function_decl_is_hoisted_noop(env, name) {
-        Normal(Undefined)
-      } else {
-        let gen_func = self.make_generator_function(
-          Some(name),
-          params,
-          None,
-          body,
-          is_function_strict(ctx.strict, body),
-          env,
-          source_text~,
-        )
-        if env.bindings.contains(name) {
-          env.assign(name, gen_func)
-        } else if should_reconcile_eval_function_decl(env, name) {
-          env.assign_var(name, gen_func)
-        } else {
-          env.def(name, gen_func, VarBinding)
-        }
-        Normal(Undefined)
+      guard instantiated_block_function_value(env, name) is None &&
+        !function_decl_is_hoisted_noop(env, name) else {
+        return Normal(Undefined)
       }
+      let gen_func = self.make_generator_function(
+        Some(name),
+        params,
+        None,
+        body,
+        is_function_strict(ctx.strict, body),
+        env,
+        source_text~,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
     }
     GeneratorDeclExt(name, params, rest_param, body, _, source_text) => {
       validate_function_signature_ext(
@@ -1473,30 +1538,33 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
-      if function_decl_is_hoisted_noop(env, name) {
-        Normal(Undefined)
-      } else {
-        let gen_func = self.make_generator_function_ext(
-          Some(name),
-          params,
-          rest_param,
-          body,
-          is_function_strict(ctx.strict, body),
-          env,
-          source_text~,
-        )
-        if env.bindings.contains(name) {
-          env.assign(name, gen_func)
-        } else if should_reconcile_eval_function_decl(env, name) {
-          env.assign_var(name, gen_func)
-        } else {
-          env.def(name, gen_func, VarBinding)
-        }
-        Normal(Undefined)
+      guard instantiated_block_function_value(env, name) is None &&
+        !function_decl_is_hoisted_noop(env, name) else {
+        return Normal(Undefined)
       }
+      let gen_func = self.make_generator_function_ext(
+        Some(name),
+        params,
+        rest_param,
+        body,
+        is_function_strict(ctx.strict, body),
+        env,
+        source_text~,
+      )
+      if env.bindings.contains(name) {
+        env.assign(name, gen_func)
+      } else if should_reconcile_eval_function_decl(env, name) {
+        env.assign_var(name, gen_func)
+      } else {
+        env.def(name, gen_func, VarBinding)
+      }
+      Normal(Undefined)
     }
     AsyncFuncDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
+      guard instantiated_block_function_value(env, name) is None else {
+        return Normal(Undefined)
+      }
       let async_func = self.make_async_function(
         Some(name),
         params,
@@ -1523,6 +1591,9 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
+      guard instantiated_block_function_value(env, name) is None else {
+        return Normal(Undefined)
+      }
       let async_func = self.make_async_function_ext(
         Some(name),
         params,
@@ -1543,6 +1614,9 @@ fn Interpreter::exec_stmt(
     }
     AsyncGeneratorDecl(name, params, body, _, source_text) => {
       validate_function_signature(ctx.strict, Some(name), params, body)
+      guard instantiated_block_function_value(env, name) is None else {
+        return Normal(Undefined)
+      }
       let gen_func = self.make_async_generator_function(
         Some(name),
         params,
@@ -1569,6 +1643,9 @@ fn Interpreter::exec_stmt(
         rest_param,
         body,
       )
+      guard instantiated_block_function_value(env, name) is None else {
+        return Normal(Undefined)
+      }
       let gen_func = self.make_async_generator_function_ext(
         Some(name),
         params,
@@ -2414,9 +2491,22 @@ fn Interpreter::exec_stmts(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Signal raise Error {
-  let mut last : Value = Undefined
-  for stmt in stmts {
-    match self.exec_stmt(ctx, stmt, env) {
+  let (start, exec_env, initial_last) = restore_stmt_resume_frame(
+    ctx.current_generator,
+    env,
+  )
+  let mut last = initial_last
+  for i = start; i < stmts.length(); i = i + 1 {
+    let stmt = stmts[i]
+    let signal = self.exec_stmt(ctx, stmt, exec_env) catch {
+      e => {
+        if e is YieldSignal(_) {
+          save_stmt_resume_frame(ctx.current_generator, i, exec_env, last)
+        }
+        raise e
+      }
+    }
+    match signal {
       Normal(v) =>
         // Per spec, declarations have empty completion values that don't update
         // the statement list's value. Only non-declaration statements update it.

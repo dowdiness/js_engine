@@ -349,6 +349,33 @@ test "for loop" {
 }
 
 ///|
+test "for-of contextual let and yield identifiers" {
+  let src =
+    #|var yield;
+    #|var x = 0;
+    #|for ({ yield } of [{ yield: 3 }]) {
+    #|  console.log(yield);
+    #|}
+    #|for (var item of []) let
+    #|{}
+    #|for (var item of []) let
+    #|x = 1;
+    #|console.log(x);
+  let output = run_output(src)
+  json_inspect(output, content=["3", "1"])
+}
+
+///|
+test "for-of contextual identifiers retain strict early errors" {
+  expect_throw(
+    "\"use strict\"; for ({ yield } of []) {}", "SyntaxError: Unexpected strict mode reserved word",
+  )
+  expect_throw(
+    "\"use strict\"; for (var x of []) let\nx = 1;", "SyntaxError: Unexpected strict mode reserved word",
+  )
+}
+
+///|
 test "function declaration and call" {
   let (_, result) = run_js("function add(a, b) { return a + b; } add(3, 4)")
   expect_value_string(result, "7", "function declaration result")
@@ -2607,6 +2634,54 @@ test "function bind method" {
   expect_result(result, "Hi Bob")
 }
 
+///|
+test "compat-table ES2015 bound functions preserve target prototype matrix" {
+  let output = run_output(
+    (
+      #|function check(kind, target) {
+      #|  var prototypes = [Function.prototype, { marker: kind }, null];
+      #|  for (var i = 0; i < prototypes.length; i++) {
+      #|    var prototype = prototypes[i];
+      #|    Object.setPrototypeOf(target, prototype);
+      #|    var bound = Function.prototype.bind.call(target, null);
+      #|    console.log(kind + ":" + i + ":" + (Object.getPrototypeOf(bound) === prototype));
+      #|  }
+      #|}
+      #|check("function", function ordinary() {});
+      #|check("generator", function* generator() {});
+      #|check("arrow", () => 1);
+      #|check("class", class BoundTarget {});
+    ),
+  )
+  json_inspect(output, content=[
+    "function:0:true", "function:1:true", "function:2:true", "generator:0:true",
+    "generator:1:true", "generator:2:true", "arrow:0:true", "arrow:1:true", "arrow:2:true",
+    "class:0:true", "class:1:true", "class:2:true",
+  ])
+}
+
+///|
+test "bound functions retain call and construct behavior with null prototype" {
+  let output = run_output(
+    (
+      #|function add(left, right) { return this.base + left + right; }
+      #|Object.setPrototypeOf(add, null);
+      #|var boundAdd = Function.prototype.bind.call(add, { base: 10 }, 2);
+      #|console.log(boundAdd(3));
+      #|class Pair {
+      #|  constructor(left, right) { this.left = left; this.right = right; }
+      #|  total() { return this.left + this.right; }
+      #|}
+      #|Object.setPrototypeOf(Pair, null);
+      #|var BoundPair = Function.prototype.bind.call(Pair, { ignored: true }, 4);
+      #|var pair = new BoundPair(5);
+      #|console.log(pair.total());
+      #|console.log(Object.getPrototypeOf(pair) === Pair.prototype);
+    ),
+  )
+  json_inspect(output, content=["15", "9", "true"])
+}
+
 // ====== Promise Constructor/Species Regression Tests ======
 
 ///|
@@ -3770,6 +3845,69 @@ test "string startsWith endsWith" {
     #|console.log("hello".startsWith("llo"));
   let output = run_output(src)
   json_inspect(output, content=["true", "true", "false"])
+}
+
+///|
+test "string startsWith endsWith includes use IsRegExp via Symbol.match" {
+  let src =
+    #|function outcome(method, receiver, search, position) {
+    #|  try {
+    #|    var result = position === undefined
+    #|      ? String.prototype[method].call(receiver, search)
+    #|      : String.prototype[method].call(receiver, search, position);
+    #|    return "return:" + result;
+    #|  } catch (error) {
+    #|    return error instanceof TypeError ? "throw:TypeError" : "throw:" + error;
+    #|  }
+    #|}
+    #|function check(method, receiver) {
+    #|  var regexp = /x/;
+    #|  console.log(method + ":regexp:" + outcome(method, receiver, regexp));
+    #|  regexp[Symbol.match] = false;
+    #|  console.log(method + ":disabled:" + outcome(method, receiver, regexp));
+    #|
+    #|  var custom = { toString: function() { return "x"; } };
+    #|  custom[Symbol.match] = 1;
+    #|  console.log(method + ":custom:" + outcome(method, receiver, custom));
+    #|
+    #|  var throwing = { toString: function() { return "x"; } };
+    #|  Object.defineProperty(throwing, Symbol.match, {
+    #|    get: function() { throw "match-getter"; }
+    #|  });
+    #|  console.log(method + ":getter:" + outcome(method, receiver, throwing));
+    #|  console.log(method + ":string:" + outcome(method, receiver, "x"));
+    #|
+    #|  var order = [];
+    #|  var thisValue = {
+    #|    toString: function() { order.push("this"); return "x"; }
+    #|  };
+    #|  var search = {
+    #|    toString: function() { order.push("search"); return "x"; }
+    #|  };
+    #|  Object.defineProperty(search, Symbol.match, {
+    #|    get: function() { order.push("match"); return false; }
+    #|  });
+    #|  var position = {
+    #|    valueOf: function() {
+    #|      order.push("position");
+    #|      return method === "endsWith" ? 1 : 0;
+    #|    }
+    #|  };
+    #|  var ordered = String.prototype[method].call(thisValue, search, position);
+    #|  console.log(method + ":order:" + ordered + ":" + order.join(","));
+    #|}
+    #|check("startsWith", "/x/ suffix");
+    #|check("endsWith", "prefix /x/");
+    #|check("includes", "prefix /x/ suffix");
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "startsWith:regexp:throw:TypeError", "startsWith:disabled:return:true", "startsWith:custom:throw:TypeError",
+    "startsWith:getter:throw:match-getter", "startsWith:string:return:false", "startsWith:order:true:this,match,search,position",
+    "endsWith:regexp:throw:TypeError", "endsWith:disabled:return:true", "endsWith:custom:throw:TypeError",
+    "endsWith:getter:throw:match-getter", "endsWith:string:return:false", "endsWith:order:true:this,match,search,position",
+    "includes:regexp:throw:TypeError", "includes:disabled:return:true", "includes:custom:throw:TypeError",
+    "includes:getter:throw:match-getter", "includes:string:return:true", "includes:order:true:this,match,search,position",
+  ])
 }
 
 ///|
@@ -6852,6 +6990,39 @@ test "object rest in destructuring" {
   json_inspect(output, content=["1", "2", "3"])
 }
 
+///|
+test "object rest follows own-key order and boxes string sources" {
+  let output = run_output(
+    (
+      #|const calls = [];
+      #|const symbolKey = Symbol("key");
+      #|const source = {
+      #|  get z() { calls.push("z"); return 2; },
+      #|  get a() { calls.push("a"); return 3; }
+      #|};
+      #|Object.defineProperty(source, "1", {
+      #|  get() { calls.push("1"); return 1; }, enumerable: true
+      #|});
+      #|Object.defineProperty(source, symbolKey, {
+      #|  get() { calls.push("symbol"); return 4; }, enumerable: true
+      #|});
+      #|let rest;
+      #|for ({ ...rest } of [source]) {}
+      #|console.log(calls.join(","));
+      #|console.log(rest["1"] + "," + rest.z + "," + rest.a + "," + rest[symbolKey]);
+      #|let chars;
+      #|for ({ ...chars } of ["foo"]) {}
+      #|console.log(chars["0"] + chars["1"] + chars["2"] + ":" + Object.keys(chars).length);
+      #|let astral;
+      #|for ({ ...astral } of ["𝌆"]) {}
+      #|console.log(Object.keys(astral).length + ":" + astral["0"].charCodeAt(0) + ":" + astral["1"].charCodeAt(0));
+    ),
+  )
+  json_inspect(output, content=[
+    "1,z,a,symbol", "1,2,3,4", "foo:3", "2:55348:57094",
+  ])
+}
+
 // =============================================================================
 // Phase 5: new.target meta-property
 // =============================================================================
@@ -8541,6 +8712,34 @@ test "generator: yield inside for-of in generator" {
     ),
   )
   json_inspect(output, content=["10", "20", "30", "true"])
+}
+
+///|
+test "generator: for-of resume does not replay statements before yield" {
+  let output = run_output(
+    (
+      #|function* values() { yield 1; yield 1; }
+      #|let before = 0;
+      #|let after = 0;
+      #|let finished = 0;
+      #|function* control() {
+      #|  for (const value of values()) {
+      #|    before += value;
+      #|    yield;
+      #|    after += value;
+      #|  }
+      #|  finished++;
+      #|}
+      #|const iterator = control();
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+      #|iterator.next();
+      #|console.log(before + "," + after + "," + finished);
+    ),
+  )
+  json_inspect(output, content=["1,0,0", "2,1,0", "2,2,1"])
 }
 
 ///|
@@ -10470,6 +10669,219 @@ test "strict: block function does not overwrite outer var" {
 }
 
 ///|
+test "strict: block function is initialized before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return 1; }
+      #|console.log(f());
+      #|{
+      #|  console.log(f());
+      #|  function f() { return 2; }
+      #|  console.log(f());
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["1", "2", "2", "1"])
+}
+
+///|
+test "strict: extended block function is initialized before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return "outer"; }
+      #|{
+      #|  console.log(f());
+      #|  function f(value = "inner") { return value; }
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["inner", "outer"])
+}
+
+///|
+test "strict: block generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  console.log(before === g);
+      #|  function* g() { yield "inner"; }
+      #|  console.log(before === g);
+      #|  console.log(g().next().value);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "inner", "outer"])
+}
+
+///|
+test "strict: extended block generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  function* g(value = "inner") { yield value; }
+      #|  console.log(before === g);
+      #|  console.log(g().next().value);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "inner", "outer"])
+}
+
+///|
+test "strict: block async function is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return "outer"; }
+      #|{
+      #|  const before = f;
+      #|  console.log(f.toString().startsWith("async function"));
+      #|  async function f() { return "inner"; }
+      #|  console.log(before === f);
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: extended block async function is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return "outer"; }
+      #|{
+      #|  const before = f;
+      #|  console.log(f.toString().startsWith("async function"));
+      #|  async function f(value = "inner") { return value; }
+      #|  console.log(before === f);
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: block async generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  console.log(g.toString().startsWith("async function*"));
+      #|  async function* g() { yield "inner"; }
+      #|  console.log(before === g);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: extended block async generator is initialized once before declaration" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function g() { return "outer"; }
+      #|{
+      #|  const before = g;
+      #|  console.log(g.toString().startsWith("async function*"));
+      #|  async function* g(value = "inner") { yield value; }
+      #|  console.log(before === g);
+      #|}
+      #|console.log(g());
+    ),
+  )
+  json_inspect(output, content=["true", "true", "outer"])
+}
+
+///|
+test "strict: switch block function is initialized before case execution" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return 1; }
+      #|switch (0) {
+      #|  case 0:
+      #|    console.log(f());
+      #|    function f() { return 2; }
+      #|    console.log(f());
+      #|}
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["2", "2", "1"])
+}
+
+///|
+test "strict: switch case selection observes instantiated block function" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|function f() { return 1; }
+      #|switch (2) {
+      #|  case f():
+      #|    function f() { return 2; }
+      #|    console.log("hit");
+      #|}
+    ),
+  )
+  json_inspect(output, content=["hit"])
+}
+
+///|
+test "strict: duplicate switch block functions throw SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|"use strict";
+        #|switch (0) {
+        #|  case 0: function f() {}
+        #|  case 1: function f() {}
+        #|}
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  expect_error_message(
+    err_msg, "SyntaxError: Identifier 'f' has already been declared",
+  )
+}
+
+///|
+test "sloppy: standard block function is initialized and remains lexical" {
+  let output = run_output(
+    (
+      #|{
+      #|  console.log(f());
+      #|  function f() { return 2; }
+      #|}
+      #|console.log(typeof f);
+    ),
+  )
+  json_inspect(output, content=["2", "undefined"])
+}
+
+///|
 test "sloppy: duplicate block function declarations are allowed" {
   let output = run_output(
     (
@@ -10482,6 +10894,93 @@ test "sloppy: duplicate block function declarations are allowed" {
     ),
   )
   json_inspect(output, content=["ok"])
+}
+
+///|
+test "sloppy: duplicate block functions initialize the last declaration" {
+  let output = run_output(
+    (
+      #|{
+      #|  console.log(f());
+      #|  function f() { return 1; }
+      #|  function f() { return 2; }
+      #|}
+    ),
+  )
+  json_inspect(output, content=["2"])
+}
+
+///|
+test "strict: duplicate block function declarations throw SyntaxError" {
+  let mut err_msg = ""
+  try {
+    let _ = run_js(
+      (
+        #|"use strict"; { function f() {} function f() {} }
+      ),
+    )
+  } catch {
+    @runtime.JsException(val) => err_msg = error_display(val)
+    _ => err_msg = "unexpected"
+  }
+  expect_error_message(
+    err_msg, "SyntaxError: Identifier 'f' has already been declared",
+  )
+}
+
+///|
+test "annex-b: block function propagation preserves instantiated identity" {
+  let output = run_output_annex_b(
+    (
+      #|var saved;
+      #|var f = function() { return "outer"; };
+      #|{
+      #|  saved = f;
+      #|  console.log(f());
+      #|  function f() { return "inner"; }
+      #|  console.log(saved === f);
+      #|}
+      #|console.log(saved === f);
+      #|console.log(f());
+    ),
+  )
+  json_inspect(output, content=["inner", "true", "true", "inner"])
+}
+
+///|
+test "strict: block hoistable declarations do not overwrite later assignments" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|{
+      #|  g = 1;
+      #|  function* g() {}
+      #|  console.log(g);
+      #|  a = 2;
+      #|  async function a() {}
+      #|  console.log(a);
+      #|  ag = 3;
+      #|  async function* ag() {}
+      #|  console.log(ag);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["1", "2", "3"])
+}
+
+///|
+test "annex-b: block function propagates its current binding value" {
+  let output = run_output_annex_b(
+    (
+      #|var f = "outer";
+      #|{
+      #|  f = 1;
+      #|  function f() {}
+      #|}
+      #|console.log(f);
+    ),
+  )
+  json_inspect(output, content=["1"])
 }
 
 ///|
@@ -11642,6 +12141,29 @@ test "test262: ArrayBuffer allocation limit throws RangeError" {
     ),
   )
   json_inspect(output, content=["true", "true"])
+}
+
+///|
+test "test262: ArrayBuffer observes NewTarget prototype before allocation failure" {
+  let output = run_output(
+    (
+      #|function DummyError() {}
+      #|var newTarget = function() {}.bind(null);
+      #|Object.defineProperty(newTarget, "prototype", {
+      #|  get: function() { throw new DummyError(); }
+      #|});
+      #|try {
+      #|  Reflect.construct(
+      #|    ArrayBuffer,
+      #|    [7 * 1125899906842624],
+      #|    newTarget
+      #|  );
+      #|} catch (e) {
+      #|  console.log(e instanceof DummyError);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["true"])
 }
 
 ///|
