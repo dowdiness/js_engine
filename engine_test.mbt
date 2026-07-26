@@ -169,7 +169,7 @@ test "Engine detailed call_json classifies every current phase" {
     None,
     "reusable",
     "none",
-    "unknown",
+    "none",
   )
   assert_engine_diagnostic(
     expect_engine_diagnostic(engine.call_json_diagnostic("answer", [])),
@@ -179,7 +179,7 @@ test "Engine detailed call_json classifies every current phase" {
     None,
     "reusable",
     "may-remain",
-    "unknown",
+    "none",
   )
   assert_engine_diagnostic(
     expect_engine_diagnostic(engine.call_json_diagnostic("throwingLookup", [])),
@@ -223,6 +223,129 @@ test "Engine detailed call_json classifies every current phase" {
     "may-remain",
     "none",
   )
+}
+
+///|
+test "Engine missing-global diagnostic snapshots an empty queue and remains reusable" {
+  let engine = @js_engine.Engine()
+  assert_true(
+    engine.eval_diagnostic("function stillUsable() { return 'ok'; }") is Ok(_),
+  )
+  assert_engine_diagnostic(
+    expect_engine_diagnostic(engine.call_json_diagnostic("absent", [])),
+    "missing-global",
+    "call-json",
+    "lookup",
+    None,
+    "reusable",
+    "none",
+    "none",
+  )
+  json_inspect(engine.call_json("stillUsable", []), content="ok")
+}
+
+///|
+test "Engine missing-global diagnostic preserves a pending microtask" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|queueMicrotask(() => { events.push("pending"); });
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_engine_diagnostic(
+    expect_engine_diagnostic(engine.call_json_diagnostic("absent", [])),
+    "missing-global",
+    "call-json",
+    "lookup",
+    None,
+    "reusable",
+    "none",
+    "present",
+  )
+  assert_true(engine.has_pending_microtasks())
+  json_inspect(engine.call_json("snapshot", []), content=[])
+  assert_false(engine.run_microtask_checkpoint())
+  json_inspect(engine.call_json("snapshot", []), content=["pending"])
+}
+
+///|
+test "Engine direct not-callable diagnostic snapshots an empty queue and remains reusable" {
+  let engine = @js_engine.Engine()
+  engine.eval("let answer = 42; function stillUsable() { return true; }")
+  assert_engine_diagnostic(
+    expect_engine_diagnostic(engine.call_json_diagnostic("answer", [])),
+    "not-callable",
+    "call-json",
+    "lookup",
+    None,
+    "reusable",
+    "may-remain",
+    "none",
+  )
+  json_inspect(engine.call_json("stillUsable", []), content=true)
+}
+
+///|
+test "Engine direct not-callable diagnostic preserves a pending microtask" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let answer = 42;
+      #|let events = [];
+      #|queueMicrotask(() => { events.push("pending"); });
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_engine_diagnostic(
+    expect_engine_diagnostic(engine.call_json_diagnostic("answer", [])),
+    "not-callable",
+    "call-json",
+    "lookup",
+    None,
+    "reusable",
+    "may-remain",
+    "present",
+  )
+  assert_true(engine.has_pending_microtasks())
+  json_inspect(engine.call_json("snapshot", []), content=[])
+  assert_false(engine.run_microtask_checkpoint())
+  json_inspect(engine.call_json("snapshot", []), content=["pending"])
+}
+
+///|
+test "Engine accessor not-callable diagnostic preserves the microtask it queues" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let events = [];
+      #|Object.defineProperty(globalThis, "accessorValue", {
+      #|  get() {
+      #|    events.push("getter");
+      #|    queueMicrotask(() => { events.push("accessor microtask"); });
+      #|    return 42;
+      #|  }
+      #|});
+      #|function snapshot() { return events; }
+    ),
+  )
+  assert_engine_diagnostic(
+    expect_engine_diagnostic(engine.call_json_diagnostic("accessorValue", [])),
+    "not-callable",
+    "call-json",
+    "lookup",
+    None,
+    "reusable",
+    "may-remain",
+    "present",
+  )
+  assert_true(engine.has_pending_microtasks())
+  json_inspect(engine.call_json("snapshot", []), content=["getter"])
+  assert_false(engine.run_microtask_checkpoint())
+  json_inspect(engine.call_json("snapshot", []), content=[
+    "getter", "accessor microtask",
+  ])
 }
 
 ///|
