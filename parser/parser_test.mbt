@@ -135,13 +135,38 @@ fn[T] expect_err(result : Result[T, Unit]) -> Unit raise Error {
 
 ///|
 fn expect_parse_err(source : String) -> Unit raise Error {
-  let result = Ok(@parser.parse(source)) catch { _ => Err(()) }
-  expect_err(result)
+  let result = Ok(@parser.parse(source)) catch {
+    @errors.SyntaxError(_) => Err(())
+    error =>
+      fail(
+        "expected SyntaxError for " +
+        source.escape() +
+        ", got " +
+        error.to_string(),
+      )
+  }
+  match result {
+    Ok(_) =>
+      fail(
+        "expected SyntaxError for " +
+        source.escape() +
+        ", but parsing succeeded",
+      )
+    Err(_) => ()
+  }
 }
 
 ///|
 fn expect_parse_ok(source : String) -> Unit raise Error {
-  let _ = @parser.parse(source)
+  let _ = @parser.parse(source) catch {
+    error =>
+      fail(
+        "expected parse success for " +
+        source.escape() +
+        ", got " +
+        error.to_string(),
+      )
+  }
 }
 
 ///|
