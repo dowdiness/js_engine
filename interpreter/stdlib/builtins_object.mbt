@@ -102,9 +102,10 @@ pub fn setup_object_builtins(
           Value::String_("[object \{object_prototype_builtin_tag(this_val)}]")
         _ => {
           let builtin_tag = object_prototype_builtin_tag(this_val)
-          let tag_value = interp.get_computed_property(
+          let tag_value = interp.get_property_key_with_receiver(
             this_val,
             Symbol(well_known_symbols.to_string_tag),
+            this_val,
             @token.Loc::default(),
           )
           let tag = match tag_value {

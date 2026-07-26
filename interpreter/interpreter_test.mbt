@@ -7318,6 +7318,41 @@ test "super ToPropertyKey observes Proxy target toStringTag" {
 }
 
 ///|
+test "Object.prototype.toString gets toStringTag with the original receiver" {
+  let output = run_output(
+    (
+      #|Object.defineProperty(Map.prototype, Symbol.toStringTag, {
+      #|  value: "CustomMap", configurable: true
+      #|});
+      #|Object.defineProperty(Set.prototype, Symbol.toStringTag, {
+      #|  value: "CustomSet", configurable: true
+      #|});
+      #|let array = [];
+      #|let receiverIsArray = false;
+      #|let arrayPrototype = new Proxy({}, {
+      #|  get(target, property, receiver) {
+      #|    if (property === Symbol.toStringTag) {
+      #|      receiverIsArray = receiver === array;
+      #|      return "TaggedArray";
+      #|    }
+      #|    return Reflect.get(target, property, receiver);
+      #|  }
+      #|});
+      #|Object.setPrototypeOf(array, arrayPrototype);
+      #|console.log([
+      #|  Object.prototype.toString.call(new Map()),
+      #|  Object.prototype.toString.call(new Set()),
+      #|  Object.prototype.toString.call(array),
+      #|  "receiver:" + receiverIsArray
+      #|].join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "[object CustomMap],[object CustomSet],[object TaggedArray],receiver:true",
+  ])
+}
+
+///|
 test "class super properties observe the live home object prototype" {
   let output = run_output(
     (

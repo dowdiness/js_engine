@@ -280,7 +280,7 @@ fn Interpreter::get_property_impl(
 /// input. This is the shared receiver-aware boundary for ordinary objects and
 /// every object-like Value variant. The key is canonicalized once at entry;
 /// recursive prototype steps keep the resulting String/Symbol unchanged.
-fn Interpreter::get_property_key_with_receiver(
+pub fn Interpreter::get_property_key_with_receiver(
   self : Interpreter,
   target : Value,
   key : Value,
