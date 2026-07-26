@@ -7093,6 +7093,109 @@ test "class accessors allow line terminator after get and set" {
 }
 
 ///|
+test "class constructors expose spec name descriptors (#206)" {
+  let output = run_output(
+    (
+      #|function describe(ctor) {
+      #|  var desc = Object.getOwnPropertyDescriptor(ctor, "name");
+      #|  console.log(desc.value + "/" + desc.writable + "/" + desc.enumerable + "/" + desc.configurable);
+      #|}
+      #|describe(class {});
+      #|describe(class Explicit {});
+    ),
+  )
+  json_inspect(output, content=[
+    "/false/false/true", "Explicit/false/false/true",
+  ])
+}
+
+///|
+test "for-of destructuring infers only anonymous class names (#206)" {
+  let output = run_output(
+    (
+      #|function describe(ctor) {
+      #|  var desc = Object.getOwnPropertyDescriptor(ctor, "name");
+      #|  console.log(desc.value + "/" + desc.writable + "/" + desc.enumerable + "/" + desc.configurable);
+      #|}
+      #|var arrayCls, objectIdCls, objectPropCls;
+      #|for ([arrayCls = class {}] of [[]]) {}
+      #|for ({objectIdCls = class {}} of [{}]) {}
+      #|for ({x: objectPropCls = class {}} of [{}]) {}
+      #|describe(arrayCls);
+      #|describe(objectIdCls);
+      #|describe(objectPropCls);
+      #|var explicit = class Inner {};
+      #|var staticName = class { static name() {} };
+      #|console.log(explicit.name);
+      #|console.log(typeof staticName.name);
+    ),
+  )
+  json_inspect(output, content=[
+    "arrayCls/false/false/true", "objectIdCls/false/false/true", "objectPropCls/false/false/true",
+    "Inner", "function",
+  ])
+}
+
+///|
+test "anonymous class inferred names exist before static initialization (#206)" {
+  let output = run_output(
+    (
+      #|var Variable = class { static seen = this.name; };
+      #|var Assigned;
+      #|Assigned = class { static seen = this.name; };
+      #|var Destructured;
+      #|[Destructured = class { static seen = this.name; }] = [];
+      #|var Explicit = class Inner { static seen = this.name; };
+      #|var StaticName = class {
+      #|  static name() {}
+      #|  static seen = typeof this.name;
+      #|};
+      #|console.log(Variable.seen + "/" + Variable.name);
+      #|console.log(Assigned.seen + "/" + Assigned.name);
+      #|console.log(Destructured.seen + "/" + Destructured.name);
+      #|console.log(Explicit.seen + "/" + Explicit.name);
+      #|console.log(StaticName.seen + "/" + typeof StaticName.name);
+    ),
+  )
+  json_inspect(output, content=[
+    "Variable/Variable", "Assigned/Assigned", "Destructured/Destructured", "Inner/Inner",
+    "function/function",
+  ])
+}
+
+///|
+test "class names use an immutable inner lexical binding (#206)" {
+  let output = run_output(
+    (
+      #|try { class TdzDecl extends TdzDecl {} } catch (e) { console.log(e.name); }
+      #|try { var TdzExpr = class Inner extends Inner {}; } catch (e) { console.log(e.name); }
+      #|var heritageProbe;
+      #|var Expr = class Inner extends (
+      #|  heritageProbe = function() { return Inner; },
+      #|  Object
+      #|) {
+      #|  probe() { return Inner; }
+      #|  mutate() { Inner = null; }
+      #|};
+      #|console.log(heritageProbe() === Expr);
+      #|console.log(new Expr().probe() === Expr);
+      #|try { new Expr().mutate(); } catch (e) { console.log(e.name); }
+      #|class Decl {
+      #|  probe() { return Decl; }
+      #|  mutate() { Decl = null; }
+      #|}
+      #|var saved = Decl;
+      #|Decl = null;
+      #|console.log(new saved().probe() === saved);
+      #|try { new saved().mutate(); } catch (e) { console.log(e.name); }
+    ),
+  )
+  json_inspect(output, content=[
+    "ReferenceError", "ReferenceError", "true", "true", "TypeError", "true", "TypeError",
+  ])
+}
+
+///|
 test "class field initializer yield is rejected inside generator" {
   let result = run_throws(
     (

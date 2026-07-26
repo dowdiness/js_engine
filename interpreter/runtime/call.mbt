@@ -264,14 +264,18 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
             self.param_default_eval_var_conflicts = Some(
               param_default_conflicts,
             )
-            let v = self.eval_expr(func_ctx, default_expr, param_env)
+            let v = match param.pattern {
+              None =>
+                self.eval_named_expr(
+                  func_ctx,
+                  default_expr,
+                  param_env,
+                  param.name,
+                )
+              Some(_) => self.eval_expr(func_ctx, default_expr, param_env)
+            }
             self.in_nonarrow_param_default_eval = false
             self.param_default_eval_var_conflicts = None
-            // Set function name for anonymous function defaults
-            if param.pattern is None &&
-              is_anonymous_function_definition(default_expr) {
-              set_function_name(v, param.name)
-            }
             v
           }
           None =>

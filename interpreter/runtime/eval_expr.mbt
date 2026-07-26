@@ -440,6 +440,38 @@ fn Interpreter::eval_prop_value(
 }
 
 ///|
+fn object_literal_inferred_name(key : Value) -> String raise Error {
+  match key {
+    Symbol(sym) =>
+      match sym.description {
+        Some(description) => "[\{description}]"
+        None => ""
+      }
+    _ => to_js_string(key)
+  }
+}
+
+///|
+fn Interpreter::eval_named_prop_value(
+  self : Interpreter,
+  ctx : ExecContext,
+  prop : @ast.Property,
+  method_env : Environment,
+  key : Value,
+) -> Value raise Error {
+  if prop.is_method {
+    self.eval_prop_value(ctx, prop, method_env)
+  } else {
+    self.eval_named_expr(
+      ctx,
+      prop.value,
+      method_env,
+      object_literal_inferred_name(key),
+    )
+  }
+}
+
+///|
 pub fn apply_object_literal_proto_property(
   target : Value,
   value : Value,
@@ -1117,6 +1149,34 @@ fn get_private_member(
 }
 
 ///|
+/// Runtime Semantics: NamedEvaluation. Anonymous class expressions need the
+/// inferred name during ClassDefinitionEvaluation (before static elements run),
+/// while the other anonymous function forms can retain their existing
+/// SetFunctionName path after ordinary evaluation.
+fn Interpreter::eval_named_expr(
+  self : Interpreter,
+  ctx : ExecContext,
+  expr : @ast.Expr,
+  env : Environment,
+  inferred_name : String,
+) -> Value raise Error {
+  match expr {
+    Grouping(inner, _) => self.eval_named_expr(ctx, inner, env, inferred_name)
+    ClassExpr(None, superclass, members, _, source_text) =>
+      self.create_class(
+        ctx, inferred_name, superclass, members, env, source_text,
+      )
+    _ => {
+      let value = self.eval_expr(ctx, expr, env)
+      if is_anonymous_function_definition(expr) {
+        set_function_name(value, inferred_name)
+      }
+      value
+    }
+  }
+}
+
+///|
 fn Interpreter::eval_expr(
   self : Interpreter,
   ctx : ExecContext,
@@ -1161,11 +1221,7 @@ fn Interpreter::eval_expr(
     Assign(name, value_expr, _) => {
       @static_semantics.validate_strict_assignment_target_name(ctx.strict, name)
       let resolved_env = env.resolve_binding_env(name)
-      let value = self.eval_expr(ctx, value_expr, env)
-      // SetFunctionName for assignments: x = function() {} gives name "x"
-      if is_anonymous_function_definition(value_expr) {
-        set_function_name(value, name)
-      }
+      let value = self.eval_named_expr(ctx, value_expr, env, name)
       // Check if the target is a non-writable property on the global object
       // (e.g. undefined, NaN, Infinity). In strict mode this is a TypeError;
       // in non-strict mode the assignment is silently ignored.
@@ -1424,7 +1480,9 @@ fn Interpreter::eval_expr(
               // Symbol key - store in symbol_properties
               match prop.kind {
                 Init => {
-                  let val = self.eval_prop_value(ctx, prop, method_env)
+                  let val = self.eval_named_prop_value(
+                    ctx, prop, method_env, prop_key,
+                  )
                   apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
@@ -1444,7 +1502,9 @@ fn Interpreter::eval_expr(
             _ =>
               match prop.kind {
                 Init => {
-                  let val = self.eval_prop_value(ctx, prop, method_env)
+                  let val = self.eval_named_prop_value(
+                    ctx, prop, method_env, prop_key,
+                  )
                   apply_object_literal_data_property(home_object, prop_key, val)
                 }
                 Get => {
@@ -1484,9 +1544,12 @@ fn Interpreter::eval_expr(
                 let val = self.eval_prop_value(ctx, prop, method_env)
                 apply_object_literal_proto_property(home_object, val)
               } else {
-                let val = self.eval_prop_value(ctx, prop, method_env)
-                // SetFunctionName: infer name for anonymous functions
-                set_function_name(val, key_str)
+                let val = self.eval_named_prop_value(
+                  ctx,
+                  prop,
+                  method_env,
+                  String_(key_str),
+                )
                 properties[key_str] = val
               }
             Get => {
@@ -1917,27 +1980,16 @@ fn Interpreter::eval_expr(
       }
     }
     ClassExpr(name, superclass, methods, _, source_text) => {
-      // For named class expressions, the name is visible inside the class body
-      // but not in the outer scope. Create a new scope for this.
       let class_name = name.unwrap_or("")
-      let class_env = if class_name != "" {
-        let inner = Environment::new(parent=Some(env))
-        // Pre-define the name (will be set after class creation)
-        inner.def(class_name, Undefined, LetBinding)
-        inner
-      } else {
-        env
-      }
-      let class_val = self.create_class(
-        ctx, class_name, superclass, methods, class_env, source_text,
+      self.create_class(
+        ctx,
+        class_name,
+        superclass,
+        methods,
+        env,
+        source_text,
+        class_binding=name,
       )
-      // Set the class name binding in the inner scope
-      if class_name != "" {
-        class_env.assign(class_name, class_val) catch {
-          _ => ()
-        }
-      }
-      class_val
     }
     SuperCall(arg_exprs, loc) => {
       let args = self.eval_args_with_spread(ctx, arg_exprs, env)

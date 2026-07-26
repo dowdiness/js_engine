@@ -32,16 +32,26 @@ fn Interpreter::create_class(
   members : Array[@ast.ClassMember],
   env : Environment,
   source_text : String?,
+  class_binding? : String? = None,
 ) -> Value raise Error {
   // Class bodies are always strict per spec
   let class_ctx : ExecContext = {
     strict: true,
     current_generator: ctx.current_generator,
   }
+  // ClassDefinitionEvaluation always creates a dedicated lexical environment.
+  // A named class gets an immutable, initially-uninitialized binding there so
+  // heritage/computed-name evaluation observes the TDZ and methods retain the
+  // inner binding independently of the outer declaration/assignment binding.
+  let class_env = Environment::new(parent=Some(env))
+  match class_binding {
+    Some(binding) => class_env.def_tdz(binding, ConstBinding)
+    None => ()
+  }
   // Evaluate superclass if present
   let (super_ctor, super_proto) : (Value?, Value) = match superclass_expr {
     Some(expr) => {
-      let super_val = self.eval_expr(ctx, expr, env)
+      let super_val = self.eval_expr(ctx, expr, class_env)
       match super_val {
         Null =>
           // `class C extends null {}` — legal per spec; the class is derived
@@ -85,9 +95,32 @@ fn Interpreter::create_class(
   let proto_descriptors : Map[String, PropDescriptor] = Map([])
   let proto_symbol_props : Map[Int, Value] = Map([])
   let proto_symbol_descriptors : Map[Int, PropDescriptor] = Map([])
-  // Create static properties map
+  // Create the constructor's intrinsic own properties before evaluating class
+  // elements. Static elements may then redefine the configurable `name`
+  // property while preserving the spec-mandated insertion order.
+  let non_enum_configurable : PropDescriptor = {
+    writable: false,
+    enumerable: false,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   let static_props : Map[String, Value] = Map([])
+  static_props["length"] = Undefined
+  static_props["name"] = String_(name)
+  static_props["prototype"] = Undefined
   let static_descriptors : Map[String, PropDescriptor] = Map([])
+  static_descriptors["length"] = non_enum_configurable
+  static_descriptors["name"] = non_enum_configurable
+  static_descriptors["prototype"] = {
+    writable: false,
+    enumerable: false,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
   let static_symbol_props : Map[Int, Value] = Map([])
   let static_symbol_descriptors : Map[Int, PropDescriptor] = Map([])
   // Track constructor method
@@ -108,7 +141,7 @@ fn Interpreter::create_class(
   // Base classes (no extends) still need these bindings: instance methods resolve
   // super against Object.prototype; static methods against Function.prototype.
   let instance_method_env : Environment = {
-    let menv = Environment::new(parent=Some(env))
+    let menv = Environment::new(parent=Some(class_env))
     let instance_super : Value = match super_ctor {
       Some(_) => super_proto
       None => self.global.get("[[ObjectPrototype]]") catch { _ => Null }
@@ -117,7 +150,7 @@ fn Interpreter::create_class(
     menv
   }
   let static_method_env : Environment = {
-    let menv = Environment::new(parent=Some(env))
+    let menv = Environment::new(parent=Some(class_env))
     let static_super : Value = match super_ctor {
       Some(sc) => sc
       None => self.global.get("[[FunctionPrototype]]") catch { _ => Null }
@@ -135,12 +168,6 @@ fn Interpreter::create_class(
   // can resolve it at eval time via the environment chain.
   instance_method_env.def_builtin("[[PrivateBrand]]", private_brand)
   static_method_env.def_builtin("[[PrivateBrand]]", private_brand)
-  // Pre-seed the intrinsic static slots (length, name, prototype) so they
-  // appear before user-defined static keys in OrdinaryOwnPropertyKeys order.
-  // The actual values are written after the loop; placeholders here only fix
-  // Map insertion order, which sort_property_keys preserves for non-integer
-  // string keys.
-  static_props["length"] = Undefined
   // Process all members (methods and fields)
   // Class bodies are always strict — computed property keys and method keys
   // must be evaluated as strict code per ES2022 §15.7.
@@ -154,7 +181,7 @@ fn Interpreter::create_class(
           StringLit(s, _, _, _) => String_(s)
           PrivateIdent(name, _) => String_(name) // private fields: use name directly
           _ => {
-            let v = self.eval_expr(class_ctx, f.key, env)
+            let v = self.eval_expr(class_ctx, f.key, class_env)
             to_property_key(v, interp=Some(self))
           }
         }
@@ -187,7 +214,7 @@ fn Interpreter::create_class(
           PrivateIdent(name, _) => String_(name) // private methods: use name directly
           _ =>
             to_property_key(
-              self.eval_expr(class_ctx, m.key, env),
+              self.eval_expr(class_ctx, m.key, class_env),
               interp=Some(self),
             )
         }
@@ -426,9 +453,7 @@ fn Interpreter::create_class(
                 } else {
                   (proto_symbol_props, proto_symbol_descriptors)
                 }
-                if !props.contains(sym.id) {
-                  props[sym.id] = Undefined
-                }
+                props[sym.id] = Undefined
                 let existing = descs.get(sym.id)
                 descs[sym.id] = {
                   writable: false,
@@ -448,9 +473,7 @@ fn Interpreter::create_class(
                 } else {
                   (proto_props, proto_descriptors)
                 }
-                if !props.contains(method_key_str) {
-                  props[method_key_str] = Undefined
-                }
+                props[method_key_str] = Undefined
                 let existing = descs.get(method_key_str)
                 descs[method_key_str] = {
                   writable: false,
@@ -474,9 +497,7 @@ fn Interpreter::create_class(
                 } else {
                   (proto_symbol_props, proto_symbol_descriptors)
                 }
-                if !props.contains(sym.id) {
-                  props[sym.id] = Undefined
-                }
+                props[sym.id] = Undefined
                 let existing = descs.get(sym.id)
                 descs[sym.id] = {
                   writable: false,
@@ -496,9 +517,7 @@ fn Interpreter::create_class(
                 } else {
                   (proto_props, proto_descriptors)
                 }
-                if !props.contains(method_key_str) {
-                  props[method_key_str] = Undefined
-                }
+                props[method_key_str] = Undefined
                 let existing = descs.get(method_key_str)
                 descs[method_key_str] = {
                   writable: false,
@@ -647,24 +666,11 @@ fn Interpreter::create_class(
     }
   }
   // Add length, name, prototype properties to the class constructor per spec
-  let non_enum_configurable : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
   match class_obj {
     Object(class_data) => {
       // Add length (formal parameter count) - non-writable, non-enumerable, configurable
       class_data.bag.properties["length"] = Number(ctor_param_count.to_double())
       class_data.bag.descriptors["length"] = non_enum_configurable
-      // Add name - non-writable, non-enumerable, configurable
-      if name != "" {
-        class_data.bag.properties["name"] = String_(name)
-        class_data.bag.descriptors["name"] = non_enum_configurable
-      }
       // Add prototype - non-writable, non-enumerable, non-configurable
       class_data.bag.properties["prototype"] = proto
       class_data.bag.descriptors["prototype"] = {
@@ -678,17 +684,13 @@ fn Interpreter::create_class(
     }
     _ => ()
   }
-  // Evaluate static field initializers (run once at class definition time)
-  // Per ES2022 spec, static fields are initialized after the class object is created.
-  // We also bind the class name here so self-referential initializers like
-  // `class C { static self = C }` can resolve C during evaluation.
-  let static_init_base : Environment = if name != "" {
-    let e = Environment::new(parent=Some(static_method_env))
-    e.def_builtin(name, class_obj)
-    e
-  } else {
-    static_method_env
+  // ClassDefinitionEvaluation initializes the inner immutable binding only
+  // after evaluating class elements, and before executing static initializers.
+  match class_binding {
+    Some(binding) => class_env.initialize(binding, class_obj)
+    None => ()
   }
+  // Evaluate static field initializers (run once at class definition time).
   // Class bodies are strict, but field initializers are not generator bodies.
   let static_field_ctx : ExecContext = { strict: true, current_generator: None }
   for sf in static_fields {
@@ -700,7 +702,7 @@ fn Interpreter::create_class(
     let value : Value = match sf.initializer {
       Some(expr) => {
         // Evaluate initializer with `this` = class_obj and class name in scope
-        let field_env = Environment::new(parent=Some(static_init_base))
+        let field_env = Environment::new(parent=Some(static_method_env))
         field_env.def_builtin("this", class_obj)
         self.eval_expr(static_field_ctx, expr, field_env)
       }
@@ -770,7 +772,7 @@ fn Interpreter::create_class(
   for mbr in members {
     match mbr {
       @ast.ClassMember::StaticBlock(stmts, _) => {
-        let block_env = Environment::new(parent=Some(static_init_base))
+        let block_env = Environment::new(parent=Some(static_method_env))
         block_env.def_builtin("this", class_obj)
         let _ = self.exec_stmts(static_field_ctx, stmts, block_env)
       }

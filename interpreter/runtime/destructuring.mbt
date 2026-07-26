@@ -49,15 +49,10 @@ fn Interpreter::bind_pattern(
       }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        let v = self.eval_expr(ctx, default_expr, env)
-        // Per spec, if default is anonymous function and target is identifier, set name
-        if is_anonymous_function_definition(default_expr) {
-          match inner_pat {
-            IdentPat(name) => set_function_name(v, name)
-            _ => ()
-          }
+        match inner_pat {
+          IdentPat(name) => self.eval_named_expr(ctx, default_expr, env, name)
+          _ => self.eval_expr(ctx, default_expr, env)
         }
-        v
       } else {
         value
       }
@@ -218,17 +213,12 @@ fn Interpreter::bind_pattern(
         )
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => {
-              let v = self.eval_expr(ctx, default_expr, env)
-              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
-              if is_anonymous_function_definition(default_expr) {
-                match prop.value {
-                  IdentPat(name) => set_function_name(v, name)
-                  _ => ()
-                }
+            Some(default_expr) =>
+              match prop.value {
+                IdentPat(name) =>
+                  self.eval_named_expr(ctx, default_expr, env, name)
+                _ => self.eval_expr(ctx, default_expr, env)
               }
-              v
-            }
             None => Undefined
           }
         } else {
@@ -325,15 +315,10 @@ fn Interpreter::assign_pattern(
       }
     DefaultPat(inner_pat, default_expr) => {
       let final_val : Value = if value is Undefined {
-        let v = self.eval_expr(ctx, default_expr, env)
-        // Per spec, if default is anonymous function and target is identifier, set name
-        if is_anonymous_function_definition(default_expr) {
-          match inner_pat {
-            IdentPat(name) => set_function_name(v, name)
-            _ => ()
-          }
+        match inner_pat {
+          IdentPat(name) => self.eval_named_expr(ctx, default_expr, env, name)
+          _ => self.eval_expr(ctx, default_expr, env)
         }
-        v
       } else {
         value
       }
@@ -621,17 +606,12 @@ fn Interpreter::assign_pattern(
         )
         let final_val : Value = if val is Undefined {
           match prop.default_val {
-            Some(default_expr) => {
-              let v = self.eval_expr(ctx, default_expr, env)
-              // Per spec, SingleNameBinding: if IsAnonymousFunctionDefinition(Initializer), SetFunctionName
-              if is_anonymous_function_definition(default_expr) {
-                match prop.value {
-                  IdentPat(name) => set_function_name(v, name)
-                  _ => ()
-                }
+            Some(default_expr) =>
+              match prop.value {
+                IdentPat(name) =>
+                  self.eval_named_expr(ctx, default_expr, env, name)
+                _ => self.eval_expr(ctx, default_expr, env)
               }
-              v
-            }
             None => Undefined
           }
         } else {
