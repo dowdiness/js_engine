@@ -95,6 +95,12 @@
     },
     {
       "package": "dowdiness/js_engine",
+      "symbol": "Engine::inject_json",
+      "category": "stable_embedding",
+      "reason": "documented host-owned JSON injection boundary"
+    },
+    {
+      "package": "dowdiness/js_engine",
       "symbol": "Engine::take_output",
       "category": "stable_embedding",
       "reason": "documented consuming console-output operation"

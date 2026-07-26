@@ -181,6 +181,114 @@ fn Engine::pending_jobs_snapshot(self : Engine) -> PendingJobs {
 }
 
 ///|
+fn Engine::inject_json_expected_failure(
+  self : Engine,
+  kind : String,
+  message : String,
+  phase : String,
+) -> EngineDiagnostic {
+  make_engine_diagnostic(
+    failure_kind_code=kind,
+    message~,
+    operation_code="inject-json",
+    phase_code=phase,
+    source_identity=None,
+    engine_integrity=EngineIntegrity::Reusable,
+    retained_effects=RetainedEffects::None,
+    pending_jobs=self.pending_jobs_snapshot(),
+  )
+}
+
+///|
+fn inject_json_internal_failure(
+  err : Error,
+  phase : String,
+) -> EngineDiagnostic {
+  runtime_engine_diagnostic(
+    err,
+    operation="inject-json",
+    phase~,
+    source_identity=None,
+    javascript_integrity=EngineIntegrity::Discard,
+    javascript_effects=RetainedEffects::Unknown,
+    javascript_jobs=PendingJobs::Unknown,
+    internal_integrity=EngineIntegrity::Discard,
+  )
+}
+
+///|
+/// Copy host-owned JSON into this Engine as an immutable global binding and
+/// matching immutable own property of `globalThis`.
+pub fn Engine::inject_json(
+  self : Engine,
+  name : String,
+  value : Json,
+) -> Result[Unit, EngineDiagnostic] {
+  let has_binding = self.interp.global.has(name) catch {
+    err => return Err(inject_json_internal_failure(err, "define"))
+  }
+  if has_binding {
+    return Err(
+      self.inject_json_expected_failure(
+        "injection-conflict",
+        "global name already has a binding: " + name,
+        "define",
+      ),
+    )
+  }
+  let global_data = match self.interp.global_this {
+    @runtime.Object(data) => data
+    _ =>
+      return Err(
+        self.inject_json_expected_failure(
+          "injection-conflict", "global object cannot accept host-owned data", "define",
+        ),
+      )
+  }
+  if global_data.bag.properties.contains(name) ||
+    global_data.bag.descriptors.contains(name) {
+    return Err(
+      self.inject_json_expected_failure(
+        "injection-conflict",
+        "global name already has an own property: " + name,
+        "define",
+      ),
+    )
+  }
+  if !global_data.extensible {
+    return Err(
+      self.inject_json_expected_failure(
+        "injection-conflict", "global object is not extensible", "define",
+      ),
+    )
+  }
+  let runtime_value = @runtime.json_to_realm_value(
+    self.interp.realm_state,
+    value,
+  ) catch {
+    @runtime.JsonBridgeFailure(message) =>
+      return Err(
+        self.inject_json_expected_failure(
+          "json-conversion-error", message, "conversion",
+        ),
+      )
+  }
+  self.interp.global.def(name, runtime_value, @runtime.ConstBinding) catch {
+    err => return Err(inject_json_internal_failure(err, "define"))
+  }
+  global_data.bag.properties[name] = runtime_value
+  global_data.bag.descriptors[name] = {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  Ok(())
+}
+
+///|
 fn Engine::eval_failure(
   self : Engine,
   kind : String,

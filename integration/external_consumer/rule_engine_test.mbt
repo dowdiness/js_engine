@@ -91,6 +91,40 @@ test "stable facade supports a persistent portable rule engine" {
 }
 
 ///|
+test "stable facade injects host-owned policy without runtime values" {
+  let engine = @js_engine.Engine()
+  let policy = Json::object({
+    "adminRole": Json::string("admin"),
+    "readAction": Json::string("read"),
+  })
+  match engine.inject_json("hostPolicy", policy) {
+    Ok(_) => ()
+    Err(_) => fail("expected host policy injection to succeed")
+  }
+  engine.eval(
+    (
+      #|function allowWithHostPolicy(request) {
+      #|  return request.role === hostPolicy.adminRole ||
+      #|    request.action === globalThis.hostPolicy.readAction;
+      #|}
+    ),
+  )
+  json_inspect(
+    [
+      engine.call_json(
+        "allowWithHostPolicy",
+        [request("member", "read")],
+      ),
+      engine.call_json(
+        "allowWithHostPolicy",
+        [request("member", "delete")],
+      ),
+    ],
+    content=[true, false],
+  )
+}
+
+///|
 test "external consumer can inspect opaque structured diagnostics" {
   let engine = @js_engine.Engine()
   match engine.eval_diagnostic("let =", source_id="consumer-input.js") {

@@ -216,23 +216,19 @@ failure categories, including source-aware evaluation. Stages 4 and 5 extend
 that model with limit, interruption, and host failures; they must not introduce
 a second diagnostic model.
 
-### 3. Inject host-owned JSON data
+### 3. Inject host-owned JSON data — implemented
 
-Add stable JSON injection before exposing executable host capabilities. The
-candidate remains an Engine operation taking a name and `Json`, but this
-roadmap does not freeze its exact name or signature.
+`Engine::inject_json` copies host-owned `Json` through the direct realm bridge
+and publishes it as an immutable global binding plus a non-writable,
+enumerable, non-configurable own property of `globalThis`. It rejects existing
+bindings and own properties, repeated injection, and a non-extensible global
+object rather than overwriting script state.
 
-Decide before implementation:
-
-- whether the value is visible as a global binding, a global-object property,
-  or both;
-- collision behavior with existing lexical and object bindings;
-- writable, configurable, and enumerable attributes;
-- host-side update and redefinition policy; and
-- error classification and source-compatibility consequences.
-
-Conversion must use the direct JSON-to-realm bridge. It must not invoke the
-mutable global `JSON` object or execute user JavaScript.
+The operation returns the existing structured `EngineDiagnostic` model. It
+does not invoke the mutable global `JSON` object or execute getters, setters,
+Proxy traps, `toJSON`, microtasks, or timers. The accepted collision,
+descriptor, copying, and failure policy is recorded in the
+[JSON injection contract](decisions/engine-json-injection-contract.md).
 
 ### 4. Add minimum execution guardrails
 
