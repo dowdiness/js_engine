@@ -871,6 +871,20 @@ test "ES2015 lexical declarations reject Statement positions" {
 }
 
 ///|
+test "Statement-position let follows ExpressionStatement lookahead" {
+  expect_parse_ok("for (var x of []) let\n{}")
+  expect_parse_ok("for (var x of []) let\nx = 1;")
+  expect_parse_err("for (var x of []) let x = 1;")
+  expect_parse_err("for (var x of []) let\n[x] = [];")
+}
+
+///|
+test "for-of assignment pattern yield shorthand respects generator context" {
+  expect_parse_ok("var yield; for ({ yield } of [{ yield: 3 }]) {}")
+  expect_parse_err("function* g() { for ({ yield } of []) {} }")
+}
+
+///|
 test "ES2015 early-error controls remain valid" {
   for
     source in [

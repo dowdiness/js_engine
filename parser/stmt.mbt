@@ -69,6 +69,18 @@ fn Parser::parse_stmt(self : Parser) -> @ast.Stmt raise Error {
 }
 
 ///|
+/// Parse a grammar `Statement`, as opposed to the `StatementListItem`
+/// accepted by `parse_stmt`. In statement position, `let` can begin an
+/// ExpressionStatement; only the two-token `let [` lookahead is excluded.
+fn Parser::parse_statement_position(self : Parser) -> @ast.Stmt raise Error {
+  if self.at(Let) && self.peek_kind_at(1) != LBracket {
+    self.parse_expr_stmt()
+  } else {
+    self.parse_stmt()
+  }
+}
+
+///|
 fn Parser::parse_var_decl(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.advance()
   let kind : @ast.VarKind = match tok.kind {
@@ -512,10 +524,10 @@ fn Parser::parse_if_stmt(self : Parser) -> @ast.Stmt raise Error {
   let _ = self.expect(LParen)
   let cond = self.parse_expr()
   let _ = self.expect(RParen)
-  let then_branch = self.parse_stmt()
+  let then_branch = self.parse_statement_position()
   reject_lexical_decl_in_stmt_position(then_branch)
   let else_branch : @ast.Stmt? = if self.eat(Else) {
-    let branch = self.parse_stmt()
+    let branch = self.parse_statement_position()
     reject_lexical_decl_in_stmt_position(branch)
     Some(branch)
   } else {
@@ -581,7 +593,7 @@ fn Parser::parse_while_stmt(self : Parser) -> @ast.Stmt raise Error {
   let _ = self.expect(LParen)
   let cond = self.parse_expr()
   let _ = self.expect(RParen)
-  let body = self.parse_stmt()
+  let body = self.parse_statement_position()
   reject_function_decl_in_stmt_position(body)
   reject_lexical_decl_in_stmt_position(body)
   WhileStmt(cond, body, tok.loc)
@@ -608,7 +620,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
   ) -> (@ast.Expr, @ast.Stmt) raise Error {
     let obj = self.parse_assignment()
     let _ = self.expect(RParen)
-    let body = self.parse_stmt()
+    let body = self.parse_statement_position()
     reject_function_decl_in_stmt_position(body)
     reject_lexical_decl_in_stmt_position(body)
     (obj, body)
@@ -636,7 +648,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       if self.eat(In) {
         let obj = self.parse_expr()
         let _ = self.expect(RParen)
-        let body = self.parse_stmt()
+        let body = self.parse_statement_position()
         reject_function_decl_in_stmt_position(body)
         reject_lexical_decl_in_stmt_position(body)
         return ForInStmtPat(Some(var_kind), pat, obj, body, tok.loc)
@@ -669,7 +681,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
       // for-in with var declaration
       let obj = self.parse_expr()
       let _ = self.expect(RParen)
-      let body = self.parse_stmt()
+      let body = self.parse_statement_position()
       reject_function_decl_in_stmt_position(body)
       reject_lexical_decl_in_stmt_position(body)
       return ForInStmt(Some(var_kind), name, obj, body, tok.loc)
@@ -763,7 +775,7 @@ fn Parser::parse_for_stmt(self : Parser) -> @ast.Stmt raise Error {
           let _ = self.advance() // consume 'in'
           let obj = self.parse_expr()
           let _ = self.expect(RParen)
-          let body = self.parse_stmt()
+          let body = self.parse_statement_position()
           reject_function_decl_in_stmt_position(body)
           reject_lexical_decl_in_stmt_position(body)
           match expr {
@@ -824,7 +836,7 @@ fn Parser::parse_for_rest(
     Some(self.parse_expr())
   }
   let _ = self.expect(RParen)
-  let body = self.parse_stmt()
+  let body = self.parse_statement_position()
   reject_function_decl_in_stmt_position(body)
   reject_lexical_decl_in_stmt_position(body)
   ForStmt(init, cond, update, body, loc)
@@ -974,7 +986,7 @@ fn Parser::parse_switch_stmt(self : Parser) -> @ast.Stmt raise Error {
 ///|
 fn Parser::parse_do_while_stmt(self : Parser) -> @ast.Stmt raise Error {
   let tok = self.expect(Do)
-  let body = self.parse_stmt()
+  let body = self.parse_statement_position()
   reject_function_decl_in_stmt_position(body)
   reject_lexical_decl_in_stmt_position(body)
   let _ = self.expect(While)
@@ -991,7 +1003,7 @@ fn Parser::parse_with_stmt(self : Parser) -> @ast.Stmt raise Error {
   let _ = self.expect(LParen)
   let expr = self.parse_expr()
   let _ = self.expect(RParen)
-  let body = self.parse_stmt()
+  let body = self.parse_statement_position()
   reject_lexical_decl_in_stmt_position(body)
   WithStmt(expr, body, tok.loc)
 }
@@ -1011,7 +1023,7 @@ fn Parser::parse_labeled_stmt(self : Parser) -> @ast.Stmt raise Error {
       )
   }
   let _ = self.expect(Colon) // consume ':'
-  let body = self.parse_stmt()
+  let body = self.parse_statement_position()
   reject_lexical_decl_in_stmt_position(body)
   LabeledStmt(label, body, tok.loc)
 }

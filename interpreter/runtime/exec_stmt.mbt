@@ -213,6 +213,42 @@ fn restore_for_of_loop_env(
 }
 
 ///|
+fn save_stmt_resume_frame(
+  gen_opt : GeneratorObject?,
+  index : Int,
+  env : Environment,
+  last : Value,
+) -> Unit {
+  match gen_opt {
+    Some(g) => {
+      g.stmt_resume_index_stack.push(index)
+      g.stmt_resume_env_stack.push(env)
+      g.stmt_resume_value_stack.push(last)
+    }
+    None => ()
+  }
+}
+
+///|
+fn restore_stmt_resume_frame(
+  gen_opt : GeneratorObject?,
+  fallback_env : Environment,
+) -> (Int, Environment, Value) {
+  match gen_opt {
+    Some(g) =>
+      if g.resuming && g.stmt_resume_index_stack.length() > 0 {
+        let index = g.stmt_resume_index_stack.pop().unwrap()
+        let saved_env = g.stmt_resume_env_stack.pop().unwrap()
+        let last = g.stmt_resume_value_stack.pop().unwrap()
+        (index, saved_env, last)
+      } else {
+        (0, fallback_env, Undefined)
+      }
+    None => (0, fallback_env, Undefined)
+  }
+}
+
+///|
 fn Interpreter::exec_stmt(
   self : Interpreter,
   ctx : ExecContext,
@@ -2455,9 +2491,22 @@ fn Interpreter::exec_stmts(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Signal raise Error {
-  let mut last : Value = Undefined
-  for stmt in stmts {
-    match self.exec_stmt(ctx, stmt, env) {
+  let (start, exec_env, initial_last) = restore_stmt_resume_frame(
+    ctx.current_generator,
+    env,
+  )
+  let mut last = initial_last
+  for i = start; i < stmts.length(); i = i + 1 {
+    let stmt = stmts[i]
+    let signal = self.exec_stmt(ctx, stmt, exec_env) catch {
+      e => {
+        if e is YieldSignal(_) {
+          save_stmt_resume_frame(ctx.current_generator, i, exec_env, last)
+        }
+        raise e
+      }
+    }
+    match signal {
       Normal(v) =>
         // Per spec, declarations have empty completion values that don't update
         // the statement list's value. Only non-declaration statements update it.

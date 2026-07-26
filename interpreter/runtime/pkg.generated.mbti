@@ -614,6 +614,9 @@ pub(all) struct GeneratorObject {
   mut try_resume_pending_error : Error?
   loop_env_stack : Array[Environment]
   loop_yield_base_stack : Array[Int]
+  stmt_resume_index_stack : Array[Int]
+  stmt_resume_env_stack : Array[Environment]
+  stmt_resume_value_stack : Array[Value]
   mut for_of_iterator : Value
   mut for_of_next : Value
   for_of_iterator_stack : Array[Value]

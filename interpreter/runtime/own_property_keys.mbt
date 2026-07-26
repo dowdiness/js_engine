@@ -134,8 +134,8 @@ pub fn Interpreter::own_property_keys(
     Value::String_(s) => {
       // ToObject(String) characterization (§10.4.3): indexed character slots
       // then "length". Only reached through getOwnPropertyNames coercion.
-      let chars = s.to_array()
-      for i in 0..<chars.length() {
+      let length = utf16_length(s)
+      for i in 0..<length {
         keys.push(Value::String_(i.to_string()))
       }
       keys.push(Value::String_("length"))
