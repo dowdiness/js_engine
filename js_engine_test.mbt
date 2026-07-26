@@ -1240,6 +1240,97 @@ test "ES module: named default class conflicts with a lexical declaration" {
 }
 
 ///|
+test "class name stays in TDZ while evaluating its heritage" {
+  let sources = [
+    "class C extends C {};", "let C = Object; let D = class C extends C {};",
+  ]
+  for source in sources {
+    let outcome = run_outcome(source)
+    expect_bool(
+      outcome.contains("ReferenceError"),
+      true,
+      "class heritage self-reference TDZ: " + source,
+    )
+  }
+}
+
+///|
+test "named class expression keeps its inner self binding" {
+  let source =
+    #|let C = "outer";
+    #|let K = class C {
+    #|  static self = C;
+    #|  value() { return C; }
+    #|};
+    #|console.log(C);
+    #|console.log(K.self === K);
+    #|console.log(new K().value() === K);
+  let (output, _) = @js_engine.run(source)
+  json_inspect(output, content=["outer", "true", "true"])
+}
+
+///|
+test "ES module: named default class name is in TDZ during heritage" {
+  let modules : Array[(String, String)] = [
+    ("./main", "export default class C extends C {};"),
+  ]
+  let raised = try {
+    ignore(@js_engine.run_modules(modules))
+    false
+  } catch {
+    @errors.ReferenceError(_) => true
+    _ => false
+  }
+  expect_bool(raised, true, "named default class heritage TDZ")
+}
+
+///|
+test "ES module: named default declarations conflict with local declarations" {
+  let sources = [
+    "export default function C() {}; let C;", "export default function C() {}; class C {};",
+    "export default function C() {}; function C() {};", "export default function* C() {}; let C;",
+    "export default async function C() {}; class C {};", "export default async function* C() {}; function C() {};",
+    "export default class C {}; function C() {};",
+  ]
+  for source in sources {
+    let modules : Array[(String, String)] = [("./main", source)]
+    let raised = try {
+      ignore(@js_engine.run_modules(modules))
+      false
+    } catch {
+      @errors.SyntaxError(_) => true
+      _ => false
+    }
+    expect_bool(raised, true, "named default declaration conflict")
+  }
+}
+
+///|
+test "ES module: named default function stays hoisted and live" {
+  let modules : Array[(String, String)] = [
+    (
+      "./base", "console.log(typeof F); export default function F() {}; export { F };",
+    ),
+    ("./main", "import D, { F } from './base'; console.log(D === F);"),
+  ]
+  let (output, _) = @js_engine.run_modules(modules)
+  json_inspect(output, content=["function", "true"])
+}
+
+///|
+test "ES module: anonymous defaults do not create local lexical names" {
+  let sources = [
+    "export default function () {}; let C = 1; console.log(C);", "export default class {}; let C = 1; console.log(C);",
+    "export default (class C {}); let C = 1; console.log(C);", "export default 0; let C = 1; console.log(C);",
+  ]
+  for source in sources {
+    let modules : Array[(String, String)] = [("./main", source)]
+    let (output, _) = @js_engine.run_modules(modules)
+    json_inspect(output, content=["1"])
+  }
+}
+
+///|
 test "ES module: imported local re-export propagates binding identity through stars" {
   let modules : Array[(String, String)] = [
     ("./base", "export const foo = 2;"),
