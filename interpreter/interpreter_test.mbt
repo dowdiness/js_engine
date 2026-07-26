@@ -10749,6 +10749,42 @@ test "annex-b: block function propagation preserves instantiated identity" {
 }
 
 ///|
+test "strict: block hoistable declarations do not overwrite later assignments" {
+  let output = run_output(
+    (
+      #|"use strict";
+      #|{
+      #|  g = 1;
+      #|  function* g() {}
+      #|  console.log(g);
+      #|  a = 2;
+      #|  async function a() {}
+      #|  console.log(a);
+      #|  ag = 3;
+      #|  async function* ag() {}
+      #|  console.log(ag);
+      #|}
+    ),
+  )
+  json_inspect(output, content=["1", "2", "3"])
+}
+
+///|
+test "annex-b: block function propagates its current binding value" {
+  let output = run_output_annex_b(
+    (
+      #|var f = "outer";
+      #|{
+      #|  f = 1;
+      #|  function f() {}
+      #|}
+      #|console.log(f);
+    ),
+  )
+  json_inspect(output, content=["1"])
+}
+
+///|
 test "block: lexical and var redeclaration throws SyntaxError" {
   let mut err_msg = ""
   try {

@@ -14,19 +14,18 @@ fn function_decl_is_hoisted_noop(env : Environment, name : String) -> Bool {
 }
 
 ///|
-/// Return a HoistableDeclaration value already created by
+/// Return the current value of a HoistableDeclaration binding created by
 /// BlockDeclarationInstantiation. Block environments are not var scopes, and
-/// their function bindings are mutable lexical bindings initialized before
-/// statement execution.
+/// their mutable lexical binding may have been assigned a non-function value
+/// before execution reaches the declaration's no-op evaluation step.
 fn instantiated_block_function_value(
   env : Environment,
   name : String,
 ) -> Value? {
   guard !env.is_var_scope else { return None }
   match env.bindings.get(name) {
-    Some(binding) if binding.kind == LetBinding &&
-      binding.initialized &&
-      is_function_value(binding.value) => Some(binding.value)
+    Some(binding) if binding.kind == LetBinding && binding.initialized =>
+      Some(binding.value)
     _ => None
   }
 }
