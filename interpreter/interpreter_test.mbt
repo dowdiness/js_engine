@@ -10622,6 +10622,11 @@ test "compat-table ES2015 arrow has correct precedence" {
 }
 
 ///|
+test "ES2015 grouped arrow preserves logical-or precedence" {
+  expect_result(run("(0 || (() => 2))()"), "2")
+}
+
+///|
 test "compat-table ES2015 rest parameters cannot be used in setters" {
   let src =
     #|(function (...args) {
