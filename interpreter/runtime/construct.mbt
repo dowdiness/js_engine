@@ -1282,10 +1282,14 @@ fn Interpreter::construct_value_impl(
             ctor_env.is_var_scope = true
             // For derived classes, 'this' is in TDZ until super() is called
             match super_ctor {
-              Some(sc) => {
+              Some(_) => {
                 // Put 'this' in TDZ - will be initialized by super() call
                 ctor_env.def_tdz("this", LetBinding)
-                ctor_env.def_builtin("[[SuperConstructor]]", sc)
+                // GetSuperConstructor observes the active class function's
+                // [[Prototype]] at call time; Object.setPrototypeOf can change it.
+                ctor_env.def_builtin(
+                  "[[SuperConstructor]]", obj_data.prototype,
+                )
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
                 // Store the new instance for super() to use
                 ctor_env.def_builtin("[[PendingThis]]", new_obj)
@@ -1352,7 +1356,13 @@ fn Interpreter::construct_value_impl(
               None => {
                 // No explicit constructor - if there's a super class, call super()
                 match super_ctor {
-                  Some(sc) =>
+                  Some(_) => {
+                    let sc = obj_data.prototype
+                    if !is_constructor_value(sc) {
+                      raise @errors.TypeError(
+                        message="super constructor is not a constructor",
+                      )
+                    }
                     match sc {
                       Object(super_data) =>
                         match super_data.callable {
@@ -1378,9 +1388,9 @@ fn Interpreter::construct_value_impl(
                               LetBinding,
                             )
                             match grand_super {
-                              Some(gs) => {
+                              Some(_) => {
                                 super_env.def_builtin(
-                                  "[[SuperConstructor]]", gs,
+                                  "[[SuperConstructor]]", super_data.prototype,
                                 )
                                 super_env.def_builtin(
                                   "[[SuperPrototype]]", sproto,
@@ -1510,6 +1520,7 @@ fn Interpreter::construct_value_impl(
                         )
                       }
                     }
+                  }
                   None => ()
                 }
                 // Apply derived class instance fields after implicit super() call

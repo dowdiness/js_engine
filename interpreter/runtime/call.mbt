@@ -425,7 +425,7 @@ pub fn Interpreter::perform_eval(
   // Direct eval looks at the caller's env chain via existing markers.
   let in_function = if direct { caller_env.has("<new.target>") } else { false }
   let in_method = if direct {
-    caller_env.has("[[SuperPrototype]]")
+    caller_env.has("[[SuperPrototype]]") || caller_env.has("[[HomeObject]]")
   } else {
     false
   }

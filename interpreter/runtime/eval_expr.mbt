@@ -23,6 +23,26 @@ fn resolve_super_target(env : Environment) -> Value {
 }
 
 ///|
+fn require_super_target(
+  env : Environment,
+  access : String,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match resolve_super_target(env) {
+    Undefined =>
+      raise @errors.ReferenceError(
+        message=access +
+        " used but no [[SuperPrototype]] in scope at line \{loc.line}",
+      )
+    Null =>
+      raise @errors.TypeError(
+        message=format_loc_context("Cannot convert null to object", loc),
+      )
+    target => target
+  }
+}
+
+///|
 fn pattern_may_contain_yield(pattern : @ast.Pattern) -> Bool {
   @ast.pattern_immediate_children_any(
     pattern, pattern_may_contain_yield, expr_may_contain_yield,
@@ -175,17 +195,9 @@ pub fn Interpreter::eval_super_property(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_proto = resolve_super_target(env)
-  match super_proto {
-    Null | Undefined =>
-      raise @errors.ReferenceError(
-        message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
-      )
-    _ => {
-      let this_val = eval_this_value(env)
-      self.get_property_from_prototype(this_val, super_proto, prop, loc)
-    }
-  }
+  let super_proto = require_super_target(env, "super.prop", loc)
+  let this_val = eval_this_value(env)
+  self.get_property_from_prototype(this_val, super_proto, prop, loc)
 }
 
 ///|
@@ -195,17 +207,9 @@ pub fn Interpreter::eval_super_computed_property(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let super_proto = resolve_super_target(env)
-  match super_proto {
-    Null | Undefined =>
-      raise @errors.ReferenceError(
-        message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
-      )
-    _ => {
-      let this_val = eval_this_value(env)
-      self.get_computed_property_from_prototype(this_val, super_proto, key, loc)
-    }
-  }
+  let super_proto = require_super_target(env, "super[expr]", loc)
+  let this_val = eval_this_value(env)
+  self.get_computed_property_from_prototype(this_val, super_proto, key, loc)
 }
 
 ///|
@@ -215,20 +219,12 @@ pub fn Interpreter::eval_super_property_call_reference(
   prop : String,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let super_proto = resolve_super_target(env)
-  match super_proto {
-    Null | Undefined =>
-      raise @errors.ReferenceError(
-        message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
-      )
-    _ => {
-      let this_val = eval_this_value(env)
-      let func_val = self.get_property_from_prototype(
-        this_val, super_proto, prop, loc,
-      )
-      (this_val, func_val)
-    }
-  }
+  let super_proto = require_super_target(env, "super.prop", loc)
+  let this_val = eval_this_value(env)
+  let func_val = self.get_property_from_prototype(
+    this_val, super_proto, prop, loc,
+  )
+  (this_val, func_val)
 }
 
 ///|
@@ -238,20 +234,12 @@ pub fn Interpreter::eval_super_computed_call_reference(
   key : Value,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
-  let super_proto = resolve_super_target(env)
-  match super_proto {
-    Null | Undefined =>
-      raise @errors.ReferenceError(
-        message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
-      )
-    _ => {
-      let this_val = eval_this_value(env)
-      let func_val = self.get_computed_property_from_prototype(
-        this_val, super_proto, key, loc,
-      )
-      (this_val, func_val)
-    }
-  }
+  let super_proto = require_super_target(env, "super[expr]", loc)
+  let this_val = eval_this_value(env)
+  let func_val = self.get_computed_property_from_prototype(
+    this_val, super_proto, key, loc,
+  )
+  (this_val, func_val)
 }
 
 ///|
@@ -2007,6 +1995,11 @@ fn Interpreter::eval_super_dispatch(
   loc : @token.Loc,
 ) -> Value raise Error {
   let super_ctor = env.get("[[SuperConstructor]]")
+  if !is_constructor_value(super_ctor) {
+    raise @errors.TypeError(
+      message=format_loc_context("super constructor is not a constructor", loc),
+    )
+  }
   let this_val = if env.has("[[PendingThis]]") {
     env.get("[[PendingThis]]")
   } else {
@@ -2042,13 +2035,13 @@ fn Interpreter::eval_super_dispatch(
           // Mirror construct.mbt: derived super keeps `this` in TDZ until its
           // own super() call completes; base super gets a live `this` immediately.
           match _super_ctor {
-            Some(grand_super) => {
+            Some(_) => {
               // §10.2.11 / §15.7.5.1: `this` is TDZ in derived constructors
               // until super() returns. Store the pending instance in [[PendingThis]]
               // so the inner SuperCall handler can find it.
               call_env.def_tdz("this", LetBinding)
               call_env.def_builtin("[[PendingThis]]", this_val)
-              call_env.def_builtin("[[SuperConstructor]]", grand_super)
+              call_env.def_builtin("[[SuperConstructor]]", data.prototype)
               call_env.def_builtin("[[SuperPrototype]]", super_proto)
               // Super is also derived: defer its fields until its own super() returns
               if super_instance_fields.length() > 0 ||

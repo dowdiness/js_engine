@@ -7166,6 +7166,115 @@ test "derived super property before super throws ReferenceError" {
 }
 
 ///|
+test "super property with null base throws TypeError" {
+  let output = run_output(
+    (
+      #|let caught = [];
+      #|class C extends null {
+      #|  method() {
+      #|    try { super.x; } catch (e) { caught.push(e instanceof TypeError); }
+      #|    try { super["x"]; } catch (e) { caught.push(e instanceof TypeError); }
+      #|  }
+      #|}
+      #|C.prototype.method();
+      #|let obj = {
+      #|  method() {
+      #|    try { super.x; } catch (e) { caught.push(e instanceof TypeError); }
+      #|    try { super["x"]; } catch (e) { caught.push(e instanceof TypeError); }
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(obj, null);
+      #|obj.method();
+      #|console.log(caught.join(","));
+    ),
+  )
+  json_inspect(output, content=["true,true,true,true"])
+}
+
+///|
+test "super call observes current class prototype after argument evaluation" {
+  let output = run_output(
+    (
+      #|let evaluated = false;
+      #|let caught;
+      #|class C extends Object {
+      #|  constructor() {
+      #|    try { super(evaluated = true); } catch (e) { caught = e; }
+      #|  }
+      #|}
+      #|Object.setPrototypeOf(C, parseInt);
+      #|try { new C(); } catch (_) {}
+      #|console.log(evaluated, caught instanceof TypeError);
+    ),
+  )
+  json_inspect(output, content=["true true"])
+}
+
+///|
+test "super computed update preserves reference evaluation order" {
+  let output = run_output(
+    (
+      #|let keyEvaluated = false;
+      #|class Base {}
+      #|class Derived extends Base {
+      #|  constructor() {
+      #|    try { super[(keyEvaluated = true, "p")]++; }
+      #|    catch (e) { console.log(e.name, keyEvaluated); }
+      #|  }
+      #|}
+      #|try { new Derived(); } catch (_) {}
+      #|let proto1 = { p: 1 };
+      #|let proto2 = { p: -1 };
+      #|let obj1 = {
+      #|  __proto__: proto1,
+      #|  increment() { return ++super[key1]; }
+      #|};
+      #|let key1 = {
+      #|  toString() {
+      #|    Object.setPrototypeOf(obj1, proto2);
+      #|    return "p";
+      #|  }
+      #|};
+      #|let obj2 = {
+      #|  __proto__: proto1,
+      #|  compound() { return super[key2] += 1; }
+      #|};
+      #|let key2 = {
+      #|  toString() {
+      #|    Object.setPrototypeOf(obj2, proto2);
+      #|    return "p";
+      #|  }
+      #|};
+      #|console.log(obj1.increment(), obj2.compound());
+    ),
+  )
+  json_inspect(output, content=["ReferenceError false", "2 2"])
+}
+
+///|
+test "direct eval preserves object method super binding" {
+  let output = run_output(
+    (
+      #|let fromA;
+      #|let fromB;
+      #|let a = { fromA: "a", fromB: "a" };
+      #|let b = { fromB: "b" };
+      #|Object.setPrototypeOf(b, a);
+      #|let obj = {
+      #|  method() {
+      #|    fromA = eval("super.fromA");
+      #|    fromB = eval("super['fromB']");
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(obj, b);
+      #|obj.method();
+      #|console.log(fromA, fromB);
+    ),
+  )
+  json_inspect(output, content=["a b"])
+}
+
+///|
 test "derived super double init throws when super returns object" {
   let output = run_output(
     (
