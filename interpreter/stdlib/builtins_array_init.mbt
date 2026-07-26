@@ -1387,6 +1387,7 @@ fn setup_array_builtins(
           context,
           array_proto,
           @token.Loc::default(),
+          intrinsic_name="Array",
         )
         // Array constructor behavior
         if args.length() == 1 {

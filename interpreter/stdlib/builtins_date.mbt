@@ -1932,6 +1932,7 @@ pub fn setup_date_builtins(
             context,
             date_proto_ref,
             @token.Loc::default(),
+            intrinsic_name="Date",
           )
           make_date_object(t, instance_proto)
         }),

@@ -799,8 +799,9 @@ pub fn Interpreter::call_value(
 ) -> Value raise Error {
   // Fast path: skip both realm-proto wrapper layers when every active-override
   // slot is None and every callee stamped proto matches the main realm's (or is
-  // absent). Checks all 10 slots so it is safe even when stamp_function_realm_with
-  // sets slots independently or when a non-function override is active.
+  // absent). Checks every packed realm slot so it is safe even when
+  // stamp_function_realm_with sets slots independently or when a non-function
+  // override is active.
   if realm_fast_path_allowed(callee, self.realm_state) {
     self.call_value_impl(callee, this_val, args, loc)
   } else {

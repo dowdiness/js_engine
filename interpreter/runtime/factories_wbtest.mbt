@@ -84,7 +84,7 @@ test "source identity shares the packed function metadata lookup" {
         Some(Array(arr_data)) => {
           let e = arr_data.elements
           if e.length() != FUNCTION_METADATA_SLOT_COUNT {
-            fail("expected ten realm slots plus one source-identity slot")
+            fail("expected realm slots plus one source-identity slot")
           }
           match e[FUNCTION_SOURCE_IDENTITY_IDX] {
             String_(identity) if identity == "source.js" => ()

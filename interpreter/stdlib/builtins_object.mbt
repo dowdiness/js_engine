@@ -1215,6 +1215,7 @@ pub fn setup_object_builtins(
                   context,
                   obj_proto,
                   @token.Loc::default(),
+                  intrinsic_name="Object",
                 )
                 return @runtime.make_object(
                   Map([]),

@@ -132,6 +132,7 @@ fn register_error_ctor(
             context,
             proto_obj,
             @token.Loc::default(),
+            intrinsic_name=name,
           )
           let has_message = args.length() > 0 && !(args[0] is Undefined)
           let message = if has_message {
@@ -328,6 +329,7 @@ fn register_aggregate_error_ctor(
             context,
             proto_obj,
             @token.Loc::default(),
+            intrinsic_name=name,
           )
           let errors_value : Value = if args.length() > 0 {
             args[0]

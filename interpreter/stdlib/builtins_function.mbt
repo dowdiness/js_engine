@@ -486,6 +486,7 @@ fn setup_function_builtins(
                 context,
                 func_proto,
                 @token.Loc::default(),
+                intrinsic_name="Function",
               )
               let result = @runtime.stamp_function_realm(
                 Value::Object({
@@ -549,6 +550,7 @@ fn setup_function_builtins(
                 context,
                 func_proto,
                 @token.Loc::default(),
+                intrinsic_name="Function",
               )
               let result = @runtime.stamp_function_realm(
                 Value::Object({
@@ -604,6 +606,7 @@ fn setup_function_builtins(
           context,
           func_proto,
           @token.Loc::default(),
+          intrinsic_name="Function",
         )
         let fb_result = @runtime.stamp_function_realm(
           Value::Object({

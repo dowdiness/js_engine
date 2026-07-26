@@ -980,6 +980,7 @@ fn setup_set_builtins(
         context,
         set_proto,
         @token.Loc::default(),
+        intrinsic_name="Set",
       )
       let new_set : Value = Value::Set(
         @runtime.SetData([], prototype=Some(instance_proto)),

@@ -1,17 +1,18 @@
 ///|
 // Engine-private negative symbol IDs are reserved in docs/development.md.
-// -101 stores a function object's packed home-realm intrinsic prototypes and
-// optional host-supplied source identity as a 10- or 11-element Array[Value].
-// Identity-free functions use 10 elements so the call_value fast path can
+// -101 stores a function object's packed home-realm metadata (ten hot-path
+// intrinsic prototypes plus the realm's constructor-prototype registry) and
+// optional host-supplied source identity as an 11- or 12-element Array[Value].
+// Identity-free functions use 11 elements so the call_value fast path can
 // reject identity-bearing metadata with one length check.
 // -102..-110 are freed. Keep this comment updated if the range changes.
 const FUNCTION_REALM_PROTOS_PACKED_SYMBOL_ID = -101
 
 ///|
-const FUNCTION_REALM_PROTO_SLOT_COUNT = 10
+const FUNCTION_REALM_PROTO_SLOT_COUNT = 11
 
 ///|
-const FUNCTION_METADATA_SLOT_COUNT = 11
+const FUNCTION_METADATA_SLOT_COUNT = 12
 
 ///|
 const REALM_PROTO_IDX_FUNCTION = 0
@@ -44,7 +45,10 @@ const REALM_PROTO_IDX_SET = 8
 const REALM_PROTO_IDX_PROMISE = 9
 
 ///|
-const FUNCTION_SOURCE_IDENTITY_IDX = 10
+const REALM_PROTO_IDX_CONSTRUCTOR_REGISTRY = 10
+
+///|
+const FUNCTION_SOURCE_IDENTITY_IDX = 11
 
 ///|
 pub(all) struct FunctionRealmProtos {
@@ -58,6 +62,7 @@ pub(all) struct FunctionRealmProtos {
   map_proto : Value?
   set_proto : Value?
   promise_proto : Value?
+  constructor_prototype_registry : Value?
 }
 
 ///|
@@ -72,6 +77,7 @@ pub fn FunctionRealmProtos::FunctionRealmProtos(
   map_proto? : Value? = None,
   set_proto? : Value? = None,
   promise_proto? : Value? = None,
+  constructor_prototype_registry? : Value? = None,
 ) -> FunctionRealmProtos {
   {
     function_proto,
@@ -84,6 +90,7 @@ pub fn FunctionRealmProtos::FunctionRealmProtos(
     map_proto,
     set_proto,
     promise_proto,
+    constructor_prototype_registry,
   }
 }
 
@@ -480,6 +487,21 @@ pub fn get_promise_proto(realm_state? : RealmState? = None) -> Value {
 }
 
 ///|
+fn get_constructor_prototype_registry(
+  realm_state? : RealmState? = None,
+) -> Value {
+  match realm_state {
+    Some(realm_state) =>
+      active_proto_or_base(
+        realm_state.active_overrides,
+        p => p.constructor_prototype_registry,
+        realm_state.constructor_prototype_registry,
+      )
+    None => Null
+  }
+}
+
+///|
 /// Build a Function-object shell: `length` and `name` own-data properties with
 /// non-enumerable/non-writable/configurable descriptors, `[[Prototype]]` set to
 /// `Function.prototype`, `class_name: "Function"`. Shared by all `make_*_func`
@@ -565,6 +587,9 @@ fn function_realm_protos_from_state(
         promise_proto: usable_realm_proto(
           get_promise_proto(realm_state=Some(realm_state)),
         ),
+        constructor_prototype_registry: usable_realm_proto(
+          get_constructor_prototype_registry(realm_state=Some(realm_state)),
+        ),
       }
     None => empty_function_realm_protos()
   }
@@ -585,6 +610,9 @@ fn function_realm_protos_from_realm_state(
     map_proto: usable_realm_proto(realm_state.get_map_proto()),
     set_proto: usable_realm_proto(realm_state.get_set_proto()),
     promise_proto: usable_realm_proto(realm_state.get_promise_proto()),
+    constructor_prototype_registry: usable_realm_proto(
+      realm_state.constructor_prototype_registry,
+    ),
   }
 }
 
@@ -636,6 +664,10 @@ fn make_realm_protos_packed_array(
   }
   match protos.promise_proto {
     Some(v) => e[REALM_PROTO_IDX_PROMISE] = v
+    None => ()
+  }
+  match protos.constructor_prototype_registry {
+    Some(v) => e[REALM_PROTO_IDX_CONSTRUCTOR_REGISTRY] = v
     None => ()
   }
   match source_identity {
@@ -942,6 +974,7 @@ pub fn stamp_function_realm_with(
     map_proto: usable_realm_proto(map_proto),
     set_proto: usable_realm_proto(set_proto),
     promise_proto: usable_realm_proto(promise_proto),
+    constructor_prototype_registry: None,
   })
 }
 
@@ -1035,6 +1068,11 @@ fn stamp_function_realm_with_protos(
           stamp_realm_proto(data, REALM_PROTO_IDX_MAP, protos.map_proto)
           stamp_realm_proto(data, REALM_PROTO_IDX_SET, protos.set_proto)
           stamp_realm_proto(data, REALM_PROTO_IDX_PROMISE, protos.promise_proto)
+          stamp_realm_proto(
+            data,
+            REALM_PROTO_IDX_CONSTRUCTOR_REGISTRY,
+            protos.constructor_prototype_registry,
+          )
         }
         None => ()
       }
@@ -1103,6 +1141,11 @@ fn stamp_function_realm_if_unstamped_with_protos(
             REALM_PROTO_IDX_PROMISE,
             protos.promise_proto,
           )
+          stamp_realm_proto_if_unstamped(
+            data,
+            REALM_PROTO_IDX_CONSTRUCTOR_REGISTRY,
+            protos.constructor_prototype_registry,
+          )
         }
         None => ()
       }
@@ -1142,6 +1185,9 @@ fn object_data_function_realm_protos(data : ObjectData) -> FunctionRealmProtos {
             map_proto: usable_realm_proto(e[REALM_PROTO_IDX_MAP]),
             set_proto: usable_realm_proto(e[REALM_PROTO_IDX_SET]),
             promise_proto: usable_realm_proto(e[REALM_PROTO_IDX_PROMISE]),
+            constructor_prototype_registry: usable_realm_proto(
+              e[REALM_PROTO_IDX_CONSTRUCTOR_REGISTRY],
+            ),
           }
         }
         _ => empty_function_realm_protos()
@@ -1159,6 +1205,39 @@ fn callee_realm_protos(callee : Value) -> FunctionRealmProtos {
         None => empty_function_realm_protos()
       }
     _ => empty_function_realm_protos()
+  }
+}
+
+///|
+/// Resolve the intrinsic prototype selected by GetPrototypeFromConstructor's
+/// primitive-prototype fallback. Proxy and bound-function traversal mirrors
+/// GetFunctionRealm; revoked proxies therefore raise before any fallback.
+pub fn constructor_realm_intrinsic_prototype(
+  new_target : Value,
+  intrinsic_name : String,
+  default_prototype : Value,
+) -> Value raise Error {
+  fn registry_of(constructor_value : Value) -> Value? raise Error {
+    match constructor_value {
+      Proxy(proxy_data) => registry_of(get_proxy_target(proxy_data))
+      Object(data) =>
+        match data.callable {
+          Some(BoundFunc(target, _, _)) => registry_of(target)
+          Some(_) =>
+            object_data_function_realm_protos(data).constructor_prototype_registry
+          None => None
+        }
+      _ => None
+    }
+  }
+
+  match registry_of(new_target) {
+    Some(Object(registry)) =>
+      match registry.bag.properties.get(intrinsic_name) {
+        Some(prototype) => prototype
+        None => default_prototype
+      }
+    _ => default_prototype
   }
 }
 
@@ -1186,7 +1265,7 @@ fn inherited_function_source_identity(callee : Value) -> String? {
 // Returns true when call_value can skip both realm-proto wrapper layers.
 // Safe only when every active-override slot is None (no cross-realm context is
 // active) AND every callee realm slot is absent or matches the main realm's
-// corresponding prototype. All 10 slots are checked in both sets; sampling a
+// corresponding prototype. All 11 slots are checked in both sets; sampling a
 // subset is unsafe because stamp_function_realm_with
 // accepts slots independently.
 fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
@@ -1205,6 +1284,13 @@ fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
           _ => false // conservative: any mismatch forces slow path
         }
       }
+      fn same_value(idx : Int, main : Value) -> Bool {
+        match (e[idx], main) {
+          (Null, _) => true
+          (Object(c), Object(m)) => physical_equal(c, m)
+          _ => false
+        }
+      }
       same(REALM_PROTO_IDX_FUNCTION, realm_state.function_prototype) &&
       same(REALM_PROTO_IDX_OBJECT, realm_state.object_prototype) &&
       same(REALM_PROTO_IDX_STRING, realm_state.string_prototype) &&
@@ -1214,7 +1300,11 @@ fn realm_fast_path_allowed(callee : Value, realm_state : RealmState) -> Bool {
       same(REALM_PROTO_IDX_ARRAY, realm_state.array_prototype) &&
       same(REALM_PROTO_IDX_MAP, realm_state.map_prototype) &&
       same(REALM_PROTO_IDX_SET, realm_state.set_prototype) &&
-      same(REALM_PROTO_IDX_PROMISE, realm_state.promise_prototype)
+      same(REALM_PROTO_IDX_PROMISE, realm_state.promise_prototype) &&
+      same_value(
+        REALM_PROTO_IDX_CONSTRUCTOR_REGISTRY,
+        realm_state.constructor_prototype_registry,
+      )
     }
   }
 }
@@ -1241,7 +1331,8 @@ pub fn apply_active_realm_protos(
     protos.array_proto is Some(_) ||
     protos.map_proto is Some(_) ||
     protos.set_proto is Some(_) ||
-    protos.promise_proto is Some(_)
+    protos.promise_proto is Some(_) ||
+    protos.constructor_prototype_registry is Some(_)
   realm_state.active_overrides.val = if any_set ||
     realm_state.observing_source_failure.val {
     Some(protos)

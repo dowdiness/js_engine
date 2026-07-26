@@ -449,6 +449,7 @@ fn setup_map_builtins(
         context,
         map_proto,
         @token.Loc::default(),
+        intrinsic_name="Map",
       )
       let new_map : Value = Value::Map(
         @runtime.MapData([], prototype=Some(instance_proto)),

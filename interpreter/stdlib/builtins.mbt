@@ -23,6 +23,7 @@ fn builtin_constructor_prototype(
   context : @runtime.CallContext,
   default_prototype : Value,
   loc : @token.Loc,
+  intrinsic_name~ : String,
 ) -> Value raise Error {
   match context.new_target() {
     Some(new_target) => {
@@ -30,11 +31,26 @@ fn builtin_constructor_prototype(
       if @runtime.is_object_value(prototype) {
         prototype
       } else {
-        default_prototype
+        @runtime.constructor_realm_intrinsic_prototype(
+          new_target, intrinsic_name, default_prototype,
+        )
       }
     }
     None => default_prototype
   }
+}
+
+///|
+/// Capture each builtin constructor's intrinsic prototype in the RealmState's
+/// shared private registry. Direct bag reads avoid invoking user code during
+/// realm setup; later functions retain this registry through packed metadata.
+fn register_constructor_prototypes(
+  env : Environment,
+  realm_state : @runtime.RealmState,
+) -> Unit {
+  env.bindings.each(fn(name, binding) {
+    realm_state.register_constructor_prototype(name, binding.value)
+  })
 }
 
 ///|
@@ -753,6 +769,7 @@ fn setup_builtins_with_realm_state_active(
             context,
             string_proto,
             @token.Loc::default(),
+            intrinsic_name="String",
           )
           let props : Map[String, Value] = Map([])
           props["length"] = Value::Number(str.length().to_double())
@@ -947,6 +964,7 @@ fn setup_builtins_with_realm_state_active(
             context,
             boolean_proto,
             @token.Loc::default(),
+            intrinsic_name="Boolean",
           )
           Value::Object({
             bag: {
@@ -1523,6 +1541,7 @@ fn setup_builtins_with_realm_state_active(
     None => ()
   }
   mark_builtin_setup_phase(profile, "has_instance")
+  register_constructor_prototypes(env, realm_state)
   stamp_realm_functions_from_env(env, realm_state)
   mark_builtin_setup_phase(profile, "final_realm_stamp")
 }

@@ -583,6 +583,7 @@ fn setup_number_builtins(
             context,
             number_proto,
             @token.Loc::default(),
+            intrinsic_name="Number",
           )
           Value::Object({
             bag: {

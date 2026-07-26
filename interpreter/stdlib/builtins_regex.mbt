@@ -3018,7 +3018,13 @@ fn regexp_constructor_call(
     None => Null
   }
   let instance_proto = if context.is_constructing() {
-    builtin_constructor_prototype(interp, context, default_proto, loc)
+    builtin_constructor_prototype(
+      interp,
+      context,
+      default_proto,
+      loc,
+      intrinsic_name="RegExp",
+    )
   } else {
     default_proto
   }

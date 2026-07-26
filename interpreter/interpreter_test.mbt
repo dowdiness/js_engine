@@ -7772,6 +7772,67 @@ test "Proxy no-trap constructors handle revocation and primitive prototype fallb
 }
 
 ///|
+test "constructor primitive prototype fallback uses the newTarget realm" {
+  let output = run_output(
+    (
+      #|let realm = $262.createRealm();
+      #|let newTarget = realm.evalScript("(function Foreign() {})");
+      #|newTarget.prototype = 1;
+      #|function check(name, constructor, args) {
+      #|  let foreignPrototype = realm.evalScript(name + ".prototype");
+      #|  let result = Reflect.construct(
+      #|    new Proxy(constructor, {}),
+      #|    args,
+      #|    newTarget
+      #|  );
+      #|  console.log(
+      #|    name,
+      #|    Object.getPrototypeOf(result) === foreignPrototype,
+      #|    Object.getPrototypeOf(result) === constructor.prototype
+      #|  );
+      #|}
+      #|check("Object", Object, []);
+      #|check("Function", Function, []);
+      #|check("Array", Array, []);
+      #|check("String", String, ["x"]);
+      #|check("Number", Number, [1]);
+      #|check("Boolean", Boolean, [true]);
+      #|check("Date", Date, [0]);
+      #|check("RegExp", RegExp, ["x"]);
+      #|check("Error", Error, ["x"]);
+      #|check("TypeError", TypeError, ["x"]);
+      #|check("AggregateError", AggregateError, [[]]);
+      #|check("Map", Map, []);
+      #|check("Set", Set, []);
+      #|function checkWrappedNewTarget(label, wrappedNewTarget) {
+      #|  let result = Reflect.construct(Number, [1], wrappedNewTarget);
+      #|  console.log(
+      #|    label,
+      #|    Object.getPrototypeOf(result) === realm.evalScript("Number.prototype"),
+      #|    Object.getPrototypeOf(result) === Number.prototype
+      #|  );
+      #|}
+      #|checkWrappedNewTarget("proxy", new Proxy(newTarget, {}));
+      #|let boundNewTarget = Function.prototype.bind.call(newTarget, null);
+      #|Object.defineProperty(boundNewTarget, "prototype", { value: 1 });
+      #|checkWrappedNewTarget("bound", boundNewTarget);
+      #|let revocable;
+      #|revocable = Proxy.revocable(newTarget, {
+      #|  get() { revocable.revoke(); return 1; }
+      #|});
+      #|try { Reflect.construct(Number, [1], revocable.proxy); }
+      #|catch (error) { console.log("revoked", error instanceof TypeError); }
+    ),
+  )
+  json_inspect(output, content=[
+    "Object true false", "Function true false", "Array true false", "String true false",
+    "Number true false", "Boolean true false", "Date true false", "RegExp true false",
+    "Error true false", "TypeError true false", "AggregateError true false", "Map true false",
+    "Set true false", "proxy true false", "bound true false", "revoked true",
+  ])
+}
+
+///|
 test "super computed update preserves reference evaluation order" {
   let output = run_output(
     (
