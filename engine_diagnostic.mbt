@@ -395,7 +395,7 @@ fn Engine::call_json_lookup_diagnostic(
               source_identity=None,
               engine_integrity=EngineIntegrity::Reusable,
               retained_effects=RetainedEffects::None,
-              pending_jobs=PendingJobs::Unknown,
+              pending_jobs=self.pending_jobs_snapshot(),
             ),
           )
         other =>
@@ -436,7 +436,7 @@ pub fn Engine::call_json_diagnostic(
         source_identity=None,
         engine_integrity=EngineIntegrity::Reusable,
         retained_effects=RetainedEffects::MayRemain,
-        pending_jobs=PendingJobs::Unknown,
+        pending_jobs=self.pending_jobs_snapshot(),
       ),
     )
   }
