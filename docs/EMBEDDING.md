@@ -53,7 +53,7 @@ or experimental execution paths and are not used by this guide.
 
 | Classification | Root entry points |
 |---|---|
-| **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` |
+| **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::inject_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` |
 | **Compatibility** | `run_module`, `run_modules` |
 | **Advanced/internal** | `run_compiled`, `run_with_event_loop`, `has_pending_microtasks`, `has_pending_timers`, `run_microtask_checkpoint`, `run_timer_checkpoint` |
 
@@ -83,6 +83,51 @@ MoonBit JSON number is also rejected. Conversion is deliberately stricter than
 
 Promises are not awaited. Run an explicit microtask checkpoint and call a
 synchronous JSON-returning function afterward when a script uses promises.
+
+## Inject host-owned JSON
+
+`Engine::inject_json(name, value)` copies MoonBit `Json` into the Engine and
+publishes the copy as both an immutable global binding and an own property of
+`globalThis`:
+
+```moonbit
+let policy = Json::object({
+  "adminRole": Json::string("admin"),
+  "readAction": Json::string("read"),
+})
+match engine.inject_json("hostPolicy", policy) {
+  Ok(_) => ()
+  Err(diagnostic) => fail(diagnostic.message())
+}
+engine.eval(
+  #|function allow(request) {
+  #|  return request.role === hostPolicy.adminRole ||
+  #|    request.action === globalThis.hostPolicy.readAction;
+  #|}
+)
+```
+
+The `globalThis` property is non-writable, enumerable, and non-configurable.
+These attributes prevent replacing the injected top-level value; nested arrays
+and objects remain normal mutable JavaScript values. Each Engine receives its
+own recursive copy, so mutation inside one Engine does not alter the MoonBit
+input or another Engine.
+
+Injection rejects an existing global binding, an existing own property, a
+second injection using the same name, or a non-extensible global object. It
+does not replace or update an existing name. Inherited properties do not
+collide and may be shadowed by the injected own property.
+
+The operation returns `Result[Unit, EngineDiagnostic]`. JSON conversion failure
+reports kind `json-conversion-error`, operation `inject-json`, phase
+`conversion`. A name or extensibility conflict reports kind
+`injection-conflict`, operation `inject-json`, phase `define`. Expected
+failures report a reusable Engine, no retained effects, and the current pending
+job snapshot.
+
+Like `call_json` argument conversion, injection uses the direct realm bridge.
+It does not consult the mutable global `JSON` object or invoke getters,
+setters, Proxy traps, or `toJSON`, and it does not advance microtasks or timers.
 
 ## `call_json` name lookup
 

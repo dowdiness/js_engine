@@ -79,6 +79,205 @@ test "Engine preserves state and isolates realms" {
 }
 
 ///|
+test "Engine inject_json exposes immutable host-owned data" {
+  let engine = @js_engine.Engine()
+  let config = Json::object({
+    "environment": Json::string("production"),
+    "limits": Json::object({ "retries": Json::number(3.0) }),
+  })
+  match engine.inject_json("hostConfig", config) {
+    Ok(_) => ()
+    Err(_) => fail("expected host-owned JSON injection to succeed")
+  }
+  engine.eval(
+    (
+      #|function injectedSnapshot() {
+      #|  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "hostConfig");
+      #|  return {
+      #|    identifier: hostConfig,
+      #|    property: globalThis.hostConfig,
+      #|    descriptor: {
+      #|      writable: descriptor.writable,
+      #|      enumerable: descriptor.enumerable,
+      #|      configurable: descriptor.configurable
+      #|    }
+      #|  };
+      #|}
+    ),
+  )
+  json_inspect(engine.call_json("injectedSnapshot", []), content={
+    "identifier": { "environment": "production", "limits": { "retries": 3 } },
+    "property": { "environment": "production", "limits": { "retries": 3 } },
+    "descriptor": {
+      "writable": false,
+      "enumerable": true,
+      "configurable": false,
+    },
+  })
+}
+
+///|
+test "Engine inject_json rejects collisions without changing state or queues" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let occupiedBinding = 1;
+      #|Object.defineProperty(globalThis, "occupiedProperty", {
+      #|  value: 2,
+      #|  configurable: true
+      #|});
+      #|queueMicrotask(() => {});
+      #|function collisionSnapshot() {
+      #|  return [occupiedBinding, globalThis.occupiedProperty];
+      #|}
+    ),
+  )
+  for name in ["occupiedBinding", "occupiedProperty"] {
+    let diagnostic = expect_engine_diagnostic(
+      engine.inject_json(name, Json::number(9.0)),
+    )
+    assert_engine_diagnostic(
+      diagnostic,
+      "injection-conflict",
+      "inject-json",
+      "define",
+      None,
+      "reusable",
+      "none",
+      "present",
+    )
+  }
+  json_inspect(engine.call_json("collisionSnapshot", []), content=[1, 2])
+}
+
+///|
+test "Engine inject_json conversion failure is atomic and reusable" {
+  let engine = @js_engine.Engine()
+  engine.eval("queueMicrotask(() => {});")
+  let diagnostic = expect_engine_diagnostic(
+    engine.inject_json("retryableConfig", Json::number(1.0 / 0.0)),
+  )
+  assert_engine_diagnostic(
+    diagnostic,
+    "json-conversion-error",
+    "inject-json",
+    "conversion",
+    None,
+    "reusable",
+    "none",
+    "present",
+  )
+  assert_true(
+    engine.inject_json("retryableConfig", Json::string("valid")) is Ok(_),
+  )
+  engine.eval("function readRetryableConfig() { return retryableConfig; }")
+  json_inspect(engine.call_json("readRetryableConfig", []), content="valid")
+}
+
+///|
+test "Engine inject_json does not execute mutable JavaScript hooks" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|let injectionHooksTouched = 0;
+      #|JSON.parse = function() { injectionHooksTouched += 10; throw new Error("parse"); };
+      #|JSON.stringify = function() { injectionHooksTouched += 100; throw new Error("stringify"); };
+      #|const injectionProto = Object.create(Object.getPrototypeOf(globalThis));
+      #|Object.defineProperty(injectionProto, "hostPayload", {
+      #|  set(_) { injectionHooksTouched += 1000; }
+      #|});
+      #|Object.setPrototypeOf(globalThis, injectionProto);
+      #|function injectedHookSnapshot() {
+      #|  return { injectionHooksTouched, hostPayload };
+      #|}
+    ),
+  )
+  let payload = Json::object({
+    "null": Json::null(),
+    "bool": Json::boolean(true),
+    "string": Json::string("plain"),
+    "number": Json::number(4.5),
+    "array": Json::array([Json::number(1.0), Json::number(2.0)]),
+  })
+  assert_true(engine.inject_json("hostPayload", payload) is Ok(_))
+  json_inspect(engine.call_json("injectedHookSnapshot", []), content={
+    "injectionHooksTouched": 0,
+    "hostPayload": {
+      "null": null,
+      "bool": true,
+      "string": "plain",
+      "number": 4.5,
+      "array": [1, 2],
+    },
+  })
+}
+
+///|
+test "Engine inject_json copies values and prevents global replacement" {
+  let input = Json::object({
+    "nested": Json::object({ "value": Json::number(1.0) }),
+  })
+  let first = @js_engine.Engine()
+  let second = @js_engine.Engine()
+  assert_true(first.inject_json("sharedConfig", input) is Ok(_))
+  assert_true(second.inject_json("sharedConfig", input) is Ok(_))
+  first.eval(
+    (
+      #|function mutateInjectedConfig() {
+      #|  try { sharedConfig = { nested: { value: 100 } }; }
+      #|  catch (_) {}
+      #|  globalThis.sharedConfig = { nested: { value: 200 } };
+      #|  sharedConfig.nested.value = 9;
+      #|  return sharedConfig.nested.value;
+      #|}
+    ),
+  )
+  second.eval(
+    "function readInjectedConfig() { return sharedConfig.nested.value; }",
+  )
+  json_inspect(first.call_json("mutateInjectedConfig", []), content=9)
+  json_inspect(second.call_json("readInjectedConfig", []), content=1)
+  inspect(input.stringify(), content="{\"nested\":{\"value\":1}}")
+}
+
+///|
+test "Engine inject_json rejects a non-extensible global before mutation" {
+  let engine = @js_engine.Engine()
+  engine.eval(
+    (
+      #|function existingGlobalStillWorks() { return 7; }
+      #|Object.preventExtensions(globalThis);
+    ),
+  )
+  let diagnostic = expect_engine_diagnostic(
+    engine.inject_json("blockedConfig", Json::number(1.0)),
+  )
+  assert_engine_diagnostic(
+    diagnostic,
+    "injection-conflict",
+    "inject-json",
+    "define",
+    None,
+    "reusable",
+    "none",
+    "none",
+  )
+  json_inspect(engine.call_json("existingGlobalStillWorks", []), content=7)
+}
+
+///|
+test "Engine inject_json accepts property names that are not identifiers" {
+  let engine = @js_engine.Engine()
+  assert_true(
+    engine.inject_json("feature.flags", Json::string("enabled")) is Ok(_),
+  )
+  engine.eval(
+    "function readFeatureFlags() { return globalThis[\"feature.flags\"]; }",
+  )
+  json_inspect(engine.call_json("readFeatureFlags", []), content="enabled")
+}
+
+///|
 test "Engine detailed eval reports a portable parse diagnostic" {
   let engine = @js_engine.Engine()
   engine.eval("queueMicrotask(() => {}); setTimeout(() => {}, 0);")
