@@ -1287,9 +1287,7 @@ fn Interpreter::construct_value_impl(
                 ctor_env.def_tdz("this", LetBinding)
                 // GetSuperConstructor observes the active class function's
                 // [[Prototype]] at call time; Object.setPrototypeOf can change it.
-                ctor_env.def_builtin(
-                  "[[SuperConstructor]]", obj_data.prototype,
-                )
+                ctor_env.def_builtin("[[SuperConstructor]]", obj_data.prototype)
                 ctor_env.def_builtin("[[SuperPrototype]]", super_proto)
                 // Store the new instance for super() to use
                 ctor_env.def_builtin("[[PendingThis]]", new_obj)
@@ -1390,7 +1388,8 @@ fn Interpreter::construct_value_impl(
                             match grand_super {
                               Some(_) => {
                                 super_env.def_builtin(
-                                  "[[SuperConstructor]]", super_data.prototype,
+                                  "[[SuperConstructor]]",
+                                  super_data.prototype,
                                 )
                                 super_env.def_builtin(
                                   "[[SuperPrototype]]", sproto,

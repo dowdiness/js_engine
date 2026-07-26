@@ -153,7 +153,11 @@ fn Interpreter::eval_update(
         strict=ctx.strict,
         receiver=this_val,
       )
-      if prefix { new_val } else { Number(num) }
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
     }
     SuperComputedMember(key_expr, mloc) => {
       let this_val = eval_this_value(env)
@@ -176,7 +180,11 @@ fn Interpreter::eval_update(
         strict=ctx.strict,
         receiver=this_val,
       )
-      if prefix { new_val } else { Number(num) }
+      if prefix {
+        new_val
+      } else {
+        Number(num)
+      }
     }
     PrivateMember(obj_expr, name, _) => {
       let obj = self.eval_expr(ctx, obj_expr, env)

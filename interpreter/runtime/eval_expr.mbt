@@ -32,7 +32,7 @@ fn require_super_target(
     Undefined =>
       raise @errors.ReferenceError(
         message=access +
-        " used but no [[SuperPrototype]] in scope at line \{loc.line}",
+          " used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
     Null =>
       raise @errors.TypeError(
@@ -860,7 +860,10 @@ pub fn Interpreter::copy_object_spread_properties(
       Some((desc, _)) if desc.enumerable => {
         let value = self.get_computed_property(source, key, loc)
         let succeeded = self.define_own_property(
-          target, key, PartialDescriptor::data_default(value), loc,
+          target,
+          key,
+          PartialDescriptor::data_default(value),
+          loc,
         )
         if !succeeded {
           raise @errors.TypeError(
