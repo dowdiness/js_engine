@@ -324,7 +324,6 @@ pub fn lookup_symbol_property_chain(
 /// Raises TypeError if @@toPrimitive is not callable or returns an object.
 fn call_symbol_to_primitive(
   obj_val : Value,
-  data : ObjectData,
   hint : String,
   interp? : Interpreter? = None,
 ) -> Value? raise Error {
@@ -333,13 +332,29 @@ fn call_symbol_to_primitive(
     Some(ip) => ip.realm_state.well_known_symbols.to_primitive
     None => return None
   }
-  match
-    lookup_symbol_property_chain(
-      obj_val,
-      data,
-      to_prim_sym.id,
-      interp=effective,
-    ) {
+  let method_value = match effective {
+    Some(ip) =>
+      Some(
+        ip.get_property_key_with_receiver(
+          obj_val,
+          Symbol(to_prim_sym),
+          obj_val,
+          @token.Loc::default(),
+        ),
+      )
+    None =>
+      match obj_val {
+        Object(data) =>
+          lookup_symbol_property_chain(
+            obj_val,
+            data,
+            to_prim_sym.id,
+            interp=effective,
+          )
+        _ => None
+      }
+  }
+  match method_value {
     Some(Undefined) | Some(Null) | None => None
     Some(exotic_to_prim) => {
       if !is_callable(exotic_to_prim) {
@@ -369,7 +384,7 @@ pub fn to_primitive_number(
   data : ObjectData,
   interp? : Interpreter? = None,
 ) -> Value raise Error {
-  match call_symbol_to_primitive(obj_val, data, "number", interp~) {
+  match call_symbol_to_primitive(obj_val, "number", interp~) {
     Some(result) => return result
     None => ()
   }
@@ -451,7 +466,7 @@ pub fn to_primitive_default(
   data : ObjectData,
   interp? : Interpreter? = None,
 ) -> Value raise Error {
-  match call_symbol_to_primitive(obj_val, data, "default", interp~) {
+  match call_symbol_to_primitive(obj_val, "default", interp~) {
     Some(result) => return result
     None => ()
   }
@@ -715,15 +730,66 @@ pub fn to_number(
 /// Follows the ECMAScript spec: check @@toPrimitive, then toString, then valueOf.
 fn to_primitive_string(
   obj_val : Value,
-  data : ObjectData,
   interp? : Interpreter? = None,
 ) -> Value raise Error {
-  match call_symbol_to_primitive(obj_val, data, "string", interp~) {
+  match call_symbol_to_primitive(obj_val, "string", interp~) {
     Some(result) => return result
     None => ()
   }
+  // Without an interpreter there is no execution context in which to run
+  // user code. Preserve the legacy built-in ordinary conversions for exotic
+  // values; runtime expression paths always provide an interpreter and take
+  // the full Get/Call route below.
+  if interp is None {
+    match obj_val {
+      Array(data) =>
+        return String_(
+          data.elements
+          .map(v => {
+            match v {
+              Undefined | Null => ""
+              _ => v.to_string()
+            }
+          })
+          .join(","),
+        )
+      Map(_) | Set(_) | Promise(_) => return String_("[object Object]")
+      Proxy(data) =>
+        return String_(
+          if data.is_callable {
+            "function proxy() { [native code] }"
+          } else {
+            "[object Object]"
+          },
+        )
+      _ => ()
+    }
+  }
   // Step 2: OrdinaryToPrimitive with hint "string" - try toString first, then valueOf
-  match lookup_ordinary_method(obj_val, data, "toString", interp~) {
+  let data = match obj_val {
+    Object(data) => Some(data)
+    _ => None
+  }
+  let lookup_method = fn(method_name : String) -> Value? raise Error {
+    match interp {
+      Some(ip) =>
+        Some(
+          ip.get_property_key_with_receiver(
+            obj_val,
+            String_(method_name),
+            obj_val,
+            @token.Loc::default(),
+          ),
+        )
+      None =>
+        match data {
+          Some(object_data) =>
+            lookup_ordinary_method(obj_val, object_data, method_name, interp~)
+          None => None
+        }
+    }
+  }
+  match lookup_method("toString") {
     Some(ts_fn) =>
       if is_callable(ts_fn) {
         let result = call_callable_direct(ts_fn, obj_val, [], interp~)
@@ -733,7 +799,7 @@ fn to_primitive_string(
       }
     None => ()
   }
-  match lookup_ordinary_method(obj_val, data, "valueOf", interp~) {
+  match lookup_method("valueOf") {
     Some(vo_fn) =>
       if is_callable(vo_fn) {
         let result = call_callable_direct(vo_fn, obj_val, [], interp~)
@@ -760,8 +826,8 @@ pub fn to_property_key(
 ) -> Value raise Error {
   match val {
     Symbol(_) => val
-    Object(data) => {
-      let primitive = to_primitive_string(Object(data), data, interp~)
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+      let primitive = to_primitive_string(val, interp~)
       match primitive {
         Symbol(_) => primitive
         _ => Value::String_(to_js_string(primitive, interp~))
@@ -795,26 +861,10 @@ pub fn to_js_string(
       raise @errors.TypeError(
         message="Cannot convert a Symbol value to a string",
       )
-    Object(data) => {
-      let prim = to_primitive_string(Object(data), data, interp~)
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => {
+      let prim = to_primitive_string(val, interp~)
       to_js_string(prim, interp~)
     }
-    Array(arr_data) =>
-      arr_data.elements
-      .map(fn(v) {
-        match v {
-          Undefined | Null => ""
-          _ => v.to_string()
-        }
-      })
-      .join(",")
-    Map(_) | Set(_) | Promise(_) => "[object Object]"
-    Proxy(proxy_data) =>
-      if proxy_data.is_callable {
-        "function proxy() { [native code] }"
-      } else {
-        "[object Object]"
-      }
   }
 }
 

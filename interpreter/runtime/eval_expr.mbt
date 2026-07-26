@@ -94,57 +94,7 @@ fn Interpreter::get_symbol_property_from_prototype(
   sym : SymbolData,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let key = Value::Symbol(sym)
-  let mut current = proto
-  while true {
-    match current {
-      Object(data) => {
-        match data.bag.symbol_descriptors.get(sym.id) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match data.bag.symbol_properties.get(sym.id) {
-          Some(value) => return value
-          None => current = data.prototype
-        }
-      }
-      Array(data) => {
-        match data.bag.symbol_descriptors.get(sym.id) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match get_array_symbol_prop(data, sym.id) {
-          Some(value) => return value
-          None => current = get_array_prototype(self.realm_state, data)
-        }
-      }
-      Proxy(proxy_data) =>
-        match get_proxy_trap(proxy_data, "get", self) {
-          Some(trap_fn) => {
-            let target = get_proxy_target(proxy_data)
-            let handler = get_proxy_handler(proxy_data)
-            return self.call_value(
-              trap_fn,
-              handler,
-              [target, key, receiver],
-              loc,
-            )
-          }
-          None => current = get_proxy_target(proxy_data)
-        }
-      Null => return Undefined
-      _ => return self.get_computed_property(current, key, loc)
-    }
-  }
-  Undefined
+  self.get_property_key_with_receiver(proto, Symbol(sym), receiver, loc)
 }
 
 ///|
@@ -155,17 +105,7 @@ fn Interpreter::get_computed_property_from_prototype(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
-  match key {
-    Symbol(sym) =>
-      self.get_symbol_property_from_prototype(receiver, proto, sym, loc)
-    _ =>
-      self.get_property_from_prototype(
-        receiver,
-        proto,
-        to_js_string(key, interp=Some(self)),
-        loc,
-      )
-  }
+  self.get_property_key_with_receiver(proto, key, receiver, loc)
 }
 
 ///|
@@ -175,16 +115,18 @@ pub fn Interpreter::eval_super_property(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
+  let this_val = eval_this_value(env)
   let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => {
-      let this_val = eval_this_value(env)
-      self.get_property_from_prototype(this_val, super_proto, prop, loc)
-    }
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
+    _ => self.get_property_from_prototype(this_val, super_proto, prop, loc)
   }
 }
 
@@ -195,16 +137,19 @@ pub fn Interpreter::eval_super_computed_property(
   key : Value,
   loc : @token.Loc,
 ) -> Value raise Error {
+  let this_val = eval_this_value(env)
   let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
-    _ => {
-      let this_val = eval_this_value(env)
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
+    _ =>
       self.get_computed_property_from_prototype(this_val, super_proto, key, loc)
-    }
   }
 }
 
@@ -215,14 +160,18 @@ pub fn Interpreter::eval_super_property_call_reference(
   prop : String,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
+  let this_val = eval_this_value(env)
   let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super.prop used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
     _ => {
-      let this_val = eval_this_value(env)
       let func_val = self.get_property_from_prototype(
         this_val, super_proto, prop, loc,
       )
@@ -238,14 +187,18 @@ pub fn Interpreter::eval_super_computed_call_reference(
   key : Value,
   loc : @token.Loc,
 ) -> (Value, Value) raise Error {
+  let this_val = eval_this_value(env)
   let super_proto = self.resolve_super_target(env)
   match super_proto {
-    Null | Undefined =>
+    Undefined =>
       raise @errors.ReferenceError(
         message="super[expr] used but no [[SuperPrototype]] in scope at line \{loc.line}",
       )
+    Null =>
+      raise @errors.TypeError(
+        message="Cannot read property from null super base at line \{loc.line}",
+      )
     _ => {
-      let this_val = eval_this_value(env)
       let func_val = self.get_computed_property_from_prototype(
         this_val, super_proto, key, loc,
       )

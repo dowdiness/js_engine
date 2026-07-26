@@ -276,8 +276,74 @@ fn Interpreter::get_property_impl(
 }
 
 ///|
-/// Look up an inherited property while preserving the original receiver for
-/// accessors and Proxy `get` traps.
+/// ES [[Get]] with an explicit Receiver and an already-evaluated property-key
+/// input. This is the shared receiver-aware boundary for ordinary objects and
+/// every object-like Value variant. The key is canonicalized once at entry;
+/// recursive prototype steps keep the resulting String/Symbol unchanged.
+fn Interpreter::get_property_key_with_receiver(
+  self : Interpreter,
+  target : Value,
+  key : Value,
+  receiver : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  let prop_key = to_property_key(key, interp=Some(self))
+  self.get_property_key_with_receiver_canonical(target, prop_key, receiver, loc)
+}
+
+///|
+fn Interpreter::get_property_key_with_receiver_canonical(
+  self : Interpreter,
+  target : Value,
+  prop_key : Value,
+  receiver : Value,
+  loc : @token.Loc,
+) -> Value raise Error {
+  match target {
+    Proxy(proxy_data) => proxy_get_key(self, proxy_data, prop_key, receiver)
+    Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) =>
+      match self.get_own_property(target, prop_key) {
+        Some((desc, own_value)) =>
+          match desc.getter {
+            Some(getter) => self.call_value(getter, receiver, [], loc)
+            None =>
+              if desc.is_accessor || desc.setter is Some(_) {
+                Undefined
+              } else {
+                own_value
+              }
+          }
+        None => {
+          let proto = match target {
+            Object(data) => data.prototype
+            Array(data) => get_array_prototype(self.realm_state, data)
+            Map(data) =>
+              data.prototype.unwrap_or_else(fn() {
+                self.realm_state.get_map_proto()
+              })
+            Set(data) =>
+              data.prototype.unwrap_or_else(fn() {
+                self.realm_state.get_set_proto()
+              })
+            Promise(data) =>
+              data.prototype.unwrap_or_else(fn() {
+                self.realm_state.get_promise_proto()
+              })
+            _ => fail("non-object reached object [[Get]] prototype dispatch")
+          }
+          self.get_property_key_with_receiver_canonical(
+            proto, prop_key, receiver, loc,
+          )
+        }
+      }
+    Null | Undefined => Undefined
+    _ => self.get_computed_property(target, prop_key, loc)
+  }
+}
+
+///|
+/// Look up an inherited string property while preserving the original
+/// receiver for accessors and Proxy `get` traps.
 fn Interpreter::get_property_from_prototype(
   self : Interpreter,
   receiver : Value,
@@ -285,70 +351,7 @@ fn Interpreter::get_property_from_prototype(
   prop : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let mut current = proto
-  while true {
-    match current {
-      Object(data) => {
-        match data.bag.descriptors.get(prop) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match data.bag.properties.get(prop) {
-          Some(v) => return v
-          None => current = data.prototype
-        }
-      }
-      Array(data) => {
-        if prop == "length" {
-          return match get_array_length_override(data) {
-            Some(n64) => Number(n64.to_double())
-            None => Number(data.elements.length().to_double())
-          }
-        }
-        let num_idx = @string.parse_int(prop) catch { _ => -1 }
-        if num_idx >= 0 && num_idx.to_string() == prop {
-          // Inside a prototype walk, an Array(data) node still needs spec
-          // [[Get]] semantics: own descriptor / dense vs hole / fall through.
-          match array_index_lookup_result(data, num_idx) {
-            Present(v) => return v
-            OwnAccessor(Some(getter)) =>
-              return self.call_value(getter, receiver, [], loc)
-            OwnAccessor(None) => return Undefined
-            Hole | OutOfRange => {
-              // Continue the chain via this array's own prototype.
-              current = get_array_prototype(self.realm_state, data)
-              continue
-            }
-          }
-        }
-        match data.bag.descriptors.get(prop) {
-          Some(desc) =>
-            match desc.getter {
-              Some(getter) => return self.call_value(getter, receiver, [], loc)
-              None => if desc.setter is Some(_) { return Undefined }
-            }
-          None => ()
-        }
-        match get_array_named_prop(data, prop) {
-          Some(v) => return v
-          None =>
-            match get_array_prototype_override(data) {
-              Some(next) => current = next
-              None =>
-                return lookup_builtin_proto(self, receiver, "Array", prop, loc)
-            }
-        }
-      }
-      Proxy(proxy_data) => return proxy_get(self, proxy_data, prop, receiver)
-      Null => return Undefined
-      _ => return self.get_property(current, prop, loc)
-    }
-  }
-  Undefined
+  self.get_property_key_with_receiver(proto, String_(prop), receiver, loc)
 }
 
 ///|
@@ -393,80 +396,13 @@ fn Interpreter::get_property_of_object(
               None => current = proto_data.prototype
             }
           }
-          Array(arr_data) => {
-            // Handle Array values in the prototype chain
-            if prop == "length" {
-              return match get_array_length_override(arr_data) {
-                Some(n64) => Number(n64.to_double())
-                None => Number(arr_data.elements.length().to_double())
-              }
-            }
-            // Check numeric index access on array elements
-            let num_idx = @string.parse_int(prop) catch { _ => -1 }
-            if num_idx >= 0 && num_idx < arr_data.elements.length() {
-              match arr_data.bag.descriptors.get(prop) {
-                Some(desc) =>
-                  match desc.getter {
-                    Some(getter) => return self.call_value(getter, obj, [], loc)
-                    None => if desc.setter is Some(_) { return Undefined }
-                  }
-                None => ()
-              }
-              return arr_data.elements[num_idx]
-            }
-            match get_array_named_prop(arr_data, prop) {
-              Some(v) => return v
-              None => {
-                let result = (self.stdlib_hooks.get_array_method_with_interp)(
-                  arr_data,
-                  prop,
-                  self.realm_state,
-                )
-                match result {
-                  Undefined => {
-                    // Continue to this array's prototype, honoring per-array overrides.
-                    let proto = get_array_prototype(self.realm_state, arr_data)
-                    match proto {
-                      Object(_) => current = proto
-                      _ => break
-                    }
-                  }
-                  _ => return result
-                }
-              }
-            }
-          }
-          Map(map_data) => {
-            // Handle Map values in the prototype chain
-            if prop == "size" {
-              return Number(map_data.entries.length().to_double())
-            }
-            let result = (self.stdlib_hooks.get_map_method)(
-              map_data,
-              prop,
-              self.realm_state,
+          Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+            return self.get_property_key_with_receiver(
+              current,
+              String_(prop),
+              obj,
+              loc,
             )
-            match result {
-              Undefined => break
-              _ => return result
-            }
-          }
-          Set(set_data) => {
-            // Handle Set values in the prototype chain
-            if prop == "size" {
-              return Number(set_data.effective_size().to_double())
-            }
-            let result = (self.stdlib_hooks.get_set_method)(
-              set_data,
-              prop,
-              self.realm_state,
-            )
-            match result {
-              Undefined => break
-              _ => return result
-            }
-          }
-          Proxy(proxy_data) => return proxy_get(self, proxy_data, prop, obj)
           Null =>
             // For function objects, fall back to Function.prototype (once)
             if !func_proto_checked {
@@ -777,31 +713,7 @@ fn Interpreter::get_computed_property_impl(
 ) -> Value raise Error {
   // Handle Proxy objects first
   match obj {
-    Proxy(proxy_data) => {
-      // For string keys, use proxy_get with invariant checks
-      // For symbol keys, call the trap directly (invariant checks TODO)
-      let key_str = match key {
-        Symbol(_) => ""
-        _ => to_js_string(key, interp=Some(self))
-      }
-      match key {
-        Symbol(_) => {
-          let trap = get_proxy_trap(proxy_data, "get", self)
-          match trap {
-            Some(trap_fn) => {
-              let target = get_proxy_target(proxy_data)
-              let handler = get_proxy_handler(proxy_data)
-              return self.call_value(trap_fn, handler, [target, key, obj], loc)
-            }
-            None => {
-              let target = get_proxy_target(proxy_data)
-              return self.get_computed_property(target, key, loc)
-            }
-          }
-        }
-        _ => return proxy_get(self, proxy_data, key_str, obj)
-      }
-    }
+    Proxy(proxy_data) => return proxy_get_key(self, proxy_data, key, obj)
     _ => ()
   }
   // Handle Symbol keys specially
@@ -844,6 +756,13 @@ fn Interpreter::get_computed_property_impl(
                       None => current = proto_data.prototype
                     }
                   }
+                  Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+                    return self.get_property_key_with_receiver(
+                      current,
+                      Symbol(sym),
+                      obj,
+                      loc,
+                    )
                   _ => break
                 }
               }
@@ -1139,68 +1058,13 @@ fn Interpreter::get_computed_property_impl(
                   None => current = proto_data.prototype
                 }
               }
-              Array(arr_data) => {
-                if prop == "length" {
-                  return Number(arr_data.elements.length().to_double())
-                }
-                // Check numeric index access on array elements
-                let num_idx2 = @string.parse_int(prop) catch { _ => -1 }
-                if num_idx2 >= 0 && num_idx2 < arr_data.elements.length() {
-                  return arr_data.elements[num_idx2]
-                }
-                match get_array_named_prop(arr_data, prop) {
-                  Some(v) => return v
-                  None => {
-                    let result = (self.stdlib_hooks.get_array_method_with_interp)(
-                      arr_data,
-                      prop,
-                      self.realm_state,
-                    )
-                    match result {
-                      Undefined => {
-                        // Continue to this array's prototype, honoring per-array overrides.
-                        let proto = get_array_prototype(
-                          self.realm_state,
-                          arr_data,
-                        )
-                        match proto {
-                          Object(_) => current = proto
-                          _ => break
-                        }
-                      }
-                      _ => return result
-                    }
-                  }
-                }
-              }
-              Map(map_data) => {
-                if prop == "size" {
-                  return Number(map_data.entries.length().to_double())
-                }
-                let result = (self.stdlib_hooks.get_map_method)(
-                  map_data,
-                  prop,
-                  self.realm_state,
+              Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) =>
+                return self.get_property_key_with_receiver(
+                  current,
+                  String_(prop),
+                  obj,
+                  loc,
                 )
-                match result {
-                  Undefined => break
-                  _ => return result
-                }
-              }
-              Set(set_data) => {
-                if prop == "size" {
-                  return Number(set_data.effective_size().to_double())
-                }
-                let result = (self.stdlib_hooks.get_set_method)(
-                  set_data,
-                  prop,
-                  self.realm_state,
-                )
-                match result {
-                  Undefined => break
-                  _ => return result
-                }
-              }
               _ => break
             }
           }

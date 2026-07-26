@@ -7190,6 +7190,79 @@ test "super computed assignment canonicalizes its key before [[Set]]" {
 }
 
 ///|
+test "super computed assignment ToPropertyKey supports Proxy keys" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("proxy-key");
+      #|let keyTarget = {
+      #|  [Symbol.toPrimitive](hint) {
+      #|    log.push("primitive:" + hint);
+      #|    return symbol;
+      #|  }
+      #|};
+      #|let key = new Proxy(keyTarget, {});
+      #|let base = {
+      #|  set [symbol](value) { log.push("set:" + value); }
+      #|};
+      #|let object = {
+      #|  method(propertyKey, value) {
+      #|    super[propertyKey] = (log.push("rhs"), value);
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(object, base);
+      #|object.method(key, 1);
+      #|
+      #|let revoked = Proxy.revocable(keyTarget, {});
+      #|revoked.revoke();
+      #|try { object.method(revoked.proxy, 2); }
+      #|catch (error) { log.push(error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["rhs,primitive:string,set:1,rhs,TypeError"])
+}
+
+///|
+test "super computed assignment ToPropertyKey covers every object variant" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let labels = ["object", "array", "map", "set", "promise", "proxy"];
+      #|let keys = [{}, [], new Map(), new Set(), Promise.resolve(0), new Proxy({}, {})];
+      #|for (let index = 0; index < keys.length; index = index + 1) {
+      #|  let label = labels[index];
+      #|  keys[index][Symbol.toPrimitive] = function(hint) {
+      #|    log.push("primitive:" + label + ":" + hint);
+      #|    return label;
+      #|  };
+      #|}
+      #|let fallback = new Map();
+      #|fallback.toString = function() {
+      #|  log.push("fallback:toString"); return {};
+      #|};
+      #|fallback.valueOf = function() {
+      #|  log.push("fallback:valueOf"); return "fallback";
+      #|};
+      #|let object = {
+      #|  write(key, label) {
+      #|    super[key] = (log.push("rhs:" + label), label);
+      #|  }
+      #|};
+      #|Object.setPrototypeOf(object, {});
+      #|for (let index = 0; index < keys.length; index = index + 1) {
+      #|  object.write(keys[index], labels[index]);
+      #|}
+      #|object.write(fallback, "fallback");
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "rhs:object,primitive:object:string,rhs:array,primitive:array:string,rhs:map,primitive:map:string,rhs:set,primitive:set:string,rhs:promise,primitive:promise:string,rhs:proxy,primitive:proxy:string,rhs:fallback,fallback:toString,fallback:valueOf",
+  ])
+}
+
+///|
 test "class super properties observe the live home object prototype" {
   let output = run_output(
     (
@@ -7246,6 +7319,250 @@ test "class super properties observe the live home object prototype" {
   )
   json_inspect(output, content=[
     "proxy-get:value,new-get,value:new,proxy-get:method,new-call,call:new,proxy-set:x,new-set:3,static-value:new-static,new-static-call,new-static-set:4",
+  ])
+}
+
+///|
+test "super [[Get]] preserves receiver through Map prototype nodes" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let instanceBase = new Map();
+      #|Object.defineProperty(instanceBase, "value", {
+      #|  get() { log.push("instance-get:" + (this === instance)); return 1; }
+      #|});
+      #|Object.defineProperty(instanceBase, "callable", {
+      #|  get() {
+      #|    log.push("instance-call-get:" + (this === instance));
+      #|    return function() { log.push("instance-call:" + (this === instance)); };
+      #|  }
+      #|});
+      #|class Derived {
+      #|  read() { return super.value + super["value"]; }
+      #|  call() { super.callable(); super["callable"](); }
+      #|  static readStatic() { return super.value + super["value"]; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, instanceBase);
+      #|let instance = new Derived();
+      #|instance.read();
+      #|instance.call();
+      #|
+      #|let staticBase = new Map();
+      #|Object.defineProperty(staticBase, "value", {
+      #|  get() { log.push("static-get:" + (this === Derived)); return 1; }
+      #|});
+      #|Object.setPrototypeOf(Derived, staticBase);
+      #|Derived.readStatic();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-get:true,instance-get:true,instance-call-get:true,instance-call:true,instance-call-get:true,instance-call:true,static-get:true,static-get:true",
+  ])
+}
+
+///|
+test "super [[Get]] handles typed-array indices and Symbol receivers" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("typed");
+      #|let instanceBase = new Uint8Array([42]);
+      #|Object.defineProperty(instanceBase, symbol, {
+      #|  get() { log.push("instance-symbol:" + (this === instance)); return 1; }
+      #|});
+      #|class Derived {
+      #|  read() { log.push("instance-index:" + super[0]); return super[symbol]; }
+      #|  static read() { log.push("static-index:" + super[0]); return super[symbol]; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, instanceBase);
+      #|let instance = new Derived();
+      #|instance.read();
+      #|
+      #|let staticBase = new Uint8Array([43]);
+      #|Object.defineProperty(staticBase, symbol, {
+      #|  get() { log.push("static-symbol:" + (this === Derived)); return 1; }
+      #|});
+      #|Object.setPrototypeOf(Derived, staticBase);
+      #|Derived.read();
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-index:42,instance-symbol:true,static-index:43,static-symbol:true",
+  ])
+}
+
+///|
+test "super [[Get]] receiver matrix covers ordinary and exotic bases" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("receiver");
+      #|let labels = ["object", "array", "map", "set", "promise"];
+      #|let bases = [{}, [], new Map(), new Set(), Promise.resolve(0)];
+      #|for (let index = 0; index < bases.length; index = index + 1) {
+      #|  let label = labels[index];
+      #|  let base = bases[index];
+      #|  let receiver;
+      #|  Object.defineProperty(base, "value", {
+      #|    get() { log.push(label + "-direct:" + (this === receiver)); return 1; }
+      #|  });
+      #|  Object.defineProperty(base, symbol, {
+      #|    get() { log.push(label + "-symbol:" + (this === receiver)); return 1; }
+      #|  });
+      #|  Object.defineProperty(base, "callable", {
+      #|    get() {
+      #|      log.push(label + "-call-get:" + (this === receiver));
+      #|      return function() { log.push(label + "-call:" + (this === receiver)); };
+      #|    }
+      #|  });
+      #|  let home = {
+      #|    read() { return super.value + super["value"] + super[symbol]; },
+      #|    call() { super.callable(); }
+      #|  };
+      #|  Object.setPrototypeOf(home, base);
+      #|  receiver = Object.create(home);
+      #|  receiver.read();
+      #|  receiver.call();
+      #|}
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "object-direct:true,object-direct:true,object-symbol:true,object-call-get:true,object-call:true,array-direct:true,array-direct:true,array-symbol:true,array-call-get:true,array-call:true,map-direct:true,map-direct:true,map-symbol:true,map-call-get:true,map-call:true,set-direct:true,set-direct:true,set-symbol:true,set-call-get:true,set-call:true,promise-direct:true,promise-direct:true,promise-symbol:true,promise-call-get:true,promise-call:true",
+  ])
+}
+
+///|
+test "super [[Get]] preserves receiver through trapless Proxy" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let target = {};
+      #|Object.defineProperty(target, "value", {
+      #|  get() { log.push("get:" + (this === instance)); return 1; }
+      #|});
+      #|let base = new Proxy(target, {});
+      #|class Derived {
+      #|  read() { return super.value + super["value"]; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, base);
+      #|let instance = new Derived();
+      #|instance.read();
+      #|
+      #|let nestedReceiver;
+      #|let nestedTarget = {};
+      #|Object.defineProperty(nestedTarget, "value", {
+      #|  get() { log.push("nested:" + (this === nestedReceiver)); return 1; }
+      #|});
+      #|let nestedBase = new Proxy(new Proxy(nestedTarget, {}), { get: undefined });
+      #|nestedReceiver = Object.create(nestedBase);
+      #|nestedReceiver["value"];
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["get:true,get:true,nested:true"])
+}
+
+///|
+test "Proxy [[Get]] enforces invariants for Symbol keys including super" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("fixed");
+      #|let target = {};
+      #|Object.defineProperty(target, symbol, {
+      #|  value: 1, writable: false, configurable: false
+      #|});
+      #|let proxy = new Proxy(target, { get() { return 2; } });
+      #|try { proxy[symbol]; }
+      #|catch (error) { log.push("direct:" + error.name); }
+      #|class Derived { read() { return super[symbol]; } }
+      #|Object.setPrototypeOf(Derived.prototype, proxy);
+      #|try { new Derived().read(); }
+      #|catch (error) { log.push("super:" + error.name); }
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=["direct:TypeError,super:TypeError"])
+}
+
+///|
+test "super [[Set]] walks Promise prototypes with the derived receiver" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let symbol = Symbol("promise-set");
+      #|let instanceBase = Promise.resolve(0);
+      #|let instanceSetters = {
+      #|  set direct(value) { log.push("instance-direct:" + (this === instance)); },
+      #|  set computed(value) { log.push("instance-computed:" + (this === instance)); }
+      #|};
+      #|Object.defineProperty(instanceSetters, symbol, {
+      #|  set(value) { log.push("instance-symbol:" + (this === instance)); }
+      #|});
+      #|Object.setPrototypeOf(instanceBase, instanceSetters);
+      #|class Derived {
+      #|  write() { super.direct = 1; super["computed"] = 2; super[symbol] = 3; }
+      #|  static write() { super.direct = 4; super["computed"] = 5; super[symbol] = 6; }
+      #|}
+      #|Object.setPrototypeOf(Derived.prototype, instanceBase);
+      #|let instance = new Derived();
+      #|instance.write();
+      #|log.push("instance-own:" + instance.hasOwnProperty("direct") + ":" + instance.hasOwnProperty("computed"));
+      #|
+      #|let staticBase = Promise.resolve(0);
+      #|let staticSetters = {
+      #|  set direct(value) { log.push("static-direct:" + (this === Derived)); },
+      #|  set computed(value) { log.push("static-computed:" + (this === Derived)); }
+      #|};
+      #|Object.defineProperty(staticSetters, symbol, {
+      #|  set(value) { log.push("static-symbol:" + (this === Derived)); }
+      #|});
+      #|Object.setPrototypeOf(staticBase, staticSetters);
+      #|Object.setPrototypeOf(Derived, staticBase);
+      #|Derived.write();
+      #|log.push("static-own:" + Derived.hasOwnProperty("direct") + ":" + Derived.hasOwnProperty("computed"));
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-direct:true,instance-computed:true,instance-symbol:true,instance-own:false:false,static-direct:true,static-computed:true,static-symbol:true,static-own:false:false",
+  ])
+}
+
+///|
+test "super [[Get]] distinguishes null base from missing super binding" {
+  let output = run_output(
+    (
+      #|let log = [];
+      #|let object = {
+      #|  direct() { return super.value; },
+      #|  computed() { return super["value"]; },
+      #|  call() { return super.value(); }
+      #|};
+      #|Object.setPrototypeOf(object, null);
+      #|for (let name of ["direct", "computed", "call"]) {
+      #|  try { object[name](); }
+      #|  catch (error) { log.push("instance-" + name + ":" + error.name); }
+      #|}
+      #|
+      #|class StaticDerived {
+      #|  static direct() { return super.value; }
+      #|  static computed() { return super["value"]; }
+      #|  static call() { return super.value(); }
+      #|}
+      #|Object.setPrototypeOf(StaticDerived, null);
+      #|for (let name of ["direct", "computed", "call"]) {
+      #|  try { StaticDerived[name](); }
+      #|  catch (error) { log.push("static-" + name + ":" + error.name); }
+      #|}
+      #|console.log(log.join(","));
+    ),
+  )
+  json_inspect(output, content=[
+    "instance-direct:TypeError,instance-computed:TypeError,instance-call:TypeError,static-direct:TypeError,static-computed:TypeError,static-call:TypeError",
   ])
 }
 
