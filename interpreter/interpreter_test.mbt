@@ -19553,18 +19553,19 @@ test "regex char class: \\0 null escape with following decimal digits" {
 }
 
 ///|
-test "regex char class: unicode mode strict errors for malformed \\x and \\u" {
-  // In Unicode mode (/u flag), malformed \x and \u must throw SyntaxError.
+test "RegExp constructor: unicode mode strict errors for malformed \\x and \\u" {
+  // Constructor pattern strings are validated when the call is evaluated, so
+  // their SyntaxErrors remain catchable by JavaScript try/catch.
   let output = run_output(
     (
       #|var threw = 0;
-      #|try { /[\x]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\u]/u }   catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\u1]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
-      #|try { /[\x4]/u }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\x]", "u") }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\u]", "u") }   catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\u1]", "u") }  catch(e) { if (e instanceof SyntaxError) threw++ }
+      #|try { new RegExp("[\\x4]", "u") }  catch(e) { if (e instanceof SyntaxError) threw++ }
       #|console.log(threw);   // 4 -- all four must throw
-      #|try { /[\xA0]/u; console.log(true) } catch(e) { console.log(false) }
-      #|try { /[A]/u; console.log(true) } catch(e) { console.log(false) }
+      #|try { new RegExp("[\\xA0]", "u"); console.log(true) } catch(e) { console.log(false) }
+      #|try { new RegExp("[A]", "u"); console.log(true) } catch(e) { console.log(false) }
     ),
   )
   json_inspect(output, content=["4", "true", "true"])
@@ -19593,6 +19594,67 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
 }
 
 ///|
+test "RegExp u-mode invalid literal is an early SyntaxError (#576)" {
+  let invalid_literals = [
+    (
+      #|/\u{110000}/u;
+    ),
+    (
+      #|/\u{}/u;
+    ),
+    (
+      #|/\u{1,}/u;
+    ),
+    (
+      #|/\u{41/u;
+    ),
+  ]
+  for literal in invalid_literals {
+    let interp = new_interpreter()
+    let observed = try {
+      let source = (
+          #|console.log('started');
+          #|try {
+        ) +
+        literal +
+        (
+          #|
+          #|  console.log('after literal');
+          #|} catch (e) {
+          #|  console.log('caught');
+          #|}
+        )
+      let prog = @parser.parse(source)
+      let _ = interp.run(prog.stmts)
+      "no error"
+    } catch {
+      @errors.SyntaxError(_) => "early SyntaxError"
+      @runtime.JsException(_) => "runtime SyntaxError"
+      error => error.to_string()
+    }
+    json_inspect([observed, interp.host.output.join(",")], content=[
+      "early SyntaxError", "",
+    ])
+  }
+}
+
+///|
+test "RegExp constructor invalid u escape remains catchable (#576)" {
+  let output = run_output(
+    (
+      #|try {
+      #|  new RegExp("\\u{110000}", "u");
+      #|  console.log('no error');
+      #|} catch (e) {
+      #|  console.log(e instanceof SyntaxError);
+      #|}
+      #|console.log('continued');
+    ),
+  )
+  json_inspect(output, content=["true", "continued"])
+}
+
+///|
 test "RegExp u-mode Unicode code-point escapes (#576)" {
   let output = run_output(
     (
@@ -19603,12 +19665,6 @@ test "RegExp u-mode Unicode code-point escapes (#576)" {
       #|console.log(/\u{1F600}/u.test('\u{1F600}')); // astral scalar
       #|console.log(/\u{10FFFF}/u.test('\u{10FFFF}')); // maximum scalar
       #|console.log(/\u{000000003f}/u.test('?'));     // leading zeroes
-      #|var syntaxErrors = 0;
-      #|try { /\u{110000}/u } catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
-      #|try { /\u{}/u }       catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
-      #|try { /\u{1,}/u }     catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
-      #|try { /\u{41/u }      catch (e) { if (e instanceof SyntaxError) syntaxErrors++ }
-      #|console.log(syntaxErrors);
       #|console.log(/\u/.test('u'));                 // non-u identity escape
       #|console.log(/\u0041/.test('A'));             // legacy fixed escape
       #|console.log(/\u{41}/.test('u'.repeat(41)));  // non-u identity + quantifier
@@ -19616,8 +19672,8 @@ test "RegExp u-mode Unicode code-point escapes (#576)" {
     ),
   )
   json_inspect(output, content=[
-    "true", "true", "true", "true", "true", "true", "true", "4", "true", "true",
-    "true", "false",
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "false",
   ])
 }
 

@@ -710,99 +710,25 @@ fn is_hex_digit(c : Char) -> Bool {
 ///|
 /// Whether the cursor starts an exactly four-digit Unicode escape payload.
 fn RegexParser::has_fixed_unicode_escape(self : RegexParser) -> Bool {
-  guard self.pos + 3 < self.pattern.length() else { return false }
-  for i in 0..<4 {
-    if !is_hex_digit(self.pattern[self.pos + i]) {
-      return false
-    }
-  }
-  true
+  @lexer.regexp_has_fixed_unicode_escape(self.pattern, self.pos)
 }
 
 ///|
-/// Parse a Unicode escape payload starting just after `\u`. This is shared by
-/// ordinary atoms, character classes, group names, and named backreferences.
+/// Parse a Unicode escape payload starting just after `\u`. The pure decoder is
+/// shared with RegExp literal early-error validation in the lexer.
 fn RegexParser::parse_unicode_escape(
   self : RegexParser,
   allow_braced? : Bool = true,
   combine_surrogate_pair? : Bool = true,
 ) -> Char raise Error {
-  if allow_braced &&
-    self.pos < self.pattern.length() &&
-    self.pattern[self.pos] == '{' {
-    self.pos += 1
-    let mut cp = 0
-    let mut count = 0
-    while self.pos < self.pattern.length() &&
-          is_hex_digit(self.pattern[self.pos]) {
-      // Once the value is known to be out of range, keep consuming without
-      // multiplying again. This accepts arbitrary leading zeroes without
-      // risking Int overflow on an arbitrarily long HexDigits production.
-      if cp <= 0x10FFFF {
-        cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
-      }
-      self.pos += 1
-      count += 1
-    }
-    if count == 0 ||
-      self.pos >= self.pattern.length() ||
-      self.pattern[self.pos] != '}' {
-      raise @errors.SyntaxError(message="Invalid regex: invalid Unicode escape")
-    }
-    self.pos += 1 // skip '}'
-    if cp > 0x10FFFF {
-      raise @errors.SyntaxError(
-        message="Invalid regex: Unicode code point out of range",
-      )
-    }
-    cp.unsafe_to_char()
-  } else {
-    // \uXXXX — exactly 4 hex digits
-    let mut cp = 0
-    for i = 0; i < 4; i = i + 1 {
-      if self.pos >= self.pattern.length() ||
-        !is_hex_digit(self.pattern[self.pos]) {
-        raise @errors.SyntaxError(
-          message="Invalid regex: invalid Unicode escape",
-        )
-      }
-      cp = cp * 16 + hex_digit_value(self.pattern[self.pos])
-      self.pos += 1
-    }
-    // Surrogate pair: if high surrogate, check for \uDCxx low surrogate
-    if combine_surrogate_pair && cp >= 0xD800 && cp <= 0xDBFF {
-      if self.pos + 5 < self.pattern.length() &&
-        self.pattern[self.pos] == '\\' &&
-        self.pattern[self.pos + 1] == 'u' {
-        let saved = self.pos
-        self.pos += 2 // skip \u
-        let mut low = 0
-        let mut ok = true
-        for i = 0; i < 4; i = i + 1 {
-          if self.pos >= self.pattern.length() ||
-            !is_hex_digit(self.pattern[self.pos]) {
-            ok = false
-            break
-          }
-          low = low * 16 + hex_digit_value(self.pattern[self.pos])
-          self.pos += 1
-        }
-        if ok && low >= 0xDC00 && low <= 0xDFFF {
-          // Valid surrogate pair — combine
-          let combined = (cp - 0xD800) * 0x400 + (low - 0xDC00) + 0x10000
-          combined.unsafe_to_char()
-        } else {
-          // Not a valid low surrogate — backtrack
-          self.pos = saved
-          cp.unsafe_to_char()
-        }
-      } else {
-        cp.unsafe_to_char()
-      }
-    } else {
-      cp.unsafe_to_char()
-    }
-  }
+  let (char, next) = @lexer.parse_regexp_unicode_escape(
+    self.pattern,
+    self.pos,
+    allow_braced~,
+    combine_surrogate_pair~,
+  )
+  self.pos = next
+  char
 }
 
 ///|

@@ -6,6 +6,10 @@ import {
 }
 
 // Values
+pub fn parse_regexp_unicode_escape(Array[Char], Int, allow_braced? : Bool, combine_surrogate_pair? : Bool) -> (Char, Int) raise
+
+pub fn regexp_has_fixed_unicode_escape(Array[Char], Int) -> Bool
+
 pub fn tokenize(String) -> Array[@token.Token] raise
 
 // Errors
