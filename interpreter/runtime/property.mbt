@@ -1569,22 +1569,30 @@ fn Interpreter::get_computed_property_impl(
       match key {
         Number(n) => {
           let i = n.to_int()
-          if i >= 0 && i < s.length() {
-            let buf = StringBuilder::new()
-            buf.write_char(s.to_array()[i])
-            String_(buf.to_string())
+          let units = string_to_utf16(s)
+          if i >= 0 && i.to_double() == n && i < units.length() {
+            String_(String::make(1, units[i].unsafe_to_char()))
           } else {
             Undefined
           }
         }
         String_("length") => Number(utf16_length(s).to_double())
-        String_(method_name) =>
-          (self.stdlib_hooks.get_string_method)(
-            s,
-            method_name,
-            self.realm_state,
-            self.annex_b,
-          )
+        String_(property_name) => {
+          let index = @string.parse_int(property_name) catch { _ => -1 }
+          let units = string_to_utf16(s)
+          if index >= 0 &&
+            index.to_string() == property_name &&
+            index < units.length() {
+            String_(String::make(1, units[index].unsafe_to_char()))
+          } else {
+            (self.stdlib_hooks.get_string_method)(
+              s,
+              property_name,
+              self.realm_state,
+              self.annex_b,
+            )
+          }
+        }
         _ => Undefined
       }
     Number(_) =>

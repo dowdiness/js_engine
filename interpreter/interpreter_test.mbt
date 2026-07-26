@@ -6852,6 +6852,39 @@ test "object rest in destructuring" {
   json_inspect(output, content=["1", "2", "3"])
 }
 
+///|
+test "object rest follows own-key order and boxes string sources" {
+  let output = run_output(
+    (
+      #|const calls = [];
+      #|const symbolKey = Symbol("key");
+      #|const source = {
+      #|  get z() { calls.push("z"); return 2; },
+      #|  get a() { calls.push("a"); return 3; }
+      #|};
+      #|Object.defineProperty(source, "1", {
+      #|  get() { calls.push("1"); return 1; }, enumerable: true
+      #|});
+      #|Object.defineProperty(source, symbolKey, {
+      #|  get() { calls.push("symbol"); return 4; }, enumerable: true
+      #|});
+      #|let rest;
+      #|for ({ ...rest } of [source]) {}
+      #|console.log(calls.join(","));
+      #|console.log(rest["1"] + "," + rest.z + "," + rest.a + "," + rest[symbolKey]);
+      #|let chars;
+      #|for ({ ...chars } of ["foo"]) {}
+      #|console.log(chars["0"] + chars["1"] + chars["2"] + ":" + Object.keys(chars).length);
+      #|let astral;
+      #|for ({ ...astral } of ["𝌆"]) {}
+      #|console.log(Object.keys(astral).length + ":" + astral["0"].charCodeAt(0) + ":" + astral["1"].charCodeAt(0));
+    ),
+  )
+  json_inspect(output, content=[
+    "1,z,a,symbol", "1,2,3,4", "foo:3", "2:55348:57094",
+  ])
+}
+
 // =============================================================================
 // Phase 5: new.target meta-property
 // =============================================================================

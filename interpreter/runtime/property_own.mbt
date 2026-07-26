@@ -221,6 +221,18 @@ pub fn ordinary_get_own_value_for_descriptor(
             None => Undefined
           }
         }
+        String_(s) => {
+          if k == "length" {
+            return Number(utf16_length(s).to_double())
+          }
+          let idx = @string.parse_int(k) catch { _ => -1 }
+          let units = string_to_utf16(s)
+          if idx >= 0 && idx.to_string() == k && idx < units.length() {
+            String_(String::make(1, units[idx].unsafe_to_char()))
+          } else {
+            Undefined
+          }
+        }
         _ => Undefined
       }
     }
@@ -305,6 +317,31 @@ pub fn ordinary_get_own_property(
             }
           }
           ordinary_get_own_string_desc(arr.bag, k)
+        }
+        String_(s) => {
+          if k == "length" {
+            return Some({
+              writable: false,
+              enumerable: false,
+              configurable: false,
+              getter: None,
+              setter: None,
+              is_accessor: false,
+            })
+          }
+          let idx = @string.parse_int(k) catch { _ => -1 }
+          if idx >= 0 && idx.to_string() == k && idx < utf16_length(s) {
+            Some({
+              writable: false,
+              enumerable: true,
+              configurable: false,
+              getter: None,
+              setter: None,
+              is_accessor: false,
+            })
+          } else {
+            None
+          }
         }
         _ => None
       }
