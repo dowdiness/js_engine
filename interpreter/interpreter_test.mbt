@@ -19533,7 +19533,8 @@ test "regex char class: \\0 null escape with following decimal digits" {
   // \00, \07: consumed as 2-digit octal (non-unicode)
   // \000:     consumed as 3-digit octal (non-unicode)
   // \08:      NUL + '8' as separate class char (8 is not octal)
-  // \00 in unicode mode: SyntaxError (decimal escape not allowed)
+  // Unicode-mode rejection is covered separately at the parser seam because
+  // a literal early error cannot be caught by JavaScript try/catch.
   let output = run_output(
     (
       #|console.log(/[\0]/.test('\x00'));       // true -- plain \0 = NUL
@@ -19544,11 +19545,10 @@ test "regex char class: \\0 null escape with following decimal digits" {
       #|console.log(/[\000]/.test('0'));        // false -- '0' consumed
       #|console.log(/[\08]/.test('\x00'));      // true -- \0=NUL; 8 not octal
       #|console.log(/[\08]/.test('8'));         // true -- '8' is separate class char
-      #|try { /[\00]/u; console.log('no error') } catch(e) { console.log(e instanceof SyntaxError) }
     ),
   )
   json_inspect(output, content=[
-    "true", "true", "false", "true", "true", "false", "true", "true", "true",
+    "true", "true", "false", "true", "true", "false", "true", "true",
   ])
 }
 
@@ -19596,6 +19596,87 @@ test "regex char class: non-unicode surrogate \\u escapes are not folded" {
 ///|
 test "RegExp u-mode invalid literal is an early SyntaxError (#576)" {
   let invalid_literals = [
+    // HexEscapeSequence must contain exactly two hexadecimal digits.
+    (
+      #|/\x/u;
+    ),
+    (
+      #|/\x1/u;
+    ),
+    (
+      #|/[\x]/u;
+    ),
+    (
+      #|/[\x1]/u;
+    ),
+    // `c` must be followed by an ASCII letter in both escape contexts.
+    (
+      #|/\c/u;
+    ),
+    (
+      #|/\c0/u;
+    ),
+    (
+      #|/[\c]/u;
+    ),
+    (
+      #|/[\c0]/u;
+    ),
+    // Unicode IdentityEscape is restricted to syntax characters and `/`.
+    (
+      #|/\M/u;
+    ),
+    (
+      #|/[\M]/u;
+    ),
+    (
+      #|/\_/u;
+    ),
+    (
+      #|/[\_]/u;
+    ),
+    // Legacy decimal/octal escapes are forbidden in Unicode character classes.
+    (
+      #|/\00/u;
+    ),
+    (
+      #|/\1/u;
+    ),
+    (
+      #|/\8/u;
+    ),
+    (
+      #|/[\00]/u;
+    ),
+    (
+      #|/[\1]/u;
+    ),
+    (
+      #|/[\B]/u;
+    ),
+    // CharacterClassEscape cannot be either endpoint of a Unicode-mode range.
+    (
+      #|/[\d-a]/u;
+    ),
+    (
+      #|/[a-\D]/u;
+    ),
+    (
+      #|/[\w-\s]/u;
+    ),
+    // Incomplete CharacterClassEscape and named-backreference prefixes are not identities.
+    (
+      #|/\p/u;
+    ),
+    (
+      #|/[\p]/u;
+    ),
+    (
+      #|/\k/u;
+    ),
+    (
+      #|/[\k]/u;
+    ),
     (
       #|/\u{110000}/u;
     ),
@@ -19642,16 +19723,48 @@ test "RegExp u-mode invalid literal is an early SyntaxError (#576)" {
 test "RegExp constructor invalid u escape remains catchable (#576)" {
   let output = run_output(
     (
-      #|try {
-      #|  new RegExp("\\u{110000}", "u");
-      #|  console.log('no error');
-      #|} catch (e) {
-      #|  console.log(e instanceof SyntaxError);
+      #|var invalid = [
+      #|  "\\x", "\\x1", "[\\x]", "[\\x1]",
+      #|  "\\c", "\\c0", "[\\c]", "[\\c0]",
+      #|  "\\M", "[\\M]", "\\_", "[\\_]",
+      #|  "\\00", "\\1", "\\8", "[\\00]", "[\\1]", "[\\B]",
+      #|  "[\\d-a]", "[a-\\D]", "[\\w-\\s]",
+      #|  "\\p", "[\\p]", "\\k", "[\\k]",
+      #|  "\\u{110000}"
+      #|];
+      #|var caught = 0;
+      #|for (var i = 0; i < invalid.length; i++) {
+      #|  try {
+      #|    new RegExp(invalid[i], "u");
+      #|  } catch (e) {
+      #|    if (e instanceof SyntaxError) caught++;
+      #|  }
       #|}
+      #|console.log(caught);
       #|console.log('continued');
     ),
   )
-  json_inspect(output, content=["true", "continued"])
+  json_inspect(output, content=["26", "continued"])
+}
+
+///|
+test "RegExp u-mode valid CharacterEscape and IdentityEscape forms (#576)" {
+  let output = run_output(
+    (
+      #|console.log(/\x41/u.test('A'));          // HexEscapeSequence
+      #|console.log(/\cA/u.test('\x01'));       // control escape in an atom
+      #|console.log(/[\cZ]/u.test('\x1A'));     // control escape in a class
+      #|console.log(/\0/u.test('\x00'));        // NUL not followed by a digit
+      #|console.log(/\^/u.test('^'));            // SyntaxCharacter identity
+      #|console.log(/\//u.test('/'));            // solidus identity
+      #|console.log(/[\-]/u.test('-'));          // class-only hyphen escape
+      #|console.log(/(a)\1/u.test('aa'));        // in-bounds DecimalEscape
+      #|console.log(/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\10/u.test('abcdefghijj'));
+    ),
+  )
+  json_inspect(output, content=[
+    "true", "true", "true", "true", "true", "true", "true", "true", "true",
+  ])
 }
 
 ///|

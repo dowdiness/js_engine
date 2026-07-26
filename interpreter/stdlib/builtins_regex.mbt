@@ -258,6 +258,9 @@ fn validate_numeric_backreferences(
 
 ///|
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
+  if self.unicode {
+    @regexp_syntax.validate_unicode_mode_regexp_escapes(self.pattern)
+  }
   let result = self.parse_alternation()
   let named_group_indices = regex_named_group_indices(self.group_name_entries)
   let resolved = if !self.group_names.is_empty() {
@@ -429,9 +432,15 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
     'f' => Literal('\u000C') // form feed
     'v' => Literal('\u000B') // vertical tab
     '0' => Literal('\u0000') // null
+    'x' | 'c' =>
+      if self.unicode {
+        Literal(self.parse_unicode_mode_character_escape())
+      } else {
+        Literal(ch)
+      }
     'u' =>
       if self.unicode {
-        Literal(self.parse_unicode_escape())
+        Literal(self.parse_unicode_mode_character_escape())
       } else if self.has_fixed_unicode_escape() {
         // Legacy RegExp patterns accept only the fixed-width form here.
         // Keep braced escapes as Annex B identity escapes for `u`.
@@ -504,9 +513,18 @@ fn RegexParser::parse_escape(self : RegexParser) -> RegexNode raise Error {
       }
     _ =>
       if ch >= '1' && ch <= '9' {
-        // Backreference \1-\9
-        let group_num = ch.to_int() - '0'.to_int()
-        Backreference(group_num)
+        if self.unicode {
+          let (group_num, next) = @regexp_syntax.parse_unicode_mode_decimal_escape(
+            self.pattern,
+            self.pos - 1,
+          )
+          self.pos = next
+          Backreference(group_num)
+        } else {
+          // Legacy parsing currently supports single-digit backreferences.
+          let group_num = ch.to_int() - '0'.to_int()
+          Backreference(group_num)
+        }
       } else {
         Literal(ch) // literal escape (e.g., \., \*, etc.)
       }
@@ -525,7 +543,7 @@ fn RegexParser::parse_class_single_escape(
   match escaped {
     'u' =>
       if self.unicode {
-        self.parse_unicode_escape()
+        self.parse_unicode_mode_character_escape(in_character_class=true)
       } else if self.has_fixed_unicode_escape() {
         // Annex B: parse exactly 4 hex digits, no {…} form, no surrogate-pair folding.
         // In non-unicode char classes, \uD83D and \uDE00 are separate code-unit atoms —
@@ -537,26 +555,30 @@ fn RegexParser::parse_class_single_escape(
       } else {
         'u'
       }
-    'x' => {
-      // Lookahead: both hex digits must be present before consuming any
-      let has_2_hex = self.pos + 1 < self.pattern.length() &&
-        is_hex_digit(self.pattern[self.pos]) &&
-        is_hex_digit(self.pattern[self.pos + 1])
-      if !has_2_hex {
-        if self.unicode {
-          raise @errors.SyntaxError(
-            message="Invalid regex: invalid hex escape in character class",
-          )
-        }
-        // Annex B: identity escape — return 'x' without consuming anything
-        'x'
+    'x' =>
+      if self.unicode {
+        self.parse_unicode_mode_character_escape(in_character_class=true)
       } else {
-        let cp = hex_digit_value(self.pattern[self.pos]) * 16 +
-          hex_digit_value(self.pattern[self.pos + 1])
-        self.pos += 2
-        cp.unsafe_to_char()
+        // Lookahead: both hex digits must be present before consuming any
+        let has_2_hex = self.pos + 1 < self.pattern.length() &&
+          is_hex_digit(self.pattern[self.pos]) &&
+          is_hex_digit(self.pattern[self.pos + 1])
+        if !has_2_hex {
+          // Annex B: identity escape — return 'x' without consuming anything
+          'x'
+        } else {
+          let cp = hex_digit_value(self.pattern[self.pos]) * 16 +
+            hex_digit_value(self.pattern[self.pos + 1])
+          self.pos += 2
+          cp.unsafe_to_char()
+        }
       }
-    }
+    'c' =>
+      if self.unicode {
+        self.parse_unicode_mode_character_escape(in_character_class=true)
+      } else {
+        'c'
+      }
     'n' => '\n'
     'r' => '\r'
     't' => '\t'
@@ -711,6 +733,21 @@ fn is_hex_digit(c : Char) -> Bool {
 /// Whether the cursor starts an exactly four-digit Unicode escape payload.
 fn RegexParser::has_fixed_unicode_escape(self : RegexParser) -> Bool {
   @regexp_syntax.has_fixed_unicode_escape(self.pattern, self.pos)
+}
+
+///|
+/// Decode a Unicode-mode CharacterEscape whose escape letter was just consumed.
+fn RegexParser::parse_unicode_mode_character_escape(
+  self : RegexParser,
+  in_character_class? : Bool = false,
+) -> Char raise Error {
+  let (char, next) = @regexp_syntax.parse_unicode_mode_character_escape(
+    self.pattern,
+    self.pos - 1,
+    in_character_class~,
+  )
+  self.pos = next
+  char
 }
 
 ///|
