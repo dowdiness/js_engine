@@ -18,6 +18,62 @@ fn promise_instance_prototype(
 }
 
 ///|
+/// Object.prototype.toString's built-in tag, before an observable
+/// @@toStringTag lookup overrides it.
+fn object_prototype_builtin_tag(value : Value) -> String raise Error {
+  if @runtime.is_array(value) {
+    return "Array"
+  }
+  if @runtime.is_callable(value) {
+    return "Function"
+  }
+  match value {
+    Undefined => "Undefined"
+    Null => "Null"
+    Bool(_) => "Boolean"
+    Value::Number(_) => "Number"
+    Value::String_(_) => "String"
+    Symbol(_) => "Symbol"
+    Array(_) => "Array"
+    Map(_) => "Map"
+    Set(_) => "Set"
+    Promise(_) => "Promise"
+    Proxy(_) => "Object"
+    Object(data) =>
+      if data.class_name == "RegExp" {
+        "RegExp"
+      } else if data.class_name == "Error" ||
+        data.class_name == "TypeError" ||
+        data.class_name == "ReferenceError" ||
+        data.class_name == "SyntaxError" ||
+        data.class_name == "RangeError" ||
+        data.class_name == "URIError" ||
+        data.class_name == "EvalError" ||
+        data.class_name == "AggregateError" {
+        "Error"
+      } else if data.class_name == "Date" {
+        "Date"
+      } else if data.class_name == "Map" {
+        "Map"
+      } else if data.class_name == "Set" {
+        "Set"
+      } else if data.class_name == "Promise" {
+        "Promise"
+      } else if data.class_name == "Arguments" {
+        "Arguments"
+      } else if data.class_name == "Number" {
+        "Number"
+      } else if data.class_name == "String" {
+        "String"
+      } else if data.class_name == "Boolean" {
+        "Boolean"
+      } else {
+        "Object"
+      }
+  }
+}
+
+///|
 pub fn setup_object_builtins(
   env : Environment,
   realm_state : @runtime.RealmState,
@@ -34,61 +90,29 @@ pub fn setup_object_builtins(
   // Object.keys, Object.values, Object.entries, Object.create, Object.assign,
   // Object.getPrototypeOf, Object.getOwnPropertyNames
   let obj_proto_props : Map[String, Value] = Map([])
-  obj_proto_props["toString"] = @runtime.make_method_func(
+  obj_proto_props["toString"] = @runtime.make_interp_method_func(
+    realm_state=Some(realm_state),
     name="toString",
     length=0,
-    fn(this_val, _args) raise {
+    fn(interp, this_val, _args) raise {
       match this_val {
         Undefined => Value::String_("[object Undefined]")
         Null => Value::String_("[object Null]")
-        Bool(_) => Value::String_("[object Boolean]")
-        Value::Number(_) => Value::String_("[object Number]")
-        Value::String_(_) => Value::String_("[object String]")
-        Array(_) => Value::String_("[object Array]")
-        Symbol(_) => Value::String_("[object Symbol]")
-        Map(_) => Value::String_("[object Map]")
-        Set(_) => Value::String_("[object Set]")
-        Promise(_) => Value::String_("[object Promise]")
-        Proxy(_) => Value::String_("[object Object]")
-        Object(data) => {
-          // Per spec, always check Symbol.toStringTag first (it overrides built-in tags)
-          let tag = @runtime.get_tostringtag_value(data, well_known_symbols)
-          match tag {
-            Some(t) => Value::String_("[object \{t}]")
-            None =>
-              if data.class_name == "Function" {
-                Value::String_("[object Function]")
-              } else if data.class_name == "RegExp" {
-                Value::String_("[object RegExp]")
-              } else if data.class_name == "Error" ||
-                data.class_name == "TypeError" ||
-                data.class_name == "ReferenceError" ||
-                data.class_name == "SyntaxError" ||
-                data.class_name == "RangeError" ||
-                data.class_name == "URIError" ||
-                data.class_name == "EvalError" ||
-                data.class_name == "AggregateError" {
-                Value::String_("[object Error]")
-              } else if data.class_name == "Date" {
-                Value::String_("[object Date]")
-              } else if data.class_name == "Map" {
-                Value::String_("[object Map]")
-              } else if data.class_name == "Set" {
-                Value::String_("[object Set]")
-              } else if data.class_name == "Promise" {
-                Value::String_("[object Promise]")
-              } else if data.class_name == "Arguments" {
-                Value::String_("[object Arguments]")
-              } else if data.class_name == "Number" {
-                Value::String_("[object Number]")
-              } else if data.class_name == "String" {
-                Value::String_("[object String]")
-              } else if data.class_name == "Boolean" {
-                Value::String_("[object Boolean]")
-              } else {
-                Value::String_("[object Object]")
-              }
+        Bool(_) | Value::Number(_) | Value::String_(_) | Symbol(_) =>
+          Value::String_("[object \{object_prototype_builtin_tag(this_val)}]")
+        _ => {
+          let builtin_tag = object_prototype_builtin_tag(this_val)
+          let tag_value = interp.get_property_key_with_receiver(
+            this_val,
+            Symbol(well_known_symbols.to_string_tag),
+            this_val,
+            @token.Loc::default(),
+          )
+          let tag = match tag_value {
+            Value::String_(tag) => tag
+            _ => builtin_tag
           }
+          Value::String_("[object \{tag}]")
         }
       }
     },

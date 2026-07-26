@@ -569,6 +569,12 @@ fn validate_block_early_errors_expr(
       validate_block_early_errors_expr(key, strict_context)
       validate_block_early_errors_expr(rhs, strict_context)
     }
+    SuperMemberAssign(_, rhs, _) =>
+      validate_block_early_errors_expr(rhs, strict_context)
+    SuperComputedAssign(key, rhs, _) => {
+      validate_block_early_errors_expr(key, strict_context)
+      validate_block_early_errors_expr(rhs, strict_context)
+    }
     NewExpr(callee, args, _) => {
       validate_block_early_errors_expr(callee, strict_context)
       for a in args {

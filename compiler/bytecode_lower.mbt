@@ -366,6 +366,12 @@ fn collect_nested_function_refs_from_expr(
     }
     SuperComputedMember(key, _) =>
       collect_nested_function_refs_from_expr(key, refs)
+    SuperMemberAssign(_, value, _) =>
+      collect_nested_function_refs_from_expr(value, refs)
+    SuperComputedAssign(key, value, _) => {
+      collect_nested_function_refs_from_expr(key, refs)
+      collect_nested_function_refs_from_expr(value, refs)
+    }
     MemberAssign(obj, _, value, _) => {
       collect_nested_function_refs_from_expr(obj, refs)
       collect_nested_function_refs_from_expr(value, refs)
@@ -630,6 +636,12 @@ fn collect_name_refs_from_expr(
     }
     SuperComputedMember(key, _) =>
       collect_name_refs_from_expr(key, refs, nested_functions~)
+    SuperMemberAssign(_, value, _) =>
+      collect_name_refs_from_expr(value, refs, nested_functions~)
+    SuperComputedAssign(key, value, _) => {
+      collect_name_refs_from_expr(key, refs, nested_functions~)
+      collect_name_refs_from_expr(value, refs, nested_functions~)
+    }
     MemberAssign(obj, _, value, _) => {
       collect_name_refs_from_expr(obj, refs, nested_functions~)
       collect_name_refs_from_expr(value, refs, nested_functions~)
@@ -965,6 +977,11 @@ fn bytecode_expr_references_outer_arguments(expr : @ast.Expr) -> Bool {
       bytecode_expr_references_outer_arguments(obj) ||
       bytecode_expr_references_outer_arguments(key)
     SuperComputedMember(key, _) => bytecode_expr_references_outer_arguments(key)
+    SuperMemberAssign(_, value, _) =>
+      bytecode_expr_references_outer_arguments(value)
+    SuperComputedAssign(key, value, _) =>
+      bytecode_expr_references_outer_arguments(key) ||
+      bytecode_expr_references_outer_arguments(value)
     MemberAssign(obj, _, value, _) =>
       bytecode_expr_references_outer_arguments(obj) ||
       bytecode_expr_references_outer_arguments(value)
@@ -1273,6 +1290,11 @@ fn bytecode_expr_contains_destructure_assign(expr : @ast.Expr) -> Bool {
       bytecode_expr_contains_destructure_assign(key)
     SuperComputedMember(key, _) =>
       bytecode_expr_contains_destructure_assign(key)
+    SuperMemberAssign(_, value, _) =>
+      bytecode_expr_contains_destructure_assign(value)
+    SuperComputedAssign(key, value, _) =>
+      bytecode_expr_contains_destructure_assign(key) ||
+      bytecode_expr_contains_destructure_assign(value)
     MemberAssign(obj, _, value, _) =>
       bytecode_expr_contains_destructure_assign(obj) ||
       bytecode_expr_contains_destructure_assign(value)
@@ -2969,7 +2991,11 @@ fn bytecode_stmt_contains_super(stmt : @ast.Stmt) -> Bool {
 ///|
 fn bytecode_expr_contains_super(expr : @ast.Expr) -> Bool {
   match expr {
-    SuperCall(_, _) | SuperMember(_, _) | SuperComputedMember(_, _) => true
+    SuperCall(_, _)
+    | SuperMember(_, _)
+    | SuperComputedMember(_, _)
+    | SuperMemberAssign(_, _, _)
+    | SuperComputedAssign(_, _, _) => true
     Unary(_, operand, _) | Grouping(operand, _) | SpreadExpr(operand, _) =>
       bytecode_expr_contains_super(operand)
     Binary(_, left, right, _) | Comma(left, right, _) =>
@@ -3432,9 +3458,15 @@ fn BytecodeBuilder::compile_expr(
     }
     SuperComputedMember(key, loc) => {
       self.has_this = true
+      // GetThisBinding precedes evaluation of the computed key. Pop preserves
+      // the existing LoadSuperComputed stack contract (key only).
+      let _ = self.emit(LoadThis)
+      let _ = self.emit(Pop)
       self.compile_expr(key)
       let _ = self.emit(LoadSuperComputed(loc))
     }
+    SuperMemberAssign(_, _, _) | SuperComputedAssign(_, _, _) =>
+      bytecode_unsupported("super assignment")
     Ident(name, _) => self.compile_identifier_load(name)
     Binary(And, left, right, _) => self.compile_logical_and(left, right)
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
@@ -3794,6 +3826,10 @@ fn BytecodeBuilder::compile_expr(
     }
     Call(SuperComputedMember(key, member_loc), args, loc) => {
       self.has_this = true
+      // GetThisBinding precedes evaluation of the computed key. Pop preserves
+      // PrepareSuperComputedCall's existing key-only stack contract.
+      let _ = self.emit(LoadThis)
+      let _ = self.emit(Pop)
       self.compile_expr(key)
       let _ = self.emit(PrepareSuperComputedCall(member_loc))
       self.emit_call_with_receiver(args, loc)

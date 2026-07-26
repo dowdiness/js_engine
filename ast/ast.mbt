@@ -142,6 +142,8 @@ pub(all) enum Expr {
   SuperCall(Array[Expr], @token.Loc) // super(args)
   SuperMember(String, @token.Loc) // super.prop
   SuperComputedMember(Expr, @token.Loc) // super[expr]
+  SuperMemberAssign(String, Expr, @token.Loc) // super.prop = value
+  SuperComputedAssign(Expr, Expr, @token.Loc) // super[key] = value
   NewTargetExpr(@token.Loc) // new.target
   TaggedTemplate(Expr, Array[(String, String?)], Array[Expr], @token.Loc) // tag, quasis (raw, cooked?), exprs
   // Generator expressions

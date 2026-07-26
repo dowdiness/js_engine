@@ -136,7 +136,7 @@ fn Interpreter::eval_update(
     }
     SuperMember(prop, mloc) => {
       let this_val = eval_this_value(env)
-      let super_proto = require_super_target(env, "super.prop", mloc)
+      let super_proto = self.require_super_target(env, "super.prop", mloc)
       let current = self.get_property_from_prototype(
         this_val, super_proto, prop, mloc,
       )
@@ -162,7 +162,7 @@ fn Interpreter::eval_update(
     SuperComputedMember(key_expr, mloc) => {
       let this_val = eval_this_value(env)
       let key = self.eval_expr(ctx, key_expr, env)
-      let super_proto = require_super_target(env, "super[expr]", mloc)
+      let super_proto = self.require_super_target(env, "super[expr]", mloc)
       let prop_key = to_property_key(key, interp=Some(self))
       let current = self.get_computed_property_from_prototype(
         this_val, super_proto, prop_key, mloc,
@@ -323,7 +323,7 @@ fn Interpreter::eval_compound_assign(
     }
     SuperMember(prop, mloc) => {
       let this_val = eval_this_value(env)
-      let super_proto = require_super_target(env, "super.prop", mloc)
+      let super_proto = self.require_super_target(env, "super.prop", mloc)
       let current = self.get_property_from_prototype(
         this_val, super_proto, prop, mloc,
       )
@@ -342,7 +342,7 @@ fn Interpreter::eval_compound_assign(
     SuperComputedMember(key_expr, mloc) => {
       let this_val = eval_this_value(env)
       let key = self.eval_expr(ctx, key_expr, env)
-      let super_proto = require_super_target(env, "super[expr]", mloc)
+      let super_proto = self.require_super_target(env, "super[expr]", mloc)
       let prop_key = to_property_key(key, interp=Some(self))
       let current = self.get_computed_property_from_prototype(
         this_val, super_proto, prop_key, mloc,
