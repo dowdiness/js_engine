@@ -1,3 +1,4 @@
 import {
   "dowdiness/js_engine/errors",
+  "moonbitlang/core/string",
 }

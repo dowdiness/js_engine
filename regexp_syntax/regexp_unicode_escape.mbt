@@ -48,14 +48,98 @@ fn is_regexp_syntax_character(char : Char) -> Bool {
 }
 
 ///|
-fn unicode_mode_capturing_group_count(pattern : Array[Char]) -> Int {
+fn parse_unicode_mode_group_name(
+  pattern : Array[Char],
+  start : Int,
+  is_identifier_start : (Char) -> Bool,
+  is_identifier_continue : (Char) -> Bool,
+) -> (String, Int) raise Error {
+  guard start >= 0 && start < pattern.length() && pattern[start] == '<' else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: invalid named group syntax in Unicode mode",
+    )
+  }
+  let mut position = start + 1
+  guard position < pattern.length() && pattern[position] != '>' else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: invalid group name in Unicode mode",
+    )
+  }
+  let name : Array[Char] = []
+  let (first, after_first) = if pattern[position] == '\\' {
+    guard position + 1 < pattern.length() && pattern[position + 1] == 'u' else {
+      raise @errors.SyntaxError(
+        message="Invalid regex: invalid group name escape in Unicode mode",
+      )
+    }
+    parse_unicode_escape(pattern, position + 2)
+  } else {
+    (pattern[position], position + 1)
+  }
+  guard is_identifier_start(first) else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: invalid group name in Unicode mode",
+    )
+  }
+  name.push(first)
+  position = after_first
+  while position < pattern.length() && pattern[position] != '>' {
+    let (char, next) = if pattern[position] == '\\' {
+      guard position + 1 < pattern.length() && pattern[position + 1] == 'u' else {
+        raise @errors.SyntaxError(
+          message="Invalid regex: invalid group name escape in Unicode mode",
+        )
+      }
+      parse_unicode_escape(pattern, position + 2)
+    } else {
+      (pattern[position], position + 1)
+    }
+    guard is_identifier_continue(char) else {
+      raise @errors.SyntaxError(
+        message="Invalid regex: invalid group name in Unicode mode",
+      )
+    }
+    name.push(char)
+    position = next
+  }
+  guard position < pattern.length() && pattern[position] == '>' else {
+    raise @errors.SyntaxError(
+      message="Invalid regex: unterminated group name in Unicode mode",
+    )
+  }
+  (String::from_array(name), position + 1)
+}
+
+///|
+fn collect_unicode_mode_regexp_metadata(
+  pattern : Array[Char],
+  is_identifier_start : (Char) -> Bool,
+  is_identifier_continue : (Char) -> Bool,
+) -> (Int, Array[String], Array[String]) raise Error {
   let mut count = 0
+  let group_names : Array[String] = []
+  let backreference_names : Array[String] = []
   let mut position = 0
   let mut in_character_class = false
   while position < pattern.length() {
     let char = pattern[position]
     if char == '\\' {
-      // An escaped character cannot affect group or character-class structure.
+      if !in_character_class &&
+        position + 2 < pattern.length() &&
+        pattern[position + 1] == 'k' &&
+        pattern[position + 2] == '<' {
+        let (name, next) = parse_unicode_mode_group_name(
+          pattern,
+          position + 2,
+          is_identifier_start,
+          is_identifier_continue,
+        )
+        backreference_names.push(name)
+        position = next
+        continue
+      }
+      // Other escaped characters cannot affect group or character-class
+      // structure. Their syntax is checked by the validation pass below.
       position += 2
       continue
     }
@@ -71,16 +155,27 @@ fn unicode_mode_capturing_group_count(pattern : Array[Char]) -> Int {
     } else if char == '(' {
       if position + 1 >= pattern.length() || pattern[position + 1] != '?' {
         count += 1
-      } else if position + 3 < pattern.length() &&
+      } else if position + 2 < pattern.length() &&
         pattern[position + 2] == '<' &&
-        pattern[position + 3] != '=' &&
-        pattern[position + 3] != '!' {
+        (
+          position + 3 >= pattern.length() ||
+          (pattern[position + 3] != '=' && pattern[position + 3] != '!')
+        ) {
+        let (name, next) = parse_unicode_mode_group_name(
+          pattern,
+          position + 2,
+          is_identifier_start,
+          is_identifier_continue,
+        )
         count += 1
+        group_names.push(name)
+        position = next
+        continue
       }
     }
     position += 1
   }
-  count
+  (count, group_names, backreference_names)
 }
 
 ///|
@@ -129,6 +224,8 @@ fn validate_unicode_mode_escape(
   start : Int,
   in_character_class : Bool,
   capturing_group_count : Int,
+  is_identifier_start : (Char) -> Bool,
+  is_identifier_continue : (Char) -> Bool,
 ) -> Int raise Error {
   guard start < pattern.length() else {
     raise @errors.SyntaxError(message="Invalid regex: trailing backslash")
@@ -170,7 +267,10 @@ fn validate_unicode_mode_escape(
           message="Invalid regex: invalid named backreference in Unicode mode",
         )
       }
-      next
+      let (_, position) = parse_unicode_mode_group_name(
+        pattern, next, is_identifier_start, is_identifier_continue,
+      )
+      position
     }
     'p' | 'P' =>
       raise @errors.SyntaxError(
@@ -192,6 +292,8 @@ fn validate_unicode_mode_character_class(
   pattern : Array[Char],
   start : Int,
   capturing_group_count : Int,
+  is_identifier_start : (Char) -> Bool,
+  is_identifier_continue : (Char) -> Bool,
 ) -> Int raise Error {
   let mut position = start
   if position < pattern.length() && pattern[position] == '^' {
@@ -214,6 +316,8 @@ fn validate_unicode_mode_character_class(
         position + 1,
         true,
         capturing_group_count,
+        is_identifier_start,
+        is_identifier_continue,
       )
     } else {
       position += 1
@@ -248,6 +352,8 @@ fn validate_unicode_mode_character_class(
           position + 1,
           true,
           capturing_group_count,
+          is_identifier_start,
+          is_identifier_continue,
         )
       } else {
         position += 1
@@ -263,15 +369,22 @@ fn validate_unicode_mode_character_class(
 }
 
 ///|
-/// Validate every escape in a Unicode-mode RegExp pattern.
+/// Validate Unicode-mode RegExp escapes and named backreferences.
 ///
-/// This pure grammar pass is shared by RegExp literals and the RegExp
-/// constructor so both entry points accept the same escape language while
-/// retaining their respective parse-time and evaluation-time error phases.
+/// This pure grammar pass decodes GroupName escapes, gathers captures and
+/// references across the whole pattern (so forward references remain valid),
+/// and rejects references with no matching capture. The caller supplies the
+/// Unicode identifier predicates used by its lexical boundary. RegExp literals
+/// and the RegExp constructor therefore share the grammar while retaining their
+/// respective parse-time and evaluation-time error phases.
 pub fn validate_unicode_mode_regexp_escapes(
   pattern : Array[Char],
+  is_identifier_start : (Char) -> Bool,
+  is_identifier_continue : (Char) -> Bool,
 ) -> Unit raise Error {
-  let capturing_group_count = unicode_mode_capturing_group_count(pattern)
+  let (capturing_group_count, group_names, backreference_names) = collect_unicode_mode_regexp_metadata(
+    pattern, is_identifier_start, is_identifier_continue,
+  )
   let mut position = 0
   while position < pattern.length() {
     let char = pattern[position]
@@ -281,6 +394,8 @@ pub fn validate_unicode_mode_regexp_escapes(
         position + 1,
         false,
         capturing_group_count,
+        is_identifier_start,
+        is_identifier_continue,
       )
       continue
     }
@@ -289,10 +404,19 @@ pub fn validate_unicode_mode_regexp_escapes(
         pattern,
         position + 1,
         capturing_group_count,
+        is_identifier_start,
+        is_identifier_continue,
       )
       continue
     }
     position += 1
+  }
+  for name in backreference_names {
+    guard group_names.contains(name) else {
+      raise @errors.SyntaxError(
+        message="Invalid regex: unknown named backreference in Unicode mode",
+      )
+    }
   }
 }
 

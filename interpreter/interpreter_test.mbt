@@ -19675,6 +19675,24 @@ test "RegExp u-mode invalid literal is an early SyntaxError (#576)" {
       #|/\k/u;
     ),
     (
+      #|/\k<a>/u;
+    ),
+    (
+      #|/\k<\u0062>(?<a>a)/u;
+    ),
+    (
+      #|/(?<\u0061>a)\k<b>/u;
+    ),
+    (
+      #|/\k<a/u;
+    ),
+    (
+      #|/\k<>/u;
+    ),
+    (
+      #|/(?<a>a)\k<1>/u;
+    ),
+    (
       #|/[\k]/u;
     ),
     (
@@ -19729,7 +19747,9 @@ test "RegExp constructor invalid u escape remains catchable (#576)" {
       #|  "\\M", "[\\M]", "\\_", "[\\_]",
       #|  "\\00", "\\1", "\\8", "[\\00]", "[\\1]", "[\\B]",
       #|  "[\\d-a]", "[a-\\D]", "[\\w-\\s]",
-      #|  "\\p", "[\\p]", "\\k", "[\\k]",
+      #|  "\\p", "[\\p]", "\\k", "\\k<a>",
+      #|  "\\k<\\u0062>(?<a>a)", "(?<\\u0061>a)\\k<b>",
+      #|  "\\k<a", "\\k<>", "(?<a>a)\\k<1>", "[\\k]",
       #|  "\\u{110000}"
       #|];
       #|var caught = 0;
@@ -19744,7 +19764,7 @@ test "RegExp constructor invalid u escape remains catchable (#576)" {
       #|console.log('continued');
     ),
   )
-  json_inspect(output, content=["26", "continued"])
+  json_inspect(output, content=["32", "continued"])
 }
 
 ///|
@@ -19760,10 +19780,16 @@ test "RegExp u-mode valid CharacterEscape and IdentityEscape forms (#576)" {
       #|console.log(/[\-]/u.test('-'));          // class-only hyphen escape
       #|console.log(/(a)\1/u.test('aa'));        // in-bounds DecimalEscape
       #|console.log(/(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\10/u.test('abcdefghijj'));
+      #|console.log(/\k<a>(?<a>b)\w\k<a>/u.test('bab')); // forward named reference
+      #|console.log(/(?<\u0061>a)\k<a>/u.test('aa')); // escaped capture name
+      #|console.log(/\k<\u0061>(?<a>a)/u.test('a')); // escaped reference name
+      #|console.log(/(?<\u0061>a)(b)\2/u.test('abb')); // name cursor preserves group count
+      #|console.log(/\k<a>/.test('k<a>'));       // Annex B non-u identity
     ),
   )
   json_inspect(output, content=[
-    "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true", "true", "true", "true", "true", "true", "true",
+    "true", "true", "true", "true",
   ])
 }
 

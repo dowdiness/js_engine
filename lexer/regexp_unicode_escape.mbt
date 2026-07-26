@@ -7,5 +7,9 @@ fn validate_regexp_literal_unicode_escapes(
   flags : String,
 ) -> Unit raise Error {
   guard flags.contains("u") else { return }
-  @regexp_syntax.validate_unicode_mode_regexp_escapes(pattern.to_array())
+  @regexp_syntax.validate_unicode_mode_regexp_escapes(
+    pattern.to_array(),
+    char => is_id_start_cp(char.to_int()),
+    char => is_id_continue_cp(char.to_int()),
+  )
 }

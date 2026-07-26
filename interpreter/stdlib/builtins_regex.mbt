@@ -259,7 +259,11 @@ fn validate_numeric_backreferences(
 ///|
 fn RegexParser::parse(self : RegexParser) -> RegexNode raise Error {
   if self.unicode {
-    @regexp_syntax.validate_unicode_mode_regexp_escapes(self.pattern)
+    @regexp_syntax.validate_unicode_mode_regexp_escapes(
+      self.pattern,
+      is_id_start_char,
+      is_id_continue_char,
+    )
   }
   let result = self.parse_alternation()
   let named_group_indices = regex_named_group_indices(self.group_name_entries)

@@ -10,7 +10,7 @@ pub fn parse_unicode_mode_character_escape(Array[Char], Int, in_character_class?
 
 pub fn parse_unicode_mode_decimal_escape(Array[Char], Int) -> (Int, Int) raise
 
-pub fn validate_unicode_mode_regexp_escapes(Array[Char]) -> Unit raise
+pub fn validate_unicode_mode_regexp_escapes(Array[Char], (Char) -> Bool, (Char) -> Bool) -> Unit raise
 
 // Errors
 
