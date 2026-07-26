@@ -178,13 +178,13 @@ pub fn pattern_immediate_children_any(
           }) {
           break true
         }
+        if visit_pattern(property.value) {
+          break true
+        }
         if (match property.default_val {
             Some(default_expr) => visit_expr(default_expr)
             None => false
           }) {
-          break true
-        }
-        if visit_pattern(property.value) {
           break true
         }
       } nobreak {
