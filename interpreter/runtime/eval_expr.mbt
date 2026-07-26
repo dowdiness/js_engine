@@ -810,57 +810,34 @@ pub fn Interpreter::copy_object_spread_properties(
   source : Value,
   loc : @token.Loc,
 ) -> Unit raise Error {
-  let (properties, symbol_properties) = match target {
-    Object(data) => (data.bag.properties, data.bag.symbol_properties)
+  match target {
+    Object(_) => ()
     _ =>
       raise @errors.InternalError(
         message="object spread target was not an object",
       )
   }
-  match source {
-    Object(data) => {
-      // Copy all enumerable own properties. Per ES spec, spread invokes [[Get]]
-      // (which triggers getters) and creates data properties (not accessor
-      // descriptors).
-      for key, raw_value in data.bag.properties {
-        match data.bag.descriptors.get(key) {
-          Some(desc) =>
-            if desc.enumerable {
-              let val : Value = match desc.getter {
-                Some(getter) => self.call_value(getter, source, [], loc)
-                None => raw_value
-              }
-              properties[key] = val
-            }
-          None => properties[key] = raw_value
+  // CopyDataProperties: [[OwnPropertyKeys]] → [[GetOwnProperty]] → [[Get]].
+  // The target is a fresh ordinary object, so building its owned maps locally
+  // is the unobservable CreateDataProperty shell around those dispatchers.
+  if source is (Null | Undefined) {
+    return
+  }
+  for key in self.own_property_keys(source) {
+    match self.get_own_property(source, key) {
+      Some((desc, _)) if desc.enumerable => {
+        let value = self.get_computed_property(source, key, loc)
+        let succeeded = self.define_own_property(
+          target, key, PartialDescriptor::data_default(value), loc,
+        )
+        if !succeeded {
+          raise @errors.TypeError(
+            message=format_loc_context("Cannot create data property", loc),
+          )
         }
       }
-      // Copy symbol properties too, matching the existing object-literal spread
-      // path's descriptor handling.
-      for sym_id, value in data.bag.symbol_properties {
-        match data.bag.symbol_descriptors.get(sym_id) {
-          Some(desc) => if desc.enumerable { symbol_properties[sym_id] = value }
-          None => symbol_properties[sym_id] = value
-        }
-      }
+      _ => ()
     }
-    Array(arr_data) =>
-      // Spread array into object: only enumerable own properties. The current
-      // interpreter representation treats dense element slots as enumerable.
-      for i, value in arr_data.elements {
-        properties[i.to_string()] = value
-      }
-    String_(s) => {
-      // Spread string into object: { ..."abc" } -> { "0": "a", "1": "b" }.
-      let mut idx = 0
-      for ch in s {
-        properties[idx.to_string()] = String_(ch.to_string())
-        idx = idx + 1
-      }
-    }
-    Null | Undefined => () // Skip null/undefined per spec.
-    Number(_) | Bool(_) => () // Primitives have no enumerable own properties.
-    _ => ()
   }
 }
 

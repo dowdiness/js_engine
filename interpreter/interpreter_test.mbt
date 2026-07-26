@@ -7693,6 +7693,36 @@ test "spread invokes getters and creates data properties" {
 }
 
 ///|
+test "object spread follows own property key order including symbols" {
+  let output = run_output(
+    (
+      #|let calls = [];
+      #|let source = {
+      #|  get z() { calls.push("z"); return 2; },
+      #|  get a() { calls.push("a"); return 3; }
+      #|};
+      #|Object.defineProperty(source, "1", {
+      #|  get() { calls.push("1"); return 1; },
+      #|  enumerable: true
+      #|});
+      #|let sym = Symbol("key");
+      #|Object.defineProperty(source, sym, {
+      #|  get() { calls.push("symbol"); return 4; },
+      #|  enumerable: true
+      #|});
+      #|let copy = { ...source };
+      #|console.log(calls.join(","));
+      #|console.log(Object.keys(copy).join(","));
+      #|console.log(copy[sym]);
+      #|let replacement = { get x() { return 0; }, ...{ x: 5 } };
+      #|let desc = Object.getOwnPropertyDescriptor(replacement, "x");
+      #|console.log(replacement.x, desc.get === undefined, desc.writable);
+    ),
+  )
+  json_inspect(output, content=["1,z,a,symbol", "1,z,a", "4", "5 true true"])
+}
+
+///|
 test "computed assignment walks prototype chain for setters" {
   let output = run_output(
     (
