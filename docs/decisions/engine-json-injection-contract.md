@@ -4,7 +4,7 @@ Date: 2026-07-26
 
 ## Status
 
-Accepted for implementation by the root facade.
+Accepted and implemented by the root facade.
 
 ## Context
 

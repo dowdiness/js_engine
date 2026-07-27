@@ -37,7 +37,9 @@ This decision does not cover:
 
 - `InternalError` recovery
 - failures raised by microtask or timer checkpoints
-- `define_json`, host callbacks, or same-`Engine` re-entry
+- `Engine::inject_json` failures (covered by the
+  [JSON injection contract](engine-json-injection-contract.md)),
+  host callbacks, or same-`Engine` re-entry
 - execution budgets, structured errors, or concurrency
 
 ## Consequences
