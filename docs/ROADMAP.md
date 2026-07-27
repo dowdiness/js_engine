@@ -218,9 +218,13 @@ a second diagnostic model.
 
 The [execution guardrail contract](decisions/engine-execution-guardrail-contract.md)
 now selects operation-scoped bounded APIs and fixes step, stack-depth,
-interruption, queue, and diagnostic semantics. This is a contract decision
-only: the bounded runtime and public APIs remain unimplemented, so Stage 4 is
-still pending.
+interruption, queue, and diagnostic semantics.
+Stage 4 implementation is in progress.
+The private execution-control state transitions and
+statement/expression dispatch observation are implemented
+internally; the bounded public operations, complete execution
+accounting, stack-depth wiring, public interruption control,
+and acceptance tests remain pending.
 
 ### 3. Inject host-owned JSON data — implemented
 
@@ -236,7 +240,7 @@ Proxy traps, `toJSON`, microtasks, or timers. The accepted collision,
 descriptor, copying, and failure policy is recorded in the
 [JSON injection contract](decisions/engine-json-injection-contract.md).
 
-### 4. Add minimum execution guardrails — contract accepted, implementation pending
+### 4. Add minimum execution guardrails — implementation in progress
 
 Implement the minimum execution controls before granting JavaScript synchronous
 host capabilities:
