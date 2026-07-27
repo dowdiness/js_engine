@@ -1155,6 +1155,7 @@ fn Interpreter::eval_expr(
   expr : @ast.Expr,
   env : Environment,
 ) -> Value raise Error {
+  self.observe_execution_step()
   match expr {
     NumberLit(n, _, _) => Number(n)
     StringLit(s, _, _, _) => String_(s)

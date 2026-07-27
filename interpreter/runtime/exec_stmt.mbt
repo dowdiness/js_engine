@@ -256,6 +256,7 @@ fn Interpreter::exec_stmt(
   env : Environment,
   label? : String? = None,
 ) -> Signal raise Error {
+  self.observe_execution_step()
   match stmt {
     ExprStmt(expr, _) => Normal(self.eval_expr(ctx, expr, env))
     VarDecl(kind, name, init, _) => {

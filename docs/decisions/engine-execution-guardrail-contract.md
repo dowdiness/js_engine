@@ -4,9 +4,11 @@ Date: 2026-07-26
 
 ## Status
 
-Accepted for implementation. The bounded operations, execution accounting,
-stack-depth guard, and interruption control described here are not implemented
-or available yet. Existing operations remain unbounded.
+Accepted for staged implementation. Private execution-control state transitions
+and statement/expression dispatch observation are implemented internally. The
+bounded operations, complete execution accounting, stack-depth wiring, and
+public interruption control described here are not available yet. Existing
+operations remain unbounded.
 
 ## Context
 
@@ -233,6 +235,37 @@ timer checkpoint continues to include the existing microtask checkpoint after
 each timer. Parsing and direct host JSON conversion are outside the execution
 budget, so a bounded operation is not an end-to-end wall-clock or input-size
 bound.
+
+## Private staged carrier and re-entry boundary
+
+During staged implementation, statement and expression dispatch need access to
+one mutable execution-control context without changing the generated shape of
+`Interpreter` or `ExecContext`, exposing the private control type, or adding
+module-level mutable state. The current private wiring therefore uses a
+reserved binding in the interpreter-owned global environment as an internal
+carrier. The binding stores only an internal observation capability; it is not
+a `globalThis` property, a JavaScript-visible host binding, persistent Engine
+configuration, or part of the public contract.
+
+The carrier has operation scope. Installing it saves any previous internal
+binding, and both normal and raised exits restore that previous state. Its
+absence is the unbounded state. Because the environment is owned by one
+interpreter, separate interpreters do not share the active control. Recursive
+statement/expression dispatch and code reached through dynamic `eval` are
+continuations of the same operation: they observe the installed control and do
+not create or reset a budget.
+
+Same-Engine re-entry means starting another host-visible Engine operation while
+an earlier operation on that Engine remains active. The save/restore behavior
+also makes a mechanically nested private scope clean up correctly, but that
+mechanism does **not** define same-Engine re-entry semantics. In particular, it
+does not promise that a host may start another bounded or unbounded Engine
+operation while one is active, that an inner policy replaces the outer policy,
+or that either budget resets. No public entry point may treat nested
+installation as authorization for re-entry. Before host callbacks can initiate
+Engine operations, the public operation boundary must explicitly reject or
+otherwise decide same-Engine re-entry and test that choice without deriving it
+from this private carrier.
 
 ## Queue semantics at a guardrail failure
 
