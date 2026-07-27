@@ -11,6 +11,17 @@ priv enum ExecutionControlFailure {
 }
 
 ///|
+priv suberror ExecutionControlError {
+  ExecutionControlError(ExecutionControlFailure)
+}
+
+///|
+// Per-Interpreter carrier for the active operation control. Keeping it in the
+// internal Environment avoids public record-shape changes and module-global
+// mutable state; it is not a globalThis property or persistent configuration.
+const EXECUTION_CONTROL_BINDING = "[[ExecutionControl]]"
+
+///|
 priv struct ExecutionInterruptionRequest {
   requested : Ref[Bool]
 }
@@ -84,6 +95,85 @@ fn ExecutionControl::observe_step(
     self.remaining_steps_ = self.remaining_steps_ - 1
     Ok(())
   }
+}
+
+///|
+fn execution_control_observer(control : ExecutionControl) -> Value {
+  make_object(
+    Map([]),
+    Null,
+    Some(
+      NonConstructableCallable("[[execution-control-observer]]", fn(
+        _args,
+      ) raise {
+        match control.observe_step() {
+          Ok(_) => Undefined
+          Err(failure) => raise ExecutionControlError(failure)
+        }
+      }),
+    ),
+    "Function",
+    Map([]),
+    true,
+  )
+}
+
+///|
+fn restore_execution_control_binding(
+  global : Environment,
+  previous : Binding?,
+) -> Unit {
+  match previous {
+    Some(binding) => global.bindings[EXECUTION_CONTROL_BINDING] = binding
+    None => {
+      let _ = global.bindings.remove(EXECUTION_CONTROL_BINDING)
+    }
+  }
+}
+
+///|
+fn Interpreter::observe_execution_step(self : Interpreter) -> Unit raise Error {
+  match self.global.bindings.get(EXECUTION_CONTROL_BINDING) {
+    Some(binding) =>
+      match binding.value {
+        Object(data) =>
+          match data.callable {
+            Some(NonConstructableCallable(_, observe)) => {
+              let _ = observe([])
+            }
+            _ => ()
+          }
+        _ => ()
+      }
+    None => ()
+  }
+}
+
+///|
+#warnings("-unused_value")
+// Saving and restoring a previous carrier guarantees scoped cleanup only. It
+// does not authorize or define same-Engine re-entry through public operations.
+fn[T] Interpreter::with_execution_control(
+  self : Interpreter,
+  control : ExecutionControl,
+  action : () -> T raise Error,
+) -> T raise Error {
+  let previous = self.global.bindings.get(EXECUTION_CONTROL_BINDING)
+  self.global.bindings[EXECUTION_CONTROL_BINDING] = {
+    value: execution_control_observer(control),
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+  let result = action() catch {
+    error => {
+      restore_execution_control_binding(self.global, previous)
+      raise error
+    }
+  }
+  restore_execution_control_binding(self.global, previous)
+  result
 }
 
 ///|
