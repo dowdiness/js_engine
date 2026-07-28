@@ -54,7 +54,9 @@ test "post-parse stack safety: deep pattern name preparation" {
     content="Err(SyntaxError(message=\"Unexpected eval or arguments in strict mode\"))",
   )
   let names : Array[String] = []
-  collect_pattern_var_names(deep_x, names)
+  for name in @static_semantics.bound_names(deep_x) {
+    names.push(name)
+  }
   json_inspect(names, content=["x"])
   let var_env = Environment::new()
   hoist_pattern(deep_x, var_env)

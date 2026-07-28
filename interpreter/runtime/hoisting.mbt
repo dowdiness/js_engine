@@ -1,15 +1,4 @@
 ///|
-/// Collect names from a destructuring pattern (for eval var name collection).
-fn collect_pattern_var_names(
-  pattern : @ast.Pattern,
-  names : Array[String],
-) -> Unit {
-  for name in @static_semantics.bound_names(pattern) {
-    names.push(name)
-  }
-}
-
-///|
 fn add_lexical_decl_name(
   lexical_names : @set.Set[String],
   name : String,
@@ -737,139 +726,8 @@ pub fn Interpreter::validate_block_early_errors(
 }
 
 ///|
-/// Collect all var-scoped declaration names from eval code.
-/// Used by EvalDeclarationInstantiation to check for var/lex conflicts.
-fn collect_eval_var_names_from_stmt(
-  stmt : @ast.Stmt,
-  names : Array[String],
-  in_block? : Bool = false,
-) -> Unit raise Error {
-  match stmt {
-    VarDecl(VarKind, name, _, _) => names.push(name)
-    FuncDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    FuncDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
-    GeneratorDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    GeneratorDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncFuncDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncFuncDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncGeneratorDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
-      if !in_block {
-        names.push(name)
-      }
-    DestructureDecl(VarKind, pattern, _, _) =>
-      collect_pattern_var_names(pattern, names)
-    StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        collect_eval_var_names_from_stmt(inner, names, in_block~)
-      }
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        collect_eval_var_names_from_stmt(inner, names, in_block=true)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      // Statement-position function declarations in if branches should not be
-      // treated as leaked var names for eval conflict checks.
-      collect_eval_var_names_from_stmt(then_branch, names, in_block=true)
-      match else_branch {
-        Some(eb) => collect_eval_var_names_from_stmt(eb, names, in_block=true)
-        None => ()
-      }
-    }
-    // §B.3.3.3 + §B.3.4: parallel to `collect_block_var_decl_names_from_stmt`,
-    // nested FuncDecls inside any control-flow body parse as if wrapped in
-    // `{ ... }` and therefore do NOT contribute to the eval source's
-    // var-declared-names walk. Force `in_block=true` regardless of caller.
-    WhileStmt(_, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    DoWhileStmt(body, _, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    ForStmt(init, _, _, body, _) => {
-      match init {
-        Some(init_stmt) =>
-          collect_eval_var_names_from_stmt(init_stmt, names, in_block=true)
-        None => ()
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForInStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        names.push(name)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForOfStmt(kind, name, _, body, _)
-    | AsyncForOfStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        names.push(name)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForInStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        collect_pattern_var_names(pattern, names)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForOfStmtPat(kind, pattern, _, body, _)
-    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        collect_pattern_var_names(pattern, names)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForInExpr(_, _, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    // §B.3.2 LabelledStatement: a top-level labeled FuncDecl participates in
-    // VarDeclaredNames per §B.3.4. Mirror caller's `in_block` flag so a label
-    // sitting at eval-script-top keeps its FuncDecl counted, while a label
-    // inside a nested block stays block-scoped.
-    LabeledStmt(_, inner, _) =>
-      collect_eval_var_names_from_stmt(inner, names, in_block~)
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          collect_eval_var_names_from_stmt(inner, names, in_block=true)
-        }
-      }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        collect_eval_var_names_from_stmt(inner, names, in_block=true)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            collect_eval_var_names_from_stmt(inner, names, in_block=true)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            collect_eval_var_names_from_stmt(inner, names, in_block=true)
-          }
-        None => ()
-      }
-    }
-    WithStmt(_, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      collect_eval_var_names_from_stmt(decl, names, in_block~)
-    _ => ()
-  }
-}
-
-///|
-fn collect_eval_var_names(
-  stmts : Array[@ast.Stmt],
-) -> Array[String] raise Error {
-  let names : Array[String] = []
-  for stmt in stmts {
-    collect_eval_var_names_from_stmt(stmt, names)
-  }
-  names
+fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
+  @static_semantics.collect_var_declared_names(stmts)
 }
 
 ///|
@@ -890,99 +748,12 @@ fn walk_var_scoped_names(
   stmt : @ast.Stmt,
   on_name : (String) -> Unit raise Error,
 ) -> Unit raise Error {
-  match stmt {
-    VarDecl(VarKind, name, _, _) => on_name(name)
-    DestructureDecl(VarKind, pattern, _, _) =>
-      for name in @static_semantics.bound_names(pattern) {
-        on_name(name)
-      }
-    StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        walk_var_scoped_names(inner, on_name)
-      }
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        walk_var_scoped_names(inner, on_name)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      walk_var_scoped_names(then_branch, on_name)
-      match else_branch {
-        Some(eb) => walk_var_scoped_names(eb, on_name)
-        None => ()
-      }
-    }
-    WhileStmt(_, body, _) => walk_var_scoped_names(body, on_name)
-    DoWhileStmt(body, _, _) => walk_var_scoped_names(body, on_name)
-    ForStmt(init, _, _, body, _) => {
-      match init {
-        Some(init_stmt) => walk_var_scoped_names(init_stmt, on_name)
-        None => ()
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForInStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        on_name(name)
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForOfStmt(kind, name, _, body, _)
-    | AsyncForOfStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        on_name(name)
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForInStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        for name in @static_semantics.bound_names(pattern) {
-          on_name(name)
-        }
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForOfStmtPat(kind, pattern, _, body, _)
-    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        for name in @static_semantics.bound_names(pattern) {
-          on_name(name)
-        }
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForInExpr(_, _, body, _) => walk_var_scoped_names(body, on_name)
-    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      walk_var_scoped_names(body, on_name)
-    LabeledStmt(_, inner, _) => walk_var_scoped_names(inner, on_name)
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          walk_var_scoped_names(inner, on_name)
-        }
-      }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        walk_var_scoped_names(inner, on_name)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            walk_var_scoped_names(inner, on_name)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            walk_var_scoped_names(inner, on_name)
-          }
-        None => ()
-      }
-    }
-    WithStmt(_, body, _) => walk_var_scoped_names(body, on_name)
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      walk_var_scoped_names(decl, on_name)
-    _ => ()
+  for
+    name in @static_semantics.collect_var_declared_names(
+      [stmt],
+      include_funcs=false,
+    ) {
+    on_name(name)
   }
 }
 
@@ -991,99 +762,11 @@ fn hoist_var_declarations_from_stmt(
   stmt : @ast.Stmt,
   env : Environment,
 ) -> Unit raise Error {
-  match stmt {
-    VarDecl(VarKind, name, _, _) =>
-      if !env.bindings.contains(name) {
-        env.def(name, Undefined, VarBinding)
-      }
-    DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
-    StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        hoist_var_declarations_from_stmt(inner, env)
-      }
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        hoist_var_declarations_from_stmt(inner, env)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      hoist_var_declarations_from_stmt(then_branch, env)
-      match else_branch {
-        Some(eb) => hoist_var_declarations_from_stmt(eb, env)
-        None => ()
-      }
+  walk_var_scoped_names(stmt, name => {
+    if !env.bindings.contains(name) {
+      env.def(name, Undefined, VarBinding)
     }
-    WhileStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
-    DoWhileStmt(body, _, _) => hoist_var_declarations_from_stmt(body, env)
-    ForStmt(init, _, _, body, _) => {
-      match init {
-        Some(init_stmt) => hoist_var_declarations_from_stmt(init_stmt, env)
-        None => ()
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForInStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) && !env.bindings.contains(name) {
-        env.def(name, Undefined, VarBinding)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForOfStmt(kind, name, _, body, _)
-    | AsyncForOfStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) && !env.bindings.contains(name) {
-        env.def(name, Undefined, VarBinding)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForInStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        hoist_pattern(pattern, env)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForOfStmtPat(kind, pattern, _, body, _)
-    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        hoist_pattern(pattern, env)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForInExpr(_, _, body, _) => hoist_var_declarations_from_stmt(body, env)
-    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      hoist_var_declarations_from_stmt(body, env)
-    LabeledStmt(_, inner, _) => hoist_var_declarations_from_stmt(inner, env)
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          hoist_var_declarations_from_stmt(inner, env)
-        }
-      }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        hoist_var_declarations_from_stmt(inner, env)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            hoist_var_declarations_from_stmt(inner, env)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            hoist_var_declarations_from_stmt(inner, env)
-          }
-        None => ()
-      }
-    }
-    WithStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
-    // Export with declaration: hoist declarations from the inner declaration.
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      hoist_var_declarations_from_stmt(decl, env)
-    // Do not recurse into function/class declarations: their bodies create
-    // separate var scopes.
-    _ => ()
-  }
+  })
 }
 
 ///|
@@ -2034,7 +1717,10 @@ fn hoist_block_tdz(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Unit raise Error {
-  for stmt in stmts {
+  let work : Array[@ast.Stmt] = []
+  stmts.rev_each(stmt => work.push(stmt))
+  while work.length() > 0 {
+    let stmt = work.pop().unwrap()
     match stmt {
       VarDecl(LetKind, name, _, _) =>
         if !env.bindings.contains(name) {
@@ -2049,17 +1735,15 @@ fn hoist_block_tdz(
         hoist_pattern_tdz(pattern, env, LetBinding)
       DestructureDecl(ConstKind, pattern, _, _) =>
         hoist_pattern_tdz(pattern, env, ConstBinding)
-      StmtList(inner_stmts, _) => hoist_block_tdz(inner_stmts, env)
+      StmtList(inner_stmts, _) =>
+        inner_stmts.rev_each(inner => work.push(inner))
       // Class declarations have TDZ (similar to let)
       ClassDecl(name, _, _, _, _) =>
         if !env.bindings.contains(name) {
           env.def_tdz(name, LetBinding)
         }
       // Export with declaration: hoist let/const inner declarations with TDZ
-      ExportNamedDecl(Some(decl), _, _, _, _) => {
-        let inner_stmts : Array[@ast.Stmt] = [decl]
-        hoist_block_tdz(inner_stmts, env)
-      }
+      ExportNamedDecl(Some(decl), _, _, _, _) => work.push(decl)
       // A named default class contributes a module-local lexical binding.
       ExportDefaultDecl(expr, _) =>
         match (module_default_export_binding(expr), expr) {
