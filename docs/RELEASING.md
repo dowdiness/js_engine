@@ -24,9 +24,9 @@ well; it validates metadata only for tagpr's `tagpr-from-*` release branches.
 
 Everything intended for the release must be in `main`. Each push causes tagpr to
 create or update one release PR. It bumps `moon.mod` and runs
-`scripts/sync_release_version.sh` to update only the js_engine dependency in
-`integration/external_consumer/moon.mod`. The release-PR CI rejects a missing
-CHANGELOG heading or a version mismatch before it can merge.
+`scripts/sync_release_version.sh` to update the
+external-consumer dependency and the packaged CLI version. The release-PR CI
+rejects a missing CHANGELOG heading or a version mismatch before it can merge.
 
 ## 2. Wait for test262 CI on `main`
 
