@@ -44,44 +44,75 @@ fn Interpreter::require_super_target(
 }
 
 ///|
-fn pattern_may_contain_yield(pattern : @ast.Pattern) -> Bool {
-  @ast.pattern_immediate_children_any(
-    pattern, pattern_may_contain_yield, expr_may_contain_yield,
-  )
+priv enum EvalExprYieldWork {
+  Expr(@ast.Expr)
+  Pattern(@ast.Pattern)
+}
+
+///|
+fn eval_expr_work_may_contain_yield(work : Array[EvalExprYieldWork]) -> Bool {
+  while work.pop() is Some(item) {
+    let scheduled : Array[EvalExprYieldWork] = []
+    match item {
+      Expr(YieldExpr(_, _, _)) => return true
+      Expr(ClassExpr(_, superclass, members, _, _)) => {
+        match superclass {
+          Some(expr) => scheduled.push(Expr(expr))
+          None => ()
+        }
+        for class_member in members {
+          match class_member {
+            @ast.ClassMember::Method(class_method) => {
+              scheduled.push(Expr(class_method.key))
+              scheduled.push(Expr(class_method.value))
+            }
+            @ast.ClassMember::Field(field) => {
+              scheduled.push(Expr(field.key))
+              match field.initializer {
+                Some(initializer) => scheduled.push(Expr(initializer))
+                None => ()
+              }
+            }
+            @ast.ClassMember::StaticBlock(_) => ()
+          }
+        }
+      }
+      Expr(DestructureAssign(pattern, expr, _)) => {
+        scheduled.push(Pattern(pattern))
+        scheduled.push(Expr(expr))
+      }
+      Expr(expr) =>
+        ignore(
+          @ast.expr_immediate_children_any(expr, child => {
+            scheduled.push(Expr(child))
+            false
+          }),
+        )
+      Pattern(pattern) =>
+        ignore(
+          @ast.pattern_immediate_children_any(
+            pattern,
+            child => {
+              scheduled.push(Pattern(child))
+              false
+            },
+            child => {
+              scheduled.push(Expr(child))
+              false
+            },
+          ),
+        )
+    }
+    for i in (scheduled.length() - 1)>=..0 {
+      work.push(scheduled[i])
+    }
+  }
+  false
 }
 
 ///|
 fn expr_may_contain_yield(expr : @ast.Expr) -> Bool {
-  match expr {
-    YieldExpr(_, _, _) => true
-    ClassExpr(_, superclass, members, _, _) => {
-      let super_has_yield = match superclass {
-        Some(expr) => expr_may_contain_yield(expr)
-        None => false
-      }
-      let members_have_yield = members
-        .iter()
-        .any(fn(mbr) {
-          match mbr {
-            @ast.ClassMember::Method(m) =>
-              expr_may_contain_yield(m.key) || expr_may_contain_yield(m.value)
-            @ast.ClassMember::Field(f) => {
-              let init_has_yield = match f.initializer {
-                Some(init) => expr_may_contain_yield(init)
-                None => false
-              }
-              expr_may_contain_yield(f.key) || init_has_yield
-            }
-            @ast.ClassMember::StaticBlock(_) => false
-          }
-        })
-      super_has_yield || members_have_yield
-    }
-    DestructureAssign(pattern, _, _) =>
-      pattern_may_contain_yield(pattern) ||
-      @ast.expr_immediate_children_any(expr, expr_may_contain_yield)
-    _ => @ast.expr_immediate_children_any(expr, expr_may_contain_yield)
-  }
+  eval_expr_work_may_contain_yield([Expr(expr)])
 }
 
 ///|
