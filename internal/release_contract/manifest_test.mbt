@@ -151,15 +151,7 @@ test "release candidate manifest rejects unsupported schema versions" {
     old="\"schema_version\": 1",
     new="\"schema_version\": 2",
   )
-  let result : Result[ReleaseCandidateManifest, ReleaseContractError] = Ok(
-    parse_manifest(input),
-  ) catch {
-    error => Err(error)
-  }
-  match result {
-    Err(ReleaseContractError::InvalidManifest(_)) => ()
-    Ok(_) => fail("expected an unsupported schema version to be rejected")
-  }
+  assert_true(manifest_is_rejected(input))
 }
 
 ///|
@@ -168,15 +160,7 @@ test "release candidate manifest rejects unknown root evidence" {
     @json.parse(valid_manifest_text()),
   )
   fields["unexpected"] = Json::boolean(true)
-  let result : Result[ReleaseCandidateManifest, ReleaseContractError] = Ok(
-    parse_manifest(Json::object(fields).stringify()),
-  ) catch {
-    error => Err(error)
-  }
-  match result {
-    Err(ReleaseContractError::InvalidManifest(_)) => ()
-    Ok(_) => fail("expected unknown root evidence to be rejected")
-  }
+  assert_true(manifest_is_rejected(Json::object(fields).stringify()))
 }
 
 ///|
@@ -185,15 +169,7 @@ test "release candidate manifest rejects unknown nested evidence" {
     old="\"skipped\": 10201",
     new="\"skipped\": 10201, \"unexpected\": 1",
   )
-  let result : Result[ReleaseCandidateManifest, ReleaseContractError] = Ok(
-    parse_manifest(input),
-  ) catch {
-    error => Err(error)
-  }
-  match result {
-    Err(ReleaseContractError::InvalidManifest(_)) => ()
-    Ok(_) => fail("expected unknown nested evidence to be rejected")
-  }
+  assert_true(manifest_is_rejected(input))
 }
 
 ///|
