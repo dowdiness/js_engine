@@ -21,20 +21,20 @@
 
 | Family | Normal reachability | Current recursive entry | Disposition |
 |---|---|---|---|
-| Early errors | script, eval, function constructors, async/generator preparation, compiled scripts, modules | `validate_block_early_errors_expr`, `validate_block_early_errors_stmt`, `validate_pattern_early_errors`, `validate_params_defaults` | One iterative early-error machine |
-| Statement-list declaration conflicts | every early-error entry | `collect_block_lexical_decl_names_from_stmt`, `collect_var_declared_names_from_stmt` | Iterative operation-specific collectors |
-| Pattern BoundNames | validation, hoisting, params, constructors, generators, exports | `walk_pattern_idents`, `walk_pattern_binding_idents` and local copies | Shared iterative `bound_names` fact operation |
-| Eval var names | direct eval | `collect_eval_var_names_from_stmt` | Prove parity with the static collector or make iterative |
-| Global var preflight and hoisting | script/eval/function preparation | `walk_var_scoped_names`, `hoist_var_declarations_from_stmt` | Separate source-ordered statement work stacks |
-| Annex B | sloppy script/eval preparation | `walk_eval_annex_b_stmt`, frame helpers | Iterative enter/leave frame machine |
-| TDZ preparation | script, function, block and loop entry | `hoist_block_tdz`, `hoist_pattern_tdz`, local loop collectors | Iterative statement/pattern walkers |
-| Eval containment | direct eval | `scan_stmt`, `scan_expr`, `scan_pattern` in `eval_contains.mbt` | Dedicated heterogeneous predicate machine |
-| Yield predicates | class/generator preparation | runtime yield/pattern scans | Dedicated short-circuit work stacks |
-| Module AST facts | module linking/execution | export/import/name `StmtList` and pattern walkers | Iterative flattening plus BoundNames |
-| Module graph | module linking | dependency DFS and export resolution recursion | Indexed DFS/continuation frames |
-| Parser early errors | parser, before AST handoff | `parser/early_errors.mbt` | Parser follow-up when a parser-phase reproducer exists |
+| Early errors | script, eval, function constructors, async/generator preparation, compiled scripts, modules | former expression/statement/pattern/parameter recursion | Iterative heterogeneous early-error machine |
+| Statement-list declaration conflicts | every early-error entry | declaration-name collection | Iterative operation-specific collectors; only flat `StmtList` and one export wrapper remain grammar-bounded |
+| Pattern BoundNames | validation, hoisting, params, constructors, generators, exports | all pattern name consumers | Shared iterative `bound_names` fact operation |
+| Eval var names | direct eval | eval var-name collection | Iterative static declaration collector |
+| Global var preflight and hoisting | script/eval/function preparation | var-name and declaration preparation | Separate source-ordered statement work stacks |
+| Annex B | sloppy script/eval preparation | candidate and lexical-frame traversal | Iterative enter/leave frame machine |
+| TDZ preparation | script, function, block and loop entry | block/pattern/loop preparation | Iterative statement walkers plus iterative BoundNames |
+| Eval containment | direct eval | PerformEval Contains over statements, expressions, and patterns | Iterative heterogeneous predicate machine with all expression-bearing pattern edges scheduled |
+| Yield predicates | class/generator preparation | expression, parameter, pattern, and class-member yield facts | Dedicated iterative short-circuit work stacks |
+| Module AST facts | module linking/execution | export/import/name carriers and exported patterns | Iterative carrier flattening plus BoundNames |
+| Module graph | module linking | dependencies, ExportedNames, and export resolution | Indexed DFS and explicit continuation machines |
+| Parser early errors | parser, before AST handoff | `parser/early_errors.mbt` | Parser phase; follow up separately if a parser-phase reproducer exists |
 | Runtime execution | after preparation | `eval_expr` ↔ `exec_stmt` ↔ calls | Issues #608/#617 |
-| Closure/bytecode compilers | explicit compiler entrypoints, not tree-walker `Interpreter::run` | compiler expression/statement recursion | Separately linked compiler work |
+| Closure/bytecode compilers | explicit compiler entrypoints, not tree-walker `Interpreter::run` | compiler expression/statement recursion | Separate compiler work |
 
 ---
 
@@ -315,11 +315,18 @@ Run `moon check`, focused module tests, and `moon test interpreter --filter '*po
 **Interfaces:**
 - Produces the final issue #614 caller inventory and verification evidence.
 
-- [ ] **Step 1: Repeat the recursion inventory**
+- [x] **Step 1: Repeat the recursion inventory**
 
 Search recursive references involving `@ast.Expr`, `@ast.Stmt`, `@ast.Pattern`, `@ast.Param`, class members, module records, and module export resolution. Update every inventory row to `iterative`, `bounded with proof`, or a linked issue.
 
-- [ ] **Step 2: Run repository verification**
+Final audit result: all normally reachable issue #614 traversals are iterative.
+The remaining statement helper recursion is bounded to parser-flat `StmtList`
+carriers and at most one module export wrapper. Parser and compiler recursion are
+separate entrypoint phases; dynamic evaluator recursion remains tracked by
+#608/#617. The audit also found and closed missing PerformEval pattern edges and
+the recursive ExportedNames star-graph traversal.
+
+- [x] **Step 2: Run repository verification**
 
 ```bash
 moon check
@@ -331,13 +338,26 @@ git diff -- '**/pkg.generated.mbti'
 
 Expected: all applicable commands pass; interface changes are limited to intentional static-semantic APIs.
 
-- [ ] **Step 3: Format only touched MoonBit files**
+Result: `moon check --deny-warn`, `moon test` (2685/2685), `moon prove`,
+and `moon info` passed. The only generated interface change is the intentional
+`static_semantics.bound_names` API.
+
+- [x] **Step 3: Format only touched MoonBit files**
 
 Run `moon fmt` as required, then discard unrelated formatter migration changes created outside the touched-file set. Re-run `moon check` and `moon test` afterward.
 
-- [ ] **Step 4: Run the required target/profile matrix**
+Result: touched MoonBit files were formatted incrementally; no repository-wide
+manifest migration was applied. The final check and test commands passed.
+
+- [x] **Step 4: Run the required target/profile matrix**
 
 Run the fixed comma and additional focused workloads on debug/release JS and every supported Wasm target without host stack flags. Record success per target/profile; do not record threshold bisections as behavior.
+
+Result: the active post-parse stack-safety suite (9/9), PerformEval pattern-edge
+suite (4/4), and ExportedNames suite (4/4) passed in debug and release modes on
+JS, Wasm, and Wasm-GC. The exact 512-comma success contract remains skipped
+under Option A until runtime evaluator issue #608 is integrated; its active
+phase-isolation counterpart traverses the same validation depth.
 
 - [ ] **Step 5: Review final diff**
 
