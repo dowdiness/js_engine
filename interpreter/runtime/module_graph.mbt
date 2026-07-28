@@ -69,34 +69,32 @@ fn Interpreter::predeclare_decl_exports(
   decl : @ast.Stmt,
   env : Environment,
 ) -> Unit {
-  match decl {
-    VarDecl(_, name, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    FuncDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    FuncDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    GeneratorDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    GeneratorDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncFuncDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncFuncDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncGeneratorDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    ClassDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    DestructureDecl(_, pattern, _, _) =>
-      self.predeclare_pattern_exports(pattern, env)
-    StmtList(stmts, _) =>
-      for stmt in stmts {
-        self.predeclare_decl_exports(stmt, env)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(decl) {
+    match current {
+      VarDecl(_, name, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      FuncDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      FuncDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      GeneratorDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      GeneratorDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncFuncDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncFuncDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncGeneratorDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      ClassDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      DestructureDecl(_, pattern, _, _) =>
+        self.predeclare_pattern_exports(pattern, env)
+      _ => ()
+    }
   }
 }
 
@@ -140,42 +138,42 @@ fn Interpreter::predeclare_module_exports(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Unit raise Error {
-  for stmt in stmts {
-    match stmt {
-      ExportNamedDecl(decl, specifiers, source, _, _) => {
-        match decl {
-          Some(inner_decl) => self.predeclare_decl_exports(inner_decl, env)
-          None => ()
-        }
-        match source {
-          Some(_) =>
-            for spec in specifiers {
-              self.predeclare_module_export_tdz(spec.exported)
-            }
-          None =>
-            for spec in specifiers {
-              self.predeclare_module_export_cell(
-                spec.exported,
-                spec.local_name,
-                env,
-              )
-            }
-        }
-      }
-      ExportDefaultDecl(expr, _) =>
-        if !self.predeclare_default_function_export(expr, env) {
-          match module_default_export_binding(expr) {
-            LocalDefaultBinding(local_name) =>
-              self.predeclare_module_export_cell("default", local_name, env)
-            SyntheticDefaultBinding =>
-              self.predeclare_module_export_tdz("default")
+  for root in stmts {
+    for stmt in flatten_module_stmt_carriers(root) {
+      match stmt {
+        ExportNamedDecl(decl, specifiers, source, _, _) => {
+          match decl {
+            Some(inner_decl) => self.predeclare_decl_exports(inner_decl, env)
+            None => ()
+          }
+          match source {
+            Some(_) =>
+              for spec in specifiers {
+                self.predeclare_module_export_tdz(spec.exported)
+              }
+            None =>
+              for spec in specifiers {
+                self.predeclare_module_export_cell(
+                  spec.exported,
+                  spec.local_name,
+                  env,
+                )
+              }
           }
         }
-      ExportAllDecl(Some(ns_name), _, _, _) =>
-        self.predeclare_module_export_tdz(ns_name)
-      StmtList(inner_stmts, _) =>
-        self.predeclare_module_exports(inner_stmts, env)
-      _ => ()
+        ExportDefaultDecl(expr, _) =>
+          if !self.predeclare_default_function_export(expr, env) {
+            match module_default_export_binding(expr) {
+              LocalDefaultBinding(local_name) =>
+                self.predeclare_module_export_cell("default", local_name, env)
+              SyntheticDefaultBinding =>
+                self.predeclare_module_export_tdz("default")
+            }
+          }
+        ExportAllDecl(Some(ns_name), _, _, _) =>
+          self.predeclare_module_export_tdz(ns_name)
+        _ => ()
+      }
     }
   }
 }
@@ -271,40 +269,38 @@ fn Interpreter::instantiate_indirect_exports_from_stmt(
   stmt : @ast.Stmt,
   records_by_specifier : Map[String, ModuleRunRecord],
 ) -> Unit raise Error {
-  match stmt {
-    ExportNamedDecl(None, specifiers, Some(source), _, loc) =>
-      for spec in specifiers {
-        let value = match
-          self.resolve_module_export_from_source(
-            source,
-            spec.local_name,
-            records_by_specifier,
-            @set.Set::default(),
-          ) {
-          Resolved(resolved) => resolved.value
-          Ambiguous =>
-            raise @errors.SyntaxError(
-              message="Ambiguous export '\{spec.local_name}' from module '\{source}' at line \{loc.line}, col \{loc.col}",
-            )
-          NotFound =>
-            raise @errors.SyntaxError(
-              message="Module '\{source}' does not export '\{spec.local_name}' at line \{loc.line}, col \{loc.col}",
-            )
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(None, specifiers, Some(source), _, loc) =>
+        for spec in specifiers {
+          let value = match
+            self.resolve_module_export_from_source(
+              source,
+              spec.local_name,
+              records_by_specifier,
+              @set.Set::default(),
+            ) {
+            Resolved(resolved) => resolved.value
+            Ambiguous =>
+              raise @errors.SyntaxError(
+                message="Ambiguous export '\{spec.local_name}' from module '\{source}' at line \{loc.line}, col \{loc.col}",
+              )
+            NotFound =>
+              raise @errors.SyntaxError(
+                message="Module '\{source}' does not export '\{spec.local_name}' at line \{loc.line}, col \{loc.col}",
+              )
+          }
+          self.module_exports[spec.exported] = value
         }
-        self.module_exports[spec.exported] = value
+      ExportAllDecl(Some(ns_name), source, _, loc) => {
+        let src_exports = self.module_exports_for_source(source, loc)
+        self.module_exports[ns_name] = self.create_module_namespace_object(
+          src_exports,
+        )
       }
-    ExportAllDecl(Some(ns_name), source, _, loc) => {
-      let src_exports = self.module_exports_for_source(source, loc)
-      self.module_exports[ns_name] = self.create_module_namespace_object(
-        src_exports,
-      )
+      ExportAllDecl(None, _, _, _) => ()
+      _ => ()
     }
-    ExportAllDecl(None, _, _, _) => ()
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        self.instantiate_indirect_exports_from_stmt(inner, records_by_specifier)
-      }
-    _ => ()
   }
 }
 
@@ -357,18 +353,16 @@ fn Interpreter::instantiate_imports_from_stmt(
   stmt : @ast.Stmt,
   env : Environment,
 ) -> Unit raise Error {
-  match stmt {
-    ImportDecl(default_import, specifiers, namespace_import, source, _, loc) =>
-      ignore(
-        self.exec_import(
-          default_import, specifiers, namespace_import, source, env, loc,
-        ),
-      )
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        self.instantiate_imports_from_stmt(inner, env)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ImportDecl(default_import, specifiers, namespace_import, source, _, loc) =>
+        ignore(
+          self.exec_import(
+            default_import, specifiers, namespace_import, source, env, loc,
+          ),
+        )
+      _ => ()
+    }
   }
 }
 
@@ -391,15 +385,13 @@ fn collect_module_dependency_edges_from_stmt(
   stmt : @ast.Stmt,
   edges : Array[(String, Bool)],
 ) -> Unit {
-  match stmt {
-    ImportDecl(_, _, _, source, _, _) => edges.push((source, true))
-    ExportNamedDecl(_, _, Some(source), _, _) => edges.push((source, false))
-    ExportAllDecl(_, source, _, _) => edges.push((source, false))
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        collect_module_dependency_edges_from_stmt(inner, edges)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ImportDecl(_, _, _, source, _, _) => edges.push((source, true))
+      ExportNamedDecl(_, _, Some(source), _, _) => edges.push((source, false))
+      ExportAllDecl(_, source, _, _) => edges.push((source, false))
+      _ => ()
+    }
   }
 }
 
@@ -482,29 +474,27 @@ fn pattern_exports_name(pattern : @ast.Pattern, export_name : String) -> Bool {
 
 ///|
 fn decl_exports_name(decl : @ast.Stmt, export_name : String) -> Bool {
-  match decl {
-    VarDecl(_, name, _, _) => name == export_name
-    FuncDecl(name, _, _, _, _) => name == export_name
-    FuncDeclExt(name, _, _, _, _, _) => name == export_name
-    GeneratorDecl(name, _, _, _, _) => name == export_name
-    GeneratorDeclExt(name, _, _, _, _, _) => name == export_name
-    AsyncFuncDecl(name, _, _, _, _) => name == export_name
-    AsyncFuncDeclExt(name, _, _, _, _, _) => name == export_name
-    AsyncGeneratorDecl(name, _, _, _, _) => name == export_name
-    AsyncGeneratorDeclExt(name, _, _, _, _, _) => name == export_name
-    ClassDecl(name, _, _, _, _) => name == export_name
-    DestructureDecl(_, pattern, _, _) =>
-      pattern_exports_name(pattern, export_name)
-    StmtList(stmts, _) => {
-      for stmt in stmts {
-        if decl_exports_name(stmt, export_name) {
-          return true
-        }
-      }
-      false
+  for current in flatten_module_stmt_carriers(decl) {
+    let found = match current {
+      VarDecl(_, name, _, _) => name == export_name
+      FuncDecl(name, _, _, _, _) => name == export_name
+      FuncDeclExt(name, _, _, _, _, _) => name == export_name
+      GeneratorDecl(name, _, _, _, _) => name == export_name
+      GeneratorDeclExt(name, _, _, _, _, _) => name == export_name
+      AsyncFuncDecl(name, _, _, _, _) => name == export_name
+      AsyncFuncDeclExt(name, _, _, _, _, _) => name == export_name
+      AsyncGeneratorDecl(name, _, _, _, _) => name == export_name
+      AsyncGeneratorDeclExt(name, _, _, _, _, _) => name == export_name
+      ClassDecl(name, _, _, _, _) => name == export_name
+      DestructureDecl(_, pattern, _, _) =>
+        pattern_exports_name(pattern, export_name)
+      _ => false
     }
-    _ => false
+    if found {
+      return true
+    }
   }
+  false
 }
 
 ///|
@@ -513,24 +503,22 @@ fn collect_decl_export_names(
   names : Array[String],
   seen : @set.Set[String],
 ) -> Unit {
-  match decl {
-    VarDecl(_, name, _, _)
-    | FuncDecl(name, _, _, _, _)
-    | FuncDeclExt(name, _, _, _, _, _)
-    | GeneratorDecl(name, _, _, _, _)
-    | GeneratorDeclExt(name, _, _, _, _, _)
-    | AsyncFuncDecl(name, _, _, _, _)
-    | AsyncFuncDeclExt(name, _, _, _, _, _)
-    | AsyncGeneratorDecl(name, _, _, _, _)
-    | AsyncGeneratorDeclExt(name, _, _, _, _, _)
-    | ClassDecl(name, _, _, _, _) => add_module_export_name(names, seen, name)
-    DestructureDecl(_, pattern, _, _) =>
-      collect_pattern_export_names(pattern, names, seen)
-    StmtList(stmts, _) =>
-      for stmt in stmts {
-        collect_decl_export_names(stmt, names, seen)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(decl) {
+    match current {
+      VarDecl(_, name, _, _)
+      | FuncDecl(name, _, _, _, _)
+      | FuncDeclExt(name, _, _, _, _, _)
+      | GeneratorDecl(name, _, _, _, _)
+      | GeneratorDeclExt(name, _, _, _, _, _)
+      | AsyncFuncDecl(name, _, _, _, _)
+      | AsyncFuncDeclExt(name, _, _, _, _, _)
+      | AsyncGeneratorDecl(name, _, _, _, _)
+      | AsyncGeneratorDeclExt(name, _, _, _, _, _)
+      | ClassDecl(name, _, _, _, _) => add_module_export_name(names, seen, name)
+      DestructureDecl(_, pattern, _, _) =>
+        collect_pattern_export_names(pattern, names, seen)
+      _ => ()
+    }
   }
 }
 
@@ -574,34 +562,29 @@ fn module_import_target_from_stmt(
   stmt : @ast.Stmt,
   local_name : String,
 ) -> ModuleImportTarget? {
-  match stmt {
-    ImportDecl(default_import, specifiers, namespace_import, source, _, _) => {
-      match default_import {
-        Some(name) if name == local_name =>
-          return Some(ImportedBinding(source, "default"))
-        _ => ()
-      }
-      for spec in specifiers {
-        if spec.local_name == local_name {
-          return Some(ImportedBinding(source, spec.imported))
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ImportDecl(default_import, specifiers, namespace_import, source, _, _) => {
+        match default_import {
+          Some(name) if name == local_name =>
+            return Some(ImportedBinding(source, "default"))
+          _ => ()
+        }
+        for spec in specifiers {
+          if spec.local_name == local_name {
+            return Some(ImportedBinding(source, spec.imported))
+          }
+        }
+        match namespace_import {
+          Some(name) if name == local_name =>
+            return Some(ImportedNamespace(source))
+          _ => ()
         }
       }
-      match namespace_import {
-        Some(name) if name == local_name => Some(ImportedNamespace(source))
-        _ => None
-      }
+      _ => ()
     }
-    StmtList(stmts, _) => {
-      for inner in stmts {
-        match module_import_target_from_stmt(inner, local_name) {
-          Some(target) => return Some(target)
-          None => ()
-        }
-      }
-      None
-    }
-    _ => None
   }
+  None
 }
 
 ///|
@@ -650,44 +633,29 @@ fn module_direct_export_binding_name_from_stmt(
   stmt : @ast.Stmt,
   export_name : String,
 ) -> String? {
-  match stmt {
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      if decl_exports_name(decl, export_name) {
-        Some(export_name)
-      } else {
-        None
-      }
-    ExportNamedDecl(None, specifiers, None, _, _) => {
-      for spec in specifiers {
-        if spec.exported == export_name {
-          match record.import_target_for_local_name(spec.local_name) {
-            Some(_) => return None
-            None => return Some(spec.local_name)
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(Some(decl), _, _, _, _) =>
+        if decl_exports_name(decl, export_name) {
+          return Some(export_name)
+        }
+      ExportNamedDecl(None, specifiers, None, _, _) =>
+        for spec in specifiers {
+          if spec.exported == export_name {
+            match record.import_target_for_local_name(spec.local_name) {
+              Some(_) => return None
+              None => return Some(spec.local_name)
+            }
           }
         }
-      }
-      None
-    }
-    ExportDefaultDecl(expr, _) =>
-      if export_name == "default" {
-        Some(module_default_export_binding_name(expr))
-      } else {
-        None
-      }
-    StmtList(stmts, _) => {
-      for inner in stmts {
-        match
-          module_direct_export_binding_name_from_stmt(
-            record, inner, export_name,
-          ) {
-          Some(binding_name) => return Some(binding_name)
-          None => ()
+      ExportDefaultDecl(expr, _) =>
+        if export_name == "default" {
+          return Some(module_default_export_binding_name(expr))
         }
-      }
-      None
+      _ => ()
     }
-    _ => None
   }
+  None
 }
 
 ///|
@@ -711,21 +679,19 @@ fn collect_module_direct_export_names_from_stmt(
   names : Array[String],
   seen : @set.Set[String],
 ) -> Unit {
-  match stmt {
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      collect_decl_export_names(decl, names, seen)
-    ExportNamedDecl(None, specifiers, _, _, _) =>
-      for spec in specifiers {
-        add_module_export_name(names, seen, spec.exported)
-      }
-    ExportDefaultDecl(_, _) => add_module_export_name(names, seen, "default")
-    ExportAllDecl(Some(ns_name), _, _, _) =>
-      add_module_export_name(names, seen, ns_name)
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        collect_module_direct_export_names_from_stmt(inner, names, seen)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(Some(decl), _, _, _, _) =>
+        collect_decl_export_names(decl, names, seen)
+      ExportNamedDecl(None, specifiers, _, _, _) =>
+        for spec in specifiers {
+          add_module_export_name(names, seen, spec.exported)
+        }
+      ExportDefaultDecl(_, _) => add_module_export_name(names, seen, "default")
+      ExportAllDecl(Some(ns_name), _, _, _) =>
+        add_module_export_name(names, seen, ns_name)
+      _ => ()
+    }
   }
 }
 
@@ -747,13 +713,11 @@ fn collect_module_star_sources_from_stmt(
   stmt : @ast.Stmt,
   sources : Array[String],
 ) -> Unit {
-  match stmt {
-    ExportAllDecl(None, source, _, _) => sources.push(source)
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        collect_module_star_sources_from_stmt(inner, sources)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportAllDecl(None, source, _, _) => sources.push(source)
+      _ => ()
+    }
   }
 }
 
@@ -875,49 +839,41 @@ fn Interpreter::resolve_explicit_indirect_export_from_stmt(
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  match stmt {
-    ExportNamedDecl(None, specifiers, Some(source), _, _) =>
-      for spec in specifiers {
-        if spec.exported == export_name {
-          return self.resolve_module_export_from_source(
-            source,
-            spec.local_name,
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(None, specifiers, Some(source), _, _) =>
+        for spec in specifiers {
+          if spec.exported == export_name {
+            return self.resolve_module_export_from_source(
+              source,
+              spec.local_name,
+              records_by_specifier,
+              resolve_set,
+            )
+          }
+        }
+      ExportNamedDecl(None, specifiers, None, _, _) =>
+        for spec in specifiers {
+          if spec.exported == export_name {
+            match record.import_target_for_local_name(spec.local_name) {
+              Some(target) =>
+                return self.resolve_module_import_target(
+                  target, records_by_specifier, resolve_set,
+                )
+              None => ()
+            }
+          }
+        }
+      ExportAllDecl(Some(namespace_name), source, _, _) =>
+        if namespace_name == export_name {
+          return self.resolve_module_import_target(
+            ImportedNamespace(source),
             records_by_specifier,
             resolve_set,
           )
         }
-      }
-    ExportNamedDecl(None, specifiers, None, _, _) =>
-      for spec in specifiers {
-        if spec.exported == export_name {
-          match record.import_target_for_local_name(spec.local_name) {
-            Some(target) =>
-              return self.resolve_module_import_target(
-                target, records_by_specifier, resolve_set,
-              )
-            None => ()
-          }
-        }
-      }
-    ExportAllDecl(Some(namespace_name), source, _, _) =>
-      if namespace_name == export_name {
-        return self.resolve_module_import_target(
-          ImportedNamespace(source),
-          records_by_specifier,
-          resolve_set,
-        )
-      }
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        match
-          self.resolve_explicit_indirect_export_from_stmt(
-            record, inner, export_name, records_by_specifier, resolve_set,
-          ) {
-          NotFound => ()
-          other => return other
-        }
-      }
-    _ => ()
+      _ => ()
+    }
   }
   NotFound
 }
