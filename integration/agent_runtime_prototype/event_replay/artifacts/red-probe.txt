@@ -1,0 +1,7 @@
+schema=agent-runtime-p3-red-evidence/v1
+compile_red=Value required_transcript not found in package event_replay
+compile_red_exit=255
+behavior_red=PROTOTYPE event log recovers write result without a second write
+behavior_red_result=0 passed, 1 failed
+behavior_red_failure=transcript length assertion was false for the one-line NOT_IMPLEMENTED stub
+green_result=1 passed, 0 failed

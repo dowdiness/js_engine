@@ -1,0 +1,1 @@
+// PROTOTYPE: pure append-only event reducer. No Engine, adapter, process, or terminal I/O.

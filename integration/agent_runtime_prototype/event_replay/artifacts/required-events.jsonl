@@ -1,0 +1,9 @@
+{"sequence":1,"kind":"SessionStarted","details":{"session_id":"p3-required-crash","source_sha256":"27aad268c066e0057182c3daa19ad959632d68276e8108144a69fb4d623fae58","runtime_fingerprint":"js_engine@0.7.0;event_replay_schema=v1;base=c249fbab15db305f345391bc72f1c4431138c207","host_config_sha256":"e6371ecbc93bb21d48e39c92f15b109d179ee9bdfa680443db1aea6742f09959","input":{"user_id":"user-1"}}}
+{"sequence":2,"kind":"ToolRequestObserved","details":{"call_id":"call-1","idempotency_key":"p3-required-crash:call-1","request":{"tool":"get_user","arguments":{"user_id":"user-1"}}}}
+{"sequence":3,"kind":"DispatchIntentRecorded","details":{"call_id":"call-1","idempotency_key":"p3-required-crash:call-1"}}
+{"sequence":4,"kind":"ToolResultRecorded","details":{"call_id":"call-1","idempotency_key":"p3-required-crash:call-1","result":{"tag":"ok","value":{"user_id":"user-1","status":"inactive"}},"adapter_reported_write_committed":false}}
+{"sequence":5,"kind":"ToolRequestObserved","details":{"call_id":"call-2","idempotency_key":"p3-required-crash:call-2","request":{"tool":"update_user_status","arguments":{"user_id":"user-1","status":"active"}}}}
+{"sequence":6,"kind":"ApprovalGranted","details":{"call_id":"call-2"}}
+{"sequence":7,"kind":"DispatchIntentRecorded","details":{"call_id":"call-2","idempotency_key":"p3-required-crash:call-2"}}
+{"sequence":8,"kind":"ToolResultRecorded","details":{"call_id":"call-2","idempotency_key":"p3-required-crash:call-2","result":{"tag":"ok","value":{"user_id":"user-1","status":"active"}},"adapter_reported_write_committed":true}}
+{"sequence":9,"kind":"SessionCompleted","details":{"completion":{"status":"ok","output":{"user_id":"user-1","status":"active","updated":true}}}}

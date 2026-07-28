@@ -3,4 +3,5 @@ members = [
   "./coroutine",
   "./tool_broker",
   "./worker_supervisor",
+  "./event_replay",
 ]

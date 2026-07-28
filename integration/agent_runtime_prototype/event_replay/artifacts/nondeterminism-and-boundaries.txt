@@ -1,0 +1,5 @@
+controlled=fixed source,input,results,session ID,request order,synchronous generator,native target
+not_used=time,random,locale,environment UUID,provider,network,concurrency,timers,microtasks
+not_measured=tagged error-result replay,host process crash,durable append,fsync,torn log,adapter retention expiry,client delivery acknowledgement
+drift_rejected=source SHA-256,runtime fingerprint,host config SHA-256,input,request payload,event sequence,result identity
+boundary=commit-before-result needs explicit same-key reconciliation against a surviving idempotency registry; otherwise PIVOT

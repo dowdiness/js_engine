@@ -1,0 +1,14 @@
+schema=agent-runtime-p3-probe-summary/v1
+target=native
+action_rows=46
+summary_rows=1
+jsonl_rows=47
+required_domain_events=9
+rejected_replay_cases=7
+required_fake_external_write_commits=1
+required_replay_adapter_invocations=0
+unknown_outcome_automatic_adapter_invocations=0
+unknown_outcome_same_key_reconciliation_write_commits=1
+deterministic_repeat=byte_identical
+verdict=GO
+scope=Engine crash only; host in-memory log and fake idempotency registry survive

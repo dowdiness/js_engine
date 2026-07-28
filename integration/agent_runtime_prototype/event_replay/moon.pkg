@@ -1,0 +1,11 @@
+// PROTOTYPE: disposable P3 event-replay harness and thin fake-I/O shell.
+
+import {
+  "dowdiness/js_engine",
+  "dowdiness/js_engine_agent_runtime_event_replay/core" @replay,
+  "dowdiness/js_engine_agent_runtime_tool_broker/core" @broker,
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x/crypto",
+}
+
+supported_targets = "native"

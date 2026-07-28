@@ -1,0 +1,93 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine_agent_runtime_event_replay/core"
+
+// Values
+pub fn apply_event(ReplayState, ReplayEvent) -> ApplyResult
+
+pub fn approval_granted_event(Int, String) -> ReplayEvent
+
+pub fn dispatch_intent_event(Int, String, String) -> ReplayEvent
+
+pub fn reduce_events(Array[ReplayEvent]) -> ApplyResult
+
+pub fn request_observed_event(Int, String, String, Json) -> ReplayEvent
+
+pub fn session_cancelled_event(Int, String, String) -> ReplayEvent
+
+pub fn session_completed_event(Int, Json) -> ReplayEvent
+
+pub fn session_started_event(Int, String, String, String, String, Json) -> ReplayEvent
+
+pub fn tool_result_event(Int, String, String, Json, Bool) -> ReplayEvent
+
+// Errors
+
+// Types and methods
+pub struct ApplyResult {
+  state_ : ReplayState
+  accepted_ : Bool
+  error_ : String?
+}
+pub fn ApplyResult::accepted(Self) -> Bool
+pub fn ApplyResult::error(Self) -> String?
+pub fn ApplyResult::state(Self) -> ReplayState
+
+pub struct ReplayEvent {
+  sequence_ : Int
+  kind_ : ReplayEventKind
+}
+pub fn ReplayEvent::kind(Self) -> ReplayEventKind
+pub fn ReplayEvent::render(Self) -> Json
+pub fn ReplayEvent::sequence(Self) -> Int
+
+pub enum ReplayEventKind {
+  SessionStarted(String, String, String, String, Json)
+  ToolRequestObserved(String, String, Json)
+  ApprovalGranted(String)
+  DispatchIntentRecorded(String, String)
+  ToolResultRecorded(String, String, Json, Bool)
+  SessionCompleted(Json)
+  SessionCancelled(String, String)
+}
+
+pub struct ReplayState {
+  phase_ : String
+  session_id_ : String
+  source_hash_ : String
+  runtime_fingerprint_ : String
+  host_config_hash_ : String
+  input_ : Json
+  next_sequence_ : Int
+  request_sequence_ : Int
+  current_call_id_ : String
+  current_idempotency_key_ : String
+  current_request_ : Json
+  approval_status_ : String
+  dispatch_recorded_ : Bool
+  recorded_results_ : Int
+  recorded_write_commits_ : Int
+  replay_cursor_ : Int
+  completion_ : Json
+  cancellation_reason_ : String?
+  last_error_ : String?
+}
+pub fn ReplayState::ReplayState() -> Self
+pub fn ReplayState::completion(Self) -> Json
+pub fn ReplayState::current_call_id(Self) -> String
+pub fn ReplayState::current_idempotency_key(Self) -> String
+pub fn ReplayState::current_request(Self) -> Json
+pub fn ReplayState::host_config_hash(Self) -> String
+pub fn ReplayState::input(Self) -> Json
+pub fn ReplayState::next_sequence(Self) -> Int
+pub fn ReplayState::phase(Self) -> String
+pub fn ReplayState::recorded_results(Self) -> Int
+pub fn ReplayState::render(Self) -> Json
+pub fn ReplayState::replay_cursor(Self) -> Int
+pub fn ReplayState::request_sequence(Self) -> Int
+pub fn ReplayState::runtime_fingerprint(Self) -> String
+pub fn ReplayState::source_hash(Self) -> String
+
+// Type aliases
+
+// Traits
+

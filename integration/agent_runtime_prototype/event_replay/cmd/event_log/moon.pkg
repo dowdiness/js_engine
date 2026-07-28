@@ -1,0 +1,7 @@
+import {
+  "dowdiness/js_engine_agent_runtime_event_replay" @event_replay,
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "+native"
