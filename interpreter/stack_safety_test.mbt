@@ -8,6 +8,28 @@ fn nested_comma_source(depth : Int, final_expression : String) -> String {
 }
 
 ///|
+fn nested_array_pattern_source(depth : Int, inner : String) -> String {
+  let mut source = inner
+  for _ in 0..<depth {
+    source = "[" + source + "]"
+  }
+  source
+}
+
+///|
+test "post-parse stack safety: GeneratorFunction parameter Contains(YieldExpression)" {
+  let parameter = nested_array_pattern_source(512, "value = yield 0")
+  inspect(
+    run_throws(
+      "let GF = (function*(){}).constructor; new GF(\"" +
+      parameter +
+      "\", \"\");",
+    ),
+    content="SyntaxError: Generator formal parameters may not contain yield expressions",
+  )
+}
+
+///|
 #skip("blocked by #608 runtime evaluator stack safety")
 test "post-parse stack safety: 512 comma expressions" {
   inspect(run(nested_comma_source(512, "7")), content="7")

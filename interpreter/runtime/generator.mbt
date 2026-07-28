@@ -123,49 +123,105 @@ fn complete_generator(gen : GeneratorObject) -> Unit {
 /// §20.2.1.1.1 step 17a: Returns true if expr contains a YieldExpression at
 /// any level, stopping at nested function boundaries (which have their own
 /// generator context and may use yield freely).
-fn expr_contains_yield(expr : @ast.Expr) -> Bool {
-  match expr {
-    YieldExpr(_, _, _) => true
-    // Arrow params (including defaults) are evaluated in the enclosing scope,
-    // so ArrowFuncExt/AsyncArrowFuncExt are NOT full boundaries for yield.
-    ArrowFuncExt(params, _, _, _, _) | AsyncArrowFuncExt(params, _, _, _, _) =>
-      params_contain_yield(params)
-    // Nested function boundaries — yield inside is not the outer generator's
-    FuncExpr(_, _, _, _, _)
-    | FuncExprExt(_, _, _, _, _, _)
-    | GeneratorExpr(_, _, _, _, _)
-    | GeneratorExprExt(_, _, _, _, _, _)
-    | AsyncFuncExpr(_, _, _, _, _)
-    | AsyncFuncExprExt(_, _, _, _, _, _)
-    | AsyncArrowFunc(_, _, _, _)
-    | AsyncGeneratorExpr(_, _, _, _, _)
-    | AsyncGeneratorExprExt(_, _, _, _, _, _)
-    | ArrowFunc(_, _, _, _) => false
-    // Class is NOT a full boundary: heritage and computed member keys are
-    // evaluated in the surrounding scope (ES §15.7.1 ClassElementName).
-    ClassExpr(_, superclass, members, _, _) => {
-      let heritage = match superclass {
-        Some(e) => expr_contains_yield(e)
-        None => false
+priv enum GeneratorParamsYieldWork {
+  Param(@ast.Param)
+  Pattern(@ast.Pattern)
+  Expr(@ast.Expr)
+}
+
+///|
+fn generator_params_contain_yield(
+  work : Array[GeneratorParamsYieldWork],
+) -> Bool {
+  while work.pop() is Some(item) {
+    let scheduled : Array[GeneratorParamsYieldWork] = []
+    match item {
+      Param(param) => {
+        match param.default_val {
+          Some(expr) => scheduled.push(Expr(expr))
+          None => ()
+        }
+        match param.pattern {
+          Some(pattern) => scheduled.push(Pattern(pattern))
+          None => ()
+        }
       }
-      let computed = members
-        .iter()
-        .any(fn(m) {
-          match m {
-            Method(cm) => cm.computed && expr_contains_yield(cm.key)
-            Field(cf) => cf.computed && expr_contains_yield(cf.key)
-            StaticBlock(_) => false
+      Pattern(pattern) =>
+        ignore(
+          @ast.pattern_immediate_children_any(
+            pattern,
+            child => {
+              scheduled.push(Pattern(child))
+              false
+            },
+            child => {
+              scheduled.push(Expr(child))
+              false
+            },
+          ),
+        )
+      Expr(YieldExpr(_, _, _)) => return true
+      Expr(
+        ArrowFuncExt(params, _, _, _, _)
+        | AsyncArrowFuncExt(params, _, _, _, _)
+      ) =>
+        for param in params {
+          scheduled.push(Param(param))
+        }
+      // Nested function boundaries — yield inside is not the outer generator's.
+      Expr(
+        FuncExpr(_, _, _, _, _)
+        | FuncExprExt(_, _, _, _, _, _)
+        | GeneratorExpr(_, _, _, _, _)
+        | GeneratorExprExt(_, _, _, _, _, _)
+        | AsyncFuncExpr(_, _, _, _, _)
+        | AsyncFuncExprExt(_, _, _, _, _, _)
+        | AsyncArrowFunc(_, _, _, _)
+        | AsyncGeneratorExpr(_, _, _, _, _)
+        | AsyncGeneratorExprExt(_, _, _, _, _, _)
+        | ArrowFunc(_, _, _, _)
+      ) => ()
+      Expr(ClassExpr(_, superclass, members, _, _)) => {
+        match superclass {
+          Some(expr) => scheduled.push(Expr(expr))
+          None => ()
+        }
+        for class_member in members {
+          match class_member {
+            Method(class_method) =>
+              if class_method.computed {
+                scheduled.push(Expr(class_method.key))
+              }
+            Field(field) =>
+              if field.computed {
+                scheduled.push(Expr(field.key))
+              }
+            StaticBlock(_) => ()
           }
-        })
-      heritage || computed
+        }
+      }
+      Expr(DestructureAssign(pattern, expr, _)) => {
+        scheduled.push(Pattern(pattern))
+        scheduled.push(Expr(expr))
+      }
+      Expr(expr) =>
+        ignore(
+          @ast.expr_immediate_children_any(expr, child => {
+            scheduled.push(Expr(child))
+            false
+          }),
+        )
     }
-    // DestructureAssign LHS pattern can contain computed keys or defaults with
-    // yield expressions ({[yield]: a} = {}, {a = yield} = {}) — scan both sides.
-    DestructureAssign(pat, _, _) =>
-      pattern_contains_yield(pat) ||
-      @ast.expr_immediate_children_any(expr, expr_contains_yield)
-    _ => @ast.expr_immediate_children_any(expr, expr_contains_yield)
+    for i in (scheduled.length() - 1)>=..0 {
+      work.push(scheduled[i])
+    }
   }
+  false
+}
+
+///|
+fn expr_contains_yield(expr : @ast.Expr) -> Bool {
+  generator_params_contain_yield([Expr(expr)])
 }
 
 ///|
@@ -173,26 +229,22 @@ fn expr_contains_yield(expr : @ast.Expr) -> Bool {
 // property keys. Property name strings (e.g. the "yield" in {yield: x}) are
 // not expressions and are intentionally not flagged here.
 fn pattern_contains_yield(pat : @ast.Pattern) -> Bool {
-  @ast.pattern_immediate_children_any(
-    pat, pattern_contains_yield, expr_contains_yield,
-  )
+  generator_params_contain_yield([Pattern(pat)])
 }
 
 ///|
 fn params_contain_yield(params : Array[@ast.Param]) -> Bool {
-  params
-  .iter()
-  .any(fn(p) {
-    let default_has_yield = match p.default_val {
-      Some(expr) => expr_contains_yield(expr)
-      None => false
+  for param in params {
+    match param.default_val {
+      Some(expr) => if expr_contains_yield(expr) { return true }
+      None => ()
     }
-    let pattern_has_yield = match p.pattern {
-      Some(pat) => pattern_contains_yield(pat)
-      None => false
+    match param.pattern {
+      Some(pattern) => if pattern_contains_yield(pattern) { return true }
+      None => ()
     }
-    default_has_yield || pattern_has_yield
-  })
+  }
+  false
 }
 
 ///|
