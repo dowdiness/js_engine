@@ -1,0 +1,61 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/internal/release_contract"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn parse_manifest(String) -> ReleaseCandidateManifest raise ReleaseContractError
+
+pub fn render_manifest(ReleaseCandidateManifest) -> String
+
+// Errors
+pub(all) suberror ReleaseContractError {
+  InvalidManifest(String)
+}
+
+// Types and methods
+pub struct ConformanceCounts {
+  passed : Int
+  executed : Int
+  discovered : Int
+  skipped : Int
+} derive(Eq, @debug.Debug)
+
+pub struct PackageEvidence {
+  content_sha256 : String
+  file_count : Int
+} derive(Eq, @debug.Debug)
+
+pub struct ReleaseCandidateManifest {
+  schema_version : Int
+  version : String
+  candidate_tree : String
+  unit_tests : UnitTestCounts
+  test262 : Test262Evidence
+  package_evidence : PackageEvidence
+} derive(Eq, @debug.Debug)
+
+pub struct Test262Evidence {
+  run_id : String
+  source_commit : String
+  source_tree : String
+  corpus_commit : String
+  result_schema_version : Int
+  summary_sha256 : String
+  skip_metadata_sha256 : String
+  edition_report_sha256 : String
+  strict : ConformanceCounts
+  non_strict : ConformanceCounts
+} derive(Eq, @debug.Debug)
+
+pub struct UnitTestCounts {
+  passed : Int
+  executed : Int
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits
+
