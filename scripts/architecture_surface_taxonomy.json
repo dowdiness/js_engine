@@ -65,6 +65,11 @@
       "package": "dowdiness/js_engine/cmd/*",
       "category": "benchmark_tooling_hook",
       "reason": "command entry points are not library APIs"
+    },
+    {
+      "package": "dowdiness/js_engine/internal/*",
+      "category": "internal_api",
+      "reason": "module-private release and maintainer contracts are not library APIs"
     }
   ],
   "symbol_overrides": [
