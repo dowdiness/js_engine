@@ -2,7 +2,7 @@
 const RELEASE_CANDIDATE_SCHEMA_VERSION = 1
 
 ///|
-pub(all) suberror ReleaseContractError {
+pub suberror ReleaseContractError {
   InvalidManifest(String)
 }
 
@@ -173,6 +173,36 @@ fn decode_string_field(
 }
 
 ///|
+fn decode_non_empty_string_field(
+  fields : Map[String, Json],
+  key : String,
+  path : String,
+) -> String raise ReleaseContractError {
+  let value = decode_string_field(fields, key, path)
+  guard !value.is_empty() else {
+    manifest_error(path + "." + key + " must not be empty")
+  }
+  value
+}
+
+///|
+fn decode_sha256_field(
+  fields : Map[String, Json],
+  key : String,
+  path : String,
+) -> String raise ReleaseContractError {
+  let value = decode_non_empty_string_field(fields, key, path)
+  guard value.length() == 71 && value.has_prefix("sha256:") else {
+    manifest_error(path + "." + key + " must be sha256:<64 lowercase hex>")
+  }
+  let hex = value[7:].to_owned()
+  guard hex.all(char => char.is_ascii_digit() || (char >= 'a' && char <= 'f')) else {
+    manifest_error(path + "." + key + " must be sha256:<64 lowercase hex>")
+  }
+  value
+}
+
+///|
 fn decode_int_field(
   fields : Map[String, Json],
   key : String,
@@ -198,10 +228,12 @@ fn decode_unit_test_counts(
   path : String,
 ) -> UnitTestCounts raise ReleaseContractError {
   validate_exact_fields(fields, ["passed", "executed"], path)
-  UnitTestCounts(
-    decode_int_field(fields, "passed", path),
-    decode_int_field(fields, "executed", path),
-  )
+  let passed = decode_int_field(fields, "passed", path)
+  let executed = decode_int_field(fields, "executed", path)
+  guard passed >= 0 && passed <= executed else {
+    manifest_error(path + " must satisfy 0 <= passed <= executed")
+  }
+  UnitTestCounts(passed, executed)
 }
 
 ///|
@@ -214,12 +246,17 @@ fn decode_conformance_counts(
     ["passed", "executed", "discovered", "skipped"],
     path,
   )
-  ConformanceCounts(
-    decode_int_field(fields, "passed", path),
-    decode_int_field(fields, "executed", path),
-    decode_int_field(fields, "discovered", path),
-    decode_int_field(fields, "skipped", path),
-  )
+  let passed = decode_int_field(fields, "passed", path)
+  let executed = decode_int_field(fields, "executed", path)
+  let discovered = decode_int_field(fields, "discovered", path)
+  let skipped = decode_int_field(fields, "skipped", path)
+  guard passed >= 0 && passed <= executed && executed <= discovered else {
+    manifest_error(path + " must satisfy 0 <= passed <= executed <= discovered")
+  }
+  guard skipped >= 0 && skipped <= discovered else {
+    manifest_error(path + ".skipped must be between 0 and discovered")
+  }
+  ConformanceCounts(passed, executed, discovered, skipped)
 }
 
 ///|
@@ -236,15 +273,21 @@ fn decode_test262_evidence(
     ],
     path,
   )
+  let result_schema_version = decode_int_field(
+    fields, "result_schema_version", path,
+  )
+  guard result_schema_version > 0 else {
+    manifest_error(path + ".result_schema_version must be positive")
+  }
   Test262Evidence(
-    decode_string_field(fields, "run_id", path),
-    decode_string_field(fields, "source_commit", path),
-    decode_string_field(fields, "source_tree", path),
-    decode_string_field(fields, "corpus_commit", path),
-    decode_int_field(fields, "result_schema_version", path),
-    decode_string_field(fields, "summary_sha256", path),
-    decode_string_field(fields, "skip_metadata_sha256", path),
-    decode_string_field(fields, "edition_report_sha256", path),
+    decode_non_empty_string_field(fields, "run_id", path),
+    decode_non_empty_string_field(fields, "source_commit", path),
+    decode_non_empty_string_field(fields, "source_tree", path),
+    decode_non_empty_string_field(fields, "corpus_commit", path),
+    result_schema_version,
+    decode_sha256_field(fields, "summary_sha256", path),
+    decode_sha256_field(fields, "skip_metadata_sha256", path),
+    decode_sha256_field(fields, "edition_report_sha256", path),
     decode_conformance_counts(
       decode_object_field(fields, "strict", path),
       path + ".strict",
@@ -262,9 +305,13 @@ fn decode_package_evidence(
   path : String,
 ) -> PackageEvidence raise ReleaseContractError {
   validate_exact_fields(fields, ["content_sha256", "file_count"], path)
+  let file_count = decode_int_field(fields, "file_count", path)
+  guard file_count > 0 else {
+    manifest_error(path + ".file_count must be positive")
+  }
   PackageEvidence(
-    decode_string_field(fields, "content_sha256", path),
-    decode_int_field(fields, "file_count", path),
+    decode_sha256_field(fields, "content_sha256", path),
+    file_count,
   )
 }
 
@@ -290,22 +337,27 @@ pub fn parse_manifest(
       RELEASE_CANDIDATE_SCHEMA_VERSION.to_string(),
     )
   }
+  let version = decode_non_empty_string_field(root, "version", "manifest")
+  let candidate_tree = decode_non_empty_string_field(
+    root, "candidate_tree", "manifest",
+  )
+  let unit_tests = decode_unit_test_counts(
+    decode_object_field(root, "unit_tests", "manifest"),
+    "manifest.unit_tests",
+  )
+  let test262 = decode_test262_evidence(
+    decode_object_field(root, "test262", "manifest"),
+    "manifest.test262",
+  )
+  guard test262.source_tree == candidate_tree else {
+    manifest_error("manifest.test262.source_tree must match candidate_tree")
+  }
+  let package_evidence = decode_package_evidence(
+    decode_object_field(root, "package", "manifest"),
+    "manifest.package",
+  )
   ReleaseCandidateManifest(
-    schema_version,
-    decode_string_field(root, "version", "manifest"),
-    decode_string_field(root, "candidate_tree", "manifest"),
-    decode_unit_test_counts(
-      decode_object_field(root, "unit_tests", "manifest"),
-      "manifest.unit_tests",
-    ),
-    decode_test262_evidence(
-      decode_object_field(root, "test262", "manifest"),
-      "manifest.test262",
-    ),
-    decode_package_evidence(
-      decode_object_field(root, "package", "manifest"),
-      "manifest.package",
-    ),
+    schema_version, version, candidate_tree, unit_tests, test262, package_evidence,
   )
 }
 

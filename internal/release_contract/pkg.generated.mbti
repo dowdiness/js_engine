@@ -13,7 +13,7 @@ pub fn render_manifest(ReleaseCandidateManifest) -> String
 pub fn validate_candidate(ReleaseCandidateManifest, ReleaseCandidateManifest) -> ReleaseValidation
 
 // Errors
-pub(all) suberror ReleaseContractError {
+pub suberror ReleaseContractError {
   InvalidManifest(String)
 }
 
