@@ -48,7 +48,7 @@
 - Consumes: existing package-private `run(source : String) -> Value raise Error` and `run_throws(source : String) -> String` test helpers.
 - Produces: focused tests named with the `post-parse stack safety` prefix.
 
-- [ ] **Step 1: Add the minimized end-to-end comma regression**
+- [x] **Step 1: Add the minimized end-to-end comma regression**
 
 ```moonbit
 ///|
@@ -66,30 +66,34 @@ test "post-parse stack safety: 512 comma expressions" {
 }
 ```
 
-- [ ] **Step 2: Run the test and record the red failure**
+- [x] **Step 2: Run the test and record the red failure**
 
 Run: `moon test --target js interpreter --filter '*post-parse stack safety: 512 comma*'`
 
 Expected pre-fix result on debug JS: host-generated `RangeError: Maximum call stack size exceeded`, with repeating `validate_block_early_errors_expr` frames. Parsing must have completed.
 
-- [ ] **Step 3: Add shallow competing-error tests**
+Observed on debug JS: the 512-comma test fails with `RangeError: Maximum call stack size exceeded` in repeated `validate_block_early_errors_expr` frames.
+
+- [x] **Step 3: Add shallow competing-error tests**
 
 Add tests using `run_throws` that pin the current exact first error for:
 
 ```javascript
-"use strict"; (eval = 0, arguments = 1)
+"use strict"; (eval = 0, function() { let x; var x; })
 function f(a = (eval = 0)) { let x; var x; }
-class C extends (eval = 0) { [arguments]() {} }
+class C extends (eval = 0) { m() { let x; var x; } }
 switch (eval = 0) { case 0: let x; var x; }
 ```
 
 Before writing expectations, run each source through the current checkout and copy its existing `run_throws` result verbatim. Also add a pattern-order fixture and a template-quasi-before-substitution fixture using the same method.
 
-- [ ] **Step 4: Verify only the deep regression is red**
+- [x] **Step 4: Verify only the deep regression is red**
 
 Run: `moon test interpreter --filter '*post-parse stack safety*'`
 
 Expected: shallow ordering tests pass; the 512-comma test fails in post-parse validation.
+
+Observed on debug JS: all six shallow tests pass; only the 512-comma test fails, in repeated `validate_block_early_errors_expr` frames.
 
 - [ ] **Step 5: Commit the eventual green test with its owning implementation**
 
