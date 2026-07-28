@@ -40,6 +40,25 @@ priv enum ModuleDefaultExportBinding {
 }
 
 ///|
+priv enum ModuleResolutionRequest {
+  Record(ModuleRunRecord, String)
+  Source(String, String)
+  ImportTarget(ModuleImportTarget)
+}
+
+///|
+priv enum ModuleResolutionContinuation {
+  AfterExplicit(ModuleRunRecord, String)
+  AfterStarSource(Array[String], String, Int, ModuleExportResolution)
+}
+
+///|
+priv enum ModuleResolutionControl {
+  Descend(ModuleResolutionRequest)
+  Return(ModuleExportResolution)
+}
+
+///|
 fn Interpreter::predeclare_module_export_tdz(
   self : Interpreter,
   export_name : String,
@@ -695,95 +714,220 @@ fn Interpreter::resolve_module_export_from_source(
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  match records_by_specifier.get(source) {
-    Some(record) =>
-      self.resolve_module_export(
-        record, export_name, records_by_specifier, resolve_set,
-      )
-    None =>
-      match
-        module_export_map_get_public(
-          self.module_exports_for_source(source, @token.Loc::default()),
-          export_name,
-        ) {
-        Some(value) =>
-          Resolved(ResolvedModuleExport(value, source, export_name))
-        None => NotFound
-      }
-  }
+  self.resolve_module_export_driver(
+    Source(source, export_name),
+    records_by_specifier,
+    resolve_set,
+  )
 }
 
 ///|
+#warnings("-unused_value")
 fn Interpreter::resolve_module_import_target(
   self : Interpreter,
   target : ModuleImportTarget,
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  match target {
-    ImportedBinding(source, binding_name) =>
-      self.resolve_module_export_from_source(
-        source, binding_name, records_by_specifier, resolve_set,
-      )
-    ImportedNamespace(source) => {
-      let exports = self.module_exports_for_source(
-        source,
-        @token.Loc::default(),
-      )
-      Resolved(
-        ResolvedModuleExport(
-          self.create_module_namespace_object(exports),
-          source,
-          MODULE_NAMESPACE_BINDING_NAME,
-        ),
-      )
-    }
-  }
+  self.resolve_module_export_driver(
+    ImportTarget(target),
+    records_by_specifier,
+    resolve_set,
+  )
 }
 
 ///|
-fn Interpreter::resolve_explicit_indirect_export_from_stmt(
-  self : Interpreter,
+fn module_explicit_resolution_request(
   record : ModuleRunRecord,
   stmt : @ast.Stmt,
   export_name : String,
-  records_by_specifier : Map[String, ModuleRunRecord],
-  resolve_set : @set.Set[String],
-) -> ModuleExportResolution raise Error {
+) -> ModuleResolutionRequest? {
   for current in flatten_module_stmt_carriers(stmt) {
     match current {
       ExportNamedDecl(None, specifiers, Some(source), _, _) =>
         for spec in specifiers {
           if spec.exported == export_name {
-            return self.resolve_module_export_from_source(
-              source,
-              spec.local_name,
-              records_by_specifier,
-              resolve_set,
-            )
+            return Some(Source(source, spec.local_name))
           }
         }
       ExportNamedDecl(None, specifiers, None, _, _) =>
         for spec in specifiers {
           if spec.exported == export_name {
             match record.import_target_for_local_name(spec.local_name) {
-              Some(target) =>
-                return self.resolve_module_import_target(
-                  target, records_by_specifier, resolve_set,
-                )
+              Some(target) => return Some(ImportTarget(target))
               None => ()
             }
           }
         }
       ExportAllDecl(Some(namespace_name), source, _, _) =>
         if namespace_name == export_name {
-          return self.resolve_module_import_target(
-            ImportedNamespace(source),
-            records_by_specifier,
-            resolve_set,
-          )
+          return Some(ImportTarget(ImportedNamespace(source)))
         }
       _ => ()
+    }
+  }
+  None
+}
+
+///|
+fn Interpreter::resolve_module_export_driver(
+  self : Interpreter,
+  initial : ModuleResolutionRequest,
+  records_by_specifier : Map[String, ModuleRunRecord],
+  resolve_set : @set.Set[String],
+) -> ModuleExportResolution raise Error {
+  let continuations : Array[ModuleResolutionContinuation] = []
+  let mut control = Descend(initial)
+  while true {
+    match control {
+      Descend(request) =>
+        match request {
+          Source(source, export_name) =>
+            match records_by_specifier.get(source) {
+              Some(record) => control = Descend(Record(record, export_name))
+              None =>
+                control = Return(
+                  match
+                    module_export_map_get_public(
+                      self.module_exports_for_source(
+                        source,
+                        @token.Loc::default(),
+                      ),
+                      export_name,
+                    ) {
+                    Some(value) =>
+                      Resolved(ResolvedModuleExport(value, source, export_name))
+                    None => NotFound
+                  },
+                )
+            }
+          ImportTarget(target) =>
+            match target {
+              ImportedBinding(source, binding_name) =>
+                control = Descend(Source(source, binding_name))
+              ImportedNamespace(source) => {
+                let exports = self.module_exports_for_source(
+                  source,
+                  @token.Loc::default(),
+                )
+                control = Return(
+                  Resolved(
+                    ResolvedModuleExport(
+                      self.create_module_namespace_object(exports),
+                      source,
+                      MODULE_NAMESPACE_BINDING_NAME,
+                    ),
+                  ),
+                )
+              }
+            }
+          Record(record, export_name) => {
+            let resolve_key = record.specifier + "\u0000" + export_name
+            if resolve_set.contains(resolve_key) {
+              control = Return(NotFound)
+              continue
+            }
+            resolve_set.add(resolve_key)
+            match
+              module_record_direct_export_binding_name(record, export_name) {
+              Some(binding_name) => {
+                control = Return(
+                  match
+                    module_export_map_get_public(record.exports, export_name) {
+                    Some(value) =>
+                      Resolved(
+                        ResolvedModuleExport(
+                          value,
+                          record.specifier,
+                          binding_name,
+                        ),
+                      )
+                    None => NotFound
+                  },
+                )
+                continue
+              }
+              None => ()
+            }
+            match
+              module_explicit_resolution_request(
+                record,
+                StmtList(record.stmts, @token.Loc::default()),
+                export_name,
+              ) {
+              Some(child) => {
+                continuations.push(AfterExplicit(record, export_name))
+                control = Descend(child)
+              }
+              None =>
+                if export_name == "default" {
+                  control = Return(NotFound)
+                } else {
+                  let sources = record.star_sources()
+                  if sources.length() == 0 {
+                    control = Return(NotFound)
+                  } else {
+                    continuations.push(
+                      AfterStarSource(sources, export_name, 1, NotFound),
+                    )
+                    control = Descend(Source(sources[0], export_name))
+                  }
+                }
+            }
+          }
+        }
+      Return(result) =>
+        match continuations.pop() {
+          None => return result
+          Some(AfterExplicit(record, export_name)) =>
+            match result {
+              Resolved(_) | Ambiguous => control = Return(result)
+              NotFound =>
+                if export_name == "default" {
+                  control = Return(NotFound)
+                } else {
+                  let sources = record.star_sources()
+                  if sources.length() == 0 {
+                    control = Return(NotFound)
+                  } else {
+                    continuations.push(
+                      AfterStarSource(sources, export_name, 1, NotFound),
+                    )
+                    control = Descend(Source(sources[0], export_name))
+                  }
+                }
+            }
+          Some(AfterStarSource(sources, export_name, next_index, accumulator)) => {
+            let next_accumulator = match result {
+              Ambiguous => Ambiguous
+              NotFound => accumulator
+              Resolved(_) =>
+                match accumulator {
+                  NotFound => result
+                  Resolved(_) =>
+                    if module_export_resolution_same(accumulator, result) {
+                      accumulator
+                    } else {
+                      Ambiguous
+                    }
+                  Ambiguous => Ambiguous
+                }
+            }
+            if next_accumulator is Ambiguous || next_index >= sources.length() {
+              control = Return(next_accumulator)
+            } else {
+              continuations.push(
+                AfterStarSource(
+                  sources,
+                  export_name,
+                  next_index + 1,
+                  next_accumulator,
+                ),
+              )
+              control = Descend(Source(sources[next_index], export_name))
+            }
+          }
+        }
     }
   }
   NotFound
@@ -797,56 +941,11 @@ fn Interpreter::resolve_module_export(
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  let resolve_key = record.specifier + "\u0000" + export_name
-  if resolve_set.contains(resolve_key) {
-    return NotFound
-  }
-  resolve_set.add(resolve_key)
-  match module_record_direct_export_binding_name(record, export_name) {
-    Some(binding_name) =>
-      return match module_export_map_get_public(record.exports, export_name) {
-        Some(value) =>
-          Resolved(ResolvedModuleExport(value, record.specifier, binding_name))
-        None => NotFound
-      }
-    None => ()
-  }
-  match
-    self.resolve_explicit_indirect_export_from_stmt(
-      record,
-      StmtList(record.stmts, @token.Loc::default()),
-      export_name,
-      records_by_specifier,
-      resolve_set,
-    ) {
-    NotFound => ()
-    other => return other
-  }
-  if export_name == "default" {
-    return NotFound
-  }
-  let mut star_resolution : ModuleExportResolution = NotFound
-  for source in record.star_sources() {
-    match
-      self.resolve_module_export_from_source(
-        source, export_name, records_by_specifier, resolve_set,
-      ) {
-      NotFound => ()
-      Ambiguous => return Ambiguous
-      Resolved(resolved) => {
-        let next_resolution = Resolved(resolved)
-        match star_resolution {
-          NotFound => star_resolution = next_resolution
-          Resolved(_) =>
-            if !module_export_resolution_same(star_resolution, next_resolution) {
-              return Ambiguous
-            }
-          Ambiguous => return Ambiguous
-        }
-      }
-    }
-  }
-  star_resolution
+  self.resolve_module_export_driver(
+    Record(record, export_name),
+    records_by_specifier,
+    resolve_set,
+  )
 }
 
 ///|

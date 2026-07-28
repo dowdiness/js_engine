@@ -407,3 +407,301 @@ test "Task 6A: deep named re-export keeps original missing diagnostic location" 
     content="Err(SyntaxError(message=\"Module './missing' does not export 'absent' at line 3, col 24\"))",
   )
 }
+
+///|
+fn module_resolution_chain(
+  length : Int,
+  kind : String,
+) -> Map[String, ModuleRunRecord] raise Error {
+  let records : Map[String, ModuleRunRecord] = Map([])
+  let explicit = module_test_stmt("export { x } from 'next';")
+  let imported = @parser.parse(
+      "import { x as local } from 'next'; export { local as x };",
+    ).stmts
+  let star = module_test_stmt("export * from 'next';")
+  for i in 0..<length {
+    let specifier = i.to_string()
+    if i + 1 == length {
+      let record = module_test_record_at(
+        specifier,
+        @parser.parse("export const x = 1;").stmts,
+      )
+      record.exports["x"] = Number(1.0)
+      records[specifier] = record
+    } else {
+      let next = (i + 1).to_string()
+      let stmts = match kind {
+        "explicit" =>
+          match explicit {
+            ExportNamedDecl(a, b, _, d, e) =>
+              [@ast.Stmt::ExportNamedDecl(a, b, Some(next), d, e)]
+            _ => fail("explicit")
+          }
+        "imported" => {
+          let import_stmt = match imported[0] {
+            ImportDecl(a, b, c, _, e, f) =>
+              @ast.Stmt::ImportDecl(a, b, c, next, e, f)
+            _ => fail("import")
+          }
+          [import_stmt, imported[1]]
+        }
+        _ =>
+          match star {
+            ExportAllDecl(a, _, c, d) =>
+              [@ast.Stmt::ExportAllDecl(a, next, c, d)]
+            _ => fail("star")
+          }
+      }
+      records[specifier] = module_test_record_at(specifier, stmts)
+    }
+  }
+  records
+}
+
+///|
+fn assert_deep_module_resolution(
+  result : ModuleExportResolution,
+  leaf : String,
+) -> Unit raise Error {
+  match result {
+    Resolved(resolved) => {
+      assert_true(resolved.value is Number(1.0))
+      assert_eq(resolved.module_specifier, leaf)
+      assert_eq(resolved.binding_name, "x")
+    }
+    _ => fail("expected resolved export")
+  }
+}
+
+///|
+test "Task 6C: 4096-hop explicit-source resolution is stack safe" {
+  let records = module_resolution_chain(4097, "explicit")
+  let resolve_set = @set.Set::default()
+  assert_deep_module_resolution(
+    Interpreter::new().resolve_module_export(
+      records["0"],
+      "x",
+      records,
+      resolve_set,
+    ),
+    "4096",
+  )
+  assert_true(resolve_set.contains("0\u0000x"))
+  assert_true(resolve_set.contains("4096\u0000x"))
+}
+
+///|
+test "Task 6C: 4096-hop imported-local resolution is stack safe" {
+  let records = module_resolution_chain(4097, "imported")
+  let resolve_set = @set.Set::default()
+  assert_deep_module_resolution(
+    Interpreter::new().resolve_module_export(
+      records["0"],
+      "x",
+      records,
+      resolve_set,
+    ),
+    "4096",
+  )
+  assert_true(resolve_set.contains("0\u0000x"))
+  assert_true(resolve_set.contains("4096\u0000x"))
+}
+
+///|
+test "Task 6C: 4096-hop star resolution reaches direct leaf stack safely" {
+  let records = module_resolution_chain(4097, "star")
+  let resolve_set = @set.Set::default()
+  assert_deep_module_resolution(
+    Interpreter::new().resolve_module_export(
+      records["0"],
+      "x",
+      records,
+      resolve_set,
+    ),
+    "4096",
+  )
+  assert_true(resolve_set.contains("0\u0000x"))
+  assert_true(resolve_set.contains("4096\u0000x"))
+}
+
+///|
+fn assert_module_resolution_origin(
+  result : ModuleExportResolution,
+  value : Double,
+  specifier : String,
+  binding_name : String,
+) -> Unit raise Error {
+  match result {
+    Resolved(resolved) => {
+      assert_true(resolved.value is Number(n) && n == value)
+      assert_eq(resolved.module_specifier, specifier)
+      assert_eq(resolved.binding_name, binding_name)
+    }
+    _ => fail("expected resolved export")
+  }
+}
+
+///|
+test "Task 6C: explicit selection and direct/default precedence parity" {
+  let interp = Interpreter::new()
+  interp.register_module("missing", Map([]))
+  let leaf = module_test_record_at(
+    "leaf",
+    @parser.parse("export const x = 1;").stmts,
+  )
+  leaf.exports["x"] = Number(1.0)
+  let records : Map[String, ModuleRunRecord] = Map([("leaf", leaf)])
+  let first_missing = module_test_record_at(
+    "first",
+    @parser.parse(
+      "export { x } from 'missing'; export { x } from 'leaf'; export * from 'leaf';",
+    ).stmts,
+  )
+  let first_set = @set.Set::default()
+  assert_module_resolution_origin(
+    interp.resolve_module_export(first_missing, "x", records, first_set),
+    1.0,
+    "leaf",
+    "x",
+  )
+  assert_true(first_set.contains("first\u0000x"))
+  assert_true(first_set.contains("leaf\u0000x"))
+  let direct = module_test_record_at(
+    "direct",
+    @parser.parse(
+      "export { x } from 'missing'; export const x = 2; export * from 'leaf';",
+    ).stmts,
+  )
+  direct.exports["x"] = Number(2.0)
+  let direct_set = @set.Set::default()
+  assert_module_resolution_origin(
+    interp.resolve_module_export(direct, "x", records, direct_set),
+    2.0,
+    "direct",
+    "x",
+  )
+  assert_false(direct_set.contains("leaf\u0000x"))
+  let default_only = module_test_record_at(
+    "default",
+    @parser.parse("export * from 'never-loaded';").stmts,
+  )
+  let default_set = @set.Set::default()
+  assert_true(
+    interp.resolve_module_export(default_only, "default", records, default_set)
+    is NotFound,
+  )
+  assert_true(default_set.contains("default\u0000default"))
+  assert_false(default_set.contains("never-loaded\u0000default"))
+}
+
+///|
+test "Task 6C: star ambiguity identity and short-circuit parity" {
+  let interp = Interpreter::new()
+  let leaf = module_test_record_at(
+    "leaf",
+    @parser.parse("export const x = 1; export const y = 1;").stmts,
+  )
+  leaf.exports["x"] = Number(1.0)
+  leaf.exports["y"] = Number(1.0)
+  let alias_a = module_test_record_at(
+    "alias-a",
+    @parser.parse("export { x } from 'leaf';").stmts,
+  )
+  let alias_b = module_test_record_at(
+    "alias-b",
+    @parser.parse("export { x } from 'leaf';").stmts,
+  )
+  let different = module_test_record_at(
+    "different",
+    @parser.parse("export { y as x } from 'leaf';").stmts,
+  )
+  let records : Map[String, ModuleRunRecord] = Map([
+    ("leaf", leaf),
+    ("alias-a", alias_a),
+    ("alias-b", alias_b),
+    ("different", different),
+  ])
+  let same = module_test_record_at(
+    "same",
+    @parser.parse("export * from 'alias-a'; export * from 'alias-b';").stmts,
+  )
+  assert_module_resolution_origin(
+    interp.resolve_module_export(same, "x", records, @set.Set::default()),
+    1.0,
+    "leaf",
+    "x",
+  )
+  let ambiguous = module_test_record_at(
+    "ambiguous",
+    @parser.parse(
+      "export * from 'alias-a'; export * from 'different'; export * from 'must-not-load';",
+    ).stmts,
+  )
+  let ambiguous_set = @set.Set::default()
+  assert_true(
+    interp.resolve_module_export(ambiguous, "x", records, ambiguous_set)
+    is Ambiguous,
+  )
+  assert_false(ambiguous_set.contains("must-not-load\u0000x"))
+}
+
+///|
+test "Task 6C: star ring later fallback and caller resolve-set reuse parity" {
+  let interp = Interpreter::new()
+  let records = module_resolution_chain(4097, "star")
+  let leaf = module_test_record_at(
+    "leaf",
+    @parser.parse("export const x = 3;").stmts,
+  )
+  leaf.exports["x"] = Number(3.0)
+  records["leaf"] = leaf
+  records["4096"] = module_test_record_at(
+    "4096",
+    @parser.parse("export * from '0'; export * from 'leaf';").stmts,
+  )
+  let resolve_set = @set.Set::default()
+  assert_module_resolution_origin(
+    interp.resolve_module_export(records["0"], "x", records, resolve_set),
+    3.0,
+    "leaf",
+    "x",
+  )
+  assert_true(resolve_set.contains("0\u0000x"))
+  assert_true(resolve_set.contains("4096\u0000x"))
+  assert_true(resolve_set.contains("leaf\u0000x"))
+  assert_true(
+    interp.resolve_module_export(records["0"], "x", records, resolve_set)
+    is NotFound,
+  )
+}
+
+///|
+test "Task 6C: ImportedNamespace preserves identity cache and resolve set" {
+  let interp = Interpreter::new()
+  let exports : Map[String, Value] = Map([("x", Number(7.0))])
+  interp.register_module("external", exports)
+  let resolve_set = @set.Set::default()
+  let first = interp.resolve_module_import_target(
+    ImportedNamespace("external"),
+    Map([]),
+    resolve_set,
+  )
+  let second = interp.resolve_module_import_target(
+    ImportedNamespace("external"),
+    Map([]),
+    resolve_set,
+  )
+  for result in [first, second] {
+    match result {
+      Resolved(resolved) => {
+        assert_true(resolved.value is Object(_))
+        assert_eq(resolved.module_specifier, "external")
+        assert_eq(resolved.binding_name, MODULE_NAMESPACE_BINDING_NAME)
+      }
+      _ => fail("namespace")
+    }
+  }
+  assert_true(module_export_resolution_same(first, second))
+  assert_true(exports.contains(MODULE_NAMESPACE_OBJECT_KEY))
+  assert_eq(resolve_set.length(), 0)
+}
