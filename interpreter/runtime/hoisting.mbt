@@ -1,48 +1,12 @@
 ///|
-/// Generic destructuring-pattern walker: invoke `on_ident` once per
-/// binding identifier in `pattern`. Shared traversal structure for every
-/// pattern-name collector / hoister in this file — only the per-name
-/// action differs. `AssignTarget` is intentionally ignored because its
-/// names resolve to member expressions, not fresh bindings.
-fn walk_pattern_idents(
-  pattern : @ast.Pattern,
-  on_ident : (String) -> Unit raise Error,
-) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) => on_ident(name)
-    DefaultPat(inner_pat, _) => walk_pattern_idents(inner_pat, on_ident)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => walk_pattern_idents(p, on_ident)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => walk_pattern_idents(p, on_ident)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        walk_pattern_idents(prop.value, on_ident)
-      }
-      match rest {
-        Some(p) => walk_pattern_idents(p, on_ident)
-        None => ()
-      }
-    }
-  }
-}
-
-///|
 /// Collect names from a destructuring pattern (for eval var name collection).
 fn collect_pattern_var_names(
   pattern : @ast.Pattern,
   names : Array[String],
-) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => names.push(name))
+) -> Unit {
+  for name in @static_semantics.bound_names(pattern) {
+    names.push(name)
+  }
 }
 
 ///|
@@ -64,13 +28,13 @@ fn collect_pattern_decl_names(
   names : @set.Set[String],
   lexical? : Bool = false,
 ) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => {
+  for name in @static_semantics.bound_names(pattern) {
     if lexical {
       add_lexical_decl_name(names, name)
     } else {
       names.add(name)
     }
-  })
+  }
 }
 
 ///|
@@ -910,11 +874,11 @@ fn collect_eval_var_names(
 
 ///|
 fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => {
+  for name in @static_semantics.bound_names(pattern) {
     if !env.bindings.contains(name) {
       env.def(name, Undefined, VarBinding)
     }
-  })
+  }
 }
 
 ///|
@@ -929,7 +893,9 @@ fn walk_var_scoped_names(
   match stmt {
     VarDecl(VarKind, name, _, _) => on_name(name)
     DestructureDecl(VarKind, pattern, _, _) =>
-      walk_pattern_idents(pattern, on_name)
+      for name in @static_semantics.bound_names(pattern) {
+        on_name(name)
+      }
     StmtList(inner_stmts, _) =>
       for inner in inner_stmts {
         walk_var_scoped_names(inner, on_name)
@@ -969,14 +935,18 @@ fn walk_var_scoped_names(
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
-        walk_pattern_idents(pattern, on_name)
+        for name in @static_semantics.bound_names(pattern) {
+          on_name(name)
+        }
       }
       walk_var_scoped_names(body, on_name)
     }
     ForOfStmtPat(kind, pattern, _, body, _)
     | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
       if kind == Some(VarKind) {
-        walk_pattern_idents(pattern, on_name)
+        for name in @static_semantics.bound_names(pattern) {
+          on_name(name)
+        }
       }
       walk_var_scoped_names(body, on_name)
     }
@@ -1193,8 +1163,10 @@ fn add_stmt_lex_names(
 fn collect_pattern_lex_names(
   pattern : @ast.Pattern,
   names : @set.Set[String],
-) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => names.add(name))
+) -> Unit {
+  for name in @static_semantics.bound_names(pattern) {
+    names.add(name)
+  }
 }
 
 ///|
@@ -1541,7 +1513,10 @@ fn walk_eval_annex_b_stmt(
           let catch_frame = @set.Set::default()
           match catch_param {
             Some(IdentPat(_)) => () // §B.3.5 exemption: stay transparent
-            Some(pat) => walk_pattern_idents(pat, name => catch_frame.add(name))
+            Some(pat) =>
+              for name in @static_semantics.bound_names(pat) {
+                catch_frame.add(name)
+              }
             None => ()
           }
           stack.push(catch_frame)
@@ -2290,9 +2265,9 @@ fn hoist_pattern_tdz(
   env : Environment,
   kind : BindingKind,
 ) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => {
+  for name in @static_semantics.bound_names(pattern) {
     if !env.bindings.contains(name) {
       env.def_tdz(name, kind)
     }
-  })
+  }
 }

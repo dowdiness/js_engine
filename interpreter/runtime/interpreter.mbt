@@ -306,31 +306,8 @@ fn check_duplicate_pattern_binding_names(
   pattern : @ast.Pattern,
   seen : @set.Set[String],
 ) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) => check_duplicate_binding_name(seen, name)
-    DefaultPat(inner, _) => check_duplicate_pattern_binding_names(inner, seen)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
-          None => ()
-        }
-      }
-      match rest {
-        Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        check_duplicate_pattern_binding_names(prop.value, seen)
-      }
-      match rest {
-        Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
-        None => ()
-      }
-    }
+  for name in @static_semantics.bound_names(pattern) {
+    check_duplicate_binding_name(seen, name)
   }
 }
 
@@ -368,34 +345,12 @@ fn params_include_arguments(
 
 ///|
 fn pattern_includes_arguments(pattern : @ast.Pattern) -> Bool {
-  match pattern {
-    IdentPat(name) => name == "arguments"
-    DefaultPat(inner, _) => pattern_includes_arguments(inner)
-    AssignTarget(_) => false
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(pat) => if pattern_includes_arguments(pat) { return true }
-          None => ()
-        }
-      }
-      match rest {
-        Some(pat) => pattern_includes_arguments(pat)
-        None => false
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        if pattern_includes_arguments(prop.value) {
-          return true
-        }
-      }
-      match rest {
-        Some(pat) => pattern_includes_arguments(pat)
-        None => false
-      }
+  for name in @static_semantics.bound_names(pattern) {
+    if name == "arguments" {
+      return true
     }
   }
+  false
 }
 
 ///|
@@ -419,31 +374,8 @@ fn ext_params_include_arguments(
 fn validate_strict_pattern_binding_names(
   pattern : @ast.Pattern,
 ) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) => @static_semantics.validate_strict_binding_name(name)
-    DefaultPat(inner, _) => validate_strict_pattern_binding_names(inner)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(pat) => validate_strict_pattern_binding_names(pat)
-          None => ()
-        }
-      }
-      match rest {
-        Some(pat) => validate_strict_pattern_binding_names(pat)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        validate_strict_pattern_binding_names(prop.value)
-      }
-      match rest {
-        Some(pat) => validate_strict_pattern_binding_names(pat)
-        None => ()
-      }
-    }
+  for name in @static_semantics.bound_names(pattern) {
+    @static_semantics.validate_strict_binding_name(name)
   }
 }
 
