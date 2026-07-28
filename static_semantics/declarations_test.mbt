@@ -61,7 +61,8 @@ test "collect_var_declared_names: deep statement containers preserve source orde
     _ => abort("expected variable declaration")
   }
   let mut nested = @ast.Stmt::VarDecl(VarKind, "center", init, loc)
-  let expected = ["center"]
+  let descending_half : Array[String] = []
+  let ascending_half : Array[String] = []
   for depth in 0..<4096 {
     let before = "before_\{depth}"
     let after = "after_\{depth}"
@@ -73,10 +74,48 @@ test "collect_var_declared_names: deep statement containers preserve source orde
       ],
       loc,
     )
-    expected.insert(0, before)
-    expected.push(after)
+    descending_half.push(before)
+    ascending_half.push(after)
   }
+  let expected : Array[String] = []
+  descending_half.rev_each(name => expected.push(name))
+  expected.push("center")
+  ascending_half.each(name => expected.push(name))
   assert_eq(collect_var_declared_names([nested]), expected)
+}
+
+///|
+test "collect_var_declared_names: mixed statement shapes preserve order and boundaries" {
+  let source =
+    #|var top;
+    #|{ var block_name; function block_fn() {} }
+    #|if (cond) { var if_then; function if_fn() {} } else { var if_else; }
+    #|for (var for_init; cond; step) { var for_body; function for_fn() {} }
+    #|switch (value) {
+    #|  case 0: var case_first; function case_fn() {} break;
+    #|  default: var case_second;
+    #|}
+    #|try { var try_name; function try_fn() {} }
+    #|catch (error) { var catch_name; }
+    #|finally { var finally_name; }
+    #|with (scope) { var with_name; function with_fn() {} }
+    #|nested_label: { var label_name; function label_fn() {} }
+    #|top_label: function labeled_fn() {}
+    #|export var exported_name;
+    #|var { left: destructured_left, right: [destructured_right] } = source;
+    #|function boundary_fn() { var hidden_in_function; }
+    #|class BoundaryClass { method() { var hidden_in_class; } }
+  let parsed = @parser.parse(source)
+  let loc = match parsed.stmts[0] {
+    @ast.Stmt::VarDecl(_, _, _, loc) => loc
+    _ => abort("expected leading variable declaration")
+  }
+  let direct_ast = @ast.Stmt::StmtList(parsed.stmts, loc)
+  json_inspect(collect_var_declared_names([direct_ast]), content=[
+    "top", "block_name", "if_then", "if_else", "for_init", "for_body", "case_first",
+    "case_second", "try_name", "catch_name", "finally_name", "with_name", "label_name",
+    "labeled_fn", "exported_name", "destructured_left", "destructured_right", "boundary_fn",
+  ])
 }
 
 ///|
