@@ -13,21 +13,21 @@ For changes before this file existed, see `git log`.
 
 test262 (each file run in both strict and non-strict modes,
 reported separately — summing would double-count files):
-- **Passed / Executed**: 91.3% strict (31,735 / 34,768),
-  90.7% non-strict (33,555 / 37,002).
-- **Passed / Discovered**: 70.5% strict (31,735 / 44,986),
-  70.4% non-strict (33,555 / 47,692).
+
+- **Passed / Executed**: 91.3% strict (31,737 / 34,770),
+  90.7% non-strict (33,554 / 37,001).
+- **Passed / Discovered**: 70.5% strict (31,737 / 44,986),
+  70.4% non-strict (33,554 / 47,692).
 - **Skipped**: 10,201 strict, 10,672 non-strict.
-Measured on CI run [30255368089](https://github.com/dowdiness/js_engine/actions/runs/30255368089)
-(tip `07c7852`, 2026-07-27).
-Regression baseline: +99 non-strict / +100 strict vs
-`test262-baseline.json` (min 33,456 / 31,635).
+
+Measured on CI run 30346236658 (tip `265bbfd`, 2026-07-28).
+Regression baseline: +98 non-strict / +102 strict vs `test262-baseline.json` (min 33,456 / 31,635).
 
 Unit tests: **2,621 / 2,621 passed** (`moon test`).
 
 Compared with v0.6.0's recorded per-mode results from CI run
 `29452024184`, the absolute passing count increased by
-**+222 strict** and **+224 non-strict**. Methodology remains per-mode;
+**+224 strict** and **+223 non-strict**. Methodology remains per-mode;
 both denominators are retained because Passed/Executed and
 Passed/Discovered answer different questions.
 
