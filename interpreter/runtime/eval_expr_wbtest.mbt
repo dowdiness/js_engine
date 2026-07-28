@@ -28,3 +28,26 @@ test "PerformEval Contains handles a depth-4096 declaration pattern" {
   ])
   inspect(scan.new_target, content="true")
 }
+
+///|
+test "PerformEval Contains handles a depth-4096 computed class key" {
+  let loc = @token.Loc::default()
+  let mut key = @ast.Expr::NewTargetExpr(loc)
+  for _ in 0..<4096 {
+    key = @ast.Expr::Comma(@ast.Expr::UndefinedLit(loc), key, loc)
+  }
+  let class_element = @ast.ClassMember::Field({
+    key,
+    initializer: Some(@ast.Expr::NewTargetExpr(loc)),
+    computed: true,
+    is_static: false,
+    is_private: false,
+  })
+  let scan = scan_eval_contains([
+    @ast.Stmt::ExprStmt(
+      @ast.Expr::ClassExpr(None, None, [class_element], loc, None),
+      loc,
+    ),
+  ])
+  inspect(scan.new_target, content="true")
+}

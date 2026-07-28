@@ -87,6 +87,36 @@ test "PerformEval Contains scans destructuring assignment patterns" {
 }
 
 ///|
+test "PerformEval Contains scans computed class declaration keys" {
+  inspect(
+    run_throws(
+      "let executed = false; eval(\"class C { [new.target]() { executed = true; } }\"); executed",
+    ),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans computed class expression keys" {
+  inspect(
+    run_throws(
+      "let executed = false; eval(\"(class { [new.target] = (executed = true) })\"); executed",
+    ),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains skips class member bodies and field initializers" {
+  inspect(
+    run(
+      "eval(\"class C { field = new.target; method() { return new.target; } }; let c = new C(); c.field === undefined && c.method() === undefined\")",
+    ),
+    content="true",
+  )
+}
+
+///|
 test "post-parse stack safety: comma expression preserves first error" {
   inspect(
     run_throws("\"use strict\"; (eval = 0, function() { let x; var x; })"),

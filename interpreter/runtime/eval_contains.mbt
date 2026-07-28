@@ -42,6 +42,31 @@ fn EvalContainsScan::new() -> EvalContainsScan {
 }
 
 ///|
+/// Schedule the parts of a class evaluated in the surrounding context:
+/// heritage first, then computed member keys in source order. Member bodies,
+/// field initializers, and static blocks establish separate Contains regions.
+fn schedule_eval_contains_class(
+  scheduled : Array[EvalContainsWork],
+  superclass : @ast.Expr?,
+  class_members : Array[@ast.ClassMember],
+) -> Unit {
+  match superclass {
+    Some(expr) => scheduled.push(Expr(expr))
+    None => ()
+  }
+  for class_member in class_members {
+    match class_member {
+      Method(class_method) =>
+        if class_method.computed {
+          scheduled.push(Expr(class_method.key))
+        }
+      Field(field) => if field.computed { scheduled.push(Expr(field.key)) }
+      StaticBlock(_, _) => ()
+    }
+  }
+}
+
+///|
 /// Run the scan over a list of top-level statements (the parsed eval body).
 /// Returns a struct with one bit per Contains predicate.
 fn scan_eval_contains(stmts : Array[@ast.Stmt]) -> EvalContainsScan {
@@ -181,13 +206,8 @@ fn schedule_eval_contains_stmt(
       scheduled.push(Expr(obj))
       scheduled.push(Stmt(body))
     }
-    // Class declaration: visit heritage (extends clause is in surrounding
-    // scope) but skip member bodies (each member has its own context).
-    ClassDecl(_, superclass, _, _, _) =>
-      match superclass {
-        Some(e) => scheduled.push(Expr(e))
-        None => ()
-      }
+    ClassDecl(_, superclass, members, _, _) =>
+      schedule_eval_contains_class(scheduled, superclass, members)
     // Skip-entirely productions: each introduces its own function-scope
     // binding for new.target/arguments/super, so Contains stops here.
     FuncDecl(_, _, _, _, _)
@@ -293,12 +313,8 @@ fn schedule_eval_contains_expr(
     | AsyncFuncExprExt(_, _, _, _, _, _)
     | AsyncGeneratorExpr(_, _, _, _, _)
     | AsyncGeneratorExprExt(_, _, _, _, _, _) => ()
-    // ClassExpr: visit heritage only, skip member bodies.
-    ClassExpr(_, superclass, _, _, _) =>
-      match superclass {
-        Some(e) => scheduled.push(Expr(e))
-        None => ()
-      }
+    ClassExpr(_, superclass, members, _, _) =>
+      schedule_eval_contains_class(scheduled, superclass, members)
     // Arrows: transparent for the four predicates per spec — and that
     // transparency extends to the parameter list. Non-arrow function
     // boundaries skip params (they're the function's own concern), but
