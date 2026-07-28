@@ -6,32 +6,43 @@ fn walk_pattern_binding_idents(
   pattern : @ast.Pattern,
   out : Array[String],
 ) -> Unit {
-  match pattern {
-    IdentPat(name) => out.push(name)
-    DefaultPat(inner_pat, _) => walk_pattern_binding_idents(inner_pat, out)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => walk_pattern_binding_idents(p, out)
+  let stack : Array[@ast.Pattern] = [pattern]
+  while stack.length() > 0 {
+    match stack.pop() {
+      Some(IdentPat(name)) => out.push(name)
+      Some(DefaultPat(inner_pat, _)) => stack.push(inner_pat)
+      Some(AssignTarget(_)) => ()
+      Some(ArrayPat(elements, rest)) => {
+        match rest {
+          Some(rest) => stack.push(rest)
           None => ()
         }
+        elements.rev_each(elem => {
+          match elem {
+            Some(pattern) => stack.push(pattern)
+            None => ()
+          }
+        })
       }
-      match rest {
-        Some(p) => walk_pattern_binding_idents(p, out)
-        None => ()
+      Some(ObjectPat(props, rest)) => {
+        match rest {
+          Some(rest) => stack.push(rest)
+          None => ()
+        }
+        props.rev_each(prop => stack.push(prop.value))
       }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        walk_pattern_binding_idents(prop.value, out)
-      }
-      match rest {
-        Some(p) => walk_pattern_binding_idents(p, out)
-        None => ()
-      }
+      None => ()
     }
   }
+}
+
+///|
+/// Return the bound names contributed by `pattern` in source order.
+/// Assignment targets and embedded expressions do not introduce bindings.
+pub fn bound_names(pattern : @ast.Pattern) -> Array[String] {
+  let out : Array[String] = []
+  walk_pattern_binding_idents(pattern, out)
+  out
 }
 
 ///|

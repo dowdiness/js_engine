@@ -52,3 +52,27 @@ test "collect_var_declared_names: function decl inside if is block-scoped (§B.3
   inspect(names.contains("f"), content="false")
   inspect(names.length(), content="0")
 }
+
+///|
+test "bound names: deep patterns preserve source order and ignore expressions" {
+  let seed = @parser.parse("var { first = ignored, second, ...rest } = source;")
+  let (object, embedded_expr) = match seed.stmts[0] {
+    @ast.Stmt::DestructureDecl(_, @ast.Pattern::ObjectPat(properties, _), _, _) as stmt =>
+      match properties[0].default_val {
+        Some(expr) =>
+          match stmt {
+            @ast.Stmt::DestructureDecl(_, pattern, _, _) => (pattern, expr)
+            _ => abort("unreachable")
+          }
+        None => abort("expected default expression")
+      }
+    _ => abort("expected object destructuring declaration")
+  }
+  let mut deep = @ast.Pattern::IdentPat("x")
+  for _ in 0..<512 {
+    deep = @ast.Pattern::DefaultPat(deep, embedded_expr)
+  }
+  json_inspect(bound_names(deep), content=["x"])
+  json_inspect(bound_names(@ast.Pattern::AssignTarget(embedded_expr)), content=[])
+  json_inspect(bound_names(object), content=["first", "second", "rest"])
+}
