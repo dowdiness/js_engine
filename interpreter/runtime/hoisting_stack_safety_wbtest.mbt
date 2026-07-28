@@ -107,3 +107,67 @@ test "Task 4C: var preflight preserves shallow order and first error" {
   )
   json_inspect(visited, content=["first"])
 }
+
+///|
+fn annex_b_tagged_names(
+  source : String,
+  names : Array[String],
+) -> Array[String] raise Error {
+  let parsed = @parser.parse(source)
+  let interp = Interpreter::new()
+  let env = Environment::new()
+  hoist_eval_annex_b_candidates(interp, parsed.stmts, env, @set.Set::default())
+  names.filter(name => {
+    match env.bindings.get(name) {
+      Some(binding) => binding.annex_b_hoisted
+      None => false
+    }
+  })
+}
+
+///|
+test "Task 4D: Annex B shallow frame and boundary behavior" {
+  let source =
+    #|{ function block() {} }
+    #|label: function labeled() {}
+    #|for (let loop_head = 0; false;) { function loop_head() {} }
+    #|switch (0) {
+    #|  case 0: let shared; break;
+    #|  default: function shared() {} function switched() {}
+    #|}
+    #|try { function tried() {} }
+    #|catch (identifier) { function identifier() {} }
+    #|finally { function finished() {} }
+    #|try {} catch ({ destructured }) { function destructured() {} }
+    #|with ({}) { function withed() {} }
+    #|function boundary() { { function hidden_function() {} } }
+    #|class Boundary { method() { function hidden_class() {} } }
+  json_inspect(
+    annex_b_tagged_names(source, [
+      "block", "labeled", "loop_head", "shared", "switched", "tried", "identifier",
+      "finished", "destructured", "withed", "hidden_function", "hidden_class",
+    ]),
+    content=[
+      "block", "labeled", "switched", "tried", "identifier", "finished", "withed",
+    ],
+  )
+}
+
+///|
+test "post-parse stack safety: deep Annex B candidates behind false control flow" {
+  let parsed = @parser.parse("if (false) function deep_candidate() {}")
+  guard parsed.stmts[0] is @ast.Stmt::IfStmt(test_expr, candidate, None, loc) else {
+    abort("expected if statement")
+  }
+  let mut nested = candidate
+  for _ in 0..<4096 {
+    nested = @ast.Stmt::IfStmt(test_expr, nested, None, loc)
+  }
+  let interp = Interpreter::new()
+  let env = Environment::new()
+  hoist_eval_annex_b_candidates(interp, [nested], env, @set.Set::default())
+  debug_inspect(
+    env.bindings.get("deep_candidate").map(binding => binding.annex_b_hoisted),
+    content="Some(true)",
+  )
+}

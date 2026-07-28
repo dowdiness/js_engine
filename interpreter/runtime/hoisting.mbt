@@ -935,135 +935,130 @@ fn hoist_eval_annex_b_candidates(
   top_lex : @set.Set[String],
   excluded? : @set.Set[String] = @set.Set::default(),
 ) -> Unit raise Error {
-  let stack : Array[@set.Set[String]] = []
-  for stmt in stmts {
-    walk_eval_annex_b_stmt(
-      interp,
-      stmt,
-      var_env,
-      top_lex,
-      stack,
-      in_block=false,
-      excluded~,
-    )
+  let lex_stack : Array[@set.Set[String]] = []
+  let work : Array[AnnexBWalkTask] = []
+  schedule_annex_b_stmts_reverse(work, stmts, in_block=false)
+  while work.pop() is Some(task) {
+    match task {
+      VisitAnnexBStmt(stmt, in_block) =>
+        visit_eval_annex_b_stmt(
+          interp,
+          stmt,
+          var_env,
+          top_lex,
+          lex_stack,
+          work,
+          in_block~,
+          excluded~,
+        )
+      EnterAnnexBStmtList(inner_stmts) => {
+        lex_stack.push(collect_stmts_lex_names(inner_stmts))
+        work.push(LeaveAnnexBLexicalFrame)
+        schedule_annex_b_stmts_reverse(work, inner_stmts, in_block=true)
+      }
+      EnterAnnexBCatch(catch_param, catch_body) => {
+        let catch_frame = @set.Set::default()
+        match catch_param {
+          Some(IdentPat(_)) => ()
+          Some(pattern) =>
+            for name in @static_semantics.bound_names(pattern) {
+              catch_frame.add(name)
+            }
+          None => ()
+        }
+        lex_stack.push(catch_frame)
+        work.push(LeaveAnnexBLexicalFrame)
+        work.push(EnterAnnexBStmtList(catch_body))
+      }
+      LeaveAnnexBLexicalFrame => {
+        guard lex_stack.pop() is Some(_) else {
+          fail("unbalanced Annex B lexical-frame continuation")
+        }
+      }
+    }
   }
 }
 
 ///|
-/// AST walk for B.3.3 candidates. `in_block` is true once we are below a
-/// Block/for-head/switch-case/labeled-wrapped-Block/finally/etc. Candidate
-/// function decls are only eligible when `in_block` is true.
-fn walk_eval_annex_b_stmt(
+priv enum AnnexBWalkTask {
+  VisitAnnexBStmt(@ast.Stmt, Bool)
+  EnterAnnexBStmtList(Array[@ast.Stmt])
+  EnterAnnexBCatch(@ast.Pattern?, Array[@ast.Stmt])
+  LeaveAnnexBLexicalFrame
+}
+
+///|
+fn schedule_annex_b_stmts_reverse(
+  work : Array[AnnexBWalkTask],
+  stmts : Array[@ast.Stmt],
+  in_block~ : Bool,
+) -> Unit {
+  for i = stmts.length() - 1; i >= 0; i = i - 1 {
+    work.push(VisitAnnexBStmt(stmts[i], in_block))
+  }
+}
+
+///|
+fn schedule_annex_b_enclosed_body(
+  work : Array[AnnexBWalkTask],
+  lex_stack : Array[@set.Set[String]],
+  body : @ast.Stmt,
+  frame : @set.Set[String],
+) -> Unit {
+  lex_stack.push(frame)
+  work.push(LeaveAnnexBLexicalFrame)
+  work.push(VisitAnnexBStmt(body, true))
+}
+
+///|
+fn visit_eval_annex_b_stmt(
   interp : Interpreter,
   stmt : @ast.Stmt,
   var_env : Environment,
   top_lex : @set.Set[String],
-  stack : Array[@set.Set[String]],
+  lex_stack : Array[@set.Set[String]],
+  work : Array[AnnexBWalkTask],
   in_block~ : Bool,
   excluded~ : @set.Set[String],
 ) -> Unit raise Error {
   match stmt {
     FuncDecl(name, _, _, _, _) | FuncDeclExt(name, _, _, _, _, _) =>
       if in_block &&
-        !annex_b_candidate_conflicts(name, top_lex, stack, excluded~) {
+        !annex_b_candidate_conflicts(name, top_lex, lex_stack, excluded~) {
         tag_annex_b_hoisted(interp, var_env, name)
       }
-    Block(inner_stmts, _) =>
-      walk_stmt_list_in_own_frame(
-        interp,
-        inner_stmts,
-        var_env,
-        top_lex,
-        stack,
-        excluded~,
-      )
+    Block(inner_stmts, _) => work.push(EnterAnnexBStmtList(inner_stmts))
     StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        walk_eval_annex_b_stmt(
-          interp,
-          inner,
-          var_env,
-          top_lex,
-          stack,
-          in_block~,
-          excluded~,
-        )
-      }
+      schedule_annex_b_stmts_reverse(work, inner_stmts, in_block~)
     // §B.3.4: `if (expr) FunctionDeclaration` is treated as if the body
     // were `{ FunctionDeclaration }`. Each branch is a block context for
     // Annex B, so FuncDecls under IfStmt ARE candidates even at the eval
     // top level. If the branch is itself a Block, the Block arm pushes its
     // own frame — no double-pushing.
     IfStmt(_, then_branch, else_branch, _) => {
-      walk_eval_annex_b_stmt(
-        interp,
-        then_branch,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
       match else_branch {
-        Some(eb) =>
-          walk_eval_annex_b_stmt(
-            interp,
-            eb,
-            var_env,
-            top_lex,
-            stack,
-            in_block=true,
-            excluded~,
-          )
+        Some(else_stmt) => work.push(VisitAnnexBStmt(else_stmt, true))
         None => ()
       }
+      work.push(VisitAnnexBStmt(then_branch, true))
     }
-    WhileStmt(_, body, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
-    DoWhileStmt(body, _, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+    WhileStmt(_, body, _) => work.push(VisitAnnexBStmt(body, true))
+    DoWhileStmt(body, _, _) => work.push(VisitAnnexBStmt(body, true))
     // §14.7.4: `for (let/const …; ; ) body` makes the init's lex names visible
     // for the body's Annex-B candidate check.
     ForStmt(init, _, _, body, _) =>
-      walk_enclosed_body(
-        interp,
+      schedule_annex_b_enclosed_body(
+        work,
+        lex_stack,
         body,
-        var_env,
-        top_lex,
-        stack,
         for_init_lex_names(init),
-        excluded~,
       )
     ForInStmt(kind, name, _, body, _) => {
       let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame.add(name)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
     ForOfStmt(kind, name, _, body, _)
     | AsyncForOfStmt(kind, name, _, body, _) => {
@@ -1071,30 +1066,14 @@ fn walk_eval_annex_b_stmt(
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame.add(name)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
       let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
     ForOfStmtPat(kind, pattern, _, body, _)
     | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
@@ -1102,49 +1081,15 @@ fn walk_eval_annex_b_stmt(
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
-    ForInExpr(_, _, body, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+    ForInExpr(_, _, body, _) => work.push(VisitAnnexBStmt(body, true))
     ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+      work.push(VisitAnnexBStmt(body, true))
     // §B.3.3 + §14.13: a `label:`-wrapped FuncDecl is an Annex B candidate
     // just like a plain block FuncDecl. Mirror the IfStmt treatment — the
     // inner is a block context, so pass `in_block=true`.
-    LabeledStmt(_, inner, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        inner,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+    LabeledStmt(_, inner, _) => work.push(VisitAnnexBStmt(inner, true))
     // §14.12.3: all case clauses share one lex scope. Frame excludes
     // FuncDecls for the same reason `collect_stmts_lex_names` does — a
     // candidate `function F` in one case must not self-conflict. Duplicate
@@ -1156,21 +1101,17 @@ fn walk_eval_annex_b_stmt(
           add_stmt_lex_names(inner, frame)
         }
       }
-      stack.push(frame)
-      for case_ in cases {
-        for inner in case_.body {
-          walk_eval_annex_b_stmt(
-            interp,
-            inner,
-            var_env,
-            top_lex,
-            stack,
-            in_block=true,
-            excluded~,
-          )
-        }
+      lex_stack.push(frame)
+      work.push(LeaveAnnexBLexicalFrame)
+      for case_index = cases.length() - 1
+          case_index >= 0
+          case_index = case_index - 1 {
+        schedule_annex_b_stmts_reverse(
+          work,
+          cases[case_index].body,
+          in_block=true,
+        )
       }
-      let _ = stack.pop()
     }
     // §B.3.5 splits catch parameters in two: a simple BindingIdentifier
     // `catch (f) { var f; }` is exempt and lets `f` flow through to the
@@ -1183,129 +1124,26 @@ fn walk_eval_annex_b_stmt(
     // transparent. try-body and finally-body are always unaffected — only
     // catch-body inherits the parameter binding.
     TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
-      walk_stmt_list_in_own_frame(
-        interp,
-        try_body,
-        var_env,
-        top_lex,
-        stack,
-        excluded~,
-      )
-      match catch_body {
-        Some(cb) => {
-          let catch_frame = @set.Set::default()
-          match catch_param {
-            Some(IdentPat(_)) => () // §B.3.5 exemption: stay transparent
-            Some(pat) =>
-              for name in @static_semantics.bound_names(pat) {
-                catch_frame.add(name)
-              }
-            None => ()
-          }
-          stack.push(catch_frame)
-          walk_stmt_list_in_own_frame(
-            interp,
-            cb,
-            var_env,
-            top_lex,
-            stack,
-            excluded~,
-          )
-          let _ = stack.pop()
-        }
-        None => ()
-      }
       match finally_body {
-        Some(fb) =>
-          walk_stmt_list_in_own_frame(
-            interp,
-            fb,
-            var_env,
-            top_lex,
-            stack,
-            excluded~,
-          )
+        Some(finally_stmts) => work.push(EnterAnnexBStmtList(finally_stmts))
         None => ()
       }
+      match catch_body {
+        Some(catch_stmts) =>
+          work.push(EnterAnnexBCatch(catch_param, catch_stmts))
+        None => ()
+      }
+      work.push(EnterAnnexBStmtList(try_body))
     }
     WithStmt(_, body, _) =>
       // Object env record — no lex frame pushed.
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+      work.push(VisitAnnexBStmt(body, true))
     ExportNamedDecl(Some(decl), _, _, _, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        decl,
-        var_env,
-        top_lex,
-        stack,
-        in_block~,
-        excluded~,
-      )
+      work.push(VisitAnnexBStmt(decl, in_block))
     // Function / class bodies: do NOT traverse. They have their own B.3.3
     // hoist on call (§B.3.2.1), operating in a fresh scope.
     _ => ()
   }
-}
-
-///|
-/// Treat `stmts` as a block: collect its lex names as the pushed frame, walk
-/// each statement with `in_block=true`, pop. Shared by the Block variant and
-/// the three bodies of a try-catch-finally.
-fn walk_stmt_list_in_own_frame(
-  interp : Interpreter,
-  stmts : Array[@ast.Stmt],
-  var_env : Environment,
-  top_lex : @set.Set[String],
-  stack : Array[@set.Set[String]],
-  excluded~ : @set.Set[String],
-) -> Unit raise Error {
-  stack.push(collect_stmts_lex_names(stmts))
-  for inner in stmts {
-    walk_eval_annex_b_stmt(
-      interp,
-      inner,
-      var_env,
-      top_lex,
-      stack,
-      in_block=true,
-      excluded~,
-    )
-  }
-  let _ = stack.pop()
-}
-
-///|
-/// Push `frame` onto `stack`, walk `body` with `in_block=true`, pop. Used by
-/// every loop-body variant in `walk_eval_annex_b_stmt` to avoid repeating the
-/// push/walk/pop boilerplate five times.
-fn walk_enclosed_body(
-  interp : Interpreter,
-  body : @ast.Stmt,
-  var_env : Environment,
-  top_lex : @set.Set[String],
-  stack : Array[@set.Set[String]],
-  frame : @set.Set[String],
-  excluded~ : @set.Set[String],
-) -> Unit raise Error {
-  stack.push(frame)
-  walk_eval_annex_b_stmt(
-    interp,
-    body,
-    var_env,
-    top_lex,
-    stack,
-    in_block=true,
-    excluded~,
-  )
-  let _ = stack.pop()
 }
 
 ///|
