@@ -93,3 +93,24 @@ test "release candidate manifest rejects unknown nested evidence" {
     Ok(_) => fail("expected unknown nested evidence to be rejected")
   }
 }
+
+///|
+test "release validation reports every observed mismatch" {
+  let expected = parse_manifest(valid_manifest_text())
+  let observed = parse_manifest(
+    valid_manifest_text()
+    .replace(old="\"version\": \"0.8.0\"", new="\"version\": \"0.8.1\"")
+    .replace(
+      old="\"content_sha256\": \"sha256:package\"",
+      new="\"content_sha256\": \"sha256:other\"",
+    ),
+  )
+  let validation = validate_candidate(expected, observed)
+  assert_false(validation.allowed())
+  let diagnostics = validation.diagnostics()
+  json_inspect(diagnostics.map(diagnostic => diagnostic.code()), content=[
+    "version_mismatch", "package_content_mismatch",
+  ])
+  diagnostics.clear()
+  assert_eq(validation.diagnostics().length(), 2)
+}
