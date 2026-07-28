@@ -1,0 +1,16 @@
+// PROTOTYPE: disposable P2 native worker-supervisor harness.
+
+import {
+  "moonbitlang/async",
+  "moonbitlang/async/io",
+  "moonbitlang/async/process",
+  "moonbitlang/core/bench",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+}
+
+supported_targets = "+native"
+
+options(
+  "native-stub": [ "waitpid_stub.c" ],
+)

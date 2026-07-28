@@ -1,0 +1,12 @@
+import {
+  "dowdiness/js_engine",
+  "moonbitlang/core/env",
+}
+
+supported_targets = "+native"
+
+pkgtype(kind: "executable")
+
+options(
+  "native-stub": [ "fixture.c" ],
+)

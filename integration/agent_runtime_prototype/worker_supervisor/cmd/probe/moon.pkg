@@ -1,0 +1,13 @@
+import {
+  "dowdiness/js_engine_agent_runtime_worker_supervisor" @worker_supervisor,
+  "moonbitlang/async",
+  "moonbitlang/core/env",
+}
+
+pkgtype(kind: "executable")
+
+supported_targets = "+native"
+
+options(
+  "native-stub": [ "fixture.c" ],
+)
