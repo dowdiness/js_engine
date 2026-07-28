@@ -54,6 +54,32 @@ test "collect_var_declared_names: function decl inside if is block-scoped (§B.3
 }
 
 ///|
+test "collect_var_declared_names: deep statement containers preserve source order" {
+  let seed = @parser.parse("var seed;")
+  let (loc, init) = match seed.stmts[0] {
+    @ast.Stmt::VarDecl(_, _, init, loc) => (loc, init)
+    _ => abort("expected variable declaration")
+  }
+  let mut nested = @ast.Stmt::VarDecl(VarKind, "center", init, loc)
+  let expected = ["center"]
+  for depth in 0..<4096 {
+    let before = "before_\{depth}"
+    let after = "after_\{depth}"
+    nested = @ast.Stmt::Block(
+      [
+        @ast.Stmt::VarDecl(VarKind, before, init, loc),
+        nested,
+        @ast.Stmt::VarDecl(VarKind, after, init, loc),
+      ],
+      loc,
+    )
+    expected.insert(0, before)
+    expected.push(after)
+  }
+  assert_eq(collect_var_declared_names([nested]), expected)
+}
+
+///|
 test "bound names: deep patterns preserve source order and ignore expressions" {
   let seed = @parser.parse("var { first = ignored, second, ...rest } = source;")
   let (object, embedded_expr) = match seed.stmts[0] {
