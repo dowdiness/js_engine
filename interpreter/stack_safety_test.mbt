@@ -22,6 +22,15 @@ test "post-parse stack safety phase isolation: 512 comma expressions" {
 }
 
 ///|
+test "post-parse stack safety: direct eval Contains handles 4096 comma expressions" {
+  let eval_body = nested_comma_source(4096, "new.target")
+  inspect(
+    run_throws("eval(\"" + eval_body + "\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
 test "post-parse stack safety: comma expression preserves first error" {
   inspect(
     run_throws("\"use strict\"; (eval = 0, function() { let x; var x; })"),
