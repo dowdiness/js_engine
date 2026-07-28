@@ -219,6 +219,35 @@ async test "panic find_results rejects an incomplete shard set" {
 }
 
 ///|
+async test "downloaded edition report is authoritative" {
+  let root = "_build/report-test262-mbt-edition-artifact-test"
+  @afs.rmdir(root, recursive=true) catch {
+    _ => ()
+  }
+  let nested = root + "/test262-combined-report"
+  @afs.mkdir(nested, recursive=true)
+  @afs.write_file(
+    nested + "/test262-editions.md",
+    "### strict\n\n| Edition | Passed |\n|---|---:|\n",
+    create_mode=CreateOrTruncate,
+  )
+  match find_downloaded_edition_report(root) {
+    Some(report) =>
+      assert_eq(report, "### strict\n\n| Edition | Passed |\n|---|---:|")
+    None => fail("expected downloaded edition report")
+  }
+}
+
+///|
+async test "panic classifier root rejects missing Test262 metadata" {
+  let root = "_build/report-test262-mbt-missing-test262-test"
+  @afs.rmdir(root, recursive=true) catch {
+    _ => ()
+  }
+  classifier_test262_root(root) |> ignore
+}
+
+///|
 async test "panic find_results rejects duplicate shard indices" {
   let root = "_build/report-test262-mbt-duplicate-shard-test"
   @afs.rmdir(root, recursive=true) catch {

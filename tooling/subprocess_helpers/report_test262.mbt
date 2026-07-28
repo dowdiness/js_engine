@@ -575,7 +575,7 @@ async fn download_artifacts(
     "download",
     run_id.to_string(),
     "-p",
-    "test262-*-results",
+    "test262-*",
     "-D",
     out_dir,
     ..repo_flag,
@@ -819,6 +819,27 @@ fn find_results(artifact_dir : String) -> (String, String) raise {
 }
 
 ///|
+fn find_downloaded_edition_report(artifact_dir : String) -> String? raise {
+  match find_file_rec(artifact_dir, "test262-editions.md") {
+    Some(path) => Some(@fs.read_file_to_string(path).trim().to_owned())
+    None => None
+  }
+}
+
+///|
+fn classifier_test262_root(repo_root : String) -> String raise {
+  let root = @path_utils.join_path(repo_root, "test262")
+  let test_root = @path_utils.join_path(root, "test")
+  guard @fs.path_exists(test_root) && @fs.is_dir(test_root) else {
+    fail(
+      "downloaded artifacts do not contain test262-editions.md and local Test262 metadata is unavailable under " +
+      test_root,
+    )
+  }
+  root
+}
+
+///|
 fn validate_report_format(format : String) -> Unit raise {
   if format != "table" && format != "changelog" && format != "readme" {
     fail(
@@ -881,29 +902,35 @@ pub async fn run_report(config : ReportConfig) -> ToolRun {
       config.format == "readme"
     if needs_classifier {
       stdout += "\n"
-      let repo_root = match config.repo_root {
-        Some(root) => root
-        None => @path_utils.current_dir_or_dot()
-      }
-      let classifier = @path_utils.join_path(
-        repo_root, "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
-      )
-      let classifier_flags = ["--markdown"]
-      let capture = collect_process_args(
-        classifier,
-        [
-          ..classifier_flags,
-          "--test262-root",
-          @path_utils.join_path(repo_root, "test262"),
-          strict_path,
-          nonstrict_path,
-        ],
-        REPORT_CLASSIFIER_TIMEOUT_MS,
-      )
-      stdout += capture.stdout
-      stderr += capture.stderr
-      if capture.code != 0 {
-        code = capture.code
+      let downloaded_editions = find_downloaded_edition_report(art_dir)
+      match downloaded_editions {
+        Some(report) => stdout += report + "\n"
+        None => {
+          let repo_root = match config.repo_root {
+            Some(root) => root
+            None => @path_utils.current_dir_or_dot()
+          }
+          let classifier = @path_utils.join_path(
+            repo_root, "_build/native/debug/build/cmd/classify_by_edition/classify_by_edition.exe",
+          )
+          let classifier_flags = ["--markdown"]
+          let capture = collect_process_args(
+            classifier,
+            [
+              ..classifier_flags,
+              "--test262-root",
+              classifier_test262_root(repo_root),
+              strict_path,
+              nonstrict_path,
+            ],
+            REPORT_CLASSIFIER_TIMEOUT_MS,
+          )
+          stdout += capture.stdout
+          stderr += capture.stderr
+          if capture.code != 0 {
+            code = capture.code
+          }
+        }
       }
     }
   } catch {
