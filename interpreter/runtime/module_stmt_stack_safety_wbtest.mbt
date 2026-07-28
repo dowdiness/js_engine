@@ -705,3 +705,128 @@ test "Task 6C: ImportedNamespace preserves identity cache and resolve set" {
   assert_true(exports.contains(MODULE_NAMESPACE_OBJECT_KEY))
   assert_eq(resolve_set.length(), 0)
 }
+
+///|
+fn module_exported_names_chain(
+  length : Int,
+) -> Map[String, ModuleRunRecord] raise Error {
+  let records : Map[String, ModuleRunRecord] = Map([])
+  let star = module_test_stmt("export * from 'next';")
+  for i in 0..<length {
+    let specifier = i.to_string()
+    let stmts = if i + 1 < length {
+      let next = (i + 1).to_string()
+      match star {
+        ExportAllDecl(namespace_name, _, attributes, loc) =>
+          [@ast.Stmt::ExportAllDecl(namespace_name, next, attributes, loc)]
+        _ => fail("star")
+      }
+    } else {
+      @parser.parse("export const leaf = 1;").stmts
+    }
+    records[specifier] = module_test_record_at(specifier, stmts)
+  }
+  records
+}
+
+///|
+test "Task 7: exported names handles a 4096-edge record chain" {
+  let records = module_exported_names_chain(4097)
+  let seen = @set.Set::default()
+  let names = Interpreter::new().module_get_exported_names(
+    records["0"],
+    records,
+    seen,
+  )
+  json_inspect(names, content=["leaf"])
+  assert_eq(seen.length(), 4097)
+  assert_true(seen.contains("0"))
+  assert_true(seen.contains("4096"))
+}
+
+///|
+test "Task 7: exported names cycle continues to later star source" {
+  let records : Map[String, ModuleRunRecord] = Map([])
+  records["a"] = module_test_record_at(
+    "a",
+    @parser.parse("export const a = 1; export * from 'b';").stmts,
+  )
+  records["b"] = module_test_record_at(
+    "b",
+    @parser.parse(
+      "export const b = 1; export * from 'a'; export * from 'tail';",
+    ).stmts,
+  )
+  records["tail"] = module_test_record_at(
+    "tail",
+    @parser.parse("export const tail = 1;").stmts,
+  )
+  let seen = @set.Set::default()
+  json_inspect(
+    Interpreter::new().module_get_exported_names(records["a"], records, seen),
+    content=["a", "b", "tail"],
+  )
+  assert_true(seen.contains("a"))
+  assert_true(seen.contains("b"))
+  assert_true(seen.contains("tail"))
+}
+
+///|
+test "Task 7: exported names filters default and dedupes at each level in order" {
+  let records : Map[String, ModuleRunRecord] = Map([])
+  records["left"] = module_test_record_at(
+    "left",
+    @parser.parse(
+      "export const shared = 1; export default 2; export const left = 3;",
+    ).stmts,
+  )
+  records["right"] = module_test_record_at(
+    "right",
+    @parser.parse("export const right = 1; export const shared = 2;").stmts,
+  )
+  let root = module_test_record_at(
+    "root",
+    @parser.parse(
+      "export const own = 1; export * from 'left'; export * from 'right'; export { own as shared };",
+    ).stmts,
+  )
+  json_inspect(
+    Interpreter::new().module_get_exported_names(
+      root,
+      records,
+      @set.Set::default(),
+    ),
+    content=["own", "shared", "left", "right"],
+  )
+}
+
+///|
+test "Task 7: exported names reaches external sources in order and stops on error" {
+  let loads : Array[String] = []
+  let interp = Interpreter::new(
+    module_loader=Some(
+      ModuleLoader(source => {
+        loads.push(source)
+        match source {
+          "first" =>
+            Map([("first-name", Number(1.0)), ("default", Number(2.0))])
+          "stop" => raise @errors.TypeError(message="stop")
+          _ => Map([("late", Number(3.0))])
+        }
+      }),
+    ),
+  )
+  let root = module_test_record_at(
+    "root",
+    @parser.parse(
+      "export * from 'first'; export * from 'stop'; export * from 'late';",
+    ).stmts,
+  )
+  let result : Result[Array[String], Error] = Ok(
+    interp.module_get_exported_names(root, Map([]), @set.Set::default()),
+  ) catch {
+    error => Err(error)
+  }
+  debug_inspect(result, content="Err(TypeError(message=\"stop\"))")
+  json_inspect(loads, content=["first", "stop"])
+}

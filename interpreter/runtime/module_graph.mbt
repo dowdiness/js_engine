@@ -661,20 +661,108 @@ fn ModuleRunRecord::star_sources(self : ModuleRunRecord) -> Array[String] {
 }
 
 ///|
+priv enum ModuleExportedNamesRequest {
+  ExportedNamesRecord(ModuleRunRecord)
+  ExportedNamesSource(String)
+}
+
+///|
+priv struct ModuleExportedNamesContinuation {
+  names : Array[String]
+  seen_names : @set.Set[String]
+  sources : Array[String]
+  next_index : Int
+}
+
+///|
+fn Interpreter::module_get_exported_names_driver(
+  self : Interpreter,
+  initial : ModuleExportedNamesRequest,
+  records_by_specifier : Map[String, ModuleRunRecord],
+  seen_modules : @set.Set[String],
+) -> Array[String] raise Error {
+  let continuations : Array[ModuleExportedNamesContinuation] = []
+  let mut request = initial
+  let mut returned : Array[String]? = None
+  for ;; {
+    match returned {
+      None =>
+        match request {
+          ExportedNamesSource(source) =>
+            match records_by_specifier.get(source) {
+              Some(record) => request = ExportedNamesRecord(record)
+              None =>
+                returned = Some(
+                  module_export_names_from_exports_map(
+                    self.module_exports_for_source(
+                      source,
+                      @token.Loc::default(),
+                    ),
+                  ),
+                )
+            }
+          ExportedNamesRecord(record) => {
+            if seen_modules.contains(record.specifier) {
+              returned = Some([])
+              continue
+            }
+            seen_modules.add(record.specifier)
+            let names : Array[String] = []
+            let seen_names = @set.Set::default()
+            for stmt in record.stmts {
+              collect_module_direct_export_names_from_stmt(
+                stmt, names, seen_names,
+              )
+            }
+            let sources = record.star_sources()
+            if sources.length() == 0 {
+              returned = Some(names)
+            } else {
+              continuations.push({ names, seen_names, sources, next_index: 1 })
+              request = ExportedNamesSource(sources[0])
+            }
+          }
+        }
+      Some(child_names) =>
+        match continuations.pop() {
+          None => return child_names
+          Some(continuation) => {
+            for name in child_names {
+              if name != "default" {
+                add_module_export_name(
+                  continuation.names,
+                  continuation.seen_names,
+                  name,
+                )
+              }
+            }
+            if continuation.next_index >= continuation.sources.length() {
+              returned = Some(continuation.names)
+            } else {
+              let next_index = continuation.next_index
+              continuations.push({ ..continuation, next_index: next_index + 1 })
+              request = ExportedNamesSource(continuation.sources[next_index])
+              returned = None
+            }
+          }
+        }
+    }
+  }
+}
+
+///|
+#warnings("-unused_value")
 fn Interpreter::module_get_exported_names_from_source(
   self : Interpreter,
   source : String,
   records_by_specifier : Map[String, ModuleRunRecord],
   seen : @set.Set[String],
 ) -> Array[String] raise Error {
-  match records_by_specifier.get(source) {
-    Some(record) =>
-      self.module_get_exported_names(record, records_by_specifier, seen)
-    None =>
-      module_export_names_from_exports_map(
-        self.module_exports_for_source(source, @token.Loc::default()),
-      )
-  }
+  self.module_get_exported_names_driver(
+    ExportedNamesSource(source),
+    records_by_specifier,
+    seen,
+  )
 }
 
 ///|
@@ -684,26 +772,11 @@ fn Interpreter::module_get_exported_names(
   records_by_specifier : Map[String, ModuleRunRecord],
   seen_modules : @set.Set[String],
 ) -> Array[String] raise Error {
-  if seen_modules.contains(record.specifier) {
-    return []
-  }
-  seen_modules.add(record.specifier)
-  let names : Array[String] = []
-  let seen_names = @set.Set::default()
-  for stmt in record.stmts {
-    collect_module_direct_export_names_from_stmt(stmt, names, seen_names)
-  }
-  for source in record.star_sources() {
-    for
-      name in self.module_get_exported_names_from_source(
-        source, records_by_specifier, seen_modules,
-      ) {
-      if name != "default" {
-        add_module_export_name(names, seen_names, name)
-      }
-    }
-  }
-  names
+  self.module_get_exported_names_driver(
+    ExportedNamesRecord(record),
+    records_by_specifier,
+    seen_modules,
+  )
 }
 
 ///|
