@@ -233,11 +233,11 @@ fn schedule_eval_contains_pattern(
           Some(e) => scheduled.push(Expr(e))
           None => ()
         }
+        scheduled.push(Pattern(prop.value))
         match prop.default_val {
           Some(e) => scheduled.push(Expr(e))
           None => ()
         }
-        scheduled.push(Pattern(prop.value))
       }
       match rest {
         Some(p) => scheduled.push(Pattern(p))
