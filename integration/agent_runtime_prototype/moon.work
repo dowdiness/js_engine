@@ -1,4 +1,5 @@
 members = [
   "../..",
   "./coroutine",
+  "./tool_broker",
 ]

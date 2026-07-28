@@ -1,0 +1,136 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine_agent_runtime_tool_broker/core"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn adapter_failed_action(String) -> HostAction
+
+pub fn adapter_succeeded_action(String, Json, Bool) -> HostAction
+
+pub fn apply_host_action(BrokerState, HostAction) -> Transition
+
+pub fn host_deliver_result() -> HostAction
+
+pub fn host_dispatch(String) -> HostAction
+
+pub fn host_prepare_result() -> HostAction
+
+pub fn host_validate() -> HostAction
+
+pub fn measured_request_bytes(Json) -> Int?
+
+pub fn operator_approve(String) -> HostAction
+
+pub fn operator_cancel(String, String) -> HostAction
+
+pub fn operator_reject(String, String) -> HostAction
+
+pub fn submit_worker_request(BrokerState, Json) -> Transition
+
+// Errors
+
+// Types and methods
+pub struct AdapterInvocation {
+  call_id_ : String
+  idempotency_key_ : String
+  tool_ : String
+  effect_class_ : String
+  arguments_ : Json
+}
+pub fn AdapterInvocation::arguments(Self) -> Json
+pub fn AdapterInvocation::call_id(Self) -> String
+pub fn AdapterInvocation::effect_class(Self) -> String
+pub fn AdapterInvocation::idempotency_key(Self) -> String
+pub fn AdapterInvocation::render(Self) -> Json
+pub fn AdapterInvocation::tool(Self) -> String
+
+pub enum BrokerEffect {
+  InvokeAdapter(AdapterInvocation)
+  DeliverToolResult(Json)
+}
+pub fn BrokerEffect::adapter_invocation(Self) -> AdapterInvocation?
+pub fn BrokerEffect::delivered_result(Self) -> Json?
+pub fn BrokerEffect::render(Self) -> Json
+
+pub enum BrokerPhase {
+  Ready
+  ValidatingRequest
+  Rejected
+  WaitingApproval
+  Executing
+  ReturningResult
+  Completed
+  Cancelled
+} derive(Eq, @debug.Debug)
+
+pub struct BrokerState {
+  session_id_ : String
+  phase_ : BrokerPhase
+  allow_user_read_ : Bool
+  allow_user_write_ : Bool
+  call_limit_ : Int
+  calls_used_ : Int
+  calls_reserved_ : Int
+  request_byte_limit_ : Int
+  request_bytes_used_ : Int
+  request_bytes_reserved_ : Int
+  next_call_number_ : Int
+  call_ : CallState?
+  directives_emitted_ : Int
+  adapter_invocations_ : Int
+  committed_writes_ : Int
+  cancelled_ : Bool
+  cancelled_at_ : String?
+  cancellation_reason_ : String?
+  last_transition_error_ : String?
+}
+pub fn BrokerState::BrokerState(String, Bool, Bool, Int, Int) -> Self
+pub fn BrokerState::adapter_invocations(Self) -> Int
+pub fn BrokerState::calls_reserved(Self) -> Int
+pub fn BrokerState::calls_used(Self) -> Int
+pub fn BrokerState::cancelled(Self) -> Bool
+pub fn BrokerState::committed_writes(Self) -> Int
+pub fn BrokerState::current_approval_status(Self) -> String
+pub fn BrokerState::current_call_id(Self) -> String?
+pub fn BrokerState::current_dispatch_emitted(Self) -> Bool
+pub fn BrokerState::current_request_bytes(Self) -> Int
+pub fn BrokerState::current_validation_code(Self) -> String?
+pub fn BrokerState::directives_emitted(Self) -> Int
+pub fn BrokerState::last_transition_error(Self) -> String?
+pub fn BrokerState::phase_name(Self) -> String
+pub fn BrokerState::render(Self) -> Json
+pub fn BrokerState::request_bytes_reserved(Self) -> Int
+pub fn BrokerState::request_bytes_used(Self) -> Int
+
+type CallState
+
+pub enum HostAction {
+  ValidatePending
+  Approve(String)
+  Reject(String, String)
+  Dispatch(String)
+  Cancel(String, String)
+  AdapterSucceeded(String, Json, Bool)
+  AdapterFailed(String)
+  PrepareResult
+  DeliverResult
+}
+pub fn HostAction::render(Self) -> Json
+
+type KnownTool derive(Eq, @debug.Debug)
+
+pub struct Transition {
+  after_ : BrokerState
+  effects_ : Array[BrokerEffect]
+}
+pub fn Transition::after(Self) -> BrokerState
+pub fn Transition::effects(Self) -> Array[BrokerEffect]
+pub fn Transition::render_effects(Self) -> Json
+
+// Type aliases
+
+// Traits
+

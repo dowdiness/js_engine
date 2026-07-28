@@ -1,0 +1,6 @@
+schema=agent-runtime-p1-transcript/v1
+scenarios=19
+transitions=97
+scenario_assertions=passed
+credential_canary_occurrences=0
+target=native

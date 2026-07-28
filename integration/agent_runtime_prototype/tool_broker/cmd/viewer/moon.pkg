@@ -1,0 +1,9 @@
+import {
+  "dowdiness/js_engine_agent_runtime_tool_broker" @tool_broker,
+  "moonbitlang/async",
+  "moonbitlang/async/stdio",
+}
+
+supported_targets = "+native"
+
+pkgtype(kind: "executable")

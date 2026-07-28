@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine_agent_runtime_tool_broker"
+
+// Values
+pub fn required_transcript() -> Array[String]
+
+// Errors
+
+// Types and methods
+pub struct ToolBrokerViewer {
+  // private fields
+}
+pub fn ToolBrokerViewer::ToolBrokerViewer() -> Self
+pub fn ToolBrokerViewer::apply(Self, String) -> Json
+pub fn ToolBrokerViewer::prompt(Self) -> String
+pub fn ToolBrokerViewer::state(Self) -> Json
+
+// Type aliases
+
+// Traits
+

@@ -1,0 +1,1834 @@
+PROTOTYPE native ToolBroker state viewer
+Walkthrough 1: Worker authority/approval escalation is rejected.
+Walkthrough 2: Operator approves, then cancels before host Dispatch.
+Each command prints the full before/after state and emitted effects.
+Type quit or send EOF to exit.
+initial state
+{
+  "phase": "Ready",
+  "session_id": "viewer-read-only",
+  "next_call_number": 1,
+  "current_call": null,
+  "authority": {
+    "source": "host_session_config",
+    "granted_capabilities": [
+      "user.read"
+    ],
+    "required_capability": null,
+    "decision": "unchecked"
+  },
+  "budgets": {
+    "tool_count": {
+      "limit": 2,
+      "used": 0,
+      "reserved": 0,
+      "remaining": 2
+    },
+    "request_bytes": {
+      "limit": 4096,
+      "used": 0,
+      "reserved": 0,
+      "remaining": 4096,
+      "current_request": 0,
+      "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+    }
+  },
+  "adapter_effects": {
+    "directives_emitted": 0,
+    "adapter_results_observed": 0,
+    "adapter_reported_committed_writes": 0
+  },
+  "cancellation": {
+    "cancelled": false,
+    "at_phase": null,
+    "reason": null
+  },
+  "result": null,
+  "last_transition_error": null
+}
+command [inject-authority]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "authority-escalation-attempt",
+  "command": "inject-authority",
+  "action": {
+    "kind": "SubmitRequest",
+    "request": {
+      "tool": "update_user_status",
+      "arguments": {
+        "user_id": "user-1",
+        "status": "active"
+      },
+      "authority": "user.write",
+      "approved": true,
+      "requires_approval": false
+    }
+  },
+  "before": {
+    "phase": "Ready",
+    "session_id": "viewer-read-only",
+    "next_call_number": 1,
+    "current_call": null,
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "ValidatingRequest",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "not_run",
+        "code": null
+      },
+      "approval": {
+        "required": false,
+        "status": "unchecked",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [validate-injection]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "authority-escalation-attempt",
+  "command": "validate-injection",
+  "action": {
+    "kind": "Validate"
+  },
+  "before": {
+    "phase": "ValidatingRequest",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "not_run",
+        "code": null
+      },
+      "approval": {
+        "required": false,
+        "status": "unchecked",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "Rejected",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "rejected",
+        "code": "malformed_envelope"
+      },
+      "approval": {
+        "required": false,
+        "status": "not_applicable",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "malformed_envelope",
+          "message": "request envelope must contain only tool and arguments"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "malformed_envelope",
+        "message": "request envelope must contain only tool and arguments"
+      }
+    },
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [prepare-rejection]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "authority-escalation-attempt",
+  "command": "prepare-rejection",
+  "action": {
+    "kind": "PrepareResult"
+  },
+  "before": {
+    "phase": "Rejected",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "rejected",
+        "code": "malformed_envelope"
+      },
+      "approval": {
+        "required": false,
+        "status": "not_applicable",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "malformed_envelope",
+          "message": "request envelope must contain only tool and arguments"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "malformed_envelope",
+        "message": "request envelope must contain only tool and arguments"
+      }
+    },
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "ReturningResult",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "rejected",
+        "code": "malformed_envelope"
+      },
+      "approval": {
+        "required": false,
+        "status": "not_applicable",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "malformed_envelope",
+          "message": "request envelope must contain only tool and arguments"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "malformed_envelope",
+        "message": "request envelope must contain only tool and arguments"
+      }
+    },
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [deliver-rejection]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "authority-escalation-attempt",
+  "command": "deliver-rejection",
+  "action": {
+    "kind": "DeliverResult"
+  },
+  "before": {
+    "phase": "ReturningResult",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "rejected",
+        "code": "malformed_envelope"
+      },
+      "approval": {
+        "required": false,
+        "status": "not_applicable",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "malformed_envelope",
+          "message": "request envelope must contain only tool and arguments"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "malformed_envelope",
+        "message": "request envelope must contain only tool and arguments"
+      }
+    },
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "Completed",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "rejected",
+        "code": "malformed_envelope"
+      },
+      "approval": {
+        "required": false,
+        "status": "not_applicable",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "malformed_envelope",
+          "message": "request envelope must contain only tool and arguments"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "malformed_envelope",
+        "message": "request envelope must contain only tool and arguments"
+      }
+    },
+    "last_transition_error": null
+  },
+  "effects": [
+    {
+      "kind": "DeliverToolResult",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "malformed_envelope",
+          "message": "request envelope must contain only tool and arguments"
+        }
+      }
+    }
+  ],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [start-cancel-scenario]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "approve-then-cancel-before-dispatch",
+  "command": "start-cancel-scenario",
+  "action": {
+    "kind": "HostStartsFreshBrokerSession",
+    "reason": "independent human walkthrough"
+  },
+  "before": {
+    "phase": "Completed",
+    "session_id": "viewer-read-only",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-read-only:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        },
+        "authority": "user.write",
+        "approved": true,
+        "requires_approval": false
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "rejected",
+        "code": "malformed_envelope"
+      },
+      "approval": {
+        "required": false,
+        "status": "not_applicable",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "malformed_envelope",
+          "message": "request envelope must contain only tool and arguments"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "malformed_envelope",
+        "message": "request envelope must contain only tool and arguments"
+      }
+    },
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "Ready",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 1,
+    "current_call": null,
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [submit-write]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "approve-then-cancel-before-dispatch",
+  "command": "submit-write",
+  "action": {
+    "kind": "SubmitRequest",
+    "request": {
+      "tool": "update_user_status",
+      "arguments": {
+        "user_id": "user-1",
+        "status": "active"
+      }
+    }
+  },
+  "before": {
+    "phase": "Ready",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 1,
+    "current_call": null,
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "ValidatingRequest",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "not_run",
+        "code": null
+      },
+      "approval": {
+        "required": false,
+        "status": "unchecked",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [validate-write]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "approve-then-cancel-before-dispatch",
+  "command": "validate-write",
+  "action": {
+    "kind": "Validate"
+  },
+  "before": {
+    "phase": "ValidatingRequest",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": null,
+      "catalog_tool": null,
+      "effect_class": null,
+      "validation": {
+        "status": "not_run",
+        "code": null
+      },
+      "approval": {
+        "required": false,
+        "status": "unchecked",
+        "source": null
+      },
+      "request_bytes": 0,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": null,
+      "decision": "unchecked"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 0,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "WaitingApproval",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "pending",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 1,
+        "remaining": 1
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 80,
+        "remaining": 4016,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [approve-write]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "approve-then-cancel-before-dispatch",
+  "command": "approve-write",
+  "action": {
+    "kind": "Approve",
+    "call_id": "call-1",
+    "source": "operator"
+  },
+  "before": {
+    "phase": "WaitingApproval",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "pending",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 1,
+        "remaining": 1
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 80,
+        "remaining": 4016,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "Executing",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "approved",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 1,
+        "remaining": 1
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 80,
+        "remaining": 4016,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [cancel-before-dispatch]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "approve-then-cancel-before-dispatch",
+  "command": "cancel-before-dispatch",
+  "action": {
+    "kind": "Cancel",
+    "call_id": "call-1",
+    "source": "operator",
+    "reason": "human cancelled before dispatch"
+  },
+  "before": {
+    "phase": "Executing",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "approved",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": null
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 1,
+        "remaining": 1
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 80,
+        "remaining": 4016,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": false,
+      "at_phase": null,
+      "reason": null
+    },
+    "result": null,
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "Cancelled",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "approved",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "cancelled_before_dispatch",
+          "message": "operator cancelled before adapter dispatch"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": true,
+      "at_phase": "Executing",
+      "reason": "human cancelled before dispatch"
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "cancelled_before_dispatch",
+        "message": "operator cancelled before adapter dispatch"
+      }
+    },
+    "last_transition_error": null
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [late-dispatch]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "approve-then-cancel-before-dispatch",
+  "command": "late-dispatch",
+  "action": {
+    "kind": "Dispatch",
+    "call_id": "call-1",
+    "source": "host"
+  },
+  "before": {
+    "phase": "Cancelled",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "approved",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "cancelled_before_dispatch",
+          "message": "operator cancelled before adapter dispatch"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": true,
+      "at_phase": "Executing",
+      "reason": "human cancelled before dispatch"
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "cancelled_before_dispatch",
+        "message": "operator cancelled before adapter dispatch"
+      }
+    },
+    "last_transition_error": null
+  },
+  "after": {
+    "phase": "Cancelled",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "approved",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "cancelled_before_dispatch",
+          "message": "operator cancelled before adapter dispatch"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": true,
+      "at_phase": "Executing",
+      "reason": "human cancelled before dispatch"
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "cancelled_before_dispatch",
+        "message": "operator cancelled before adapter dispatch"
+      }
+    },
+    "last_transition_error": "dispatch_requires_executing"
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [resubmit-after-cancel]> {
+  "viewer": "agent-runtime-p1/tool-broker",
+  "walkthrough": "approve-then-cancel-before-dispatch",
+  "command": "resubmit-after-cancel",
+  "action": {
+    "kind": "SubmitRequest",
+    "request": {
+      "tool": "get_user",
+      "arguments": {
+        "user_id": "user-2"
+      }
+    }
+  },
+  "before": {
+    "phase": "Cancelled",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "approved",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "cancelled_before_dispatch",
+          "message": "operator cancelled before adapter dispatch"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": true,
+      "at_phase": "Executing",
+      "reason": "human cancelled before dispatch"
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "cancelled_before_dispatch",
+        "message": "operator cancelled before adapter dispatch"
+      }
+    },
+    "last_transition_error": "dispatch_requires_executing"
+  },
+  "after": {
+    "phase": "Cancelled",
+    "session_id": "viewer-cancel-before-dispatch",
+    "next_call_number": 2,
+    "current_call": {
+      "call_id": "call-1",
+      "idempotency_key": "viewer-cancel-before-dispatch:call-1",
+      "raw_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "normalized_request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-1",
+          "status": "active"
+        }
+      },
+      "catalog_tool": "update_user_status",
+      "effect_class": "Write",
+      "validation": {
+        "status": "accepted",
+        "code": null
+      },
+      "approval": {
+        "required": true,
+        "status": "approved",
+        "source": "operator"
+      },
+      "request_bytes": 80,
+      "dispatch_status": "pending",
+      "result": {
+        "tag": "error",
+        "error": {
+          "code": "cancelled_before_dispatch",
+          "message": "operator cancelled before adapter dispatch"
+        }
+      }
+    },
+    "authority": {
+      "source": "host_session_config",
+      "granted_capabilities": [
+        "user.read",
+        "user.write"
+      ],
+      "required_capability": "user.write",
+      "decision": "allowed"
+    },
+    "budgets": {
+      "tool_count": {
+        "limit": 2,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 2
+      },
+      "request_bytes": {
+        "limit": 4096,
+        "used": 0,
+        "reserved": 0,
+        "remaining": 4096,
+        "current_request": 80,
+        "definition": "cumulative canonical UTF-8 request bytes before adapter dispatch"
+      }
+    },
+    "adapter_effects": {
+      "directives_emitted": 0,
+      "adapter_results_observed": 0,
+      "adapter_reported_committed_writes": 0
+    },
+    "cancellation": {
+      "cancelled": true,
+      "at_phase": "Executing",
+      "reason": "human cancelled before dispatch"
+    },
+    "result": {
+      "tag": "error",
+      "error": {
+        "code": "cancelled_before_dispatch",
+        "message": "operator cancelled before adapter dispatch"
+      }
+    },
+    "last_transition_error": "session_cancelled"
+  },
+  "effects": [],
+  "observable_adapter_effects": [],
+  "viewer_error": null
+}
+command [done]> exit

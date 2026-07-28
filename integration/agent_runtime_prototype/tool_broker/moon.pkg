@@ -1,0 +1,5 @@
+// PROTOTYPE: disposable P1 ToolBroker harness package.
+
+import {
+  "dowdiness/js_engine_agent_runtime_tool_broker/core",
+}
