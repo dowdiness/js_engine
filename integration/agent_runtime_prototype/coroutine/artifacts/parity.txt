@@ -1,0 +1,1 @@
+PROTOTYPE parity: native == js == wasm == wasm-gc (byte-for-byte)

@@ -1,0 +1,212 @@
+PROTOTYPE native state viewer: inactive_user_success
+Commands advance one deterministic action at a time.
+Type quit or send EOF to exit.
+initial state
+{
+  "engine_epoch": 1,
+  "phase": "idle",
+  "pending_request": null,
+  "last_result": null,
+  "completion": null,
+  "discard_status": {
+    "discarded": false,
+    "reason": null
+  },
+  "last_protocol_error": null
+}
+command [start]> {
+  "viewer": "agent-runtime-p0/inactive-user",
+  "command": "start",
+  "facade_call": {
+    "name": "start_agent_session",
+    "args": [
+      {
+        "user_id": "user-inactive"
+      }
+    ],
+    "reply": {
+      "kind": "tool_request",
+      "request": {
+        "tool": "get_user",
+        "arguments": {
+          "user_id": "user-inactive"
+        }
+      }
+    }
+  },
+  "viewer_error": null,
+  "state": {
+    "engine_epoch": 1,
+    "phase": "waiting",
+    "pending_request": {
+      "tool": "get_user",
+      "arguments": {
+        "user_id": "user-inactive"
+      }
+    },
+    "last_result": null,
+    "completion": null,
+    "discard_status": {
+      "discarded": false,
+      "reason": null
+    },
+    "last_protocol_error": null
+  }
+}
+command [read-inactive]> {
+  "viewer": "agent-runtime-p0/inactive-user",
+  "command": "read-inactive",
+  "facade_call": {
+    "name": "resume_agent_session",
+    "args": [
+      {
+        "tag": "ok",
+        "value": {
+          "user_id": "user-inactive",
+          "status": "inactive"
+        }
+      }
+    ],
+    "reply": {
+      "kind": "tool_request",
+      "request": {
+        "tool": "update_user_status",
+        "arguments": {
+          "user_id": "user-inactive",
+          "status": "active"
+        }
+      }
+    }
+  },
+  "viewer_error": null,
+  "state": {
+    "engine_epoch": 1,
+    "phase": "waiting",
+    "pending_request": {
+      "tool": "update_user_status",
+      "arguments": {
+        "user_id": "user-inactive",
+        "status": "active"
+      }
+    },
+    "last_result": {
+      "tag": "ok",
+      "value": {
+        "user_id": "user-inactive",
+        "status": "inactive"
+      }
+    },
+    "completion": null,
+    "discard_status": {
+      "discarded": false,
+      "reason": null
+    },
+    "last_protocol_error": null
+  }
+}
+command [write-ok]> {
+  "viewer": "agent-runtime-p0/inactive-user",
+  "command": "write-ok",
+  "facade_call": {
+    "name": "resume_agent_session",
+    "args": [
+      {
+        "tag": "ok",
+        "value": {
+          "user_id": "user-inactive",
+          "status": "active"
+        }
+      }
+    ],
+    "reply": {
+      "kind": "completion",
+      "completion": {
+        "status": "ok",
+        "output": {
+          "user_id": "user-inactive",
+          "status": "active",
+          "updated": true
+        }
+      }
+    }
+  },
+  "viewer_error": null,
+  "state": {
+    "engine_epoch": 1,
+    "phase": "completed",
+    "pending_request": null,
+    "last_result": {
+      "tag": "ok",
+      "value": {
+        "user_id": "user-inactive",
+        "status": "active"
+      }
+    },
+    "completion": {
+      "status": "ok",
+      "output": {
+        "user_id": "user-inactive",
+        "status": "active",
+        "updated": true
+      }
+    },
+    "discard_status": {
+      "discarded": false,
+      "reason": null
+    },
+    "last_protocol_error": null
+  }
+}
+command [resume-again]> {
+  "viewer": "agent-runtime-p0/inactive-user",
+  "command": "resume-again",
+  "facade_call": {
+    "name": "resume_agent_session",
+    "args": [
+      {
+        "tag": "ok",
+        "value": {
+          "user_id": "user-inactive",
+          "status": "active"
+        }
+      }
+    ],
+    "reply": {
+      "kind": "rejected",
+      "error": {
+        "code": "resume_after_completion",
+        "message": "session is already complete"
+      }
+    }
+  },
+  "viewer_error": null,
+  "state": {
+    "engine_epoch": 1,
+    "phase": "completed",
+    "pending_request": null,
+    "last_result": {
+      "tag": "ok",
+      "value": {
+        "user_id": "user-inactive",
+        "status": "active"
+      }
+    },
+    "completion": {
+      "status": "ok",
+      "output": {
+        "user_id": "user-inactive",
+        "status": "active",
+        "updated": true
+      }
+    },
+    "discard_status": {
+      "discarded": false,
+      "reason": null
+    },
+    "last_protocol_error": {
+      "code": "resume_after_completion",
+      "message": "session is already complete"
+    }
+  }
+}
+command [resume-again]> exit

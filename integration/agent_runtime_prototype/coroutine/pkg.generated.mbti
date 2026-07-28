@@ -1,0 +1,21 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine_agent_runtime_coroutine"
+
+// Values
+pub fn required_transcript() -> Array[String]
+
+// Errors
+
+// Types and methods
+pub struct InactiveUserViewer {
+  // private fields
+}
+pub fn InactiveUserViewer::InactiveUserViewer() -> Self
+pub fn InactiveUserViewer::apply(Self, String) -> Json
+pub fn InactiveUserViewer::prompt(Self) -> String
+pub fn InactiveUserViewer::state(Self) -> Json
+
+// Type aliases
+
+// Traits
+

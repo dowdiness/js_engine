@@ -1,0 +1,30 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine_agent_runtime_coroutine/protocol"
+
+// Values
+pub fn transcript_record(String, Int, Json, Json, SessionState) -> String
+
+// Errors
+
+// Types and methods
+pub struct SessionState {
+  engine_epoch_ : Int
+  phase_ : String
+  pending_request_ : Json
+  last_result_ : Json
+  completion_ : Json
+  discarded_ : Bool
+  discard_reason_ : Json
+  last_protocol_error_ : Json
+}
+pub fn SessionState::SessionState(Int) -> Self
+pub fn SessionState::engine_epoch(Self) -> Int
+pub fn SessionState::record_discard(Self, String) -> Self
+pub fn SessionState::record_resume(Self, Json, Json) -> Self
+pub fn SessionState::record_start(Self, Json) -> Self
+pub fn SessionState::render(Self) -> Json
+
+// Type aliases
+
+// Traits
+
