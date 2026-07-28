@@ -117,9 +117,10 @@ fn schedule_eval_contains_stmt(
       scheduled.push(Expr(src))
       scheduled.push(Stmt(body))
     }
-    ForInStmtPat(_, _, src, body, _)
-    | ForOfStmtPat(_, _, src, body, _)
-    | AsyncForOfStmtPat(_, _, src, body, _) => {
+    ForInStmtPat(_, pattern, src, body, _)
+    | ForOfStmtPat(_, pattern, src, body, _)
+    | AsyncForOfStmtPat(_, pattern, src, body, _) => {
+      scheduled.push(Pattern(pattern))
       scheduled.push(Expr(src))
       scheduled.push(Stmt(body))
     }
@@ -136,9 +137,13 @@ fn schedule_eval_contains_stmt(
         None => ()
       }
     ThrowStmt(e, _) => scheduled.push(Expr(e))
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+    TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
       for s in try_body {
         scheduled.push(Stmt(s))
+      }
+      match catch_param {
+        Some(pattern) => scheduled.push(Pattern(pattern))
+        None => ()
       }
       match catch_body {
         Some(stmts) =>
@@ -167,7 +172,10 @@ fn schedule_eval_contains_stmt(
         }
       }
     }
-    DestructureDecl(_, _, init, _) => scheduled.push(Expr(init))
+    DestructureDecl(_, pattern, init, _) => {
+      scheduled.push(Pattern(pattern))
+      scheduled.push(Expr(init))
+    }
     LabeledStmt(_, body, _) => scheduled.push(Stmt(body))
     WithStmt(obj, body, _) => {
       scheduled.push(Expr(obj))
@@ -399,7 +407,10 @@ fn schedule_eval_contains_expr(
         scheduled.push(Expr(e))
       }
     }
-    DestructureAssign(_, rhs, _) => scheduled.push(Expr(rhs))
+    DestructureAssign(pattern, rhs, _) => {
+      scheduled.push(Pattern(pattern))
+      scheduled.push(Expr(rhs))
+    }
     // Leaves with nothing to scan. (Ident("arguments") is handled above.)
     NumberLit(_, _, _)
     | StringLit(_, _, _, _)

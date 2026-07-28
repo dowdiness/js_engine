@@ -55,6 +55,38 @@ test "post-parse stack safety: direct eval Contains handles 4096 comma expressio
 }
 
 ///|
+test "PerformEval Contains scans destructuring declaration patterns" {
+  inspect(
+    run_throws("eval(\"let {[new.target]: value} = {};\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans for-of patterns" {
+  inspect(
+    run_throws("eval(\"for (let {[new.target]: value} of []) {}\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans catch parameters" {
+  inspect(
+    run_throws("eval(\"try {} catch ({[new.target]: value}) {}\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans destructuring assignment patterns" {
+  inspect(
+    run_throws("eval(\"({[new.target]: value} = {});\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
 test "post-parse stack safety: comma expression preserves first error" {
   inspect(
     run_throws("\"use strict\"; (eval = 0, function() { let x; var x; })"),
