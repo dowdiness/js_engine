@@ -120,6 +120,9 @@ test "Task 6A: synthetic statement carrier keeps direct indirect star precedence
       "export { chosen } from './indirect'; export * from './star';",
     ).stmts,
   )
+  let star_only = module_test_record(
+    @parser.parse("export * from './star';").stmts,
+  )
   let indirect_source = module_test_record_at(
     "./indirect",
     @parser.parse("export const chosen = 2;").stmts,
@@ -145,6 +148,12 @@ test "Task 6A: synthetic statement carrier keeps direct indirect star precedence
     records,
     @set.Set::default(),
   )
+  let resolved_star = interp.resolve_module_export(
+    star_only,
+    "chosen",
+    records,
+    @set.Set::default(),
+  )
   inspect(
     match resolved_direct {
       Resolved(result) => result.module_specifier
@@ -158,6 +167,13 @@ test "Task 6A: synthetic statement carrier keeps direct indirect star precedence
       _ => "missing"
     },
     content="./indirect",
+  )
+  inspect(
+    match resolved_star {
+      Resolved(result) => result.module_specifier
+      _ => "missing"
+    },
+    content="./star",
   )
 }
 
