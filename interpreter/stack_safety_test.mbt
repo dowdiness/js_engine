@@ -1,16 +1,22 @@
 ///|
-fn nested_comma_source(depth : Int) -> String {
-  let mut source = "eval = 0"
+fn nested_comma_source(depth : Int, final_expression : String) -> String {
+  let mut source = final_expression
   for _ in 0..<depth {
     source = "0," + source
   }
-  "\"use strict\"; " + source
+  source
 }
 
 ///|
+#skip("blocked by #608 runtime evaluator stack safety")
 test "post-parse stack safety: 512 comma expressions" {
+  inspect(run(nested_comma_source(512, "7")), content="7")
+}
+
+///|
+test "post-parse stack safety phase isolation: 512 comma expressions" {
   inspect(
-    run_throws(nested_comma_source(512)),
+    run_throws("\"use strict\"; " + nested_comma_source(512, "eval = 0")),
     content="SyntaxError: Unexpected eval or arguments in strict mode",
   )
 }

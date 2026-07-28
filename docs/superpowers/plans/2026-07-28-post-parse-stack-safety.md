@@ -97,7 +97,12 @@ Observed on debug JS: all six shallow tests pass; only the 512-comma test fails,
 
 - [ ] **Step 5: Commit the eventual green test with its owning implementation**
 
-Do not commit a permanently red test. Stage this file together with Task 3 after the iterative validator makes it green.
+Option A preserves this exact contract fixture under
+`#skip("blocked by #608 runtime evaluator stack safety")`. The Task 3 validator
+rewrite lets it pass post-parse validation, but the recursive runtime evaluator
+still raises a JS `RangeError`; the skipped test remains type-checked and can be
+run with `--include-skipped`. This step stays pending until #608 is integrated
+and the exact `0,` repeated 512 times followed by `7` fixture runs green.
 
 ### Task 2: Introduce Stack-safe BoundNames
 
@@ -183,7 +188,12 @@ moon test interpreter --filter '*post-parse stack safety*'
 moon test interpreter --filter '*early error*'
 ```
 
-Expected: the 512-comma regression and all ordering tests pass with unchanged diagnostics.
+Option A result: normal focused JS and native runs exclude the skipped contract
+fixture and pass the active tests. The separately named `phase isolation`
+fixture traverses all 512 comma levels during early-error validation and reaches
+the existing strict-assignment `SyntaxError` before runtime evaluation. Running
+only the skipped success-valued contract with `--include-skipped --target js`
+currently reaches the #608 dependency and raises the expected host `RangeError`.
 
 - [ ] **Step 8: Commit**
 
