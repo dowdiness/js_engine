@@ -7,6 +7,148 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 For changes before this file existed, see `git log`.
 
+## [0.7.0] — 2026-07-27
+
+### Conformance
+
+test262 (each file run in both strict and non-strict modes,
+reported separately — summing would double-count files):
+- **Passed / Executed**: 91.3% strict (31,735 / 34,768),
+  90.7% non-strict (33,555 / 37,002).
+- **Passed / Discovered**: 70.5% strict (31,735 / 44,986),
+  70.4% non-strict (33,555 / 47,692).
+- **Skipped**: 10,201 strict, 10,672 non-strict.
+Measured on CI run [30255368089](https://github.com/dowdiness/js_engine/actions/runs/30255368089)
+(tip `07c7852`, 2026-07-27).
+Regression baseline: +99 non-strict / +100 strict vs
+`test262-baseline.json` (min 33,456 / 31,635).
+
+Unit tests: **2,621 / 2,621 passed** (`moon test`).
+
+Compared with v0.6.0's recorded per-mode results from CI run
+`29452024184`, the absolute passing count increased by
+**+222 strict** and **+224 non-strict**. Methodology remains per-mode;
+both denominators are retained because Passed/Executed and
+Passed/Discovered answer different questions.
+
+### Added
+
+- **Structured Engine diagnostics** (#568) — `run_diagnostic`,
+  `call_json_diagnostic`, `eval_diagnostic`, and diagnostic
+  variants of microtask/timer checkpoints return structured
+  `EngineDiagnostic` values that classify failures by kind, phase,
+  operation, engine integrity, retained effects, and pending jobs
+  without leaking internal error types.
+- **Host-owned JSON injection** (#585) — `Engine::inject_json`
+  places host-owned JSON data into a realm global binding without
+  going through ordinary property assignment or setter traps.
+- **RegExp Unicode-mode escape validation and case folding** (#590) —
+  strict validation of RegExp escape sequences in Unicode mode and
+  case-insensitive matching for non-ASCII patterns via new
+  `regexp_syntax` package with `parse_unicode_escape`,
+  `parse_unicode_mode_character_escape`,
+  `validate_unicode_mode_regexp_escapes`, and related helpers.
+- **Stable embedding documentation** — the Stage 1 embedding
+  contract (#545), runtime vision (#544) and diagnostics outcome
+  goals (#553), engine execution guardrail decision (#595), and
+  cross-target adoption validation (#546, #569) establish the
+  stable embedding surface for embedders.
+
+### Changed
+
+- **Embedding and adoption validation** — Hono 4.12.31 acceptance
+  fixture (#569), cross-target external-consumer CI (#546), and
+  stable embedding baselines (#547) validate the embedding
+  surface across native, JavaScript, Wasm, and Wasm-GC targets.
+- **Internal execution-guardrail groundwork** — private execution
+  control core (#598), execution control dispatch (#600), timer
+  and interval queue policy extraction (#562), microtask queue
+  policy transitions (#555), and AST containment traversal
+  centralization (#582) lay groundwork for future bounded
+  execution contracts. No bounded public API exists yet.
+
+### Fixed
+
+- **Proxy internal operations** — dispatch internal operations
+  across built-ins for targeted Proxy forwarding correctness
+  (#577, #597).
+- **Class, super, and private fields** — class/super residuals
+  (#206, #596), private brand resolution in constructors (#561),
+  private method call receivers (#563), and private assignment
+  operators (#567).
+- **Module namespace and exports** — ambiguous export propagation
+  (#593) and module namespace super assignments with TDZ (#592).
+- **for-of and iterator protocol** — for-of and iterator residuals
+  (#207, #594).
+- **Bound function prototype** — preserve target prototypes on
+  bound functions (#589).
+- **Symbol.match** — honor `Symbol.match` in `String.prototype.search`
+  and related search methods (#588).
+- **Strict block-function declarations** — strict block function
+  declaration instantiation (#587).
+- **Collection zero-key canonicalization** — Map/Set canonicalize
+  stored zero keys (#584).
+- **Primitive receiver / this** — preserve primitive receivers
+  for inherited setters (#566) and box sloppy primitive `this`
+  values (#573).
+- **Microtask at-most-once** — microtask checkpoint dispatches
+  pending microtasks at most once (#557).
+- **Lexer and parser** — regexp recognition after logical
+  assignment operators (#558) and ES2015 early error enforcement
+  (#583).
+- **ArrayBuffer** — observe `new.target` before allocation (#205,
+  #591).
+
+### Breaking changes
+
+The root `@js_engine` facade changes are **additive only** (no existing
+public symbols modified or removed).
+
+Direct `interpreter/runtime` source compatibility risks in the
+cumulative public interfaces:
+
+- **`FunctionRealmProtos`** — gains `constructor_prototype_registry`
+  field. Breaking for raw `pub(all)` record construction and
+  exhaustive pattern matches; the labelled constructor adds an
+  optional parameter and is itself source-compatible for existing
+  callers.
+- **`GeneratorObject`** — gains `stmt_resume_index_stack`,
+  `stmt_resume_env_stack`, `stmt_resume_value_stack` fields.
+- **`MapData`**, **`SetData`**, **`PromiseData`** — each gains a
+  `mut extensible : Bool` field.
+- **`ProxyData`** — gains `is_constructor` field.
+- **`RealmState`** — gains `active_source_identity`,
+  `constructor_prototype_registry`, `observing_source_failure`,
+  `observed_source_failure`, `observed_source_identity` fields.
+- **Integrity helpers** `set_integrity_frozen`,
+  `set_integrity_sealed`, `test_integrity_frozen`,
+  `test_integrity_sealed` — now require an `Interpreter` parameter
+  and can `raise`.
+
+New `regexp_syntax` package for Unicode regexp escape handling is
+additive. New `Interpreter` methods (`run_microtasks_observed`,
+`run_timers_observed`, `get_property_key_with_receiver`,
+`to_primitive_value`) and new types (`EngineDiagnostic`,
+`EngineIntegrity`, `RetainedEffects`, `PendingJobs`,
+`SourceLocation`, `SourcePosition`, `MicrotaskRunFailure`,
+`TimerRunFailure`, `SourceObservedFailure`,
+`TimerRunFailurePhase`) are additive.
+
+AST gains `SuperMemberAssign` and `SuperComputedAssign` variants
+(breaking for direct consumers with exhaustive `Expr` matches,
+which must add arms for both); new helpers
+`expr_immediate_children_any` and `pattern_immediate_children_any`
+are additive.
+
+### Known limitations
+
+- Existing public `Engine` operations remain unbounded because
+  Stage 4 bounded APIs are not yet available. Structured
+  diagnostics classify failures but do not provide execution
+  bounds.
+- `EngineDiagnostic` source locations remain absent until
+  trustworthy structured propagation exists.
+
 ## [0.6.0] — 2026-07-15
 ### Conformance
 
