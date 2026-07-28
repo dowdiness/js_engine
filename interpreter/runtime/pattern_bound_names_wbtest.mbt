@@ -8,6 +8,17 @@ fn deeply_nested_binding_pattern(name : String, depth : Int) -> @ast.Pattern {
 }
 
 ///|
+test "pattern arguments predicate stops before a large trailing subtree" {
+  let arguments_first = deeply_nested_binding_pattern("arguments", 4096)
+  let large_tail = deeply_nested_binding_pattern("tail", 4096)
+  let pattern = @ast.Pattern::ArrayPat(
+    [Some(arguments_first), Some(large_tail)],
+    None,
+  )
+  inspect(pattern_includes_arguments(pattern), content="true")
+}
+
+///|
 test "post-parse stack safety: deep pattern name preparation" {
   let deep_x = deeply_nested_binding_pattern("x", 4096)
   let deep_arguments = deeply_nested_binding_pattern("arguments", 4096)

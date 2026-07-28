@@ -24343,3 +24343,71 @@ test "class private methods: assignment operators reject writes" {
     "true", "true", "TypeError", "TypeError", "TypeError",
   ])
 }
+
+///|
+test "Task 4B: function destructuring parameters predeclare TDZ names in source order" {
+  let output = run_output(
+    (
+      #|function f({a, b}, c = a + b) { return [a, b, c].join(":"); }
+      #|console.log(f({a: 2, b: 3}));
+    ),
+  )
+  json_inspect(output, content=["2:3:5"])
+  let error = run_error_display(
+    (
+      #|let later = 99;
+      #|function f(first = later, {later}) { return first; }
+      #|f(undefined, {later: 1});
+    ),
+  )
+  inspect(
+    error,
+    content="ReferenceError: Cannot access 'later' before initialization",
+  )
+}
+
+///|
+test "Task 4B: class constructor destructuring parameters predeclare TDZ names in source order" {
+  let output = run_output(
+    (
+      #|class C {
+      #|  constructor({a, b}, c = b) { this.value = [a, b, c].join(":"); }
+      #|}
+      #|console.log(new C({a: 4, b: 5}).value);
+    ),
+  )
+  json_inspect(output, content=["4:5:5"])
+  let error = run_error_display(
+    (
+      #|let later = 99;
+      #|class C { constructor(first = later, {later}) {} }
+      #|new C(undefined, {later: 1});
+    ),
+  )
+  inspect(
+    error,
+    content="ReferenceError: Cannot access 'later' before initialization",
+  )
+}
+
+///|
+test "Task 4B: generator destructuring parameters predeclare TDZ names in source order" {
+  let output = run_output(
+    (
+      #|function* g({a, b}, c = a) { yield [a, b, c].join(":"); }
+      #|console.log(g({a: 6, b: 7}).next().value);
+    ),
+  )
+  json_inspect(output, content=["6:7:6"])
+  let error = run_error_display(
+    (
+      #|let later = 99;
+      #|function* g(first = later, {later}) { yield first; }
+      #|g(undefined, {later: 1});
+    ),
+  )
+  inspect(
+    error,
+    content="ReferenceError: Cannot access 'later' before initialization",
+  )
+}

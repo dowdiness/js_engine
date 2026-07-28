@@ -345,9 +345,32 @@ fn params_include_arguments(
 
 ///|
 fn pattern_includes_arguments(pattern : @ast.Pattern) -> Bool {
-  for name in @static_semantics.bound_names(pattern) {
-    if name == "arguments" {
-      return true
+  let stack : Array[@ast.Pattern] = [pattern]
+  while stack.length() > 0 {
+    match stack.pop() {
+      Some(IdentPat("arguments")) => return true
+      Some(IdentPat(_)) | Some(AssignTarget(_)) => ()
+      Some(DefaultPat(inner, _)) => stack.push(inner)
+      Some(ArrayPat(elements, rest)) => {
+        match rest {
+          Some(rest) => stack.push(rest)
+          None => ()
+        }
+        elements.rev_each(element => {
+          match element {
+            Some(child) => stack.push(child)
+            None => ()
+          }
+        })
+      }
+      Some(ObjectPat(properties, rest)) => {
+        match rest {
+          Some(rest) => stack.push(rest)
+          None => ()
+        }
+        properties.rev_each(property => stack.push(property.value))
+      }
+      None => ()
     }
   }
   false
