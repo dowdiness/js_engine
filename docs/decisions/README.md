@@ -8,4 +8,5 @@ Architecture-decision-record-style documents and project contracts.
 - [engine-diagnostic-contract.md](engine-diagnostic-contract.md) — accepted and implemented operation-aware structured diagnostic contract and source-compatible public API evolution.
 - [engine-json-injection-contract.md](engine-json-injection-contract.md) — immutable host-owned JSON injection, collision policy, and structured failure contract.
 - [engine-execution-guardrail-contract.md](engine-execution-guardrail-contract.md) — accepted operation-scoped guardrail contract; private state transitions and statement/expression observation are staged, while bounded APIs and complete accounting remain pending.
+- [agent-runtime-feasibility-contract.md](agent-runtime-feasibility-contract.md) — accepted discovery boundary, threat model, responsibility split, and sequential GO/PIVOT/STOP gates for the off-main Agent Runtime prototypes.
 - [tooling-migration-contracts.md](tooling-migration-contracts.md) — parity contract for migrating Python scripts to MoonBit.
