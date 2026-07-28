@@ -86,9 +86,12 @@ pub fn Interpreter::eval_update_computed_property(
 
 ///|
 fn unwrap_groupings(expr : @ast.Expr) -> @ast.Expr {
-  match expr {
-    Grouping(inner, _) => unwrap_groupings(inner)
-    _ => expr
+  let mut current = expr
+  for ;; {
+    match current {
+      Grouping(inner, _) => current = inner
+      _ => return current
+    }
   }
 }
 

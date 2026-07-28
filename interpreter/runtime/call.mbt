@@ -141,13 +141,16 @@ pub fn Interpreter::call_direct_eval_or_shadowed(
 }
 
 ///|
-/// Recursively strip Grouping nodes from an expression.
+/// Strip consecutive Grouping nodes from an expression.
 /// Per ES spec, grouping parentheses do not change the Reference type,
 /// so ((eval))("code") is still a direct eval call.
 pub fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
-  match expr {
-    Grouping(inner, _) => unwrap_grouping(inner)
-    _ => expr
+  let mut current = expr
+  for ;; {
+    match current {
+      Grouping(inner, _) => current = inner
+      _ => return current
+    }
   }
 }
 
