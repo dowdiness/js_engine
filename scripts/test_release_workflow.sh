@@ -14,5 +14,6 @@ assert_exactly_one() {
   fi
 }
 
+assert_exactly_one 'run: bash scripts/test_release_workflow.sh'
 assert_exactly_one 'run: bash scripts/test_sync_release_version.sh'
 assert_exactly_one 'run: bash scripts/test_validate_release_metadata.sh'

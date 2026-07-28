@@ -17,6 +17,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test release workflow contract
+        run: bash scripts/test_release_workflow.sh
+
       - name: Test release version synchronization
         run: bash scripts/test_sync_release_version.sh
 
