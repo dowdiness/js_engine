@@ -65,3 +65,44 @@ test "post-parse stack safety: deep pattern name preparation" {
   hoist_pattern_tdz(deep_x, lexical_env, LetBinding)
   inspect(lexical_env.bindings.contains("x"), content="true")
 }
+
+///|
+test "collect_pattern_tdz_names handles deep parser patterns in source order" {
+  let loc = @token.Loc::default()
+  let ignored = @ast.Expr::Ident("ignored_expression_name", loc)
+  let mut deep = @ast.Pattern::IdentPat("deep")
+  for _ in 0..<4096 {
+    deep = @ast.Pattern::ArrayPat(
+      [
+        Some(
+          @ast.Pattern::ObjectPat(
+            [
+              {
+                key: "property",
+                key_lex_form: @token.LexForm::LexNormal,
+                key_loc: loc,
+                value: @ast.Pattern::DefaultPat(deep, ignored),
+                default_val: Some(ignored),
+                computed_key: Some(ignored),
+              },
+            ],
+            None,
+          ),
+        ),
+      ],
+      None,
+    )
+  }
+  let pattern = @ast.Pattern::ArrayPat(
+    [
+      Some(@ast.Pattern::IdentPat("first")),
+      Some(deep),
+      Some(@ast.Pattern::AssignTarget(ignored)),
+      Some(@ast.Pattern::IdentPat("last")),
+    ],
+    Some(@ast.Pattern::IdentPat("rest")),
+  )
+  let names : Array[String] = ["existing"]
+  collect_pattern_tdz_names(pattern, names)
+  json_inspect(names, content=["existing", "first", "deep", "last", "rest"])
+}
