@@ -112,17 +112,154 @@ test "Task 4C: var preflight preserves shallow order and first error" {
 fn annex_b_tagged_names(
   source : String,
   names : Array[String],
+  excluded? : @set.Set[String] = @set.Set::default(),
 ) -> Array[String] raise Error {
   let parsed = @parser.parse(source)
   let interp = Interpreter::new()
   let env = Environment::new()
-  hoist_eval_annex_b_candidates(interp, parsed.stmts, env, @set.Set::default())
+  hoist_eval_annex_b_candidates(
+    interp,
+    parsed.stmts,
+    env,
+    @set.Set::default(),
+    excluded~,
+  )
   names.filter(name => {
     match env.bindings.get(name) {
       Some(binding) => binding.annex_b_hoisted
       None => false
     }
   })
+}
+
+///|
+test "Task 4D: Annex B candidate effects follow source traversal order" {
+  let source =
+    #|{ function sibling_first() {} function sibling_second() {} }
+    #|if (false) function if_then() {} else function if_else() {}
+    #|switch (0) {
+    #|  case 0: function case_first() {}
+    #|  default: function case_second() {}
+    #|}
+    #|try { function try_first() {} }
+    #|catch (e) { function catch_second() {} }
+    #|finally { function finally_third() {} }
+  let parsed = @parser.parse(source)
+  let interp = Interpreter::new()
+  let env = Environment::new()
+  hoist_eval_annex_b_candidates(interp, parsed.stmts, env, @set.Set::default())
+  json_inspect(env.bindings.keys().collect(), content=[
+    "sibling_first", "sibling_second", "if_then", "if_else", "case_first", "case_second",
+    "try_first", "catch_second", "finally_third",
+  ])
+}
+
+///|
+test "Task 4D: StmtList and export preserve incoming block context" {
+  let parsed = @parser.parse(
+    "function plain() {} label: function labeled() {} export function exported() {}",
+  )
+  guard parsed.stmts[2]
+    is @ast.Stmt::ExportNamedDecl(Some(exported), _, _, _, _) else {
+    abort("expected exported declaration")
+  }
+  let (loc, _) = hoisting_test_seed()
+  let interp = Interpreter::new()
+  let top_env = Environment::new()
+  hoist_eval_annex_b_candidates(
+    interp,
+    [
+      @ast.Stmt::StmtList([parsed.stmts[0]], loc),
+      parsed.stmts[1],
+      parsed.stmts[2],
+    ],
+    top_env,
+    @set.Set::default(),
+  )
+  json_inspect(
+    ["plain", "labeled", "exported"].map(name => {
+      top_env.bindings
+      .get(name)
+      .map_or(false, binding => binding.annex_b_hoisted)
+    }),
+    content=[false, true, false],
+  )
+
+  let block_env = Environment::new()
+  hoist_eval_annex_b_candidates(
+    interp,
+    [
+      @ast.Stmt::Block(
+        [
+          @ast.Stmt::StmtList([parsed.stmts[0]], loc),
+          @ast.Stmt::ExportNamedDecl(Some(exported), [], None, LexNormal, loc),
+        ],
+        loc,
+      ),
+    ],
+    block_env,
+    @set.Set::default(),
+  )
+  json_inspect(
+    ["plain", "exported"].map(name => {
+      block_env.bindings
+      .get(name)
+      .map_or(false, binding => binding.annex_b_hoisted)
+    }),
+    content=[true, true],
+  )
+}
+
+///|
+test "Task 4D: loop-head frame does not leak to later siblings" {
+  let source =
+    #|for (let loop_name = 0; false;) { function loop_name() {} }
+    #|if (false) function loop_name() {}
+    #|for (let body_only = 0; false;) { function body_only() {} }
+    #|if (false) function later() {}
+  json_inspect(
+    annex_b_tagged_names(source, ["loop_name", "body_only", "later"]),
+    content=["loop_name", "later"],
+  )
+}
+
+///|
+test "Task 4D: excluded candidate does not suppress later eligible candidate" {
+  let excluded = @set.Set::default()
+  excluded.add("parameter")
+  json_inspect(
+    annex_b_tagged_names(
+      "{ function parameter() {} function eligible() {} }",
+      ["parameter", "eligible"],
+      excluded~,
+    ),
+    content=["eligible"],
+  )
+}
+
+///|
+test "Task 4D: try catch and finally lexical frames have distinct lifetimes" {
+  let source =
+    #|try {
+    #|  let try_name;
+    #|  { function try_name() {} }
+    #|} catch (identifier) {
+    #|  function identifier() {}
+    #|  function try_name() {}
+    #|  let catch_name;
+    #|  { function catch_name() {} }
+    #|} finally {
+    #|  function catch_name() {}
+    #|  let finally_name;
+    #|  { function finally_name() {} }
+    #|}
+    #|try {} catch ({ destructured }) { function destructured() {} }
+  json_inspect(
+    annex_b_tagged_names(source, [
+      "try_name", "identifier", "catch_name", "finally_name", "destructured",
+    ]),
+    content=["try_name", "identifier", "catch_name"],
+  )
 }
 
 ///|
