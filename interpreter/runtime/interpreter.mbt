@@ -522,47 +522,60 @@ pub fn has_parameter_expressions(params : Array[@ast.Param]) -> Bool {
 }
 
 ///|
+priv enum ParameterExpressionWork {
+  VisitParameterPattern(@ast.Pattern)
+  ParameterExpressionMarker
+}
+
+///|
 /// Returns true iff a BindingPattern contains any Initializer,
 /// computed property key, or assignment target — i.e. the AST
 /// subtrees the spec classifies as expressions inside
 /// `ContainsExpression`.
 fn pattern_contains_expression(pattern : @ast.Pattern) -> Bool {
-  match pattern {
-    IdentPat(_) => false
-    DefaultPat(_, _) => true
-    // AssignTarget shows up only for destructuring-assignment forms, not
-    // BindingPattern parameters, but treat it as an expression defensively.
-    AssignTarget(_) => true
-    ArrayPat(elements, rest) => {
-      for e in elements {
-        match e {
-          Some(p) => if pattern_contains_expression(p) { return true }
-          None => ()
+  let work = [ParameterExpressionWork::VisitParameterPattern(pattern)]
+  while work.pop() is Some(item) {
+    match item {
+      ParameterExpressionMarker => return true
+      VisitParameterPattern(pattern) =>
+        match pattern {
+          IdentPat(_) => ()
+          DefaultPat(_, _) => return true
+          // AssignTarget shows up only for destructuring-assignment forms, not
+          // BindingPattern parameters, but treat it as an expression defensively.
+          AssignTarget(_) => return true
+          ArrayPat(elements, rest) => {
+            match rest {
+              Some(rest) => work.push(VisitParameterPattern(rest))
+              None => ()
+            }
+            for i = elements.length() - 1; i >= 0; i = i - 1 {
+              match elements[i] {
+                Some(element) => work.push(VisitParameterPattern(element))
+                None => ()
+              }
+            }
+          }
+          ObjectPat(properties, rest) => {
+            match rest {
+              Some(rest) => work.push(VisitParameterPattern(rest))
+              None => ()
+            }
+            for i = properties.length() - 1; i >= 0; i = i - 1 {
+              let property = properties[i]
+              work.push(VisitParameterPattern(property.value))
+              if property.computed_key is Some(_) {
+                work.push(ParameterExpressionMarker)
+              }
+              if property.default_val is Some(_) {
+                work.push(ParameterExpressionMarker)
+              }
+            }
+          }
         }
-      }
-      match rest {
-        Some(p) => pattern_contains_expression(p)
-        None => false
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        if prop.default_val is Some(_) {
-          return true
-        }
-        if prop.computed_key is Some(_) {
-          return true
-        }
-        if pattern_contains_expression(prop.value) {
-          return true
-        }
-      }
-      match rest {
-        Some(p) => pattern_contains_expression(p)
-        None => false
-      }
     }
   }
+  false
 }
 
 ///|
