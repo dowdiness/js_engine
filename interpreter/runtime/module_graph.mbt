@@ -856,23 +856,25 @@ fn module_dependency_path_exists(
   records_by_specifier : Map[String, ModuleRunRecord],
   seen : @set.Set[String],
 ) -> Bool {
-  if start == target {
-    return true
-  }
-  if seen.contains(start) {
-    return false
-  }
-  seen.add(start)
-  match records_by_specifier.get(start) {
-    Some(record) =>
-      for dependency in record.dependencies() {
-        if module_dependency_path_exists(
-            dependency, target, records_by_specifier, seen,
-          ) {
-          return true
+  let pending = [start]
+  while pending.length() > 0 {
+    let current = pending.pop().unwrap()
+    if current == target {
+      return true
+    }
+    if seen.contains(current) {
+      continue
+    }
+    seen.add(current)
+    match records_by_specifier.get(current) {
+      Some(record) => {
+        let dependencies = record.dependencies()
+        for i = dependencies.length() - 1; i >= 0; i = i - 1 {
+          pending.push(dependencies[i])
         }
       }
-    None => ()
+      None => ()
+    }
   }
   false
 }
@@ -907,24 +909,45 @@ fn Interpreter::visit_module_dependencies_first(
     _ => ()
   }
   state[record.specifier] = 1
-  for edge in record.dependency_edges() {
+  let records = [record]
+  let edges_by_frame = [record.dependency_edges()]
+  let next_indices = [0]
+  while records.length() > 0 {
+    let frame_index = records.length() - 1
+    let current = records[frame_index]
+    let edges = edges_by_frame[frame_index]
+    let edge_index = next_indices[frame_index]
+    if edge_index >= edges.length() {
+      action(self, current)
+      state[current.specifier] = 2
+      ignore(records.pop())
+      ignore(edges_by_frame.pop())
+      ignore(next_indices.pop())
+      continue
+    }
+    next_indices[frame_index] = edge_index + 1
+    let edge = edges[edge_index]
     let dependency = edge.0
     let strong = edge.1
     if should_skip_weak_module_back_edge(
-        record, dependency, strong, records_by_specifier,
+        current, dependency, strong, records_by_specifier,
       ) {
       continue
     }
     match records_by_specifier.get(dependency) {
       Some(dep_record) =>
-        self.visit_module_dependencies_first(
-          dep_record, records_by_specifier, state, action,
-        )
+        match state.get(dep_record.specifier) {
+          Some(1) | Some(2) => ()
+          _ => {
+            state[dep_record.specifier] = 1
+            records.push(dep_record)
+            edges_by_frame.push(dep_record.dependency_edges())
+            next_indices.push(0)
+          }
+        }
       None => ()
     }
   }
-  action(self, record)
-  state[record.specifier] = 2
 }
 
 ///|

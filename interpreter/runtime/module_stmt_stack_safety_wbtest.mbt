@@ -245,6 +245,115 @@ test "Task 6A: deep declaration carriers append all names in source order" {
 }
 
 ///|
+fn module_dependency_chain(
+  length : Int,
+) -> Map[String, ModuleRunRecord] raise Error {
+  let records : Map[String, ModuleRunRecord] = Map([])
+  let import_stmt = module_test_stmt("import './next';")
+  for i in 0..<length {
+    let specifier = i.to_string()
+    let stmts = if i + 1 < length {
+      [
+        match import_stmt {
+          ImportDecl(a, b, c, _, d, e) =>
+            @ast.Stmt::ImportDecl(a, b, c, (i + 1).to_string(), d, e)
+          _ => fail("import")
+        },
+      ]
+    } else {
+      []
+    }
+    records[specifier] = module_test_record_at(specifier, stmts)
+  }
+  records
+}
+
+///|
+test "Task 6B: dependency walker handles a 4096-record chain in exact postorder" {
+  let length = 4096
+  let records = module_dependency_chain(length)
+  let order : Array[String] = []
+  let state : Map[String, Int] = Map([])
+  Interpreter::new().visit_module_dependencies_first(
+    records["0"],
+    records,
+    state,
+    (_, record) => order.push(record.specifier),
+  )
+  assert_eq(order.length(), length)
+  for i in 0..<length {
+    assert_eq(order[i], (length - i - 1).to_string())
+    assert_eq(state[(length - i - 1).to_string()], 2)
+  }
+}
+
+///|
+test "Task 6B: dependency path search handles deep true false and shared seen cases" {
+  let length = 4096
+  let records = module_dependency_chain(length)
+  assert_false(
+    module_dependency_path_exists("0", "missing", records, @set.Set::default()),
+  )
+  let seen = @set.Set::default()
+  assert_true(module_dependency_path_exists("0", "4095", records, seen))
+  assert_true(seen.contains("0"))
+  assert_true(seen.contains("4094"))
+  assert_false(module_dependency_path_exists("0", "missing", records, seen))
+  assert_true(module_dependency_path_exists("same", "same", records, seen))
+  assert_false(module_dependency_path_exists("absent", "target", records, seen))
+  assert_true(seen.contains("absent"))
+}
+
+///|
+test "Task 6B: weak re-export ring visits each record once in established order" {
+  let records : Map[String, ModuleRunRecord] = Map([])
+  records["a"] = module_test_record_at(
+    "a",
+    @parser.parse("export * from 'b';").stmts,
+  )
+  records["b"] = module_test_record_at(
+    "b",
+    @parser.parse("export * from 'c';").stmts,
+  )
+  records["c"] = module_test_record_at(
+    "c",
+    @parser.parse("export * from 'a';").stmts,
+  )
+  let order : Array[String] = []
+  let state : Map[String, Int] = Map([])
+  let interp = Interpreter::new()
+  for specifier in ["a", "b", "c"] {
+    interp.visit_module_dependencies_first(records[specifier], records, state, (
+      _,
+      record,
+    ) => order.push(record.specifier))
+  }
+  json_inspect(order, content=["a", "b", "c"])
+}
+
+///|
+test "Task 6B: missing dependencies are ignored and action errors leave visiting state" {
+  let missing = module_test_record_at(
+    "main",
+    @parser.parse("import 'absent';").stmts,
+  )
+  let records : Map[String, ModuleRunRecord] = Map([("main", missing)])
+  let state : Map[String, Int] = Map([])
+  let result : Result[Unit, Error] = Ok(
+    Interpreter::new().visit_module_dependencies_first(
+      missing,
+      records,
+      state,
+      (_, _) => raise @errors.TypeError(message="stop"),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  assert_true(result is Err(_))
+  assert_eq(state["main"], 1)
+}
+
+///|
 test "Task 6A: deep import and direct export lookups keep first match" {
   let imports = nest_module_stmt_lists(
     @ast.Stmt::StmtList(
