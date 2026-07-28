@@ -18,6 +18,8 @@ fn nested_array_pattern_source(depth : Int, inner : String) -> String {
 
 ///|
 test "post-parse stack safety: GeneratorFunction parameter Contains(YieldExpression)" {
+  // Constructor integration reaches the parser's independent validation first;
+  // generator_wbtest.mbt directly covers the private runtime walker.
   let parameter = nested_array_pattern_source(512, "value = yield 0")
   inspect(
     run_throws(
