@@ -19,6 +19,149 @@ fn module_test_record(stmts : Array[@ast.Stmt]) -> ModuleRunRecord {
 }
 
 ///|
+fn module_test_record_at(
+  specifier : String,
+  stmts : Array[@ast.Stmt],
+) -> ModuleRunRecord {
+  { specifier, stmts, exports: Map([]), env: Environment::new() }
+}
+
+///|
+fn deep_exported_destructure(depth : Int) -> @ast.Stmt {
+  let loc = @token.Loc::default()
+  let mut pattern = @ast.Pattern::IdentPat("deep_name")
+  for _ in 0..<depth {
+    pattern = @ast.Pattern::DefaultPat(pattern, @ast.Expr::UndefinedLit(loc))
+  }
+  @ast.Stmt::ExportNamedDecl(
+    Some(
+      @ast.Stmt::DestructureDecl(
+        LetKind,
+        pattern,
+        @ast.Expr::UndefinedLit(loc),
+        loc,
+      ),
+    ),
+    [],
+    None,
+    LexNormal,
+    loc,
+  )
+}
+
+///|
+test "Task 6A: deep exported destructuring uses stack-safe BoundNames metadata" {
+  let exported = deep_exported_destructure(4096)
+  let decl = match exported {
+    ExportNamedDecl(Some(decl), _, _, _, _) => decl
+    _ => fail("export")
+  }
+  let interp = Interpreter::new()
+  interp.extract_export_names(decl)
+  json_inspect(interp.module_export_bindings, content=[
+    ["deep_name", "deep_name"],
+  ])
+  interp.predeclare_decl_exports(decl, Environment::new())
+  assert_true(interp.module_exports.contains("deep_name"))
+  let names : Array[String] = []
+  collect_module_direct_export_names_from_stmt(
+    exported,
+    names,
+    @set.Set::default(),
+  )
+  json_inspect(names, content=["deep_name"])
+  assert_eq(
+    module_direct_export_binding_name_from_stmt(
+      module_test_record([exported]),
+      exported,
+      "deep_name",
+    ),
+    Some("deep_name"),
+  )
+}
+
+///|
+test "Task 6A: export wrapper is opaque but declaration payload carrier flattens" {
+  let loc = @token.Loc::default()
+  let payload = @ast.Stmt::StmtList(
+    [module_test_stmt("let first = 1;"), module_test_stmt("let second = 2;")],
+    loc,
+  )
+  let wrapper = @ast.Stmt::ExportNamedDecl(
+    Some(payload),
+    [],
+    None,
+    LexNormal,
+    loc,
+  )
+  let flattened = flatten_module_stmt_carriers(wrapper)
+  assert_eq(flattened.length(), 1)
+  assert_true(flattened[0] is ExportNamedDecl(_))
+  let names : Array[String] = []
+  collect_module_direct_export_names_from_stmt(
+    wrapper,
+    names,
+    @set.Set::default(),
+  )
+  json_inspect(names, content=["first", "second"])
+}
+
+///|
+test "Task 6A: synthetic statement carrier keeps direct indirect star precedence" {
+  let interp = Interpreter::new()
+  let direct = module_test_record(
+    @parser.parse(
+      "export const chosen = 1; export { chosen } from './indirect'; export * from './star';",
+    ).stmts,
+  )
+  direct.exports["chosen"] = Number(1.0)
+  let indirect = module_test_record(
+    @parser.parse(
+      "export { chosen } from './indirect'; export * from './star';",
+    ).stmts,
+  )
+  let indirect_source = module_test_record_at(
+    "./indirect",
+    @parser.parse("export const chosen = 2;").stmts,
+  )
+  indirect_source.exports["chosen"] = Number(2.0)
+  let star_source = module_test_record_at(
+    "./star",
+    @parser.parse("export const chosen = 3;").stmts,
+  )
+  star_source.exports["chosen"] = Number(3.0)
+  let records : Map[String, ModuleRunRecord] = Map([])
+  records["./indirect"] = indirect_source
+  records["./star"] = star_source
+  let resolved_direct = interp.resolve_module_export(
+    direct,
+    "chosen",
+    records,
+    @set.Set::default(),
+  )
+  let resolved_indirect = interp.resolve_module_export(
+    indirect,
+    "chosen",
+    records,
+    @set.Set::default(),
+  )
+  inspect(
+    match resolved_direct {
+      Resolved(result) => result.module_specifier
+      _ => "missing"
+    },
+    content="./main",
+  )
+  inspect(
+    match resolved_indirect {
+      Resolved(result) => result.module_specifier
+      _ => "missing"
+    },
+    content="./indirect",
+  )
+}
+
+///|
 test "Task 6A: deep module dependency carriers preserve source order and duplicates" {
   let nested = nest_module_stmt_lists(
     @ast.Stmt::StmtList(

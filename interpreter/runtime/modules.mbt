@@ -231,42 +231,10 @@ fn Interpreter::extract_export_names(
       ClassDecl(name, _, _, _, _) =>
         self.module_export_bindings.push((name, name))
       DestructureDecl(_, pattern, _, _) =>
-        self.extract_pattern_export_names(pattern)
-      _ => ()
-    }
-  }
-}
-
-///|
-/// Record names from a destructuring pattern for deferred export resolution
-fn Interpreter::extract_pattern_export_names(
-  self : Interpreter,
-  pattern : @ast.Pattern,
-) -> Unit {
-  match pattern {
-    IdentPat(name) => self.module_export_bindings.push((name, name))
-    DefaultPat(inner_pat, _) => self.extract_pattern_export_names(inner_pat)
-    AssignTarget(_) => () // member expressions don't export names
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => self.extract_pattern_export_names(p)
-          None => ()
+        for name in @static_semantics.bound_names(pattern) {
+          self.module_export_bindings.push((name, name))
         }
-      }
-      match rest {
-        Some(p) => self.extract_pattern_export_names(p)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        self.extract_pattern_export_names(prop.value)
-      }
-      match rest {
-        Some(p) => self.extract_pattern_export_names(p)
-        None => ()
-      }
+      _ => ()
     }
   }
 }

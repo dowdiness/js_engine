@@ -92,42 +92,10 @@ fn Interpreter::predeclare_decl_exports(
       ClassDecl(name, _, _, _, _) =>
         self.predeclare_module_export_cell(name, name, env)
       DestructureDecl(_, pattern, _, _) =>
-        self.predeclare_pattern_exports(pattern, env)
-      _ => ()
-    }
-  }
-}
-
-///|
-fn Interpreter::predeclare_pattern_exports(
-  self : Interpreter,
-  pattern : @ast.Pattern,
-  env : Environment,
-) -> Unit {
-  match pattern {
-    IdentPat(name) => self.predeclare_module_export_cell(name, name, env)
-    DefaultPat(inner_pat, _) => self.predeclare_pattern_exports(inner_pat, env)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => self.predeclare_pattern_exports(p, env)
-          None => ()
+        for name in @static_semantics.bound_names(pattern) {
+          self.predeclare_module_export_cell(name, name, env)
         }
-      }
-      match rest {
-        Some(p) => self.predeclare_pattern_exports(p, env)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        self.predeclare_pattern_exports(prop.value, env)
-      }
-      match rest {
-        Some(p) => self.predeclare_pattern_exports(p, env)
-        None => ()
-      }
+      _ => ()
     }
   }
 }
@@ -441,38 +409,6 @@ fn add_module_export_name(
 }
 
 ///|
-fn pattern_exports_name(pattern : @ast.Pattern, export_name : String) -> Bool {
-  match pattern {
-    IdentPat(name) => name == export_name
-    DefaultPat(inner_pat, _) => pattern_exports_name(inner_pat, export_name)
-    AssignTarget(_) => false
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => if pattern_exports_name(p, export_name) { return true }
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => pattern_exports_name(p, export_name)
-        None => false
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        if pattern_exports_name(prop.value, export_name) {
-          return true
-        }
-      }
-      match rest {
-        Some(p) => pattern_exports_name(p, export_name)
-        None => false
-      }
-    }
-  }
-}
-
-///|
 fn decl_exports_name(decl : @ast.Stmt, export_name : String) -> Bool {
   for current in flatten_module_stmt_carriers(decl) {
     let found = match current {
@@ -486,8 +422,16 @@ fn decl_exports_name(decl : @ast.Stmt, export_name : String) -> Bool {
       AsyncGeneratorDecl(name, _, _, _, _) => name == export_name
       AsyncGeneratorDeclExt(name, _, _, _, _, _) => name == export_name
       ClassDecl(name, _, _, _, _) => name == export_name
-      DestructureDecl(_, pattern, _, _) =>
-        pattern_exports_name(pattern, export_name)
+      DestructureDecl(_, pattern, _, _) => {
+        let mut matches = false
+        for name in @static_semantics.bound_names(pattern) {
+          if name == export_name {
+            matches = true
+            break
+          }
+        }
+        matches
+      }
       _ => false
     }
     if found {
@@ -516,43 +460,10 @@ fn collect_decl_export_names(
       | AsyncGeneratorDeclExt(name, _, _, _, _, _)
       | ClassDecl(name, _, _, _, _) => add_module_export_name(names, seen, name)
       DestructureDecl(_, pattern, _, _) =>
-        collect_pattern_export_names(pattern, names, seen)
-      _ => ()
-    }
-  }
-}
-
-///|
-fn collect_pattern_export_names(
-  pattern : @ast.Pattern,
-  names : Array[String],
-  seen : @set.Set[String],
-) -> Unit {
-  match pattern {
-    IdentPat(name) => add_module_export_name(names, seen, name)
-    DefaultPat(inner_pat, _) =>
-      collect_pattern_export_names(inner_pat, names, seen)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => collect_pattern_export_names(p, names, seen)
-          None => ()
+        for name in @static_semantics.bound_names(pattern) {
+          add_module_export_name(names, seen, name)
         }
-      }
-      match rest {
-        Some(p) => collect_pattern_export_names(p, names, seen)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        collect_pattern_export_names(prop.value, names, seen)
-      }
-      match rest {
-        Some(p) => collect_pattern_export_names(p, names, seen)
-        None => ()
-      }
+      _ => ()
     }
   }
 }
