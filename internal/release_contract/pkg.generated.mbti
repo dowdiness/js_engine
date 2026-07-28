@@ -1,0 +1,79 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "dowdiness/js_engine/internal/release_contract"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn parse_manifest(String) -> ReleaseCandidateManifest raise ReleaseContractError
+
+pub fn render_manifest(ReleaseCandidateManifest) -> String
+
+pub fn validate_candidate(ReleaseCandidateManifest, ReleaseCandidateManifest) -> ReleaseValidation
+
+// Errors
+pub suberror ReleaseContractError {
+  InvalidManifest(String)
+}
+
+// Types and methods
+pub struct ConformanceCounts {
+  passed : Int
+  executed : Int
+  discovered : Int
+  skipped : Int
+} derive(Eq, @debug.Debug)
+
+pub struct PackageEvidence {
+  content_sha256 : String
+  file_count : Int
+} derive(Eq, @debug.Debug)
+
+pub struct ReleaseCandidateManifest {
+  schema_version : Int
+  version : String
+  candidate_tree : String
+  unit_tests : UnitTestCounts
+  test262 : Test262Evidence
+  package_evidence : PackageEvidence
+} derive(Eq, @debug.Debug)
+
+pub struct ReleaseDiagnostic {
+  code : String
+  expected : String
+  actual : String
+} derive(Eq, @debug.Debug)
+pub fn ReleaseDiagnostic::actual(Self) -> String
+pub fn ReleaseDiagnostic::code(Self) -> String
+pub fn ReleaseDiagnostic::expected(Self) -> String
+
+pub struct ReleaseValidation {
+  allowed : Bool
+  // private fields
+}
+pub fn ReleaseValidation::allowed(Self) -> Bool
+pub fn ReleaseValidation::diagnostics(Self) -> Array[ReleaseDiagnostic]
+
+pub struct Test262Evidence {
+  run_id : String
+  source_commit : String
+  source_tree : String
+  corpus_commit : String
+  result_schema_version : Int
+  summary_sha256 : String
+  skip_metadata_sha256 : String
+  edition_report_sha256 : String
+  strict : ConformanceCounts
+  non_strict : ConformanceCounts
+} derive(Eq, @debug.Debug)
+
+pub struct UnitTestCounts {
+  passed : Int
+  executed : Int
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits
+
