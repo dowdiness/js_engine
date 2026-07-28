@@ -75,4 +75,23 @@ test "bound names: deep patterns preserve source order and ignore expressions" {
   json_inspect(bound_names(deep), content=["x"])
   json_inspect(bound_names(@ast.Pattern::AssignTarget(embedded_expr)), content=[])
   json_inspect(bound_names(object), content=["first", "second", "rest"])
+  let array = @ast.Pattern::ArrayPat(
+    [
+      Some(@ast.Pattern::IdentPat("element_first")),
+      None,
+      Some(
+        @ast.Pattern::ArrayPat(
+          [
+            Some(@ast.Pattern::IdentPat("nested_first")),
+            Some(@ast.Pattern::IdentPat("nested_second")),
+          ],
+          None,
+        ),
+      ),
+    ],
+    Some(@ast.Pattern::IdentPat("array_rest")),
+  )
+  json_inspect(bound_names(array), content=[
+    "element_first", "nested_first", "nested_second", "array_rest",
+  ])
 }
