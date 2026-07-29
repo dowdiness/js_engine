@@ -303,6 +303,12 @@
     },
     {
       "from": "compiler",
+      "to": "interpreter",
+      "scope": "wbtest",
+      "reason": "compiler white-box tests verify pre-execution selection does not mutate interpreter state"
+    },
+    {
+      "from": "compiler",
       "to": "parser",
       "scope": "test",
       "reason": "compiler tests parse source fixtures"

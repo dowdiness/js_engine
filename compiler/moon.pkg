@@ -12,5 +12,6 @@ import {
 } for "test"
 
 import {
+  "dowdiness/js_engine/interpreter",
   "dowdiness/js_engine/parser",
 } for "wbtest"

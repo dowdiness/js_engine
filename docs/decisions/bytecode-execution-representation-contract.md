@@ -257,11 +257,11 @@ abrupt completion. Normal, return, break, continue, throw, and runtime-abrupt
 completion all enter a pending `finally`. Normal completion of `finally`
 resumes the saved completion; an abrupt `finally` replaces it.
 
-Bytecode does not support try/catch/finally today:
-`UNSUPPORTED_TRY_CATCH_STATEMENT` remains in `compiler/bytecode_ir.mbt`. The
-contract claims representational capability, not current syntax support. Stage
-11 and #385 own the representation work. #630 establishes tree-walker
-continuation behavior, while #631 integrates bytecode with the dispatcher.
+Bytecode does not support try/catch/finally today; lowering selects the private
+pre-execution unsupported outcome for it. The contract claims representational
+capability, not current syntax support. Stage 11 and #385 own the
+representation work. #630 establishes tree-walker continuation behavior, while
+#631 integrates bytecode with the dispatcher.
 
 ### 2.9 Dispatcher and fallback boundary
 
