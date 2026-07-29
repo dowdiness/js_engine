@@ -670,25 +670,27 @@ pub fn Interpreter::run(
   let strict = @static_semantics.has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
   try {
-    let result = with_cleared_active_callee_realm(self.realm_state, fn() raise {
-      // Static block-scoped redeclaration checks (block lexical-vs-var conflicts).
-      self.validate_block_early_errors(stmts, strict)
-      // Hoist var/function declarations and top-level lexical TDZ markers.
-      self.hoist_declarations(stmts, self.global, strict~)
-      hoist_block_tdz(stmts, self.global)
-      let mut last : Value = Undefined
-      for stmt in stmts {
-        match self.exec_stmt(ctx, stmt, self.global) {
-          Normal(v) => last = v
-          ReturnSignal(_) =>
-            raise @errors.SyntaxError(
-              message="return statement outside of function",
-            )
-          sig => raise_if_break_continue(sig)
+    let result = if activation_dispatch_leaf_program_is_admissible(stmts) {
+      activation_dispatch_root_value(
+        self.run_activation_dispatch_leaf_program(stmts, ctx),
+      )
+    } else {
+      with_cleared_active_callee_realm(self.realm_state, fn() raise {
+        self.prepare_root_program_execution(stmts, self.global, strict)
+        let mut last : Value = Undefined
+        for stmt in stmts {
+          match self.exec_stmt(ctx, stmt, self.global) {
+            Normal(v) => last = v
+            ReturnSignal(_) =>
+              raise @errors.SyntaxError(
+                message="return statement outside of function",
+              )
+            sig => raise_if_break_continue(sig)
+          }
         }
-      }
-      last
-    })
+        last
+      })
+    }
     result
   } catch {
     e =>
