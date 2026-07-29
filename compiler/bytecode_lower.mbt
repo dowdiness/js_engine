@@ -1,61 +1,249 @@
 ///|
-fn bytecode_unsupported(kind : String) -> Unit raise Error {
-  raise @errors.InternalError(message="bytecode prototype unsupported: " + kind)
+priv enum BytecodeUnsupportedReason {
+  AsyncArrowFunction
+  AsyncFunctionDeclaration
+  AsyncFunctionExpression
+  AsyncGeneratorDeclaration
+  AsyncGeneratorExpression
+  BlockFunctionDeclaration
+  BlockLexicalDeclaration
+  ClassDeclaration
+  ClassExpression
+  CompoundAssignmentTarget
+  ControlFlowFunctionDeclaration
+  DefaultParameter
+  DeleteNonPropertyOperator
+  DestructuringDeclarationContext
+  DestructuringDeclarationKind
+  DestructuringParameter
+  DestructuringPatternComputedKey
+  DestructuringPatternDefault
+  DestructuringPatternMemberTarget
+  ExportDeclaration
+  ForInAssignmentTarget
+  ForInLexicalDeclaration
+  ForInVarDeclaration
+  ForLexicalInitializer
+  ForOfStatement
+  GeneratorDeclaration
+  GeneratorExpression
+  ImportDeclaration
+  ObjectLiteralAsyncGeneratorMethodProperty
+  ObjectLiteralAsyncMethodProperty
+  ObjectLiteralDataPropertySuper
+  ObjectLiteralGeneratorMethodProperty
+  ObjectLiteralProtoMethodProperty
+  PrivateClassElement
+  SuperCall
+  SuperAssignment
+  SwitchLexicalDeclaration
+  TryCatchStatement
+  UpdateTarget
+  WebCompatCallAssign
+  WithStatement
 }
 
 ///|
-fn stmt_has_lexical_decl(stmt : @ast.Stmt) -> Bool {
+priv struct BytecodeUnsupported {
+  reason : BytecodeUnsupportedReason
+  loc : @token.Loc
+}
+
+///|
+fn BytecodeUnsupported::BytecodeUnsupported(
+  reason : BytecodeUnsupportedReason,
+  loc : @token.Loc,
+) -> BytecodeUnsupported {
+  { reason, loc }
+}
+
+///|
+priv suberror BytecodeUnsupportedSignal {
+  BytecodeUnsupportedSignal(BytecodeUnsupported)
+}
+
+///|
+fn BytecodeUnsupportedReason::display_text(
+  self : BytecodeUnsupportedReason,
+) -> String {
+  match self {
+    AsyncArrowFunction => "async arrow function"
+    AsyncFunctionDeclaration => "async function declaration"
+    AsyncFunctionExpression => "async function expression"
+    AsyncGeneratorDeclaration => "async generator declaration"
+    AsyncGeneratorExpression => "async generator expression"
+    BlockFunctionDeclaration => "block function declaration"
+    BlockLexicalDeclaration => "block lexical declaration"
+    ClassDeclaration => "class declaration"
+    ClassExpression => "class expression"
+    CompoundAssignmentTarget => "compound assignment target"
+    ControlFlowFunctionDeclaration => "control-flow function declaration"
+    DefaultParameter => "default parameter"
+    DeleteNonPropertyOperator => "delete non-property operator"
+    DestructuringDeclarationContext => "destructuring declaration context"
+    DestructuringDeclarationKind => "destructuring declaration kind"
+    DestructuringParameter => "destructuring parameter"
+    DestructuringPatternComputedKey => "destructuring pattern computed key"
+    DestructuringPatternDefault => "destructuring pattern default"
+    DestructuringPatternMemberTarget => "destructuring pattern member target"
+    ExportDeclaration => "export declaration"
+    ForInAssignmentTarget => "for-in assignment target"
+    ForInLexicalDeclaration => "for-in lexical declaration"
+    ForInVarDeclaration => "for-in var declaration"
+    ForLexicalInitializer => "for lexical initializer"
+    ForOfStatement => "for-of statement"
+    GeneratorDeclaration => "generator declaration"
+    GeneratorExpression => "generator expression"
+    ImportDeclaration => "import declaration"
+    ObjectLiteralAsyncGeneratorMethodProperty =>
+      "object literal async generator method property"
+    ObjectLiteralAsyncMethodProperty => "object literal async method property"
+    ObjectLiteralDataPropertySuper => "object literal data property super"
+    ObjectLiteralGeneratorMethodProperty =>
+      "object literal generator method property"
+    ObjectLiteralProtoMethodProperty =>
+      "object literal __proto__ method property"
+    PrivateClassElement => "private class element"
+    SuperCall => "super call"
+    SuperAssignment => "super assignment"
+    SwitchLexicalDeclaration => "switch lexical declaration"
+    TryCatchStatement => "try/catch statement"
+    UpdateTarget => "update target"
+    WebCompatCallAssign => "call expression as assignment target"
+    WithStatement => "with statement"
+  }
+}
+
+///|
+impl Show for BytecodeUnsupportedSignal with fn output(self, logger) {
+  match self {
+    BytecodeUnsupportedSignal(unsupported) => {
+      logger.write_string("bytecode prototype unsupported: ")
+      logger.write_string(unsupported.reason.display_text())
+      logger.write_string(" at line ")
+      logger.write_string(unsupported.loc.line.to_string())
+      logger.write_string(", col ")
+      logger.write_string(unsupported.loc.col.to_string())
+    }
+  }
+}
+
+///|
+fn bytecode_reject(
+  reason : BytecodeUnsupportedReason,
+  loc : @token.Loc,
+) -> Unit raise BytecodeUnsupportedSignal {
+  raise BytecodeUnsupportedSignal(BytecodeUnsupported(reason, loc))
+}
+
+///|
+fn bytecode_expr_loc(expr : @ast.Expr) -> @token.Loc {
+  match expr {
+    NumberLit(_, _, loc)
+    | StringLit(_, _, _, loc)
+    | BoolLit(_, loc)
+    | NullLit(loc)
+    | UndefinedLit(loc)
+    | ArrayHole(loc)
+    | Ident(_, loc)
+    | Binary(_, _, _, loc)
+    | Unary(_, _, loc)
+    | Assign(_, _, loc)
+    | Call(_, _, loc)
+    | Member(_, _, loc)
+    | Ternary(_, _, _, loc)
+    | Grouping(_, loc)
+    | ObjectLit(_, loc)
+    | ArrayLit(_, loc)
+    | ComputedMember(_, _, loc)
+    | MemberAssign(_, _, _, loc)
+    | PrivateMemberAssign(_, _, _, loc)
+    | ComputedAssign(_, _, _, loc)
+    | NewExpr(_, _, loc)
+    | ThisExpr(loc)
+    | UpdateExpr(_, _, _, loc)
+    | CompoundAssign(_, _, _, loc)
+    | Comma(_, _, loc)
+    | TemplateLit(_, _, loc)
+    | SpreadExpr(_, loc)
+    | RegexLit(_, _, loc)
+    | DestructureAssign(_, _, loc)
+    | OptionalMember(_, _, loc)
+    | OptionalComputedMember(_, _, loc)
+    | OptionalCall(_, _, loc)
+    | ChainMember(_, _, loc)
+    | ChainComputedMember(_, _, loc)
+    | SuperCall(_, loc)
+    | SuperMember(_, loc)
+    | SuperComputedMember(_, loc)
+    | SuperMemberAssign(_, _, loc)
+    | SuperComputedAssign(_, _, loc)
+    | NewTargetExpr(loc)
+    | TaggedTemplate(_, _, _, loc)
+    | YieldExpr(_, _, loc)
+    | AwaitExpr(_, loc)
+    | WebCompatCallAssign(_, _, loc)
+    | PrivateIdent(_, loc)
+    | PrivateMember(_, _, loc) => loc
+    FuncExpr(_, _, _, loc, _)
+    | FuncExprExt(_, _, _, _, loc, _)
+    | ArrowFunc(_, _, loc, _)
+    | ArrowFuncExt(_, _, _, loc, _)
+    | ClassExpr(_, _, _, loc, _)
+    | GeneratorExpr(_, _, _, loc, _)
+    | GeneratorExprExt(_, _, _, _, loc, _)
+    | AsyncFuncExpr(_, _, _, loc, _)
+    | AsyncFuncExprExt(_, _, _, _, loc, _)
+    | AsyncArrowFunc(_, _, loc, _)
+    | AsyncArrowFuncExt(_, _, _, loc, _)
+    | AsyncGeneratorExpr(_, _, _, loc, _)
+    | AsyncGeneratorExprExt(_, _, _, _, loc, _) => loc
+  }
+}
+
+///|
+fn bytecode_stmt_loc(stmt : @ast.Stmt) -> @token.Loc {
   match stmt {
-    VarDecl(LetKind, _, _, _)
-    | VarDecl(ConstKind, _, _, _)
-    | DestructureDecl(LetKind, _, _, _)
-    | DestructureDecl(ConstKind, _, _, _) => true
-    StmtList(stmts, _) | Block(stmts, _) => stmts_have_lexical_decl(stmts)
-    ForInStmt(Some(LetKind), _, _, _, _)
-    | ForInStmt(Some(ConstKind), _, _, _, _)
-    | ForInStmtPat(Some(LetKind), _, _, _, _)
-    | ForInStmtPat(Some(ConstKind), _, _, _, _)
-    | ForOfStmt(Some(LetKind), _, _, _, _)
-    | ForOfStmt(Some(ConstKind), _, _, _, _)
-    | ForOfStmtPat(Some(LetKind), _, _, _, _)
-    | ForOfStmtPat(Some(ConstKind), _, _, _, _)
-    | AsyncForOfStmt(Some(LetKind), _, _, _, _)
-    | AsyncForOfStmt(Some(ConstKind), _, _, _, _)
-    | AsyncForOfStmtPat(Some(LetKind), _, _, _, _)
-    | AsyncForOfStmtPat(Some(ConstKind), _, _, _, _) => true
-    ForInStmt(_, _, _, body, _)
-    | ForInStmtPat(_, _, _, body, _)
-    | ForInExpr(_, _, body, _)
-    | ForOfStmt(_, _, _, body, _)
-    | ForOfStmtPat(_, _, _, body, _)
-    | ForOfExpr(_, _, body, _)
-    | AsyncForOfStmt(_, _, _, body, _)
-    | AsyncForOfStmtPat(_, _, _, body, _)
-    | AsyncForOfExpr(_, _, body, _) => stmt_has_lexical_decl(body)
-    SwitchStmt(_, cases, _) => switch_cases_have_lexical_decl(cases)
-    LabeledStmt(_, body, _) => stmt_has_lexical_decl(body)
-    _ => false
+    ExprStmt(_, loc)
+    | VarDecl(_, _, _, loc)
+    | Block(_, loc)
+    | StmtList(_, loc)
+    | IfStmt(_, _, _, loc)
+    | WhileStmt(_, _, loc)
+    | ForStmt(_, _, _, _, loc)
+    | ReturnStmt(_, loc)
+    | BreakStmt(_, loc)
+    | ContinueStmt(_, loc)
+    | ThrowStmt(_, loc)
+    | TryCatchStmt(_, _, _, _, loc)
+    | SwitchStmt(_, _, loc)
+    | DoWhileStmt(_, _, loc)
+    | ForInStmt(_, _, _, _, loc)
+    | ForOfStmt(_, _, _, _, loc)
+    | ForInStmtPat(_, _, _, _, loc)
+    | ForOfStmtPat(_, _, _, _, loc)
+    | ForInExpr(_, _, _, loc)
+    | ForOfExpr(_, _, _, loc)
+    | AsyncForOfStmt(_, _, _, _, loc)
+    | AsyncForOfStmtPat(_, _, _, _, loc)
+    | AsyncForOfExpr(_, _, _, loc)
+    | DestructureDecl(_, _, _, loc)
+    | LabeledStmt(_, _, loc)
+    | ExportDefaultDecl(_, loc) => loc
+    FuncDecl(_, _, _, loc, _)
+    | FuncDeclExt(_, _, _, _, loc, _)
+    | GeneratorDecl(_, _, _, loc, _)
+    | GeneratorDeclExt(_, _, _, _, loc, _)
+    | AsyncFuncDecl(_, _, _, loc, _)
+    | AsyncFuncDeclExt(_, _, _, _, loc, _)
+    | AsyncGeneratorDecl(_, _, _, loc, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, loc, _)
+    | ClassDecl(_, _, _, loc, _) => loc
+    WithStmt(_, _, loc) => loc
+    ImportDecl(_, _, _, _, _, loc) => loc
+    ExportNamedDecl(_, _, _, _, loc) => loc
+    ExportAllDecl(_, _, _, loc) => loc
   }
-}
-
-///|
-fn stmts_have_lexical_decl(stmts : Array[@ast.Stmt]) -> Bool {
-  for stmt in stmts {
-    if stmt_has_lexical_decl(stmt) {
-      return true
-    }
-  }
-  false
-}
-
-///|
-fn switch_cases_have_lexical_decl(cases : Array[@ast.SwitchCase]) -> Bool {
-  for case in cases {
-    if stmts_have_lexical_decl(case.body) {
-      return true
-    }
-  }
-  false
 }
 
 ///|
@@ -63,6 +251,15 @@ fn bytecode_is_direct_eval_callee(expr : @ast.Expr) -> Bool {
   match expr {
     Ident("eval", _) => true
     Grouping(inner, _) => bytecode_is_direct_eval_callee(inner)
+    _ => false
+  }
+}
+
+///|
+fn bytecode_is_call_with_grouping(expr : @ast.Expr) -> Bool {
+  match expr {
+    Call(_, _, _) => true
+    Grouping(inner, _) => bytecode_is_call_with_grouping(inner)
     _ => false
   }
 }
@@ -80,26 +277,25 @@ fn bytecode_is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
 }
 
 ///|
-fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
+fn first_lexical_decl_loc(stmt : @ast.Stmt) -> @token.Loc? {
   match stmt {
-    FuncDecl(_, _, _, _, _) | FuncDeclExt(_, _, _, _, _, _) => true
-    StmtList(stmts, _) | Block(stmts, _) => stmts_have_function_decl(stmts)
-    IfStmt(_, then_branch, else_branch, _) => {
-      let else_has = match else_branch {
-        Some(stmt) => stmt_has_function_decl(stmt)
-        None => false
-      }
-      stmt_has_function_decl(then_branch) || else_has
-    }
-    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
-      stmt_has_function_decl(body)
-    ForStmt(init, _, _, body, _) => {
-      let init_has = match init {
-        Some(stmt) => stmt_has_function_decl(stmt)
-        None => false
-      }
-      init_has || stmt_has_function_decl(body)
-    }
+    VarDecl(LetKind, _, _, loc)
+    | VarDecl(ConstKind, _, _, loc)
+    | DestructureDecl(LetKind, _, _, loc)
+    | DestructureDecl(ConstKind, _, _, loc)
+    | ForInStmt(Some(LetKind), _, _, _, loc)
+    | ForInStmt(Some(ConstKind), _, _, _, loc)
+    | ForInStmtPat(Some(LetKind), _, _, _, loc)
+    | ForInStmtPat(Some(ConstKind), _, _, _, loc)
+    | ForOfStmt(Some(LetKind), _, _, _, loc)
+    | ForOfStmt(Some(ConstKind), _, _, _, loc)
+    | ForOfStmtPat(Some(LetKind), _, _, _, loc)
+    | ForOfStmtPat(Some(ConstKind), _, _, _, loc)
+    | AsyncForOfStmt(Some(LetKind), _, _, _, loc)
+    | AsyncForOfStmt(Some(ConstKind), _, _, _, loc)
+    | AsyncForOfStmtPat(Some(LetKind), _, _, _, loc)
+    | AsyncForOfStmtPat(Some(ConstKind), _, _, _, loc) => Some(loc)
+    StmtList(stmts, _) | Block(stmts, _) => first_lexical_decl_in(stmts)
     ForInStmt(_, _, _, body, _)
     | ForInStmtPat(_, _, _, body, _)
     | ForInExpr(_, _, body, _)
@@ -108,54 +304,60 @@ fn stmt_has_function_decl(stmt : @ast.Stmt) -> Bool {
     | ForOfExpr(_, _, body, _)
     | AsyncForOfStmt(_, _, _, body, _)
     | AsyncForOfStmtPat(_, _, _, body, _)
-    | AsyncForOfExpr(_, _, body, _) => stmt_has_function_decl(body)
-    SwitchStmt(_, cases, _) => switch_cases_have_function_decl(cases)
-    LabeledStmt(_, body, _) => stmt_has_function_decl(body)
-    _ => false
+    | AsyncForOfExpr(_, _, body, _)
+    | LabeledStmt(_, body, _) => first_lexical_decl_loc(body)
+    SwitchStmt(_, cases, _) => first_lexical_decl_in_cases(cases)
+    _ => None
   }
 }
 
 ///|
-fn stmts_have_function_decl(stmts : Array[@ast.Stmt]) -> Bool {
+fn first_lexical_decl_in(stmts : Array[@ast.Stmt]) -> @token.Loc? {
   for stmt in stmts {
-    if stmt_has_function_decl(stmt) {
-      return true
+    match first_lexical_decl_loc(stmt) {
+      Some(loc) => return Some(loc)
+      None => ()
     }
   }
-  false
+  None
 }
 
 ///|
-fn switch_cases_have_function_decl(cases : Array[@ast.SwitchCase]) -> Bool {
+fn first_lexical_decl_in_cases(cases : Array[@ast.SwitchCase]) -> @token.Loc? {
   for case in cases {
-    if stmts_have_function_decl(case.body) {
-      return true
+    match first_lexical_decl_in(case.body) {
+      Some(loc) => return Some(loc)
+      None => ()
     }
   }
-  false
+  None
 }
 
 ///|
-fn stmt_has_destructure_decl(stmt : @ast.Stmt) -> Bool {
+fn first_function_decl_loc(stmt : @ast.Stmt) -> @token.Loc? {
   match stmt {
-    DestructureDecl(_, _, _, _) => true
-    StmtList(stmts, _) | Block(stmts, _) => stmts_have_destructure_decl(stmts)
-    IfStmt(_, then_branch, else_branch, _) => {
-      let else_has = match else_branch {
-        Some(stmt) => stmt_has_destructure_decl(stmt)
-        None => false
+    FuncDecl(_, _, _, loc, _) | FuncDeclExt(_, _, _, _, loc, _) => Some(loc)
+    StmtList(stmts, _) | Block(stmts, _) => first_function_decl_in(stmts)
+    IfStmt(_, then_branch, else_branch, _) =>
+      match first_function_decl_loc(then_branch) {
+        Some(loc) => Some(loc)
+        None =>
+          match else_branch {
+            Some(branch) => first_function_decl_loc(branch)
+            None => None
+          }
       }
-      stmt_has_destructure_decl(then_branch) || else_has
-    }
     WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
-      stmt_has_destructure_decl(body)
-    ForStmt(init, _, _, body, _) => {
-      let init_has = match init {
-        Some(stmt) => stmt_has_destructure_decl(stmt)
-        None => false
+      first_function_decl_loc(body)
+    ForStmt(init, _, _, body, _) =>
+      match init {
+        Some(stmt) =>
+          match first_function_decl_loc(stmt) {
+            Some(loc) => Some(loc)
+            None => first_function_decl_loc(body)
+          }
+        None => first_function_decl_loc(body)
       }
-      init_has || stmt_has_destructure_decl(body)
-    }
     ForInStmt(_, _, _, body, _)
     | ForInStmtPat(_, _, _, body, _)
     | ForInExpr(_, _, body, _)
@@ -164,31 +366,97 @@ fn stmt_has_destructure_decl(stmt : @ast.Stmt) -> Bool {
     | ForOfExpr(_, _, body, _)
     | AsyncForOfStmt(_, _, _, body, _)
     | AsyncForOfStmtPat(_, _, _, body, _)
-    | AsyncForOfExpr(_, _, body, _) => stmt_has_destructure_decl(body)
-    SwitchStmt(_, cases, _) => switch_cases_have_destructure_decl(cases)
-    LabeledStmt(_, body, _) => stmt_has_destructure_decl(body)
-    _ => false
+    | AsyncForOfExpr(_, _, body, _)
+    | LabeledStmt(_, body, _) => first_function_decl_loc(body)
+    SwitchStmt(_, cases, _) => first_function_decl_in_cases(cases)
+    _ => None
   }
 }
 
 ///|
-fn stmts_have_destructure_decl(stmts : Array[@ast.Stmt]) -> Bool {
+fn first_function_decl_in(stmts : Array[@ast.Stmt]) -> @token.Loc? {
   for stmt in stmts {
-    if stmt_has_destructure_decl(stmt) {
-      return true
+    match first_function_decl_loc(stmt) {
+      Some(loc) => return Some(loc)
+      None => ()
     }
   }
-  false
+  None
 }
 
 ///|
-fn switch_cases_have_destructure_decl(cases : Array[@ast.SwitchCase]) -> Bool {
+fn first_function_decl_in_cases(cases : Array[@ast.SwitchCase]) -> @token.Loc? {
   for case in cases {
-    if stmts_have_destructure_decl(case.body) {
-      return true
+    match first_function_decl_in(case.body) {
+      Some(loc) => return Some(loc)
+      None => ()
     }
   }
-  false
+  None
+}
+
+///|
+fn first_destructure_decl_loc(stmt : @ast.Stmt) -> @token.Loc? {
+  match stmt {
+    DestructureDecl(_, _, _, loc) => Some(loc)
+    StmtList(stmts, _) | Block(stmts, _) => first_destructure_decl_in(stmts)
+    IfStmt(_, then_branch, else_branch, _) =>
+      match first_destructure_decl_loc(then_branch) {
+        Some(loc) => Some(loc)
+        None =>
+          match else_branch {
+            Some(branch) => first_destructure_decl_loc(branch)
+            None => None
+          }
+      }
+    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
+      first_destructure_decl_loc(body)
+    ForStmt(init, _, _, body, _) =>
+      match init {
+        Some(stmt) =>
+          match first_destructure_decl_loc(stmt) {
+            Some(loc) => Some(loc)
+            None => first_destructure_decl_loc(body)
+          }
+        None => first_destructure_decl_loc(body)
+      }
+    ForInStmt(_, _, _, body, _)
+    | ForInStmtPat(_, _, _, body, _)
+    | ForInExpr(_, _, body, _)
+    | ForOfStmt(_, _, _, body, _)
+    | ForOfStmtPat(_, _, _, body, _)
+    | ForOfExpr(_, _, body, _)
+    | AsyncForOfStmt(_, _, _, body, _)
+    | AsyncForOfStmtPat(_, _, _, body, _)
+    | AsyncForOfExpr(_, _, body, _)
+    | LabeledStmt(_, body, _) => first_destructure_decl_loc(body)
+    SwitchStmt(_, cases, _) => first_destructure_decl_in_cases(cases)
+    _ => None
+  }
+}
+
+///|
+fn first_destructure_decl_in(stmts : Array[@ast.Stmt]) -> @token.Loc? {
+  for stmt in stmts {
+    match first_destructure_decl_loc(stmt) {
+      Some(loc) => return Some(loc)
+      None => ()
+    }
+  }
+  None
+}
+
+///|
+fn first_destructure_decl_in_cases(
+  cases : Array[@ast.SwitchCase],
+) -> @token.Loc? {
+  for case in cases {
+    match first_destructure_decl_in(case.body) {
+      Some(loc) => return Some(loc)
+      None => ()
+    }
+  }
+  None
 }
 
 ///|
@@ -1475,7 +1743,7 @@ fn compile_bytecode_function(
     rest_param is None &&
     !builder.has_this &&
     !builder.has_new_target &&
-    !stmts_have_lexical_decl(body) &&
+    first_lexical_decl_in(body) is None &&
     !bytecode_body_contains_destructure_assign(body)),
     local_names: builder.local_names,
     local_indices: builder.local_indices,
@@ -1488,7 +1756,7 @@ fn compile_bytecode_function(
 }
 
 ///|
-pub fn compile_script_to_bytecode(
+fn build_script_bytecode(
   stmts : Array[@ast.Stmt],
 ) -> BytecodeProgram raise Error {
   {
@@ -1500,6 +1768,26 @@ pub fn compile_script_to_bytecode(
       None,
       use_local_slots=false,
     ),
+  }
+}
+
+///|
+fn lower_script_to_bytecode(
+  stmts : Array[@ast.Stmt],
+) -> Result[BytecodeProgram, BytecodeUnsupported] raise Error {
+  Ok(build_script_bytecode(stmts)) catch {
+    BytecodeUnsupportedSignal(unsupported) => Err(unsupported)
+    error => raise error
+  }
+}
+
+///|
+pub fn compile_script_to_bytecode(
+  stmts : Array[@ast.Stmt],
+) -> BytecodeProgram raise Error {
+  match lower_script_to_bytecode(stmts) {
+    Ok(program) => program
+    Err(unsupported) => raise BytecodeUnsupportedSignal(unsupported)
   }
 }
 
@@ -1559,14 +1847,17 @@ fn BytecodeBuilder::compile_switch(
   discriminant : @ast.Expr,
   cases : Array[@ast.SwitchCase],
 ) -> Unit raise Error {
-  if switch_cases_have_lexical_decl(cases) {
-    bytecode_unsupported(UNSUPPORTED_SWITCH_LEXICAL_DECLARATION)
+  match first_lexical_decl_in_cases(cases) {
+    Some(loc) => bytecode_reject(SwitchLexicalDeclaration, loc)
+    None => ()
   }
-  if switch_cases_have_function_decl(cases) {
-    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+  match first_function_decl_in_cases(cases) {
+    Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
+    None => ()
   }
-  if switch_cases_have_destructure_decl(cases) {
-    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+  match first_destructure_decl_in_cases(cases) {
+    Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+    None => ()
   }
   self.emit_undefined_completion()
   self.compile_expr(discriminant)
@@ -1618,18 +1909,21 @@ fn BytecodeBuilder::compile_for_in_identifier(
   name : String,
   obj_expr : @ast.Expr,
   body : @ast.Stmt,
+  loc : @token.Loc,
 ) -> Unit raise Error {
   match var_kind {
-    Some(VarKind) => bytecode_unsupported(UNSUPPORTED_FOR_IN_VAR_DECLARATION)
+    Some(VarKind) => bytecode_reject(ForInVarDeclaration, loc)
     Some(LetKind) | Some(ConstKind) =>
-      bytecode_unsupported(UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION)
+      bytecode_reject(ForInLexicalDeclaration, loc)
     None => ()
   }
-  if stmt_has_function_decl(body) {
-    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+  match first_function_decl_loc(body) {
+    Some(decl_loc) => bytecode_reject(ControlFlowFunctionDeclaration, decl_loc)
+    None => ()
   }
-  if stmt_has_destructure_decl(body) {
-    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+  match first_destructure_decl_loc(body) {
+    Some(decl_loc) => bytecode_reject(DestructuringDeclarationContext, decl_loc)
+    None => ()
   }
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
@@ -1660,19 +1954,22 @@ fn BytecodeBuilder::compile_for_in_pattern(
   pattern : @ast.Pattern,
   obj_expr : @ast.Expr,
   body : @ast.Stmt,
+  loc : @token.Loc,
 ) -> Unit raise Error {
   match var_kind {
-    Some(VarKind) => bytecode_unsupported(UNSUPPORTED_FOR_IN_VAR_DECLARATION)
+    Some(VarKind) => bytecode_reject(ForInVarDeclaration, loc)
     Some(LetKind) | Some(ConstKind) =>
-      bytecode_unsupported(UNSUPPORTED_FOR_IN_LEXICAL_DECLARATION)
+      bytecode_reject(ForInLexicalDeclaration, loc)
     None => ()
   }
-  bytecode_validate_destructure_assignment_pattern(pattern)
-  if stmt_has_function_decl(body) {
-    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+  bytecode_validate_destructure_assignment_pattern(pattern, loc)
+  match first_function_decl_loc(body) {
+    Some(decl_loc) => bytecode_reject(ControlFlowFunctionDeclaration, decl_loc)
+    None => ()
   }
-  if stmt_has_destructure_decl(body) {
-    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+  match first_destructure_decl_loc(body) {
+    Some(decl_loc) => bytecode_reject(DestructuringDeclarationContext, decl_loc)
+    None => ()
   }
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
@@ -1711,7 +2008,7 @@ fn BytecodeBuilder::compile_for_in_expr_target_store(
       self.compile_expr(key)
       let _ = self.emit(SetForInComputed(loc))
     }
-    _ => bytecode_unsupported(UNSUPPORTED_FOR_IN_ASSIGNMENT_TARGET)
+    _ => bytecode_reject(ForInAssignmentTarget, bytecode_expr_loc(target))
   }
 }
 
@@ -1722,11 +2019,13 @@ fn BytecodeBuilder::compile_for_in_expr(
   obj_expr : @ast.Expr,
   body : @ast.Stmt,
 ) -> Unit raise Error {
-  if stmt_has_function_decl(body) {
-    bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+  match first_function_decl_loc(body) {
+    Some(decl_loc) => bytecode_reject(ControlFlowFunctionDeclaration, decl_loc)
+    None => ()
   }
-  if stmt_has_destructure_decl(body) {
-    bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+  match first_destructure_decl_loc(body) {
+    Some(decl_loc) => bytecode_reject(DestructuringDeclarationContext, decl_loc)
+    None => ()
   }
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
@@ -1785,8 +2084,8 @@ fn BytecodeBuilder::compile_stmt(
         self.emit_undefined_completion()
       }
     }
-    DestructureDecl(VarKind, pattern, init, _) => {
-      bytecode_validate_destructure_assignment_pattern(pattern)
+    DestructureDecl(VarKind, pattern, init, loc) => {
+      bytecode_validate_destructure_assignment_pattern(pattern, loc)
       self.compile_expr(init)
       let _ = self.emit(AssignPattern(pattern))
       let _ = self.emit(Pop)
@@ -1794,11 +2093,12 @@ fn BytecodeBuilder::compile_stmt(
         self.emit_undefined_completion()
       }
     }
-    DestructureDecl(_, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_KIND)
+    DestructureDecl(_, _, _, loc) =>
+      bytecode_reject(DestructuringDeclarationKind, loc)
     StmtList(stmts, _) => {
-      if stmts_have_destructure_decl(stmts) {
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+      match first_destructure_decl_in(stmts) {
+        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+        None => ()
       }
       self.emit_undefined_completion()
       for child in stmts {
@@ -1806,14 +2106,17 @@ fn BytecodeBuilder::compile_stmt(
       }
     }
     Block(stmts, _) => {
-      if stmts_have_lexical_decl(stmts) {
-        bytecode_unsupported(UNSUPPORTED_BLOCK_LEXICAL_DECLARATION)
+      match first_lexical_decl_in(stmts) {
+        Some(loc) => bytecode_reject(BlockLexicalDeclaration, loc)
+        None => ()
       }
-      if stmts_have_function_decl(stmts) {
-        bytecode_unsupported(UNSUPPORTED_BLOCK_FUNCTION_DECLARATION)
+      match first_function_decl_in(stmts) {
+        Some(loc) => bytecode_reject(BlockFunctionDeclaration, loc)
+        None => ()
       }
-      if stmts_have_destructure_decl(stmts) {
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+      match first_destructure_decl_in(stmts) {
+        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+        None => ()
       }
       self.emit_undefined_completion()
       for child in stmts {
@@ -1821,23 +2124,27 @@ fn BytecodeBuilder::compile_stmt(
       }
     }
     IfStmt(cond, then_branch, else_branch, _) => {
-      if stmt_has_function_decl(then_branch) {
-        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+      match first_function_decl_loc(then_branch) {
+        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
+        None => ()
       }
       match else_branch {
         Some(stmt) =>
-          if stmt_has_function_decl(stmt) {
-            bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+          match first_function_decl_loc(stmt) {
+            Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
+            None => ()
           }
         None => ()
       }
-      if stmt_has_destructure_decl(then_branch) {
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+      match first_destructure_decl_loc(then_branch) {
+        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+        None => ()
       }
       match else_branch {
         Some(stmt) =>
-          if stmt_has_destructure_decl(stmt) {
-            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+          match first_destructure_decl_loc(stmt) {
+            Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+            None => ()
           }
         None => ()
       }
@@ -1853,11 +2160,13 @@ fn BytecodeBuilder::compile_stmt(
       self.patch(end_jump, Jump(self.code.length()))
     }
     WhileStmt(cond, body, _) => {
-      if stmt_has_function_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+      match first_function_decl_loc(body) {
+        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
+        None => ()
       }
-      if stmt_has_destructure_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+      match first_destructure_decl_loc(body) {
+        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+        None => ()
       }
       self.emit_undefined_completion()
       let cond_pos = self.code.length()
@@ -1875,11 +2184,13 @@ fn BytecodeBuilder::compile_stmt(
       self.patch_loop_jumps(loop_ctx.continue_jumps, cond_pos)
     }
     DoWhileStmt(body, cond, _) => {
-      if stmt_has_function_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+      match first_function_decl_loc(body) {
+        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
+        None => ()
       }
-      if stmt_has_destructure_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+      match first_destructure_decl_loc(body) {
+        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+        None => ()
       }
       self.emit_undefined_completion()
       let body_pos = self.code.length()
@@ -1898,19 +2209,23 @@ fn BytecodeBuilder::compile_stmt(
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
     ForStmt(init, cond, update, body, _) => {
-      if stmt_has_function_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+      match first_function_decl_loc(body) {
+        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
+        None => ()
       }
-      if stmt_has_destructure_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+      match first_destructure_decl_loc(body) {
+        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+        None => ()
       }
       match init {
         Some(stmt) => {
-          if stmt_has_lexical_decl(stmt) {
-            bytecode_unsupported(UNSUPPORTED_FOR_LEXICAL_INITIALIZER)
+          match first_lexical_decl_loc(stmt) {
+            Some(loc) => bytecode_reject(ForLexicalInitializer, loc)
+            None => ()
           }
-          if stmt_has_destructure_decl(stmt) {
-            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+          match first_destructure_decl_loc(stmt) {
+            Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+            None => ()
           }
           self.compile_for_init(stmt)
         }
@@ -1944,17 +2259,16 @@ fn BytecodeBuilder::compile_stmt(
       self.patch(exit_jump, JumpIfFalse(exit_pos))
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
-    ForOfStmt(_, _, _, _, _)
-    | ForOfStmtPat(_, _, _, _, _)
-    | ForOfExpr(_, _, _, _)
-    | AsyncForOfStmt(_, _, _, _, _)
-    | AsyncForOfStmtPat(_, _, _, _, _)
-    | AsyncForOfExpr(_, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_FOR_OF_STATEMENT)
-    ForInStmt(var_kind, name, obj_expr, body, _) =>
-      self.compile_for_in_identifier(var_kind, name, obj_expr, body)
-    ForInStmtPat(var_kind, pattern, obj_expr, body, _) =>
-      self.compile_for_in_pattern(var_kind, pattern, obj_expr, body)
+    ForOfStmt(_, _, _, _, loc)
+    | ForOfStmtPat(_, _, _, _, loc)
+    | ForOfExpr(_, _, _, loc)
+    | AsyncForOfStmt(_, _, _, _, loc)
+    | AsyncForOfStmtPat(_, _, _, _, loc)
+    | AsyncForOfExpr(_, _, _, loc) => bytecode_reject(ForOfStatement, loc)
+    ForInStmt(var_kind, name, obj_expr, body, loc) =>
+      self.compile_for_in_identifier(var_kind, name, obj_expr, body, loc)
+    ForInStmtPat(var_kind, pattern, obj_expr, body, loc) =>
+      self.compile_for_in_pattern(var_kind, pattern, obj_expr, body, loc)
     ForInExpr(target, obj_expr, body, _) =>
       self.compile_for_in_expr(target, obj_expr, body)
     SwitchStmt(discriminant, cases, _) =>
@@ -1964,9 +2278,9 @@ fn BytecodeBuilder::compile_stmt(
       let _ = self.emit(DeclareFunction(name, fn_idx))
       self.emit_undefined_completion()
     }
-    FuncDeclExt(name, params, rest_param, body, _, _) => {
+    FuncDeclExt(name, params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
-        params, rest_param,
+        params, rest_param, loc,
       )
       let fn_idx = self.add_function(
         Some(name),
@@ -1992,14 +2306,15 @@ fn BytecodeBuilder::compile_stmt(
       self.compile_expr(expr)
       let _ = self.emit(Throw)
     }
-    TryCatchStmt(_, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_TRY_CATCH_STATEMENT)
+    TryCatchStmt(_, _, _, _, loc) => bytecode_reject(TryCatchStatement, loc)
     LabeledStmt(label, body, _) => {
-      if stmt_has_function_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_CONTROL_FLOW_FUNCTION_DECLARATION)
+      match first_function_decl_loc(body) {
+        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
+        None => ()
       }
-      if stmt_has_destructure_decl(body) {
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_DECLARATION_CONTEXT)
+      match first_destructure_decl_loc(body) {
+        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
+        None => ()
       }
       if stmt_is_iteration_label_target(body) {
         self.pending_loop_labels.push(label)
@@ -2015,29 +2330,28 @@ fn BytecodeBuilder::compile_stmt(
         let label_ctx = match self.label_contexts.pop() {
           Some(ctx) => ctx
           None => {
-            bytecode_unsupported(UNSUPPORTED_LABEL_CONTEXT)
+            raise @errors.InternalError(
+              message="bytecode label context invariant violated",
+            )
             { label, break_jumps: [], loop_depth: self.loop_contexts.length() }
           }
         }
         self.patch_loop_jumps(label_ctx.break_jumps, self.code.length())
       }
     }
-    GeneratorDecl(_, _, _, _, _) | GeneratorDeclExt(_, _, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_GENERATOR_DECLARATION)
-    AsyncFuncDecl(_, _, _, _, _) | AsyncFuncDeclExt(_, _, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_ASYNC_FUNCTION_DECLARATION)
-    AsyncGeneratorDecl(_, _, _, _, _)
-    | AsyncGeneratorDeclExt(_, _, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_DECLARATION)
-    ClassDecl(_, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_CLASS_DECLARATION)
-    WithStmt(_, _, _) => bytecode_unsupported(UNSUPPORTED_WITH_STATEMENT)
-    ImportDecl(_, _, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_IMPORT_DECLARATION)
-    ExportNamedDecl(_, _, _, _, _)
-    | ExportDefaultDecl(_, _)
-    | ExportAllDecl(_, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_EXPORT_DECLARATION)
+    GeneratorDecl(_, _, _, loc, _) | GeneratorDeclExt(_, _, _, _, loc, _) =>
+      bytecode_reject(GeneratorDeclaration, loc)
+    AsyncFuncDecl(_, _, _, loc, _) | AsyncFuncDeclExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncFunctionDeclaration, loc)
+    AsyncGeneratorDecl(_, _, _, loc, _)
+    | AsyncGeneratorDeclExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncGeneratorDeclaration, loc)
+    ClassDecl(_, _, _, loc, _) => bytecode_reject(ClassDeclaration, loc)
+    WithStmt(_, _, loc) => bytecode_reject(WithStatement, loc)
+    ImportDecl(_, _, _, _, _, loc) => bytecode_reject(ImportDeclaration, loc)
+    ExportNamedDecl(_, _, _, _, loc)
+    | ExportDefaultDecl(_, loc)
+    | ExportAllDecl(_, _, _, loc) => bytecode_reject(ExportDeclaration, loc)
   }
 }
 
@@ -2052,7 +2366,15 @@ fn BytecodeBuilder::compile_for_init(
       let _ = self.emit(Pop)
     }
     VarDecl(_, _, _, _) | StmtList(_, _) => self.compile_stmt(stmt)
-    _ => bytecode_unsupported(UNSUPPORTED_FOR_INITIALIZER)
+    _ => {
+      let loc = bytecode_stmt_loc(stmt)
+      raise @errors.InternalError(
+        message="bytecode for initializer shape invariant violated at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
+    }
   }
 }
 
@@ -2665,6 +2987,7 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
   op : @ast.CompoundOp,
   name : String,
   value : @ast.Expr,
+  loc : @token.Loc,
 ) -> Unit raise Error {
   self.compile_identifier_compound_load(name)
   let keep_current = match op {
@@ -2672,7 +2995,12 @@ fn BytecodeBuilder::compile_identifier_logical_assign(
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
     NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
     _ => {
-      bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
+      raise @errors.InternalError(
+        message="bytecode logical assignment operator invariant violated at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
       -1
     }
   }
@@ -2707,7 +3035,12 @@ fn BytecodeBuilder::compile_property_logical_assign(
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
     NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
     _ => {
-      bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
+      raise @errors.InternalError(
+        message="bytecode logical assignment operator invariant violated at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
       -1
     }
   }
@@ -2746,7 +3079,12 @@ fn BytecodeBuilder::compile_computed_logical_assign(
     LogicalOrAssign => self.emit(JumpIfTrueKeep(-1))
     NullishAssign => self.emit(JumpIfNotNullishKeep(-1))
     _ => {
-      bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
+      raise @errors.InternalError(
+        message="bytecode logical assignment operator invariant violated at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
       -1
     }
   }
@@ -2777,12 +3115,17 @@ fn BytecodeBuilder::compile_identifier_compound_assign(
 ) -> Unit raise Error {
   match op {
     LogicalAndAssign | LogicalOrAssign | NullishAssign =>
-      self.compile_identifier_logical_assign(op, name, value)
+      self.compile_identifier_logical_assign(op, name, value, loc)
     _ => {
       let bin_op = match @runtime.compound_assign_binary_op(op) {
         Some(bin_op) => bin_op
         None => {
-          bytecode_unsupported(UNSUPPORTED_LOGICAL_ASSIGNMENT_OPERATOR)
+          raise @errors.InternalError(
+            message="bytecode compound assignment operator invariant violated at line " +
+              loc.line.to_string() +
+              ", col " +
+              loc.col.to_string(),
+          )
           Add
         }
       }
@@ -2814,7 +3157,12 @@ fn BytecodeBuilder::compile_property_compound_assign(
   let bin_op = match @runtime.compound_assign_binary_op(op) {
     Some(bin_op) => bin_op
     None => {
-      bytecode_unsupported(UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET)
+      raise @errors.InternalError(
+        message="bytecode compound assignment operator invariant violated at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
       Add
     }
   }
@@ -2845,7 +3193,12 @@ fn BytecodeBuilder::compile_computed_compound_assign(
   let bin_op = match @runtime.compound_assign_binary_op(op) {
     Some(bin_op) => bin_op
     None => {
-      bytecode_unsupported(UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET)
+      raise @errors.InternalError(
+        message="bytecode compound assignment operator invariant violated at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
       Add
     }
   }
@@ -3144,7 +3497,7 @@ fn bytecode_reject_object_data_property_super(
   value : @ast.Expr,
 ) -> Unit raise Error {
   if bytecode_expr_contains_super(value) {
-    bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_DATA_PROPERTY_SUPER)
+    bytecode_reject(ObjectLiteralDataPropertySuper, bytecode_expr_loc(value))
   }
 }
 
@@ -3159,35 +3512,39 @@ fn BytecodeBuilder::compile_object_method(
       self.add_function(Some(name), params, body, None)
     FuncExpr(None, params, body, _, _) =>
       self.add_function(None, params, body, None)
-    FuncExprExt(Some(name), params, rest_param, body, _, _) => {
+    FuncExprExt(Some(name), params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
-        params, rest_param,
+        params, rest_param, loc,
       )
       self.add_function(Some(name), simple_params, body, simple_rest)
     }
-    FuncExprExt(None, params, rest_param, body, _, _) => {
+    FuncExprExt(None, params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
-        params, rest_param,
+        params, rest_param, loc,
       )
       self.add_function(None, simple_params, body, simple_rest)
     }
-    GeneratorExpr(_, _, _, _, _) | GeneratorExprExt(_, _, _, _, _, _) => {
-      bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_GENERATOR_METHOD_PROPERTY)
+    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) => {
+      bytecode_reject(ObjectLiteralGeneratorMethodProperty, loc)
       0
     }
-    AsyncFuncExpr(_, _, _, _, _) | AsyncFuncExprExt(_, _, _, _, _, _) => {
-      bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_ASYNC_METHOD_PROPERTY)
+    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) => {
+      bytecode_reject(ObjectLiteralAsyncMethodProperty, loc)
       0
     }
-    AsyncGeneratorExpr(_, _, _, _, _)
-    | AsyncGeneratorExprExt(_, _, _, _, _, _) => {
-      bytecode_unsupported(
-        UNSUPPORTED_OBJECT_LITERAL_ASYNC_GENERATOR_METHOD_PROPERTY,
-      )
+    AsyncGeneratorExpr(_, _, _, loc, _)
+    | AsyncGeneratorExprExt(_, _, _, _, loc, _) => {
+      bytecode_reject(ObjectLiteralAsyncGeneratorMethodProperty, loc)
       0
     }
     _ => {
-      bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_METHOD_PROPERTY)
+      let loc = bytecode_expr_loc(prop.value)
+      raise @errors.InternalError(
+        message="bytecode object method shape invariant violated at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
       0
     }
   }
@@ -3233,7 +3590,13 @@ fn BytecodeBuilder::compile_object_lit(
           let key = match bytecode_static_object_key(prop.key) {
             Some(key) => key
             None => {
-              bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
+              let key_loc = bytecode_expr_loc(prop.key)
+              raise @errors.InternalError(
+                message="bytecode static object property key invariant violated at line " +
+                  key_loc.line.to_string() +
+                  ", col " +
+                  key_loc.col.to_string(),
+              )
               ""
             }
           }
@@ -3261,12 +3624,21 @@ fn BytecodeBuilder::compile_object_lit(
         let key = match bytecode_static_object_key(prop.key) {
           Some(key) => key
           None => {
-            bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
+            let key_loc = bytecode_expr_loc(prop.key)
+            raise @errors.InternalError(
+              message="bytecode static object property key invariant violated at line " +
+                key_loc.line.to_string() +
+                ", col " +
+                key_loc.col.to_string(),
+            )
             ""
           }
         }
         if key == "__proto__" {
-          bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROTO_METHOD_PROPERTY)
+          bytecode_reject(
+            ObjectLiteralProtoMethodProperty,
+            bytecode_expr_loc(prop.key),
+          )
         }
         self.compile_object_method(prop)
         let _ = self.emit(ObjectSetStatic(key))
@@ -3283,7 +3655,13 @@ fn BytecodeBuilder::compile_object_lit(
       let key = match bytecode_static_object_key(prop.key) {
         Some(key) => key
         None => {
-          bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
+          let key_loc = bytecode_expr_loc(prop.key)
+          raise @errors.InternalError(
+            message="bytecode static object property key invariant violated at line " +
+              key_loc.line.to_string() +
+              ", col " +
+              key_loc.col.to_string(),
+          )
           ""
         }
       }
@@ -3300,22 +3678,45 @@ fn BytecodeBuilder::compile_object_lit(
     let keys : Array[String] = []
     for prop in props {
       match prop.kind {
-        Get | Set =>
-          bytecode_unsupported(
-            UNSUPPORTED_OBJECT_LITERAL_COMPUTED_ACCESSOR_PROPERTY,
+        Get | Set => {
+          let key_loc = bytecode_expr_loc(prop.key)
+          raise @errors.InternalError(
+            message="bytecode object literal lowering mode invariant violated at line " +
+              key_loc.line.to_string() +
+              ", col " +
+              key_loc.col.to_string(),
           )
+        }
         _ => ()
       }
       if prop.computed {
-        bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_COMPUTED_PROPERTY)
+        let key_loc = bytecode_expr_loc(prop.key)
+        raise @errors.InternalError(
+          message="bytecode object literal lowering mode invariant violated at line " +
+            key_loc.line.to_string() +
+            ", col " +
+            key_loc.col.to_string(),
+        )
       }
       if prop.is_method {
-        bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_METHOD_PROPERTY)
+        let key_loc = bytecode_expr_loc(prop.key)
+        raise @errors.InternalError(
+          message="bytecode object literal lowering mode invariant violated at line " +
+            key_loc.line.to_string() +
+            ", col " +
+            key_loc.col.to_string(),
+        )
       }
       let key = match bytecode_static_object_key(prop.key) {
         Some(key) => key
         None => {
-          bytecode_unsupported(UNSUPPORTED_OBJECT_LITERAL_PROPERTY_KEY)
+          let key_loc = bytecode_expr_loc(prop.key)
+          raise @errors.InternalError(
+            message="bytecode static object property key invariant violated at line " +
+              key_loc.line.to_string() +
+              ", col " +
+              key_loc.col.to_string(),
+          )
           ""
         }
       }
@@ -3331,44 +3732,54 @@ fn BytecodeBuilder::compile_object_lit(
 ///|
 fn bytecode_validate_destructure_assignment_pattern(
   pattern : @ast.Pattern,
+  owner_loc : @token.Loc,
 ) -> Unit raise Error {
   match pattern {
     IdentPat(_) => ()
     ArrayPat(elements, rest) => {
       for element in elements {
         match element {
-          Some(pat) => bytecode_validate_destructure_assignment_pattern(pat)
+          Some(pat) =>
+            bytecode_validate_destructure_assignment_pattern(pat, owner_loc)
           None => ()
         }
       }
       match rest {
-        Some(pat) => bytecode_validate_destructure_assignment_pattern(pat)
+        Some(pat) =>
+          bytecode_validate_destructure_assignment_pattern(pat, owner_loc)
         None => ()
       }
     }
     ObjectPat(props, rest) => {
       for prop in props {
         match prop.default_val {
-          Some(_) =>
-            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
+          Some(expr) =>
+            bytecode_reject(
+              DestructuringPatternDefault,
+              bytecode_expr_loc(expr),
+            )
           None => ()
         }
         match prop.computed_key {
-          Some(_) =>
-            bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_COMPUTED_KEY)
+          Some(expr) =>
+            bytecode_reject(
+              DestructuringPatternComputedKey,
+              bytecode_expr_loc(expr),
+            )
           None => ()
         }
-        bytecode_validate_destructure_assignment_pattern(prop.value)
+        bytecode_validate_destructure_assignment_pattern(prop.value, owner_loc)
       }
       match rest {
-        Some(pat) => bytecode_validate_destructure_assignment_pattern(pat)
+        Some(pat) =>
+          bytecode_validate_destructure_assignment_pattern(pat, owner_loc)
         None => ()
       }
     }
-    DefaultPat(_, _) =>
-      bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_DEFAULT)
-    AssignTarget(_) =>
-      bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PATTERN_MEMBER_TARGET)
+    DefaultPat(_, expr) =>
+      bytecode_reject(DestructuringPatternDefault, bytecode_expr_loc(expr))
+    AssignTarget(expr) =>
+      bytecode_reject(DestructuringPatternMemberTarget, bytecode_expr_loc(expr))
   }
 }
 
@@ -3442,7 +3853,13 @@ fn BytecodeBuilder::compile_expr(
     UndefinedLit(_) => {
       let _ = self.emit(LoadUndefined)
     }
-    ArrayHole(_) => bytecode_unsupported(UNSUPPORTED_ARRAY_HOLE)
+    ArrayHole(loc) =>
+      raise @errors.InternalError(
+        message="bytecode array hole escaped array literal lowering at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
     ThisExpr(_) => {
       self.has_this = true
       let _ = self.emit(LoadThis)
@@ -3451,7 +3868,7 @@ fn BytecodeBuilder::compile_expr(
       self.has_new_target = true
       let _ = self.emit(LoadNewTarget)
     }
-    SuperCall(_, _) => bytecode_unsupported(UNSUPPORTED_SUPER_CALL)
+    SuperCall(_, loc) => bytecode_reject(SuperCall, loc)
     SuperMember(prop, loc) => {
       self.has_this = true
       let _ = self.emit(LoadSuperProperty(prop, loc))
@@ -3465,8 +3882,8 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(LoadSuperComputed(loc))
     }
-    SuperMemberAssign(_, _, _) | SuperComputedAssign(_, _, _) =>
-      bytecode_unsupported("super assignment")
+    SuperMemberAssign(_, _, loc) | SuperComputedAssign(_, _, loc) =>
+      bytecode_reject(SuperAssignment, loc)
     Ident(name, _) => self.compile_identifier_load(name)
     Binary(And, left, right, _) => self.compile_logical_and(left, right)
     Binary(Or, left, right, _) => self.compile_logical_or(left, right)
@@ -3490,8 +3907,7 @@ fn BytecodeBuilder::compile_expr(
           let _ = self.emit(DeleteName(name))
         }
       }
-    Unary(Delete, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_DELETE_NON_PROPERTY_OPERATOR)
+    Unary(Delete, _, loc) => bytecode_reject(DeleteNonPropertyOperator, loc)
     Unary(Typeof, Ident(name, _), loc) =>
       match (self.local_slot(name), self.env_slot(name)) {
         (Some(slot), _) => {
@@ -3590,8 +4006,8 @@ fn BytecodeBuilder::compile_expr(
     RegexLit(pattern, flags, _) => {
       let _ = self.emit(MakeRegExp(pattern, flags))
     }
-    DestructureAssign(pattern, value, _) => {
-      bytecode_validate_destructure_assignment_pattern(pattern)
+    DestructureAssign(pattern, value, loc) => {
+      bytecode_validate_destructure_assignment_pattern(pattern, loc)
       self.compile_expr(value)
       let _ = self.emit(AssignPattern(pattern))
     }
@@ -3623,7 +4039,20 @@ fn BytecodeBuilder::compile_expr(
       self.compile_expr(key)
       let _ = self.emit(UpdateComputed(op, prefix, member_loc, loc))
     }
-    UpdateExpr(_, _, _, _) => bytecode_unsupported(UNSUPPORTED_UPDATE_TARGET)
+    UpdateExpr(_, target, _, loc) =>
+      match target {
+        SuperMember(_, _)
+        | SuperComputedMember(_, _)
+        | PrivateMember(_, _, _) => bytecode_reject(UpdateTarget, loc)
+        _ =>
+          if bytecode_is_call_with_grouping(target) {
+            bytecode_reject(UpdateTarget, loc)
+          } else {
+            raise @errors.SyntaxError(
+              message="Invalid update target at line \{loc.line}, col \{loc.col}",
+            )
+          }
+      }
     CompoundAssign(op, Ident(name, _), value, loc) =>
       self.compile_identifier_compound_assign(op, name, value, loc)
     CompoundAssign(op, Member(obj, prop, member_loc), value, loc) =>
@@ -3634,8 +4063,21 @@ fn BytecodeBuilder::compile_expr(
       self.compile_computed_compound_assign(
         op, obj, key, value, member_loc, loc,
       )
-    CompoundAssign(_, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_COMPOUND_ASSIGNMENT_TARGET)
+    CompoundAssign(_, target, _, loc) =>
+      match target {
+        SuperMember(_, _)
+        | SuperComputedMember(_, _)
+        | PrivateMember(_, _, _) =>
+          bytecode_reject(CompoundAssignmentTarget, loc)
+        _ =>
+          if bytecode_is_call_with_grouping(target) {
+            bytecode_reject(CompoundAssignmentTarget, loc)
+          } else {
+            raise @errors.SyntaxError(
+              message="Invalid compound assignment target at line \{loc.line}, col \{loc.col}",
+            )
+          }
+      }
     FuncExpr(Some(name), params, body, _, _) => {
       let fn_idx = self.add_function(Some(name), params, body, None)
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
@@ -3644,9 +4086,9 @@ fn BytecodeBuilder::compile_expr(
       let fn_idx = self.add_function(None, params, body, None)
       let _ = self.emit(MakeFunction(fn_idx))
     }
-    FuncExprExt(Some(name), params, rest_param, body, _, _) => {
+    FuncExprExt(Some(name), params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
-        params, rest_param,
+        params, rest_param, loc,
       )
       let fn_idx = self.add_function(
         Some(name),
@@ -3656,9 +4098,9 @@ fn BytecodeBuilder::compile_expr(
       )
       let _ = self.emit(MakeNamedFunction(fn_idx, name))
     }
-    FuncExprExt(None, params, rest_param, body, _, _) => {
+    FuncExprExt(None, params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
-        params, rest_param,
+        params, rest_param, loc,
       )
       let fn_idx = self.add_function(None, simple_params, body, simple_rest)
       let _ = self.emit(MakeFunction(fn_idx))
@@ -3667,9 +4109,9 @@ fn BytecodeBuilder::compile_expr(
       let fn_idx = self.add_function(None, params, body, None)
       let _ = self.emit(MakeArrowFunction(fn_idx))
     }
-    ArrowFuncExt(params, rest_param, body, _, _) => {
+    ArrowFuncExt(params, rest_param, body, loc, _) => {
       let (simple_params, simple_rest) = simple_ext_param_names_with_rest(
-        params, rest_param,
+        params, rest_param, loc,
       )
       let fn_idx = self.add_function(None, simple_params, body, simple_rest)
       let _ = self.emit(MakeArrowFunction(fn_idx))
@@ -3894,26 +4336,42 @@ fn BytecodeBuilder::compile_expr(
         self.compile_expr(callee)
         self.emit_call(args, loc)
       }
-    SpreadExpr(_, _) => bytecode_unsupported(UNSUPPORTED_SPREAD_EXPRESSION)
-    GeneratorExpr(_, _, _, _, _) | GeneratorExprExt(_, _, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_GENERATOR_EXPRESSION)
-    YieldExpr(_, _, _) => bytecode_unsupported(UNSUPPORTED_YIELD_EXPRESSION)
-    AsyncFuncExpr(_, _, _, _, _) | AsyncFuncExprExt(_, _, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_ASYNC_FUNCTION_EXPRESSION)
-    AsyncArrowFunc(_, _, _, _) | AsyncArrowFuncExt(_, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_ASYNC_ARROW_FUNCTION)
-    AsyncGeneratorExpr(_, _, _, _, _)
-    | AsyncGeneratorExprExt(_, _, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_ASYNC_GENERATOR_EXPRESSION)
-    AwaitExpr(_, _) => bytecode_unsupported(UNSUPPORTED_AWAIT_EXPRESSION)
-    WebCompatCallAssign(_, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_WEB_COMPAT_CALL_ASSIGN)
-    ClassExpr(_, _, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
-    PrivateIdent(_, _)
-    | PrivateMember(_, _, _)
-    | PrivateMemberAssign(_, _, _, _) =>
-      bytecode_unsupported(UNSUPPORTED_CLASS_EXPRESSION)
+    SpreadExpr(_, loc) =>
+      raise @errors.InternalError(
+        message="bytecode spread expression escaped list lowering at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
+    GeneratorExpr(_, _, _, loc, _) | GeneratorExprExt(_, _, _, _, loc, _) =>
+      bytecode_reject(GeneratorExpression, loc)
+    YieldExpr(_, _, loc) =>
+      raise @errors.InternalError(
+        message="bytecode yield expression escaped generator lowering at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
+    AsyncFuncExpr(_, _, _, loc, _) | AsyncFuncExprExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncFunctionExpression, loc)
+    AsyncArrowFunc(_, _, loc, _) | AsyncArrowFuncExt(_, _, _, loc, _) =>
+      bytecode_reject(AsyncArrowFunction, loc)
+    AsyncGeneratorExpr(_, _, _, loc, _)
+    | AsyncGeneratorExprExt(_, _, _, _, loc, _) =>
+      bytecode_reject(AsyncGeneratorExpression, loc)
+    AwaitExpr(_, loc) =>
+      raise @errors.InternalError(
+        message="bytecode await expression escaped async lowering at line " +
+          loc.line.to_string() +
+          ", col " +
+          loc.col.to_string(),
+      )
+    WebCompatCallAssign(_, _, loc) => bytecode_reject(WebCompatCallAssign, loc)
+    ClassExpr(_, _, _, loc, _) => bytecode_reject(ClassExpression, loc)
+    PrivateIdent(_, loc)
+    | PrivateMember(_, _, loc)
+    | PrivateMemberAssign(_, _, _, loc) =>
+      bytecode_reject(PrivateClassElement, loc)
   }
 }
 
@@ -3921,14 +4379,16 @@ fn BytecodeBuilder::compile_expr(
 fn simple_ext_param_names_with_rest(
   params : Array[@ast.Param],
   rest_param : String?,
+  owner_loc : @token.Loc,
 ) -> (Array[String], String?) raise Error {
   let names : Array[String] = []
   for param in params {
     match (param.default_val, param.pattern, param.is_rest_pattern) {
       (None, None, false) => names.push(param.name)
-      (Some(_), _, _) => bytecode_unsupported(UNSUPPORTED_DEFAULT_PARAMETER)
+      (Some(default_val), _, _) =>
+        bytecode_reject(DefaultParameter, bytecode_expr_loc(default_val))
       (_, Some(_), _) | (_, _, true) =>
-        bytecode_unsupported(UNSUPPORTED_DESTRUCTURING_PARAMETER)
+        bytecode_reject(DestructuringParameter, owner_loc)
     }
   }
   (names, rest_param)

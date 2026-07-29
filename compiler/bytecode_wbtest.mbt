@@ -7,49 +7,155 @@ fn parse_bytecode_for_wb(src : String) -> BytecodeProgram {
 }
 
 ///|
-fn bytecode_compile_error_for_wb(stmts : Array[@ast.Stmt]) -> String {
+fn assert_bytecode_internal_error_for_wb(
+  stmts : Array[@ast.Stmt],
+  expected_message : String,
+) -> Unit raise Error {
   try {
     let _ = compile_script_to_bytecode(stmts)
-    "ok"
+    fail("expected InternalError")
   } catch {
-    err => err.to_string()
+    @errors.InternalError(message~) => assert_eq(message, expected_message)
+    BytecodeUnsupportedSignal(_) =>
+      fail("synthetic invariant must not select another executor")
+    _ => fail("expected InternalError")
   }
 }
 
 ///|
-test "bytecode rejects unsupported synthetic expression variants explicitly" {
+fn assert_bytecode_syntax_error_for_wb(
+  stmts : Array[@ast.Stmt],
+  expected_message : String,
+) -> Unit raise Error {
+  try {
+    let _ = compile_script_to_bytecode(stmts)
+    fail("expected SyntaxError")
+  } catch {
+    @errors.SyntaxError(message~) => assert_eq(message, expected_message)
+    BytecodeUnsupportedSignal(_) =>
+      fail("frontend diagnostic must not select another executor")
+    _ => fail("expected SyntaxError")
+  }
+}
+
+///|
+test "bytecode classifies synthetic expression invariants and diagnostics" {
   let loc = @token.Loc::default()
-  inspect(
-    bytecode_compile_error_for_wb([ExprStmt(ArrayHole(loc), loc)]),
-    content="InternalError: bytecode prototype unsupported: array hole expression",
+  assert_bytecode_internal_error_for_wb(
+    [ExprStmt(ArrayHole(loc), loc)],
+    "bytecode array hole escaped array literal lowering at line 1, col 1",
   )
-  inspect(
-    bytecode_compile_error_for_wb([
-      ExprStmt(SpreadExpr(Ident("x", loc), loc), loc),
-    ]),
-    content="InternalError: bytecode prototype unsupported: spread expression",
+  assert_bytecode_internal_error_for_wb(
+    [ExprStmt(SpreadExpr(Ident("x", loc), loc), loc)],
+    "bytecode spread expression escaped list lowering at line 1, col 1",
   )
-  inspect(
-    bytecode_compile_error_for_wb([
+  assert_bytecode_syntax_error_for_wb(
+    [
       ExprStmt(
         UpdateExpr(Increment, NumberLit(1.0, LexNormal, loc), true, loc),
         loc,
       ),
-    ]),
-    content="InternalError: bytecode prototype unsupported: update target",
+    ],
+    "Invalid update target at line 1, col 1",
   )
-  inspect(
-    bytecode_compile_error_for_wb([
-      ExprStmt(YieldExpr(Some(UndefinedLit(loc)), false, loc), loc),
-    ]),
-    content="InternalError: bytecode prototype unsupported: yield expression",
+  assert_bytecode_internal_error_for_wb(
+    [ExprStmt(YieldExpr(Some(UndefinedLit(loc)), false, loc), loc)],
+    "bytecode yield expression escaped generator lowering at line 1, col 1",
   )
-  inspect(
-    bytecode_compile_error_for_wb([
-      ExprStmt(AwaitExpr(UndefinedLit(loc), loc), loc),
-    ]),
-    content="InternalError: bytecode prototype unsupported: await expression",
+  assert_bytecode_internal_error_for_wb(
+    [ExprStmt(AwaitExpr(UndefinedLit(loc), loc), loc)],
+    "bytecode await expression escaped async lowering at line 1, col 1",
   )
+}
+
+///|
+fn lower_source_for_wb(
+  src : String,
+) -> Result[BytecodeProgram, BytecodeUnsupported] raise Error {
+  let prog = @parser.parse(src)
+  lower_script_to_bytecode(prog.stmts)
+}
+
+///|
+test "bytecode lowering outcome compiles supported source" {
+  match lower_source_for_wb("1 + 2;") {
+    Ok(_) => ()
+    Err(_) => fail("expected supported source to compile")
+  }
+}
+
+///|
+test "bytecode lowering outcome identifies valid unsupported source" {
+  match lower_source_for_wb("for (var x of [1, 2]) {}") {
+    Ok(_) => fail("expected for-of to be unsupported")
+    Err(unsupported) => {
+      assert_true(unsupported.reason is ForOfStatement)
+      assert_eq(unsupported.loc.offset, 0)
+    }
+  }
+}
+
+///|
+test "bytecode lowering outcome preserves frontend and early errors" {
+  try {
+    let _ = lower_source_for_wb("var obj = {}; obj?.tag`a${1}b`;")
+    fail("expected parser SyntaxError")
+  } catch {
+    @errors.SyntaxError(message~) => assert_eq(message, "Bad_optional_template")
+    _ => fail("expected parser SyntaxError")
+  }
+  let program = match lower_source_for_wb("\"use strict\"; delete x;") {
+    Ok(program) => program
+    Err(_) => fail("early-error fixture must lower successfully")
+  }
+  try {
+    let _ = program.run(@interpreter.new_interpreter())
+    fail("expected early SyntaxError")
+  } catch {
+    @runtime.JsException(value) =>
+      assert_eq(
+        value.to_string(),
+        "SyntaxError: Delete of an unqualified identifier in strict mode.",
+      )
+    _ => fail("expected JavaScript SyntaxError")
+  }
+}
+
+///|
+test "bytecode lowering outcome keeps builder invariant defects internal" {
+  let builder = BytecodeBuilder::BytecodeBuilder(
+    { names: [], indices: Map([]), env_names: [], env_indices: Map([]) },
+    "invariant-test",
+  )
+  try {
+    let _ = builder.pop_loop_context()
+    fail("expected loop-context invariant defect")
+  } catch {
+    @errors.InternalError(message~) =>
+      assert_eq(message, "bytecode loop context invariant violated")
+    BytecodeUnsupportedSignal(_) =>
+      fail("builder invariant must not be an unsupported outcome")
+    _ => fail("expected InternalError")
+  }
+}
+
+///|
+test "bytecode unsupported selection does not mutate runtime state" {
+  let src =
+    #|console.log("must-not-run");
+    #|for (var x of [1]) {}
+  let prog = @parser.parse(src)
+  let interp = @interpreter.new_interpreter()
+  try {
+    let _ = run_bytecode_script(interp, prog.stmts)
+    fail("expected for-of to be unsupported")
+  } catch {
+    BytecodeUnsupportedSignal(unsupported) => {
+      assert_true(unsupported.reason is ForOfStatement)
+      json_inspect(interp.host.output, content=[])
+    }
+    _ => fail("expected typed bytecode unsupported signal")
+  }
 }
 
 ///|

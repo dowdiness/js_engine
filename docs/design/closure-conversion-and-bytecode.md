@@ -268,63 +268,21 @@ arrays, member/computed access, assignments, `for`/`while`/`do while` loops,
 and labeled block breaks. Broader syntax remains future work and should land
 only with compare-against-tree-walker tests.
 
-## Current Explicit Bytecode Rejections
+## Current Explicit Bytecode Selection
 
-The compiler currently raises an `InternalError` prefixed
-`bytecode prototype unsupported:` for these cases:
+Lowering distinguishes a compiled program from an explicit, private
+unsupported outcome before execution starts. Unsupported outcomes carry a
+closed reason and source location; diagnostic text is derived only when the
+experimental compatibility entry point must display the outcome. Compiler and
+builder invariant violations remain `InternalError`s, while JavaScript parse,
+early-error, and runtime diagnostics keep their existing error classes and
+messages.
 
-- `block lexical declaration`
-- `block function declaration`
-- `control-flow function declaration`
-- `for lexical initializer`
-- `for-in var declaration`
-- `for-in lexical declaration`
-- `for-of statement`
-- `switch lexical declaration`
-- `try/catch statement`
-- `class declaration`
-- `generator declaration`
-- `async function declaration`
-- `async generator declaration`
-- `with statement`
-- `import declaration`
-- `export declaration`
-- `for initializer`
-- `break statement` outside a bytecode-supported loop
-- `continue statement` outside a bytecode-supported loop
-- `labeled break statement` (unresolved label targets only)
-- `labeled continue statement` (unresolved or non-loop label targets only)
-- `delete non-property operator` (for non-identifier/non-property operands)
-- `array hole expression` (outside array literal lowering)
-- `spread expression` (outside array/call/new/object literal lowering)
-- `update target` (invalid/non-reference targets only)
-- `compound assignment target` (invalid/non-reference targets only)
-- `destructuring pattern default`
-- `destructuring pattern computed key`
-- `destructuring pattern member target`
-- `destructuring declaration kind` (non-`var` destructuring declarations)
-- `destructuring declaration context` (control-flow/block/switch/for contexts)
-- `super call`
-- `object literal data property super`
-- `object literal __proto__ method property`
-- `object literal generator method property`
-- `object literal async method property`
-- `object literal async generator method property`
-- `object literal method property`
-- `object literal property key`
-- `class expression`
-- `generator expression`
-- `yield expression`
-- `async function expression`
-- `async arrow function`
-- `async generator expression`
-- `await expression`
-- `default parameter`
-- `destructuring parameter`
-
-Keep this list fail-fast. When broadening bytecode syntax, remove a rejection
-only after adding tests that compare the bytecode path with the tree-walking
-interpreter for the newly supported construct.
+The private reason vocabulary is the source of truth for current syntax gaps.
+Do not duplicate it as a hand-maintained string list or recover it by parsing
+formatted errors. When broadening bytecode syntax, remove a reason only after
+adding tests that compare the bytecode path with the tree-walking interpreter
+for the newly supported construct.
 
 ## Guardrails
 
