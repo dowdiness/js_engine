@@ -39,85 +39,649 @@ const BYTECODE_PIPELINE_EXEC_PROGRAM : String =
   #|})();
 
 ///|
-fn bytecode_interpreter_outcome(src : String) -> String {
-  try {
-    let prog = @parser.parse(src)
-    let interp = @interpreter.new_interpreter()
-    "value:" + interp.run(prog.stmts).to_string()
-  } catch {
-    @runtime.JsException(value) => "throw:" + value.to_string()
-    err => "error:" + err.to_string()
+const EQUIVALENCE_SOURCE_ID = "bytecode-equivalence://fixture"
+
+///|
+const EQUIVALENCE_EXECUTION_CONTROL_BINDING = "[[ExecutionControl]]"
+
+///|
+priv enum QueuePolicy {
+  LeavesQueuesPending
+}
+
+///|
+priv struct QueueObservation {
+  policy : QueuePolicy
+  microtasks : Int
+  timers : Int
+}
+
+///|
+priv struct ExecutionEffects {
+  host_output : Array[String]
+  queues : QueueObservation
+}
+
+///|
+priv struct ValueObservation {
+  // Value rendering remains a leaf observation until the runtime exposes a
+  // richer stable value comparator. It never selects an outcome category.
+  rendered : String
+}
+
+///|
+priv struct CompletionObservation {
+  value : ValueObservation
+  effects : ExecutionEffects
+}
+
+///|
+priv struct ExceptionObservation {
+  rendered : String
+  class_name : String?
+  name : String?
+  message : String?
+  source_identity : String?
+}
+
+///|
+priv struct ThrowObservation {
+  exception : ExceptionObservation
+  effects : ExecutionEffects
+}
+
+///|
+priv enum FrontendStage {
+  ParserFrontend
+  StaticSemanticsFrontend
+}
+
+///|
+priv struct FrontendDiagnostic {
+  stage : FrontendStage
+  name : String
+  message : String
+  rendered : String
+}
+
+///|
+priv enum CompilerDefectStage {
+  ParserDefect
+  StaticSemanticsDefect
+  LoweringDefect
+  HarnessDefect
+}
+
+///|
+priv struct CompilerDefect {
+  stage : CompilerDefectStage
+  message : String
+  rendered : String
+}
+
+///|
+priv enum RuntimeDefectStage {
+  TreeRuntimeDefect
+  BytecodeRuntimeDefect
+}
+
+///|
+priv struct RuntimeDefect {
+  stage : RuntimeDefectStage
+  message : String
+  rendered : String
+  effects : ExecutionEffects
+}
+
+///|
+priv enum ExecutionControlPoint {
+  DispatchStepObservation
+  ActivationObservation
+}
+
+///|
+priv enum ExecutionControlFailure {
+  StackDepthLimit
+  ExecutionLimit
+}
+
+///|
+priv struct ExecutionControlObservation {
+  point : ExecutionControlPoint
+  failure : ExecutionControlFailure
+  effects : ExecutionEffects
+}
+
+///|
+priv enum ExecutorOutcome {
+  Completed(CompletionObservation)
+  Threw(ThrowObservation)
+  Unsupported(BytecodeUnsupported)
+  FrontendFailed(FrontendDiagnostic)
+  CompilerFailed(CompilerDefect)
+  RuntimeFailed(RuntimeDefect)
+  ControlStopped(ExecutionControlObservation)
+}
+
+///|
+priv enum EquivalenceResult {
+  Equivalent(ExecutorOutcome)
+  UnsupportedSelected(BytecodeUnsupported)
+  FrontendRejected(FrontendDiagnostic)
+  CompilerOrVerifierDefect(CompilerDefect)
+  RuntimeEngineDefect(RuntimeDefect)
+  ObservableMismatch(ExecutorOutcome, ExecutorOutcome)
+}
+
+///|
+priv suberror EquivalenceControlSignal {
+  EquivalenceControlSignal(ExecutionControlPoint, ExecutionControlFailure)
+}
+
+///|
+priv suberror EquivalenceSyntheticRuntimeDefect {
+  EquivalenceSyntheticRuntimeDefect(String)
+}
+
+///|
+impl Show for EquivalenceControlSignal with fn output(_self, logger) {
+  logger.write_string("equivalence execution control stopped")
+}
+
+///|
+impl Show for EquivalenceSyntheticRuntimeDefect with fn output(self, logger) {
+  match self {
+    EquivalenceSyntheticRuntimeDefect(message) => logger.write_string(message)
+  }
+}
+
+///|
+fn pending_effects(interp : Interpreter) -> ExecutionEffects {
+  {
+    host_output: interp.host.output.copy(),
+    queues: {
+      policy: LeavesQueuesPending,
+      microtasks: interp.host.microtask_queue.length(),
+      timers: interp.host.timer_queue.length(),
+    },
+  }
+}
+
+///|
+fn inherited_string_property(value : Value, key : String) -> String? {
+  let mut current = value
+  for _ in 0..<16 {
+    match current {
+      Object(data) =>
+        match data.bag.properties.get(key) {
+          Some(String_(text)) => return Some(text)
+          Some(_) => return None
+          None => current = data.prototype
+        }
+      _ => return None
+    }
+  }
+  None
+}
+
+///|
+fn exception_observation(
+  value : Value,
+  source_identity : String?,
+) -> ExceptionObservation {
+  let class_name = match value {
+    Object(data) => Some(data.class_name)
+    _ => None
+  }
+  {
+    rendered: value.to_string(),
+    class_name,
+    name: inherited_string_property(value, "name"),
+    message: inherited_string_property(value, "message"),
+    source_identity,
+  }
+}
+
+///|
+fn frontend_diagnostic(
+  stage : FrontendStage,
+  name : String,
+  message : String,
+) -> FrontendDiagnostic {
+  { stage, name, message, rendered: name + ": " + message }
+}
+
+///|
+fn compiler_defect(
+  stage : CompilerDefectStage,
+  error : Error,
+) -> CompilerDefect {
+  let rendered = error.to_string()
+  let message = match @errors.name_message_if_js_error(error) {
+    Some((_, message)) => message
+    None => rendered
+  }
+  { stage, message, rendered }
+}
+
+///|
+fn runtime_defect(
+  stage : RuntimeDefectStage,
+  error : Error,
+  effects : ExecutionEffects,
+) -> RuntimeDefect {
+  let rendered = error.to_string()
+  let message = match error {
+    BytecodeRuntimeDefectSignal(message) => message
+    EquivalenceSyntheticRuntimeDefect(message) => message
+    _ =>
+      match @errors.name_message_if_js_error(error) {
+        Some((_, message)) => message
+        None => rendered
+      }
+  }
+  { stage, message, rendered, effects }
+}
+
+///|
+fn observe_execution(
+  interp : Interpreter,
+  stage : RuntimeDefectStage,
+  run : () -> Value raise Error,
+) -> ExecutorOutcome {
+  let observed = @runtime.observe_source_failure(interp.realm_state, () => {
+    @runtime.with_source_identity(
+      interp.realm_state,
+      Some(EQUIVALENCE_SOURCE_ID),
+      run,
+    )
+  })
+  let effects = pending_effects(interp)
+  match observed {
+    Ok(value) => Completed({ value: { rendered: value.to_string() }, effects })
+    Err(failure) => {
+      let error = failure.cause()
+      match error {
+        @runtime.JsException(value) =>
+          Threw({
+            exception: exception_observation(value, failure.source_identity()),
+            effects,
+          })
+        EquivalenceControlSignal(point, failure) =>
+          ControlStopped({ point, failure, effects })
+        _ => RuntimeFailed(runtime_defect(stage, error, effects))
+      }
+    }
+  }
+}
+
+///|
+fn parser_failure(error : Error) -> ExecutorOutcome {
+  match error {
+    @errors.SyntaxError(message~) =>
+      FrontendFailed(
+        frontend_diagnostic(ParserFrontend, "SyntaxError", message),
+      )
+    _ => CompilerFailed(compiler_defect(ParserDefect, error))
+  }
+}
+
+///|
+fn static_semantics_failure(error : Error) -> ExecutorOutcome {
+  match error {
+    @errors.SyntaxError(message~) =>
+      FrontendFailed(
+        frontend_diagnostic(StaticSemanticsFrontend, "SyntaxError", message),
+      )
+    _ => CompilerFailed(compiler_defect(StaticSemanticsDefect, error))
+  }
+}
+
+///|
+fn observe_bytecode_stmts_for_equivalence(
+  interp : Interpreter,
+  stmts : Array[@ast.Stmt],
+) -> ExecutorOutcome {
+  interp.validate_block_early_errors(
+    stmts,
+    @static_semantics.has_use_strict(stmts),
+  ) catch {
+    error => return static_semantics_failure(error)
+  }
+  let lowered = lower_script_to_bytecode(stmts) catch {
+    @errors.SyntaxError(message~) =>
+      return FrontendFailed(
+        frontend_diagnostic(StaticSemanticsFrontend, "SyntaxError", message),
+      )
+    error => return CompilerFailed(compiler_defect(LoweringDefect, error))
+  }
+  match lowered {
+    Err(unsupported) => Unsupported(unsupported)
+    Ok(bytecode) =>
+      observe_execution(interp, BytecodeRuntimeDefect, () => {
+        bytecode.run(interp)
+      })
+  }
+}
+
+///|
+fn observe_bytecode_source_with_interpreter(
+  interp : Interpreter,
+  src : String,
+) -> ExecutorOutcome {
+  let program = @parser.parse(src) catch {
+    error => return parser_failure(error)
+  }
+  observe_bytecode_stmts_for_equivalence(interp, program.stmts)
+}
+
+///|
+fn observe_tree_source_with_interpreter(
+  interp : Interpreter,
+  src : String,
+) -> ExecutorOutcome {
+  let program = @parser.parse(src) catch {
+    error => return parser_failure(error)
+  }
+  interp.validate_block_early_errors(
+    program.stmts,
+    @static_semantics.has_use_strict(program.stmts),
+  ) catch {
+    error => return static_semantics_failure(error)
+  }
+  observe_execution(interp, TreeRuntimeDefect, () => interp.run(program.stmts))
+}
+
+///|
+fn same_string_option(left : String?, right : String?) -> Bool {
+  match (left, right) {
+    (None, None) => true
+    (Some(left), Some(right)) => left == right
+    _ => false
+  }
+}
+
+///|
+fn same_queue_policy(left : QueuePolicy, right : QueuePolicy) -> Bool {
+  match (left, right) {
+    (LeavesQueuesPending, LeavesQueuesPending) => true
+  }
+}
+
+///|
+fn same_effects(left : ExecutionEffects, right : ExecutionEffects) -> Bool {
+  left.host_output == right.host_output &&
+  same_queue_policy(left.queues.policy, right.queues.policy) &&
+  left.queues.microtasks == right.queues.microtasks &&
+  left.queues.timers == right.queues.timers
+}
+
+///|
+fn same_control_point(
+  left : ExecutionControlPoint,
+  right : ExecutionControlPoint,
+) -> Bool {
+  match (left, right) {
+    (DispatchStepObservation, DispatchStepObservation)
+    | (ActivationObservation, ActivationObservation) => true
+    _ => false
+  }
+}
+
+///|
+fn same_control_failure(
+  left : ExecutionControlFailure,
+  right : ExecutionControlFailure,
+) -> Bool {
+  match (left, right) {
+    (StackDepthLimit, StackDepthLimit) | (ExecutionLimit, ExecutionLimit) =>
+      true
+    _ => false
+  }
+}
+
+///|
+fn CompilerDefect::equivalence_display(self : CompilerDefect) -> String {
+  // The verifier itself is deferred to issue #635, so current defects name
+  // the concrete frontend/lowering/harness stage that produced them.
+  match self.stage {
+    ParserDefect | StaticSemanticsDefect | LoweringDefect | HarnessDefect =>
+      self.rendered
+  }
+}
+
+///|
+fn same_executor_outcome(
+  expected : ExecutorOutcome,
+  actual : ExecutorOutcome,
+) -> Bool {
+  match (expected, actual) {
+    (Completed(expected), Completed(actual)) =>
+      expected.value.rendered == actual.value.rendered &&
+      same_effects(expected.effects, actual.effects)
+    (Threw(expected), Threw(actual)) =>
+      expected.exception.rendered == actual.exception.rendered &&
+      same_string_option(
+        expected.exception.class_name,
+        actual.exception.class_name,
+      ) &&
+      same_string_option(expected.exception.name, actual.exception.name) &&
+      same_string_option(expected.exception.message, actual.exception.message) &&
+      same_string_option(
+        expected.exception.source_identity,
+        actual.exception.source_identity,
+      ) &&
+      same_effects(expected.effects, actual.effects)
+    (ControlStopped(expected), ControlStopped(actual)) =>
+      same_control_point(expected.point, actual.point) &&
+      same_control_failure(expected.failure, actual.failure) &&
+      same_effects(expected.effects, actual.effects)
+    _ => false
+  }
+}
+
+///|
+fn reduce_equivalence(
+  expected : ExecutorOutcome?,
+  actual : ExecutorOutcome,
+) -> EquivalenceResult {
+  match actual {
+    Unsupported(unsupported) => UnsupportedSelected(unsupported)
+    FrontendFailed(diagnostic) => FrontendRejected(diagnostic)
+    CompilerFailed(defect) => CompilerOrVerifierDefect(defect)
+    RuntimeFailed(defect) => RuntimeEngineDefect(defect)
+    _ =>
+      match expected {
+        Some(expected) if same_executor_outcome(expected, actual) =>
+          Equivalent(actual)
+        Some(expected) => ObservableMismatch(expected, actual)
+        None =>
+          CompilerOrVerifierDefect({
+            stage: HarnessDefect,
+            message: "missing expected executor outcome",
+            rendered: "missing expected executor outcome",
+          })
+      }
+  }
+}
+
+///|
+fn structured_bytecode_compare(src : String) -> EquivalenceResult {
+  let actual = observe_bytecode_source_with_interpreter(
+    @interpreter.new_interpreter(),
+    src,
+  )
+  match actual {
+    Completed(_) | Threw(_) | ControlStopped(_) => {
+      let expected = observe_tree_source_with_interpreter(
+        @interpreter.new_interpreter(),
+        src,
+      )
+      reduce_equivalence(Some(expected), actual)
+    }
+    _ => reduce_equivalence(None, actual)
+  }
+}
+
+///|
+fn synthetic_completed_outcome_for_wb(
+  rendered : String,
+  host_output : Array[String],
+) -> ExecutorOutcome {
+  Completed({
+    value: { rendered, },
+    effects: {
+      host_output: host_output.copy(),
+      queues: { policy: LeavesQueuesPending, microtasks: 0, timers: 0 },
+    },
+  })
+}
+
+///|
+fn synthetic_runtime_defect_outcome_for_wb() -> ExecutorOutcome {
+  let interp = @interpreter.new_interpreter()
+  observe_execution(interp, BytecodeRuntimeDefect, () => {
+    raise EquivalenceSyntheticRuntimeDefect("synthetic runtime invariant")
+  })
+}
+
+///|
+fn synthetic_control_outcome_for_wb(
+  point : ExecutionControlPoint,
+  failure : ExecutionControlFailure,
+) -> ExecutorOutcome {
+  ControlStopped({
+    point,
+    failure,
+    effects: {
+      host_output: [],
+      queues: { policy: LeavesQueuesPending, microtasks: 0, timers: 0 },
+    },
+  })
+}
+
+///|
+fn install_step_limit_observer(interp : Interpreter) -> Unit {
+  let observer : Value = Object({
+    bag: PropertyBag::PropertyBag(),
+    prototype: Null,
+    callable: Some(
+      NonConstructableCallable("[[equivalence-step-limit]]", fn(_args) raise {
+        raise EquivalenceControlSignal(DispatchStepObservation, ExecutionLimit)
+      }),
+    ),
+    class_name: "Function",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+  interp.global.bindings[EQUIVALENCE_EXECUTION_CONTROL_BINDING] = {
+    value: observer,
+    kind: BindingKind::VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+}
+
+///|
+fn structured_step_limit_comparison_for_wb(src : String) -> EquivalenceResult {
+  let bytecode_interp = @interpreter.new_interpreter()
+  install_step_limit_observer(bytecode_interp)
+  let actual = observe_bytecode_source_with_interpreter(bytecode_interp, src)
+  let tree_interp = @interpreter.new_interpreter()
+  install_step_limit_observer(tree_interp)
+  let expected = observe_tree_source_with_interpreter(tree_interp, src)
+  reduce_equivalence(Some(expected), actual)
+}
+
+///|
+fn BytecodeUnsupported::equivalence_display(
+  self : BytecodeUnsupported,
+) -> String {
+  "bytecode prototype unsupported: " +
+  self.reason.display_text() +
+  " at line " +
+  self.loc.line.to_string() +
+  ", col " +
+  self.loc.col.to_string()
+}
+
+///|
+fn display_executor_outcome(
+  outcome : ExecutorOutcome,
+  include_output : Bool,
+) -> String {
+  let (base, effects) = match outcome {
+    Completed(observation) =>
+      ("value:" + observation.value.rendered, Some(observation.effects))
+    Threw(observation) =>
+      ("throw:" + observation.exception.rendered, Some(observation.effects))
+    Unsupported(unsupported) =>
+      ("error:" + unsupported.equivalence_display(), None)
+    FrontendFailed(diagnostic) => {
+      let prefix = match diagnostic.stage {
+        ParserFrontend => "error:"
+        StaticSemanticsFrontend => "throw:"
+      }
+      (prefix + diagnostic.rendered, None)
+    }
+    CompilerFailed(defect) => ("error:" + defect.equivalence_display(), None)
+    RuntimeFailed(defect) => ("error:" + defect.rendered, Some(defect.effects))
+    ControlStopped(observation) =>
+      ("error:execution control stopped", Some(observation.effects))
+  }
+  if include_output {
+    match effects {
+      Some(effects) => base + "; output:" + effects.host_output.join("|")
+      None => base + "; output:"
+    }
+  } else {
+    base
+  }
+}
+
+///|
+fn display_equivalence_result(
+  result : EquivalenceResult,
+  include_output : Bool,
+) -> String {
+  match result {
+    Equivalent(outcome) => display_executor_outcome(outcome, include_output)
+    UnsupportedSelected(unsupported) =>
+      display_executor_outcome(Unsupported(unsupported), include_output)
+    FrontendRejected(diagnostic) =>
+      display_executor_outcome(FrontendFailed(diagnostic), include_output)
+    CompilerOrVerifierDefect(defect) =>
+      display_executor_outcome(CompilerFailed(defect), include_output)
+    RuntimeEngineDefect(defect) =>
+      display_executor_outcome(RuntimeFailed(defect), include_output)
+    ObservableMismatch(expected, actual) =>
+      "expected " +
+      display_executor_outcome(expected, true) +
+      "; got " +
+      display_executor_outcome(actual, true)
   }
 }
 
 ///|
 fn bytecode_outcome(src : String) -> String {
-  try {
-    let prog = @parser.parse(src)
-    let interp = @interpreter.new_interpreter()
-    let bytecode = compile_script_to_bytecode(prog.stmts)
-    "value:" + bytecode.run(interp).to_string()
-  } catch {
-    @runtime.JsException(value) => "throw:" + value.to_string()
-    err => "error:" + err.to_string()
-  }
+  display_executor_outcome(
+    observe_bytecode_source_with_interpreter(
+      @interpreter.new_interpreter(),
+      src,
+    ),
+    false,
+  )
 }
 
 ///|
 fn bytecode_compare(src : String) -> String {
-  let expected = bytecode_interpreter_outcome(src)
-  let actual = bytecode_outcome(src)
-  if actual == expected {
-    actual
-  } else {
-    "expected \{expected}; got \{actual}"
-  }
-}
-
-///|
-fn bytecode_interpreter_output_outcome(src : String) -> String {
-  let interp = @interpreter.new_interpreter()
-  try {
-    let prog = @parser.parse(src)
-    "value:" +
-    interp.run(prog.stmts).to_string() +
-    "; output:" +
-    interp.host.output.join("|")
-  } catch {
-    @runtime.JsException(value) =>
-      "throw:" + value.to_string() + "; output:" + interp.host.output.join("|")
-    err =>
-      "error:" + err.to_string() + "; output:" + interp.host.output.join("|")
-  }
-}
-
-///|
-fn bytecode_output_outcome(src : String) -> String {
-  let interp = @interpreter.new_interpreter()
-  try {
-    let prog = @parser.parse(src)
-    let bytecode = compile_script_to_bytecode(prog.stmts)
-    "value:" +
-    bytecode.run(interp).to_string() +
-    "; output:" +
-    interp.host.output.join("|")
-  } catch {
-    @runtime.JsException(value) =>
-      "throw:" + value.to_string() + "; output:" + interp.host.output.join("|")
-    err =>
-      "error:" + err.to_string() + "; output:" + interp.host.output.join("|")
-  }
+  display_equivalence_result(structured_bytecode_compare(src), false)
 }
 
 ///|
 fn bytecode_compare_with_output(src : String) -> String {
-  let expected = bytecode_interpreter_output_outcome(src)
-  let actual = bytecode_output_outcome(src)
-  if actual == expected {
-    actual
-  } else {
-    "expected \{expected}; got \{actual}"
-  }
+  display_equivalence_result(structured_bytecode_compare(src), true)
 }
 
 ///|
