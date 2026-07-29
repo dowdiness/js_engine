@@ -381,7 +381,7 @@ rewrite:
 | #385 (after foundations) | Add verified bytecode handler/finalizer control-flow representation |
 | Follow-up after #601 | Replace embedded `Value` constants with bytecode literals or recipes |
 
-#634 is the first vertical slice: it separates compiled, unsupported,
+Issue #634 is the first vertical slice: it separates compiled, unsupported,
 frontend/JavaScript diagnostic, and engine-defect outcomes without changing the
 instruction representation. #330 may define observation coverage in parallel.
 No syntax-breadth or performance work should precede the verifier and typed
