@@ -137,6 +137,17 @@ fn bytecode_reject(
 }
 
 ///|
+fn bytecode_reject_if_present(
+  reason : BytecodeUnsupportedReason,
+  loc : @token.Loc?,
+) -> Unit raise BytecodeUnsupportedSignal {
+  match loc {
+    Some(loc) => bytecode_reject(reason, loc)
+    None => ()
+  }
+}
+
+///|
 fn bytecode_expr_loc(expr : @ast.Expr) -> @token.Loc {
   match expr {
     NumberLit(_, _, loc)
@@ -277,86 +288,73 @@ fn bytecode_is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
 }
 
 ///|
-fn first_lexical_decl_loc(stmt : @ast.Stmt) -> @token.Loc? {
+fn stmt_is_lexical_decl(stmt : @ast.Stmt) -> Bool {
   match stmt {
-    VarDecl(LetKind, _, _, loc)
-    | VarDecl(ConstKind, _, _, loc)
-    | DestructureDecl(LetKind, _, _, loc)
-    | DestructureDecl(ConstKind, _, _, loc)
-    | ForInStmt(Some(LetKind), _, _, _, loc)
-    | ForInStmt(Some(ConstKind), _, _, _, loc)
-    | ForInStmtPat(Some(LetKind), _, _, _, loc)
-    | ForInStmtPat(Some(ConstKind), _, _, _, loc)
-    | ForOfStmt(Some(LetKind), _, _, _, loc)
-    | ForOfStmt(Some(ConstKind), _, _, _, loc)
-    | ForOfStmtPat(Some(LetKind), _, _, _, loc)
-    | ForOfStmtPat(Some(ConstKind), _, _, _, loc)
-    | AsyncForOfStmt(Some(LetKind), _, _, _, loc)
-    | AsyncForOfStmt(Some(ConstKind), _, _, _, loc)
-    | AsyncForOfStmtPat(Some(LetKind), _, _, _, loc)
-    | AsyncForOfStmtPat(Some(ConstKind), _, _, _, loc) => Some(loc)
-    StmtList(stmts, _) | Block(stmts, _) => first_lexical_decl_in(stmts)
-    ForInStmt(_, _, _, body, _)
-    | ForInStmtPat(_, _, _, body, _)
-    | ForInExpr(_, _, body, _)
-    | ForOfStmt(_, _, _, body, _)
-    | ForOfStmtPat(_, _, _, body, _)
-    | ForOfExpr(_, _, body, _)
-    | AsyncForOfStmt(_, _, _, body, _)
-    | AsyncForOfStmtPat(_, _, _, body, _)
-    | AsyncForOfExpr(_, _, body, _)
-    | LabeledStmt(_, body, _) => first_lexical_decl_loc(body)
-    SwitchStmt(_, cases, _) => first_lexical_decl_in_cases(cases)
-    _ => None
+    VarDecl(LetKind, _, _, _)
+    | VarDecl(ConstKind, _, _, _)
+    | DestructureDecl(LetKind, _, _, _)
+    | DestructureDecl(ConstKind, _, _, _)
+    | ForInStmt(Some(LetKind), _, _, _, _)
+    | ForInStmt(Some(ConstKind), _, _, _, _)
+    | ForInStmtPat(Some(LetKind), _, _, _, _)
+    | ForInStmtPat(Some(ConstKind), _, _, _, _)
+    | ForOfStmt(Some(LetKind), _, _, _, _)
+    | ForOfStmt(Some(ConstKind), _, _, _, _)
+    | ForOfStmtPat(Some(LetKind), _, _, _, _)
+    | ForOfStmtPat(Some(ConstKind), _, _, _, _)
+    | AsyncForOfStmt(Some(LetKind), _, _, _, _)
+    | AsyncForOfStmt(Some(ConstKind), _, _, _, _)
+    | AsyncForOfStmtPat(Some(LetKind), _, _, _, _)
+    | AsyncForOfStmtPat(Some(ConstKind), _, _, _, _) => true
+    _ => false
   }
 }
 
 ///|
-fn first_lexical_decl_in(stmts : Array[@ast.Stmt]) -> @token.Loc? {
-  for stmt in stmts {
-    match first_lexical_decl_loc(stmt) {
-      Some(loc) => return Some(loc)
-      None => ()
-    }
-  }
-  None
-}
-
-///|
-fn first_lexical_decl_in_cases(cases : Array[@ast.SwitchCase]) -> @token.Loc? {
-  for case in cases {
-    match first_lexical_decl_in(case.body) {
-      Some(loc) => return Some(loc)
-      None => ()
-    }
-  }
-  None
-}
-
-///|
-fn first_function_decl_loc(stmt : @ast.Stmt) -> @token.Loc? {
+fn stmt_is_function_decl(stmt : @ast.Stmt) -> Bool {
   match stmt {
-    FuncDecl(_, _, _, loc, _) | FuncDeclExt(_, _, _, _, loc, _) => Some(loc)
-    StmtList(stmts, _) | Block(stmts, _) => first_function_decl_in(stmts)
+    FuncDecl(_, _, _, _, _) | FuncDeclExt(_, _, _, _, _, _) => true
+    _ => false
+  }
+}
+
+///|
+fn stmt_is_destructure_decl(stmt : @ast.Stmt) -> Bool {
+  match stmt {
+    DestructureDecl(_, _, _, _) => true
+    _ => false
+  }
+}
+
+///|
+fn first_decl_loc(
+  stmt : @ast.Stmt,
+  is_decl : (@ast.Stmt) -> Bool,
+) -> @token.Loc? {
+  if is_decl(stmt) {
+    return Some(bytecode_stmt_loc(stmt))
+  }
+  match stmt {
+    StmtList(stmts, _) | Block(stmts, _) => first_decl_in(stmts, is_decl)
     IfStmt(_, then_branch, else_branch, _) =>
-      match first_function_decl_loc(then_branch) {
+      match first_decl_loc(then_branch, is_decl) {
         Some(loc) => Some(loc)
         None =>
           match else_branch {
-            Some(branch) => first_function_decl_loc(branch)
+            Some(branch) => first_decl_loc(branch, is_decl)
             None => None
           }
       }
     WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
-      first_function_decl_loc(body)
+      first_decl_loc(body, is_decl)
     ForStmt(init, _, _, body, _) =>
       match init {
         Some(stmt) =>
-          match first_function_decl_loc(stmt) {
+          match first_decl_loc(stmt, is_decl) {
             Some(loc) => Some(loc)
-            None => first_function_decl_loc(body)
+            None => first_decl_loc(body, is_decl)
           }
-        None => first_function_decl_loc(body)
+        None => first_decl_loc(body, is_decl)
       }
     ForInStmt(_, _, _, body, _)
     | ForInStmtPat(_, _, _, body, _)
@@ -367,16 +365,19 @@ fn first_function_decl_loc(stmt : @ast.Stmt) -> @token.Loc? {
     | AsyncForOfStmt(_, _, _, body, _)
     | AsyncForOfStmtPat(_, _, _, body, _)
     | AsyncForOfExpr(_, _, body, _)
-    | LabeledStmt(_, body, _) => first_function_decl_loc(body)
-    SwitchStmt(_, cases, _) => first_function_decl_in_cases(cases)
+    | LabeledStmt(_, body, _) => first_decl_loc(body, is_decl)
+    SwitchStmt(_, cases, _) => first_decl_in_cases(cases, is_decl)
     _ => None
   }
 }
 
 ///|
-fn first_function_decl_in(stmts : Array[@ast.Stmt]) -> @token.Loc? {
+fn first_decl_in(
+  stmts : Array[@ast.Stmt],
+  is_decl : (@ast.Stmt) -> Bool,
+) -> @token.Loc? {
   for stmt in stmts {
-    match first_function_decl_loc(stmt) {
+    match first_decl_loc(stmt, is_decl) {
       Some(loc) => return Some(loc)
       None => ()
     }
@@ -385,73 +386,12 @@ fn first_function_decl_in(stmts : Array[@ast.Stmt]) -> @token.Loc? {
 }
 
 ///|
-fn first_function_decl_in_cases(cases : Array[@ast.SwitchCase]) -> @token.Loc? {
-  for case in cases {
-    match first_function_decl_in(case.body) {
-      Some(loc) => return Some(loc)
-      None => ()
-    }
-  }
-  None
-}
-
-///|
-fn first_destructure_decl_loc(stmt : @ast.Stmt) -> @token.Loc? {
-  match stmt {
-    DestructureDecl(_, _, _, loc) => Some(loc)
-    StmtList(stmts, _) | Block(stmts, _) => first_destructure_decl_in(stmts)
-    IfStmt(_, then_branch, else_branch, _) =>
-      match first_destructure_decl_loc(then_branch) {
-        Some(loc) => Some(loc)
-        None =>
-          match else_branch {
-            Some(branch) => first_destructure_decl_loc(branch)
-            None => None
-          }
-      }
-    WhileStmt(_, body, _) | DoWhileStmt(body, _, _) =>
-      first_destructure_decl_loc(body)
-    ForStmt(init, _, _, body, _) =>
-      match init {
-        Some(stmt) =>
-          match first_destructure_decl_loc(stmt) {
-            Some(loc) => Some(loc)
-            None => first_destructure_decl_loc(body)
-          }
-        None => first_destructure_decl_loc(body)
-      }
-    ForInStmt(_, _, _, body, _)
-    | ForInStmtPat(_, _, _, body, _)
-    | ForInExpr(_, _, body, _)
-    | ForOfStmt(_, _, _, body, _)
-    | ForOfStmtPat(_, _, _, body, _)
-    | ForOfExpr(_, _, body, _)
-    | AsyncForOfStmt(_, _, _, body, _)
-    | AsyncForOfStmtPat(_, _, _, body, _)
-    | AsyncForOfExpr(_, _, body, _)
-    | LabeledStmt(_, body, _) => first_destructure_decl_loc(body)
-    SwitchStmt(_, cases, _) => first_destructure_decl_in_cases(cases)
-    _ => None
-  }
-}
-
-///|
-fn first_destructure_decl_in(stmts : Array[@ast.Stmt]) -> @token.Loc? {
-  for stmt in stmts {
-    match first_destructure_decl_loc(stmt) {
-      Some(loc) => return Some(loc)
-      None => ()
-    }
-  }
-  None
-}
-
-///|
-fn first_destructure_decl_in_cases(
+fn first_decl_in_cases(
   cases : Array[@ast.SwitchCase],
+  is_decl : (@ast.Stmt) -> Bool,
 ) -> @token.Loc? {
   for case in cases {
-    match first_destructure_decl_in(case.body) {
+    match first_decl_in(case.body, is_decl) {
       Some(loc) => return Some(loc)
       None => ()
     }
@@ -1743,7 +1683,7 @@ fn compile_bytecode_function(
     rest_param is None &&
     !builder.has_this &&
     !builder.has_new_target &&
-    first_lexical_decl_in(body) is None &&
+    first_decl_in(body, stmt_is_lexical_decl) is None &&
     !bytecode_body_contains_destructure_assign(body)),
     local_names: builder.local_names,
     local_indices: builder.local_indices,
@@ -1847,18 +1787,18 @@ fn BytecodeBuilder::compile_switch(
   discriminant : @ast.Expr,
   cases : Array[@ast.SwitchCase],
 ) -> Unit raise Error {
-  match first_lexical_decl_in_cases(cases) {
-    Some(loc) => bytecode_reject(SwitchLexicalDeclaration, loc)
-    None => ()
-  }
-  match first_function_decl_in_cases(cases) {
-    Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
-    None => ()
-  }
-  match first_destructure_decl_in_cases(cases) {
-    Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-    None => ()
-  }
+  bytecode_reject_if_present(
+    SwitchLexicalDeclaration,
+    first_decl_in_cases(cases, stmt_is_lexical_decl),
+  )
+  bytecode_reject_if_present(
+    ControlFlowFunctionDeclaration,
+    first_decl_in_cases(cases, stmt_is_function_decl),
+  )
+  bytecode_reject_if_present(
+    DestructuringDeclarationContext,
+    first_decl_in_cases(cases, stmt_is_destructure_decl),
+  )
   self.emit_undefined_completion()
   self.compile_expr(discriminant)
   let case_jumps = Array::make(cases.length(), -1)
@@ -1917,14 +1857,14 @@ fn BytecodeBuilder::compile_for_in_identifier(
       bytecode_reject(ForInLexicalDeclaration, loc)
     None => ()
   }
-  match first_function_decl_loc(body) {
-    Some(decl_loc) => bytecode_reject(ControlFlowFunctionDeclaration, decl_loc)
-    None => ()
-  }
-  match first_destructure_decl_loc(body) {
-    Some(decl_loc) => bytecode_reject(DestructuringDeclarationContext, decl_loc)
-    None => ()
-  }
+  bytecode_reject_if_present(
+    ControlFlowFunctionDeclaration,
+    first_decl_loc(body, stmt_is_function_decl),
+  )
+  bytecode_reject_if_present(
+    DestructuringDeclarationContext,
+    first_decl_loc(body, stmt_is_destructure_decl),
+  )
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
   let _ = self.emit(StartForIn)
@@ -1963,14 +1903,14 @@ fn BytecodeBuilder::compile_for_in_pattern(
     None => ()
   }
   bytecode_validate_destructure_assignment_pattern(pattern, loc)
-  match first_function_decl_loc(body) {
-    Some(decl_loc) => bytecode_reject(ControlFlowFunctionDeclaration, decl_loc)
-    None => ()
-  }
-  match first_destructure_decl_loc(body) {
-    Some(decl_loc) => bytecode_reject(DestructuringDeclarationContext, decl_loc)
-    None => ()
-  }
+  bytecode_reject_if_present(
+    ControlFlowFunctionDeclaration,
+    first_decl_loc(body, stmt_is_function_decl),
+  )
+  bytecode_reject_if_present(
+    DestructuringDeclarationContext,
+    first_decl_loc(body, stmt_is_destructure_decl),
+  )
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
   let _ = self.emit(StartForIn)
@@ -2019,14 +1959,14 @@ fn BytecodeBuilder::compile_for_in_expr(
   obj_expr : @ast.Expr,
   body : @ast.Stmt,
 ) -> Unit raise Error {
-  match first_function_decl_loc(body) {
-    Some(decl_loc) => bytecode_reject(ControlFlowFunctionDeclaration, decl_loc)
-    None => ()
-  }
-  match first_destructure_decl_loc(body) {
-    Some(decl_loc) => bytecode_reject(DestructuringDeclarationContext, decl_loc)
-    None => ()
-  }
+  bytecode_reject_if_present(
+    ControlFlowFunctionDeclaration,
+    first_decl_loc(body, stmt_is_function_decl),
+  )
+  bytecode_reject_if_present(
+    DestructuringDeclarationContext,
+    first_decl_loc(body, stmt_is_destructure_decl),
+  )
   self.emit_undefined_completion()
   self.compile_expr(obj_expr)
   let _ = self.emit(StartForIn)
@@ -2096,56 +2036,56 @@ fn BytecodeBuilder::compile_stmt(
     DestructureDecl(_, _, _, loc) =>
       bytecode_reject(DestructuringDeclarationKind, loc)
     StmtList(stmts, _) => {
-      match first_destructure_decl_in(stmts) {
-        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        DestructuringDeclarationContext,
+        first_decl_in(stmts, stmt_is_destructure_decl),
+      )
       self.emit_undefined_completion()
       for child in stmts {
         self.compile_stmt(child, declaration_updates_completion=false)
       }
     }
     Block(stmts, _) => {
-      match first_lexical_decl_in(stmts) {
-        Some(loc) => bytecode_reject(BlockLexicalDeclaration, loc)
-        None => ()
-      }
-      match first_function_decl_in(stmts) {
-        Some(loc) => bytecode_reject(BlockFunctionDeclaration, loc)
-        None => ()
-      }
-      match first_destructure_decl_in(stmts) {
-        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        BlockLexicalDeclaration,
+        first_decl_in(stmts, stmt_is_lexical_decl),
+      )
+      bytecode_reject_if_present(
+        BlockFunctionDeclaration,
+        first_decl_in(stmts, stmt_is_function_decl),
+      )
+      bytecode_reject_if_present(
+        DestructuringDeclarationContext,
+        first_decl_in(stmts, stmt_is_destructure_decl),
+      )
       self.emit_undefined_completion()
       for child in stmts {
         self.compile_stmt(child, declaration_updates_completion=false)
       }
     }
     IfStmt(cond, then_branch, else_branch, _) => {
-      match first_function_decl_loc(then_branch) {
-        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        ControlFlowFunctionDeclaration,
+        first_decl_loc(then_branch, stmt_is_function_decl),
+      )
       match else_branch {
         Some(stmt) =>
-          match first_function_decl_loc(stmt) {
-            Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
-            None => ()
-          }
+          bytecode_reject_if_present(
+            ControlFlowFunctionDeclaration,
+            first_decl_loc(stmt, stmt_is_function_decl),
+          )
         None => ()
       }
-      match first_destructure_decl_loc(then_branch) {
-        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        DestructuringDeclarationContext,
+        first_decl_loc(then_branch, stmt_is_destructure_decl),
+      )
       match else_branch {
         Some(stmt) =>
-          match first_destructure_decl_loc(stmt) {
-            Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-            None => ()
-          }
+          bytecode_reject_if_present(
+            DestructuringDeclarationContext,
+            first_decl_loc(stmt, stmt_is_destructure_decl),
+          )
         None => ()
       }
       self.compile_expr(cond)
@@ -2160,14 +2100,14 @@ fn BytecodeBuilder::compile_stmt(
       self.patch(end_jump, Jump(self.code.length()))
     }
     WhileStmt(cond, body, _) => {
-      match first_function_decl_loc(body) {
-        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
-        None => ()
-      }
-      match first_destructure_decl_loc(body) {
-        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        ControlFlowFunctionDeclaration,
+        first_decl_loc(body, stmt_is_function_decl),
+      )
+      bytecode_reject_if_present(
+        DestructuringDeclarationContext,
+        first_decl_loc(body, stmt_is_destructure_decl),
+      )
       self.emit_undefined_completion()
       let cond_pos = self.code.length()
       self.compile_expr(cond)
@@ -2184,14 +2124,14 @@ fn BytecodeBuilder::compile_stmt(
       self.patch_loop_jumps(loop_ctx.continue_jumps, cond_pos)
     }
     DoWhileStmt(body, cond, _) => {
-      match first_function_decl_loc(body) {
-        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
-        None => ()
-      }
-      match first_destructure_decl_loc(body) {
-        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        ControlFlowFunctionDeclaration,
+        first_decl_loc(body, stmt_is_function_decl),
+      )
+      bytecode_reject_if_present(
+        DestructuringDeclarationContext,
+        first_decl_loc(body, stmt_is_destructure_decl),
+      )
       self.emit_undefined_completion()
       let body_pos = self.code.length()
       let labels = self.take_pending_loop_labels()
@@ -2209,24 +2149,24 @@ fn BytecodeBuilder::compile_stmt(
       self.patch_loop_jumps(loop_ctx.break_jumps, exit_pos)
     }
     ForStmt(init, cond, update, body, _) => {
-      match first_function_decl_loc(body) {
-        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
-        None => ()
-      }
-      match first_destructure_decl_loc(body) {
-        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        ControlFlowFunctionDeclaration,
+        first_decl_loc(body, stmt_is_function_decl),
+      )
+      bytecode_reject_if_present(
+        DestructuringDeclarationContext,
+        first_decl_loc(body, stmt_is_destructure_decl),
+      )
       match init {
         Some(stmt) => {
-          match first_lexical_decl_loc(stmt) {
-            Some(loc) => bytecode_reject(ForLexicalInitializer, loc)
-            None => ()
-          }
-          match first_destructure_decl_loc(stmt) {
-            Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-            None => ()
-          }
+          bytecode_reject_if_present(
+            ForLexicalInitializer,
+            first_decl_loc(stmt, stmt_is_lexical_decl),
+          )
+          bytecode_reject_if_present(
+            DestructuringDeclarationContext,
+            first_decl_loc(stmt, stmt_is_destructure_decl),
+          )
           self.compile_for_init(stmt)
         }
         None => ()
@@ -2308,14 +2248,14 @@ fn BytecodeBuilder::compile_stmt(
     }
     TryCatchStmt(_, _, _, _, loc) => bytecode_reject(TryCatchStatement, loc)
     LabeledStmt(label, body, _) => {
-      match first_function_decl_loc(body) {
-        Some(loc) => bytecode_reject(ControlFlowFunctionDeclaration, loc)
-        None => ()
-      }
-      match first_destructure_decl_loc(body) {
-        Some(loc) => bytecode_reject(DestructuringDeclarationContext, loc)
-        None => ()
-      }
+      bytecode_reject_if_present(
+        ControlFlowFunctionDeclaration,
+        first_decl_loc(body, stmt_is_function_decl),
+      )
+      bytecode_reject_if_present(
+        DestructuringDeclarationContext,
+        first_decl_loc(body, stmt_is_destructure_decl),
+      )
       if stmt_is_iteration_label_target(body) {
         self.pending_loop_labels.push(label)
         self.compile_stmt(body, declaration_updates_completion~)

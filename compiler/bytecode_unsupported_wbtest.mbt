@@ -133,12 +133,15 @@ test "bytecode rejects switch lexical and function declarations explicitly" {
 }
 
 ///|
-test "bytecode preserves SyntaxError for unresolved labeled control flow" {
+test "bytecode preserves label-specific SyntaxError for unresolved control flow" {
   assert_bytecode_lowering_syntax_error(
-    "while (true) { break label; }", "break statement outside of loop",
+    "while (true) { break label; }", "Undefined label 'label'",
   )
   assert_bytecode_lowering_syntax_error(
-    "label: { continue label; }", "continue statement outside of loop",
+    "label: { continue label; }", "Illegal continue statement: 'label' does not denote an iteration statement",
+  )
+  assert_bytecode_lowering_syntax_error(
+    "while (true) { continue missing; }", "Undefined label 'missing'",
   )
 }
 

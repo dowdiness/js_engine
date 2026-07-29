@@ -274,9 +274,9 @@ Lowering distinguishes a compiled program from an explicit, private
 unsupported outcome before execution starts. Unsupported outcomes carry a
 closed reason and source location; diagnostic text is derived only when the
 experimental compatibility entry point must display the outcome. Compiler and
-builder invariant violations remain `InternalError`s, while JavaScript parse,
-early-error, and runtime diagnostics keep their existing error classes and
-messages.
+builder invariant violations remain internal invariant failures, while
+JavaScript parse, early-error, and runtime diagnostics keep their existing error
+classes and messages.
 
 The private reason vocabulary is the source of truth for current syntax gaps.
 Do not duplicate it as a hand-maintained string list or recover it by parsing

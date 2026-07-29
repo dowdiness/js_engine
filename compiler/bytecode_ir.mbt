@@ -423,8 +423,7 @@ fn BytecodeBuilder::emit_loop_break(
           let jump = self.emit(Jump(-1))
           ctx.break_jumps.push(jump)
         }
-        None =>
-          raise @errors.SyntaxError(message="break statement outside of loop")
+        None => raise @errors.SyntaxError(message="Undefined label '\{target}'")
       }
     }
     None => {
@@ -452,9 +451,14 @@ fn BytecodeBuilder::emit_loop_continue(
           ctx.continue_jumps.push(jump)
         }
         None =>
-          raise @errors.SyntaxError(
-            message="continue statement outside of loop",
-          )
+          match self.find_label_context(target) {
+            Some(_) =>
+              raise @errors.SyntaxError(
+                message="Illegal continue statement: '\{target}' does not denote an iteration statement",
+              )
+            None =>
+              raise @errors.SyntaxError(message="Undefined label '\{target}'")
+          }
       }
     None => {
       let ctx = self.current_loop_context()
