@@ -127,7 +127,6 @@ An acquired activation owns one immutable snapshot or opaque shell token with:
 - the previous packed active realm-prototype overrides;
 - the previous active source identity and the callee source identity needed for
   failure observation;
-- any enclosing property-operation realm-clear state still pending;
 - the previous parameter-default flag and conflict set;
 - the activation environment/context and continuation owner; and
 - whether the #617 observation accepted entry.
@@ -136,6 +135,14 @@ Handler and finalizer routing does not consume this token. Leaving the owning
 activation consumes it once. Rejected entry restores state installed while
 preparing the attempt but never emits a release for an activation that was not
 acquired.
+
+A property operation owns a separate dispatcher-managed LIFO scope token for
+its active-callee-realm clear. That token survives handler lookup, a suspended
+getter or Proxy trap activation, and post-trap invariant work. Normal or abrupt
+completion of the property operation consumes it once. If an activation exits
+with property operations still outstanding, those operation scopes unwind in
+LIFO order before the activation cleanup token is consumed and release is
+observed.
 
 ## Focused test ledger
 
