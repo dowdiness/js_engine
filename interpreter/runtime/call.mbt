@@ -966,6 +966,13 @@ fn Interpreter::finish_simple_user_func_parameter_gate(
 }
 
 ///|
+#warnings("-unused_constructor")
+priv enum UserFuncThrowTypeErrorSource {
+  ResolveInheritedThrowTypeError
+  UsePreResolvedThrowTypeError(Value?)
+}
+
+///|
 // Prepared lexical state only. Body scheduling and execution remain owned by
 // the caller so the legacy path does not copy the function's statement array.
 priv struct PreparedUserFuncActivation {
@@ -994,15 +1001,16 @@ fn Interpreter::normalize_sloppy_this(
 
 ///|
 // Prepare the lexical activation shared by legacy and resumable simple
-// UserFunc adapters. This may invoke guest code while resolving the inherited
-// [[ThrowTypeError]] binding, so resumable callers must enforce admission
-// before treating it as an atomic shell effect.
+// UserFunc adapters. The default source may invoke guest code while resolving
+// the inherited [[ThrowTypeError]] binding; routing-neutral callers must pass a
+// value resolved before admission.
 fn Interpreter::prepare_user_func_activation(
   self : Interpreter,
   callee : Value,
   this_val : Value,
   args : Array[Value],
   data : FuncData,
+  throw_type_error_source? : UserFuncThrowTypeErrorSource = ResolveInheritedThrowTypeError,
 ) -> PreparedUserFuncActivation raise Error {
   let func_env = Environment::new(parent=Some(data.closure))
   func_env.is_var_scope = true
@@ -1035,10 +1043,16 @@ fn Interpreter::prepare_user_func_activation(
   }
   if !params_include_arguments(data.params, None) {
     // Create arguments object unless a formal parameter is named `arguments`.
-    let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
-      Some(func_env.get("[[ThrowTypeError]]"))
-    } else {
-      None
+    let tte_val : Value? = match throw_type_error_source {
+      // Preserve the legacy lookup order exactly for ordinary callers.
+      ResolveInheritedThrowTypeError =>
+        if func_env.has("[[ThrowTypeError]]") {
+          Some(func_env.get("[[ThrowTypeError]]"))
+        } else {
+          None
+        }
+      // Trusted callers resolve this before entering the routing-neutral path.
+      UsePreResolvedThrowTypeError(value) => value
     }
     func_env.def(
       "arguments",
