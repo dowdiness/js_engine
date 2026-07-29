@@ -208,10 +208,29 @@ fn DispatchParameterDefaultResume::DispatchParameterDefaultResume(
 }
 
 ///|
+#warnings("-unused_field")
+priv struct DispatchNumericCallStart {
+  parameter : DispatchParameterBindingToken
+  recursive_callee : DispatchCalleeCaptureToken
+  recipe : NumericRecursionExpressionRecipe
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericCallStart::DispatchNumericCallStart(
+  parameter~ : DispatchParameterBindingToken,
+  recursive_callee~ : DispatchCalleeCaptureToken,
+  recipe~ : NumericRecursionExpressionRecipe,
+) -> DispatchNumericCallStart {
+  { parameter, recursive_callee, recipe }
+}
+
+///|
 #warnings("-unused_constructor-unused_field")
 priv enum DispatchCallStart {
   DispatchCallBody(DispatchStatementCursor)
   DispatchCallParameters(DispatchParameterDefaultResume)
+  DispatchNumericCall(DispatchNumericCallStart)
 }
 
 ///|

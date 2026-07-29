@@ -19,30 +19,92 @@ fn[T] invalid_activation_dispatch_shell(
 priv enum ProgramCleanupOwner {
   AcceptedProgram
   RejectedProgram
+  AcceptedNumericCall
+  RejectedNumericCall
 }
 
 ///|
 const MAX_DISPATCH_CLEANUP_ID = 2147483647
 
 ///|
+priv enum DispatchNumericCalleeCaptureState {
+  DispatchNumericCalleeUnresolved(String)
+  DispatchNumericCalleeCaptured(Value)
+  DispatchNumericCalleeConsumed
+}
+
+///|
+priv struct DispatchNumericParameterCapability {
+  env : Environment
+  name : String
+}
+
+///|
+fn DispatchNumericParameterCapability::DispatchNumericParameterCapability(
+  env~ : Environment,
+  name~ : String,
+) -> DispatchNumericParameterCapability {
+  { env, name }
+}
+
+///|
+priv struct DispatchNumericActivationCapabilities {
+  parameter : DispatchNumericParameterCapability?
+  mut recursive_callee : DispatchNumericCalleeCaptureState
+}
+
+///|
+fn DispatchNumericActivationCapabilities::DispatchNumericActivationCapabilities(
+  parameter~ : DispatchNumericParameterCapability?,
+  recursive_callee~ : DispatchNumericCalleeCaptureState,
+) -> DispatchNumericActivationCapabilities {
+  { parameter, recursive_callee }
+}
+
+///|
+priv struct DispatchNumericCallRealmCleanup {
+  cleared_realm : ClearedActiveCalleeRealmScope
+  active_realm : ActiveCalleeRealmValueScope
+  parameter_gate : SimpleUserFuncParameterGateScope
+}
+
+///|
+fn DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
+  cleared_realm~ : ClearedActiveCalleeRealmScope,
+  active_realm~ : ActiveCalleeRealmValueScope,
+  parameter_gate~ : SimpleUserFuncParameterGateScope,
+) -> DispatchNumericCallRealmCleanup {
+  { cleared_realm, active_realm, parameter_gate }
+}
+
+///|
+priv enum DispatchShellCleanupResources {
+  DispatchProgramRealmCleanup(FunctionRealmProtos)
+  DispatchNumericCallRealmCleanup(DispatchNumericCallRealmCleanup)
+}
+
+///|
 priv struct ProgramRealmCleanup {
   id : Int
   owner : ProgramCleanupOwner
-  previous_realm_protos : FunctionRealmProtos
+  resources : DispatchShellCleanupResources
+  capabilities : DispatchNumericActivationCapabilities?
 }
 
 ///|
 priv struct PrimitiveProgramDispatchShell {
   interp : Interpreter
   cleanup_stack : Array[ProgramRealmCleanup]
+  numeric_registry : TrustedNumericRecursionRegistry?
   mut next_cleanup_id : Int
 }
 
 ///|
 fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   interp : Interpreter,
+  numeric_registry? : TrustedNumericRecursionRegistry? = None,
 ) -> PrimitiveProgramDispatchShell {
-  { interp, cleanup_stack: [], next_cleanup_id: 0 }
+  { interp, cleanup_stack: [], numeric_registry, next_cleanup_id: 0 }
 }
 
 ///|
@@ -119,14 +181,10 @@ fn dispatch_signal_completion(signal : Signal) -> DispatchCompletion {
 }
 
 ///|
-fn program_cleanup_owner_matches(
-  actual : ProgramCleanupOwner,
-  expected : ProgramCleanupOwner,
-) -> Bool {
-  match (actual, expected) {
-    (AcceptedProgram, AcceptedProgram) | (RejectedProgram, RejectedProgram) =>
-      true
-    _ => false
+fn program_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
+  match owner {
+    AcceptedProgram | AcceptedNumericCall => true
+    RejectedProgram | RejectedNumericCall => false
   }
 }
 
@@ -150,14 +208,70 @@ fn PrimitiveProgramDispatchShell::push_program_cleanup(
   owner : ProgramCleanupOwner,
   previous_realm_protos : FunctionRealmProtos,
 ) -> Unit {
-  self.cleanup_stack.push({ id, owner, previous_realm_protos })
+  self.cleanup_stack.push({
+    id,
+    owner,
+    resources: DispatchProgramRealmCleanup(previous_realm_protos),
+    capabilities: None,
+  })
 }
 
 ///|
-fn PrimitiveProgramDispatchShell::consume_program_cleanup(
+fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
   self : PrimitiveProgramDispatchShell,
   id : Int,
-  expected_owner : ProgramCleanupOwner,
+  owner : ProgramCleanupOwner,
+  resources : DispatchNumericCallRealmCleanup,
+  capabilities : DispatchNumericActivationCapabilities?,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner,
+    resources: DispatchNumericCallRealmCleanup(resources),
+    capabilities,
+  })
+}
+
+///|
+fn dispatch_cleanup_failure(completion : DispatchCompletion) -> Error? {
+  match completion {
+    DispatchThrow(error) | DispatchRuntimeAbrupt(error) => Some(error)
+    _ => None
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::restore_cleanup_record(
+  self : PrimitiveProgramDispatchShell,
+  cleanup : ProgramRealmCleanup,
+  failure : Error?,
+) -> Unit {
+  match cleanup.resources {
+    DispatchProgramRealmCleanup(previous_realm_protos) =>
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    DispatchNumericCallRealmCleanup(resources) => {
+      self.interp.finish_simple_user_func_parameter_gate(
+        resources.parameter_gate,
+      )
+      finish_active_callee_realm_value(
+        self.interp.realm_state,
+        resources.active_realm,
+        failure~,
+      )
+      finish_cleared_active_callee_realm(
+        self.interp.realm_state,
+        resources.cleared_realm,
+      )
+    }
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::consume_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  accepted : Bool,
+  completion : DispatchCompletion,
 ) -> Unit raise InvalidActivationDispatchShell {
   guard !self.cleanup_stack.is_empty() else {
     invalid_activation_dispatch_shell(
@@ -170,29 +284,61 @@ fn PrimitiveProgramDispatchShell::consume_program_cleanup(
       "cleanup is stale, duplicated, or outside LIFO order",
     )
   }
-  guard program_cleanup_owner_matches(cleanup.owner, expected_owner) else {
+  guard program_cleanup_owner_is_accepted(cleanup.owner) == accepted else {
     invalid_activation_dispatch_shell("cleanup owner does not match its exit")
   }
+  self.restore_cleanup_record(cleanup, dispatch_cleanup_failure(completion))
   let _ = self.cleanup_stack.pop()
-  apply_active_realm_protos(
-    self.interp.realm_state,
-    cleanup.previous_realm_protos,
-  )
 }
 
 ///|
 fn PrimitiveProgramDispatchShell::restore_all_cleanup(
   self : PrimitiveProgramDispatchShell,
+  failure? : Error? = None,
 ) -> Unit {
   while !self.cleanup_stack.is_empty() {
     match self.cleanup_stack.pop() {
-      Some(cleanup) =>
-        apply_active_realm_protos(
-          self.interp.realm_state,
-          cleanup.previous_realm_protos,
-        )
+      Some(cleanup) => self.restore_cleanup_record(cleanup, failure)
       None => ()
     }
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::require_numeric_registry(
+  self : PrimitiveProgramDispatchShell,
+) -> TrustedNumericRecursionRegistry raise InvalidActivationDispatchShell {
+  match self.numeric_registry {
+    Some(registry) => registry
+    None =>
+      invalid_activation_dispatch_shell(
+        "numeric activation requires a sealed trust registry",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+) -> DispatchNumericActivationCapabilities raise InvalidActivationDispatchShell {
+  guard !self.cleanup_stack.is_empty() else {
+    invalid_activation_dispatch_shell(
+      "numeric capability is stale or outside LIFO activation ownership",
+    )
+  }
+  let cleanup = self.cleanup_stack[self.cleanup_stack.length() - 1]
+  guard cleanup.id == id && program_cleanup_owner_is_accepted(cleanup.owner) else {
+    invalid_activation_dispatch_shell(
+      "numeric capability is stale or outside LIFO activation ownership",
+    )
+  }
+  match cleanup.capabilities {
+    Some(capabilities) => capabilities
+    None =>
+      invalid_activation_dispatch_shell(
+        "activation does not own numeric capabilities",
+      )
   }
 }
 
@@ -232,6 +378,214 @@ fn PrimitiveProgramDispatchShell::enter_program(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::enter_numeric_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_numeric_registry()
+  guard request.this_value is Undefined else {
+    invalid_activation_dispatch_shell(
+      "numeric activation requires an undefined receiver",
+    )
+  }
+  guard request.args.length() == 1 else {
+    invalid_activation_dispatch_shell(
+      "numeric activation requires exactly one argument",
+    )
+  }
+  let argument = match request.args[0] {
+    Number(value) => value
+    _ =>
+      invalid_activation_dispatch_shell(
+        "numeric activation requires a number argument",
+      )
+  }
+  let syntax = registry.require_callee(self.interp, request.callee)
+  guard request.callee is Object(callee_object) else {
+    invalid_activation_dispatch_shell(
+      "trusted numeric callee lost its function object",
+    )
+  }
+  guard callee_object.callable is Some(UserFunc(data)) else {
+    invalid_activation_dispatch_shell(
+      "trusted numeric callee lost its UserFunc provenance",
+    )
+  }
+  let id = self.reserve_program_cleanup_id()
+  let cleared_realm = begin_cleared_active_callee_realm(self.interp.realm_state)
+  let active_realm = begin_active_callee_realm_value(
+    self.interp.realm_state,
+    request.callee,
+  )
+  let parameter_gate = self.interp.begin_simple_user_func_parameter_gate()
+  let setup : Result[PreparedUserFuncActivation, Error] = Ok(
+    self.interp.prepare_user_func_activation(
+      request.callee,
+      request.this_value,
+      [Number(argument)],
+      data,
+      throw_type_error_source=UsePreResolvedThrowTypeError(
+        registry.throw_type_error,
+      ),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  let resources = DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
+    cleared_realm~,
+    active_realm~,
+    parameter_gate~,
+  )
+  self.complete_numeric_call_preparation(id, syntax, resources, setup)
+}
+
+///|
+// Converts the caught preparation result into exactly one accepted or rejected
+// cleanup owner. The current sealed numeric syntax is expected to prepare
+// without error; keeping this boundary explicit preserves balanced cleanup if
+// preparation gains another fallible step.
+fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  syntax : NumericRecursionFunctionPlan,
+  resources : DispatchNumericCallRealmCleanup,
+  setup : Result[PreparedUserFuncActivation, Error],
+) -> DispatchEffectResult {
+  match setup {
+    Ok(prepared) => {
+      let capabilities = DispatchNumericActivationCapabilities(
+        parameter=Some(
+          DispatchNumericParameterCapability(
+            env=prepared.env,
+            name=syntax.parameter,
+          ),
+        ),
+        recursive_callee=DispatchNumericCalleeUnresolved(
+          syntax.recursive_callee,
+        ),
+      )
+      self.push_numeric_call_cleanup(
+        id,
+        AcceptedNumericCall,
+        resources,
+        Some(capabilities),
+      )
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id),
+        DispatchNumericCall(
+          DispatchNumericCallStart(
+            parameter=DispatchParameterBindingToken(id~),
+            recursive_callee=DispatchCalleeCaptureToken(id~),
+            recipe=syntax.expression_recipe,
+          ),
+        ),
+      )
+    }
+    Err(error) => {
+      self.push_numeric_call_cleanup(id, RejectedNumericCall, resources, None)
+      DispatchActivationRejected(
+        DispatchRejectedEntryCleanup(id),
+        dispatch_entry_rejection(error),
+      )
+    }
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::observe_numeric_expression_step(
+  self : PrimitiveProgramDispatchShell,
+  observation : DispatchNumericExpressionObservation,
+) -> DispatchEffectResult {
+  ignore(observation)
+  let observed : Result[Unit, Error] = Ok(self.interp.observe_execution_step()) catch {
+    error => Err(error)
+  }
+  match observed {
+    Ok(_) => DispatchWorkCompleted(DispatchNormal(Undefined))
+    Err(error) => DispatchWorkCompleted(dispatch_work_error_completion(error))
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::read_numeric_parameter(
+  self : PrimitiveProgramDispatchShell,
+  token : DispatchParameterBindingToken,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let capabilities = self.require_numeric_capabilities(token.id)
+  let parameter = match capabilities.parameter {
+    Some(found) => found
+    None =>
+      invalid_activation_dispatch_shell(
+        "numeric activation does not own a parameter capability",
+      )
+  }
+  guard parameter.env.bindings.get(parameter.name) is Some(binding) &&
+    binding.initialized &&
+    binding.kind == LetBinding &&
+    binding.is_parameter else {
+    invalid_activation_dispatch_shell(
+      "numeric parameter binding lost its trusted provenance",
+    )
+  }
+  DispatchWorkCompleted(DispatchNormal(binding.value))
+}
+
+///|
+fn PrimitiveProgramDispatchShell::capture_numeric_callee(
+  self : PrimitiveProgramDispatchShell,
+  token : DispatchCalleeCaptureToken,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_numeric_registry()
+  let capabilities = self.require_numeric_capabilities(token.id)
+  match capabilities.recursive_callee {
+    DispatchNumericCalleeUnresolved(name) => {
+      let callee = registry.require_named(self.interp, name)
+      capabilities.recursive_callee = DispatchNumericCalleeCaptured(callee)
+      DispatchWorkCompleted(DispatchNormal(Undefined))
+    }
+    DispatchNumericCalleeCaptured(_) | DispatchNumericCalleeConsumed =>
+      invalid_activation_dispatch_shell(
+        "numeric callee capture capability was already consumed",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::start_captured_numeric_call(
+  self : PrimitiveProgramDispatchShell,
+  token : DispatchCalleeCaptureToken,
+  argument : Double,
+  loc : @token.Loc,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_numeric_registry()
+  let capabilities = self.require_numeric_capabilities(token.id)
+  let callee = match capabilities.recursive_callee {
+    DispatchNumericCalleeCaptured(found) => found
+    DispatchNumericCalleeUnresolved(_) =>
+      invalid_activation_dispatch_shell(
+        "numeric callee must be captured before call start",
+      )
+    DispatchNumericCalleeConsumed =>
+      invalid_activation_dispatch_shell(
+        "numeric callee call-start capability was already consumed",
+      )
+  }
+  let _ = registry.require_callee(self.interp, callee)
+  capabilities.recursive_callee = DispatchNumericCalleeConsumed
+  DispatchWorkSuspended(
+    DispatchSuspendCall(
+      DispatchCallRequest(
+        callee~,
+        this_value=Undefined,
+        args=[Number(argument)],
+        loc~,
+      ),
+      DispatchDeliverCallResult,
+    ),
+  )
+}
+
+///|
 fn PrimitiveProgramDispatchShell::execute_leaf_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
@@ -260,22 +614,28 @@ fn PrimitiveProgramDispatchShell::perform_effect(
   match effect {
     DispatchEnterActivation(DispatchProgramActivation(cursor)) =>
       self.enter_program(cursor)
-    DispatchEnterActivation(DispatchCallActivation(_)) =>
-      invalid_activation_dispatch_shell(
-        "leaf program shell cannot enter a call activation",
-      )
+    DispatchEnterActivation(DispatchCallActivation(request)) =>
+      self.enter_numeric_call(request)
     DispatchRun(DispatchExecuteStatement(step)) =>
       self.execute_leaf_statement(step)
+    DispatchRun(DispatchObserveExpressionStep(observation)) =>
+      self.observe_numeric_expression_step(observation)
+    DispatchRun(DispatchReadNumericParameter(token)) =>
+      self.read_numeric_parameter(token)
+    DispatchRun(DispatchCaptureTrustedCallee(token)) =>
+      self.capture_numeric_callee(token)
+    DispatchRun(DispatchStartCapturedNumericCall(token, argument, loc)) =>
+      self.start_captured_numeric_call(token, argument, loc)
     DispatchRun(_) =>
       invalid_activation_dispatch_shell(
         "leaf program shell received unsupported managed work",
       )
-    DispatchReleaseActivation(cleanup, _) => {
-      self.consume_program_cleanup(cleanup.id, AcceptedProgram)
+    DispatchReleaseActivation(cleanup, completion) => {
+      self.consume_cleanup(cleanup.id, true, completion)
       DispatchCleanupCompleted
     }
-    DispatchRollbackRejectedEntry(cleanup, _) => {
-      self.consume_program_cleanup(cleanup.id, RejectedProgram)
+    DispatchRollbackRejectedEntry(cleanup, completion) => {
+      self.consume_cleanup(cleanup.id, false, completion)
       DispatchCleanupCompleted
     }
     DispatchRestorePropertyScope(_, _) =>
@@ -335,7 +695,7 @@ fn Interpreter::run_activation_dispatch_leaf_program(
     completion
   } catch {
     error => {
-      shell.restore_all_cleanup()
+      shell.restore_all_cleanup(failure=Some(error))
       raise error
     }
   }
