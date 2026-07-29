@@ -284,6 +284,48 @@ formatted errors. When broadening bytecode syntax, remove a reason only after
 adding tests that compare the bytecode path with the tree-walking interpreter
 for the newly supported construct.
 
+## Structured Equivalence Observation Matrix
+
+The bytecode equivalence suite is the executable source of truth for this
+matrix. Its private white-box shell parses and validates source, consumes the
+typed lowering outcome, runs each executor in a fresh interpreter, normalizes
+JavaScript exceptions, and captures host effects. A separate pure reducer
+compares those typed observations. Outcome/category display formatting happens
+only after typed category selection, and equivalence snapshots format the
+reduced result. Value rendering is isolated as a leaf observation and never
+selects an outcome category.
+
+The tested bytecode entry point leaves microtasks and timers pending. Queue
+counts therefore describe state immediately after synchronous execution; they
+do not describe the draining policy of the root facade. “Compared” below means
+the central reducer checks the dimension for every supported fixture, while
+“focused” identifies an explicit boundary test in
+`compiler/bytecode_wbtest.mbt`. Existing semantic examples and their display
+snapshots live in `compiler/bytecode_equivalence_wbtest.mbt`.
+
+| Semantic family | Result / completion | Host output / order | JavaScript throw | Queue policy | Receiver / realm | Execution control | Unsupported before mutation |
+|---|---|---|---|---|---|---|---|
+| Literals, bindings, locals, closures | Compared; normal and function-return fixtures | Compared when present | Name, message, class, and recorded source identity compared | Pending counts compared | Closure behavior has observable-result fixtures; cross-realm identity is unverified | Tree-only today; bytecode gap is tracked below | Not applicable to supported rows |
+| Operators and structured control flow | Compared across branches, loops, switch, return, break, and continue | Compared when present | Structured throw observation compared | Pending counts compared | Not applicable | Tree dispatch has the current step seam; bytecode gap remains explicit | Unsupported control-flow shapes select a typed reason |
+| Arrays, objects, properties, accessors, optional chains | Compared | Compared, including getter side-effect order | Structured throw observation compared | Pending counts compared | Receiver-sensitive fixtures remain required | Tree-only today; bytecode gap is tracked below | Unsupported property/class shapes select a typed reason |
+| Calls, construction, and direct eval | Compared | Compared | Focused function-call throw preserves class, message, and source identity | Pending counts compared | Receiver, constructor, and direct-eval fixtures exist; cross-realm identity is unverified | Activation is synthetic only; production wiring is deferred to #630/#637/#631 | Unsupported call forms select a typed reason |
+| Iteration, spread, and destructuring | Compared for supported forms | Compared when present | Structured throw observation compared | Pending counts compared | Iterator/getter receiver effects remain observable | Tree-only today; bytecode gap is tracked below | Unsupported forms select a typed reason |
+| Host output and synchronous side effects | Compared | Focused ordered output array; element boundaries are retained | Effects before a throw are retained | Pending counts compared | Not applicable | Tree-only today; bytecode gap is tracked below | Not applicable |
+| JavaScript throw propagation | Abrupt outcome is distinct from normal completion | Effects before the throw are retained | Focused class/name/message/source assertion | Pending counts at the throw boundary | Function source identity is focused; cross-realm identity is unverified | Tree-only today; bytecode gap is tracked below | Not applicable |
+| Microtask and timer scheduling | Synchronous completion compared | Only synchronous output is present before draining | Structured throw observation compared | Focused pending-policy row checks both queue counts | Callback realm behavior is deferred to mixed execution | Activation/re-entry is deferred | Unsupported selection leaves both queues unchanged |
+| Parser and static-semantics diagnostics | No executor starts | No host effects | Typed name/message remains distinct from a JavaScript throw | Queues remain untouched | Not applicable | Not applicable | Lowering-time syntax diagnostics remain frontend outcomes, not unsupported or compiler defects |
+| Typed unsupported lowering | No executor starts | Focused no-output/no-side-effect assertion | Not a JavaScript throw | Focused zero-mutation assertion | Not applicable | Not applicable | Focused typed reason and source-location assertion |
+| Compiler/verifier and runtime defects | Distinct closed result categories | Effects are retained only for runtime defects | VM invariant signals cross the compiled envelope without JavaScript translation | Runtime defect captures boundary state | Not applicable | Private synthetic seams and a malformed-VM fixture cover current categories | Never reclassified as unsupported |
+| Execution-boundary and mixed-executor behavior | Tree step stop versus bytecode completion is retained as a typed mismatch | Both sides retain effects | Both sides would retain structured throws | Both sides retain pending counts | Mixed calls, re-entry, Proxy/getter callbacks, and continuation migration are deferred to #630/#631 | Focused tree step-limit row; activation remains representation-only pending #630/#637/#631 | Not applicable |
+
+Every bytecode semantic or execution-boundary PR must update the applicable
+row and its focused fixtures, or state why its change does not alter an
+observation dimension. In particular, adding syntax is not complete when only
+the final rendered value agrees: the PR must cover any affected output order,
+throw/source observation, queue state, receiver/realm identity, execution
+control, and pre-execution unsupported selection. Volatile pass counts do not
+belong in this matrix.
+
 ## Guardrails
 
 - Before designing a performance optimization, add or reuse a benchmark that

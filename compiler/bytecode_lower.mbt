@@ -63,6 +63,25 @@ priv suberror BytecodeUnsupportedSignal {
 }
 
 ///|
+// Preserve VM/dispatch invariants as engine defects across the compiled-script
+// envelope. The verifier in #635 remains responsible for rejecting malformed
+// programs before execution; this signal keeps retained corruption guards out
+// of the JavaScript-throw category.
+priv suberror BytecodeRuntimeDefectSignal {
+  BytecodeRuntimeDefectSignal(String)
+}
+
+///|
+impl Show for BytecodeRuntimeDefectSignal with fn output(self, logger) {
+  match self {
+    BytecodeRuntimeDefectSignal(message) => {
+      logger.write_string("InternalError: ")
+      logger.write_string(message)
+    }
+  }
+}
+
+///|
 fn BytecodeUnsupportedReason::display_text(
   self : BytecodeUnsupportedReason,
 ) -> String {
@@ -1745,7 +1764,12 @@ pub fn BytecodeProgram::run(
   interp : Interpreter,
 ) -> Value raise Error {
   interp.run_compiled_script(self.source_stmts, fn(ctx, env) raise {
-    match run_bytecode_function(interp, ctx, env, self.main) {
+    let result = run_bytecode_function(interp, ctx, env, self.main) catch {
+      @errors.InternalError(message~) =>
+        raise BytecodeRuntimeDefectSignal(message)
+      error => raise error
+    }
+    match result {
       BytecodeNormal(value) => value
       BytecodeReturn(_) =>
         raise @errors.SyntaxError(

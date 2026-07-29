@@ -159,6 +159,210 @@ test "bytecode unsupported selection does not mutate runtime state" {
 }
 
 ///|
+test "structured equivalence classifies normal completion" {
+  match structured_bytecode_compare("1 + 2;") {
+    Equivalent(Completed(observation)) => {
+      assert_eq(observation.value.rendered, "3")
+      json_inspect(observation.effects.host_output, content=[])
+      assert_true(observation.effects.queues.policy is LeavesQueuesPending)
+    }
+    _ => fail("expected typed normal-completion equivalence")
+  }
+}
+
+///|
+test "structured equivalence preserves JavaScript throw observations" {
+  let src =
+    #|function failer() { throw new TypeError("boom"); }
+    #|failer();
+  match structured_bytecode_compare(src) {
+    Equivalent(Threw(observation)) => {
+      assert_true(observation.exception.class_name == Some("TypeError"))
+      assert_true(observation.exception.name == Some("TypeError"))
+      assert_true(observation.exception.message == Some("boom"))
+      assert_true(
+        observation.exception.source_identity == Some(EQUIVALENCE_SOURCE_ID),
+      )
+    }
+    _ => fail("expected typed JavaScript-throw equivalence")
+  }
+}
+
+///|
+test "structured equivalence consumes typed unsupported lowering" {
+  match structured_bytecode_compare("for (var x of [1, 2]) {}") {
+    UnsupportedSelected(unsupported) => {
+      assert_true(unsupported.reason is ForOfStatement)
+      assert_eq(unsupported.loc.offset, 0)
+    }
+    _ => fail("expected typed unsupported selection")
+  }
+}
+
+///|
+test "structured equivalence separates frontend diagnostics" {
+  match structured_bytecode_compare("var = ;") {
+    FrontendRejected(diagnostic) => {
+      assert_true(diagnostic.stage is ParserFrontend)
+      assert_eq(diagnostic.name, "SyntaxError")
+    }
+    _ => fail("expected parser diagnostic")
+  }
+  match structured_bytecode_compare("let x; var x;") {
+    FrontendRejected(diagnostic) => {
+      assert_true(diagnostic.stage is StaticSemanticsFrontend)
+      assert_eq(diagnostic.message, "Identifier 'x' has already been declared")
+    }
+    _ => fail("expected static-semantics diagnostic")
+  }
+  match structured_bytecode_compare("while (true) { break missing; }") {
+    FrontendRejected(diagnostic) => {
+      assert_true(diagnostic.stage is StaticSemanticsFrontend)
+      assert_eq(diagnostic.message, "Undefined label 'missing'")
+    }
+    _ => fail("expected lowering-time frontend diagnostic")
+  }
+}
+
+///|
+test "structured equivalence mismatch retains expected and actual" {
+  let expected = synthetic_completed_outcome_for_wb("same", ["first"])
+  let actual = synthetic_completed_outcome_for_wb("same", ["second"])
+  match reduce_equivalence(Some(expected), actual) {
+    ObservableMismatch(Completed(expected), Completed(actual)) => {
+      assert_eq(expected.value.rendered, "same")
+      assert_eq(actual.value.rendered, "same")
+      json_inspect(expected.effects.host_output, content=["first"])
+      json_inspect(actual.effects.host_output, content=["second"])
+    }
+    _ => fail("expected typed observable mismatch")
+  }
+}
+
+///|
+test "structured equivalence separates compiler invariant defects" {
+  let loc = @token.Loc::default()
+  let observed = observe_bytecode_stmts_for_equivalence(
+    @interpreter.new_interpreter(),
+    [ExprStmt(ArrayHole(loc), loc)],
+  )
+  match reduce_equivalence(None, observed) {
+    CompilerOrVerifierDefect(defect) => {
+      assert_true(defect.stage is LoweringDefect)
+      assert_eq(
+        defect.message,
+        "bytecode array hole escaped array literal lowering at line 1, col 1",
+      )
+    }
+    _ => fail("expected compiler/verifier defect category")
+  }
+}
+
+///|
+test "structured equivalence separates runtime engine defects" {
+  match reduce_equivalence(None, synthetic_runtime_defect_outcome_for_wb()) {
+    RuntimeEngineDefect(defect) => {
+      assert_true(defect.stage is BytecodeRuntimeDefect)
+      assert_eq(defect.message, "synthetic runtime invariant")
+    }
+    _ => fail("expected runtime engine defect category")
+  }
+}
+
+///|
+test "structured equivalence preserves VM invariant defects through run envelope" {
+  let parsed = @parser.parse("1;")
+  let program = match lower_script_to_bytecode(parsed.stmts) {
+    Ok(program) => program
+    Err(_) => fail("expected supported bytecode fixture")
+  }
+  program.main.code[0] = Pop
+  let interp = @interpreter.new_interpreter()
+  let observed = observe_execution(interp, BytecodeRuntimeDefect, () => {
+    program.run(interp)
+  })
+  match reduce_equivalence(None, observed) {
+    RuntimeEngineDefect(defect) => {
+      assert_true(defect.stage is BytecodeRuntimeDefect)
+      assert_eq(defect.message, "bytecode stack underflow")
+    }
+    _ => fail("expected VM invariant to remain a runtime engine defect")
+  }
+}
+
+///|
+test "structured equivalence preserves host output order" {
+  let src =
+    #|console.log("first");
+    #|console.log("second");
+    #|"done";
+  match structured_bytecode_compare(src) {
+    Equivalent(Completed(observation)) => {
+      assert_eq(observation.value.rendered, "done")
+      json_inspect(observation.effects.host_output, content=["first", "second"])
+    }
+    _ => fail("expected output-preserving normal equivalence")
+  }
+}
+
+///|
+test "structured unsupported outcome precedes runtime mutation" {
+  let interp = @interpreter.new_interpreter()
+  let src =
+    #|console.log("must-not-run");
+    #|queueMicrotask(function() {});
+    #|for (var x of [1]) {}
+  match observe_bytecode_source_with_interpreter(interp, src) {
+    Unsupported(unsupported) =>
+      assert_true(unsupported.reason is ForOfStatement)
+    _ => fail("expected typed unsupported observation")
+  }
+  json_inspect(interp.host.output, content=[])
+  assert_eq(interp.host.microtask_queue.length(), 0)
+  assert_eq(interp.host.timer_queue.length(), 0)
+}
+
+///|
+test "structured equivalence records current pending queue policy" {
+  let src =
+    #|queueMicrotask(function() { console.log("microtask"); });
+    #|setTimeout(function() { console.log("timer"); }, 0);
+    #|console.log("sync");
+    #|"done";
+  match structured_bytecode_compare(src) {
+    Equivalent(Completed(observation)) => {
+      json_inspect(observation.effects.host_output, content=["sync"])
+      assert_true(observation.effects.queues.policy is LeavesQueuesPending)
+      assert_eq(observation.effects.queues.microtasks, 1)
+      assert_eq(observation.effects.queues.timers, 1)
+    }
+    _ => fail("expected pending-queue equivalence")
+  }
+}
+
+///|
+test "structured equivalence represents current step and deferred activation limits" {
+  match structured_step_limit_comparison_for_wb("1 + 2;") {
+    ObservableMismatch(ControlStopped(expected), Completed(_)) => {
+      assert_true(expected.point is DispatchStepObservation)
+      assert_true(expected.failure is ExecutionLimit)
+    }
+    _ => fail("expected typed bytecode step-observation gap")
+  }
+  let activation = synthetic_control_outcome_for_wb(
+    ActivationObservation,
+    StackDepthLimit,
+  )
+  match reduce_equivalence(Some(activation), activation) {
+    Equivalent(ControlStopped(observation)) => {
+      assert_true(observation.point is ActivationObservation)
+      assert_true(observation.failure is StackDepthLimit)
+    }
+    _ => fail("expected typed activation-limit observation")
+  }
+}
+
+///|
 test "bytecode uses local slots for function params and vars" {
   let src =
     #|function f(a) {
