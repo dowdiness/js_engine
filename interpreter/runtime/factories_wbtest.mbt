@@ -265,6 +265,218 @@ test "unmarked callees clear inherited active realm overrides" {
 }
 
 ///|
+test "explicit callee realm scopes preserve layered restoration order" {
+  let realm_state = RealmState()
+  let caller_object_proto = test_proto("caller object")
+  let callee_function_proto = test_proto("callee function")
+  let callee_object_proto = test_proto("callee object")
+  apply_active_realm_protos(
+    realm_state,
+    FunctionRealmProtos(object_proto=Some(caller_object_proto)),
+  )
+  realm_state.active_source_identity.val = Some("callee.js")
+  let callee = stamp_function_realm_with(
+    make_native_func(name="callee", realm_state=Some(realm_state), fn(_args) {
+      Undefined
+    }),
+    callee_function_proto,
+    callee_object_proto,
+  )
+  realm_state.active_source_identity.val = Some("caller.js")
+
+  let cleared = begin_cleared_active_callee_realm(realm_state)
+  if active_realm_protos(realm_state).object_proto is Some(_) {
+    fail("outer cleared scope must remove the caller realm override")
+  }
+  let active = begin_active_callee_realm_value(realm_state, callee)
+  match active_realm_protos(realm_state).object_proto {
+    Some(found) if strict_equal(found, callee_object_proto) => ()
+    _ => fail("callee scope must install its stamped realm")
+  }
+  if realm_state.active_source_identity.val != Some("callee.js") {
+    fail("callee scope must install its source identity")
+  }
+
+  finish_active_callee_realm_value(realm_state, active, failure=None)
+  if active_realm_protos(realm_state).object_proto is Some(_) {
+    fail("inner scope must restore the outer cleared realm")
+  }
+  if realm_state.active_source_identity.val != Some("caller.js") {
+    fail("inner scope must restore the caller source identity")
+  }
+  finish_cleared_active_callee_realm(realm_state, cleared)
+  match active_realm_protos(realm_state).object_proto {
+    Some(found) if strict_equal(found, caller_object_proto) => ()
+    _ => fail("outer scope must restore the caller realm override")
+  }
+}
+
+///|
+test "explicit callee realm scope records the original failure before restore" {
+  let realm_state = RealmState()
+  let caller_object_proto = test_proto("caller object")
+  let callee_object_proto = test_proto("callee object")
+  apply_active_realm_protos(
+    realm_state,
+    FunctionRealmProtos(object_proto=Some(caller_object_proto)),
+  )
+  realm_state.active_source_identity.val = Some("callee.js")
+  let callee = stamp_function_realm_with(
+    make_native_func(name="callee", realm_state=Some(realm_state), fn(_args) {
+      Undefined
+    }),
+    test_proto("callee function"),
+    callee_object_proto,
+  )
+  realm_state.active_source_identity.val = Some("caller.js")
+  let thrown : Error = @errors.TypeError(message="scope sentinel")
+
+  let observed : Result[Unit, SourceObservedFailure] = observe_source_failure(
+    realm_state,
+    fn() raise {
+      let cleared = begin_cleared_active_callee_realm(realm_state)
+      let active = begin_active_callee_realm_value(realm_state, callee)
+      finish_active_callee_realm_value(
+        realm_state,
+        active,
+        failure=Some(thrown),
+      )
+      finish_cleared_active_callee_realm(realm_state, cleared)
+      raise thrown
+    },
+  )
+  match observed {
+    Err(failure) => {
+      if !physical_equal(failure.cause(), thrown) {
+        fail("source observation must retain the original Error identity")
+      }
+      if failure.source_identity() != Some("callee.js") {
+        fail("source observation must retain the callee identity")
+      }
+    }
+    Ok(_) => fail("expected the explicit scope to propagate its failure")
+  }
+  match active_realm_protos(realm_state).object_proto {
+    Some(found) if strict_equal(found, caller_object_proto) => ()
+    _ => fail("failure cleanup must restore the caller realm override")
+  }
+  if realm_state.active_source_identity.val != Some("caller.js") {
+    fail("failure cleanup must restore the caller source identity")
+  }
+}
+
+///|
+test "explicit scope finish preserves the source-observation realm barrier" {
+  let realm_state = RealmState()
+  let callee = make_native_func(
+    name="identity-free",
+    realm_state=Some(realm_state),
+    fn(_args) { Undefined },
+  )
+  if !realm_fast_path_allowed(callee, realm_state) {
+    fail("identity-free callable should begin on the realm fast path")
+  }
+  let barrier_preserved : Ref[Bool] = { val: false }
+  let observed = observe_source_failure(realm_state, fn() {
+    let cleared = begin_cleared_active_callee_realm(realm_state)
+    let active = begin_active_callee_realm_value(realm_state, callee)
+    finish_active_callee_realm_value(realm_state, active, failure=None)
+    finish_cleared_active_callee_realm(realm_state, cleared)
+    barrier_preserved.val = realm_state.active_overrides.val is Some(_) &&
+      !realm_fast_path_allowed(callee, realm_state)
+    Undefined
+  })
+  guard observed is Ok(_) else { fail("observation should complete normally") }
+  if !barrier_preserved.val {
+    fail("scope finish must preserve the observer's Some(empty) barrier")
+  }
+  if realm_state.active_overrides.val is Some(_) {
+    fail("observer exit must restore the exact prior override state")
+  }
+  if !realm_fast_path_allowed(callee, realm_state) {
+    fail("observer exit must restore the realm fast path")
+  }
+}
+
+///|
+test "nested explicit failures retain the deepest identified callee" {
+  let realm_state = RealmState()
+  let caller_object_proto = test_proto("caller object")
+  apply_active_realm_protos(
+    realm_state,
+    FunctionRealmProtos(object_proto=Some(caller_object_proto)),
+  )
+  let outer_function_proto = test_proto("outer function")
+  let outer_object_proto = test_proto("outer object")
+  realm_state.active_source_identity.val = Some("outer.js")
+  let outer = stamp_function_realm_with(
+    make_native_func(name="outer", realm_state=Some(realm_state), fn(_args) {
+      Undefined
+    }),
+    outer_function_proto,
+    outer_object_proto,
+  )
+  realm_state.active_source_identity.val = Some("inner.js")
+  let inner = stamp_function_realm_with(
+    make_native_func(name="inner", realm_state=Some(realm_state), fn(_args) {
+      Undefined
+    }),
+    test_proto("inner function"),
+    test_proto("inner object"),
+  )
+  realm_state.active_source_identity.val = Some("caller.js")
+  let thrown : Error = @errors.TypeError(message="nested sentinel")
+
+  let observed : Result[Unit, SourceObservedFailure] = observe_source_failure(
+    realm_state,
+    fn() raise {
+      let root_cleared = begin_cleared_active_callee_realm(realm_state)
+      let outer_active = begin_active_callee_realm_value(realm_state, outer)
+      let inner_cleared = begin_cleared_active_callee_realm(realm_state)
+      let inner_active = begin_active_callee_realm_value(realm_state, inner)
+      finish_active_callee_realm_value(
+        realm_state,
+        inner_active,
+        failure=Some(thrown),
+      )
+      finish_cleared_active_callee_realm(realm_state, inner_cleared)
+      match active_realm_protos(realm_state).object_proto {
+        Some(found) if strict_equal(found, outer_object_proto) => ()
+        _ => fail("inner cleanup must restore the outer callee realm")
+      }
+      if realm_state.active_source_identity.val != Some("outer.js") {
+        fail("inner cleanup must restore the outer source identity")
+      }
+      finish_active_callee_realm_value(
+        realm_state,
+        outer_active,
+        failure=Some(thrown),
+      )
+      finish_cleared_active_callee_realm(realm_state, root_cleared)
+      raise thrown
+    },
+  )
+  match observed {
+    Err(failure) => {
+      if !physical_equal(failure.cause(), thrown) {
+        fail("nested source observation must preserve raw Error identity")
+      }
+      if failure.source_identity() != Some("inner.js") {
+        fail("outer finish must not overwrite the deepest source identity")
+      }
+    }
+    Ok(_) => fail("expected nested explicit failure")
+  }
+  match active_realm_protos(realm_state).object_proto {
+    Some(found) if strict_equal(found, caller_object_proto) => ()
+    _ => fail("nested cleanup must restore the caller realm")
+  }
+  if realm_state.active_source_identity.val != Some("caller.js") {
+    fail("nested cleanup must restore the caller source identity")
+  }
+}
+
+///|
 // Calibration: set active_array_prototype_override while Array slot is None.
 // The OLD single-proto check (sampling only Function.prototype) would have
 // allowed the fast path even with a live override on Array. This verifies the

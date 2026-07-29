@@ -1386,6 +1386,89 @@ fn active_realm_protos(realm_state : RealmState) -> FunctionRealmProtos {
 }
 
 ///|
+// Low-level realm snapshot, not a cleanup capability. Callback adapters and
+// the dispatch shell must provide exactly-once, LIFO ownership around it.
+priv struct ClearedActiveCalleeRealmScope {
+  previous_realm_protos : FunctionRealmProtos
+}
+
+///|
+// Low-level realm/source snapshot, not a cleanup capability. It remains
+// copyable semantic data; the dispatch shell owns consumption and ordering.
+priv struct ActiveCalleeRealmValueScope {
+  previous_realm_protos : FunctionRealmProtos
+  previous_source_identity : String?
+  callee_source_identity : String?
+}
+
+///|
+fn begin_cleared_active_callee_realm(
+  realm_state : RealmState,
+) -> ClearedActiveCalleeRealmScope {
+  let previous_realm_protos = active_realm_protos(realm_state)
+  apply_active_realm_protos(realm_state, empty_function_realm_protos())
+  { previous_realm_protos, }
+}
+
+///|
+fn finish_cleared_active_callee_realm(
+  realm_state : RealmState,
+  scope : ClearedActiveCalleeRealmScope,
+) -> Unit {
+  apply_active_realm_protos(realm_state, scope.previous_realm_protos)
+}
+
+///|
+fn begin_active_callee_realm_value(
+  realm_state : RealmState,
+  callee : Value,
+) -> ActiveCalleeRealmValueScope {
+  let previous_realm_protos = active_realm_protos(realm_state)
+  let previous_source_identity = realm_state.active_source_identity.val
+  let callee_source_identity = function_source_identity(callee)
+  apply_active_realm_protos(realm_state, callee_realm_protos(callee))
+  realm_state.active_source_identity.val = callee_source_identity
+  { previous_realm_protos, previous_source_identity, callee_source_identity }
+}
+
+///|
+fn record_active_callee_source_failure(
+  realm_state : RealmState,
+  scope : ActiveCalleeRealmValueScope,
+  failure : Error,
+) -> Unit {
+  if realm_state.observing_source_failure.val {
+    let should_record = match scope.callee_source_identity {
+      Some(_) =>
+        match realm_state.observed_source_failure.val {
+          Some(observed) => !physical_equal(observed, failure)
+          None => true
+        }
+      None => false
+    }
+    if should_record {
+      realm_state.observed_source_failure.val = Some(failure)
+      realm_state.observed_source_identity.val = scope.callee_source_identity
+    }
+  }
+}
+
+///|
+fn finish_active_callee_realm_value(
+  realm_state : RealmState,
+  scope : ActiveCalleeRealmValueScope,
+  failure~ : Error?,
+) -> Unit {
+  match failure {
+    Some(error) =>
+      record_active_callee_source_failure(realm_state, scope, error)
+    None => ()
+  }
+  apply_active_realm_protos(realm_state, scope.previous_realm_protos)
+  realm_state.active_source_identity.val = scope.previous_source_identity
+}
+
+///|
 pub fn apply_active_realm_protos(
   realm_state : RealmState,
   protos : FunctionRealmProtos,
@@ -1415,34 +1498,14 @@ fn with_active_callee_realm_value(
   callee : Value,
   eval : () -> Value raise Error,
 ) -> Value raise Error {
-  let prev = active_realm_protos(realm_state)
-  let previous_source_identity = realm_state.active_source_identity.val
-  let callee_source_identity = function_source_identity(callee)
-  apply_active_realm_protos(realm_state, callee_realm_protos(callee))
-  realm_state.active_source_identity.val = callee_source_identity
+  let scope = begin_active_callee_realm_value(realm_state, callee)
   try {
     let result = eval()
-    apply_active_realm_protos(realm_state, prev)
-    realm_state.active_source_identity.val = previous_source_identity
+    finish_active_callee_realm_value(realm_state, scope, failure=None)
     result
   } catch {
     e => {
-      if realm_state.observing_source_failure.val {
-        let should_record = match callee_source_identity {
-          Some(_) =>
-            match realm_state.observed_source_failure.val {
-              Some(observed) => !physical_equal(observed, e)
-              None => true
-            }
-          None => false
-        }
-        if should_record {
-          realm_state.observed_source_failure.val = Some(e)
-          realm_state.observed_source_identity.val = callee_source_identity
-        }
-      }
-      apply_active_realm_protos(realm_state, prev)
-      realm_state.active_source_identity.val = previous_source_identity
+      finish_active_callee_realm_value(realm_state, scope, failure=Some(e))
       raise e
     }
   }
@@ -1453,15 +1516,14 @@ fn[T] with_cleared_active_callee_realm(
   realm_state : RealmState,
   eval : () -> T raise Error,
 ) -> T raise Error {
-  let prev = active_realm_protos(realm_state)
-  apply_active_realm_protos(realm_state, empty_function_realm_protos())
+  let scope = begin_cleared_active_callee_realm(realm_state)
   try {
     let result = eval()
-    apply_active_realm_protos(realm_state, prev)
+    finish_cleared_active_callee_realm(realm_state, scope)
     result
   } catch {
     e => {
-      apply_active_realm_protos(realm_state, prev)
+      finish_cleared_active_callee_realm(realm_state, scope)
       raise e
     }
   }
@@ -1472,10 +1534,9 @@ fn with_cleared_active_callee_realm_unit(
   realm_state : RealmState,
   eval : () -> Unit,
 ) -> Unit {
-  let prev = active_realm_protos(realm_state)
-  apply_active_realm_protos(realm_state, empty_function_realm_protos())
+  let scope = begin_cleared_active_callee_realm(realm_state)
   eval()
-  apply_active_realm_protos(realm_state, prev)
+  finish_cleared_active_callee_realm(realm_state, scope)
 }
 
 ///|
