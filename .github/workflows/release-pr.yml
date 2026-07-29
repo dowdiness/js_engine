@@ -17,6 +17,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Test release workflow contract
+        run: bash scripts/test_release_workflow.sh
+
+      - name: Test release version synchronization
+        run: bash scripts/test_sync_release_version.sh
+
+      - name: Test release metadata validation
+        run: bash scripts/test_validate_release_metadata.sh
+
       - name: Validate release metadata
         if: startsWith(github.event.pull_request.head.ref, 'tagpr-from-')
         run: bash scripts/validate_release_metadata.sh
