@@ -186,70 +186,55 @@ fn Interpreter::exec_export_all(
 }
 
 ///|
+/// Return the non-`StmtList` statements carried by `stmt` in source order.
+/// Semantic wrappers and statement bodies are deliberately left intact.
+fn flatten_module_stmt_carriers(stmt : @ast.Stmt) -> Array[@ast.Stmt] {
+  let flattened : Array[@ast.Stmt] = []
+  let work = [stmt]
+  while work.pop() is Some(current) {
+    match current {
+      StmtList(stmts, _) =>
+        for i = stmts.length() - 1; i >= 0; i = i - 1 {
+          work.push(stmts[i])
+        }
+      _ => flattened.push(current)
+    }
+  }
+  flattened
+}
+
+///|
 /// Record exported names from a declaration for deferred resolution (live bindings)
 fn Interpreter::extract_export_names(
   self : Interpreter,
   decl : @ast.Stmt,
 ) -> Unit {
-  match decl {
-    VarDecl(_, name, _, _) => self.module_export_bindings.push((name, name))
-    FuncDecl(name, _, _, _, _) => self.module_export_bindings.push((name, name))
-    FuncDeclExt(name, _, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    GeneratorDecl(name, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    GeneratorDeclExt(name, _, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    AsyncFuncDecl(name, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    AsyncFuncDeclExt(name, _, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    AsyncGeneratorDecl(name, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    ClassDecl(name, _, _, _, _) =>
-      self.module_export_bindings.push((name, name))
-    DestructureDecl(_, pattern, _, _) =>
-      self.extract_pattern_export_names(pattern)
-    StmtList(stmts, _) =>
-      for stmt in stmts {
-        self.extract_export_names(stmt)
-      }
-    _ => ()
-  }
-}
-
-///|
-/// Record names from a destructuring pattern for deferred export resolution
-fn Interpreter::extract_pattern_export_names(
-  self : Interpreter,
-  pattern : @ast.Pattern,
-) -> Unit {
-  match pattern {
-    IdentPat(name) => self.module_export_bindings.push((name, name))
-    DefaultPat(inner_pat, _) => self.extract_pattern_export_names(inner_pat)
-    AssignTarget(_) => () // member expressions don't export names
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => self.extract_pattern_export_names(p)
-          None => ()
+  for current in flatten_module_stmt_carriers(decl) {
+    match current {
+      VarDecl(_, name, _, _) => self.module_export_bindings.push((name, name))
+      FuncDecl(name, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      FuncDeclExt(name, _, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      GeneratorDecl(name, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      GeneratorDeclExt(name, _, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      AsyncFuncDecl(name, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      AsyncFuncDeclExt(name, _, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      AsyncGeneratorDecl(name, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      ClassDecl(name, _, _, _, _) =>
+        self.module_export_bindings.push((name, name))
+      DestructureDecl(_, pattern, _, _) =>
+        for name in @static_semantics.bound_names(pattern) {
+          self.module_export_bindings.push((name, name))
         }
-      }
-      match rest {
-        Some(p) => self.extract_pattern_export_names(p)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        self.extract_pattern_export_names(prop.value)
-      }
-      match rest {
-        Some(p) => self.extract_pattern_export_names(p)
-        None => ()
-      }
+      _ => ()
     }
   }
 }

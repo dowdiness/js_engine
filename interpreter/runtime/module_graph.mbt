@@ -40,6 +40,25 @@ priv enum ModuleDefaultExportBinding {
 }
 
 ///|
+priv enum ModuleResolutionRequest {
+  Record(ModuleRunRecord, String)
+  Source(String, String)
+  ImportTarget(ModuleImportTarget)
+}
+
+///|
+priv enum ModuleResolutionContinuation {
+  AfterExplicit(ModuleRunRecord, String)
+  AfterStarSource(Array[String], String, Int, ModuleExportResolution)
+}
+
+///|
+priv enum ModuleResolutionControl {
+  Descend(ModuleResolutionRequest)
+  Return(ModuleExportResolution)
+}
+
+///|
 fn Interpreter::predeclare_module_export_tdz(
   self : Interpreter,
   export_name : String,
@@ -69,67 +88,33 @@ fn Interpreter::predeclare_decl_exports(
   decl : @ast.Stmt,
   env : Environment,
 ) -> Unit {
-  match decl {
-    VarDecl(_, name, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    FuncDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    FuncDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    GeneratorDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    GeneratorDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncFuncDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncFuncDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncGeneratorDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    ClassDecl(name, _, _, _, _) =>
-      self.predeclare_module_export_cell(name, name, env)
-    DestructureDecl(_, pattern, _, _) =>
-      self.predeclare_pattern_exports(pattern, env)
-    StmtList(stmts, _) =>
-      for stmt in stmts {
-        self.predeclare_decl_exports(stmt, env)
-      }
-    _ => ()
-  }
-}
-
-///|
-fn Interpreter::predeclare_pattern_exports(
-  self : Interpreter,
-  pattern : @ast.Pattern,
-  env : Environment,
-) -> Unit {
-  match pattern {
-    IdentPat(name) => self.predeclare_module_export_cell(name, name, env)
-    DefaultPat(inner_pat, _) => self.predeclare_pattern_exports(inner_pat, env)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => self.predeclare_pattern_exports(p, env)
-          None => ()
+  for current in flatten_module_stmt_carriers(decl) {
+    match current {
+      VarDecl(_, name, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      FuncDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      FuncDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      GeneratorDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      GeneratorDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncFuncDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncFuncDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncGeneratorDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      ClassDecl(name, _, _, _, _) =>
+        self.predeclare_module_export_cell(name, name, env)
+      DestructureDecl(_, pattern, _, _) =>
+        for name in @static_semantics.bound_names(pattern) {
+          self.predeclare_module_export_cell(name, name, env)
         }
-      }
-      match rest {
-        Some(p) => self.predeclare_pattern_exports(p, env)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        self.predeclare_pattern_exports(prop.value, env)
-      }
-      match rest {
-        Some(p) => self.predeclare_pattern_exports(p, env)
-        None => ()
-      }
+      _ => ()
     }
   }
 }
@@ -140,42 +125,42 @@ fn Interpreter::predeclare_module_exports(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Unit raise Error {
-  for stmt in stmts {
-    match stmt {
-      ExportNamedDecl(decl, specifiers, source, _, _) => {
-        match decl {
-          Some(inner_decl) => self.predeclare_decl_exports(inner_decl, env)
-          None => ()
-        }
-        match source {
-          Some(_) =>
-            for spec in specifiers {
-              self.predeclare_module_export_tdz(spec.exported)
-            }
-          None =>
-            for spec in specifiers {
-              self.predeclare_module_export_cell(
-                spec.exported,
-                spec.local_name,
-                env,
-              )
-            }
-        }
-      }
-      ExportDefaultDecl(expr, _) =>
-        if !self.predeclare_default_function_export(expr, env) {
-          match module_default_export_binding(expr) {
-            LocalDefaultBinding(local_name) =>
-              self.predeclare_module_export_cell("default", local_name, env)
-            SyntheticDefaultBinding =>
-              self.predeclare_module_export_tdz("default")
+  for root in stmts {
+    for stmt in flatten_module_stmt_carriers(root) {
+      match stmt {
+        ExportNamedDecl(decl, specifiers, source, _, _) => {
+          match decl {
+            Some(inner_decl) => self.predeclare_decl_exports(inner_decl, env)
+            None => ()
+          }
+          match source {
+            Some(_) =>
+              for spec in specifiers {
+                self.predeclare_module_export_tdz(spec.exported)
+              }
+            None =>
+              for spec in specifiers {
+                self.predeclare_module_export_cell(
+                  spec.exported,
+                  spec.local_name,
+                  env,
+                )
+              }
           }
         }
-      ExportAllDecl(Some(ns_name), _, _, _) =>
-        self.predeclare_module_export_tdz(ns_name)
-      StmtList(inner_stmts, _) =>
-        self.predeclare_module_exports(inner_stmts, env)
-      _ => ()
+        ExportDefaultDecl(expr, _) =>
+          if !self.predeclare_default_function_export(expr, env) {
+            match module_default_export_binding(expr) {
+              LocalDefaultBinding(local_name) =>
+                self.predeclare_module_export_cell("default", local_name, env)
+              SyntheticDefaultBinding =>
+                self.predeclare_module_export_tdz("default")
+            }
+          }
+        ExportAllDecl(Some(ns_name), _, _, _) =>
+          self.predeclare_module_export_tdz(ns_name)
+        _ => ()
+      }
     }
   }
 }
@@ -271,40 +256,38 @@ fn Interpreter::instantiate_indirect_exports_from_stmt(
   stmt : @ast.Stmt,
   records_by_specifier : Map[String, ModuleRunRecord],
 ) -> Unit raise Error {
-  match stmt {
-    ExportNamedDecl(None, specifiers, Some(source), _, loc) =>
-      for spec in specifiers {
-        let value = match
-          self.resolve_module_export_from_source(
-            source,
-            spec.local_name,
-            records_by_specifier,
-            @set.Set::default(),
-          ) {
-          Resolved(resolved) => resolved.value
-          Ambiguous =>
-            raise @errors.SyntaxError(
-              message="Ambiguous export '\{spec.local_name}' from module '\{source}' at line \{loc.line}, col \{loc.col}",
-            )
-          NotFound =>
-            raise @errors.SyntaxError(
-              message="Module '\{source}' does not export '\{spec.local_name}' at line \{loc.line}, col \{loc.col}",
-            )
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(None, specifiers, Some(source), _, loc) =>
+        for spec in specifiers {
+          let value = match
+            self.resolve_module_export_from_source(
+              source,
+              spec.local_name,
+              records_by_specifier,
+              @set.Set::default(),
+            ) {
+            Resolved(resolved) => resolved.value
+            Ambiguous =>
+              raise @errors.SyntaxError(
+                message="Ambiguous export '\{spec.local_name}' from module '\{source}' at line \{loc.line}, col \{loc.col}",
+              )
+            NotFound =>
+              raise @errors.SyntaxError(
+                message="Module '\{source}' does not export '\{spec.local_name}' at line \{loc.line}, col \{loc.col}",
+              )
+          }
+          self.module_exports[spec.exported] = value
         }
-        self.module_exports[spec.exported] = value
+      ExportAllDecl(Some(ns_name), source, _, loc) => {
+        let src_exports = self.module_exports_for_source(source, loc)
+        self.module_exports[ns_name] = self.create_module_namespace_object(
+          src_exports,
+        )
       }
-    ExportAllDecl(Some(ns_name), source, _, loc) => {
-      let src_exports = self.module_exports_for_source(source, loc)
-      self.module_exports[ns_name] = self.create_module_namespace_object(
-        src_exports,
-      )
+      ExportAllDecl(None, _, _, _) => ()
+      _ => ()
     }
-    ExportAllDecl(None, _, _, _) => ()
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        self.instantiate_indirect_exports_from_stmt(inner, records_by_specifier)
-      }
-    _ => ()
   }
 }
 
@@ -357,18 +340,16 @@ fn Interpreter::instantiate_imports_from_stmt(
   stmt : @ast.Stmt,
   env : Environment,
 ) -> Unit raise Error {
-  match stmt {
-    ImportDecl(default_import, specifiers, namespace_import, source, _, loc) =>
-      ignore(
-        self.exec_import(
-          default_import, specifiers, namespace_import, source, env, loc,
-        ),
-      )
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        self.instantiate_imports_from_stmt(inner, env)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ImportDecl(default_import, specifiers, namespace_import, source, _, loc) =>
+        ignore(
+          self.exec_import(
+            default_import, specifiers, namespace_import, source, env, loc,
+          ),
+        )
+      _ => ()
+    }
   }
 }
 
@@ -391,15 +372,13 @@ fn collect_module_dependency_edges_from_stmt(
   stmt : @ast.Stmt,
   edges : Array[(String, Bool)],
 ) -> Unit {
-  match stmt {
-    ImportDecl(_, _, _, source, _, _) => edges.push((source, true))
-    ExportNamedDecl(_, _, Some(source), _, _) => edges.push((source, false))
-    ExportAllDecl(_, source, _, _) => edges.push((source, false))
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        collect_module_dependency_edges_from_stmt(inner, edges)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ImportDecl(_, _, _, source, _, _) => edges.push((source, true))
+      ExportNamedDecl(_, _, Some(source), _, _) => edges.push((source, false))
+      ExportAllDecl(_, source, _, _) => edges.push((source, false))
+      _ => ()
+    }
   }
 }
 
@@ -449,62 +428,36 @@ fn add_module_export_name(
 }
 
 ///|
-fn pattern_exports_name(pattern : @ast.Pattern, export_name : String) -> Bool {
-  match pattern {
-    IdentPat(name) => name == export_name
-    DefaultPat(inner_pat, _) => pattern_exports_name(inner_pat, export_name)
-    AssignTarget(_) => false
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => if pattern_exports_name(p, export_name) { return true }
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => pattern_exports_name(p, export_name)
-        None => false
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        if pattern_exports_name(prop.value, export_name) {
-          return true
-        }
-      }
-      match rest {
-        Some(p) => pattern_exports_name(p, export_name)
-        None => false
-      }
-    }
-  }
-}
-
-///|
 fn decl_exports_name(decl : @ast.Stmt, export_name : String) -> Bool {
-  match decl {
-    VarDecl(_, name, _, _) => name == export_name
-    FuncDecl(name, _, _, _, _) => name == export_name
-    FuncDeclExt(name, _, _, _, _, _) => name == export_name
-    GeneratorDecl(name, _, _, _, _) => name == export_name
-    GeneratorDeclExt(name, _, _, _, _, _) => name == export_name
-    AsyncFuncDecl(name, _, _, _, _) => name == export_name
-    AsyncFuncDeclExt(name, _, _, _, _, _) => name == export_name
-    AsyncGeneratorDecl(name, _, _, _, _) => name == export_name
-    AsyncGeneratorDeclExt(name, _, _, _, _, _) => name == export_name
-    ClassDecl(name, _, _, _, _) => name == export_name
-    DestructureDecl(_, pattern, _, _) =>
-      pattern_exports_name(pattern, export_name)
-    StmtList(stmts, _) => {
-      for stmt in stmts {
-        if decl_exports_name(stmt, export_name) {
-          return true
+  for current in flatten_module_stmt_carriers(decl) {
+    let found = match current {
+      VarDecl(_, name, _, _) => name == export_name
+      FuncDecl(name, _, _, _, _) => name == export_name
+      FuncDeclExt(name, _, _, _, _, _) => name == export_name
+      GeneratorDecl(name, _, _, _, _) => name == export_name
+      GeneratorDeclExt(name, _, _, _, _, _) => name == export_name
+      AsyncFuncDecl(name, _, _, _, _) => name == export_name
+      AsyncFuncDeclExt(name, _, _, _, _, _) => name == export_name
+      AsyncGeneratorDecl(name, _, _, _, _) => name == export_name
+      AsyncGeneratorDeclExt(name, _, _, _, _, _) => name == export_name
+      ClassDecl(name, _, _, _, _) => name == export_name
+      DestructureDecl(_, pattern, _, _) => {
+        let mut matches = false
+        for name in @static_semantics.bound_names(pattern) {
+          if name == export_name {
+            matches = true
+            break
+          }
         }
+        matches
       }
-      false
+      _ => false
     }
-    _ => false
+    if found {
+      return true
+    }
   }
+  false
 }
 
 ///|
@@ -513,58 +466,23 @@ fn collect_decl_export_names(
   names : Array[String],
   seen : @set.Set[String],
 ) -> Unit {
-  match decl {
-    VarDecl(_, name, _, _)
-    | FuncDecl(name, _, _, _, _)
-    | FuncDeclExt(name, _, _, _, _, _)
-    | GeneratorDecl(name, _, _, _, _)
-    | GeneratorDeclExt(name, _, _, _, _, _)
-    | AsyncFuncDecl(name, _, _, _, _)
-    | AsyncFuncDeclExt(name, _, _, _, _, _)
-    | AsyncGeneratorDecl(name, _, _, _, _)
-    | AsyncGeneratorDeclExt(name, _, _, _, _, _)
-    | ClassDecl(name, _, _, _, _) => add_module_export_name(names, seen, name)
-    DestructureDecl(_, pattern, _, _) =>
-      collect_pattern_export_names(pattern, names, seen)
-    StmtList(stmts, _) =>
-      for stmt in stmts {
-        collect_decl_export_names(stmt, names, seen)
-      }
-    _ => ()
-  }
-}
-
-///|
-fn collect_pattern_export_names(
-  pattern : @ast.Pattern,
-  names : Array[String],
-  seen : @set.Set[String],
-) -> Unit {
-  match pattern {
-    IdentPat(name) => add_module_export_name(names, seen, name)
-    DefaultPat(inner_pat, _) =>
-      collect_pattern_export_names(inner_pat, names, seen)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => collect_pattern_export_names(p, names, seen)
-          None => ()
+  for current in flatten_module_stmt_carriers(decl) {
+    match current {
+      VarDecl(_, name, _, _)
+      | FuncDecl(name, _, _, _, _)
+      | FuncDeclExt(name, _, _, _, _, _)
+      | GeneratorDecl(name, _, _, _, _)
+      | GeneratorDeclExt(name, _, _, _, _, _)
+      | AsyncFuncDecl(name, _, _, _, _)
+      | AsyncFuncDeclExt(name, _, _, _, _, _)
+      | AsyncGeneratorDecl(name, _, _, _, _)
+      | AsyncGeneratorDeclExt(name, _, _, _, _, _)
+      | ClassDecl(name, _, _, _, _) => add_module_export_name(names, seen, name)
+      DestructureDecl(_, pattern, _, _) =>
+        for name in @static_semantics.bound_names(pattern) {
+          add_module_export_name(names, seen, name)
         }
-      }
-      match rest {
-        Some(p) => collect_pattern_export_names(p, names, seen)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        collect_pattern_export_names(prop.value, names, seen)
-      }
-      match rest {
-        Some(p) => collect_pattern_export_names(p, names, seen)
-        None => ()
-      }
+      _ => ()
     }
   }
 }
@@ -574,34 +492,29 @@ fn module_import_target_from_stmt(
   stmt : @ast.Stmt,
   local_name : String,
 ) -> ModuleImportTarget? {
-  match stmt {
-    ImportDecl(default_import, specifiers, namespace_import, source, _, _) => {
-      match default_import {
-        Some(name) if name == local_name =>
-          return Some(ImportedBinding(source, "default"))
-        _ => ()
-      }
-      for spec in specifiers {
-        if spec.local_name == local_name {
-          return Some(ImportedBinding(source, spec.imported))
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ImportDecl(default_import, specifiers, namespace_import, source, _, _) => {
+        match default_import {
+          Some(name) if name == local_name =>
+            return Some(ImportedBinding(source, "default"))
+          _ => ()
+        }
+        for spec in specifiers {
+          if spec.local_name == local_name {
+            return Some(ImportedBinding(source, spec.imported))
+          }
+        }
+        match namespace_import {
+          Some(name) if name == local_name =>
+            return Some(ImportedNamespace(source))
+          _ => ()
         }
       }
-      match namespace_import {
-        Some(name) if name == local_name => Some(ImportedNamespace(source))
-        _ => None
-      }
+      _ => ()
     }
-    StmtList(stmts, _) => {
-      for inner in stmts {
-        match module_import_target_from_stmt(inner, local_name) {
-          Some(target) => return Some(target)
-          None => ()
-        }
-      }
-      None
-    }
-    _ => None
   }
+  None
 }
 
 ///|
@@ -650,44 +563,29 @@ fn module_direct_export_binding_name_from_stmt(
   stmt : @ast.Stmt,
   export_name : String,
 ) -> String? {
-  match stmt {
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      if decl_exports_name(decl, export_name) {
-        Some(export_name)
-      } else {
-        None
-      }
-    ExportNamedDecl(None, specifiers, None, _, _) => {
-      for spec in specifiers {
-        if spec.exported == export_name {
-          match record.import_target_for_local_name(spec.local_name) {
-            Some(_) => return None
-            None => return Some(spec.local_name)
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(Some(decl), _, _, _, _) =>
+        if decl_exports_name(decl, export_name) {
+          return Some(export_name)
+        }
+      ExportNamedDecl(None, specifiers, None, _, _) =>
+        for spec in specifiers {
+          if spec.exported == export_name {
+            match record.import_target_for_local_name(spec.local_name) {
+              Some(_) => return None
+              None => return Some(spec.local_name)
+            }
           }
         }
-      }
-      None
-    }
-    ExportDefaultDecl(expr, _) =>
-      if export_name == "default" {
-        Some(module_default_export_binding_name(expr))
-      } else {
-        None
-      }
-    StmtList(stmts, _) => {
-      for inner in stmts {
-        match
-          module_direct_export_binding_name_from_stmt(
-            record, inner, export_name,
-          ) {
-          Some(binding_name) => return Some(binding_name)
-          None => ()
+      ExportDefaultDecl(expr, _) =>
+        if export_name == "default" {
+          return Some(module_default_export_binding_name(expr))
         }
-      }
-      None
+      _ => ()
     }
-    _ => None
   }
+  None
 }
 
 ///|
@@ -711,21 +609,19 @@ fn collect_module_direct_export_names_from_stmt(
   names : Array[String],
   seen : @set.Set[String],
 ) -> Unit {
-  match stmt {
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      collect_decl_export_names(decl, names, seen)
-    ExportNamedDecl(None, specifiers, _, _, _) =>
-      for spec in specifiers {
-        add_module_export_name(names, seen, spec.exported)
-      }
-    ExportDefaultDecl(_, _) => add_module_export_name(names, seen, "default")
-    ExportAllDecl(Some(ns_name), _, _, _) =>
-      add_module_export_name(names, seen, ns_name)
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        collect_module_direct_export_names_from_stmt(inner, names, seen)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(Some(decl), _, _, _, _) =>
+        collect_decl_export_names(decl, names, seen)
+      ExportNamedDecl(None, specifiers, _, _, _) =>
+        for spec in specifiers {
+          add_module_export_name(names, seen, spec.exported)
+        }
+      ExportDefaultDecl(_, _) => add_module_export_name(names, seen, "default")
+      ExportAllDecl(Some(ns_name), _, _, _) =>
+        add_module_export_name(names, seen, ns_name)
+      _ => ()
+    }
   }
 }
 
@@ -747,13 +643,11 @@ fn collect_module_star_sources_from_stmt(
   stmt : @ast.Stmt,
   sources : Array[String],
 ) -> Unit {
-  match stmt {
-    ExportAllDecl(None, source, _, _) => sources.push(source)
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        collect_module_star_sources_from_stmt(inner, sources)
-      }
-    _ => ()
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportAllDecl(None, source, _, _) => sources.push(source)
+      _ => ()
+    }
   }
 }
 
@@ -767,20 +661,108 @@ fn ModuleRunRecord::star_sources(self : ModuleRunRecord) -> Array[String] {
 }
 
 ///|
+priv enum ModuleExportedNamesRequest {
+  ExportedNamesRecord(ModuleRunRecord)
+  ExportedNamesSource(String)
+}
+
+///|
+priv struct ModuleExportedNamesContinuation {
+  names : Array[String]
+  seen_names : @set.Set[String]
+  sources : Array[String]
+  next_index : Int
+}
+
+///|
+fn Interpreter::module_get_exported_names_driver(
+  self : Interpreter,
+  initial : ModuleExportedNamesRequest,
+  records_by_specifier : Map[String, ModuleRunRecord],
+  seen_modules : @set.Set[String],
+) -> Array[String] raise Error {
+  let continuations : Array[ModuleExportedNamesContinuation] = []
+  let mut request = initial
+  let mut returned : Array[String]? = None
+  for ;; {
+    match returned {
+      None =>
+        match request {
+          ExportedNamesSource(source) =>
+            match records_by_specifier.get(source) {
+              Some(record) => request = ExportedNamesRecord(record)
+              None =>
+                returned = Some(
+                  module_export_names_from_exports_map(
+                    self.module_exports_for_source(
+                      source,
+                      @token.Loc::default(),
+                    ),
+                  ),
+                )
+            }
+          ExportedNamesRecord(record) => {
+            if seen_modules.contains(record.specifier) {
+              returned = Some([])
+              continue
+            }
+            seen_modules.add(record.specifier)
+            let names : Array[String] = []
+            let seen_names = @set.Set::default()
+            for stmt in record.stmts {
+              collect_module_direct_export_names_from_stmt(
+                stmt, names, seen_names,
+              )
+            }
+            let sources = record.star_sources()
+            if sources.length() == 0 {
+              returned = Some(names)
+            } else {
+              continuations.push({ names, seen_names, sources, next_index: 1 })
+              request = ExportedNamesSource(sources[0])
+            }
+          }
+        }
+      Some(child_names) =>
+        match continuations.pop() {
+          None => return child_names
+          Some(continuation) => {
+            for name in child_names {
+              if name != "default" {
+                add_module_export_name(
+                  continuation.names,
+                  continuation.seen_names,
+                  name,
+                )
+              }
+            }
+            if continuation.next_index >= continuation.sources.length() {
+              returned = Some(continuation.names)
+            } else {
+              let next_index = continuation.next_index
+              continuations.push({ ..continuation, next_index: next_index + 1 })
+              request = ExportedNamesSource(continuation.sources[next_index])
+              returned = None
+            }
+          }
+        }
+    }
+  }
+}
+
+///|
+#warnings("-unused_value")
 fn Interpreter::module_get_exported_names_from_source(
   self : Interpreter,
   source : String,
   records_by_specifier : Map[String, ModuleRunRecord],
   seen : @set.Set[String],
 ) -> Array[String] raise Error {
-  match records_by_specifier.get(source) {
-    Some(record) =>
-      self.module_get_exported_names(record, records_by_specifier, seen)
-    None =>
-      module_export_names_from_exports_map(
-        self.module_exports_for_source(source, @token.Loc::default()),
-      )
-  }
+  self.module_get_exported_names_driver(
+    ExportedNamesSource(source),
+    records_by_specifier,
+    seen,
+  )
 }
 
 ///|
@@ -790,26 +772,11 @@ fn Interpreter::module_get_exported_names(
   records_by_specifier : Map[String, ModuleRunRecord],
   seen_modules : @set.Set[String],
 ) -> Array[String] raise Error {
-  if seen_modules.contains(record.specifier) {
-    return []
-  }
-  seen_modules.add(record.specifier)
-  let names : Array[String] = []
-  let seen_names = @set.Set::default()
-  for stmt in record.stmts {
-    collect_module_direct_export_names_from_stmt(stmt, names, seen_names)
-  }
-  for source in record.star_sources() {
-    for
-      name in self.module_get_exported_names_from_source(
-        source, records_by_specifier, seen_modules,
-      ) {
-      if name != "default" {
-        add_module_export_name(names, seen_names, name)
-      }
-    }
-  }
-  names
+  self.module_get_exported_names_driver(
+    ExportedNamesRecord(record),
+    records_by_specifier,
+    seen_modules,
+  )
 }
 
 ///|
@@ -820,104 +787,221 @@ fn Interpreter::resolve_module_export_from_source(
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  match records_by_specifier.get(source) {
-    Some(record) =>
-      self.resolve_module_export(
-        record, export_name, records_by_specifier, resolve_set,
-      )
-    None =>
-      match
-        module_export_map_get_public(
-          self.module_exports_for_source(source, @token.Loc::default()),
-          export_name,
-        ) {
-        Some(value) =>
-          Resolved(ResolvedModuleExport(value, source, export_name))
-        None => NotFound
-      }
-  }
+  self.resolve_module_export_driver(
+    Source(source, export_name),
+    records_by_specifier,
+    resolve_set,
+  )
 }
 
 ///|
+#warnings("-unused_value")
 fn Interpreter::resolve_module_import_target(
   self : Interpreter,
   target : ModuleImportTarget,
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  match target {
-    ImportedBinding(source, binding_name) =>
-      self.resolve_module_export_from_source(
-        source, binding_name, records_by_specifier, resolve_set,
-      )
-    ImportedNamespace(source) => {
-      let exports = self.module_exports_for_source(
-        source,
-        @token.Loc::default(),
-      )
-      Resolved(
-        ResolvedModuleExport(
-          self.create_module_namespace_object(exports),
-          source,
-          MODULE_NAMESPACE_BINDING_NAME,
-        ),
-      )
-    }
-  }
+  self.resolve_module_export_driver(
+    ImportTarget(target),
+    records_by_specifier,
+    resolve_set,
+  )
 }
 
 ///|
-fn Interpreter::resolve_explicit_indirect_export_from_stmt(
-  self : Interpreter,
+fn module_explicit_resolution_request(
   record : ModuleRunRecord,
   stmt : @ast.Stmt,
   export_name : String,
+) -> ModuleResolutionRequest? {
+  for current in flatten_module_stmt_carriers(stmt) {
+    match current {
+      ExportNamedDecl(None, specifiers, Some(source), _, _) =>
+        for spec in specifiers {
+          if spec.exported == export_name {
+            return Some(Source(source, spec.local_name))
+          }
+        }
+      ExportNamedDecl(None, specifiers, None, _, _) =>
+        for spec in specifiers {
+          if spec.exported == export_name {
+            match record.import_target_for_local_name(spec.local_name) {
+              Some(target) => return Some(ImportTarget(target))
+              None => ()
+            }
+          }
+        }
+      ExportAllDecl(Some(namespace_name), source, _, _) =>
+        if namespace_name == export_name {
+          return Some(ImportTarget(ImportedNamespace(source)))
+        }
+      _ => ()
+    }
+  }
+  None
+}
+
+///|
+fn Interpreter::resolve_module_export_driver(
+  self : Interpreter,
+  initial : ModuleResolutionRequest,
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  match stmt {
-    ExportNamedDecl(None, specifiers, Some(source), _, _) =>
-      for spec in specifiers {
-        if spec.exported == export_name {
-          return self.resolve_module_export_from_source(
-            source,
-            spec.local_name,
-            records_by_specifier,
-            resolve_set,
-          )
-        }
-      }
-    ExportNamedDecl(None, specifiers, None, _, _) =>
-      for spec in specifiers {
-        if spec.exported == export_name {
-          match record.import_target_for_local_name(spec.local_name) {
-            Some(target) =>
-              return self.resolve_module_import_target(
-                target, records_by_specifier, resolve_set,
-              )
-            None => ()
+  let continuations : Array[ModuleResolutionContinuation] = []
+  let mut control = Descend(initial)
+  while true {
+    match control {
+      Descend(request) =>
+        match request {
+          Source(source, export_name) =>
+            match records_by_specifier.get(source) {
+              Some(record) => control = Descend(Record(record, export_name))
+              None =>
+                control = Return(
+                  match
+                    module_export_map_get_public(
+                      self.module_exports_for_source(
+                        source,
+                        @token.Loc::default(),
+                      ),
+                      export_name,
+                    ) {
+                    Some(value) =>
+                      Resolved(ResolvedModuleExport(value, source, export_name))
+                    None => NotFound
+                  },
+                )
+            }
+          ImportTarget(target) =>
+            match target {
+              ImportedBinding(source, binding_name) =>
+                control = Descend(Source(source, binding_name))
+              ImportedNamespace(source) => {
+                let exports = self.module_exports_for_source(
+                  source,
+                  @token.Loc::default(),
+                )
+                control = Return(
+                  Resolved(
+                    ResolvedModuleExport(
+                      self.create_module_namespace_object(exports),
+                      source,
+                      MODULE_NAMESPACE_BINDING_NAME,
+                    ),
+                  ),
+                )
+              }
+            }
+          Record(record, export_name) => {
+            let resolve_key = record.specifier + "\u0000" + export_name
+            if resolve_set.contains(resolve_key) {
+              control = Return(NotFound)
+              continue
+            }
+            resolve_set.add(resolve_key)
+            match
+              module_record_direct_export_binding_name(record, export_name) {
+              Some(binding_name) => {
+                control = Return(
+                  match
+                    module_export_map_get_public(record.exports, export_name) {
+                    Some(value) =>
+                      Resolved(
+                        ResolvedModuleExport(
+                          value,
+                          record.specifier,
+                          binding_name,
+                        ),
+                      )
+                    None => NotFound
+                  },
+                )
+                continue
+              }
+              None => ()
+            }
+            match
+              module_explicit_resolution_request(
+                record,
+                StmtList(record.stmts, @token.Loc::default()),
+                export_name,
+              ) {
+              Some(child) => {
+                continuations.push(AfterExplicit(record, export_name))
+                control = Descend(child)
+              }
+              None =>
+                if export_name == "default" {
+                  control = Return(NotFound)
+                } else {
+                  let sources = record.star_sources()
+                  if sources.length() == 0 {
+                    control = Return(NotFound)
+                  } else {
+                    continuations.push(
+                      AfterStarSource(sources, export_name, 1, NotFound),
+                    )
+                    control = Descend(Source(sources[0], export_name))
+                  }
+                }
+            }
           }
         }
-      }
-    ExportAllDecl(Some(namespace_name), source, _, _) =>
-      if namespace_name == export_name {
-        return self.resolve_module_import_target(
-          ImportedNamespace(source),
-          records_by_specifier,
-          resolve_set,
-        )
-      }
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        match
-          self.resolve_explicit_indirect_export_from_stmt(
-            record, inner, export_name, records_by_specifier, resolve_set,
-          ) {
-          NotFound => ()
-          other => return other
+      Return(result) =>
+        match continuations.pop() {
+          None => return result
+          Some(AfterExplicit(record, export_name)) =>
+            match result {
+              Resolved(_) | Ambiguous => control = Return(result)
+              NotFound =>
+                if export_name == "default" {
+                  control = Return(NotFound)
+                } else {
+                  let sources = record.star_sources()
+                  if sources.length() == 0 {
+                    control = Return(NotFound)
+                  } else {
+                    continuations.push(
+                      AfterStarSource(sources, export_name, 1, NotFound),
+                    )
+                    control = Descend(Source(sources[0], export_name))
+                  }
+                }
+            }
+          Some(AfterStarSource(sources, export_name, next_index, accumulator)) => {
+            let next_accumulator = match result {
+              Ambiguous => Ambiguous
+              NotFound => accumulator
+              Resolved(_) =>
+                match accumulator {
+                  NotFound => result
+                  Resolved(_) =>
+                    if module_export_resolution_same(accumulator, result) {
+                      accumulator
+                    } else {
+                      Ambiguous
+                    }
+                  Ambiguous => Ambiguous
+                }
+            }
+            if next_accumulator is Ambiguous || next_index >= sources.length() {
+              control = Return(next_accumulator)
+            } else {
+              continuations.push(
+                AfterStarSource(
+                  sources,
+                  export_name,
+                  next_index + 1,
+                  next_accumulator,
+                ),
+              )
+              control = Descend(Source(sources[next_index], export_name))
+            }
+          }
         }
-      }
-    _ => ()
+    }
   }
   NotFound
 }
@@ -930,56 +1014,11 @@ fn Interpreter::resolve_module_export(
   records_by_specifier : Map[String, ModuleRunRecord],
   resolve_set : @set.Set[String],
 ) -> ModuleExportResolution raise Error {
-  let resolve_key = record.specifier + "\u0000" + export_name
-  if resolve_set.contains(resolve_key) {
-    return NotFound
-  }
-  resolve_set.add(resolve_key)
-  match module_record_direct_export_binding_name(record, export_name) {
-    Some(binding_name) =>
-      return match module_export_map_get_public(record.exports, export_name) {
-        Some(value) =>
-          Resolved(ResolvedModuleExport(value, record.specifier, binding_name))
-        None => NotFound
-      }
-    None => ()
-  }
-  match
-    self.resolve_explicit_indirect_export_from_stmt(
-      record,
-      StmtList(record.stmts, @token.Loc::default()),
-      export_name,
-      records_by_specifier,
-      resolve_set,
-    ) {
-    NotFound => ()
-    other => return other
-  }
-  if export_name == "default" {
-    return NotFound
-  }
-  let mut star_resolution : ModuleExportResolution = NotFound
-  for source in record.star_sources() {
-    match
-      self.resolve_module_export_from_source(
-        source, export_name, records_by_specifier, resolve_set,
-      ) {
-      NotFound => ()
-      Ambiguous => return Ambiguous
-      Resolved(resolved) => {
-        let next_resolution = Resolved(resolved)
-        match star_resolution {
-          NotFound => star_resolution = next_resolution
-          Resolved(_) =>
-            if !module_export_resolution_same(star_resolution, next_resolution) {
-              return Ambiguous
-            }
-          Ambiguous => return Ambiguous
-        }
-      }
-    }
-  }
-  star_resolution
+  self.resolve_module_export_driver(
+    Record(record, export_name),
+    records_by_specifier,
+    resolve_set,
+  )
 }
 
 ///|
@@ -989,23 +1028,25 @@ fn module_dependency_path_exists(
   records_by_specifier : Map[String, ModuleRunRecord],
   seen : @set.Set[String],
 ) -> Bool {
-  if start == target {
-    return true
-  }
-  if seen.contains(start) {
-    return false
-  }
-  seen.add(start)
-  match records_by_specifier.get(start) {
-    Some(record) =>
-      for dependency in record.dependencies() {
-        if module_dependency_path_exists(
-            dependency, target, records_by_specifier, seen,
-          ) {
-          return true
+  let pending = [start]
+  while pending.length() > 0 {
+    let current = pending.pop().unwrap()
+    if current == target {
+      return true
+    }
+    if seen.contains(current) {
+      continue
+    }
+    seen.add(current)
+    match records_by_specifier.get(current) {
+      Some(record) => {
+        let dependencies = record.dependencies()
+        for i = dependencies.length() - 1; i >= 0; i = i - 1 {
+          pending.push(dependencies[i])
         }
       }
-    None => ()
+      None => ()
+    }
   }
   false
 }
@@ -1040,24 +1081,45 @@ fn Interpreter::visit_module_dependencies_first(
     _ => ()
   }
   state[record.specifier] = 1
-  for edge in record.dependency_edges() {
+  let records = [record]
+  let edges_by_frame = [record.dependency_edges()]
+  let next_indices = [0]
+  while records.length() > 0 {
+    let frame_index = records.length() - 1
+    let current = records[frame_index]
+    let edges = edges_by_frame[frame_index]
+    let edge_index = next_indices[frame_index]
+    if edge_index >= edges.length() {
+      action(self, current)
+      state[current.specifier] = 2
+      ignore(records.pop())
+      ignore(edges_by_frame.pop())
+      ignore(next_indices.pop())
+      continue
+    }
+    next_indices[frame_index] = edge_index + 1
+    let edge = edges[edge_index]
     let dependency = edge.0
     let strong = edge.1
     if should_skip_weak_module_back_edge(
-        record, dependency, strong, records_by_specifier,
+        current, dependency, strong, records_by_specifier,
       ) {
       continue
     }
     match records_by_specifier.get(dependency) {
       Some(dep_record) =>
-        self.visit_module_dependencies_first(
-          dep_record, records_by_specifier, state, action,
-        )
+        match state.get(dep_record.specifier) {
+          Some(1) | Some(2) => ()
+          _ => {
+            state[dep_record.specifier] = 1
+            records.push(dep_record)
+            edges_by_frame.push(dep_record.dependency_edges())
+            next_indices.push(0)
+          }
+        }
       None => ()
     }
   }
-  action(self, record)
-  state[record.specifier] = 2
 }
 
 ///|

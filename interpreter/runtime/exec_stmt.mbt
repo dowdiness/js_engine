@@ -96,31 +96,8 @@ fn collect_pattern_tdz_names(
   pattern : @ast.Pattern,
   names : Array[String],
 ) -> Unit {
-  match pattern {
-    IdentPat(name) => names.push(name)
-    DefaultPat(inner, _) => collect_pattern_tdz_names(inner, names)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(pat) => collect_pattern_tdz_names(pat, names)
-          None => ()
-        }
-      }
-      match rest {
-        Some(pat) => collect_pattern_tdz_names(pat, names)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        collect_pattern_tdz_names(prop.value, names)
-      }
-      match rest {
-        Some(pat) => collect_pattern_tdz_names(pat, names)
-        None => ()
-      }
-    }
+  for name in @static_semantics.bound_names(pattern) {
+    names.push(name)
   }
 }
 

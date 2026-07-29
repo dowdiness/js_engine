@@ -25,6 +25,13 @@ priv struct EvalContainsScan {
 }
 
 ///|
+priv enum EvalContainsWork {
+  Stmt(@ast.Stmt)
+  Expr(@ast.Expr)
+  Pattern(@ast.Pattern)
+}
+
+///|
 fn EvalContainsScan::new() -> EvalContainsScan {
   {
     super_call: false,
@@ -35,129 +42,172 @@ fn EvalContainsScan::new() -> EvalContainsScan {
 }
 
 ///|
+/// Schedule the parts of a class evaluated in the surrounding context:
+/// heritage first, then computed member keys in source order. Member bodies,
+/// field initializers, and static blocks establish separate Contains regions.
+fn schedule_eval_contains_class(
+  scheduled : Array[EvalContainsWork],
+  superclass : @ast.Expr?,
+  class_members : Array[@ast.ClassMember],
+) -> Unit {
+  match superclass {
+    Some(expr) => scheduled.push(Expr(expr))
+    None => ()
+  }
+  for class_member in class_members {
+    match class_member {
+      Method(class_method) =>
+        if class_method.computed {
+          scheduled.push(Expr(class_method.key))
+        }
+      Field(field) => if field.computed { scheduled.push(Expr(field.key)) }
+      StaticBlock(_, _) => ()
+    }
+  }
+}
+
+///|
 /// Run the scan over a list of top-level statements (the parsed eval body).
 /// Returns a struct with one bit per Contains predicate.
 fn scan_eval_contains(stmts : Array[@ast.Stmt]) -> EvalContainsScan {
   let scan = EvalContainsScan::new()
-  for s in stmts {
-    scan_stmt(scan, s)
+  let work : Array[EvalContainsWork] = []
+  for i in (stmts.length() - 1)>=..0 {
+    work.push(Stmt(stmts[i]))
+  }
+  while work.pop() is Some(item) {
+    let scheduled : Array[EvalContainsWork] = []
+    match item {
+      Stmt(stmt) => schedule_eval_contains_stmt(scheduled, stmt)
+      Expr(expr) => schedule_eval_contains_expr(scan, scheduled, expr)
+      Pattern(pattern) => schedule_eval_contains_pattern(scheduled, pattern)
+    }
+    for i in (scheduled.length() - 1)>=..0 {
+      work.push(scheduled[i])
+    }
   }
   scan
 }
 
 ///|
-fn scan_stmt(scan : EvalContainsScan, stmt : @ast.Stmt) -> Unit {
+fn schedule_eval_contains_stmt(
+  scheduled : Array[EvalContainsWork],
+  stmt : @ast.Stmt,
+) -> Unit {
   match stmt {
-    ExprStmt(e, _) => scan_expr(scan, e)
+    ExprStmt(e, _) => scheduled.push(Expr(e))
     VarDecl(_, _, init, _) =>
       match init {
-        Some(e) => scan_expr(scan, e)
+        Some(e) => scheduled.push(Expr(e))
         None => ()
       }
     Block(stmts, _) | StmtList(stmts, _) =>
       for s in stmts {
-        scan_stmt(scan, s)
+        scheduled.push(Stmt(s))
       }
     IfStmt(cond, then_s, else_s, _) => {
-      scan_expr(scan, cond)
-      scan_stmt(scan, then_s)
+      scheduled.push(Expr(cond))
+      scheduled.push(Stmt(then_s))
       match else_s {
-        Some(s) => scan_stmt(scan, s)
+        Some(s) => scheduled.push(Stmt(s))
         None => ()
       }
     }
     WhileStmt(cond, body, _) => {
-      scan_expr(scan, cond)
-      scan_stmt(scan, body)
+      scheduled.push(Expr(cond))
+      scheduled.push(Stmt(body))
     }
     DoWhileStmt(body, cond, _) => {
-      scan_stmt(scan, body)
-      scan_expr(scan, cond)
+      scheduled.push(Stmt(body))
+      scheduled.push(Expr(cond))
     }
     ForStmt(init, cond, update, body, _) => {
       match init {
-        Some(s) => scan_stmt(scan, s)
+        Some(s) => scheduled.push(Stmt(s))
         None => ()
       }
       match cond {
-        Some(e) => scan_expr(scan, e)
+        Some(e) => scheduled.push(Expr(e))
         None => ()
       }
       match update {
-        Some(e) => scan_expr(scan, e)
+        Some(e) => scheduled.push(Expr(e))
         None => ()
       }
-      scan_stmt(scan, body)
+      scheduled.push(Stmt(body))
     }
     ForInStmt(_, _, src, body, _)
     | ForOfStmt(_, _, src, body, _)
     | AsyncForOfStmt(_, _, src, body, _) => {
-      scan_expr(scan, src)
-      scan_stmt(scan, body)
+      scheduled.push(Expr(src))
+      scheduled.push(Stmt(body))
     }
-    ForInStmtPat(_, _, src, body, _)
-    | ForOfStmtPat(_, _, src, body, _)
-    | AsyncForOfStmtPat(_, _, src, body, _) => {
-      scan_expr(scan, src)
-      scan_stmt(scan, body)
+    ForInStmtPat(_, pattern, src, body, _)
+    | ForOfStmtPat(_, pattern, src, body, _)
+    | AsyncForOfStmtPat(_, pattern, src, body, _) => {
+      scheduled.push(Pattern(pattern))
+      scheduled.push(Expr(src))
+      scheduled.push(Stmt(body))
     }
     ForInExpr(target, src, body, _)
     | ForOfExpr(target, src, body, _)
     | AsyncForOfExpr(target, src, body, _) => {
-      scan_expr(scan, target)
-      scan_expr(scan, src)
-      scan_stmt(scan, body)
+      scheduled.push(Expr(target))
+      scheduled.push(Expr(src))
+      scheduled.push(Stmt(body))
     }
     ReturnStmt(e, _) =>
       match e {
-        Some(e) => scan_expr(scan, e)
+        Some(e) => scheduled.push(Expr(e))
         None => ()
       }
-    ThrowStmt(e, _) => scan_expr(scan, e)
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
+    ThrowStmt(e, _) => scheduled.push(Expr(e))
+    TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
       for s in try_body {
-        scan_stmt(scan, s)
+        scheduled.push(Stmt(s))
+      }
+      match catch_param {
+        Some(pattern) => scheduled.push(Pattern(pattern))
+        None => ()
       }
       match catch_body {
         Some(stmts) =>
           for s in stmts {
-            scan_stmt(scan, s)
+            scheduled.push(Stmt(s))
           }
         None => ()
       }
       match finally_body {
         Some(stmts) =>
           for s in stmts {
-            scan_stmt(scan, s)
+            scheduled.push(Stmt(s))
           }
         None => ()
       }
     }
     SwitchStmt(disc, cases, _) => {
-      scan_expr(scan, disc)
+      scheduled.push(Expr(disc))
       for c in cases {
         match c.condition {
-          Some(e) => scan_expr(scan, e)
+          Some(e) => scheduled.push(Expr(e))
           None => ()
         }
         for s in c.body {
-          scan_stmt(scan, s)
+          scheduled.push(Stmt(s))
         }
       }
     }
-    DestructureDecl(_, _, init, _) => scan_expr(scan, init)
-    LabeledStmt(_, body, _) => scan_stmt(scan, body)
-    WithStmt(obj, body, _) => {
-      scan_expr(scan, obj)
-      scan_stmt(scan, body)
+    DestructureDecl(_, pattern, init, _) => {
+      scheduled.push(Pattern(pattern))
+      scheduled.push(Expr(init))
     }
-    // Class declaration: visit heritage (extends clause is in surrounding
-    // scope) but skip member bodies (each member has its own context).
-    ClassDecl(_, superclass, _, _, _) =>
-      match superclass {
-        Some(e) => scan_expr(scan, e)
-        None => ()
-      }
+    LabeledStmt(_, body, _) => scheduled.push(Stmt(body))
+    WithStmt(obj, body, _) => {
+      scheduled.push(Expr(obj))
+      scheduled.push(Stmt(body))
+    }
+    ClassDecl(_, superclass, members, _, _) =>
+      schedule_eval_contains_class(scheduled, superclass, members)
     // Skip-entirely productions: each introduces its own function-scope
     // binding for new.target/arguments/super, so Contains stops here.
     FuncDecl(_, _, _, _, _)
@@ -179,69 +229,76 @@ fn scan_stmt(scan : EvalContainsScan, stmt : @ast.Stmt) -> Unit {
 /// to Contains), but they may carry default expressions and computed keys,
 /// both of which evaluate in the surrounding context and therefore count
 /// for the four predicates.
-fn scan_pattern(scan : EvalContainsScan, pat : @ast.Pattern) -> Unit {
+fn schedule_eval_contains_pattern(
+  scheduled : Array[EvalContainsWork],
+  pat : @ast.Pattern,
+) -> Unit {
   match pat {
     IdentPat(_) => ()
     ArrayPat(elements, rest) => {
       for el in elements {
         match el {
-          Some(p) => scan_pattern(scan, p)
+          Some(p) => scheduled.push(Pattern(p))
           None => ()
         }
       }
       match rest {
-        Some(p) => scan_pattern(scan, p)
+        Some(p) => scheduled.push(Pattern(p))
         None => ()
       }
     }
     ObjectPat(props, rest) => {
       for prop in props {
         match prop.computed_key {
-          Some(e) => scan_expr(scan, e)
+          Some(e) => scheduled.push(Expr(e))
           None => ()
         }
+        scheduled.push(Pattern(prop.value))
         match prop.default_val {
-          Some(e) => scan_expr(scan, e)
+          Some(e) => scheduled.push(Expr(e))
           None => ()
         }
-        scan_pattern(scan, prop.value)
       }
       match rest {
-        Some(p) => scan_pattern(scan, p)
+        Some(p) => scheduled.push(Pattern(p))
         None => ()
       }
     }
     DefaultPat(inner, expr) => {
-      scan_pattern(scan, inner)
-      scan_expr(scan, expr)
+      scheduled.push(Pattern(inner))
+      scheduled.push(Expr(expr))
     }
-    AssignTarget(expr) => scan_expr(scan, expr)
+    AssignTarget(expr) => scheduled.push(Expr(expr))
   }
 }
 
 ///|
-fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
+fn schedule_eval_contains_expr(
+  scan : EvalContainsScan,
+  scheduled : Array[EvalContainsWork],
+  expr : @ast.Expr,
+) -> Unit {
   match expr {
     // Leaves
     SuperCall(args, _) => {
       scan.super_call = true
       for a in args {
-        scan_expr(scan, a)
+        scheduled.push(Expr(a))
       }
     }
     SuperMember(_, _) => scan.super_property = true
     SuperComputedMember(key, _) => {
       scan.super_property = true
-      scan_expr(scan, key)
+      scheduled.push(Expr(key))
     }
     SuperMemberAssign(_, rhs, _) => {
       scan.super_property = true
-      scan_expr(scan, rhs)
+      scheduled.push(Expr(rhs))
     }
     SuperComputedAssign(key, rhs, _) => {
       scan.super_property = true
-      scan_expr(scan, key)
-      scan_expr(scan, rhs)
+      scheduled.push(Expr(key))
+      scheduled.push(Expr(rhs))
     }
     NewTargetExpr(_) => scan.new_target = true
     Ident("arguments", _) => scan.arguments_ref = true
@@ -256,12 +313,8 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
     | AsyncFuncExprExt(_, _, _, _, _, _)
     | AsyncGeneratorExpr(_, _, _, _, _)
     | AsyncGeneratorExprExt(_, _, _, _, _, _) => ()
-    // ClassExpr: visit heritage only, skip member bodies.
-    ClassExpr(_, superclass, _, _, _) =>
-      match superclass {
-        Some(e) => scan_expr(scan, e)
-        None => ()
-      }
+    ClassExpr(_, superclass, members, _, _) =>
+      schedule_eval_contains_class(scheduled, superclass, members)
     // Arrows: transparent for the four predicates per spec — and that
     // transparency extends to the parameter list. Non-arrow function
     // boundaries skip params (they're the function's own concern), but
@@ -272,80 +325,80 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
     // must be visited.
     ArrowFunc(_, body, _, _) | AsyncArrowFunc(_, body, _, _) =>
       for s in body {
-        scan_stmt(scan, s)
+        scheduled.push(Stmt(s))
       }
     ArrowFuncExt(params, _, body, _, _)
     | AsyncArrowFuncExt(params, _, body, _, _) => {
       for p in params {
         match p.default_val {
-          Some(e) => scan_expr(scan, e)
+          Some(e) => scheduled.push(Expr(e))
           None => ()
         }
         match p.pattern {
-          Some(pat) => scan_pattern(scan, pat)
+          Some(pat) => scheduled.push(Pattern(pat))
           None => ()
         }
       }
       for s in body {
-        scan_stmt(scan, s)
+        scheduled.push(Stmt(s))
       }
     }
     // Recurse-into: every other expression descends through children.
     Binary(_, l, r, _) | Comma(l, r, _) => {
-      scan_expr(scan, l)
-      scan_expr(scan, r)
+      scheduled.push(Expr(l))
+      scheduled.push(Expr(r))
     }
     Unary(_, e, _)
     | Grouping(e, _)
     | SpreadExpr(e, _)
     | YieldExpr(Some(e), _, _)
-    | AwaitExpr(e, _) => scan_expr(scan, e)
+    | AwaitExpr(e, _) => scheduled.push(Expr(e))
     YieldExpr(None, _, _) => ()
-    Assign(_, e, _) => scan_expr(scan, e)
+    Assign(_, e, _) => scheduled.push(Expr(e))
     Call(callee, args, _)
     | OptionalCall(callee, args, _)
     | NewExpr(callee, args, _) => {
-      scan_expr(scan, callee)
+      scheduled.push(Expr(callee))
       for a in args {
-        scan_expr(scan, a)
+        scheduled.push(Expr(a))
       }
     }
     Member(obj, _, _)
     | OptionalMember(obj, _, _)
     | ChainMember(obj, _, _)
-    | PrivateMember(obj, _, _) => scan_expr(scan, obj)
+    | PrivateMember(obj, _, _) => scheduled.push(Expr(obj))
     ComputedMember(obj, key, _)
     | OptionalComputedMember(obj, key, _)
     | ChainComputedMember(obj, key, _) => {
-      scan_expr(scan, obj)
-      scan_expr(scan, key)
+      scheduled.push(Expr(obj))
+      scheduled.push(Expr(key))
     }
     Ternary(c, t, f, _) => {
-      scan_expr(scan, c)
-      scan_expr(scan, t)
-      scan_expr(scan, f)
+      scheduled.push(Expr(c))
+      scheduled.push(Expr(t))
+      scheduled.push(Expr(f))
     }
     MemberAssign(obj, _, rhs, _) => {
-      scan_expr(scan, obj)
-      scan_expr(scan, rhs)
+      scheduled.push(Expr(obj))
+      scheduled.push(Expr(rhs))
     }
     PrivateMemberAssign(obj, _, rhs, _) => {
-      scan_expr(scan, obj)
-      scan_expr(scan, rhs)
+      scheduled.push(Expr(obj))
+      scheduled.push(Expr(rhs))
     }
     ComputedAssign(obj, key, rhs, _) => {
-      scan_expr(scan, obj)
-      scan_expr(scan, key)
-      scan_expr(scan, rhs)
+      scheduled.push(Expr(obj))
+      scheduled.push(Expr(key))
+      scheduled.push(Expr(rhs))
     }
-    UpdateExpr(_, target, _, _) => scan_expr(scan, target)
+    UpdateExpr(_, target, _, _) => scheduled.push(Expr(target))
     CompoundAssign(_, lhs, rhs, _) => {
-      scan_expr(scan, lhs)
-      scan_expr(scan, rhs)
+      scheduled.push(Expr(lhs))
+      scheduled.push(Expr(rhs))
     }
     WebCompatCallAssign(call_expr, rhs, _) => {
-      scan_expr(scan, call_expr)
-      scan_expr(scan, rhs)
+      scheduled.push(Expr(call_expr))
+      scheduled.push(Expr(rhs))
     }
     // Property keys: prop.key is StringLit for non-computed keys (per
     // ast/ast.mbt:83 comment), so descending into it is safe — a literal
@@ -353,24 +406,27 @@ fn scan_expr(scan : EvalContainsScan, expr : @ast.Expr) -> Unit {
     // Ident, and won't trigger arguments_ref.
     ObjectLit(props, _) =>
       for prop in props {
-        scan_expr(scan, prop.key)
-        scan_expr(scan, prop.value)
+        scheduled.push(Expr(prop.key))
+        scheduled.push(Expr(prop.value))
       }
     ArrayLit(elements, _) =>
       for e in elements {
-        scan_expr(scan, e)
+        scheduled.push(Expr(e))
       }
     TemplateLit(_, exprs, _) =>
       for e in exprs {
-        scan_expr(scan, e)
+        scheduled.push(Expr(e))
       }
     TaggedTemplate(tag, _, exprs, _) => {
-      scan_expr(scan, tag)
+      scheduled.push(Expr(tag))
       for e in exprs {
-        scan_expr(scan, e)
+        scheduled.push(Expr(e))
       }
     }
-    DestructureAssign(_, rhs, _) => scan_expr(scan, rhs)
+    DestructureAssign(pattern, rhs, _) => {
+      scheduled.push(Pattern(pattern))
+      scheduled.push(Expr(rhs))
+    }
     // Leaves with nothing to scan. (Ident("arguments") is handled above.)
     NumberLit(_, _, _)
     | StringLit(_, _, _, _)

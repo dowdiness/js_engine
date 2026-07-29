@@ -141,13 +141,16 @@ pub fn Interpreter::call_direct_eval_or_shadowed(
 }
 
 ///|
-/// Recursively strip Grouping nodes from an expression.
+/// Strip consecutive Grouping nodes from an expression.
 /// Per ES spec, grouping parentheses do not change the Reference type,
 /// so ((eval))("code") is still a direct eval call.
 pub fn unwrap_grouping(expr : @ast.Expr) -> @ast.Expr {
-  match expr {
-    Grouping(inner, _) => unwrap_grouping(inner)
-    _ => expr
+  let mut current = expr
+  for ;; {
+    match current {
+      Grouping(inner, _) => current = inner
+      _ => return current
+    }
   }
 }
 
@@ -156,14 +159,17 @@ fn collect_param_default_eval_var_conflicts(
   params : Array[@ast.Param],
   rest_param : String?,
   implicit_arguments? : Bool = false,
-) -> @set.Set[String] raise Error {
+) -> @set.Set[String] {
   let conflicts = @set.Set::default()
   if implicit_arguments {
     conflicts.add("arguments")
   }
   for param in params {
     match param.pattern {
-      Some(pattern) => walk_pattern_idents(pattern, name => conflicts.add(name))
+      Some(pattern) =>
+        for name in @static_semantics.bound_names(pattern) {
+          conflicts.add(name)
+        }
       None => if !param.is_rest_pattern { conflicts.add(param.name) }
     }
   }
@@ -225,7 +231,9 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
         // but NOT the synthetic "$rest" name stored in rest_param.
         match p.pattern {
           Some(pat) =>
-            walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+            for name in @static_semantics.bound_names(pat) {
+              param_env.def_param_tdz(name)
+            }
           None => ()
         }
         continue
@@ -233,12 +241,14 @@ fn Interpreter::bind_ext_params_and_exec_body_signal(
       match p.pattern {
         Some(pat) =>
           // Destructuring param: pre-declare all bound names (e.g. {y} → y).
-          walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+          for name in @static_semantics.bound_names(pat) {
+            param_env.def_param_tdz(name)
+          }
         None => param_env.def_param_tdz(p.name)
       }
     }
     // Simple named rest (e.g. ...rest): pre-declare the user name.
-    // Destructuring rest (...[a]): bound names declared above via walk_pattern_idents.
+    // Destructuring rest (...[a]): bound names declared above via BoundNames.
     if !has_rest_pattern_param {
       match data.rest_param {
         Some(rp) => param_env.def_param_tdz(rp)

@@ -2,22 +2,25 @@
 /// Check if an expression is an anonymous function/class/arrow definition
 /// per ECMAScript IsAnonymousFunctionDefinition (§15.2)
 fn is_anonymous_function_definition(expr : @ast.Expr) -> Bool {
-  match expr {
-    FuncExpr(None, _, _, _, _) => true
-    FuncExprExt(None, _, _, _, _, _) => true
-    ArrowFunc(_, _, _, _) => true
-    ArrowFuncExt(_, _, _, _, _) => true
-    ClassExpr(None, _, _, _, _) => true
-    GeneratorExpr(None, _, _, _, _) => true
-    GeneratorExprExt(None, _, _, _, _, _) => true
-    AsyncFuncExpr(None, _, _, _, _) => true
-    AsyncFuncExprExt(None, _, _, _, _, _) => true
-    AsyncArrowFunc(_, _, _, _) => true
-    AsyncArrowFuncExt(_, _, _, _, _) => true
-    AsyncGeneratorExpr(None, _, _, _, _) => true
-    AsyncGeneratorExprExt(None, _, _, _, _, _) => true
-    Grouping(inner, _) => is_anonymous_function_definition(inner)
-    _ => false
+  let mut current = expr
+  for ;; {
+    match current {
+      Grouping(inner, _) => current = inner
+      FuncExpr(None, _, _, _, _) => return true
+      FuncExprExt(None, _, _, _, _, _) => return true
+      ArrowFunc(_, _, _, _) => return true
+      ArrowFuncExt(_, _, _, _, _) => return true
+      ClassExpr(None, _, _, _, _) => return true
+      GeneratorExpr(None, _, _, _, _) => return true
+      GeneratorExprExt(None, _, _, _, _, _) => return true
+      AsyncFuncExpr(None, _, _, _, _) => return true
+      AsyncFuncExprExt(None, _, _, _, _, _) => return true
+      AsyncArrowFunc(_, _, _, _) => return true
+      AsyncArrowFuncExt(_, _, _, _, _) => return true
+      AsyncGeneratorExpr(None, _, _, _, _) => return true
+      AsyncGeneratorExprExt(None, _, _, _, _, _) => return true
+      _ => return false
+    }
   }
 }
 
@@ -306,31 +309,8 @@ fn check_duplicate_pattern_binding_names(
   pattern : @ast.Pattern,
   seen : @set.Set[String],
 ) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) => check_duplicate_binding_name(seen, name)
-    DefaultPat(inner, _) => check_duplicate_pattern_binding_names(inner, seen)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
-          None => ()
-        }
-      }
-      match rest {
-        Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        check_duplicate_pattern_binding_names(prop.value, seen)
-      }
-      match rest {
-        Some(pat) => check_duplicate_pattern_binding_names(pat, seen)
-        None => ()
-      }
-    }
+  for name in @static_semantics.bound_names(pattern) {
+    check_duplicate_binding_name(seen, name)
   }
 }
 
@@ -368,34 +348,35 @@ fn params_include_arguments(
 
 ///|
 fn pattern_includes_arguments(pattern : @ast.Pattern) -> Bool {
-  match pattern {
-    IdentPat(name) => name == "arguments"
-    DefaultPat(inner, _) => pattern_includes_arguments(inner)
-    AssignTarget(_) => false
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(pat) => if pattern_includes_arguments(pat) { return true }
+  let stack : Array[@ast.Pattern] = [pattern]
+  while stack.length() > 0 {
+    match stack.pop() {
+      Some(IdentPat("arguments")) => return true
+      Some(IdentPat(_)) | Some(AssignTarget(_)) => ()
+      Some(DefaultPat(inner, _)) => stack.push(inner)
+      Some(ArrayPat(elements, rest)) => {
+        match rest {
+          Some(rest) => stack.push(rest)
           None => ()
         }
+        elements.rev_each(element => {
+          match element {
+            Some(child) => stack.push(child)
+            None => ()
+          }
+        })
       }
-      match rest {
-        Some(pat) => pattern_includes_arguments(pat)
-        None => false
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        if pattern_includes_arguments(prop.value) {
-          return true
+      Some(ObjectPat(properties, rest)) => {
+        match rest {
+          Some(rest) => stack.push(rest)
+          None => ()
         }
+        properties.rev_each(property => stack.push(property.value))
       }
-      match rest {
-        Some(pat) => pattern_includes_arguments(pat)
-        None => false
-      }
+      None => ()
     }
   }
+  false
 }
 
 ///|
@@ -419,31 +400,8 @@ fn ext_params_include_arguments(
 fn validate_strict_pattern_binding_names(
   pattern : @ast.Pattern,
 ) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) => @static_semantics.validate_strict_binding_name(name)
-    DefaultPat(inner, _) => validate_strict_pattern_binding_names(inner)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(pat) => validate_strict_pattern_binding_names(pat)
-          None => ()
-        }
-      }
-      match rest {
-        Some(pat) => validate_strict_pattern_binding_names(pat)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        validate_strict_pattern_binding_names(prop.value)
-      }
-      match rest {
-        Some(pat) => validate_strict_pattern_binding_names(pat)
-        None => ()
-      }
-    }
+  for name in @static_semantics.bound_names(pattern) {
+    @static_semantics.validate_strict_binding_name(name)
   }
 }
 
@@ -567,47 +525,60 @@ pub fn has_parameter_expressions(params : Array[@ast.Param]) -> Bool {
 }
 
 ///|
+priv enum ParameterExpressionWork {
+  VisitParameterPattern(@ast.Pattern)
+  ParameterExpressionMarker
+}
+
+///|
 /// Returns true iff a BindingPattern contains any Initializer,
 /// computed property key, or assignment target — i.e. the AST
 /// subtrees the spec classifies as expressions inside
 /// `ContainsExpression`.
 fn pattern_contains_expression(pattern : @ast.Pattern) -> Bool {
-  match pattern {
-    IdentPat(_) => false
-    DefaultPat(_, _) => true
-    // AssignTarget shows up only for destructuring-assignment forms, not
-    // BindingPattern parameters, but treat it as an expression defensively.
-    AssignTarget(_) => true
-    ArrayPat(elements, rest) => {
-      for e in elements {
-        match e {
-          Some(p) => if pattern_contains_expression(p) { return true }
-          None => ()
+  let work = [ParameterExpressionWork::VisitParameterPattern(pattern)]
+  while work.pop() is Some(item) {
+    match item {
+      ParameterExpressionMarker => return true
+      VisitParameterPattern(pattern) =>
+        match pattern {
+          IdentPat(_) => ()
+          DefaultPat(_, _) => return true
+          // AssignTarget shows up only for destructuring-assignment forms, not
+          // BindingPattern parameters, but treat it as an expression defensively.
+          AssignTarget(_) => return true
+          ArrayPat(elements, rest) => {
+            match rest {
+              Some(rest) => work.push(VisitParameterPattern(rest))
+              None => ()
+            }
+            for i = elements.length() - 1; i >= 0; i = i - 1 {
+              match elements[i] {
+                Some(element) => work.push(VisitParameterPattern(element))
+                None => ()
+              }
+            }
+          }
+          ObjectPat(properties, rest) => {
+            match rest {
+              Some(rest) => work.push(VisitParameterPattern(rest))
+              None => ()
+            }
+            for i = properties.length() - 1; i >= 0; i = i - 1 {
+              let property = properties[i]
+              work.push(VisitParameterPattern(property.value))
+              if property.computed_key is Some(_) {
+                work.push(ParameterExpressionMarker)
+              }
+              if property.default_val is Some(_) {
+                work.push(ParameterExpressionMarker)
+              }
+            }
+          }
         }
-      }
-      match rest {
-        Some(p) => pattern_contains_expression(p)
-        None => false
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        if prop.default_val is Some(_) {
-          return true
-        }
-        if prop.computed_key is Some(_) {
-          return true
-        }
-        if pattern_contains_expression(prop.value) {
-          return true
-        }
-      }
-      match rest {
-        Some(p) => pattern_contains_expression(p)
-        None => false
-      }
     }
   }
+  false
 }
 
 ///|

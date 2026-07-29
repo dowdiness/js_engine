@@ -1,0 +1,167 @@
+///|
+fn nested_comma_source(depth : Int, final_expression : String) -> String {
+  let mut source = final_expression
+  for _ in 0..<depth {
+    source = "0," + source
+  }
+  source
+}
+
+///|
+fn nested_array_pattern_source(depth : Int, inner : String) -> String {
+  let mut source = inner
+  for _ in 0..<depth {
+    source = "[" + source + "]"
+  }
+  source
+}
+
+///|
+test "post-parse stack safety: GeneratorFunction parameter Contains(YieldExpression)" {
+  // Constructor integration reaches the parser's independent validation first;
+  // generator_wbtest.mbt directly covers the private runtime walker.
+  let parameter = nested_array_pattern_source(512, "value = yield 0")
+  inspect(
+    run_throws(
+      "let GF = (function*(){}).constructor; new GF(\"" +
+      parameter +
+      "\", \"\");",
+    ),
+    content="SyntaxError: Generator formal parameters may not contain yield expressions",
+  )
+}
+
+///|
+#skip("blocked by #608 runtime evaluator stack safety")
+test "post-parse stack safety: 512 comma expressions" {
+  inspect(run(nested_comma_source(512, "7")), content="7")
+}
+
+///|
+test "post-parse stack safety phase isolation: 512 comma expressions" {
+  inspect(
+    run_throws("\"use strict\"; " + nested_comma_source(512, "eval = 0")),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "post-parse stack safety: direct eval Contains handles 4096 comma expressions" {
+  let eval_body = nested_comma_source(4096, "new.target")
+  inspect(
+    run_throws("eval(\"" + eval_body + "\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans destructuring declaration patterns" {
+  inspect(
+    run_throws("eval(\"let {[new.target]: value} = {};\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans for-of patterns" {
+  inspect(
+    run_throws("eval(\"for (let {[new.target]: value} of []) {}\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans catch parameters" {
+  inspect(
+    run_throws("eval(\"try {} catch ({[new.target]: value}) {}\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans destructuring assignment patterns" {
+  inspect(
+    run_throws("eval(\"({[new.target]: value} = {});\")"),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans computed class declaration keys" {
+  inspect(
+    run_throws(
+      "let executed = false; eval(\"class C { [new.target]() { executed = true; } }\"); executed",
+    ),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains scans computed class expression keys" {
+  inspect(
+    run_throws(
+      "let executed = false; eval(\"(class { [new.target] = (executed = true) })\"); executed",
+    ),
+    content="SyntaxError: 'new.target' is not allowed outside of a function — eval source contains new.target at the top level",
+  )
+}
+
+///|
+test "PerformEval Contains skips class member bodies and field initializers" {
+  inspect(
+    run(
+      "eval(\"class C { field = new.target; method() { return new.target; } }; let c = new C(); c.field === undefined && c.method() === undefined\")",
+    ),
+    content="true",
+  )
+}
+
+///|
+test "post-parse stack safety: comma expression preserves first error" {
+  inspect(
+    run_throws("\"use strict\"; (eval = 0, function() { let x; var x; })"),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "post-parse stack safety: function preserves first error" {
+  inspect(
+    run_throws("function f(a = (eval = 0)) { let x; var x; }"),
+    content="SyntaxError: Identifier 'x' has already been declared",
+  )
+}
+
+///|
+test "post-parse stack safety: class preserves first error" {
+  inspect(
+    run_throws("class C extends (eval = 0) { m() { let x; var x; } }"),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "post-parse stack safety: switch preserves first error" {
+  inspect(
+    run_throws("switch (eval = 0) { case 0: let x; var x; }"),
+    content="SyntaxError: Identifier 'x' has already been declared",
+  )
+}
+
+///|
+test "post-parse stack safety: pattern preserves first error" {
+  inspect(
+    run_throws(
+      "\"use strict\"; ({[eval = 0]: x = function() { let y; var y; }} = {})",
+    ),
+    content="SyntaxError: Unexpected eval or arguments in strict mode",
+  )
+}
+
+///|
+test "post-parse stack safety: template quasi precedes substitution" {
+  inspect(
+    run_throws("\"use strict\"; `\\1${eval = 0}`"),
+    content="SyntaxError: Invalid escape sequence in template literal at line 1, col 15",
+  )
+}

@@ -1,51 +1,4 @@
 ///|
-/// Generic destructuring-pattern walker: invoke `on_ident` once per
-/// binding identifier in `pattern`. Shared traversal structure for every
-/// pattern-name collector / hoister in this file — only the per-name
-/// action differs. `AssignTarget` is intentionally ignored because its
-/// names resolve to member expressions, not fresh bindings.
-fn walk_pattern_idents(
-  pattern : @ast.Pattern,
-  on_ident : (String) -> Unit raise Error,
-) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) => on_ident(name)
-    DefaultPat(inner_pat, _) => walk_pattern_idents(inner_pat, on_ident)
-    AssignTarget(_) => ()
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => walk_pattern_idents(p, on_ident)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => walk_pattern_idents(p, on_ident)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        walk_pattern_idents(prop.value, on_ident)
-      }
-      match rest {
-        Some(p) => walk_pattern_idents(p, on_ident)
-        None => ()
-      }
-    }
-  }
-}
-
-///|
-/// Collect names from a destructuring pattern (for eval var name collection).
-fn collect_pattern_var_names(
-  pattern : @ast.Pattern,
-  names : Array[String],
-) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => names.push(name))
-}
-
-///|
 fn add_lexical_decl_name(
   lexical_names : @set.Set[String],
   name : String,
@@ -64,13 +17,13 @@ fn collect_pattern_decl_names(
   names : @set.Set[String],
   lexical? : Bool = false,
 ) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => {
+  for name in @static_semantics.bound_names(pattern) {
     if lexical {
       add_lexical_decl_name(names, name)
     } else {
       names.add(name)
     }
-  })
+  }
 }
 
 ///|
@@ -262,90 +215,6 @@ fn flatten_case_block_statements(
 }
 
 ///|
-fn validate_pattern_early_errors(
-  pattern : @ast.Pattern,
-  strict_context : Bool,
-  binding : Bool,
-) -> Unit raise Error {
-  match pattern {
-    IdentPat(name) =>
-      if binding {
-        if strict_context {
-          @static_semantics.validate_strict_binding_name(name)
-        }
-      } else {
-        @static_semantics.validate_strict_assignment_target_name(
-          strict_context, name,
-        )
-      }
-    DefaultPat(inner_pat, default_expr) => {
-      validate_pattern_early_errors(inner_pat, strict_context, binding)
-      validate_block_early_errors_expr(default_expr, strict_context)
-    }
-    AssignTarget(expr) =>
-      match expr {
-        Ident(name, _) =>
-          @static_semantics.validate_strict_assignment_target_name(
-            strict_context, name,
-          )
-        _ => validate_block_early_errors_expr(expr, strict_context)
-      }
-    ArrayPat(elements, rest) => {
-      for elem in elements {
-        match elem {
-          Some(p) => validate_pattern_early_errors(p, strict_context, binding)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => validate_pattern_early_errors(p, strict_context, binding)
-        None => ()
-      }
-    }
-    ObjectPat(props, rest) => {
-      for prop in props {
-        // Validate the key's lex_form (only meaningful in strict_context)
-        validate_strict_lex_form(
-          prop.key_lex_form,
-          prop.key_loc,
-          strict_context,
-        )
-        match prop.computed_key {
-          Some(expr) => validate_block_early_errors_expr(expr, strict_context)
-          None => ()
-        }
-        validate_pattern_early_errors(prop.value, strict_context, binding)
-        match prop.default_val {
-          Some(expr) => validate_block_early_errors_expr(expr, strict_context)
-          None => ()
-        }
-      }
-      match rest {
-        Some(p) => validate_pattern_early_errors(p, strict_context, binding)
-        None => ()
-      }
-    }
-  }
-}
-
-///|
-fn validate_params_defaults(
-  params : Array[@ast.Param],
-  strict_context : Bool,
-) -> Unit raise Error {
-  for p in params {
-    match p.default_val {
-      Some(expr) => validate_block_early_errors_expr(expr, strict_context)
-      None => ()
-    }
-    match p.pattern {
-      Some(pat) => validate_pattern_early_errors(pat, strict_context, true)
-      None => ()
-    }
-  }
-}
-
-///|
 fn validate_strict_lex_form(
   form : @token.LexForm,
   loc : @token.Loc,
@@ -372,611 +241,88 @@ fn validate_strict_lex_form(
 }
 
 ///|
-fn validate_block_early_errors_expr(
-  expr : @ast.Expr,
+priv enum EarlyErrorTask {
+  Expr(@ast.Expr, Bool)
+  Stmt(@ast.Stmt, Bool)
+  Pattern(@ast.Pattern, Bool, Bool)
+  Param(@ast.Param, Bool)
+  StmtListCheck(Array[@ast.Stmt], Bool, Bool, Bool)
+  LexForm(@token.LexForm, @token.Loc, Bool)
+  TemplateQuasis(Array[(String, String?)], @token.Loc)
+}
+
+///|
+fn schedule_exprs_reverse(
+  work : Array[EarlyErrorTask],
+  exprs : Array[@ast.Expr],
   strict_context : Bool,
-) -> Unit raise Error {
-  match expr {
-    Ident(name, _) =>
-      @static_semantics.validate_strict_identifier_reference(
-        strict_context, name,
-      )
-    StringLit(_, _, lex_form, loc) =>
-      validate_strict_lex_form(lex_form, loc, strict_context)
-    NumberLit(_, lex_form, loc) =>
-      validate_strict_lex_form(lex_form, loc, strict_context)
-    FuncExpr(_, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    FuncExprExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    ArrowFunc(_, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    ArrowFuncExt(params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    GeneratorExpr(_, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    GeneratorExprExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    AsyncFuncExpr(_, _, body, _, _)
-    | AsyncArrowFunc(_, body, _, _)
-    | AsyncGeneratorExpr(_, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    AsyncFuncExprExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    AsyncArrowFuncExt(params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    AsyncGeneratorExprExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for stmt in body {
-        validate_block_early_errors_stmt(stmt, child_strict)
-      }
-    }
-    AwaitExpr(inner, _) =>
-      validate_block_early_errors_expr(inner, strict_context)
-    ClassExpr(_, superclass, members, _, _) => {
-      // ES262 §15.7.1: all parts of a ClassDeclaration / ClassExpression are
-      // strict-mode code, including the ClassHeritage (extends) expression.
-      match superclass {
-        Some(s) => validate_block_early_errors_expr(s, true)
-        None => ()
-      }
-      for mbr in members {
-        match mbr {
-          @ast.ClassMember::Method(m) => {
-            // Class bodies are always strict.
-            validate_block_early_errors_expr(m.key, true)
-            validate_block_early_errors_expr(m.value, true)
-          }
-          @ast.ClassMember::Field(f) => {
-            // Visit the field key unconditionally (non-computed StringLit/NumberLit
-            // keys can carry legacy octal lex_form and class bodies are always strict).
-            validate_block_early_errors_expr(f.key, true)
-            match f.initializer {
-              Some(expr) => validate_block_early_errors_expr(expr, true)
-              None => ()
-            }
-          }
-          @ast.ClassMember::StaticBlock(stmts, _) => {
-            validate_block_statement_list_early_errors(stmts)
-            for s in stmts {
-              validate_block_early_errors_stmt(s, true)
-            }
-          }
-        }
-      }
-    }
-    Binary(_, l, r, _) => {
-      validate_block_early_errors_expr(l, strict_context)
-      validate_block_early_errors_expr(r, strict_context)
-    }
-    Unary(_, e, _) => validate_block_early_errors_expr(e, strict_context)
-    Assign(name, e, _) => {
-      @static_semantics.validate_strict_assignment_target_name(
-        strict_context, name,
-      )
-      validate_block_early_errors_expr(e, strict_context)
-    }
-    Call(callee, args, _) => {
-      validate_block_early_errors_expr(callee, strict_context)
-      for a in args {
-        validate_block_early_errors_expr(a, strict_context)
-      }
-    }
-    Member(obj, _, _) => validate_block_early_errors_expr(obj, strict_context)
-    Ternary(c, t, f, _) => {
-      validate_block_early_errors_expr(c, strict_context)
-      validate_block_early_errors_expr(t, strict_context)
-      validate_block_early_errors_expr(f, strict_context)
-    }
-    Grouping(inner, _) =>
-      validate_block_early_errors_expr(inner, strict_context)
-    ObjectLit(props, _) =>
-      for prop in props {
-        validate_block_early_errors_expr(prop.key, strict_context)
-        validate_block_early_errors_expr(prop.value, strict_context)
-      }
-    ArrayLit(elements, _) =>
-      for e in elements {
-        validate_block_early_errors_expr(e, strict_context)
-      }
-    ComputedMember(obj, key, _) => {
-      validate_block_early_errors_expr(obj, strict_context)
-      validate_block_early_errors_expr(key, strict_context)
-    }
-    MemberAssign(obj, _, rhs, _) => {
-      validate_block_early_errors_expr(obj, strict_context)
-      validate_block_early_errors_expr(rhs, strict_context)
-    }
-    ComputedAssign(obj, key, rhs, _) => {
-      validate_block_early_errors_expr(obj, strict_context)
-      validate_block_early_errors_expr(key, strict_context)
-      validate_block_early_errors_expr(rhs, strict_context)
-    }
-    SuperMemberAssign(_, rhs, _) =>
-      validate_block_early_errors_expr(rhs, strict_context)
-    SuperComputedAssign(key, rhs, _) => {
-      validate_block_early_errors_expr(key, strict_context)
-      validate_block_early_errors_expr(rhs, strict_context)
-    }
-    NewExpr(callee, args, _) => {
-      validate_block_early_errors_expr(callee, strict_context)
-      for a in args {
-        validate_block_early_errors_expr(a, strict_context)
-      }
-    }
-    UpdateExpr(_, target, _, _) =>
-      match target {
-        Ident(name, _) =>
-          @static_semantics.validate_strict_assignment_target_name(
-            strict_context, name,
-          )
-        _ => validate_block_early_errors_expr(target, strict_context)
-      }
-    CompoundAssign(_, lhs, rhs, _) => {
-      match lhs {
-        Ident(name, _) =>
-          @static_semantics.validate_strict_assignment_target_name(
-            strict_context, name,
-          )
-        _ => validate_block_early_errors_expr(lhs, strict_context)
-      }
-      validate_block_early_errors_expr(rhs, strict_context)
-    }
-    Comma(l, r, _) => {
-      validate_block_early_errors_expr(l, strict_context)
-      validate_block_early_errors_expr(r, strict_context)
-    }
-    TemplateLit(quasis, exprs, loc) => {
-      for q in quasis {
-        match q.1 {
-          None =>
-            raise @errors.SyntaxError(
-              message="Invalid escape sequence in template literal at line \{loc.line}, col \{loc.col}",
-            )
-          Some(_) => ()
-        }
-      }
-      for e in exprs {
-        validate_block_early_errors_expr(e, strict_context)
-      }
-    }
-    SpreadExpr(e, _) => validate_block_early_errors_expr(e, strict_context)
-    DestructureAssign(pattern, rhs, _) => {
-      validate_pattern_early_errors(pattern, strict_context, false)
-      validate_block_early_errors_expr(rhs, strict_context)
-    }
-    OptionalMember(obj, _, _) | ChainMember(obj, _, _) =>
-      validate_block_early_errors_expr(obj, strict_context)
-    OptionalComputedMember(obj, key, _) | ChainComputedMember(obj, key, _) => {
-      validate_block_early_errors_expr(obj, strict_context)
-      validate_block_early_errors_expr(key, strict_context)
-    }
-    OptionalCall(callee, args, _) => {
-      validate_block_early_errors_expr(callee, strict_context)
-      for a in args {
-        validate_block_early_errors_expr(a, strict_context)
-      }
-    }
-    SuperComputedMember(e, _) =>
-      validate_block_early_errors_expr(e, strict_context)
-    TaggedTemplate(tag, _, exprs, _) => {
-      validate_block_early_errors_expr(tag, strict_context)
-      for e in exprs {
-        validate_block_early_errors_expr(e, strict_context)
-      }
-    }
-    YieldExpr(arg, _, _) =>
-      match arg {
-        Some(e) => validate_block_early_errors_expr(e, strict_context)
-        None => ()
-      }
-    SuperCall(args, _) =>
-      for a in args {
-        validate_block_early_errors_expr(a, strict_context)
-      }
-    _ => ()
+) -> Unit {
+  for i = exprs.length() - 1; i >= 0; i = i - 1 {
+    work.push(Expr(exprs[i], strict_context))
   }
 }
 
 ///|
-fn validate_block_early_errors_stmt(
-  stmt : @ast.Stmt,
+fn schedule_stmts_reverse(
+  work : Array[EarlyErrorTask],
+  stmts : Array[@ast.Stmt],
   strict_context : Bool,
-) -> Unit raise Error {
-  match stmt {
-    Block(stmts, _) => {
-      validate_block_statement_list_early_errors(
-        stmts,
-        include_block_functions=true,
-        allow_duplicate_block_functions=!strict_context,
-      )
-      for inner in stmts {
-        validate_block_early_errors_stmt(inner, strict_context)
+) -> Unit {
+  for i = stmts.length() - 1; i >= 0; i = i - 1 {
+    work.push(Stmt(stmts[i], strict_context))
+  }
+}
+
+///|
+fn schedule_params_reverse(
+  work : Array[EarlyErrorTask],
+  params : Array[@ast.Param],
+  strict_context : Bool,
+) -> Unit {
+  for i = params.length() - 1; i >= 0; i = i - 1 {
+    work.push(Param(params[i], strict_context))
+  }
+}
+
+///|
+fn schedule_function_body(
+  work : Array[EarlyErrorTask],
+  params : Array[@ast.Param]?,
+  body : Array[@ast.Stmt],
+  parent_strict : Bool,
+) -> Unit {
+  let child_strict = is_function_strict(parent_strict, body)
+  schedule_stmts_reverse(work, body, child_strict)
+  match params {
+    Some(ps) => schedule_params_reverse(work, ps, child_strict)
+    None => ()
+  }
+  work.push(StmtListCheck(body, false, false, true))
+}
+
+///|
+fn schedule_class_members_reverse(
+  work : Array[EarlyErrorTask],
+  members : Array[@ast.ClassMember],
+) -> Unit {
+  for i = members.length() - 1; i >= 0; i = i - 1 {
+    match members[i] {
+      @ast.ClassMember::Method(m) => {
+        work.push(Expr(m.value, true))
+        work.push(Expr(m.key, true))
       }
-    }
-    StmtList(stmts, _) =>
-      for inner in stmts {
-        validate_block_early_errors_stmt(inner, strict_context)
-      }
-    ExprStmt(expr, _) => validate_block_early_errors_expr(expr, strict_context)
-    VarDecl(_, name, init, _) => {
-      if strict_context {
-        @static_semantics.validate_strict_binding_name(name)
-      }
-      match init {
-        Some(expr) => validate_block_early_errors_expr(expr, strict_context)
-        None => ()
-      }
-    }
-    DestructureDecl(_, pattern, init, _) => {
-      validate_pattern_early_errors(pattern, strict_context, true)
-      validate_block_early_errors_expr(init, strict_context)
-    }
-    IfStmt(cond, then_branch, else_branch, _) => {
-      validate_block_early_errors_expr(cond, strict_context)
-      validate_block_early_errors_stmt(then_branch, strict_context)
-      match else_branch {
-        Some(eb) => validate_block_early_errors_stmt(eb, strict_context)
-        None => ()
-      }
-    }
-    WhileStmt(cond, body, _) => {
-      validate_block_early_errors_expr(cond, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    DoWhileStmt(body, cond, _) => {
-      validate_block_early_errors_stmt(body, strict_context)
-      validate_block_early_errors_expr(cond, strict_context)
-    }
-    ForStmt(init, cond, update, body, _) => {
-      match init {
-        Some(init_stmt) =>
-          validate_block_early_errors_stmt(init_stmt, strict_context)
-        None => ()
-      }
-      match cond {
-        Some(expr) => validate_block_early_errors_expr(expr, strict_context)
-        None => ()
-      }
-      match update {
-        Some(expr) => validate_block_early_errors_expr(expr, strict_context)
-        None => ()
-      }
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    ForInStmt(kind, name, obj_expr, body, _) => {
-      match kind {
-        Some(_) =>
-          if strict_context {
-            @static_semantics.validate_strict_binding_name(name)
-          }
-        None =>
-          @static_semantics.validate_strict_assignment_target_name(
-            strict_context, name,
-          )
-      }
-      validate_block_early_errors_expr(obj_expr, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    ForOfStmt(kind, name, iterable_expr, body, _)
-    | AsyncForOfStmt(kind, name, iterable_expr, body, _) => {
-      match kind {
-        Some(_) =>
-          if strict_context {
-            @static_semantics.validate_strict_binding_name(name)
-          }
-        None =>
-          @static_semantics.validate_strict_assignment_target_name(
-            strict_context, name,
-          )
-      }
-      validate_block_early_errors_expr(iterable_expr, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    ForInStmtPat(kind, pattern, obj_expr, body, _) => {
-      validate_pattern_early_errors(pattern, strict_context, kind is Some(_))
-      validate_block_early_errors_expr(obj_expr, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    ForOfStmtPat(kind, pattern, iterable_expr, body, _)
-    | AsyncForOfStmtPat(kind, pattern, iterable_expr, body, _) => {
-      validate_pattern_early_errors(pattern, strict_context, kind is Some(_))
-      validate_block_early_errors_expr(iterable_expr, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    ForInExpr(lhs, obj_expr, body, _) => {
-      match lhs {
-        Ident(name, _) =>
-          @static_semantics.validate_strict_assignment_target_name(
-            strict_context, name,
-          )
-        _ => validate_block_early_errors_expr(lhs, strict_context)
-      }
-      validate_block_early_errors_expr(obj_expr, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    ForOfExpr(lhs, iterable_expr, body, _)
-    | AsyncForOfExpr(lhs, iterable_expr, body, _) => {
-      match lhs {
-        Ident(name, _) =>
-          @static_semantics.validate_strict_assignment_target_name(
-            strict_context, name,
-          )
-        _ => validate_block_early_errors_expr(lhs, strict_context)
-      }
-      validate_block_early_errors_expr(iterable_expr, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    LabeledStmt(_, inner, _) =>
-      validate_block_early_errors_stmt(inner, strict_context)
-    ReturnStmt(expr, _) =>
-      match expr {
-        Some(e) => validate_block_early_errors_expr(e, strict_context)
-        None => ()
-      }
-    ThrowStmt(expr, _) => validate_block_early_errors_expr(expr, strict_context)
-    SwitchStmt(discriminant, cases, _) => {
-      validate_block_early_errors_expr(discriminant, strict_context)
-      validate_block_statement_list_early_errors(
-        flatten_case_block_statements(cases),
-        include_block_functions=true,
-        allow_duplicate_block_functions=!strict_context,
-      )
-      for case_ in cases {
-        match case_.condition {
-          Some(expr) => validate_block_early_errors_expr(expr, strict_context)
+      @ast.ClassMember::Field(f) => {
+        match f.initializer {
+          Some(expr) => work.push(Expr(expr, true))
           None => ()
         }
-        for inner in case_.body {
-          validate_block_early_errors_stmt(inner, strict_context)
-        }
+        work.push(Expr(f.key, true))
+      }
+      @ast.ClassMember::StaticBlock(stmts, _) => {
+        schedule_stmts_reverse(work, stmts, true)
+        work.push(StmtListCheck(stmts, false, false, false))
       }
     }
-    TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
-      for inner in try_body {
-        validate_block_early_errors_stmt(inner, strict_context)
-      }
-      match catch_param {
-        Some(pattern) =>
-          validate_pattern_early_errors(pattern, strict_context, true)
-        None => ()
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            validate_block_early_errors_stmt(inner, strict_context)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            validate_block_early_errors_stmt(inner, strict_context)
-          }
-        None => ()
-      }
-    }
-    FuncDecl(_, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    FuncDeclExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    GeneratorDecl(_, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    GeneratorDeclExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    AsyncFuncDecl(_, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    AsyncFuncDeclExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    AsyncGeneratorDecl(_, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    AsyncGeneratorDeclExt(_, params, _, body, _, _) => {
-      validate_block_statement_list_early_errors(
-        body,
-        include_function_decls_in_var_names=true,
-      )
-      let child_strict = is_function_strict(strict_context, body)
-      validate_params_defaults(params, child_strict)
-      for inner in body {
-        validate_block_early_errors_stmt(inner, child_strict)
-      }
-    }
-    ClassDecl(_, superclass, members, _, _) => {
-      // ES262 §15.7.1: all parts of a ClassDeclaration / ClassExpression are
-      // strict-mode code, including the ClassHeritage (extends) expression.
-      match superclass {
-        Some(s) => validate_block_early_errors_expr(s, true)
-        None => ()
-      }
-      for mbr in members {
-        match mbr {
-          @ast.ClassMember::Method(m) => {
-            // Class bodies are always strict.
-            validate_block_early_errors_expr(m.key, true)
-            validate_block_early_errors_expr(m.value, true)
-          }
-          @ast.ClassMember::Field(f) => {
-            // Visit the field key unconditionally (non-computed StringLit/NumberLit
-            // keys can carry legacy octal lex_form and class bodies are always strict).
-            validate_block_early_errors_expr(f.key, true)
-            match f.initializer {
-              Some(expr) => validate_block_early_errors_expr(expr, true)
-              None => ()
-            }
-          }
-          @ast.ClassMember::StaticBlock(stmts, _) => {
-            validate_block_statement_list_early_errors(stmts)
-            for s in stmts {
-              validate_block_early_errors_stmt(s, true)
-            }
-          }
-        }
-      }
-    }
-    WithStmt(obj_expr, body, _) => {
-      if strict_context {
-        raise @errors.SyntaxError(
-          message="Strict mode code may not include a with statement",
-        )
-      }
-      validate_block_early_errors_expr(obj_expr, strict_context)
-      validate_block_early_errors_stmt(body, strict_context)
-    }
-    ImportDecl(_, _, _, _, source_lex_form, loc) =>
-      validate_strict_lex_form(source_lex_form, loc, strict_context)
-    ExportAllDecl(_, _, source_lex_form, loc) =>
-      validate_strict_lex_form(source_lex_form, loc, strict_context)
-    ExportNamedDecl(decl_opt, _, _, source_lex_form, loc) => {
-      validate_strict_lex_form(source_lex_form, loc, strict_context)
-      match decl_opt {
-        Some(decl) => validate_block_early_errors_stmt(decl, strict_context)
-        None => ()
-      }
-    }
-    ExportDefaultDecl(expr, _) =>
-      validate_block_early_errors_expr(expr, strict_context)
-    _ => ()
   }
 }
 
@@ -986,160 +332,411 @@ pub fn Interpreter::validate_block_early_errors(
   stmts : Array[@ast.Stmt],
   strict_context : Bool,
 ) -> Unit raise Error {
-  // Validate lexical-vs-var conflicts for the current statement list itself.
-  // This is required for script/function/eval bodies, not just nested Block nodes.
-  validate_block_statement_list_early_errors(
-    stmts,
-    include_function_decls_in_var_names=true,
-  )
-  for stmt in stmts {
-    validate_block_early_errors_stmt(stmt, strict_context)
-  }
-}
-
-///|
-/// Collect all var-scoped declaration names from eval code.
-/// Used by EvalDeclarationInstantiation to check for var/lex conflicts.
-fn collect_eval_var_names_from_stmt(
-  stmt : @ast.Stmt,
-  names : Array[String],
-  in_block? : Bool = false,
-) -> Unit raise Error {
-  match stmt {
-    VarDecl(VarKind, name, _, _) => names.push(name)
-    FuncDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    FuncDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
-    GeneratorDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    GeneratorDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncFuncDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncFuncDeclExt(name, _, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncGeneratorDecl(name, _, _, _, _) => if !in_block { names.push(name) }
-    AsyncGeneratorDeclExt(name, _, _, _, _, _) =>
-      if !in_block {
-        names.push(name)
-      }
-    DestructureDecl(VarKind, pattern, _, _) =>
-      collect_pattern_var_names(pattern, names)
-    StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        collect_eval_var_names_from_stmt(inner, names, in_block~)
-      }
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        collect_eval_var_names_from_stmt(inner, names, in_block=true)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      // Statement-position function declarations in if branches should not be
-      // treated as leaked var names for eval conflict checks.
-      collect_eval_var_names_from_stmt(then_branch, names, in_block=true)
-      match else_branch {
-        Some(eb) => collect_eval_var_names_from_stmt(eb, names, in_block=true)
-        None => ()
-      }
-    }
-    // §B.3.3.3 + §B.3.4: parallel to `collect_block_var_decl_names_from_stmt`,
-    // nested FuncDecls inside any control-flow body parse as if wrapped in
-    // `{ ... }` and therefore do NOT contribute to the eval source's
-    // var-declared-names walk. Force `in_block=true` regardless of caller.
-    WhileStmt(_, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    DoWhileStmt(body, _, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    ForStmt(init, _, _, body, _) => {
-      match init {
-        Some(init_stmt) =>
-          collect_eval_var_names_from_stmt(init_stmt, names, in_block=true)
-        None => ()
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForInStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        names.push(name)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForOfStmt(kind, name, _, body, _)
-    | AsyncForOfStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        names.push(name)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForInStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        collect_pattern_var_names(pattern, names)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForOfStmtPat(kind, pattern, _, body, _)
-    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        collect_pattern_var_names(pattern, names)
-      }
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    }
-    ForInExpr(_, _, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    // §B.3.2 LabelledStatement: a top-level labeled FuncDecl participates in
-    // VarDeclaredNames per §B.3.4. Mirror caller's `in_block` flag so a label
-    // sitting at eval-script-top keeps its FuncDecl counted, while a label
-    // inside a nested block stays block-scoped.
-    LabeledStmt(_, inner, _) =>
-      collect_eval_var_names_from_stmt(inner, names, in_block~)
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          collect_eval_var_names_from_stmt(inner, names, in_block=true)
+  let work : Array[EarlyErrorTask] = []
+  schedule_stmts_reverse(work, stmts, strict_context)
+  work.push(StmtListCheck(stmts, false, false, true))
+  while work.length() > 0 {
+    let task = work.pop().unwrap()
+    match task {
+      StmtListCheck(
+        stmts,
+        include_funcs,
+        allow_duplicates,
+        include_funcs_in_var
+      ) =>
+        validate_block_statement_list_early_errors(
+          stmts,
+          include_block_functions=include_funcs,
+          allow_duplicate_block_functions=allow_duplicates,
+          include_function_decls_in_var_names=include_funcs_in_var,
+        )
+      LexForm(form, loc, strict) => validate_strict_lex_form(form, loc, strict)
+      TemplateQuasis(quasis, loc) =>
+        for q in quasis {
+          if q.1 is None {
+            raise @errors.SyntaxError(
+              message="Invalid escape sequence in template literal at line \{loc.line}, col \{loc.col}",
+            )
+          }
+        }
+      Param(param, strict) => {
+        match param.pattern {
+          Some(pattern) => work.push(Pattern(pattern, strict, true))
+          None => ()
+        }
+        match param.default_val {
+          Some(expr) => work.push(Expr(expr, strict))
+          None => ()
         }
       }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        collect_eval_var_names_from_stmt(inner, names, in_block=true)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            collect_eval_var_names_from_stmt(inner, names, in_block=true)
+      Pattern(pattern, strict, binding) =>
+        match pattern {
+          IdentPat(name) =>
+            if binding {
+              if strict {
+                @static_semantics.validate_strict_binding_name(name)
+              }
+            } else {
+              @static_semantics.validate_strict_assignment_target_name(
+                strict, name,
+              )
+            }
+          DefaultPat(inner, default_expr) => {
+            work.push(Expr(default_expr, strict))
+            work.push(Pattern(inner, strict, binding))
           }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            collect_eval_var_names_from_stmt(inner, names, in_block=true)
+          AssignTarget(expr) =>
+            match expr {
+              Ident(name, _) =>
+                @static_semantics.validate_strict_assignment_target_name(
+                  strict, name,
+                )
+              _ => work.push(Expr(expr, strict))
+            }
+          ArrayPat(elements, rest) => {
+            match rest {
+              Some(pattern) => work.push(Pattern(pattern, strict, binding))
+              None => ()
+            }
+            for i = elements.length() - 1; i >= 0; i = i - 1 {
+              match elements[i] {
+                Some(pattern) => work.push(Pattern(pattern, strict, binding))
+                None => ()
+              }
+            }
           }
-        None => ()
-      }
+          ObjectPat(props, rest) => {
+            match rest {
+              Some(pattern) => work.push(Pattern(pattern, strict, binding))
+              None => ()
+            }
+            for i = props.length() - 1; i >= 0; i = i - 1 {
+              let prop = props[i]
+              match prop.default_val {
+                Some(expr) => work.push(Expr(expr, strict))
+                None => ()
+              }
+              work.push(Pattern(prop.value, strict, binding))
+              match prop.computed_key {
+                Some(expr) => work.push(Expr(expr, strict))
+                None => ()
+              }
+              work.push(LexForm(prop.key_lex_form, prop.key_loc, strict))
+            }
+          }
+        }
+      Expr(expr, strict) =>
+        match expr {
+          Ident(name, _) =>
+            @static_semantics.validate_strict_identifier_reference(strict, name)
+          StringLit(_, _, form, loc) | NumberLit(_, form, loc) =>
+            validate_strict_lex_form(form, loc, strict)
+          FuncExpr(_, _, body, _, _)
+          | ArrowFunc(_, body, _, _)
+          | GeneratorExpr(_, _, body, _, _)
+          | AsyncFuncExpr(_, _, body, _, _)
+          | AsyncArrowFunc(_, body, _, _)
+          | AsyncGeneratorExpr(_, _, body, _, _) =>
+            schedule_function_body(work, None, body, strict)
+          FuncExprExt(_, params, _, body, _, _)
+          | GeneratorExprExt(_, params, _, body, _, _)
+          | AsyncFuncExprExt(_, params, _, body, _, _)
+          | AsyncGeneratorExprExt(_, params, _, body, _, _) =>
+            schedule_function_body(work, Some(params), body, strict)
+          ArrowFuncExt(params, _, body, _, _)
+          | AsyncArrowFuncExt(params, _, body, _, _) =>
+            schedule_function_body(work, Some(params), body, strict)
+          ClassExpr(_, superclass, members, _, _) => {
+            schedule_class_members_reverse(work, members)
+            match superclass {
+              Some(expr) => work.push(Expr(expr, true))
+              None => ()
+            }
+          }
+          Assign(name, rhs, _) => {
+            work.push(Expr(rhs, strict))
+            @static_semantics.validate_strict_assignment_target_name(
+              strict, name,
+            )
+          }
+          UpdateExpr(_, target, _, _) =>
+            match target {
+              Ident(name, _) =>
+                @static_semantics.validate_strict_assignment_target_name(
+                  strict, name,
+                )
+              _ => work.push(Expr(target, strict))
+            }
+          CompoundAssign(_, lhs, rhs, _) => {
+            work.push(Expr(rhs, strict))
+            match lhs {
+              Ident(name, _) =>
+                @static_semantics.validate_strict_assignment_target_name(
+                  strict, name,
+                )
+              _ => work.push(Expr(lhs, strict))
+            }
+          }
+          Binary(_, left, right, _) | Comma(left, right, _) => {
+            work.push(Expr(right, strict))
+            work.push(Expr(left, strict))
+          }
+          ComputedMember(obj, key, _)
+          | OptionalComputedMember(obj, key, _)
+          | ChainComputedMember(obj, key, _) => {
+            work.push(Expr(key, strict))
+            work.push(Expr(obj, strict))
+          }
+          MemberAssign(obj, _, rhs, _) => {
+            work.push(Expr(rhs, strict))
+            work.push(Expr(obj, strict))
+          }
+          ComputedAssign(obj, key, rhs, _) => {
+            work.push(Expr(rhs, strict))
+            work.push(Expr(key, strict))
+            work.push(Expr(obj, strict))
+          }
+          SuperComputedAssign(key, rhs, _) => {
+            work.push(Expr(rhs, strict))
+            work.push(Expr(key, strict))
+          }
+          Ternary(cond, yes, no, _) => {
+            work.push(Expr(no, strict))
+            work.push(Expr(yes, strict))
+            work.push(Expr(cond, strict))
+          }
+          Call(callee, args, _)
+          | NewExpr(callee, args, _)
+          | OptionalCall(callee, args, _) => {
+            schedule_exprs_reverse(work, args, strict)
+            work.push(Expr(callee, strict))
+          }
+          ObjectLit(props, _) =>
+            for i = props.length() - 1; i >= 0; i = i - 1 {
+              work.push(Expr(props[i].value, strict))
+              work.push(Expr(props[i].key, strict))
+            }
+          ArrayLit(elements, _) | SuperCall(elements, _) =>
+            schedule_exprs_reverse(work, elements, strict)
+          TemplateLit(quasis, exprs, loc) => {
+            schedule_exprs_reverse(work, exprs, strict)
+            work.push(TemplateQuasis(quasis, loc))
+          }
+          DestructureAssign(pattern, rhs, _) => {
+            work.push(Expr(rhs, strict))
+            work.push(Pattern(pattern, strict, false))
+          }
+          TaggedTemplate(tag, _, exprs, _) => {
+            schedule_exprs_reverse(work, exprs, strict)
+            work.push(Expr(tag, strict))
+          }
+          Unary(_, inner, _)
+          | Grouping(inner, _)
+          | SpreadExpr(inner, _)
+          | AwaitExpr(inner, _)
+          | Member(inner, _, _)
+          | OptionalMember(inner, _, _)
+          | ChainMember(inner, _, _)
+          | SuperComputedMember(inner, _)
+          | SuperMemberAssign(_, inner, _) => work.push(Expr(inner, strict))
+          YieldExpr(arg, _, _) =>
+            match arg {
+              Some(inner) => work.push(Expr(inner, strict))
+              None => ()
+            }
+          BoolLit(_, _)
+          | NullLit(_)
+          | UndefinedLit(_)
+          | ArrayHole(_)
+          | ThisExpr(_)
+          | RegexLit(_, _, _)
+          | SuperMember(_, _)
+          | NewTargetExpr(_)
+          | WebCompatCallAssign(_, _, _)
+          | PrivateIdent(_, _)
+          | PrivateMember(_, _, _)
+          | PrivateMemberAssign(_, _, _, _) => ()
+        }
+      Stmt(stmt, strict) =>
+        match stmt {
+          Block(inner, _) => {
+            schedule_stmts_reverse(work, inner, strict)
+            work.push(StmtListCheck(inner, true, !strict, false))
+          }
+          StmtList(inner, _) => schedule_stmts_reverse(work, inner, strict)
+          ExprStmt(expr, _) | ThrowStmt(expr, _) | ExportDefaultDecl(expr, _) =>
+            work.push(Expr(expr, strict))
+          VarDecl(_, name, init, _) => {
+            match init {
+              Some(expr) => work.push(Expr(expr, strict))
+              None => ()
+            }
+            if strict {
+              @static_semantics.validate_strict_binding_name(name)
+            }
+          }
+          DestructureDecl(_, pattern, init, _) => {
+            work.push(Expr(init, strict))
+            work.push(Pattern(pattern, strict, true))
+          }
+          IfStmt(cond, yes, no, _) => {
+            match no {
+              Some(stmt) => work.push(Stmt(stmt, strict))
+              None => ()
+            }
+            work.push(Stmt(yes, strict))
+            work.push(Expr(cond, strict))
+          }
+          WhileStmt(cond, body, _) => {
+            work.push(Stmt(body, strict))
+            work.push(Expr(cond, strict))
+          }
+          DoWhileStmt(body, cond, _) => {
+            work.push(Expr(cond, strict))
+            work.push(Stmt(body, strict))
+          }
+          ForStmt(init, cond, update, body, _) => {
+            work.push(Stmt(body, strict))
+            match update {
+              Some(e) => work.push(Expr(e, strict))
+              None => ()
+            }
+            match cond {
+              Some(e) => work.push(Expr(e, strict))
+              None => ()
+            }
+            match init {
+              Some(s) => work.push(Stmt(s, strict))
+              None => ()
+            }
+          }
+          ForInStmt(kind, name, expr, body, _)
+          | ForOfStmt(kind, name, expr, body, _)
+          | AsyncForOfStmt(kind, name, expr, body, _) => {
+            work.push(Stmt(body, strict))
+            work.push(Expr(expr, strict))
+            if kind is Some(_) {
+              if strict {
+                @static_semantics.validate_strict_binding_name(name)
+              }
+            } else {
+              @static_semantics.validate_strict_assignment_target_name(
+                strict, name,
+              )
+            }
+          }
+          ForInStmtPat(kind, pattern, expr, body, _)
+          | ForOfStmtPat(kind, pattern, expr, body, _)
+          | AsyncForOfStmtPat(kind, pattern, expr, body, _) => {
+            work.push(Stmt(body, strict))
+            work.push(Expr(expr, strict))
+            work.push(Pattern(pattern, strict, kind is Some(_)))
+          }
+          ForInExpr(lhs, expr, body, _)
+          | ForOfExpr(lhs, expr, body, _)
+          | AsyncForOfExpr(lhs, expr, body, _) => {
+            work.push(Stmt(body, strict))
+            work.push(Expr(expr, strict))
+            match lhs {
+              Ident(name, _) =>
+                @static_semantics.validate_strict_assignment_target_name(
+                  strict, name,
+                )
+              _ => work.push(Expr(lhs, strict))
+            }
+          }
+          LabeledStmt(_, inner, _) => work.push(Stmt(inner, strict))
+          ReturnStmt(expr, _) =>
+            match expr {
+              Some(e) => work.push(Expr(e, strict))
+              None => ()
+            }
+          SwitchStmt(discriminant, cases, _) => {
+            for i = cases.length() - 1; i >= 0; i = i - 1 {
+              schedule_stmts_reverse(work, cases[i].body, strict)
+              match cases[i].condition {
+                Some(expr) => work.push(Expr(expr, strict))
+                None => ()
+              }
+            }
+            work.push(
+              StmtListCheck(
+                flatten_case_block_statements(cases),
+                true,
+                !strict,
+                false,
+              ),
+            )
+            work.push(Expr(discriminant, strict))
+          }
+          TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
+            match finally_body {
+              Some(xs) => schedule_stmts_reverse(work, xs, strict)
+              None => ()
+            }
+            match catch_body {
+              Some(xs) => schedule_stmts_reverse(work, xs, strict)
+              None => ()
+            }
+            match catch_param {
+              Some(p) => work.push(Pattern(p, strict, true))
+              None => ()
+            }
+            schedule_stmts_reverse(work, try_body, strict)
+          }
+          FuncDecl(_, _, body, _, _)
+          | GeneratorDecl(_, _, body, _, _)
+          | AsyncFuncDecl(_, _, body, _, _)
+          | AsyncGeneratorDecl(_, _, body, _, _) =>
+            schedule_function_body(work, None, body, strict)
+          FuncDeclExt(_, params, _, body, _, _)
+          | GeneratorDeclExt(_, params, _, body, _, _)
+          | AsyncFuncDeclExt(_, params, _, body, _, _)
+          | AsyncGeneratorDeclExt(_, params, _, body, _, _) =>
+            schedule_function_body(work, Some(params), body, strict)
+          ClassDecl(_, superclass, members, _, _) => {
+            schedule_class_members_reverse(work, members)
+            match superclass {
+              Some(expr) => work.push(Expr(expr, true))
+              None => ()
+            }
+          }
+          WithStmt(obj, body, _) => {
+            if strict {
+              raise @errors.SyntaxError(
+                message="Strict mode code may not include a with statement",
+              )
+            }
+            work.push(Stmt(body, strict))
+            work.push(Expr(obj, strict))
+          }
+          ImportDecl(_, _, _, _, form, loc) | ExportAllDecl(_, _, form, loc) =>
+            validate_strict_lex_form(form, loc, strict)
+          ExportNamedDecl(decl, _, _, form, loc) => {
+            match decl {
+              Some(stmt) => work.push(Stmt(stmt, strict))
+              None => ()
+            }
+            validate_strict_lex_form(form, loc, strict)
+          }
+          BreakStmt(_, _) | ContinueStmt(_, _) => ()
+        }
     }
-    WithStmt(_, body, _) =>
-      collect_eval_var_names_from_stmt(body, names, in_block=true)
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      collect_eval_var_names_from_stmt(decl, names, in_block~)
-    _ => ()
   }
 }
 
 ///|
-fn collect_eval_var_names(
-  stmts : Array[@ast.Stmt],
-) -> Array[String] raise Error {
-  let names : Array[String] = []
-  for stmt in stmts {
-    collect_eval_var_names_from_stmt(stmt, names)
-  }
-  names
+fn collect_eval_var_names(stmts : Array[@ast.Stmt]) -> Array[String] {
+  @static_semantics.collect_var_declared_names(stmts)
 }
 
 ///|
 fn hoist_pattern(pattern : @ast.Pattern, env : Environment) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => {
+  for name in @static_semantics.bound_names(pattern) {
     if !env.bindings.contains(name) {
       env.def(name, Undefined, VarBinding)
     }
-  })
+  }
 }
 
 ///|
@@ -1151,93 +748,12 @@ fn walk_var_scoped_names(
   stmt : @ast.Stmt,
   on_name : (String) -> Unit raise Error,
 ) -> Unit raise Error {
-  match stmt {
-    VarDecl(VarKind, name, _, _) => on_name(name)
-    DestructureDecl(VarKind, pattern, _, _) =>
-      walk_pattern_idents(pattern, on_name)
-    StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        walk_var_scoped_names(inner, on_name)
-      }
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        walk_var_scoped_names(inner, on_name)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      walk_var_scoped_names(then_branch, on_name)
-      match else_branch {
-        Some(eb) => walk_var_scoped_names(eb, on_name)
-        None => ()
-      }
-    }
-    WhileStmt(_, body, _) => walk_var_scoped_names(body, on_name)
-    DoWhileStmt(body, _, _) => walk_var_scoped_names(body, on_name)
-    ForStmt(init, _, _, body, _) => {
-      match init {
-        Some(init_stmt) => walk_var_scoped_names(init_stmt, on_name)
-        None => ()
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForInStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        on_name(name)
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForOfStmt(kind, name, _, body, _)
-    | AsyncForOfStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) {
-        on_name(name)
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForInStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        walk_pattern_idents(pattern, on_name)
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForOfStmtPat(kind, pattern, _, body, _)
-    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        walk_pattern_idents(pattern, on_name)
-      }
-      walk_var_scoped_names(body, on_name)
-    }
-    ForInExpr(_, _, body, _) => walk_var_scoped_names(body, on_name)
-    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      walk_var_scoped_names(body, on_name)
-    LabeledStmt(_, inner, _) => walk_var_scoped_names(inner, on_name)
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          walk_var_scoped_names(inner, on_name)
-        }
-      }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        walk_var_scoped_names(inner, on_name)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            walk_var_scoped_names(inner, on_name)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            walk_var_scoped_names(inner, on_name)
-          }
-        None => ()
-      }
-    }
-    WithStmt(_, body, _) => walk_var_scoped_names(body, on_name)
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      walk_var_scoped_names(decl, on_name)
-    _ => ()
+  for
+    name in @static_semantics.collect_var_declared_names(
+      [stmt],
+      include_funcs=false,
+    ) {
+    on_name(name)
   }
 }
 
@@ -1246,99 +762,11 @@ fn hoist_var_declarations_from_stmt(
   stmt : @ast.Stmt,
   env : Environment,
 ) -> Unit raise Error {
-  match stmt {
-    VarDecl(VarKind, name, _, _) =>
-      if !env.bindings.contains(name) {
-        env.def(name, Undefined, VarBinding)
-      }
-    DestructureDecl(VarKind, pattern, _, _) => hoist_pattern(pattern, env)
-    StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        hoist_var_declarations_from_stmt(inner, env)
-      }
-    Block(inner_stmts, _) =>
-      for inner in inner_stmts {
-        hoist_var_declarations_from_stmt(inner, env)
-      }
-    IfStmt(_, then_branch, else_branch, _) => {
-      hoist_var_declarations_from_stmt(then_branch, env)
-      match else_branch {
-        Some(eb) => hoist_var_declarations_from_stmt(eb, env)
-        None => ()
-      }
+  walk_var_scoped_names(stmt, name => {
+    if !env.bindings.contains(name) {
+      env.def(name, Undefined, VarBinding)
     }
-    WhileStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
-    DoWhileStmt(body, _, _) => hoist_var_declarations_from_stmt(body, env)
-    ForStmt(init, _, _, body, _) => {
-      match init {
-        Some(init_stmt) => hoist_var_declarations_from_stmt(init_stmt, env)
-        None => ()
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForInStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) && !env.bindings.contains(name) {
-        env.def(name, Undefined, VarBinding)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForOfStmt(kind, name, _, body, _)
-    | AsyncForOfStmt(kind, name, _, body, _) => {
-      if kind == Some(VarKind) && !env.bindings.contains(name) {
-        env.def(name, Undefined, VarBinding)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForInStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        hoist_pattern(pattern, env)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForOfStmtPat(kind, pattern, _, body, _)
-    | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
-      if kind == Some(VarKind) {
-        hoist_pattern(pattern, env)
-      }
-      hoist_var_declarations_from_stmt(body, env)
-    }
-    ForInExpr(_, _, body, _) => hoist_var_declarations_from_stmt(body, env)
-    ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      hoist_var_declarations_from_stmt(body, env)
-    LabeledStmt(_, inner, _) => hoist_var_declarations_from_stmt(inner, env)
-    SwitchStmt(_, cases, _) =>
-      for case_ in cases {
-        for inner in case_.body {
-          hoist_var_declarations_from_stmt(inner, env)
-        }
-      }
-    TryCatchStmt(try_body, _, catch_body, finally_body, _) => {
-      for inner in try_body {
-        hoist_var_declarations_from_stmt(inner, env)
-      }
-      match catch_body {
-        Some(cb) =>
-          for inner in cb {
-            hoist_var_declarations_from_stmt(inner, env)
-          }
-        None => ()
-      }
-      match finally_body {
-        Some(fb) =>
-          for inner in fb {
-            hoist_var_declarations_from_stmt(inner, env)
-          }
-        None => ()
-      }
-    }
-    WithStmt(_, body, _) => hoist_var_declarations_from_stmt(body, env)
-    // Export with declaration: hoist declarations from the inner declaration.
-    ExportNamedDecl(Some(decl), _, _, _, _) =>
-      hoist_var_declarations_from_stmt(decl, env)
-    // Do not recurse into function/class declarations: their bodies create
-    // separate var scopes.
-    _ => ()
-  }
+  })
 }
 
 ///|
@@ -1418,8 +846,10 @@ fn add_stmt_lex_names(
 fn collect_pattern_lex_names(
   pattern : @ast.Pattern,
   names : @set.Set[String],
-) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => names.add(name))
+) -> Unit {
+  for name in @static_semantics.bound_names(pattern) {
+    names.add(name)
+  }
 }
 
 ///|
@@ -1505,135 +935,130 @@ fn hoist_eval_annex_b_candidates(
   top_lex : @set.Set[String],
   excluded? : @set.Set[String] = @set.Set::default(),
 ) -> Unit raise Error {
-  let stack : Array[@set.Set[String]] = []
-  for stmt in stmts {
-    walk_eval_annex_b_stmt(
-      interp,
-      stmt,
-      var_env,
-      top_lex,
-      stack,
-      in_block=false,
-      excluded~,
-    )
+  let lex_stack : Array[@set.Set[String]] = []
+  let work : Array[AnnexBWalkTask] = []
+  schedule_annex_b_stmts_reverse(work, stmts, in_block=false)
+  while work.pop() is Some(task) {
+    match task {
+      VisitAnnexBStmt(stmt, in_block) =>
+        visit_eval_annex_b_stmt(
+          interp,
+          stmt,
+          var_env,
+          top_lex,
+          lex_stack,
+          work,
+          in_block~,
+          excluded~,
+        )
+      EnterAnnexBStmtList(inner_stmts) => {
+        lex_stack.push(collect_stmts_lex_names(inner_stmts))
+        work.push(LeaveAnnexBLexicalFrame)
+        schedule_annex_b_stmts_reverse(work, inner_stmts, in_block=true)
+      }
+      EnterAnnexBCatch(catch_param, catch_body) => {
+        let catch_frame = @set.Set::default()
+        match catch_param {
+          Some(IdentPat(_)) => ()
+          Some(pattern) =>
+            for name in @static_semantics.bound_names(pattern) {
+              catch_frame.add(name)
+            }
+          None => ()
+        }
+        lex_stack.push(catch_frame)
+        work.push(LeaveAnnexBLexicalFrame)
+        work.push(EnterAnnexBStmtList(catch_body))
+      }
+      LeaveAnnexBLexicalFrame => {
+        guard lex_stack.pop() is Some(_) else {
+          fail("unbalanced Annex B lexical-frame continuation")
+        }
+      }
+    }
   }
 }
 
 ///|
-/// AST walk for B.3.3 candidates. `in_block` is true once we are below a
-/// Block/for-head/switch-case/labeled-wrapped-Block/finally/etc. Candidate
-/// function decls are only eligible when `in_block` is true.
-fn walk_eval_annex_b_stmt(
+priv enum AnnexBWalkTask {
+  VisitAnnexBStmt(@ast.Stmt, Bool)
+  EnterAnnexBStmtList(Array[@ast.Stmt])
+  EnterAnnexBCatch(@ast.Pattern?, Array[@ast.Stmt])
+  LeaveAnnexBLexicalFrame
+}
+
+///|
+fn schedule_annex_b_stmts_reverse(
+  work : Array[AnnexBWalkTask],
+  stmts : Array[@ast.Stmt],
+  in_block~ : Bool,
+) -> Unit {
+  for i = stmts.length() - 1; i >= 0; i = i - 1 {
+    work.push(VisitAnnexBStmt(stmts[i], in_block))
+  }
+}
+
+///|
+fn schedule_annex_b_enclosed_body(
+  work : Array[AnnexBWalkTask],
+  lex_stack : Array[@set.Set[String]],
+  body : @ast.Stmt,
+  frame : @set.Set[String],
+) -> Unit {
+  lex_stack.push(frame)
+  work.push(LeaveAnnexBLexicalFrame)
+  work.push(VisitAnnexBStmt(body, true))
+}
+
+///|
+fn visit_eval_annex_b_stmt(
   interp : Interpreter,
   stmt : @ast.Stmt,
   var_env : Environment,
   top_lex : @set.Set[String],
-  stack : Array[@set.Set[String]],
+  lex_stack : Array[@set.Set[String]],
+  work : Array[AnnexBWalkTask],
   in_block~ : Bool,
   excluded~ : @set.Set[String],
 ) -> Unit raise Error {
   match stmt {
     FuncDecl(name, _, _, _, _) | FuncDeclExt(name, _, _, _, _, _) =>
       if in_block &&
-        !annex_b_candidate_conflicts(name, top_lex, stack, excluded~) {
+        !annex_b_candidate_conflicts(name, top_lex, lex_stack, excluded~) {
         tag_annex_b_hoisted(interp, var_env, name)
       }
-    Block(inner_stmts, _) =>
-      walk_stmt_list_in_own_frame(
-        interp,
-        inner_stmts,
-        var_env,
-        top_lex,
-        stack,
-        excluded~,
-      )
+    Block(inner_stmts, _) => work.push(EnterAnnexBStmtList(inner_stmts))
     StmtList(inner_stmts, _) =>
-      for inner in inner_stmts {
-        walk_eval_annex_b_stmt(
-          interp,
-          inner,
-          var_env,
-          top_lex,
-          stack,
-          in_block~,
-          excluded~,
-        )
-      }
+      schedule_annex_b_stmts_reverse(work, inner_stmts, in_block~)
     // §B.3.4: `if (expr) FunctionDeclaration` is treated as if the body
     // were `{ FunctionDeclaration }`. Each branch is a block context for
     // Annex B, so FuncDecls under IfStmt ARE candidates even at the eval
     // top level. If the branch is itself a Block, the Block arm pushes its
     // own frame — no double-pushing.
     IfStmt(_, then_branch, else_branch, _) => {
-      walk_eval_annex_b_stmt(
-        interp,
-        then_branch,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
       match else_branch {
-        Some(eb) =>
-          walk_eval_annex_b_stmt(
-            interp,
-            eb,
-            var_env,
-            top_lex,
-            stack,
-            in_block=true,
-            excluded~,
-          )
+        Some(else_stmt) => work.push(VisitAnnexBStmt(else_stmt, true))
         None => ()
       }
+      work.push(VisitAnnexBStmt(then_branch, true))
     }
-    WhileStmt(_, body, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
-    DoWhileStmt(body, _, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+    WhileStmt(_, body, _) => work.push(VisitAnnexBStmt(body, true))
+    DoWhileStmt(body, _, _) => work.push(VisitAnnexBStmt(body, true))
     // §14.7.4: `for (let/const …; ; ) body` makes the init's lex names visible
     // for the body's Annex-B candidate check.
     ForStmt(init, _, _, body, _) =>
-      walk_enclosed_body(
-        interp,
+      schedule_annex_b_enclosed_body(
+        work,
+        lex_stack,
         body,
-        var_env,
-        top_lex,
-        stack,
         for_init_lex_names(init),
-        excluded~,
       )
     ForInStmt(kind, name, _, body, _) => {
       let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame.add(name)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
     ForOfStmt(kind, name, _, body, _)
     | AsyncForOfStmt(kind, name, _, body, _) => {
@@ -1641,30 +1066,14 @@ fn walk_eval_annex_b_stmt(
       if kind is (Some(LetKind) | Some(ConstKind)) {
         frame.add(name)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
     ForInStmtPat(kind, pattern, _, body, _) => {
       let frame = @set.Set::default()
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
     ForOfStmtPat(kind, pattern, _, body, _)
     | AsyncForOfStmtPat(kind, pattern, _, body, _) => {
@@ -1672,49 +1081,15 @@ fn walk_eval_annex_b_stmt(
       if kind is (Some(LetKind) | Some(ConstKind)) {
         collect_pattern_lex_names(pattern, frame)
       }
-      walk_enclosed_body(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        frame,
-        excluded~,
-      )
+      schedule_annex_b_enclosed_body(work, lex_stack, body, frame)
     }
-    ForInExpr(_, _, body, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+    ForInExpr(_, _, body, _) => work.push(VisitAnnexBStmt(body, true))
     ForOfExpr(_, _, body, _) | AsyncForOfExpr(_, _, body, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+      work.push(VisitAnnexBStmt(body, true))
     // §B.3.3 + §14.13: a `label:`-wrapped FuncDecl is an Annex B candidate
     // just like a plain block FuncDecl. Mirror the IfStmt treatment — the
     // inner is a block context, so pass `in_block=true`.
-    LabeledStmt(_, inner, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        inner,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+    LabeledStmt(_, inner, _) => work.push(VisitAnnexBStmt(inner, true))
     // §14.12.3: all case clauses share one lex scope. Frame excludes
     // FuncDecls for the same reason `collect_stmts_lex_names` does — a
     // candidate `function F` in one case must not self-conflict. Duplicate
@@ -1726,21 +1101,17 @@ fn walk_eval_annex_b_stmt(
           add_stmt_lex_names(inner, frame)
         }
       }
-      stack.push(frame)
-      for case_ in cases {
-        for inner in case_.body {
-          walk_eval_annex_b_stmt(
-            interp,
-            inner,
-            var_env,
-            top_lex,
-            stack,
-            in_block=true,
-            excluded~,
-          )
-        }
+      lex_stack.push(frame)
+      work.push(LeaveAnnexBLexicalFrame)
+      for case_index = cases.length() - 1
+          case_index >= 0
+          case_index = case_index - 1 {
+        schedule_annex_b_stmts_reverse(
+          work,
+          cases[case_index].body,
+          in_block=true,
+        )
       }
-      let _ = stack.pop()
     }
     // §B.3.5 splits catch parameters in two: a simple BindingIdentifier
     // `catch (f) { var f; }` is exempt and lets `f` flow through to the
@@ -1753,126 +1124,26 @@ fn walk_eval_annex_b_stmt(
     // transparent. try-body and finally-body are always unaffected — only
     // catch-body inherits the parameter binding.
     TryCatchStmt(try_body, catch_param, catch_body, finally_body, _) => {
-      walk_stmt_list_in_own_frame(
-        interp,
-        try_body,
-        var_env,
-        top_lex,
-        stack,
-        excluded~,
-      )
-      match catch_body {
-        Some(cb) => {
-          let catch_frame = @set.Set::default()
-          match catch_param {
-            Some(IdentPat(_)) => () // §B.3.5 exemption: stay transparent
-            Some(pat) => walk_pattern_idents(pat, name => catch_frame.add(name))
-            None => ()
-          }
-          stack.push(catch_frame)
-          walk_stmt_list_in_own_frame(
-            interp,
-            cb,
-            var_env,
-            top_lex,
-            stack,
-            excluded~,
-          )
-          let _ = stack.pop()
-        }
-        None => ()
-      }
       match finally_body {
-        Some(fb) =>
-          walk_stmt_list_in_own_frame(
-            interp,
-            fb,
-            var_env,
-            top_lex,
-            stack,
-            excluded~,
-          )
+        Some(finally_stmts) => work.push(EnterAnnexBStmtList(finally_stmts))
         None => ()
       }
+      match catch_body {
+        Some(catch_stmts) =>
+          work.push(EnterAnnexBCatch(catch_param, catch_stmts))
+        None => ()
+      }
+      work.push(EnterAnnexBStmtList(try_body))
     }
     WithStmt(_, body, _) =>
       // Object env record — no lex frame pushed.
-      walk_eval_annex_b_stmt(
-        interp,
-        body,
-        var_env,
-        top_lex,
-        stack,
-        in_block=true,
-        excluded~,
-      )
+      work.push(VisitAnnexBStmt(body, true))
     ExportNamedDecl(Some(decl), _, _, _, _) =>
-      walk_eval_annex_b_stmt(
-        interp,
-        decl,
-        var_env,
-        top_lex,
-        stack,
-        in_block~,
-        excluded~,
-      )
+      work.push(VisitAnnexBStmt(decl, in_block))
     // Function / class bodies: do NOT traverse. They have their own B.3.3
     // hoist on call (§B.3.2.1), operating in a fresh scope.
     _ => ()
   }
-}
-
-///|
-/// Treat `stmts` as a block: collect its lex names as the pushed frame, walk
-/// each statement with `in_block=true`, pop. Shared by the Block variant and
-/// the three bodies of a try-catch-finally.
-fn walk_stmt_list_in_own_frame(
-  interp : Interpreter,
-  stmts : Array[@ast.Stmt],
-  var_env : Environment,
-  top_lex : @set.Set[String],
-  stack : Array[@set.Set[String]],
-  excluded~ : @set.Set[String],
-) -> Unit raise Error {
-  stack.push(collect_stmts_lex_names(stmts))
-  for inner in stmts {
-    walk_eval_annex_b_stmt(
-      interp,
-      inner,
-      var_env,
-      top_lex,
-      stack,
-      in_block=true,
-      excluded~,
-    )
-  }
-  let _ = stack.pop()
-}
-
-///|
-/// Push `frame` onto `stack`, walk `body` with `in_block=true`, pop. Used by
-/// every loop-body variant in `walk_eval_annex_b_stmt` to avoid repeating the
-/// push/walk/pop boilerplate five times.
-fn walk_enclosed_body(
-  interp : Interpreter,
-  body : @ast.Stmt,
-  var_env : Environment,
-  top_lex : @set.Set[String],
-  stack : Array[@set.Set[String]],
-  frame : @set.Set[String],
-  excluded~ : @set.Set[String],
-) -> Unit raise Error {
-  stack.push(frame)
-  walk_eval_annex_b_stmt(
-    interp,
-    body,
-    var_env,
-    top_lex,
-    stack,
-    in_block=true,
-    excluded~,
-  )
-  let _ = stack.pop()
 }
 
 ///|
@@ -2284,7 +1555,10 @@ fn hoist_block_tdz(
   stmts : Array[@ast.Stmt],
   env : Environment,
 ) -> Unit raise Error {
-  for stmt in stmts {
+  let work : Array[@ast.Stmt] = []
+  stmts.rev_each(stmt => work.push(stmt))
+  while work.length() > 0 {
+    let stmt = work.pop().unwrap()
     match stmt {
       VarDecl(LetKind, name, _, _) =>
         if !env.bindings.contains(name) {
@@ -2299,17 +1573,15 @@ fn hoist_block_tdz(
         hoist_pattern_tdz(pattern, env, LetBinding)
       DestructureDecl(ConstKind, pattern, _, _) =>
         hoist_pattern_tdz(pattern, env, ConstBinding)
-      StmtList(inner_stmts, _) => hoist_block_tdz(inner_stmts, env)
+      StmtList(inner_stmts, _) =>
+        inner_stmts.rev_each(inner => work.push(inner))
       // Class declarations have TDZ (similar to let)
       ClassDecl(name, _, _, _, _) =>
         if !env.bindings.contains(name) {
           env.def_tdz(name, LetBinding)
         }
       // Export with declaration: hoist let/const inner declarations with TDZ
-      ExportNamedDecl(Some(decl), _, _, _, _) => {
-        let inner_stmts : Array[@ast.Stmt] = [decl]
-        hoist_block_tdz(inner_stmts, env)
-      }
+      ExportNamedDecl(Some(decl), _, _, _, _) => work.push(decl)
       // A named default class contributes a module-local lexical binding.
       ExportDefaultDecl(expr, _) =>
         match (module_default_export_binding(expr), expr) {
@@ -2515,9 +1787,9 @@ fn hoist_pattern_tdz(
   env : Environment,
   kind : BindingKind,
 ) -> Unit raise Error {
-  walk_pattern_idents(pattern, name => {
+  for name in @static_semantics.bound_names(pattern) {
     if !env.bindings.contains(name) {
       env.def_tdz(name, kind)
     }
-  })
+  }
 }

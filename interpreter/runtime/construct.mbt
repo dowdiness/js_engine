@@ -822,7 +822,9 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
       // but NOT the synthetic "$rest" name stored in rest_param.
       match p.pattern {
         Some(pat) =>
-          walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+          for name in @static_semantics.bound_names(pat) {
+            param_env.def_param_tdz(name)
+          }
         None => ()
       }
       continue
@@ -830,12 +832,14 @@ fn Interpreter::bind_class_ctor_params_and_exec_body_signal(
     match p.pattern {
       Some(pat) =>
         // Destructuring param: pre-declare all bound names (e.g. {y} → y).
-        walk_pattern_idents(pat, name => param_env.def_param_tdz(name))
+        for name in @static_semantics.bound_names(pat) {
+          param_env.def_param_tdz(name)
+        }
       None => param_env.def_param_tdz(p.name)
     }
   }
   // Simple named rest (e.g. ...rest): pre-declare the user name.
-  // Destructuring rest (...[a]): bound names declared above via walk_pattern_idents.
+  // Destructuring rest (...[a]): bound names declared above via BoundNames.
   if !has_rest_pattern_param {
     match rest_param {
       Some(rp) => param_env.def_param_tdz(rp)
