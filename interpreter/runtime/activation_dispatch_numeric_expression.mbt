@@ -73,6 +73,7 @@ priv enum DispatchNumericExpressionObservation {
 priv enum DispatchNumericExpressionContinuation {
   DispatchAfterNumericExpressionObservation(DispatchNumericExpression)
   DispatchAfterNumericParameterRead(DispatchParameterBindingToken)
+  DispatchAfterNumericBaseCondition(DispatchNumericCallStart)
   DispatchNumericBinaryLeft(
     DispatchNumericBinaryOperator,
     DispatchNumericExpression,
@@ -102,14 +103,14 @@ fn numeric_recursion_root_dispatch_expression(
 ///|
 #warnings("-unused_value")
 fn numeric_recursion_base_condition_dispatch_expression(
-  syntax : NumericRecursionFunctionPlan,
+  recipe : NumericRecursionExpressionRecipe,
   parameter : DispatchParameterBindingToken,
 ) -> DispatchNumericExpression {
   DispatchNumericBinary(
     DispatchNumericStrictEqual,
     DispatchNumericParameter(parameter),
     DispatchNumericNumber(NUMERIC_RECURSION_BASE),
-    syntax.expression_recipe.base_condition_loc,
+    recipe.base_condition_loc,
   )
 }
 
@@ -122,11 +123,10 @@ fn numeric_recursion_base_result_dispatch_expression() -> DispatchNumericExpress
 ///|
 #warnings("-unused_value")
 fn numeric_recursion_recursive_result_dispatch_expression(
-  syntax : NumericRecursionFunctionPlan,
+  recipe : NumericRecursionExpressionRecipe,
   parameter : DispatchParameterBindingToken,
   capture : DispatchCalleeCaptureToken,
 ) -> DispatchNumericExpression {
-  let recipe = syntax.expression_recipe
   DispatchNumericBinary(
     DispatchNumericAdd,
     DispatchNumericNumber(NUMERIC_RECURSION_STEP),
@@ -179,6 +179,14 @@ fn snapshot_dispatch_numeric_continuation(
       )
     DispatchAfterNumericParameterRead(token) =>
       DispatchAfterNumericParameterRead(token)
+    DispatchAfterNumericBaseCondition(start) =>
+      DispatchAfterNumericBaseCondition(
+        DispatchNumericCallStart(
+          parameter=start.parameter,
+          recursive_callee=start.recursive_callee,
+          recipe=start.recipe,
+        ),
+      )
     DispatchNumericBinaryLeft(operator, right, loc) =>
       DispatchNumericBinaryLeft(
         operator,
@@ -321,6 +329,28 @@ fn resume_dispatch_numeric_expression(
         )
       }
       route_dispatch_completion(state, DispatchNormal(value))
+    }
+    DispatchAfterNumericBaseCondition(start) => {
+      let expression = match value {
+        Bool(true) => numeric_recursion_base_result_dispatch_expression()
+        Bool(false) =>
+          numeric_recursion_recursive_result_dispatch_expression(
+            start.recipe,
+            start.parameter,
+            start.recursive_callee,
+          )
+        _ =>
+          invalid_dispatch_transition(
+            "numeric base condition completed with a non-boolean",
+          )
+      }
+      begin_dispatch_numeric_expression(
+        push_dispatch_frame(
+          state,
+          DispatchContinuationFrame(DispatchCompleteReturn),
+        ),
+        expression,
+      )
     }
     DispatchNumericBinaryLeft(operator, right, loc) => {
       guard value is Number(_) else {

@@ -525,6 +525,10 @@ priv enum DispatchEffect {
 #warnings("-unused_constructor")
 priv enum DispatchEffectResult {
   DispatchProgramAccepted(DispatchActivationCleanup)
+  DispatchNumericProgramAccepted(
+    DispatchActivationCleanup,
+    DispatchNumericExpression
+  )
   DispatchCallAccepted(DispatchActivationCleanup, DispatchCallStart)
   DispatchActivationRejected(
     DispatchRejectedEntryCleanup,
@@ -1178,6 +1182,16 @@ fn complete_dispatch_effect(
       begin_dispatch_statements(entered, work)
     }
     (
+      DispatchPendingActivationEntry(_, DispatchPendingProgram(_)),
+      DispatchNumericProgramAccepted(cleanup, expression),
+    ) => {
+      let entered = push_dispatch_frame(
+        ready,
+        DispatchActivationFrame(cleanup, DispatchRootExit),
+      )
+      begin_dispatch_numeric_expression(entered, expression)
+    }
+    (
       DispatchPendingActivationEntry(_, DispatchPendingCall),
       DispatchCallAccepted(cleanup, DispatchCallBody(work)),
     ) => {
@@ -1204,6 +1218,30 @@ fn complete_dispatch_effect(
           DispatchAdvanceParameters(
             snapshot_dispatch_parameter_progress(progress),
           ),
+        ),
+      )
+    }
+    (
+      DispatchPendingActivationEntry(_, DispatchPendingCall),
+      DispatchCallAccepted(cleanup, DispatchNumericCall(start)),
+    ) => {
+      let entered = push_dispatch_frame(
+        ready,
+        DispatchActivationFrame(cleanup, DispatchFunctionExit),
+      )
+      let waiting_condition = push_dispatch_frame(
+        entered,
+        DispatchContinuationFrame(
+          DispatchContinueNumericExpression(
+            DispatchAfterNumericBaseCondition(start),
+          ),
+        ),
+      )
+      begin_dispatch_numeric_expression(
+        waiting_condition,
+        numeric_recursion_base_condition_dispatch_expression(
+          start.recipe,
+          start.parameter,
         ),
       )
     }
