@@ -1081,10 +1081,7 @@ fn suspend_dispatch_work(
           )
         None => state
       }
-      begin_dispatch_numeric_expression(
-        with_outer_consumer,
-        snapshot_dispatch_numeric_expression(expression),
-      )
+      begin_dispatch_numeric_expression(with_outer_consumer, expression)
     }
     DispatchSuspendProtected(work, catch_work, finalizer_work) => {
       let with_finalizer = match finalizer_work {

@@ -1,4 +1,19 @@
 ///|
+fn numeric_expression_multiline_self_source() -> String {
+  "function f(n) {\n" +
+  "  if (n\n" +
+  "    === 0) return 0;\n" +
+  "  return 1\n" +
+  "    + f\n" +
+  "      (\n" +
+  "        n\n" +
+  "        - 1\n" +
+  "      );\n" +
+  "}\n" +
+  "f(256);"
+}
+
+///|
 test "numeric root expression observes callee before its argument" {
   let stmts = @parser.parse(
       "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
@@ -106,19 +121,7 @@ test "numeric root expression observes callee before its argument" {
 
 ///|
 test "numeric base condition reads its parameter only after observation" {
-  let stmts = @parser.parse(
-      "function f(n) {\n" +
-      "  if (n\n" +
-      "    === 0) return 0;\n" +
-      "  return 1\n" +
-      "    + f\n" +
-      "      (\n" +
-      "        n\n" +
-      "        - 1\n" +
-      "      );\n" +
-      "}\n" +
-      "f(256);",
-    ).stmts
+  let stmts = @parser.parse(numeric_expression_multiline_self_source()).stmts
   let plan = match classify_numeric_recursion_program(stmts) {
     Some(found) => found
     None => fail("expected the multiline numeric recursion plan")
@@ -278,19 +281,7 @@ test "numeric base result completes return only after literal observation" {
 
 ///|
 test "numeric recursive result preserves source order across child activation" {
-  let stmts = @parser.parse(
-      "function f(n) {\n" +
-      "  if (n\n" +
-      "    === 0) return 0;\n" +
-      "  return 1\n" +
-      "    + f\n" +
-      "      (\n" +
-      "        n\n" +
-      "        - 1\n" +
-      "      );\n" +
-      "}\n" +
-      "f(256);",
-    ).stmts
+  let stmts = @parser.parse(numeric_expression_multiline_self_source()).stmts
   let plan = match classify_numeric_recursion_program(stmts) {
     Some(found) => found
     None => fail("expected the multiline numeric recursion plan")

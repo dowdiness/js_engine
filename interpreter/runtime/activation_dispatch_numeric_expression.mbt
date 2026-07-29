@@ -280,6 +280,9 @@ fn resume_dispatch_numeric_expression(
             ),
             DispatchRun(DispatchReadNumericParameter(token)),
           )
+        // SingleArgumentCall is the only producer of this internal node. It
+        // pushes the matching NumericCallCallee frame before capture starts,
+        // so the sentinel completion deliberately resumes that paired frame.
         DispatchNumericTrustedCallee(token) =>
           schedule_dispatch_effect(
             state,
