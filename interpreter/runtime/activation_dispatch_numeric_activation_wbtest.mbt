@@ -392,7 +392,7 @@ test "numeric setup rejection retains state until exactly one rollback" {
   let cleared_realm = begin_cleared_active_callee_realm(interp.realm_state)
   let active_realm = begin_active_callee_realm_value(interp.realm_state, callee)
   let parameter_gate = interp.begin_simple_user_func_parameter_gate()
-  let resources = DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
+  let resources = DispatchNumericCallRealmCleanup(
     cleared_realm~,
     active_realm~,
     parameter_gate~,
@@ -657,6 +657,26 @@ test "invalid numeric call envelopes do not acquire cleanup ownership" {
     InvalidActivationDispatchShell(_) => "rejected"
   }
   inspect(untrusted, content="rejected")
+  let registryless = PrimitiveProgramDispatchShell(interp)
+  let no_registry = try {
+    let _ = registryless.perform_effect(
+      DispatchEnterActivation(
+        DispatchCallActivation(
+          DispatchCallRequest(
+            callee~,
+            this_value=Undefined,
+            args=[Number(1.0)],
+            loc=plan.root_call_loc,
+          ),
+        ),
+      ),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(no_registry, content="rejected")
+  inspect(registryless.cleanup_stack.length(), content="0")
   inspect(shell.cleanup_stack.length(), content="0")
   dispatch_shell_test_expect_realm_sentinel(interp, 35)
 }

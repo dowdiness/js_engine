@@ -80,7 +80,7 @@ fn DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
 ///|
 priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
-  DispatchNumericCallRealmCleanup(DispatchNumericCallRealmCleanup)
+  DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
 }
 
 ///|
@@ -227,7 +227,7 @@ fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
   self.cleanup_stack.push({
     id,
     owner,
-    resources: DispatchNumericCallRealmCleanup(resources),
+    resources: DispatchNumericRealmCleanup(resources),
     capabilities,
   })
 }
@@ -249,7 +249,7 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
   match cleanup.resources {
     DispatchProgramRealmCleanup(previous_realm_protos) =>
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
-    DispatchNumericCallRealmCleanup(resources) => {
+    DispatchNumericRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
         resources.parameter_gate,
       )
@@ -431,7 +431,7 @@ fn PrimitiveProgramDispatchShell::enter_numeric_call(
   ) catch {
     error => Err(error)
   }
-  let resources = DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
+  let resources = DispatchNumericCallRealmCleanup(
     cleared_realm~,
     active_realm~,
     parameter_gate~,
