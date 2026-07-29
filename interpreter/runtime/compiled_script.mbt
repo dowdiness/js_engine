@@ -178,7 +178,11 @@ pub fn Interpreter::run_compiled_script(
   } catch {
     e =>
       if is_js_catchable_error(e) {
-        raise JsException(js_error_to_value_with_env(e, Some(self.global)))
+        let translated = JsException(
+          js_error_to_value_with_env(e, Some(self.global)),
+        )
+        remap_observed_source_failure(self.realm_state, e, translated)
+        raise translated
       } else {
         raise e
       }
