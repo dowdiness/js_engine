@@ -144,6 +144,63 @@ test "simple UserFunc preparation binds parameters without executing its body" {
 }
 
 ///|
+test "simple UserFunc preparation uses pre-resolved ThrowTypeError without routing" {
+  let interp = Interpreter::new()
+  let has_calls : Ref[Int] = { val: 0 }
+  let get_calls : Ref[Int] = { val: 0 }
+  let has_trap = user_func_call_test_counting_probe(
+    interp, "has trap", has_calls,
+  )
+  let get_trap = user_func_call_test_counting_probe(
+    interp, "get trap", get_calls,
+  )
+  let closure = user_func_call_test_proxy_closure(interp, has_trap, get_trap)
+  let (data, callee) = user_func_call_test_fixture(closure, [])
+  let throw_type_error = make_native_func(
+    name="pre-resolved ThrowTypeError",
+    realm_state=Some(interp.realm_state),
+    _args => Undefined,
+  )
+
+  let prepared = interp.prepare_user_func_activation(
+    callee,
+    Undefined,
+    [Number(1.0)],
+    data,
+    throw_type_error_source=UsePreResolvedThrowTypeError(Some(throw_type_error)),
+  )
+  let _ = interp.prepare_user_func_activation(
+    callee,
+    Undefined,
+    [],
+    data,
+    throw_type_error_source=UsePreResolvedThrowTypeError(None),
+  )
+
+  inspect(has_calls.val, content="0")
+  inspect(get_calls.val, content="0")
+  match prepared.env.bindings.get("arguments") {
+    Some({ value: Object(arguments_data), .. }) =>
+      match arguments_data.bag.descriptors.get("callee") {
+        Some(descriptor) => {
+          match descriptor.getter {
+            Some(getter) =>
+              inspect(physical_equal(getter, throw_type_error), content="true")
+            None => fail("expected the pre-resolved ThrowTypeError getter")
+          }
+          match descriptor.setter {
+            Some(setter) =>
+              inspect(physical_equal(setter, throw_type_error), content="true")
+            None => fail("expected the pre-resolved ThrowTypeError setter")
+          }
+        }
+        None => fail("expected the arguments callee descriptor")
+      }
+    _ => fail("expected the prepared arguments object")
+  }
+}
+
+///|
 test "simple UserFunc successful call restores parameter gate" {
   let interp = Interpreter::new()
   let body_calls : Ref[Int] = { val: 0 }
