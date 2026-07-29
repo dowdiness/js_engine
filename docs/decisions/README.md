@@ -8,5 +8,5 @@ Architecture-decision-record-style documents and project contracts.
 - [engine-diagnostic-contract.md](engine-diagnostic-contract.md) — accepted and implemented operation-aware structured diagnostic contract and source-compatible public API evolution.
 - [engine-json-injection-contract.md](engine-json-injection-contract.md) — immutable host-owned JSON injection, collision policy, and structured failure contract.
 - [engine-execution-guardrail-contract.md](engine-execution-guardrail-contract.md) — accepted operation-scoped guardrail contract; private state transitions and statement/expression observation are staged, while bounded APIs and complete accounting remain pending.
-- [engine-activation-continuation-contract.md](engine-activation-continuation-contract.md) — proposed continuation-aware activation dispatcher revision for #630, including explicit handler/finalizer and activation-cleanup ownership; acceptance is pending merge.
+- [engine-activation-continuation-contract.md](engine-activation-continuation-contract.md) — accepted continuation-aware activation dispatcher contract for #630, including explicit handler/finalizer and activation-cleanup ownership.
 - [tooling-migration-contracts.md](tooling-migration-contracts.md) — parity contract for migrating Python scripts to MoonBit.

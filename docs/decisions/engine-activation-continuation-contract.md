@@ -5,11 +5,10 @@ against the minimized #616 programs and the current evaluator.
 
 ## Status
 
-Proposed revision for #630 implementation review. It becomes accepted only when
-this revision is merged and the owning issues link the merged document. The
-original #618 exploration is superseded: its statement-PC-only draft could push
-a callee frame, but it could not preserve the caller computation that consumes
-the callee's value.
+Accepted. Acceptance of this contract is recorded by the merge that introduces
+this document. The original #618 exploration is superseded: its
+statement-PC-only draft could push a callee frame, but it could not preserve the
+caller computation that consumes the callee's value.
 
 This contract remains narrower than Proper Tail Calls (#607) and the complete
 may-call-user-code migration retained by #608. It does not classify tail
