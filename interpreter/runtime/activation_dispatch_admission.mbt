@@ -9,11 +9,36 @@ const NUMERIC_RECURSION_INITIAL_ARGUMENT = 256.0
 
 ///|
 #warnings("-unused_field")
+priv struct NumericRecursionExpressionRecipe {
+  base_condition_loc : @token.Loc
+  recursive_add_loc : @token.Loc
+  recursive_call_loc : @token.Loc
+  recursive_subtract_loc : @token.Loc
+}
+
+///|
+fn NumericRecursionExpressionRecipe::NumericRecursionExpressionRecipe(
+  base_condition_loc~ : @token.Loc,
+  recursive_add_loc~ : @token.Loc,
+  recursive_call_loc~ : @token.Loc,
+  recursive_subtract_loc~ : @token.Loc,
+) -> NumericRecursionExpressionRecipe {
+  {
+    base_condition_loc,
+    recursive_add_loc,
+    recursive_call_loc,
+    recursive_subtract_loc,
+  }
+}
+
+///|
+#warnings("-unused_field")
 priv struct NumericRecursionFunctionPlan {
   name : String
   parameter : String
   recursive_callee : String
   declaration_index : Int
+  expression_recipe : NumericRecursionExpressionRecipe
 }
 
 ///|
@@ -22,8 +47,9 @@ fn NumericRecursionFunctionPlan::NumericRecursionFunctionPlan(
   parameter~ : String,
   recursive_callee~ : String,
   declaration_index~ : Int,
+  expression_recipe~ : NumericRecursionExpressionRecipe,
 ) -> NumericRecursionFunctionPlan {
-  { name, parameter, recursive_callee, declaration_index }
+  { name, parameter, recursive_callee, declaration_index, expression_recipe }
 }
 
 ///|
@@ -60,42 +86,70 @@ fn numeric_recursion_identifier_is_safe(name : String) -> Bool {
 }
 
 ///|
-fn exact_numeric_recursion_base_case(
+fn numeric_recursion_base_condition_loc(
   stmt : @ast.Stmt,
   parameter : String,
-) -> Bool {
+) -> @token.Loc? {
   match stmt {
     @ast.IfStmt(
       @ast.Binary(
         @ast.EqEqEq,
         @ast.Ident(condition_parameter, _),
         base_condition,
-        _
+        base_condition_loc
       ),
       @ast.ReturnStmt(Some(base_result), _),
       None,
       _
     ) =>
-      condition_parameter == parameter &&
-      exact_numeric_recursion_number(base_condition, NUMERIC_RECURSION_BASE) &&
-      exact_numeric_recursion_number(base_result, NUMERIC_RECURSION_BASE)
-    _ => false
+      if condition_parameter == parameter &&
+        exact_numeric_recursion_number(base_condition, NUMERIC_RECURSION_BASE) &&
+        exact_numeric_recursion_number(base_result, NUMERIC_RECURSION_BASE) {
+        Some(base_condition_loc)
+      } else {
+        None
+      }
+    _ => None
   }
 }
 
 ///|
-fn classify_numeric_recursion_step(
+#warnings("-unused_field")
+priv struct NumericRecursionStepClassification {
+  recursive_callee : String
+  recursive_add_loc : @token.Loc
+  recursive_call_loc : @token.Loc
+  recursive_subtract_loc : @token.Loc
+}
+
+///|
+fn NumericRecursionStepClassification::NumericRecursionStepClassification(
+  recursive_callee~ : String,
+  recursive_add_loc~ : @token.Loc,
+  recursive_call_loc~ : @token.Loc,
+  recursive_subtract_loc~ : @token.Loc,
+) -> NumericRecursionStepClassification {
+  {
+    recursive_callee,
+    recursive_add_loc,
+    recursive_call_loc,
+    recursive_subtract_loc,
+  }
+}
+
+///|
+fn classify_numeric_recursion_step_detail(
   stmt : @ast.Stmt,
   parameter : String,
-) -> String? {
+) -> NumericRecursionStepClassification? {
   match stmt {
     @ast.ReturnStmt(
       Some(
         @ast.Binary(
           @ast.Add,
           increment,
-          @ast.Call(@ast.Ident(recursive_callee, _), args, _),
-          _
+          @ast.Call(@ast.Ident(recursive_callee, _), args, recursive_call_loc),
+          recursive_add_loc
         )
       ),
       _
@@ -105,14 +159,44 @@ fn classify_numeric_recursion_step(
         return None
       }
       match args[0] {
-        @ast.Binary(@ast.Sub, @ast.Ident(step_parameter, _), decrement, _) if step_parameter ==
-          parameter &&
+        @ast.Binary(
+          @ast.Sub,
+          @ast.Ident(step_parameter, _),
+          decrement,
+          recursive_subtract_loc
+        ) if step_parameter == parameter &&
           exact_numeric_recursion_number(decrement, NUMERIC_RECURSION_STEP) =>
-          Some(recursive_callee)
+          Some(
+            NumericRecursionStepClassification(
+              recursive_callee~,
+              recursive_add_loc~,
+              recursive_call_loc~,
+              recursive_subtract_loc~,
+            ),
+          )
         _ => None
       }
     }
     _ => None
+  }
+}
+
+///|
+fn exact_numeric_recursion_base_case(
+  stmt : @ast.Stmt,
+  parameter : String,
+) -> Bool {
+  numeric_recursion_base_condition_loc(stmt, parameter) is Some(_)
+}
+
+///|
+fn classify_numeric_recursion_step(
+  stmt : @ast.Stmt,
+  parameter : String,
+) -> String? {
+  match classify_numeric_recursion_step_detail(stmt, parameter) {
+    Some(detail) => Some(detail.recursive_callee)
+    None => None
   }
 }
 
@@ -129,21 +213,30 @@ fn classify_numeric_recursion_function(
         return None
       }
       let parameter = params[0]
-      guard numeric_recursion_identifier_is_safe(parameter) &&
-        parameter != name &&
-        exact_numeric_recursion_base_case(body[0], parameter) else {
+      guard numeric_recursion_identifier_is_safe(parameter) && parameter != name else {
         return None
       }
-      guard classify_numeric_recursion_step(body[1], parameter)
-        is Some(recursive_callee) else {
+      guard numeric_recursion_base_condition_loc(body[0], parameter)
+        is Some(base_condition_loc) else {
         return None
       }
+      guard classify_numeric_recursion_step_detail(body[1], parameter)
+        is Some(step) else {
+        return None
+      }
+      let expression_recipe = NumericRecursionExpressionRecipe(
+        base_condition_loc~,
+        recursive_add_loc=step.recursive_add_loc,
+        recursive_call_loc=step.recursive_call_loc,
+        recursive_subtract_loc=step.recursive_subtract_loc,
+      )
       Some(
         NumericRecursionFunctionPlan(
           name~,
           parameter~,
-          recursive_callee~,
+          recursive_callee=step.recursive_callee,
           declaration_index~,
+          expression_recipe~,
         ),
       )
     }

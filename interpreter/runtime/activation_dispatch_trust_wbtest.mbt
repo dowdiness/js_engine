@@ -143,6 +143,55 @@ test "numeric recursion trust seals the fresh self declaration identity" {
 }
 
 ///|
+test "numeric recursion trust ignores preflight locations and retains sealed locations" {
+  let interp = Interpreter::new()
+  let (_, preflight_plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let preflight = match
+    interp.preflight_numeric_recursion_program(preflight_plan) {
+    Some(found) => found
+    None => fail("expected callback-free preflight")
+  }
+  let (stmts, _) = numeric_recursion_trust_test_plan(
+    "function f(n) {\n" +
+    "  if (n\n" +
+    "    === 0) return 0;\n" +
+    "  return 1\n" +
+    "    + f\n" +
+    "      (\n" +
+    "        n\n" +
+    "        - 1\n" +
+    "      );\n" +
+    "}\n" +
+    "f(256);",
+  )
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
+  let recipe = registry.plan.entry.expression_recipe
+  json_inspect(
+    [
+      recipe.base_condition_loc.line.to_string() +
+      ":" +
+      recipe.base_condition_loc.col.to_string(),
+      recipe.recursive_add_loc.line.to_string() +
+      ":" +
+      recipe.recursive_add_loc.col.to_string(),
+      recipe.recursive_call_loc.line.to_string() +
+      ":" +
+      recipe.recursive_call_loc.col.to_string(),
+      recipe.recursive_subtract_loc.line.to_string() +
+      ":" +
+      recipe.recursive_subtract_loc.col.to_string(),
+      registry.plan.root_call_loc.line.to_string() +
+      ":" +
+      registry.plan.root_call_loc.col.to_string(),
+    ],
+    content=["3:5", "5:5", "6:7", "8:9", "11:2"],
+  )
+}
+
+///|
 test "numeric recursion trust seals both fresh mutual declarations" {
   let interp = Interpreter::new()
   let (stmts, plan) = numeric_recursion_trust_test_plan(

@@ -389,13 +389,27 @@ fn numeric_recursion_function_plans_match(
     parameter: expected_parameter,
     recursive_callee: expected_recursive_callee,
     declaration_index: expected_declaration_index,
+    expression_recipe: expected_expression_recipe,
   } = expected
   let {
     name: actual_name,
     parameter: actual_parameter,
     recursive_callee: actual_recursive_callee,
     declaration_index: actual_declaration_index,
+    expression_recipe: actual_expression_recipe,
   } = actual
+  let {
+    base_condition_loc: _expected_base_condition_loc,
+    recursive_add_loc: _expected_recursive_add_loc,
+    recursive_call_loc: _expected_recursive_call_loc,
+    recursive_subtract_loc: _expected_recursive_subtract_loc,
+  } = expected_expression_recipe
+  let {
+    base_condition_loc: _actual_base_condition_loc,
+    recursive_add_loc: _actual_recursive_add_loc,
+    recursive_call_loc: _actual_recursive_call_loc,
+    recursive_subtract_loc: _actual_recursive_subtract_loc,
+  } = actual_expression_recipe
   expected_name == actual_name &&
   expected_parameter == actual_parameter &&
   expected_recursive_callee == actual_recursive_callee &&
@@ -404,7 +418,7 @@ fn numeric_recursion_function_plans_match(
 
 ///|
 // Compare only normalized admission semantics. The registry deliberately keeps
-// `actual`, so diagnostics and execution retain the sealed program's root loc.
+// `actual`, so diagnostics and execution retain all sealed expression locations.
 fn numeric_recursion_plans_match(
   expected : NumericRecursionPlan,
   actual : NumericRecursionPlan,

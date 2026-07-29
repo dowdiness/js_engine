@@ -64,6 +64,50 @@ test "numeric recursion admission normalizes the exact mutual shape" {
 }
 
 ///|
+test "numeric recursion admission retains an array-free expression location recipe" {
+  let stmts = numeric_recursion_test_program(
+    "function f(n) {\n" +
+    "  if (n\n" +
+    "    === 0) return 0;\n" +
+    "  return 1\n" +
+    "    + f\n" +
+    "      (\n" +
+    "        n\n" +
+    "        - 1\n" +
+    "      );\n" +
+    "}\n" +
+    "f(256);",
+  )
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None =>
+      fail("expected the multiline numeric-recursion shape to be admitted")
+  }
+  stmts.clear()
+  let recipe = plan.entry.expression_recipe
+  json_inspect(
+    [
+      recipe.base_condition_loc.line.to_string() +
+      ":" +
+      recipe.base_condition_loc.col.to_string(),
+      recipe.recursive_add_loc.line.to_string() +
+      ":" +
+      recipe.recursive_add_loc.col.to_string(),
+      recipe.recursive_call_loc.line.to_string() +
+      ":" +
+      recipe.recursive_call_loc.col.to_string(),
+      recipe.recursive_subtract_loc.line.to_string() +
+      ":" +
+      recipe.recursive_subtract_loc.col.to_string(),
+      plan.root_call_loc.line.to_string() +
+      ":" +
+      plan.root_call_loc.col.to_string(),
+    ],
+    content=["3:5", "5:5", "6:7", "8:9", "11:2"],
+  )
+}
+
+///|
 test "numeric recursion admission rejects residual and lookalike shapes" {
   for
     source in [
