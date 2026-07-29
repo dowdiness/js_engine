@@ -1,7 +1,7 @@
-// Imperative adapter for the first production activation-dispatch slice.
-// Admission proves that every statement is a synchronous leaf before any
-// JavaScript-visible effect. Once admitted, execution stays inside this loop;
-// unsupported effects are invariant failures, never legacy fallbacks.
+// Imperative adapter for admitted production activation-dispatch slices.
+// Admission and callback-free preflight finish before any managed effect. Once
+// managed execution starts, it stays inside this loop; unsupported effects are
+// invariant failures, never legacy fallbacks.
 
 ///|
 priv suberror InvalidActivationDispatchShell {
@@ -80,6 +80,7 @@ fn DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
 ///|
 priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
+  DispatchNumericRootRealmCleanup(FunctionRealmProtos)
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
 }
 
@@ -95,16 +96,24 @@ priv struct ProgramRealmCleanup {
 priv struct PrimitiveProgramDispatchShell {
   interp : Interpreter
   cleanup_stack : Array[ProgramRealmCleanup]
-  numeric_registry : TrustedNumericRecursionRegistry?
+  numeric_root_preflight : NumericRecursionPreflight?
+  mut numeric_registry : TrustedNumericRecursionRegistry?
   mut next_cleanup_id : Int
 }
 
 ///|
 fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   interp : Interpreter,
+  numeric_root_preflight? : NumericRecursionPreflight? = None,
   numeric_registry? : TrustedNumericRecursionRegistry? = None,
 ) -> PrimitiveProgramDispatchShell {
-  { interp, cleanup_stack: [], numeric_registry, next_cleanup_id: 0 }
+  {
+    interp,
+    cleanup_stack: [],
+    numeric_root_preflight,
+    numeric_registry,
+    next_cleanup_id: 0,
+  }
 }
 
 ///|
@@ -217,6 +226,21 @@ fn PrimitiveProgramDispatchShell::push_program_cleanup(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::push_numeric_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+  capabilities : DispatchNumericActivationCapabilities,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchNumericRootRealmCleanup(previous_realm_protos),
+    capabilities: Some(capabilities),
+  })
+}
+
+///|
 fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -249,6 +273,10 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
   match cleanup.resources {
     DispatchProgramRealmCleanup(previous_realm_protos) =>
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    DispatchNumericRootRealmCleanup(previous_realm_protos) => {
+      self.numeric_registry = None
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchNumericRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
         resources.parameter_gate,
@@ -343,6 +371,31 @@ fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  cursor : DispatchStatementCursor,
+  previous_realm_protos : FunctionRealmProtos,
+  preflight : NumericRecursionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let capabilities = DispatchNumericActivationCapabilities(
+    parameter=None,
+    recursive_callee=DispatchNumericCalleeUnresolved(preflight.plan.entry.name),
+  )
+  self.push_numeric_root_cleanup(id, previous_realm_protos, capabilities)
+  let registry = self.interp.seal_numeric_recursion_registry(
+    preflight,
+    cursor.stmts,
+  )
+  self.numeric_registry = Some(registry)
+  let capture = DispatchCalleeCaptureToken(id~)
+  DispatchNumericProgramAccepted(
+    DispatchActivationCleanup(id),
+    numeric_recursion_root_dispatch_expression(registry.plan, capture),
+  )
+}
+
+///|
 fn PrimitiveProgramDispatchShell::enter_program(
   self : PrimitiveProgramDispatchShell,
   cursor : DispatchStatementCursor,
@@ -363,10 +416,17 @@ fn PrimitiveProgramDispatchShell::enter_program(
     error => Err(error)
   }
   match setup {
-    Ok(_) => {
-      self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
-      DispatchProgramAccepted(DispatchActivationCleanup(id))
-    }
+    Ok(_) =>
+      match self.numeric_root_preflight {
+        Some(preflight) =>
+          self.complete_numeric_root_preparation(
+            id, cursor, previous_realm_protos, preflight,
+          )
+        None => {
+          self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+      }
     Err(error) => {
       self.push_program_cleanup(id, RejectedProgram, previous_realm_protos)
       DispatchActivationRejected(
@@ -586,6 +646,39 @@ fn PrimitiveProgramDispatchShell::start_captured_numeric_call(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::apply_numeric_binary(
+  self : PrimitiveProgramDispatchShell,
+  binary : DispatchBinaryResume,
+  right : Value,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  ignore(self)
+  let left_number = match binary.left {
+    Number(value) => value
+    _ =>
+      invalid_activation_dispatch_shell(
+        "numeric binary left operand is not a number",
+      )
+  }
+  let right_number = match right {
+    Number(value) => value
+    _ =>
+      invalid_activation_dispatch_shell(
+        "numeric binary right operand is not a number",
+      )
+  }
+  let result : Value = match binary.op {
+    @ast.Add => Number(left_number + right_number)
+    @ast.Sub => Number(left_number - right_number)
+    @ast.EqEqEq => Bool(left_number == right_number)
+    _ =>
+      invalid_activation_dispatch_shell(
+        "numeric binary operator is outside the closed dispatch set",
+      )
+  }
+  DispatchWorkCompleted(DispatchNormal(result))
+}
+
+///|
 fn PrimitiveProgramDispatchShell::execute_leaf_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
@@ -626,9 +719,12 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.capture_numeric_callee(token)
     DispatchRun(DispatchStartCapturedNumericCall(token, argument, loc)) =>
       self.start_captured_numeric_call(token, argument, loc)
+    DispatchRun(
+      DispatchResumeContinuation(DispatchApplyBinaryRight(binary), right)
+    ) => self.apply_numeric_binary(binary, right)
     DispatchRun(_) =>
       invalid_activation_dispatch_shell(
-        "leaf program shell received unsupported managed work",
+        "program shell received unsupported managed work",
       )
     DispatchReleaseActivation(cleanup, completion) => {
       self.consume_cleanup(cleanup.id, true, completion)
@@ -640,11 +736,11 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     }
     DispatchRestorePropertyScope(_, _) =>
       invalid_activation_dispatch_shell(
-        "leaf program shell cannot restore a property scope",
+        "program shell cannot restore a property scope",
       )
     DispatchNormalizeEscapedControl(_) =>
       invalid_activation_dispatch_shell(
-        "leaf program shell cannot normalize function control",
+        "program shell cannot normalize function control",
       )
   }
 }
@@ -670,6 +766,32 @@ fn PrimitiveProgramDispatchShell::drive(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::drive_root_program(
+  self : PrimitiveProgramDispatchShell,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+) -> DispatchCompletion raise Error {
+  try {
+    let completion = self.drive(
+      DispatchProgramActivation(
+        DispatchStatementCursor(ctx~, stmts~, env=self.interp.global),
+      ),
+    )
+    guard self.cleanup_stack.is_empty() else {
+      invalid_activation_dispatch_shell(
+        "dispatch finished while cleanup ownership remained",
+      )
+    }
+    completion
+  } catch {
+    error => {
+      self.restore_all_cleanup(failure=Some(error))
+      raise error
+    }
+  }
+}
+
+///|
 fn Interpreter::run_activation_dispatch_leaf_program(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -680,25 +802,27 @@ fn Interpreter::run_activation_dispatch_leaf_program(
       "program admission must succeed before managed execution starts",
     )
   }
-  let shell = PrimitiveProgramDispatchShell(self)
-  try {
-    let completion = shell.drive(
-      DispatchProgramActivation(
-        DispatchStatementCursor(ctx~, stmts~, env=self.global),
-      ),
+  PrimitiveProgramDispatchShell(self).drive_root_program(stmts, ctx)
+}
+
+///|
+fn Interpreter::run_activation_dispatch_numeric_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : NumericRecursionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    numeric_root_preflight=Some(preflight),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.numeric_registry is None else {
+    invalid_activation_dispatch_shell(
+      "numeric registry outlived its root activation",
     )
-    guard shell.cleanup_stack.is_empty() else {
-      invalid_activation_dispatch_shell(
-        "dispatch finished while cleanup ownership remained",
-      )
-    }
-    completion
-  } catch {
-    error => {
-      shell.restore_all_cleanup(failure=Some(error))
-      raise error
-    }
   }
+  completion
 }
 
 ///|

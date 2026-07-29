@@ -680,3 +680,233 @@ test "invalid numeric call envelopes do not acquire cleanup ownership" {
   inspect(shell.cleanup_stack.length(), content="0")
   dispatch_shell_test_expect_realm_sentinel(interp, 35)
 }
+
+///|
+fn numeric_root_activation_test_fixture(
+  source : String,
+) -> (
+  Interpreter,
+  PrimitiveProgramDispatchShell,
+  NumericRecursionPlan,
+  DispatchStatementCursor,
+) raise {
+  let interp = Interpreter::new()
+  let stmts = @parser.parse(source).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact numeric-recursion plan")
+  }
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free numeric preflight")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    numeric_root_preflight=Some(preflight),
+  )
+  let cursor = DispatchStatementCursor(
+    ctx={ strict: false, current_generator: None },
+    stmts~,
+    env=interp.global,
+  )
+  (interp, shell, plan, cursor)
+}
+
+///|
+test "numeric root owns its registry and child activations in LIFO order" {
+  let (interp, shell, plan, cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let previous_realm = active_realm_protos(interp.realm_state)
+  let (root_cleanup, root_capture) = match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(cursor)),
+    ) {
+    DispatchNumericProgramAccepted(
+      cleanup,
+      DispatchNumericSingleArgumentCall(
+        capture,
+        DispatchNumericNumber(argument),
+        loc
+      )
+    ) => {
+      inspect(argument, content="256")
+      inspect(loc == plan.root_call_loc, content="true")
+      (cleanup, capture)
+    }
+    _ => fail("expected a sealed numeric root activation")
+  }
+  inspect(shell.numeric_registry is Some(_), content="true")
+  inspect(shell.cleanup_stack.length(), content="1")
+  match
+    shell.perform_effect(
+      DispatchRun(DispatchCaptureTrustedCallee(root_capture)),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected root callee capture")
+  }
+  let child_request = match
+    shell.perform_effect(
+      DispatchRun(
+        DispatchStartCapturedNumericCall(
+          root_capture,
+          plan.initial_argument,
+          plan.root_call_loc,
+        ),
+      ),
+    ) {
+    DispatchWorkSuspended(DispatchSuspendCall(request, _)) => request
+    _ => fail("expected the admitted root call request")
+  }
+  let child_cleanup = match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchCallActivation(child_request)),
+    ) {
+    DispatchCallAccepted(cleanup, DispatchNumericCall(_)) => cleanup
+    _ => fail("expected the numeric child activation")
+  }
+  inspect(shell.cleanup_stack.length(), content="2")
+  let out_of_order = try {
+    numeric_activation_test_release(
+      shell,
+      root_cleanup,
+      DispatchNormal(Number(256.0)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+    _ => "wrong error"
+  }
+  inspect(out_of_order, content="rejected")
+  numeric_activation_test_release(
+    shell,
+    child_cleanup,
+    DispatchReturn(Number(256.0)),
+  )
+  inspect(shell.numeric_registry is Some(_), content="true")
+  numeric_activation_test_release(
+    shell,
+    root_cleanup,
+    DispatchNormal(Number(256.0)),
+  )
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(shell.numeric_registry is None, content="true")
+  inspect(
+    numeric_recursion_realm_protos_match(
+      previous_realm,
+      active_realm_protos(interp.realm_state),
+    ),
+    content="true",
+  )
+}
+
+///|
+test "numeric root seal failure remains owned until restore-all" {
+  let (interp, shell, _, cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let previous_realm = active_realm_protos(interp.realm_state)
+  cursor.stmts.clear()
+  let result = try {
+    let _ = shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(cursor)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(result, content="rejected")
+  inspect(shell.cleanup_stack.length(), content="1")
+  inspect(shell.numeric_registry is None, content="true")
+  shell.restore_all_cleanup()
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(
+    numeric_recursion_realm_protos_match(
+      previous_realm,
+      active_realm_protos(interp.realm_state),
+    ),
+    content="true",
+  )
+}
+
+///|
+fn numeric_activation_test_apply_binary(
+  shell : PrimitiveProgramDispatchShell,
+  op : @ast.BinOp,
+  left : Value,
+  right : Value,
+) -> DispatchCompletion raise {
+  match
+    shell.perform_effect(
+      DispatchRun(
+        DispatchResumeContinuation(
+          DispatchApplyBinaryRight(
+            DispatchBinaryResume(op~, left~, loc=@token.Loc::default()),
+          ),
+          right,
+        ),
+      ),
+    ) {
+    DispatchWorkCompleted(completion) => completion
+    _ => fail("expected a closed numeric binary result")
+  }
+}
+
+///|
+test "numeric shell applies only the closed number binary operations" {
+  let shell = PrimitiveProgramDispatchShell(Interpreter::new())
+  expect_dispatch_number(
+    numeric_activation_test_apply_binary(
+      shell,
+      @ast.Add,
+      Number(2.0),
+      Number(3.0),
+    ),
+    5.0,
+  )
+  expect_dispatch_number(
+    numeric_activation_test_apply_binary(
+      shell,
+      @ast.Sub,
+      Number(5.0),
+      Number(2.0),
+    ),
+    3.0,
+  )
+  match
+    numeric_activation_test_apply_binary(
+      shell,
+      @ast.EqEqEq,
+      Number(3.0),
+      Number(3.0),
+    ) {
+    DispatchNormal(Bool(true)) => ()
+    _ => fail("expected closed numeric strict equality")
+  }
+  let invalid_operator = try {
+    let _ = numeric_activation_test_apply_binary(
+      shell,
+      @ast.Mul,
+      Number(2.0),
+      Number(3.0),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+    _ => "wrong error"
+  }
+  inspect(invalid_operator, content="rejected")
+  let invalid_operand = try {
+    let _ = numeric_activation_test_apply_binary(
+      shell,
+      @ast.Add,
+      String_("2"),
+      Number(3.0),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+    _ => "wrong error"
+  }
+  inspect(invalid_operand, content="rejected")
+}
