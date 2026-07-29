@@ -17,6 +17,45 @@ fn nested_array_pattern_source(depth : Int, inner : String) -> String {
 }
 
 ///|
+test "execution stack safety: self recursion at depth 256" {
+  match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: mutual recursion at depth 256" {
+  match
+    run(
+      "function f(n){if(n===0)return 0;return 1+g(n-1);}function g(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: getter re-entry at depth 256" {
+  match
+    run("let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};o.x;") {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: Proxy get re-entry at depth 256" {
+  match
+    run(
+      "let n=256;let p;p=new Proxy({},{get(t,k,r){if(n===0)return 0;n=n-1;return 1+p.x;}});p.x;",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
 test "post-parse stack safety: GeneratorFunction parameter Contains(YieldExpression)" {
   // Constructor integration reaches the parser's independent validation first;
   // generator_wbtest.mbt directly covers the private runtime walker.
