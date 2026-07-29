@@ -351,11 +351,21 @@ fn snapshot_dispatch_continuation(
   continuation : DispatchContinuation,
 ) -> DispatchContinuation {
   match continuation {
+    DispatchCompleteReturn => DispatchCompleteReturn
+    DispatchCompleteThrow => DispatchCompleteThrow
+    DispatchDeliverCallResult => DispatchDeliverCallResult
+    DispatchApplyBinaryRight(binary) => DispatchApplyBinaryRight(binary)
+    DispatchDeliverAccessorResult(accessor) =>
+      DispatchDeliverAccessorResult(accessor)
+    DispatchCheckProxyGetResult(proxy) => DispatchCheckProxyGetResult(proxy)
     DispatchBindParameterDefault(progress) =>
       DispatchBindParameterDefault(
         snapshot_dispatch_parameter_progress(progress),
       )
-    other => other
+    DispatchContinueNumericExpression(numeric) =>
+      DispatchContinueNumericExpression(
+        snapshot_dispatch_numeric_continuation(numeric),
+      )
   }
 }
 
@@ -429,6 +439,7 @@ priv enum DispatchContinuation {
   DispatchDeliverAccessorResult(DispatchPropertyGetResume)
   DispatchCheckProxyGetResult(DispatchProxyGetResume)
   DispatchBindParameterDefault(DispatchParameterDefaultResume)
+  DispatchContinueNumericExpression(DispatchNumericExpressionContinuation)
 }
 
 ///|
@@ -441,6 +452,14 @@ priv enum DispatchWork {
   DispatchExecuteCatch(DispatchCatchResume, Error)
   DispatchNormalizeFunctionControl(DispatchCompletion)
   DispatchResumeContinuation(DispatchContinuation, Value)
+  DispatchObserveExpressionStep(DispatchNumericExpressionObservation)
+  DispatchReadNumericParameter(DispatchParameterBindingToken)
+  DispatchCaptureTrustedCallee(DispatchCalleeCaptureToken)
+  DispatchStartCapturedNumericCall(
+    DispatchCalleeCaptureToken,
+    Double,
+    @token.Loc
+  )
 }
 
 ///|
@@ -450,6 +469,10 @@ priv enum DispatchSuspension {
   DispatchSuspendParameters(DispatchParameterDefaultResume)
   DispatchSuspendContinue(DispatchContinuation, DispatchWork)
   DispatchSuspendCall(DispatchCallRequest, DispatchContinuation)
+  DispatchSuspendNumericExpression(
+    DispatchNumericExpression,
+    DispatchContinuation?
+  )
   DispatchSuspendProtected(
     DispatchStatementCursor,
     DispatchCatchResume?,
@@ -860,6 +883,11 @@ fn route_dispatch_completion(
               (DispatchCompleteThrow, DispatchNormal(value)) =>
                 routed = DispatchThrow(JsException(value))
               (DispatchDeliverCallResult, DispatchNormal(_)) => ()
+              (DispatchContinueNumericExpression(numeric), DispatchNormal(value)
+              ) =>
+                return resume_dispatch_numeric_expression(
+                  popped, numeric, value,
+                )
               (consumer, DispatchNormal(value)) =>
                 return schedule_dispatch_effect(
                   popped,
@@ -1042,6 +1070,19 @@ fn suspend_dispatch_work(
         ),
         DispatchEnterActivation(DispatchCallActivation(request)),
       )
+    DispatchSuspendNumericExpression(expression, outer_consumer) => {
+      let with_outer_consumer = match outer_consumer {
+        Some(continuation) =>
+          push_dispatch_frame(
+            state,
+            DispatchContinuationFrame(
+              snapshot_dispatch_continuation(continuation),
+            ),
+          )
+        None => state
+      }
+      begin_dispatch_numeric_expression(with_outer_consumer, expression)
+    }
     DispatchSuspendProtected(work, catch_work, finalizer_work) => {
       let with_finalizer = match finalizer_work {
         Some(cursor) =>
