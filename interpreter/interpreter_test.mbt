@@ -12614,6 +12614,22 @@ test "foreign function calls create returned functions in callee realm" {
 }
 
 ///|
+test "borrowed sloppy UserFunc prepares this and arguments in callee realm" {
+  let output = run_output(
+    (
+      #|var r = $262.createRealm();
+      #|var info = r.evalScript("({ call: function(value) { return [Object.getPrototypeOf(this), Object.getPrototypeOf(arguments)]; }, numberProto: Number.prototype, objectProto: Object.prototype })");
+      #|var result = info.call.call(1, 2);
+      #|console.log(result[0] === info.numberProto);
+      #|console.log(result[1] === info.objectProto);
+      #|console.log(result[0] === Number.prototype);
+      #|console.log(result[1] === Object.prototype);
+    ),
+  )
+  json_inspect(output, content=["true", "true", "false", "false"])
+}
+
+///|
 test "derived class constructors keep function realm separate from static inheritance" {
   let output = run_output(
     (
@@ -19467,6 +19483,61 @@ test "§19.2.1.3 regression: nested IIFE with eval(var arguments) in f's default
     #|console.log(f());
   let output = run_output(src)
   json_inspect(output, content=["1"])
+}
+
+///|
+/// A simple UserFunc can run guest Proxy traps while preparing its inherited
+/// [[ThrowTypeError]] binding. If that setup raises inside a parameter default,
+/// the callee body must stay untouched, the outer default gate must resume for
+/// the surrounding eval, and the original pre-call gate must be restored.
+test "simple UserFunc setup failure restores nested parameter-default gates" {
+  let src =
+    #|var log = [], inner;
+    #|var scope = new Proxy({}, {
+    #|  has: function(t, k) {
+    #|    if (k === "[[ThrowTypeError]]") {
+    #|      log.push("has:TTE");
+    #|      return true;
+    #|    }
+    #|    return false;
+    #|  },
+    #|  get: function(t, k) {
+    #|    if (k === Symbol.unscopables) {
+    #|      log.push("get:@@unscopables");
+    #|      return undefined;
+    #|    }
+    #|    if (k === "[[ThrowTypeError]]") {
+    #|      log.push("get:TTE");
+    #|      throw "tte-boom";
+    #|    }
+    #|  }
+    #|});
+    #|with (scope) {
+    #|  inner = function simple() { log.push("body:UNEXPECTED"); };
+    #|}
+    #|function outer(p = eval(`try {
+    #|  inner();
+    #|} catch (e) {
+    #|  log.push("caught:" + e);
+    #|}
+    #|try {
+    #|  eval("var arguments");
+    #|  log.push("gate:NOT-restored");
+    #|} catch (e) {
+    #|  log.push("gate:" + e.name);
+    #|}`)) {}
+    #|outer();
+    #|try {
+    #|  eval("var arguments");
+    #|  log.push("after:restored");
+    #|} catch (e) {
+    #|  log.push("after:" + e.name);
+    #|}
+    #|console.log(log.join("|"));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "has:TTE|get:@@unscopables|has:TTE|get:@@unscopables|get:TTE|caught:tte-boom|gate:SyntaxError|after:restored",
+  ])
 }
 
 ///|

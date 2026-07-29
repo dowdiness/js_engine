@@ -924,6 +924,153 @@ fn box_primitive_call_this(value : Value, realm_state : RealmState) -> Value {
 }
 
 ///|
+// Low-level parameter-default gate snapshot, not an exactly-once cleanup
+// capability. Call adapters and the dispatch shell must own LIFO restoration.
+priv struct SimpleUserFuncParameterGateScope {
+  previous_in_nonarrow_param_default_eval : Bool
+  previous_param_default_eval_var_conflicts : @set.Set[String]?
+}
+
+///|
+fn SimpleUserFuncParameterGateScope::SimpleUserFuncParameterGateScope(
+  previous_in_nonarrow_param_default_eval~ : Bool,
+  previous_param_default_eval_var_conflicts~ : @set.Set[String]?,
+) -> SimpleUserFuncParameterGateScope {
+  {
+    previous_in_nonarrow_param_default_eval,
+    previous_param_default_eval_var_conflicts,
+  }
+}
+
+///|
+fn Interpreter::begin_simple_user_func_parameter_gate(
+  self : Interpreter,
+) -> SimpleUserFuncParameterGateScope {
+  let previous_in_nonarrow_param_default_eval = self.in_nonarrow_param_default_eval
+  let previous_param_default_eval_var_conflicts = self.param_default_eval_var_conflicts
+  self.in_nonarrow_param_default_eval = false
+  self.param_default_eval_var_conflicts = None
+  SimpleUserFuncParameterGateScope(
+    previous_in_nonarrow_param_default_eval~,
+    previous_param_default_eval_var_conflicts~,
+  )
+}
+
+///|
+fn Interpreter::finish_simple_user_func_parameter_gate(
+  self : Interpreter,
+  scope : SimpleUserFuncParameterGateScope,
+) -> Unit {
+  self.in_nonarrow_param_default_eval = scope.previous_in_nonarrow_param_default_eval
+  self.param_default_eval_var_conflicts = scope.previous_param_default_eval_var_conflicts
+}
+
+///|
+// Prepared lexical state only. Body scheduling and execution remain owned by
+// the caller so the legacy path does not copy the function's statement array.
+priv struct PreparedUserFuncActivation {
+  ctx : ExecContext
+  env : Environment
+}
+
+///|
+fn PreparedUserFuncActivation::PreparedUserFuncActivation(
+  ctx~ : ExecContext,
+  env~ : Environment,
+) -> PreparedUserFuncActivation {
+  { ctx, env }
+}
+
+///|
+fn Interpreter::normalize_sloppy_this(
+  self : Interpreter,
+  this_val : Value,
+) -> Value {
+  match this_val {
+    Undefined | Null => self.global_this
+    _ => box_primitive_call_this(this_val, self.realm_state)
+  }
+}
+
+///|
+// Prepare the lexical activation shared by legacy and resumable simple
+// UserFunc adapters. This may invoke guest code while resolving the inherited
+// [[ThrowTypeError]] binding, so resumable callers must enforce admission
+// before treating it as an atomic shell effect.
+fn Interpreter::prepare_user_func_activation(
+  self : Interpreter,
+  callee : Value,
+  this_val : Value,
+  args : Array[Value],
+  data : FuncData,
+) -> PreparedUserFuncActivation raise Error {
+  let func_env = Environment::new(parent=Some(data.closure))
+  func_env.is_var_scope = true
+  func_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
+  let func_strict = data.strict
+  let func_ctx : ExecContext = { strict: func_strict, current_generator: None }
+  if func_strict {
+    // Strict mode: check for duplicate parameters
+    check_duplicate_params(data.params)
+    // Strict mode: validate parameter names
+    for p in data.params {
+      @static_semantics.validate_strict_binding_name(p)
+    }
+  }
+  let effective_this = if func_strict {
+    this_val
+  } else {
+    self.normalize_sloppy_this(this_val)
+  }
+  func_env.def("this", effective_this, LetBinding)
+  func_env.def("<new.target>", Undefined, LetBinding)
+  for i, param in data.params {
+    let val : Value = if i < args.length() { args[i] } else { Undefined }
+    // In sloppy mode, duplicate params are allowed; last value wins
+    if func_env.bindings.contains(param) {
+      func_env.assign(param, val)
+    } else {
+      func_env.def_parameter(param, val)
+    }
+  }
+  if !params_include_arguments(data.params, None) {
+    // Create arguments object unless a formal parameter is named `arguments`.
+    let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
+      Some(func_env.get("[[ThrowTypeError]]"))
+    } else {
+      None
+    }
+    func_env.def(
+      "arguments",
+      make_arguments_object(
+        self.realm_state,
+        self.realm_state.well_known_symbols,
+        args,
+        callee,
+        func_strict,
+        throw_type_error=tte_val,
+        mapped_names=data.params,
+        mapped_env=Some(func_env),
+      ),
+      VarBinding,
+    )
+  }
+  // Hoist declarations and top-level lexical TDZ markers within the function body.
+  self.hoist_declarations(data.body, func_env, strict=func_strict)
+  hoist_block_tdz(data.body, func_env)
+  if data.has_name_binding {
+    match data.name {
+      Some(name) =>
+        if !func_env.bindings.contains(name) {
+          func_env.def(name, callee, FunctionNameBinding)
+        }
+      None => ()
+    }
+  }
+  PreparedUserFuncActivation(ctx=func_ctx, env=func_env)
+}
+
+///|
 fn Interpreter::call_value_impl(
   self : Interpreter,
   callee : Value,
@@ -931,12 +1078,6 @@ fn Interpreter::call_value_impl(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
-  let normalize_sloppy_this = fn(tv : Value) {
-    match tv {
-      Undefined | Null => self.global_this
-      _ => box_primitive_call_this(tv, self.realm_state)
-    }
-  }
   match callee {
     Proxy(proxy_data) => {
       // Verify target chain is callable (recursively unwrap nested proxies)
@@ -976,82 +1117,16 @@ fn Interpreter::call_value_impl(
           // §19.2.1.3 gate reset (#A.6): any function call entry clears
           // the signal so a nested invocation (e.g. an IIFE in an outer
           // function's param default) does not inherit the outer state.
-          let saved_in_default = self.in_nonarrow_param_default_eval
-          let saved_param_default_conflicts = self.param_default_eval_var_conflicts
-          self.in_nonarrow_param_default_eval = false
-          self.param_default_eval_var_conflicts = None
+          let gate_scope = self.begin_simple_user_func_parameter_gate()
           let result : Value = try {
-            let func_env = Environment::new(parent=Some(data.closure))
-            func_env.is_var_scope = true
-            func_env.def_builtin("[[EvalMethodContext]]", Bool(data.is_method))
-            let func_strict = data.strict
-            let func_ctx : ExecContext = {
-              strict: func_strict,
-              current_generator: None,
-            }
-            if func_strict {
-              // Strict mode: check for duplicate parameters
-              check_duplicate_params(data.params)
-              // Strict mode: validate parameter names
-              for p in data.params {
-                @static_semantics.validate_strict_binding_name(p)
-              }
-            }
-            let effective_this = if func_strict {
-              this_val
-            } else {
-              normalize_sloppy_this(this_val)
-            }
-            func_env.def("this", effective_this, LetBinding)
-            func_env.def("<new.target>", Undefined, LetBinding)
-            for i, param in data.params {
-              let val : Value = if i < args.length() {
-                args[i]
-              } else {
-                Undefined
-              }
-              // In sloppy mode, duplicate params are allowed; last value wins
-              if func_env.bindings.contains(param) {
-                func_env.assign(param, val)
-              } else {
-                func_env.def_parameter(param, val)
-              }
-            }
-            if !params_include_arguments(data.params, None) {
-              // Create arguments object unless a formal parameter is named `arguments`.
-              let tte_val : Value? = if func_env.has("[[ThrowTypeError]]") {
-                Some(func_env.get("[[ThrowTypeError]]"))
-              } else {
-                None
-              }
-              func_env.def(
-                "arguments",
-                make_arguments_object(
-                  self.realm_state,
-                  self.realm_state.well_known_symbols,
-                  args,
-                  callee,
-                  func_strict,
-                  throw_type_error=tte_val,
-                  mapped_names=data.params,
-                  mapped_env=Some(func_env),
-                ),
-                VarBinding,
-              )
-            }
-            // Hoist declarations and top-level lexical TDZ markers within the function body.
-            self.hoist_declarations(data.body, func_env, strict=func_strict)
-            hoist_block_tdz(data.body, func_env)
-            if data.has_name_binding {
-              match data.name {
-                Some(name) =>
-                  if !func_env.bindings.contains(name) {
-                    func_env.def(name, callee, FunctionNameBinding)
-                  }
-                None => ()
-              }
-            }
-            let exec_result = self.exec_stmts(func_ctx, data.body, func_env)
+            let prepared = self.prepare_user_func_activation(
+              callee, this_val, args, data,
+            )
+            let exec_result = self.exec_stmts(
+              prepared.ctx,
+              data.body,
+              prepared.env,
+            )
             raise_if_break_continue(exec_result)
             match exec_result {
               Normal(_) => Undefined
@@ -1060,13 +1135,11 @@ fn Interpreter::call_value_impl(
             }
           } catch {
             e => {
-              self.in_nonarrow_param_default_eval = saved_in_default
-              self.param_default_eval_var_conflicts = saved_param_default_conflicts
+              self.finish_simple_user_func_parameter_gate(gate_scope)
               raise e
             }
           }
-          self.in_nonarrow_param_default_eval = saved_in_default
-          self.param_default_eval_var_conflicts = saved_param_default_conflicts
+          self.finish_simple_user_func_parameter_gate(gate_scope)
           result
         }
         Some(ArrowFunc(data)) => {
@@ -1152,7 +1225,7 @@ fn Interpreter::call_value_impl(
           let effective_this = if func_strict {
             this_val
           } else {
-            normalize_sloppy_this(this_val)
+            self.normalize_sloppy_this(this_val)
           }
           param_env.def("this", effective_this, LetBinding)
           param_env.def("<new.target>", Undefined, LetBinding)
