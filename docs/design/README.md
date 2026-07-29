@@ -13,4 +13,5 @@ Long-form design, architecture, and research notes for `js_engine`.
 - [architecture-redesign-2026-05-19.md](architecture-redesign-2026-05-19.md) — migration record for realm state ownership, runtime surface control, and execution boundaries.
 - [architecture-redesign-2026-04-17-probes.md](architecture-redesign-2026-04-17-probes.md) — exploratory sizing probes for earlier restructuring work.
 - [closure-conversion-and-bytecode.md](closure-conversion-and-bytecode.md) — closure-conversion prototype status, research notes, and bytecode/IR direction.
+- [../decisions/bytecode-execution-representation-contract.md](../decisions/bytecode-execution-representation-contract.md) — proposed #601 decision: stack bytecode as the sole long-term compiled executable representation, verifier contract, and migration sequence.
 - [SELF_HOST_JS_RESEARCH.md](SELF_HOST_JS_RESEARCH.md) — self-hosting analysis for compiling the engine to JavaScript.
