@@ -266,7 +266,7 @@ test "numeric recursion trust rejects post-seal FuncData array mutation" {
     let _ = registry.require_callee(interp, callee)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
   data.params[0] = original_parameter
 
@@ -276,12 +276,18 @@ test "numeric recursion trust rejects post-seal FuncData array mutation" {
     let _ = registry.require_callee(interp, callee)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
   data.body[0] = original_base_case
 
-  inspect(parameter_result, content="rejected")
-  inspect(body_result, content="rejected")
+  inspect(
+    parameter_result,
+    content="numeric recursion candidate no longer has exact UserFunc provenance",
+  )
+  inspect(
+    body_result,
+    content="numeric recursion candidate no longer has exact UserFunc provenance",
+  )
 }
 
 ///|
@@ -310,7 +316,7 @@ test "numeric recursion trust revalidates binding and mirror on every lookup" {
     let _ = registry.require_named(interp, "f")
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
   binding.value = original_binding
 
@@ -320,12 +326,57 @@ test "numeric recursion trust revalidates binding and mirror on every lookup" {
     let _ = registry.require_callee(interp, callee)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
   global_object.bag.properties["f"] = original_mirror
 
-  inspect(binding_result, content="rejected")
-  inspect(mirror_result, content="rejected")
+  inspect(
+    binding_result,
+    content="numeric recursion candidate diverged from its global binding",
+  )
+  inspect(
+    mirror_result,
+    content="numeric recursion candidate diverged from its global mirror",
+  )
+}
+
+///|
+test "numeric recursion trust rejects a replacement canonical global on lookup" {
+  let interp = Interpreter::new()
+  let (stmts, plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
+  let callee = registry.require_named(interp, "f")
+  let replacement_global = make_object(
+    { "f": callee },
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  let replacement_interp : Interpreter = {
+    ..interp,
+    global_this: replacement_global,
+  }
+  interp.global.interpreter_context = Some(replacement_interp)
+  let result = try {
+    let _ = registry.require_named(replacement_interp, "f")
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+
+  inspect(
+    result,
+    content="numeric recursion trusted global changed after sealing",
+  )
 }
 
 ///|
@@ -335,7 +386,7 @@ test "numeric recursion trust rejects seal against a different program" {
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
   )
   let mismatched_stmts = @parser.parse(
-      "function f(n){if(n===0)return 0;return 1+g(n-1);}f(256);",
+      "function g(m){if(m===0)return 0;return 1+g(m-1);}g(256);",
     ).stmts
   let preflight = match
     interp.preflight_numeric_recursion_program(admitted_plan) {
@@ -347,10 +398,13 @@ test "numeric recursion trust rejects seal against a different program" {
     let _ = interp.seal_numeric_recursion_registry(preflight, mismatched_stmts)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
 
-  inspect(result, content="rejected")
+  inspect(
+    result,
+    content="numeric recursion program no longer matches its preflight plan",
+  )
 }
 
 ///|
@@ -374,10 +428,13 @@ test "numeric recursion trust rejects a binding and global mirror mismatch" {
     let _ = interp.seal_numeric_recursion_registry(preflight, stmts)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
 
-  inspect(result, content="rejected")
+  inspect(
+    result,
+    content="numeric recursion declaration binding diverged from its global mirror",
+  )
 }
 
 ///|
@@ -398,10 +455,13 @@ test "numeric recursion trust rejects foreign realm metadata after context resto
     let _ = interp.seal_numeric_recursion_registry(preflight, stmts)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
 
-  inspect(result, content="rejected")
+  inspect(
+    result,
+    content="numeric recursion UserFunc realm provenance changed during root hoisting",
+  )
 }
 
 ///|
@@ -436,10 +496,13 @@ test "numeric recursion trust rejects source identity drift with stable realm me
     let _ = interp.seal_numeric_recursion_registry(preflight, stmts)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
 
-  inspect(result, content="rejected")
+  inspect(
+    result,
+    content="numeric recursion UserFunc source identity changed during root hoisting",
+  )
 }
 
 ///|
@@ -467,10 +530,13 @@ test "numeric recursion trust rejects post-seal source identity drift on named l
     let _ = registry.require_named(interp, "f")
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
 
-  inspect(result, content="rejected")
+  inspect(
+    result,
+    content="numeric recursion candidate source identity changed after sealing",
+  )
 }
 
 ///|
@@ -504,10 +570,13 @@ test "numeric recursion trust rejects post-seal realm metadata drift on callee l
     let _ = registry.require_callee(interp, callee)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
 
-  inspect(result, content="rejected")
+  inspect(
+    result,
+    content="numeric recursion candidate realm provenance changed after sealing",
+  )
 }
 
 ///|
@@ -548,10 +617,13 @@ test "numeric recursion trust rejects a noncanonical global at seal without trap
     let _ = interp.seal_numeric_recursion_registry(preflight, stmts)
     "accepted"
   } catch {
-    InvalidActivationDispatchShell(_) => "rejected"
+    InvalidActivationDispatchShell(message) => message
   }
 
-  inspect(result, content="rejected")
+  inspect(
+    result,
+    content="numeric recursion global changed after callback-free preflight",
+  )
   inspect(trap_calls.val, content="0")
 }
 

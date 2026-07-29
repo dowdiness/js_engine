@@ -43,6 +43,7 @@ priv struct TrustedNumericRecursionRegistry {
   entry : TrustedNumericRecursionFunction
   peer : TrustedNumericRecursionFunction?
   throw_type_error : Value?
+  expected_global_object : ObjectData
 }
 
 ///|
@@ -51,8 +52,9 @@ fn TrustedNumericRecursionRegistry::TrustedNumericRecursionRegistry(
   entry~ : TrustedNumericRecursionFunction,
   peer~ : TrustedNumericRecursionFunction?,
   throw_type_error~ : Value?,
+  expected_global_object~ : ObjectData,
 ) -> TrustedNumericRecursionRegistry {
-  { plan, entry, peer, throw_type_error }
+  { plan, entry, peer, throw_type_error, expected_global_object }
 }
 
 ///|
@@ -229,43 +231,60 @@ fn numeric_recursion_realm_protos_match(
   expected : FunctionRealmProtos,
   actual : FunctionRealmProtos,
 ) -> Bool {
+  let {
+    function_proto: expected_function_proto,
+    object_proto: expected_object_proto,
+    string_proto: expected_string_proto,
+    number_proto: expected_number_proto,
+    boolean_proto: expected_boolean_proto,
+    symbol_proto: expected_symbol_proto,
+    array_proto: expected_array_proto,
+    map_proto: expected_map_proto,
+    set_proto: expected_set_proto,
+    promise_proto: expected_promise_proto,
+    constructor_prototype_registry: expected_constructor_prototype_registry,
+  } = expected
+  let {
+    function_proto: actual_function_proto,
+    object_proto: actual_object_proto,
+    string_proto: actual_string_proto,
+    number_proto: actual_number_proto,
+    boolean_proto: actual_boolean_proto,
+    symbol_proto: actual_symbol_proto,
+    array_proto: actual_array_proto,
+    map_proto: actual_map_proto,
+    set_proto: actual_set_proto,
+    promise_proto: actual_promise_proto,
+    constructor_prototype_registry: actual_constructor_prototype_registry,
+  } = actual
   numeric_recursion_optional_values_match(
-    expected.function_proto,
-    actual.function_proto,
+    expected_function_proto, actual_function_proto,
   ) &&
   numeric_recursion_optional_values_match(
-    expected.object_proto,
-    actual.object_proto,
+    expected_object_proto, actual_object_proto,
   ) &&
   numeric_recursion_optional_values_match(
-    expected.string_proto,
-    actual.string_proto,
+    expected_string_proto, actual_string_proto,
   ) &&
   numeric_recursion_optional_values_match(
-    expected.number_proto,
-    actual.number_proto,
+    expected_number_proto, actual_number_proto,
   ) &&
   numeric_recursion_optional_values_match(
-    expected.boolean_proto,
-    actual.boolean_proto,
+    expected_boolean_proto, actual_boolean_proto,
   ) &&
   numeric_recursion_optional_values_match(
-    expected.symbol_proto,
-    actual.symbol_proto,
+    expected_symbol_proto, actual_symbol_proto,
   ) &&
   numeric_recursion_optional_values_match(
-    expected.array_proto,
-    actual.array_proto,
+    expected_array_proto, actual_array_proto,
   ) &&
-  numeric_recursion_optional_values_match(expected.map_proto, actual.map_proto) &&
-  numeric_recursion_optional_values_match(expected.set_proto, actual.set_proto) &&
+  numeric_recursion_optional_values_match(expected_map_proto, actual_map_proto) &&
+  numeric_recursion_optional_values_match(expected_set_proto, actual_set_proto) &&
   numeric_recursion_optional_values_match(
-    expected.promise_proto,
-    actual.promise_proto,
+    expected_promise_proto, actual_promise_proto,
   ) &&
   numeric_recursion_optional_values_match(
-    expected.constructor_prototype_registry,
-    actual.constructor_prototype_registry,
+    expected_constructor_prototype_registry, actual_constructor_prototype_registry,
   )
 }
 
@@ -273,10 +292,10 @@ fn numeric_recursion_realm_protos_match(
 fn numeric_recursion_trusted_declaration(
   interp : Interpreter,
   syntax : NumericRecursionFunctionPlan,
-  previous_object : ObjectData?,
-  expected_realm_protos : FunctionRealmProtos,
-  expected_source_identity : String?,
-  stmts : Array[@ast.Stmt],
+  previous_object~ : ObjectData?,
+  expected_realm_protos~ : FunctionRealmProtos,
+  expected_source_identity~ : String?,
+  stmts~ : Array[@ast.Stmt],
 ) -> TrustedNumericRecursionFunction raise InvalidActivationDispatchShell {
   guard syntax.declaration_index >= 0 &&
     syntax.declaration_index < stmts.length() else {
@@ -365,10 +384,22 @@ fn numeric_recursion_function_plans_match(
   expected : NumericRecursionFunctionPlan,
   actual : NumericRecursionFunctionPlan,
 ) -> Bool {
-  expected.name == actual.name &&
-  expected.parameter == actual.parameter &&
-  expected.recursive_callee == actual.recursive_callee &&
-  expected.declaration_index == actual.declaration_index
+  let {
+    name: expected_name,
+    parameter: expected_parameter,
+    recursive_callee: expected_recursive_callee,
+    declaration_index: expected_declaration_index,
+  } = expected
+  let {
+    name: actual_name,
+    parameter: actual_parameter,
+    recursive_callee: actual_recursive_callee,
+    declaration_index: actual_declaration_index,
+  } = actual
+  expected_name == actual_name &&
+  expected_parameter == actual_parameter &&
+  expected_recursive_callee == actual_recursive_callee &&
+  expected_declaration_index == actual_declaration_index
 }
 
 ///|
@@ -378,15 +409,27 @@ fn numeric_recursion_plans_match(
   expected : NumericRecursionPlan,
   actual : NumericRecursionPlan,
 ) -> Bool {
-  let peer_matches = match (expected.peer, actual.peer) {
+  let {
+    entry: expected_entry,
+    peer: expected_peer,
+    initial_argument: expected_initial_argument,
+    root_call_loc: _expected_root_call_loc,
+  } = expected
+  let {
+    entry: actual_entry,
+    peer: actual_peer,
+    initial_argument: actual_initial_argument,
+    root_call_loc: _actual_root_call_loc,
+  } = actual
+  let peer_matches = match (expected_peer, actual_peer) {
     (None, None) => true
     (Some(expected_peer), Some(actual_peer)) =>
       numeric_recursion_function_plans_match(expected_peer, actual_peer)
     _ => false
   }
-  numeric_recursion_function_plans_match(expected.entry, actual.entry) &&
+  numeric_recursion_function_plans_match(expected_entry, actual_entry) &&
   peer_matches &&
-  expected.initial_argument == actual.initial_argument
+  expected_initial_argument == actual_initial_argument
 }
 
 ///|
@@ -435,10 +478,10 @@ fn Interpreter::seal_numeric_recursion_registry(
   let entry = numeric_recursion_trusted_declaration(
     self,
     sealed_plan.entry,
-    preflight.previous_entry_object,
-    preflight.expected_realm_protos,
-    preflight.expected_source_identity,
-    stmts,
+    previous_object=preflight.previous_entry_object,
+    expected_realm_protos=preflight.expected_realm_protos,
+    expected_source_identity=preflight.expected_source_identity,
+    stmts~,
   )
   let peer = match sealed_plan.peer {
     Some(peer_syntax) =>
@@ -446,10 +489,10 @@ fn Interpreter::seal_numeric_recursion_registry(
         numeric_recursion_trusted_declaration(
           self,
           peer_syntax,
-          preflight.previous_peer_object,
-          preflight.expected_realm_protos,
-          preflight.expected_source_identity,
-          stmts,
+          previous_object=preflight.previous_peer_object,
+          expected_realm_protos=preflight.expected_realm_protos,
+          expected_source_identity=preflight.expected_source_identity,
+          stmts~,
         ),
       )
     None => None
@@ -459,6 +502,7 @@ fn Interpreter::seal_numeric_recursion_registry(
     entry~,
     peer~,
     throw_type_error~,
+    expected_global_object=preflight.expected_global_object,
   )
 }
 
@@ -499,10 +543,13 @@ fn numeric_recursion_revalidate_trusted_function(
   interp : Interpreter,
   trusted : TrustedNumericRecursionFunction,
   candidate : Value,
+  expected_global_object : ObjectData,
 ) -> Unit raise InvalidActivationDispatchShell {
-  guard interp.numeric_recursion_canonical_global_object() is Some(_) else {
+  guard interp.numeric_recursion_canonical_global_object()
+    is Some(actual_global_object) &&
+    physical_equal(actual_global_object, expected_global_object) else {
     invalid_activation_dispatch_shell(
-      "numeric recursion trusted global is no longer canonical",
+      "numeric recursion trusted global changed after sealing",
     )
   }
   guard candidate is Object(actual) &&
@@ -568,7 +615,12 @@ fn TrustedNumericRecursionRegistry::require_named(
         )
     }
   }
-  numeric_recursion_revalidate_trusted_function(interp, trusted, trusted.callee)
+  numeric_recursion_revalidate_trusted_function(
+    interp,
+    trusted,
+    trusted.callee,
+    self.expected_global_object,
+  )
   trusted.callee
 }
 
@@ -599,6 +651,11 @@ fn TrustedNumericRecursionRegistry::require_callee(
         )
     }
   }
-  numeric_recursion_revalidate_trusted_function(interp, trusted, callee)
+  numeric_recursion_revalidate_trusted_function(
+    interp,
+    trusted,
+    callee,
+    self.expected_global_object,
+  )
   trusted.syntax
 }
