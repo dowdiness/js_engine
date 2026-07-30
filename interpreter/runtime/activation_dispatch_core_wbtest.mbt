@@ -113,6 +113,17 @@ fn dispatch_test_proxy_resume(id : Int) -> DispatchProxyGetResume {
 }
 
 ///|
+fn dispatch_test_proxy_trap_lookup_resume(
+  id : Int,
+) -> DispatchProxyGetTrapLookupResume {
+  DispatchProxyGetTrapLookupResume(
+    proxy=String_("proxy:" + id.to_string()),
+    handler=String_("handler:" + id.to_string()),
+    post_trap=dispatch_test_proxy_resume(id),
+  )
+}
+
+///|
 fn dispatch_test_property_key(value : Value) -> String raise {
   match value {
     String_(key) => key
@@ -1519,6 +1530,248 @@ test "Proxy invariant precedes property restore and parent release" {
     DispatchFinish(completion) =>
       inspect(dispatch_completion_tag(completion), content="return:9")
     _ => fail("expected Proxy result completion")
+  }
+}
+
+///|
+test "Proxy handler lookup restores its nested property scope before trap resolution" {
+  let id = 1230
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let outer_cleanup = DispatchPropertyCleanup(id + 10)
+  let outer_work = dispatch_test_property_resume(id + 11)
+  let (running_outer, outer_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendProperty(
+          outer_cleanup,
+          outer_work,
+          DispatchCompleteReturn,
+        ),
+      ),
+    ),
+  )
+  let outer_ticket = match outer_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(_))) => ticket
+    _ => fail("expected outer Proxy property work")
+  }
+  let inner_cleanup = DispatchPropertyCleanup(id + 12)
+  let handler_work = dispatch_test_property_resume(id + 13)
+  let lookup = dispatch_test_proxy_trap_lookup_resume(id + 14)
+  let (running_handler_lookup, handler_decision) = reduce_activation_dispatch(
+    running_outer,
+    DispatchEffectCompleted(
+      outer_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendProperty(
+          inner_cleanup,
+          handler_work,
+          DispatchResolveProxyGetTrap(lookup),
+        ),
+      ),
+    ),
+  )
+  let handler_ticket = match handler_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(work))) => {
+      inspect(
+        dispatch_test_property_key(work.property_key),
+        content="key:" + (id + 13).to_string(),
+      )
+      ticket
+    }
+    _ => fail("expected handler get-trap lookup work")
+  }
+  let trap = String_("trap")
+  let (restoring_handler, handler_restore_decision) = reduce_activation_dispatch(
+    running_handler_lookup,
+    DispatchEffectCompleted(
+      handler_ticket,
+      DispatchWorkCompleted(DispatchNormal(trap)),
+    ),
+  )
+  let handler_restore_ticket = match handler_restore_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRestorePropertyScope(found, DispatchNormal(value))
+    ) => {
+      inspect(found.id, content=(id + 12).to_string())
+      inspect(dispatch_test_value_tag(value), content="trap")
+      ticket
+    }
+    _ => fail("expected handler property restoration before trap resolution")
+  }
+  let (resolving_trap, trap_resolution_decision) = reduce_activation_dispatch(
+    restoring_handler,
+    DispatchEffectCompleted(handler_restore_ticket, DispatchCleanupCompleted),
+  )
+  let trap_resolution_ticket = match trap_resolution_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRun(
+        DispatchResumeContinuation(DispatchResolveProxyGetTrap(found), value)
+      )
+    ) => {
+      inspect(
+        dispatch_test_value_tag(found.proxy),
+        content="proxy:" + (id + 14).to_string(),
+      )
+      inspect(
+        dispatch_test_value_tag(found.handler),
+        content="handler:" + (id + 14).to_string(),
+      )
+      inspect(
+        same_value(found.post_trap.target, lookup.post_trap.target),
+        content="true",
+      )
+      inspect(
+        dispatch_test_property_key(found.post_trap.property_key),
+        content="key:" + (id + 14).to_string(),
+      )
+      inspect(
+        same_value(found.post_trap.receiver, lookup.post_trap.receiver),
+        content="true",
+      )
+      inspect(dispatch_test_value_tag(value), content="trap")
+      ticket
+    }
+    _ => fail("expected trap resolution after handler property restoration")
+  }
+  let (restoring_outer, outer_restore_decision) = reduce_activation_dispatch(
+    resolving_trap,
+    DispatchEffectCompleted(
+      trap_resolution_ticket,
+      DispatchWorkCompleted(DispatchNormal(Number(9.0))),
+    ),
+  )
+  let outer_restore_ticket = match outer_restore_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRestorePropertyScope(found, DispatchNormal(value))
+    ) => {
+      inspect(found.id, content=(id + 10).to_string())
+      inspect(dispatch_test_value_tag(value), content="9")
+      ticket
+    }
+    _ => fail("expected outer property restoration after trap resolution")
+  }
+  let (releasing_root, root_release_decision) = reduce_activation_dispatch(
+    restoring_outer,
+    DispatchEffectCompleted(outer_restore_ticket, DispatchCleanupCompleted),
+  )
+  let root_release_ticket = match root_release_decision {
+    DispatchPerform(ticket, DispatchReleaseActivation(_, completion)) => {
+      inspect(dispatch_completion_tag(completion), content="return:9")
+      ticket
+    }
+    _ => fail("expected root release after both property scopes")
+  }
+  let (_, finish_decision) = reduce_activation_dispatch(
+    releasing_root,
+    DispatchEffectCompleted(root_release_ticket, DispatchCleanupCompleted),
+  )
+  match finish_decision {
+    DispatchFinish(completion) =>
+      inspect(dispatch_completion_tag(completion), content="return:9")
+    _ => fail("expected nested Proxy lookup completion")
+  }
+}
+
+///|
+test "abrupt Proxy handler lookup restores inner and outer property scopes" {
+  let id = 1240
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let outer_cleanup = DispatchPropertyCleanup(id + 10)
+  let (running_outer, outer_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendProperty(
+          outer_cleanup,
+          dispatch_test_property_resume(id + 11),
+          DispatchCompleteReturn,
+        ),
+      ),
+    ),
+  )
+  let outer_ticket = match outer_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(_))) => ticket
+    _ => fail("expected outer Proxy property work")
+  }
+  let inner_cleanup = DispatchPropertyCleanup(id + 12)
+  let (running_handler_lookup, handler_decision) = reduce_activation_dispatch(
+    running_outer,
+    DispatchEffectCompleted(
+      outer_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendProperty(
+          inner_cleanup,
+          dispatch_test_property_resume(id + 13),
+          DispatchResolveProxyGetTrap(
+            dispatch_test_proxy_trap_lookup_resume(id + 14),
+          ),
+        ),
+      ),
+    ),
+  )
+  let handler_ticket = match handler_decision {
+    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(_))) => ticket
+    _ => fail("expected handler get-trap lookup work")
+  }
+  let lookup_error : Error = JsException(String_("handler lookup failed"))
+  let (restoring_handler, handler_restore_decision) = reduce_activation_dispatch(
+    running_handler_lookup,
+    DispatchEffectCompleted(
+      handler_ticket,
+      DispatchWorkCompleted(DispatchThrow(lookup_error)),
+    ),
+  )
+  let handler_restore_ticket = match handler_restore_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRestorePropertyScope(found, DispatchThrow(completion_error))
+    ) => {
+      inspect(found.id, content=(id + 12).to_string())
+      inspect(physical_equal(completion_error, lookup_error), content="true")
+      ticket
+    }
+    _ => fail("expected inner property restoration first")
+  }
+  let (restoring_outer, outer_restore_decision) = reduce_activation_dispatch(
+    restoring_handler,
+    DispatchEffectCompleted(handler_restore_ticket, DispatchCleanupCompleted),
+  )
+  let outer_restore_ticket = match outer_restore_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRestorePropertyScope(found, DispatchThrow(completion_error))
+    ) => {
+      inspect(found.id, content=(id + 10).to_string())
+      inspect(physical_equal(completion_error, lookup_error), content="true")
+      ticket
+    }
+    _ => fail("expected outer property restoration without trap resolution")
+  }
+  let (releasing_root, root_release_decision) = reduce_activation_dispatch(
+    restoring_outer,
+    DispatchEffectCompleted(outer_restore_ticket, DispatchCleanupCompleted),
+  )
+  let root_release_ticket = match root_release_decision {
+    DispatchPerform(ticket, DispatchReleaseActivation(_, DispatchThrow(found))) => {
+      inspect(physical_equal(found, lookup_error), content="true")
+      ticket
+    }
+    _ => fail("expected root release after both property restorations")
+  }
+  let (_, finish_decision) = reduce_activation_dispatch(
+    releasing_root,
+    DispatchEffectCompleted(root_release_ticket, DispatchCleanupCompleted),
+  )
+  match finish_decision {
+    DispatchFinish(DispatchThrow(found)) =>
+      inspect(physical_equal(found, lookup_error), content="true")
+    _ => fail("expected abrupt nested Proxy lookup completion")
   }
 }
 
