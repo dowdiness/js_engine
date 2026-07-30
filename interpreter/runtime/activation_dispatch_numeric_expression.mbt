@@ -19,6 +19,20 @@ fn DispatchParameterBindingToken::DispatchParameterBindingToken(
 
 ///|
 #warnings("-unused_field")
+priv struct DispatchNumericCatchBindingToken {
+  id : Int
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericCatchBindingToken::DispatchNumericCatchBindingToken(
+  id~ : Int,
+) -> DispatchNumericCatchBindingToken {
+  { id, }
+}
+
+///|
+#warnings("-unused_field")
 priv struct DispatchCalleeCaptureToken {
   id : Int
 }
@@ -44,6 +58,7 @@ priv enum DispatchNumericBinaryOperator {
 priv enum DispatchNumericExpression {
   DispatchNumericNumber(Double)
   DispatchNumericParameter(DispatchParameterBindingToken)
+  DispatchNumericCatchBinding(DispatchNumericCatchBindingToken)
   DispatchNumericTrustedCallee(DispatchCalleeCaptureToken)
   DispatchNumericBinary(
     DispatchNumericBinaryOperator,
@@ -63,6 +78,7 @@ priv enum DispatchNumericExpression {
 priv enum DispatchNumericExpressionObservation {
   DispatchNumericObserveNumber(Double)
   DispatchNumericObserveParameter(DispatchParameterBindingToken)
+  DispatchNumericObserveCatchBinding(DispatchNumericCatchBindingToken)
   DispatchNumericObserveTrustedCallee(DispatchCalleeCaptureToken)
   DispatchNumericObserveBinary(DispatchNumericBinaryOperator, @token.Loc)
   DispatchNumericObserveCall(@token.Loc)
@@ -73,6 +89,7 @@ priv enum DispatchNumericExpressionObservation {
 priv enum DispatchNumericExpressionContinuation {
   DispatchAfterNumericExpressionObservation(DispatchNumericExpression)
   DispatchAfterNumericParameterRead(DispatchParameterBindingToken)
+  DispatchAfterNumericCatchBindingRead(DispatchNumericCatchBindingToken)
   DispatchAfterNumericBaseCondition(DispatchNumericCallStart)
   DispatchNumericBinaryLeft(
     DispatchNumericBinaryOperator,
@@ -151,6 +168,7 @@ fn snapshot_dispatch_numeric_expression(
   match expression {
     DispatchNumericNumber(value) => DispatchNumericNumber(value)
     DispatchNumericParameter(token) => DispatchNumericParameter(token)
+    DispatchNumericCatchBinding(token) => DispatchNumericCatchBinding(token)
     DispatchNumericTrustedCallee(token) => DispatchNumericTrustedCallee(token)
     DispatchNumericBinary(operator, left, right, loc) =>
       DispatchNumericBinary(
@@ -179,6 +197,8 @@ fn snapshot_dispatch_numeric_continuation(
       )
     DispatchAfterNumericParameterRead(token) =>
       DispatchAfterNumericParameterRead(token)
+    DispatchAfterNumericCatchBindingRead(token) =>
+      DispatchAfterNumericCatchBindingRead(token)
     DispatchAfterNumericBaseCondition(start) =>
       DispatchAfterNumericBaseCondition(
         DispatchNumericCallStart(
@@ -211,6 +231,8 @@ fn dispatch_numeric_expression_observation(
   match expression {
     DispatchNumericNumber(value) => DispatchNumericObserveNumber(value)
     DispatchNumericParameter(token) => DispatchNumericObserveParameter(token)
+    DispatchNumericCatchBinding(token) =>
+      DispatchNumericObserveCatchBinding(token)
     DispatchNumericTrustedCallee(token) =>
       DispatchNumericObserveTrustedCallee(token)
     DispatchNumericBinary(operator, _, _, loc) =>
@@ -288,6 +310,18 @@ fn resume_dispatch_numeric_expression(
             ),
             DispatchRun(DispatchReadNumericParameter(token)),
           )
+        DispatchNumericCatchBinding(token) =>
+          schedule_dispatch_effect(
+            push_dispatch_frame(
+              state,
+              DispatchContinuationFrame(
+                DispatchContinueNumericExpression(
+                  DispatchAfterNumericCatchBindingRead(token),
+                ),
+              ),
+            ),
+            DispatchRun(DispatchReadNumericCatchBinding(token)),
+          )
         // SingleArgumentCall is the only producer of this internal node. It
         // pushes the matching NumericCallCallee frame before capture starts,
         // so the sentinel completion deliberately resumes that paired frame.
@@ -330,6 +364,8 @@ fn resume_dispatch_numeric_expression(
       }
       route_dispatch_completion(state, DispatchNormal(value))
     }
+    DispatchAfterNumericCatchBindingRead(_) =>
+      route_dispatch_completion(state, DispatchNormal(value))
     DispatchAfterNumericBaseCondition(start) => {
       let expression = match value {
         Bool(true) => numeric_recursion_base_result_dispatch_expression()
