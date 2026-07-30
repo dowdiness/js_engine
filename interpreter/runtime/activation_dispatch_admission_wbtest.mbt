@@ -64,6 +64,27 @@ test "numeric recursion admission normalizes the exact mutual shape" {
 }
 
 ///|
+test "numeric recursion admission classifies closed protected root shapes" {
+  for
+    source in [
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}finally{0;}",
+      "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+      "function g(m){if(m===0)return 0;return 1+f(m-1);}" +
+      "try{throw f(256);}catch(e){e;}finally{0;}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{throw f(256);}catch{1;}finally{throw 7;}",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is Some(_) else {
+      fail("expected the closed protected root shape to be classified: " + source)
+    }
+  }
+}
+
+///|
 test "numeric recursion admission retains an array-free expression location recipe" {
   let stmts = numeric_recursion_test_program(
     "function f(n) {\n" +
