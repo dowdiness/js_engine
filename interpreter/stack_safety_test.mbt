@@ -38,6 +38,32 @@ test "execution stack safety: mutual recursion at depth 256" {
 }
 
 ///|
+test "execution stack safety: getter re-entry at depth 256" {
+  match
+    run(
+      "let n=256;" +
+      "let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+      "o.x;",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution dispatch preserves shallow getter lookalike behavior" {
+  match
+    run(
+      "let n=8;" +
+      "let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+      "o.x;",
+    ) {
+    Value::Number(8.0) => ()
+    other => fail("expected 8, got " + other.to_string())
+  }
+}
+
+///|
 test "execution stack safety: protected catch resumes a deep throw" {
   match
     run(

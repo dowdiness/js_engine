@@ -683,22 +683,35 @@ pub fn Interpreter::run(
           activation_dispatch_root_value(
             self.run_activation_dispatch_numeric_program(stmts, ctx, preflight),
           )
-        None =>
-          with_cleared_active_callee_realm(self.realm_state, fn() raise {
-            self.prepare_root_program_execution(stmts, self.global, strict)
-            let mut last : Value = Undefined
-            for stmt in stmts {
-              match self.exec_stmt(ctx, stmt, self.global) {
-                Normal(v) => last = v
-                ReturnSignal(_) =>
-                  raise @errors.SyntaxError(
-                    message="return statement outside of function",
-                  )
-                sig => raise_if_break_continue(sig)
-              }
-            }
-            last
-          })
+        None => {
+          let getter_preflight = self.preflight_dispatchable_getter_recursion_program(
+            stmts,
+          )
+          match getter_preflight {
+            Some(preflight) =>
+              activation_dispatch_root_value(
+                self.run_activation_dispatch_getter_program(
+                  stmts, ctx, preflight,
+                ),
+              )
+            None =>
+              with_cleared_active_callee_realm(self.realm_state, fn() raise {
+                self.prepare_root_program_execution(stmts, self.global, strict)
+                let mut last : Value = Undefined
+                for stmt in stmts {
+                  match self.exec_stmt(ctx, stmt, self.global) {
+                    Normal(v) => last = v
+                    ReturnSignal(_) =>
+                      raise @errors.SyntaxError(
+                        message="return statement outside of function",
+                      )
+                    sig => raise_if_break_continue(sig)
+                  }
+                }
+                last
+              })
+          }
+        }
       }
     }
     result
