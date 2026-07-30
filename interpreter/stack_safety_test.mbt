@@ -51,6 +51,48 @@ test "execution stack safety: getter re-entry at depth 256" {
 }
 
 ///|
+test "execution stack safety: prototype getter re-entry at depth 256" {
+  match
+    run(
+      "let n=256;" +
+      "let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+      "let o={__proto__:p};" +
+      "o.x;",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution dispatch preserves shallow prototype getter lookalike behavior" {
+  match
+    run(
+      "let n=8;" +
+      "let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+      "let o={__proto__:p};" +
+      "o.x;",
+    ) {
+    Value::Number(8.0) => ()
+    other => fail("expected 8, got " + other.to_string())
+  }
+}
+
+///|
+test "execution dispatch preserves shallow getter __proto__ shorthand fallback" {
+  match
+    run(
+      "let n=8;" +
+      "let __proto__={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+      "let o={__proto__};" +
+      "o.x;",
+    ) {
+    Value::Number(8.0) => ()
+    other => fail("expected 8, got " + other.to_string())
+  }
+}
+
+///|
 test "execution dispatch preserves shallow getter lookalike behavior" {
   match
     run(

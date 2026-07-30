@@ -1174,44 +1174,45 @@ fn PrimitiveProgramDispatchShell::execute_getter_root_statement(
       "getter root statement no longer matches exact admission",
     )
   }
-  match step.index {
-    0 => self.execute_statement_with_legacy_adapter(step)
-    1 => {
-      let result = self.execute_statement_with_legacy_adapter(step)
-      match result {
-        DispatchWorkCompleted(DispatchNormal(_)) => {
-          let registry = self.interp.seal_getter_recursion_registry(
-            preflight,
-            self.getter_root_stmts_or_fail(),
-          )
-          self.getter_registry = Some(registry)
-        }
-        _ => ()
-      }
-      result
-    }
-    2 => {
-      match self.observe_getter_execution_steps(3) {
-        Some(completion) => return DispatchWorkCompleted(completion)
-        None => ()
-      }
-      let registry = self.require_getter_registry()
-      let target = registry.require_target(self.interp)
-      self.start_property(
-        DispatchPropertyGetResume(
-          target~,
-          property_key=String_(preflight.plan.property_name),
-          receiver=target,
-          loc=preflight.plan.recipe.root_member_loc,
-        ),
-        DispatchDeliverCallResult,
-      )
-    }
-    _ =>
-      invalid_activation_dispatch_shell(
-        "getter root statement index is outside exact admission",
-      )
+  let seal_index = getter_recursion_seal_statement_index(preflight.plan)
+  let root_index = getter_recursion_root_statement_index(preflight.plan)
+  if step.index < seal_index {
+    return self.execute_statement_with_legacy_adapter(step)
   }
+  if step.index == seal_index {
+    let result = self.execute_statement_with_legacy_adapter(step)
+    match result {
+      DispatchWorkCompleted(DispatchNormal(_)) => {
+        let registry = self.interp.seal_getter_recursion_registry(
+          preflight,
+          self.getter_root_stmts_or_fail(),
+        )
+        self.getter_registry = Some(registry)
+      }
+      _ => ()
+    }
+    return result
+  }
+  if step.index == root_index {
+    match self.observe_getter_execution_steps(3) {
+      Some(completion) => return DispatchWorkCompleted(completion)
+      None => ()
+    }
+    let registry = self.require_getter_registry()
+    let target = registry.require_target(self.interp)
+    return self.start_property(
+      DispatchPropertyGetResume(
+        target~,
+        property_key=String_(preflight.plan.property_name),
+        receiver=target,
+        loc=preflight.plan.recipe.root_member_loc,
+      ),
+      DispatchDeliverCallResult,
+    )
+  }
+  invalid_activation_dispatch_shell(
+    "getter root statement index is outside exact admission",
+  )
 }
 
 ///|
