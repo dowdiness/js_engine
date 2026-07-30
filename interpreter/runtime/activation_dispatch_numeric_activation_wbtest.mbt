@@ -895,19 +895,29 @@ test "numeric catch entry converts typed errors and disables bindingless reads" 
       )
     _ => fail("expected a sealed protected numeric root")
   }
-  let _ = typed_shell.perform_effect(
-    DispatchRun(
-      DispatchEnterNumericCatch(
-        typed_catch,
-        @errors.TypeError(message="typed catch"),
+  match
+    typed_shell.perform_effect(
+      DispatchRun(
+        DispatchEnterNumericCatch(
+          typed_catch,
+          @errors.TypeError(message="typed catch"),
+        ),
       ),
-    ),
-  )
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected typed numeric catch entry")
+  }
   match
     typed_shell.perform_effect(
       DispatchRun(DispatchReadNumericCatchBinding(typed_catch.token)),
     ) {
-    DispatchWorkCompleted(DispatchNormal(Object(_))) => ()
+    DispatchWorkCompleted(DispatchNormal(Object(error))) => {
+      inspect(error.class_name, content="TypeError")
+      match error.bag.properties.get("message") {
+        Some(String_(message)) => inspect(message, content="typed catch")
+        _ => fail("typed JavaScript error must retain its message")
+      }
+    }
     _ => fail("typed JS errors must become JavaScript Error objects")
   }
   numeric_activation_test_release(
@@ -935,11 +945,15 @@ test "numeric catch entry converts typed errors and disables bindingless reads" 
       )
     _ => fail("expected a sealed bindingless protected root")
   }
-  let _ = bindingless_shell.perform_effect(
-    DispatchRun(
-      DispatchEnterNumericCatch(bindingless_catch, JsException(Number(9.0))),
-    ),
-  )
+  match
+    bindingless_shell.perform_effect(
+      DispatchRun(
+        DispatchEnterNumericCatch(bindingless_catch, JsException(Number(9.0))),
+      ),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected bindingless numeric catch entry")
+  }
   let bindingless_read = try {
     let _ = bindingless_shell.perform_effect(
       DispatchRun(DispatchReadNumericCatchBinding(bindingless_catch.token)),
