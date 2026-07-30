@@ -168,6 +168,27 @@ fn DispatchProxyGetResume::DispatchProxyGetResume(
 }
 
 ///|
+// `post_trap.target` and `handler` are captured before handler.[[Get]]. The
+// mutable Proxy slots must not be read again when this continuation resumes;
+// `proxy` is retained only for runtime provenance identity.
+#warnings("-unused_field")
+priv struct DispatchProxyGetTrapLookupResume {
+  proxy : Value
+  handler : Value
+  post_trap : DispatchProxyGetResume
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchProxyGetTrapLookupResume::DispatchProxyGetTrapLookupResume(
+  proxy~ : Value,
+  handler~ : Value,
+  post_trap~ : DispatchProxyGetResume,
+) -> DispatchProxyGetTrapLookupResume {
+  { proxy, handler, post_trap }
+}
+
+///|
 #warnings("-unused_field")
 priv struct DispatchParameterDefaultResume {
   params : Array[@ast.Param]
@@ -593,6 +614,7 @@ fn snapshot_dispatch_continuation(
     DispatchApplyBinaryRight(binary) => DispatchApplyBinaryRight(binary)
     DispatchDeliverAccessorResult(accessor) =>
       DispatchDeliverAccessorResult(accessor)
+    DispatchResolveProxyGetTrap(lookup) => DispatchResolveProxyGetTrap(lookup)
     DispatchCheckProxyGetResult(proxy) => DispatchCheckProxyGetResult(proxy)
     DispatchBindParameterDefault(progress) =>
       DispatchBindParameterDefault(
@@ -677,6 +699,7 @@ priv enum DispatchContinuation {
   DispatchDeliverCallResult
   DispatchApplyBinaryRight(DispatchBinaryResume)
   DispatchDeliverAccessorResult(DispatchPropertyGetResume)
+  DispatchResolveProxyGetTrap(DispatchProxyGetTrapLookupResume)
   DispatchCheckProxyGetResult(DispatchProxyGetResume)
   DispatchBindParameterDefault(DispatchParameterDefaultResume)
   DispatchContinueNumericExpression(DispatchNumericExpressionContinuation)
