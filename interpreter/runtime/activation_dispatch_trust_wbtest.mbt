@@ -120,6 +120,10 @@ test "numeric recursion runtime preflight admits sealed protected roots" {
       "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
       "try{f(256);}finally{0;}",
     ).stmts
+  let protected_function_stmts = @parser.parse(
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{0;}}f(256);",
+    ).stmts
 
   inspect(
     interp.preflight_dispatchable_numeric_recursion_program(direct) is Some(_),
@@ -130,6 +134,36 @@ test "numeric recursion runtime preflight admits sealed protected roots" {
     is Some(_),
     content="true",
   )
+  inspect(
+    interp.preflight_dispatchable_numeric_recursion_program(
+      protected_function_stmts,
+    )
+    is Some(_),
+    content="true",
+  )
+}
+
+///|
+test "numeric recursion trust seals protected function return semantics" {
+  let source = "function f(n){if(n===0)return 0;" +
+    "try{return 1+f(n-1);}finally{0;}}f(256);"
+  inspect(
+    numeric_recursion_protected_seal_result(source, source),
+    content="accepted",
+  )
+  for
+    drifted in [
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{1;}}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{throw 0;}}f(256);",
+    ] {
+    inspect(
+      numeric_recursion_protected_seal_result(source, drifted),
+      content="numeric recursion program no longer matches its preflight plan",
+    )
+  }
 }
 
 ///|
@@ -510,6 +544,48 @@ test "numeric recursion trust rejects post-seal FuncData array mutation" {
   inspect(
     body_result,
     content="numeric recursion candidate no longer has exact UserFunc provenance",
+  )
+}
+
+///|
+test "numeric recursion trust revalidates protected function body shape" {
+  let interp = Interpreter::new()
+  let (stmts, plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;" +
+    "try{return 1+f(n-1);}finally{0;}}f(256);",
+  )
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected protected callback-free preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
+  let callee = registry.require_named(interp, "f")
+  guard callee is Object({ callable: Some(UserFunc(data)), .. }) else {
+    fail("protected trusted lookup must return a UserFunc capability")
+  }
+  let direct_body = match
+    @parser.parse("function f(n){if(n===0)return 0;return 1+f(n-1);}").stmts[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body
+    _ => fail("expected the direct function fixture")
+  }
+  let original_protected_return = data.body[1]
+  data.body[1] = direct_body[1]
+  let result = try {
+    let _ = registry.require_callee(interp, callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  data.body[1] = original_protected_return
+  inspect(
+    result,
+    content="numeric recursion candidate no longer has exact UserFunc provenance",
+  )
+  let restored = registry.require_callee(interp, callee)
+  inspect(
+    restored.return_recipe is NumericRecursionProtectedReturn(_),
+    content="true",
   )
 }
 

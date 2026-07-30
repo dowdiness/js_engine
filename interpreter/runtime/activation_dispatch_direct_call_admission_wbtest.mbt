@@ -168,3 +168,25 @@ test "direct numeric call admission rejects near-match function bodies" {
     }
   }
 }
+
+///|
+test "direct numeric call admission keeps protected return-finalizer bodies outside its slice" {
+  let loc = @token.Loc::default()
+  for
+    source in [
+      "function f(n){if(n===0)return 0;" + "try{return 1+f(n-1);}finally{0;}}",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{throw 7;}}",
+    ] {
+    let callee = direct_numeric_recursion_test_callee(source, "f")
+    guard classify_direct_numeric_recursion_call(
+        callee,
+        Undefined,
+        [Number(256.0)],
+        loc,
+      )
+      is None else {
+      fail("protected function body entered direct public-call admission")
+    }
+  }
+}
