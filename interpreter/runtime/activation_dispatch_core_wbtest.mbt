@@ -1621,8 +1621,16 @@ test "Proxy handler lookup restores its nested property scope before trap resolu
         content="handler:" + (id + 14).to_string(),
       )
       inspect(
+        same_value(found.post_trap.target, lookup.post_trap.target),
+        content="true",
+      )
+      inspect(
         dispatch_test_property_key(found.post_trap.property_key),
         content="key:" + (id + 14).to_string(),
+      )
+      inspect(
+        same_value(found.post_trap.receiver, lookup.post_trap.receiver),
+        content="true",
       )
       inspect(dispatch_test_value_tag(value), content="trap")
       ticket
