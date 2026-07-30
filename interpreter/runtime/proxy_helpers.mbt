@@ -325,6 +325,43 @@ fn target_get_own_property_pair_for_invariant(
 }
 
 ///|
+/// Apply ES §10.5.8 steps 10-11 to a completed Proxy `get` trap. Both the
+/// legacy call path and admitted activation dispatch use this single boundary
+/// so the post-trap descriptor rules remain identical.
+fn validate_proxy_get_trap_result(
+  interp : Interpreter,
+  target : Value,
+  property_key : Value,
+  result : Value,
+) -> Unit raise Error {
+  match
+    target_get_own_property_pair_for_invariant(
+      Some(interp),
+      target,
+      property_key,
+    ) {
+    Some((desc, target_value)) =>
+      if !desc.configurable {
+        if !desc.is_accessor &&
+          !desc.writable &&
+          !same_value(result, target_value) {
+          raise @errors.TypeError(
+            message="'get' on proxy: trap did not return the actual value of a read-only non-configurable target property",
+          )
+        }
+        if desc.is_accessor &&
+          desc.getter is None &&
+          !same_value(result, Undefined) {
+          raise @errors.TypeError(
+            message="'get' on proxy: trap returned a value for a non-configurable target accessor without a getter",
+          )
+        }
+      }
+    None => ()
+  }
+}
+
+///|
 /// Implement the Proxy [[PreventExtensions]] internal method per ES §10.5.4.
 pub fn proxy_prevent_extensions(
   interp : Interpreter,
@@ -585,34 +622,7 @@ fn proxy_get_key(
         [target, prop_key, receiver],
         loc,
       )
-      // ES §10.5.8 step 10-11: Invariant checks
-      match
-        target_get_own_property_pair_for_invariant(
-          Some(interp),
-          target,
-          prop_key,
-        ) {
-        Some((desc, target_value)) =>
-          if !desc.configurable {
-            // Non-configurable data property: trap result must match target value
-            if !desc.is_accessor && !desc.writable {
-              if !same_value(result, target_value) {
-                raise @errors.TypeError(
-                  message="'get' on proxy: trap did not return the actual value of a read-only non-configurable target property",
-                )
-              }
-            }
-            // Non-configurable accessor with undefined getter: must return undefined
-            if desc.is_accessor && desc.getter is None {
-              if !same_value(result, Undefined) {
-                raise @errors.TypeError(
-                  message="'get' on proxy: trap returned a value for a non-configurable target accessor without a getter",
-                )
-              }
-            }
-          }
-        None => ()
-      }
+      validate_proxy_get_trap_result(interp, target, prop_key, result)
       result
     }
   }

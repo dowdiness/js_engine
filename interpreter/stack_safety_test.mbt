@@ -65,6 +65,22 @@ test "execution stack safety: prototype getter re-entry at depth 256" {
 }
 
 ///|
+test "execution stack safety: Proxy get re-entry at depth 256" {
+  match
+    run(
+      "let n=256;" +
+      "let p;" +
+      "p=new Proxy({},{get(t,k,r){" +
+      "if(n===0)return 0;n=n-1;return 1+p.x;" +
+      "}});" +
+      "p.x;",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
 test "execution dispatch preserves shallow prototype getter lookalike behavior" {
   match
     run(
@@ -99,6 +115,22 @@ test "execution dispatch preserves shallow getter lookalike behavior" {
       "let n=8;" +
       "let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
       "o.x;",
+    ) {
+    Value::Number(8.0) => ()
+    other => fail("expected 8, got " + other.to_string())
+  }
+}
+
+///|
+test "execution dispatch preserves shallow Proxy get lookalike behavior" {
+  match
+    run(
+      "let n=8;" +
+      "let p;" +
+      "p=new Proxy({},{get(t,k,r){" +
+      "if(n===0)return 0;n=n-1;return 1+p.x;" +
+      "}});" +
+      "p.x;",
     ) {
     Value::Number(8.0) => ()
     other => fail("expected 8, got " + other.to_string())

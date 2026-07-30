@@ -29,7 +29,7 @@ test "Proxy get recursion admission recognizes only the exact trap shape" {
   inspect(plan.key_parameter, content="k")
   inspect(plan.receiver_parameter, content="r")
   inspect(plan.initial_count, content="256")
-  inspect(proxy_get_recursion_plan_is_dispatchable(plan), content="false")
+  inspect(proxy_get_recursion_plan_is_dispatchable(plan), content="true")
   inspect(proxy_get_recursion_seal_statement_index(plan), content="2")
   inspect(proxy_get_recursion_root_statement_index(plan), content="3")
   for index, stmt in stmts {
