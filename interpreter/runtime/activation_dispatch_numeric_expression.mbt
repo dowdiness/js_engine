@@ -205,6 +205,7 @@ fn snapshot_dispatch_numeric_continuation(
           parameter=start.parameter,
           recursive_callee=start.recursive_callee,
           recipe=start.recipe,
+          return_recipe=start.return_recipe,
         ),
       )
     DispatchNumericBinaryLeft(operator, right, loc) =>
@@ -407,26 +408,44 @@ fn resume_dispatch_numeric_expression_effect(
       invalid_dispatch_transition(
         "numeric catch completion must remain in the routing loop",
       )
-    DispatchAfterNumericBaseCondition(start) => {
-      let expression = match value {
-        Bool(true) => numeric_recursion_base_result_dispatch_expression()
-        Bool(false) =>
-          numeric_recursion_recursive_result_dispatch_expression(
+    DispatchAfterNumericBaseCondition(start) =>
+      match value {
+        Bool(true) =>
+          begin_dispatch_numeric_statement_observation(
+            state,
+            DispatchNumericObserveReturnStatement,
+            DispatchAfterNumericReturnStatement(
+              numeric_recursion_base_result_dispatch_expression(),
+            ),
+          )
+        Bool(false) => {
+          let expression = numeric_recursion_recursive_result_dispatch_expression(
             start.recipe,
             start.parameter,
             start.recursive_callee,
           )
+          match start.return_recipe {
+            NumericRecursionDirectReturn =>
+              begin_dispatch_numeric_statement_observation(
+                state,
+                DispatchNumericObserveReturnStatement,
+                DispatchAfterNumericReturnStatement(expression),
+              )
+            NumericRecursionProtectedReturn(finalizer) =>
+              begin_dispatch_numeric_statement_observation(
+                state,
+                DispatchNumericObserveFunctionTryStatement,
+                DispatchAfterNumericFunctionTryStatement(
+                  DispatchNumericProtectedReturnStart(expression~, finalizer~),
+                ),
+              )
+          }
+        }
         _ =>
           invalid_dispatch_transition(
             "numeric base condition completed with a non-boolean",
           )
       }
-      begin_dispatch_numeric_statement_observation(
-        state,
-        DispatchNumericObserveReturnStatement,
-        DispatchAfterNumericReturnStatement(expression),
-      )
-    }
     DispatchNumericBinaryLeft(operator, right, loc) => {
       guard value is Number(_) else {
         invalid_dispatch_transition(

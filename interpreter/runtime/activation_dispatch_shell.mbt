@@ -1307,6 +1307,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
             parameter=DispatchParameterBindingToken(id~),
             recursive_callee=DispatchCalleeCaptureToken(id~),
             recipe=syntax.expression_recipe,
+            return_recipe=syntax.return_recipe,
           ),
         ),
       )

@@ -234,6 +234,7 @@ priv struct DispatchNumericCallStart {
   parameter : DispatchParameterBindingToken
   recursive_callee : DispatchCalleeCaptureToken
   recipe : NumericRecursionExpressionRecipe
+  return_recipe : NumericRecursionFunctionReturnRecipe
 }
 
 ///|
@@ -242,8 +243,9 @@ fn DispatchNumericCallStart::DispatchNumericCallStart(
   parameter~ : DispatchParameterBindingToken,
   recursive_callee~ : DispatchCalleeCaptureToken,
   recipe~ : NumericRecursionExpressionRecipe,
+  return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> DispatchNumericCallStart {
-  { parameter, recursive_callee, recipe }
+  { parameter, recursive_callee, recipe, return_recipe }
 }
 
 ///|
@@ -258,6 +260,7 @@ priv enum DispatchNumericProtectedRegion {
 #warnings("-unused_constructor")
 priv enum DispatchNumericClosedStatementKind {
   DispatchNumericExpressionStatement
+  DispatchNumericReturnStatement
   DispatchNumericThrowStatement
 }
 
@@ -293,6 +296,22 @@ fn DispatchNumericProtectedStart::DispatchNumericProtectedStart(
   catch_binding~ : DispatchNumericCatchBindingToken,
 ) -> DispatchNumericProtectedStart {
   { expression, recipe, catch_binding }
+}
+
+///|
+#warnings("-unused_field")
+priv struct DispatchNumericProtectedReturnStart {
+  expression : DispatchNumericExpression
+  finalizer : NumericRecursionClosedBodyRecipe
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericProtectedReturnStart::DispatchNumericProtectedReturnStart(
+  expression~ : DispatchNumericExpression,
+  finalizer~ : NumericRecursionClosedBodyRecipe,
+) -> DispatchNumericProtectedReturnStart {
+  { expression, finalizer }
 }
 
 ///|
@@ -357,6 +376,7 @@ priv enum DispatchNumericStatementObservation {
   DispatchNumericObserveRootDeclaration(Int)
   DispatchNumericObserveRootExpressionStatement
   DispatchNumericObserveRootTryStatement
+  DispatchNumericObserveFunctionTryStatement
   DispatchNumericObserveProtectedStatement(
     DispatchNumericProtectedRegion,
     DispatchNumericClosedStatementKind
@@ -393,6 +413,7 @@ priv enum DispatchNumericStatementContinuation {
   DispatchAfterNumericRootDeclaration(DispatchNumericRootDeclarationResume)
   DispatchAfterNumericRootExpressionStatement(DispatchNumericExpression)
   DispatchAfterNumericRootTryStatement(DispatchNumericProtectedStart)
+  DispatchAfterNumericFunctionTryStatement(DispatchNumericProtectedReturnStart)
   DispatchAfterNumericProtectedStatement(DispatchNumericProtectedStatementStart)
   DispatchAfterNumericCatchEntry(DispatchNumericCatchResume)
   DispatchAfterNumericIfStatement(DispatchNumericCallStart)
@@ -547,6 +568,7 @@ fn snapshot_dispatch_numeric_call_start(
     parameter=start.parameter,
     recursive_callee=start.recursive_callee,
     recipe=start.recipe,
+    return_recipe=start.return_recipe,
   )
 }
 
@@ -575,6 +597,13 @@ fn snapshot_dispatch_numeric_statement_continuation(
           expression=snapshot_dispatch_numeric_expression(start.expression),
           recipe=start.recipe,
           catch_binding=start.catch_binding,
+        ),
+      )
+    DispatchAfterNumericFunctionTryStatement(start) =>
+      DispatchAfterNumericFunctionTryStatement(
+        DispatchNumericProtectedReturnStart(
+          expression=snapshot_dispatch_numeric_expression(start.expression),
+          finalizer=start.finalizer,
         ),
       )
     DispatchAfterNumericProtectedStatement(start) =>
@@ -1354,6 +1383,15 @@ fn resume_dispatch_numeric_statement(
       begin_dispatch_numeric_expression(state, expression)
     DispatchAfterNumericRootTryStatement(start) =>
       begin_dispatch_numeric_protected_root(state, start)
+    DispatchAfterNumericFunctionTryStatement(start) =>
+      begin_dispatch_numeric_statement_observation(
+        push_dispatch_frame(state, DispatchNumericFinallyFrame(start.finalizer)),
+        DispatchNumericObserveProtectedStatement(
+          DispatchNumericTryBody,
+          DispatchNumericReturnStatement,
+        ),
+        DispatchAfterNumericReturnStatement(start.expression),
+      )
     DispatchAfterNumericProtectedStatement(start) => {
       let waiting = match start.completion {
         NumericRecursionRootCallValue => state
