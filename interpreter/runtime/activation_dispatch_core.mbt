@@ -833,6 +833,20 @@ priv struct ActivationDispatchState {
 }
 
 ///|
+priv enum DispatchCompletionResume {
+  DispatchResumeCompletion(DispatchCompletion)
+  DispatchResumeDecision(ActivationDispatchState, ActivationDispatchDecision)
+}
+
+///|
+fn dispatch_resume_decision(
+  result : (ActivationDispatchState, ActivationDispatchDecision),
+) -> DispatchCompletionResume {
+  let (state, decision) = result
+  DispatchResumeDecision(state, decision)
+}
+
+///|
 #warnings("-unused_value")
 fn ActivationDispatchState::ActivationDispatchState() -> ActivationDispatchState {
   {
@@ -1377,6 +1391,11 @@ fn route_dispatch_completion(
   }
   let mut frames = state.frames
   let mut routed = completion
+  // The routing loop decreases a weighted explicit-work measure. Ordinary
+  // frames weigh one; finally frames weigh two because entering an empty
+  // finalizer replaces that frame with one saved-completion frame. Every
+  // internal iteration strictly decreases that weight. Branches that add
+  // further semantic work return a decision to the outer dispatcher.
   while true {
     match frames {
       DispatchFrameStackEmpty => {
@@ -1400,11 +1419,30 @@ fn route_dispatch_completion(
               (DispatchDeliverCallResult, DispatchNormal(_)) => ()
               (DispatchContinueNumericExpression(numeric), DispatchNormal(value)
               ) =>
-                return resume_dispatch_numeric_expression(
-                  popped, numeric, value,
-                )
+                match
+                  resume_dispatch_numeric_expression_outcome(
+                    popped, numeric, value,
+                  ) {
+                  DispatchResumeCompletion(next) => routed = next
+                  DispatchResumeDecision(next_state, decision) =>
+                    return (next_state, decision)
+                }
               (DispatchContinueNumericStatement(numeric), DispatchNormal(value)) =>
-                return resume_dispatch_numeric_statement(popped, numeric, value)
+                match numeric {
+                  DispatchAfterNumericCatchEntry(catch_state) =>
+                    match (value, catch_state.body) {
+                      (Undefined, NumericRecursionClosedBodyEmpty) =>
+                        routed = DispatchNormal(Undefined)
+                      _ =>
+                        return resume_dispatch_numeric_statement(
+                          popped, numeric, value,
+                        )
+                    }
+                  _ =>
+                    return resume_dispatch_numeric_statement(
+                      popped, numeric, value,
+                    )
+                }
               (consumer, DispatchNormal(value)) =>
                 return schedule_dispatch_effect(
                   popped,
@@ -1420,7 +1458,11 @@ fn route_dispatch_completion(
                 } else {
                   statement_resume.cursor
                 }
-                return begin_dispatch_statements(popped, cursor)
+                if cursor.index == cursor.stmts.length() {
+                  routed = DispatchNormal(cursor.last_value)
+                } else {
+                  return begin_dispatch_statements(popped, cursor)
+                }
               }
               DispatchBreak(value, label) =>
                 routed = DispatchBreak(
@@ -1528,19 +1570,33 @@ fn route_dispatch_completion(
               popped,
               DispatchSavedCompletionFrame(routed),
             )
-            return begin_dispatch_statements(waiting_finalizer, finalizer_work)
+            if finalizer_work.index == finalizer_work.stmts.length() {
+              frames = waiting_finalizer.frames
+              routed = DispatchNormal(finalizer_work.last_value)
+            } else {
+              return begin_dispatch_statements(
+                waiting_finalizer, finalizer_work,
+              )
+            }
           }
           DispatchNumericFinallyFrame(finalizer_body) => {
             let waiting_finalizer = push_dispatch_frame(
               popped,
               DispatchSavedCompletionFrame(routed),
             )
-            return begin_dispatch_numeric_closed_body(
-              waiting_finalizer,
-              DispatchNumericFinalizerBody,
-              finalizer_body,
-              None,
-            )
+            match finalizer_body {
+              NumericRecursionClosedBodyEmpty => {
+                frames = waiting_finalizer.frames
+                routed = DispatchNormal(Undefined)
+              }
+              _ =>
+                return begin_dispatch_numeric_closed_body(
+                  waiting_finalizer,
+                  DispatchNumericFinalizerBody,
+                  finalizer_body,
+                  None,
+                )
+            }
           }
           DispatchSavedCompletionFrame(saved) =>
             match routed {

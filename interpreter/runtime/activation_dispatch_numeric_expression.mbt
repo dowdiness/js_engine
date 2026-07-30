@@ -280,7 +280,42 @@ fn begin_dispatch_numeric_expression(
 }
 
 ///|
-fn resume_dispatch_numeric_expression(
+fn resume_dispatch_numeric_expression_outcome(
+  state : ActivationDispatchState,
+  continuation : DispatchNumericExpressionContinuation,
+  value : Value,
+) -> DispatchCompletionResume raise InvalidDispatchTransition {
+  guard state.phase is DispatchReady else {
+    invalid_dispatch_transition("numeric expression resume requires Ready")
+  }
+  match continuation {
+    DispatchAfterNumericExpressionObservation(DispatchNumericNumber(number)) => {
+      guard value is Undefined else {
+        invalid_dispatch_transition(
+          "numeric expression observation returned a non-sentinel value",
+        )
+      }
+      DispatchResumeCompletion(DispatchNormal(Number(number)))
+    }
+    DispatchAfterNumericParameterRead(_) => {
+      guard value is Number(_) else {
+        invalid_dispatch_transition(
+          "numeric parameter capability returned a non-number",
+        )
+      }
+      DispatchResumeCompletion(DispatchNormal(value))
+    }
+    DispatchAfterNumericCatchBindingRead(_) =>
+      DispatchResumeCompletion(DispatchNormal(value))
+    _ =>
+      dispatch_resume_decision(
+        resume_dispatch_numeric_expression_effect(state, continuation, value),
+      )
+  }
+}
+
+///|
+fn resume_dispatch_numeric_expression_effect(
   state : ActivationDispatchState,
   continuation : DispatchNumericExpressionContinuation,
   value : Value,
@@ -296,8 +331,10 @@ fn resume_dispatch_numeric_expression(
         )
       }
       match expression {
-        DispatchNumericNumber(number) =>
-          route_dispatch_completion(state, DispatchNormal(Number(number)))
+        DispatchNumericNumber(_) =>
+          invalid_dispatch_transition(
+            "numeric literal completion must remain in the routing loop",
+          )
         DispatchNumericParameter(token) =>
           schedule_dispatch_effect(
             push_dispatch_frame(
@@ -362,10 +399,14 @@ fn resume_dispatch_numeric_expression(
           "numeric parameter capability returned a non-number",
         )
       }
-      route_dispatch_completion(state, DispatchNormal(value))
+      invalid_dispatch_transition(
+        "numeric parameter completion must remain in the routing loop",
+      )
     }
     DispatchAfterNumericCatchBindingRead(_) =>
-      route_dispatch_completion(state, DispatchNormal(value))
+      invalid_dispatch_transition(
+        "numeric catch completion must remain in the routing loop",
+      )
     DispatchAfterNumericBaseCondition(start) => {
       let expression = match value {
         Bool(true) => numeric_recursion_base_result_dispatch_expression()
