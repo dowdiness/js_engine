@@ -10,6 +10,48 @@ fn numeric_recursion_trust_test_plan(
 }
 
 ///|
+fn numeric_recursion_protected_seal_result(
+  preflight_source : String,
+  sealed_source : String,
+) -> String raise {
+  let interp = Interpreter::new()
+  let (_, preflight_plan) = numeric_recursion_trust_test_plan(preflight_source)
+  let preflight = match
+    interp.preflight_numeric_recursion_program(preflight_plan) {
+    Some(found) => found
+    None => fail("expected protected callback-free preflight")
+  }
+  let (sealed_stmts, _) = numeric_recursion_trust_test_plan(sealed_source)
+  interp.prepare_root_program_execution(sealed_stmts, interp.global, false)
+  try {
+    let _ = interp.seal_numeric_recursion_registry(preflight, sealed_stmts)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+}
+
+///|
+test "numeric recursion trust compares protected numeric recipes by SameValue" {
+  inspect(
+    numeric_recursion_closed_body_recipes_match(
+      NumericRecursionClosedNumberValue(0.0),
+      NumericRecursionClosedNumberValue(-0.0),
+    ),
+    content="false",
+  )
+  let expected_nan = 0.0 / 0.0
+  let actual_nan = 0.0 / 0.0
+  inspect(
+    numeric_recursion_closed_body_recipes_match(
+      NumericRecursionClosedNumberThrow(expected_nan),
+      NumericRecursionClosedNumberThrow(actual_nan),
+    ),
+    content="true",
+  )
+}
+
+///|
 test "numeric recursion trust preflight accepts the canonical global without effects" {
   let interp = Interpreter::new()
   let (_, plan) = numeric_recursion_trust_test_plan(
@@ -18,6 +60,44 @@ test "numeric recursion trust preflight accepts the canonical global without eff
   match interp.preflight_numeric_recursion_program(plan) {
     Some(preflight) => inspect(preflight.plan.entry.name, content="f")
     None => fail("the canonical interpreter global must be eligible")
+  }
+}
+
+///|
+test "numeric recursion runtime preflight gates protected roots at its routing seam" {
+  let interp = Interpreter::new()
+  let direct = @parser.parse(
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+    ).stmts
+  let protected_stmts = @parser.parse(
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}finally{0;}",
+    ).stmts
+
+  inspect(
+    interp.preflight_dispatchable_numeric_recursion_program(direct) is Some(_),
+    content="true",
+  )
+  inspect(
+    interp.preflight_dispatchable_numeric_recursion_program(protected_stmts)
+    is None,
+    content="true",
+  )
+}
+
+///|
+test "numeric recursion trust seals every closed handler recipe" {
+  let declaration = "function f(n){if(n===0)return 0;return 1+f(n-1);}"
+  for
+    source in [
+      declaration + "try{throw f(256);}catch(e){throw e;}",
+      declaration + "try{throw f(256);}catch{}",
+      declaration + "try{f(256);}finally{}",
+    ] {
+    inspect(
+      numeric_recursion_protected_seal_result(source, source),
+      content="accepted",
+    )
   }
 }
 
@@ -189,6 +269,52 @@ test "numeric recursion trust ignores preflight locations and retains sealed loc
     ],
     content=["3:5", "5:5", "6:7", "8:9", "11:2"],
   )
+}
+
+///|
+test "numeric recursion trust seals protected control and rejects semantic drift" {
+  let source = "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch(e){e;}finally{0;}"
+  let interp = Interpreter::new()
+  let (stmts, plan) = numeric_recursion_trust_test_plan(source)
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected protected callback-free preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
+  match registry.plan.root_control {
+    NumericRecursionProtectedRoot(
+      {
+        try_completion: NumericRecursionRootCallThrow,
+        catch_recipe: NumericRecursionCatch(
+          Some("e"),
+          NumericRecursionClosedBindingValue
+        ),
+        finalizer_recipe: NumericRecursionFinalizer(
+          NumericRecursionClosedNumberValue(value)
+        ),
+      }
+    ) => inspect(value, content="0")
+    _ => fail("sealed registry lost protected control semantics")
+  }
+
+  let declaration = "function f(n){if(n===0)return 0;return 1+f(n-1);}"
+  let semantic_drifts = [
+    declaration + "try{f(256);}catch(e){e;}finally{0;}",
+    declaration + "try{throw f(256);}catch(x){x;}finally{0;}",
+    declaration + "try{throw f(256);}catch(e){throw e;}finally{0;}",
+    declaration + "try{throw f(256);}finally{0;}",
+    declaration + "try{throw f(256);}catch(e){e;}",
+    declaration + "try{throw f(256);}catch(e){e;}finally{throw 0;}",
+    declaration + "try{throw f(256);}catch(e){e;}finally{1;}",
+  ]
+  for drifted_source in semantic_drifts {
+    inspect(
+      numeric_recursion_protected_seal_result(source, drifted_source),
+      content="numeric recursion program no longer matches its preflight plan",
+    )
+  }
 }
 
 ///|

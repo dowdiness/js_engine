@@ -79,7 +79,153 @@ test "numeric recursion admission classifies closed protected root shapes" {
         numeric_recursion_test_program(source),
       )
       is Some(_) else {
-      fail("expected the closed protected root shape to be classified: " + source)
+      fail(
+        "expected the closed protected root shape to be classified: " + source,
+      )
+    }
+  }
+}
+
+///|
+test "numeric recursion admission classifies every closed handler recipe" {
+  for
+    source in [
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{throw f(256);}catch(e){throw e;}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{throw f(256);}catch{}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}finally{}",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is Some(_) else {
+      fail("expected the closed handler recipe to be classified: " + source)
+    }
+  }
+}
+
+///|
+test "numeric recursion admission retains normalized protected control recipes" {
+  let self_plan = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+        "try{f(256);}finally{0;}",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the protected self plan")
+  }
+  match self_plan.root_control {
+    NumericRecursionProtectedRoot(
+      {
+        try_completion: NumericRecursionRootCallValue,
+        catch_recipe: NumericRecursionNoCatch,
+        finalizer_recipe: NumericRecursionFinalizer(
+          NumericRecursionClosedNumberValue(value)
+        ),
+      }
+    ) => inspect(value, content="0")
+    _ => fail("unexpected protected self root recipe")
+  }
+
+  let mutual_plan = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+        "function g(m){if(m===0)return 0;return 1+f(m-1);}" +
+        "try{throw f(256);}catch(e){e;}finally{0;}",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the protected mutual plan")
+  }
+  match mutual_plan.root_control {
+    NumericRecursionProtectedRoot(
+      {
+        try_completion: NumericRecursionRootCallThrow,
+        catch_recipe: NumericRecursionCatch(
+          Some("e"),
+          NumericRecursionClosedBindingValue
+        ),
+        finalizer_recipe: NumericRecursionFinalizer(
+          NumericRecursionClosedNumberValue(value)
+        ),
+      }
+    ) => inspect(value, content="0")
+    _ => fail("unexpected protected mutual root recipe")
+  }
+
+  let bindingless_plan = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+        "try{throw f(256);}catch{1;}finally{throw 7;}",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the protected bindingless-catch plan")
+  }
+  match bindingless_plan.root_control {
+    NumericRecursionProtectedRoot(
+      {
+        try_completion: NumericRecursionRootCallThrow,
+        catch_recipe: NumericRecursionCatch(
+          None,
+          NumericRecursionClosedNumberValue(catch_value)
+        ),
+        finalizer_recipe: NumericRecursionFinalizer(
+          NumericRecursionClosedNumberThrow(finalizer_value)
+        ),
+      }
+    ) => {
+      inspect(catch_value, content="1")
+      inspect(finalizer_value, content="7")
+    }
+    _ => fail("unexpected protected bindingless-catch recipe")
+  }
+
+  inspect(numeric_recursion_plan_is_dispatchable(self_plan), content="false")
+  let direct_plan = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the direct plan")
+  }
+  inspect(numeric_recursion_plan_is_dispatchable(direct_plan), content="true")
+}
+
+///|
+test "numeric recursion admission rejects open protected root effects" {
+  for
+    source in [
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);0;}finally{0;}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}catch({x}){x;}finally{0;}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{throw f(256);}catch(e){f(1);}finally{0;}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{throw f(256);}catch(eval){eval;}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}finally{f(1);}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}finally{010;}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}finally{({valueOf(){return 0;}});}",
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{try{f(256);}finally{0;}}finally{0;}",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is None else {
+      fail("unexpectedly admitted an open protected root effect: " + source)
     }
   }
 }

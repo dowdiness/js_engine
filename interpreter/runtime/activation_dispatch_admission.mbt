@@ -53,12 +53,68 @@ fn NumericRecursionFunctionPlan::NumericRecursionFunctionPlan(
 }
 
 ///|
+#warnings("-unused_constructor")
+priv enum NumericRecursionRootCallCompletion {
+  NumericRecursionRootCallValue
+  NumericRecursionRootCallThrow
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum NumericRecursionClosedBodyRecipe {
+  NumericRecursionClosedBodyEmpty
+  NumericRecursionClosedNumberValue(Double)
+  NumericRecursionClosedNumberThrow(Double)
+  NumericRecursionClosedBindingValue
+  NumericRecursionClosedBindingThrow
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum NumericRecursionCatchRecipe {
+  NumericRecursionNoCatch
+  NumericRecursionCatch(String?, NumericRecursionClosedBodyRecipe)
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum NumericRecursionFinalizerRecipe {
+  NumericRecursionNoFinalizer
+  NumericRecursionFinalizer(NumericRecursionClosedBodyRecipe)
+}
+
+///|
+#warnings("-unused_field")
+priv struct NumericRecursionProtectedRootRecipe {
+  try_completion : NumericRecursionRootCallCompletion
+  catch_recipe : NumericRecursionCatchRecipe
+  finalizer_recipe : NumericRecursionFinalizerRecipe
+}
+
+///|
+fn NumericRecursionProtectedRootRecipe::NumericRecursionProtectedRootRecipe(
+  try_completion~ : NumericRecursionRootCallCompletion,
+  catch_recipe~ : NumericRecursionCatchRecipe,
+  finalizer_recipe~ : NumericRecursionFinalizerRecipe,
+) -> NumericRecursionProtectedRootRecipe {
+  { try_completion, catch_recipe, finalizer_recipe }
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum NumericRecursionRootControlRecipe {
+  NumericRecursionDirectRoot
+  NumericRecursionProtectedRoot(NumericRecursionProtectedRootRecipe)
+}
+
+///|
 #warnings("-unused_field")
 priv struct NumericRecursionPlan {
   entry : NumericRecursionFunctionPlan
   peer : NumericRecursionFunctionPlan?
   initial_argument : Double
   root_call_loc : @token.Loc
+  root_control : NumericRecursionRootControlRecipe
 }
 
 ///|
@@ -67,8 +123,9 @@ fn NumericRecursionPlan::NumericRecursionPlan(
   peer~ : NumericRecursionFunctionPlan?,
   initial_argument~ : Double,
   root_call_loc~ : @token.Loc,
+  root_control~ : NumericRecursionRootControlRecipe,
 ) -> NumericRecursionPlan {
-  { entry, peer, initial_argument, root_call_loc }
+  { entry, peer, initial_argument, root_call_loc, root_control }
 }
 
 ///|
@@ -247,9 +304,39 @@ fn classify_numeric_recursion_function(
 ///|
 fn classify_numeric_recursion_root(
   stmt : @ast.Stmt,
-) -> (String, Double, @token.Loc)? {
+) -> (String, Double, @token.Loc, NumericRecursionRootControlRecipe)? {
   match stmt {
     @ast.ExprStmt(@ast.Call(@ast.Ident(entry_name, _), args, root_call_loc), _) => {
+      guard args.length() == 1 else { return None }
+      match args[0] {
+        @ast.NumberLit(initial_argument, lex_form, _) if initial_argument ==
+          NUMERIC_RECURSION_INITIAL_ARGUMENT &&
+          lex_form == @token.LexForm::LexNormal =>
+          Some(
+            (
+              entry_name,
+              initial_argument,
+              root_call_loc,
+              NumericRecursionDirectRoot,
+            ),
+          )
+        _ => None
+      }
+    }
+    @ast.TryCatchStmt(try_body, catch_parameter, catch_body, finalizer_body, _) =>
+      classify_numeric_recursion_protected_root(
+        try_body, catch_parameter, catch_body, finalizer_body,
+      )
+    _ => None
+  }
+}
+
+///|
+fn classify_numeric_recursion_root_call(
+  expr : @ast.Expr,
+) -> (String, Double, @token.Loc)? {
+  match expr {
+    @ast.Call(@ast.Ident(entry_name, _), args, root_call_loc) => {
       guard args.length() == 1 else { return None }
       match args[0] {
         @ast.NumberLit(initial_argument, lex_form, _) if initial_argument ==
@@ -264,6 +351,151 @@ fn classify_numeric_recursion_root(
 }
 
 ///|
+fn classify_numeric_recursion_closed_body(
+  body : Array[@ast.Stmt],
+  binding : String?,
+) -> NumericRecursionClosedBodyRecipe? {
+  match body.length() {
+    0 => Some(NumericRecursionClosedBodyEmpty)
+    1 =>
+      match body[0] {
+        @ast.ExprStmt(@ast.NumberLit(value, lex_form, _), _) =>
+          if lex_form == @token.LexForm::LexNormal {
+            Some(NumericRecursionClosedNumberValue(value))
+          } else {
+            None
+          }
+        @ast.ThrowStmt(@ast.NumberLit(value, lex_form, _), _) =>
+          if lex_form == @token.LexForm::LexNormal {
+            Some(NumericRecursionClosedNumberThrow(value))
+          } else {
+            None
+          }
+        @ast.ExprStmt(@ast.Ident(name, _), _) =>
+          match binding {
+            Some(expected) if name == expected =>
+              Some(NumericRecursionClosedBindingValue)
+            _ => None
+          }
+        @ast.ThrowStmt(@ast.Ident(name, _), _) =>
+          match binding {
+            Some(expected) if name == expected =>
+              Some(NumericRecursionClosedBindingThrow)
+            _ => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+fn classify_numeric_recursion_catch(
+  parameter : @ast.Pattern?,
+  body : Array[@ast.Stmt]?,
+) -> NumericRecursionCatchRecipe? {
+  match (parameter, body) {
+    (None, None) => Some(NumericRecursionNoCatch)
+    (None, Some(stmts)) =>
+      match classify_numeric_recursion_closed_body(stmts, None) {
+        Some(
+          NumericRecursionClosedBodyEmpty
+          | NumericRecursionClosedNumberValue(_)
+          | NumericRecursionClosedNumberThrow(_) as recipe
+        ) => Some(NumericRecursionCatch(None, recipe))
+        _ => None
+      }
+    (Some(@ast.IdentPat(name)), Some(stmts)) => {
+      guard numeric_recursion_identifier_is_safe(name) else { return None }
+      match classify_numeric_recursion_closed_body(stmts, Some(name)) {
+        Some(
+          NumericRecursionClosedBodyEmpty
+          | NumericRecursionClosedBindingValue
+          | NumericRecursionClosedBindingThrow as recipe
+        ) => Some(NumericRecursionCatch(Some(name), recipe))
+        _ => None
+      }
+    }
+    _ => None
+  }
+}
+
+///|
+fn classify_numeric_recursion_finalizer(
+  body : Array[@ast.Stmt]?,
+) -> NumericRecursionFinalizerRecipe? {
+  match body {
+    None => Some(NumericRecursionNoFinalizer)
+    Some(stmts) =>
+      match classify_numeric_recursion_closed_body(stmts, None) {
+        Some(
+          NumericRecursionClosedBodyEmpty
+          | NumericRecursionClosedNumberValue(_)
+          | NumericRecursionClosedNumberThrow(_) as recipe
+        ) => Some(NumericRecursionFinalizer(recipe))
+        _ => None
+      }
+  }
+}
+
+///|
+fn classify_numeric_recursion_protected_root(
+  try_body : Array[@ast.Stmt],
+  catch_parameter : @ast.Pattern?,
+  catch_body : Array[@ast.Stmt]?,
+  finalizer_body : Array[@ast.Stmt]?,
+) -> (String, Double, @token.Loc, NumericRecursionRootControlRecipe)? {
+  guard try_body.length() == 1 else { return None }
+  let (entry_name, initial_argument, root_call_loc, try_completion) = match
+    try_body[0] {
+    @ast.ExprStmt(expr, _) =>
+      match classify_numeric_recursion_root_call(expr) {
+        Some((name, argument, loc)) =>
+          (name, argument, loc, NumericRecursionRootCallValue)
+        None => return None
+      }
+    @ast.ThrowStmt(expr, _) =>
+      match classify_numeric_recursion_root_call(expr) {
+        Some((name, argument, loc)) =>
+          (name, argument, loc, NumericRecursionRootCallThrow)
+        None => return None
+      }
+    _ => return None
+  }
+  guard classify_numeric_recursion_catch(catch_parameter, catch_body)
+    is Some(catch_recipe) else {
+    return None
+  }
+  guard classify_numeric_recursion_finalizer(finalizer_body)
+    is Some(finalizer_recipe) else {
+    return None
+  }
+  let has_catch = match catch_recipe {
+    NumericRecursionNoCatch => false
+    NumericRecursionCatch(_, _) => true
+  }
+  let has_finalizer = match finalizer_recipe {
+    NumericRecursionNoFinalizer => false
+    NumericRecursionFinalizer(_) => true
+  }
+  guard has_catch || has_finalizer else { return None }
+  Some(
+    (
+      entry_name,
+      initial_argument,
+      root_call_loc,
+      NumericRecursionProtectedRoot(
+        NumericRecursionProtectedRootRecipe(
+          try_completion~,
+          catch_recipe~,
+          finalizer_recipe~,
+        ),
+      ),
+    ),
+  )
+}
+
+///|
 fn classify_self_numeric_recursion_program(
   stmts : Array[@ast.Stmt],
 ) -> NumericRecursionPlan? {
@@ -271,14 +503,20 @@ fn classify_self_numeric_recursion_program(
     return None
   }
   guard classify_numeric_recursion_root(stmts[1])
-    is Some((entry_name, initial_argument, root_call_loc)) else {
+    is Some((entry_name, initial_argument, root_call_loc, root_control)) else {
     return None
   }
   guard entry.recursive_callee == entry.name && entry_name == entry.name else {
     return None
   }
   Some(
-    NumericRecursionPlan(entry~, peer=None, initial_argument~, root_call_loc~),
+    NumericRecursionPlan(
+      entry~,
+      peer=None,
+      initial_argument~,
+      root_call_loc~,
+      root_control~,
+    ),
   )
 }
 
@@ -293,7 +531,7 @@ fn classify_mutual_numeric_recursion_program(
     return None
   }
   guard classify_numeric_recursion_root(stmts[2])
-    is Some((entry_name, initial_argument, root_call_loc)) else {
+    is Some((entry_name, initial_argument, root_call_loc, root_control)) else {
     return None
   }
   guard entry.name != peer.name &&
@@ -310,6 +548,7 @@ fn classify_mutual_numeric_recursion_program(
       peer=Some(peer),
       initial_argument~,
       root_call_loc~,
+      root_control~,
     ),
   )
 }
@@ -324,4 +563,10 @@ fn classify_numeric_recursion_program(
     3 => classify_mutual_numeric_recursion_program(stmts)
     _ => None
   }
+}
+
+///|
+#warnings("-unused_value")
+fn numeric_recursion_plan_is_dispatchable(plan : NumericRecursionPlan) -> Bool {
+  plan.root_control is NumericRecursionDirectRoot
 }

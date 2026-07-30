@@ -185,6 +185,20 @@ fn Interpreter::preflight_numeric_recursion_program(
 }
 
 ///|
+#warnings("-unused_value")
+fn Interpreter::preflight_dispatchable_numeric_recursion_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+) -> NumericRecursionPreflight? {
+  match classify_numeric_recursion_program(stmts) {
+    Some(plan) if numeric_recursion_plan_is_dispatchable(plan) =>
+      self.preflight_numeric_recursion_program(plan)
+    None => None
+    Some(_) => None
+  }
+}
+
+///|
 fn numeric_recursion_callback_free_binding_snapshots_match(
   expected : CallbackFreeBindingSnapshot,
   actual : CallbackFreeBindingSnapshot,
@@ -417,6 +431,95 @@ fn numeric_recursion_function_plans_match(
 }
 
 ///|
+fn numeric_recursion_closed_body_recipes_match(
+  expected : NumericRecursionClosedBodyRecipe,
+  actual : NumericRecursionClosedBodyRecipe,
+) -> Bool {
+  match (expected, actual) {
+    (NumericRecursionClosedBodyEmpty, NumericRecursionClosedBodyEmpty)
+    | (NumericRecursionClosedBindingValue, NumericRecursionClosedBindingValue)
+    | (NumericRecursionClosedBindingThrow, NumericRecursionClosedBindingThrow) =>
+      true
+    (
+      NumericRecursionClosedNumberValue(expected),
+      NumericRecursionClosedNumberValue(actual),
+    )
+    | (
+      NumericRecursionClosedNumberThrow(expected),
+      NumericRecursionClosedNumberThrow(actual),
+    ) => same_value(Number(expected), Number(actual))
+    _ => false
+  }
+}
+
+///|
+fn numeric_recursion_catch_recipes_match(
+  expected : NumericRecursionCatchRecipe,
+  actual : NumericRecursionCatchRecipe,
+) -> Bool {
+  match (expected, actual) {
+    (NumericRecursionNoCatch, NumericRecursionNoCatch) => true
+    (
+      NumericRecursionCatch(expected_parameter, expected_body),
+      NumericRecursionCatch(actual_parameter, actual_body),
+    ) => {
+      let parameters_match = match (expected_parameter, actual_parameter) {
+        (None, None) => true
+        (Some(expected), Some(actual)) => expected == actual
+        _ => false
+      }
+      parameters_match &&
+      numeric_recursion_closed_body_recipes_match(expected_body, actual_body)
+    }
+    _ => false
+  }
+}
+
+///|
+fn numeric_recursion_finalizer_recipes_match(
+  expected : NumericRecursionFinalizerRecipe,
+  actual : NumericRecursionFinalizerRecipe,
+) -> Bool {
+  match (expected, actual) {
+    (NumericRecursionNoFinalizer, NumericRecursionNoFinalizer) => true
+    (NumericRecursionFinalizer(expected), NumericRecursionFinalizer(actual)) =>
+      numeric_recursion_closed_body_recipes_match(expected, actual)
+    _ => false
+  }
+}
+
+///|
+fn numeric_recursion_root_controls_match(
+  expected : NumericRecursionRootControlRecipe,
+  actual : NumericRecursionRootControlRecipe,
+) -> Bool {
+  match (expected, actual) {
+    (NumericRecursionDirectRoot, NumericRecursionDirectRoot) => true
+    (
+      NumericRecursionProtectedRoot(expected),
+      NumericRecursionProtectedRoot(actual),
+    ) => {
+      let try_completion_matches = match
+        (expected.try_completion, actual.try_completion) {
+        (NumericRecursionRootCallValue, NumericRecursionRootCallValue)
+        | (NumericRecursionRootCallThrow, NumericRecursionRootCallThrow) => true
+        _ => false
+      }
+      try_completion_matches &&
+      numeric_recursion_catch_recipes_match(
+        expected.catch_recipe,
+        actual.catch_recipe,
+      ) &&
+      numeric_recursion_finalizer_recipes_match(
+        expected.finalizer_recipe,
+        actual.finalizer_recipe,
+      )
+    }
+    _ => false
+  }
+}
+
+///|
 // Compare only normalized admission semantics. The registry deliberately keeps
 // `actual`, so diagnostics and execution retain all sealed expression locations.
 fn numeric_recursion_plans_match(
@@ -428,12 +531,14 @@ fn numeric_recursion_plans_match(
     peer: expected_peer,
     initial_argument: expected_initial_argument,
     root_call_loc: _expected_root_call_loc,
+    root_control: expected_root_control,
   } = expected
   let {
     entry: actual_entry,
     peer: actual_peer,
     initial_argument: actual_initial_argument,
     root_call_loc: _actual_root_call_loc,
+    root_control: actual_root_control,
   } = actual
   let peer_matches = match (expected_peer, actual_peer) {
     (None, None) => true
@@ -443,7 +548,10 @@ fn numeric_recursion_plans_match(
   }
   numeric_recursion_function_plans_match(expected_entry, actual_entry) &&
   peer_matches &&
-  expected_initial_argument == actual_initial_argument
+  expected_initial_argument == actual_initial_argument &&
+  numeric_recursion_root_controls_match(
+    expected_root_control, actual_root_control,
+  )
 }
 
 ///|
