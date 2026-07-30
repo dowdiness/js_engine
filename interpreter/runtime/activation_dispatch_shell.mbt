@@ -21,6 +21,7 @@ priv enum ProgramCleanupOwner {
   RejectedProgram
   AcceptedNumericCall
   RejectedNumericCall
+  PropertyAccessCleanup
 }
 
 ///|
@@ -137,6 +138,7 @@ priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
   DispatchNumericRootRealmCleanup(FunctionRealmProtos)
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
+  DispatchPropertyRealmCleanup(ClearedActiveCalleeRealmScope)
 }
 
 ///|
@@ -245,10 +247,22 @@ fn dispatch_signal_completion(signal : Signal) -> DispatchCompletion {
 }
 
 ///|
-fn program_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
+fn activation_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
   match owner {
     AcceptedProgram | AcceptedNumericCall => true
-    RejectedProgram | RejectedNumericCall => false
+    RejectedProgram | RejectedNumericCall | PropertyAccessCleanup => false
+  }
+}
+
+///|
+fn activation_cleanup_owner_matches(
+  owner : ProgramCleanupOwner,
+  accepted : Bool,
+) -> Bool {
+  match (owner, accepted) {
+    (AcceptedProgram, true) | (AcceptedNumericCall, true) => true
+    (RejectedProgram, false) | (RejectedNumericCall, false) => true
+    _ => false
   }
 }
 
@@ -312,6 +326,31 @@ fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::push_property_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  scope : ClearedActiveCalleeRealmScope,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: PropertyAccessCleanup,
+    resources: DispatchPropertyRealmCleanup(scope),
+    capabilities: None,
+  })
+}
+
+///|
+#warnings("-unused_value")
+fn PrimitiveProgramDispatchShell::begin_property_scope(
+  self : PrimitiveProgramDispatchShell,
+) -> DispatchPropertyCleanup raise InvalidActivationDispatchShell {
+  let id = self.reserve_program_cleanup_id()
+  let scope = begin_cleared_active_callee_realm(self.interp.realm_state)
+  self.push_property_cleanup(id, scope)
+  DispatchPropertyCleanup(id)
+}
+
+///|
 fn dispatch_cleanup_failure(completion : DispatchCompletion) -> Error? {
   match completion {
     DispatchThrow(error) | DispatchRuntimeAbrupt(error) => Some(error)
@@ -350,6 +389,8 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
         resources.cleared_realm,
       )
     }
+    DispatchPropertyRealmCleanup(scope) =>
+      finish_cleared_active_callee_realm(self.interp.realm_state, scope)
   }
 }
 
@@ -371,10 +412,35 @@ fn PrimitiveProgramDispatchShell::consume_cleanup(
       "cleanup is stale, duplicated, or outside LIFO order",
     )
   }
-  guard program_cleanup_owner_is_accepted(cleanup.owner) == accepted else {
+  guard activation_cleanup_owner_matches(cleanup.owner, accepted) else {
     invalid_activation_dispatch_shell("cleanup owner does not match its exit")
   }
   self.restore_cleanup_record(cleanup, dispatch_cleanup_failure(completion))
+  let _ = self.cleanup_stack.pop()
+}
+
+///|
+fn PrimitiveProgramDispatchShell::consume_property_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+) -> Unit raise InvalidActivationDispatchShell {
+  guard !self.cleanup_stack.is_empty() else {
+    invalid_activation_dispatch_shell(
+      "property cleanup is stale, duplicated, or outside LIFO order",
+    )
+  }
+  let cleanup = self.cleanup_stack[self.cleanup_stack.length() - 1]
+  guard id == cleanup.id else {
+    invalid_activation_dispatch_shell(
+      "property cleanup is stale, duplicated, or outside LIFO order",
+    )
+  }
+  guard cleanup.owner is PropertyAccessCleanup else {
+    invalid_activation_dispatch_shell(
+      "property cleanup does not own the current scope",
+    )
+  }
+  self.restore_cleanup_record(cleanup, None)
   let _ = self.cleanup_stack.pop()
 }
 
@@ -415,7 +481,7 @@ fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
     )
   }
   let cleanup = self.cleanup_stack[self.cleanup_stack.length() - 1]
-  guard cleanup.id == id && program_cleanup_owner_is_accepted(cleanup.owner) else {
+  guard cleanup.id == id && activation_cleanup_owner_is_accepted(cleanup.owner) else {
     invalid_activation_dispatch_shell(
       "numeric capability is stale or outside LIFO activation ownership",
     )
@@ -880,10 +946,10 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.consume_cleanup(cleanup.id, false, completion)
       DispatchCleanupCompleted
     }
-    DispatchRestorePropertyScope(_, _) =>
-      invalid_activation_dispatch_shell(
-        "program shell cannot restore a property scope",
-      )
+    DispatchRestorePropertyScope(cleanup, _) => {
+      self.consume_property_cleanup(cleanup.id)
+      DispatchCleanupCompleted
+    }
     DispatchNormalizeEscapedControl(_) =>
       invalid_activation_dispatch_shell(
         "program shell cannot normalize function control",
