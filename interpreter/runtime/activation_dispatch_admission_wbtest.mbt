@@ -357,6 +357,42 @@ test "getter recursion admission recognizes only the exact own accessor shape" {
 }
 
 ///|
+test "getter recursion admission recognizes the exact direct prototype accessor shape" {
+  let source = "let n=256;" +
+    "let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+    "let o={__proto__:p};" +
+    "o.x;"
+  let stmts = getter_recursion_test_program(source)
+  let plan = match classify_getter_recursion_program(stmts) {
+    Some(found) => found
+    None =>
+      fail("expected the exact direct prototype getter shape to be admitted")
+  }
+  inspect(plan.counter_name, content="n")
+  inspect(plan.object_name, content="o")
+  inspect(plan.property_name, content="x")
+  inspect(plan.initial_count, content="256")
+  inspect(getter_recursion_plan_is_dispatchable(plan), content="false")
+  for index, stmt in stmts {
+    guard getter_recursion_root_statement_matches(plan, index, stmt) else {
+      fail("expected every admitted prototype getter root statement to match")
+    }
+  }
+  guard classify_numeric_recursion_program(stmts) is None else {
+    fail("getter and numeric admission must remain disjoint")
+  }
+  let explicit_proto_binding = getter_recursion_test_program(
+    "let n=256;" +
+    "let __proto__={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+    "let o={__proto__:__proto__};" +
+    "o.x;",
+  )
+  guard classify_getter_recursion_program(explicit_proto_binding) is Some(_) else {
+    fail("expected an explicit __proto__ initializer to remain admissible")
+  }
+}
+
+///|
 test "getter recursion admission rejects residual and lookalike shapes" {
   for
     source in [
@@ -367,6 +403,12 @@ test "getter recursion admission rejects residual and lookalike shapes" {
       "let n=256;let o={get x(){if(n===0)return 0;n=n-2;return 1+o.x;}};o.x;", "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 2+o.x;}};o.x;",
       "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};0;o.x;",
       "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;},y:0};o.x;",
+      "let n=256;let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;},y:0};let o={__proto__:p};o.x;",
+      "let n=256;let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};let q={__proto__:p};let o={__proto__:q};o.x;",
+      "let n=256;let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};let o={['__proto__']:p};o.x;",
+      "let n=256;let __proto__={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};let o={__proto__};o.x;",
+      "let n=256;let p={get x(){if(n===0)return 0;n=n-1;return 1+p.x;}};let o={__proto__:p};o.x;",
+      "let n=256;let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};let o={__proto__:p,y:0};o.x;",
       "let n=256;let p;p=new Proxy({},{get(t,k,r){if(n===0)return 0;n=n-1;return 1+p.x;}});p.x;",
     ] {
     guard classify_getter_recursion_program(
