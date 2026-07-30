@@ -226,10 +226,79 @@ fn DispatchNumericCallStart::DispatchNumericCallStart(
 }
 
 ///|
+#warnings("-unused_constructor")
+priv enum DispatchNumericProtectedRegion {
+  DispatchNumericTryBody
+  DispatchNumericCatchBody
+  DispatchNumericFinalizerBody
+}
+
+///|
+#warnings("-unused_constructor")
+priv enum DispatchNumericClosedStatementKind {
+  DispatchNumericExpressionStatement
+  DispatchNumericThrowStatement
+}
+
+///|
+#warnings("-unused_field")
+priv struct DispatchNumericProtectedStatementStart {
+  expression : DispatchNumericExpression
+  completion : NumericRecursionRootCallCompletion
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericProtectedStatementStart::DispatchNumericProtectedStatementStart(
+  expression~ : DispatchNumericExpression,
+  completion~ : NumericRecursionRootCallCompletion,
+) -> DispatchNumericProtectedStatementStart {
+  { expression, completion }
+}
+
+///|
+#warnings("-unused_field")
+priv struct DispatchNumericProtectedStart {
+  expression : DispatchNumericExpression
+  recipe : NumericRecursionProtectedRootRecipe
+  catch_binding : DispatchNumericCatchBindingToken
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericProtectedStart::DispatchNumericProtectedStart(
+  expression~ : DispatchNumericExpression,
+  recipe~ : NumericRecursionProtectedRootRecipe,
+  catch_binding~ : DispatchNumericCatchBindingToken,
+) -> DispatchNumericProtectedStart {
+  { expression, recipe, catch_binding }
+}
+
+///|
+#warnings("-unused_field")
+priv struct DispatchNumericCatchResume {
+  token : DispatchNumericCatchBindingToken
+  parameter : String?
+  body : NumericRecursionClosedBodyRecipe
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericCatchResume::DispatchNumericCatchResume(
+  token~ : DispatchNumericCatchBindingToken,
+  parameter~ : String?,
+  body~ : NumericRecursionClosedBodyRecipe,
+) -> DispatchNumericCatchResume {
+  { token, parameter, body }
+}
+
+///|
 #warnings("-unused_field")
 priv struct DispatchNumericProgramStart {
   declaration_count : Int
   expression : DispatchNumericExpression
+  root_control : NumericRecursionRootControlRecipe
+  catch_binding : DispatchNumericCatchBindingToken
 }
 
 ///|
@@ -237,8 +306,10 @@ priv struct DispatchNumericProgramStart {
 fn DispatchNumericProgramStart::DispatchNumericProgramStart(
   declaration_count~ : Int,
   expression~ : DispatchNumericExpression,
+  root_control~ : NumericRecursionRootControlRecipe,
+  catch_binding~ : DispatchNumericCatchBindingToken,
 ) -> DispatchNumericProgramStart {
-  { declaration_count, expression }
+  { declaration_count, expression, root_control, catch_binding }
 }
 
 ///|
@@ -254,6 +325,8 @@ fn numeric_recursion_program_dispatch_start(
   DispatchNumericProgramStart(
     declaration_count~,
     expression=numeric_recursion_root_dispatch_expression(plan, capture),
+    root_control=plan.root_control,
+    catch_binding=DispatchNumericCatchBindingToken(id=capture.id),
   )
 }
 
@@ -262,6 +335,11 @@ fn numeric_recursion_program_dispatch_start(
 priv enum DispatchNumericStatementObservation {
   DispatchNumericObserveRootDeclaration(Int)
   DispatchNumericObserveRootExpressionStatement
+  DispatchNumericObserveRootTryStatement
+  DispatchNumericObserveProtectedStatement(
+    DispatchNumericProtectedRegion,
+    DispatchNumericClosedStatementKind
+  )
   DispatchNumericObserveIfStatement
   DispatchNumericObserveReturnStatement
 }
@@ -272,6 +350,8 @@ priv struct DispatchNumericRootDeclarationResume {
   next_index : Int
   remaining : Int
   expression : DispatchNumericExpression
+  root_control : NumericRecursionRootControlRecipe
+  catch_binding : DispatchNumericCatchBindingToken
 }
 
 ///|
@@ -280,8 +360,10 @@ fn DispatchNumericRootDeclarationResume::DispatchNumericRootDeclarationResume(
   next_index~ : Int,
   remaining~ : Int,
   expression~ : DispatchNumericExpression,
+  root_control~ : NumericRecursionRootControlRecipe,
+  catch_binding~ : DispatchNumericCatchBindingToken,
 ) -> DispatchNumericRootDeclarationResume {
-  { next_index, remaining, expression }
+  { next_index, remaining, expression, root_control, catch_binding }
 }
 
 ///|
@@ -289,6 +371,9 @@ fn DispatchNumericRootDeclarationResume::DispatchNumericRootDeclarationResume(
 priv enum DispatchNumericStatementContinuation {
   DispatchAfterNumericRootDeclaration(DispatchNumericRootDeclarationResume)
   DispatchAfterNumericRootExpressionStatement(DispatchNumericExpression)
+  DispatchAfterNumericRootTryStatement(DispatchNumericProtectedStart)
+  DispatchAfterNumericProtectedStatement(DispatchNumericProtectedStatementStart)
+  DispatchAfterNumericCatchEntry(DispatchNumericCatchResume)
   DispatchAfterNumericIfStatement(DispatchNumericCallStart)
   DispatchAfterNumericReturnStatement(DispatchNumericExpression)
 }
@@ -455,11 +540,36 @@ fn snapshot_dispatch_numeric_statement_continuation(
           next_index=progress.next_index,
           remaining=progress.remaining,
           expression=snapshot_dispatch_numeric_expression(progress.expression),
+          root_control=progress.root_control,
+          catch_binding=progress.catch_binding,
         ),
       )
     DispatchAfterNumericRootExpressionStatement(expression) =>
       DispatchAfterNumericRootExpressionStatement(
         snapshot_dispatch_numeric_expression(expression),
+      )
+    DispatchAfterNumericRootTryStatement(start) =>
+      DispatchAfterNumericRootTryStatement(
+        DispatchNumericProtectedStart(
+          expression=snapshot_dispatch_numeric_expression(start.expression),
+          recipe=start.recipe,
+          catch_binding=start.catch_binding,
+        ),
+      )
+    DispatchAfterNumericProtectedStatement(start) =>
+      DispatchAfterNumericProtectedStatement(
+        DispatchNumericProtectedStatementStart(
+          expression=snapshot_dispatch_numeric_expression(start.expression),
+          completion=start.completion,
+        ),
+      )
+    DispatchAfterNumericCatchEntry(catch_state) =>
+      DispatchAfterNumericCatchEntry(
+        DispatchNumericCatchResume(
+          token=catch_state.token,
+          parameter=catch_state.parameter,
+          body=catch_state.body,
+        ),
       )
     DispatchAfterNumericIfStatement(start) =>
       DispatchAfterNumericIfStatement(
@@ -581,11 +691,13 @@ priv enum DispatchWork {
   DispatchAdvanceLoop(DispatchLoopResume)
   DispatchExecuteProperty(DispatchPropertyGetResume)
   DispatchExecuteCatch(DispatchCatchResume, Error)
+  DispatchEnterNumericCatch(DispatchNumericCatchResume, Error)
   DispatchNormalizeFunctionControl(DispatchCompletion)
   DispatchResumeContinuation(DispatchContinuation, Value)
   DispatchObserveExpressionStep(DispatchNumericExpressionObservation)
   DispatchObserveStatementStep(DispatchNumericStatementObservation)
   DispatchReadNumericParameter(DispatchParameterBindingToken)
+  DispatchReadNumericCatchBinding(DispatchNumericCatchBindingToken)
   DispatchCaptureTrustedCallee(DispatchCalleeCaptureToken)
   DispatchStartCapturedNumericCall(
     DispatchCalleeCaptureToken,
@@ -676,6 +788,8 @@ priv enum DispatchFrame {
   DispatchLabelFrame(String)
   DispatchCatchFrame(DispatchCatchResume)
   DispatchFinallyFrame(DispatchStatementCursor)
+  DispatchNumericCatchFrame(DispatchNumericCatchResume)
+  DispatchNumericFinallyFrame(NumericRecursionClosedBodyRecipe)
   DispatchSavedCompletionFrame(DispatchCompletion)
   DispatchPropertyScopeFrame(DispatchPropertyCleanup)
   DispatchActivationFrame(DispatchActivationCleanup, DispatchActivationExitRule)
@@ -1011,6 +1125,111 @@ fn begin_dispatch_numeric_statement_observation(
 }
 
 ///|
+fn begin_dispatch_numeric_protected_statement(
+  state : ActivationDispatchState,
+  region : DispatchNumericProtectedRegion,
+  expression : DispatchNumericExpression,
+  completion : NumericRecursionRootCallCompletion,
+) -> (ActivationDispatchState, ActivationDispatchDecision) raise InvalidDispatchTransition {
+  let kind = match completion {
+    NumericRecursionRootCallValue => DispatchNumericExpressionStatement
+    NumericRecursionRootCallThrow => DispatchNumericThrowStatement
+  }
+  begin_dispatch_numeric_statement_observation(
+    state,
+    DispatchNumericObserveProtectedStatement(region, kind),
+    DispatchAfterNumericProtectedStatement(
+      DispatchNumericProtectedStatementStart(expression~, completion~),
+    ),
+  )
+}
+
+///|
+fn begin_dispatch_numeric_closed_body(
+  state : ActivationDispatchState,
+  region : DispatchNumericProtectedRegion,
+  body : NumericRecursionClosedBodyRecipe,
+  catch_binding : DispatchNumericCatchBindingToken?,
+) -> (ActivationDispatchState, ActivationDispatchDecision) raise InvalidDispatchTransition {
+  match body {
+    NumericRecursionClosedBodyEmpty =>
+      route_dispatch_completion(state, DispatchNormal(Undefined))
+    NumericRecursionClosedNumberValue(value) =>
+      begin_dispatch_numeric_protected_statement(
+        state,
+        region,
+        DispatchNumericNumber(value),
+        NumericRecursionRootCallValue,
+      )
+    NumericRecursionClosedNumberThrow(value) =>
+      begin_dispatch_numeric_protected_statement(
+        state,
+        region,
+        DispatchNumericNumber(value),
+        NumericRecursionRootCallThrow,
+      )
+    NumericRecursionClosedBindingValue => {
+      guard catch_binding is Some(token) else {
+        return invalid_dispatch_transition(
+          "numeric binding body requires a catch capability",
+        )
+      }
+      begin_dispatch_numeric_protected_statement(
+        state,
+        region,
+        DispatchNumericCatchBinding(token),
+        NumericRecursionRootCallValue,
+      )
+    }
+    NumericRecursionClosedBindingThrow => {
+      guard catch_binding is Some(token) else {
+        return invalid_dispatch_transition(
+          "numeric binding body requires a catch capability",
+        )
+      }
+      begin_dispatch_numeric_protected_statement(
+        state,
+        region,
+        DispatchNumericCatchBinding(token),
+        NumericRecursionRootCallThrow,
+      )
+    }
+  }
+}
+
+///|
+fn begin_dispatch_numeric_protected_root(
+  state : ActivationDispatchState,
+  start : DispatchNumericProtectedStart,
+) -> (ActivationDispatchState, ActivationDispatchDecision) raise InvalidDispatchTransition {
+  let with_finalizer = match start.recipe.finalizer_recipe {
+    NumericRecursionNoFinalizer => state
+    NumericRecursionFinalizer(body) =>
+      push_dispatch_frame(state, DispatchNumericFinallyFrame(body))
+  }
+  let with_handler = match start.recipe.catch_recipe {
+    NumericRecursionNoCatch => with_finalizer
+    NumericRecursionCatch(parameter, body) =>
+      push_dispatch_frame(
+        with_finalizer,
+        DispatchNumericCatchFrame(
+          DispatchNumericCatchResume(
+            token=start.catch_binding,
+            parameter~,
+            body~,
+          ),
+        ),
+      )
+  }
+  begin_dispatch_numeric_protected_statement(
+    with_handler,
+    DispatchNumericTryBody,
+    start.expression,
+    start.recipe.try_completion,
+  )
+}
+
+///|
 fn begin_dispatch_numeric_program(
   state : ActivationDispatchState,
   start : DispatchNumericProgramStart,
@@ -1028,6 +1247,8 @@ fn begin_dispatch_numeric_program(
         next_index=1,
         remaining=start.declaration_count - 1,
         expression=snapshot_dispatch_numeric_expression(start.expression),
+        root_control=start.root_control,
+        catch_binding=start.catch_binding,
       ),
     ),
   )
@@ -1063,19 +1284,61 @@ fn resume_dispatch_numeric_statement(
               next_index=progress.next_index + 1,
               remaining=progress.remaining - 1,
               expression=progress.expression,
+              root_control=progress.root_control,
+              catch_binding=progress.catch_binding,
             ),
           ),
         )
       } else {
-        begin_dispatch_numeric_statement_observation(
-          state,
-          DispatchNumericObserveRootExpressionStatement,
-          DispatchAfterNumericRootExpressionStatement(progress.expression),
-        )
+        match progress.root_control {
+          NumericRecursionDirectRoot =>
+            begin_dispatch_numeric_statement_observation(
+              state,
+              DispatchNumericObserveRootExpressionStatement,
+              DispatchAfterNumericRootExpressionStatement(progress.expression),
+            )
+          NumericRecursionProtectedRoot(recipe) =>
+            begin_dispatch_numeric_statement_observation(
+              state,
+              DispatchNumericObserveRootTryStatement,
+              DispatchAfterNumericRootTryStatement(
+                DispatchNumericProtectedStart(
+                  expression=progress.expression,
+                  recipe~,
+                  catch_binding=progress.catch_binding,
+                ),
+              ),
+            )
+        }
       }
     }
     DispatchAfterNumericRootExpressionStatement(expression) =>
       begin_dispatch_numeric_expression(state, expression)
+    DispatchAfterNumericRootTryStatement(start) =>
+      begin_dispatch_numeric_protected_root(state, start)
+    DispatchAfterNumericProtectedStatement(start) => {
+      let waiting = match start.completion {
+        NumericRecursionRootCallValue => state
+        NumericRecursionRootCallThrow =>
+          push_dispatch_frame(
+            state,
+            DispatchContinuationFrame(DispatchCompleteThrow),
+          )
+      }
+      begin_dispatch_numeric_expression(waiting, start.expression)
+    }
+    DispatchAfterNumericCatchEntry(catch_state) => {
+      let binding = match catch_state.parameter {
+        Some(_) => Some(catch_state.token)
+        None => None
+      }
+      begin_dispatch_numeric_closed_body(
+        state,
+        DispatchNumericCatchBody,
+        catch_state.body,
+        binding,
+      )
+    }
     DispatchAfterNumericIfStatement(start) => {
       let waiting_condition = push_dispatch_frame(
         state,
@@ -1244,12 +1507,40 @@ fn route_dispatch_completion(
                 )
               other => routed = other
             }
+          DispatchNumericCatchFrame(catch_work) =>
+            match routed {
+              DispatchThrow(value) =>
+                return schedule_dispatch_effect(
+                  push_dispatch_frame(
+                    popped,
+                    DispatchContinuationFrame(
+                      DispatchContinueNumericStatement(
+                        DispatchAfterNumericCatchEntry(catch_work),
+                      ),
+                    ),
+                  ),
+                  DispatchRun(DispatchEnterNumericCatch(catch_work, value)),
+                )
+              other => routed = other
+            }
           DispatchFinallyFrame(finalizer_work) => {
             let waiting_finalizer = push_dispatch_frame(
               popped,
               DispatchSavedCompletionFrame(routed),
             )
             return begin_dispatch_statements(waiting_finalizer, finalizer_work)
+          }
+          DispatchNumericFinallyFrame(finalizer_body) => {
+            let waiting_finalizer = push_dispatch_frame(
+              popped,
+              DispatchSavedCompletionFrame(routed),
+            )
+            return begin_dispatch_numeric_closed_body(
+              waiting_finalizer,
+              DispatchNumericFinalizerBody,
+              finalizer_body,
+              None,
+            )
           }
           DispatchSavedCompletionFrame(saved) =>
             match routed {
