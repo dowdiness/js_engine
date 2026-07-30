@@ -1348,7 +1348,7 @@ fn setup_builtins_with_realm_state_active(
   mark_builtin_setup_phase(profile, "timers")
 
   // Set up Proxy constructor and Proxy.revocable
-  setup_proxy_builtins(env)
+  setup_proxy_builtins(env, realm_state)
   mark_builtin_setup_phase(profile, "proxy")
 
   // Set up Reflect global object
