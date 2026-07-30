@@ -22,7 +22,6 @@ fn numeric_routing_test_mutual_plan() -> NumericRecursionPlan raise {
 }
 
 ///|
-#warnings("-unused_value")
 fn numeric_routing_test_protected_plan() -> NumericRecursionPlan raise {
   let stmts = @parser.parse(
       "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
