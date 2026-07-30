@@ -344,12 +344,10 @@ fn resume_dispatch_numeric_expression(
             "numeric base condition completed with a non-boolean",
           )
       }
-      begin_dispatch_numeric_expression(
-        push_dispatch_frame(
-          state,
-          DispatchContinuationFrame(DispatchCompleteReturn),
-        ),
-        expression,
+      begin_dispatch_numeric_statement_observation(
+        state,
+        DispatchNumericObserveReturnStatement,
+        DispatchAfterNumericReturnStatement(expression),
       )
     }
     DispatchNumericBinaryLeft(operator, right, loc) => {

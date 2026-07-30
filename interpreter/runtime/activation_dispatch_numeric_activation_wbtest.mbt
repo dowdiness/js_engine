@@ -722,16 +722,20 @@ test "numeric root owns its registry and child activations in LIFO order" {
     shell.perform_effect(
       DispatchEnterActivation(DispatchProgramActivation(cursor)),
     ) {
-    DispatchNumericProgramAccepted(
-      cleanup,
-      DispatchNumericSingleArgumentCall(
-        capture,
-        DispatchNumericNumber(argument),
-        loc
-      )
-    ) => {
-      inspect(argument, content="256")
-      inspect(loc == plan.root_call_loc, content="true")
+    DispatchNumericProgramAccepted(cleanup, start) => {
+      inspect(start.declaration_count, content="1")
+      let capture = match start.expression {
+        DispatchNumericSingleArgumentCall(
+          capture,
+          DispatchNumericNumber(argument),
+          loc
+        ) => {
+          inspect(argument, content="256")
+          inspect(loc == plan.root_call_loc, content="true")
+          capture
+        }
+        _ => fail("expected the admitted root call expression")
+      }
       (cleanup, capture)
     }
     _ => fail("expected a sealed numeric root activation")
@@ -909,4 +913,80 @@ test "numeric shell applies only the closed number binary operations" {
     _ => "wrong error"
   }
   inspect(invalid_operand, content="rejected")
+}
+
+///|
+test "numeric root clears caller realm before sealing and restores it" {
+  let interp = Interpreter::new()
+  let caller_object_proto = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  apply_active_realm_protos(
+    interp.realm_state,
+    FunctionRealmProtos(object_proto=Some(caller_object_proto)),
+  )
+  let stmts = @parser.parse(
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+    ).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact numeric-recursion plan")
+  }
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free numeric preflight")
+  }
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let completed = try {
+    match
+      activation_dispatch_root_value(
+        interp.run_activation_dispatch_numeric_program(stmts, ctx, preflight),
+      ) {
+      Number(value) if value == 256.0 => true
+      _ => false
+    }
+  } catch {
+    _ => false
+  }
+  inspect(completed, content="true")
+  match
+    (active_realm_protos(interp.realm_state).object_proto, caller_object_proto) {
+    (Some(Object(actual)), Object(expected)) =>
+      inspect(physical_equal(actual, expected), content="true")
+    _ => fail("expected the caller realm override to be restored")
+  }
+}
+
+///|
+test "numeric route preserves statement execution-control observations" {
+  for
+    source in [
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+      "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+      "function g(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+    ] {
+    let interp = Interpreter::new()
+    let stmts = @parser.parse(source).stmts
+    let control = ExecutionControl(
+      remaining_steps=2567,
+      maximum_active_depth=1024,
+      interruption=ExecutionInterruptionRequest(),
+    )
+    let outcome = try {
+      let _ : Value = interp.with_execution_control(control, fn() raise {
+        interp.run(stmts)
+      })
+      "completed"
+    } catch {
+      ExecutionControlError(ExecutionLimit) => "execution-limit"
+      _ => "other-error"
+    }
+    inspect(outcome, content="execution-limit")
+    inspect(control.remaining_steps(), content="0")
+  }
 }

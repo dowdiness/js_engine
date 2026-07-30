@@ -391,7 +391,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
   let capture = DispatchCalleeCaptureToken(id~)
   DispatchNumericProgramAccepted(
     DispatchActivationCleanup(id),
-    numeric_recursion_root_dispatch_expression(registry.plan, capture),
+    numeric_recursion_program_dispatch_start(registry.plan, capture),
   )
 }
 
@@ -552,11 +552,9 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
 }
 
 ///|
-fn PrimitiveProgramDispatchShell::observe_numeric_expression_step(
+fn PrimitiveProgramDispatchShell::observe_numeric_execution_step(
   self : PrimitiveProgramDispatchShell,
-  observation : DispatchNumericExpressionObservation,
 ) -> DispatchEffectResult {
-  ignore(observation)
   let observed : Result[Unit, Error] = Ok(self.interp.observe_execution_step()) catch {
     error => Err(error)
   }
@@ -711,8 +709,14 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.enter_numeric_call(request)
     DispatchRun(DispatchExecuteStatement(step)) =>
       self.execute_leaf_statement(step)
-    DispatchRun(DispatchObserveExpressionStep(observation)) =>
-      self.observe_numeric_expression_step(observation)
+    DispatchRun(DispatchObserveExpressionStep(observation)) => {
+      ignore(observation)
+      self.observe_numeric_execution_step()
+    }
+    DispatchRun(DispatchObserveStatementStep(observation)) => {
+      ignore(observation)
+      self.observe_numeric_execution_step()
+    }
     DispatchRun(DispatchReadNumericParameter(token)) =>
       self.read_numeric_parameter(token)
     DispatchRun(DispatchCaptureTrustedCallee(token)) =>
