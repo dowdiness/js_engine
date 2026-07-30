@@ -64,6 +64,53 @@ test "numeric recursion trust preflight accepts the canonical global without eff
 }
 
 ///|
+test "numeric recursion trust rejects configurable entry or peer before effects" {
+  let interp = Interpreter::new()
+  guard interp.global_this is Object(global_object) else {
+    fail("expected the canonical global object")
+  }
+  global_object.bag.properties["f"] = Number(0.0)
+  global_object.bag.descriptors["f"] = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let (_, plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  inspect(
+    interp.preflight_numeric_recursion_program(plan) is None,
+    content="true",
+  )
+
+  let mutual_interp = Interpreter::new()
+  guard mutual_interp.global_this is Object(mutual_global) else {
+    fail("expected the mutual canonical global object")
+  }
+  mutual_global.bag.properties["g"] = Number(0.0)
+  mutual_global.bag.descriptors["g"] = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let (_, mutual_plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "f(256);",
+  )
+  inspect(
+    mutual_interp.preflight_numeric_recursion_program(mutual_plan) is None,
+    content="true",
+  )
+}
+
+///|
 test "numeric recursion runtime preflight admits sealed protected roots" {
   let interp = Interpreter::new()
   let direct = @parser.parse(

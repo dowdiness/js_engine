@@ -193,16 +193,24 @@ test "direct numeric recursion trust seals source and exact recipe metadata" {
     "function f(n){if(n===0)return 0;return 1+f(n-1);}", "f",
   )
   source_interp.realm_state.active_source_identity.val = Some("other.js")
-  inspect(
+  let source_preflight = match
     source_interp.preflight_direct_numeric_recursion_call(
       source_callee,
       Undefined,
       [Number(256.0)],
       @token.Loc::default(),
-    )
-    is None,
-    content="true",
+    ) {
+    Some(found) => found
+    None => fail("expected callee-owned source provenance to remain eligible")
+  }
+  let source_registry = source_interp.seal_direct_numeric_recursion_registry(
+    source_preflight,
+    source_callee,
+    Undefined,
+    [Number(256.0)],
+    @token.Loc::default(),
   )
+  let _ = source_registry.require_named(source_interp, "f")
 }
 
 ///|

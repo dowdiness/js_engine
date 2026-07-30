@@ -180,6 +180,18 @@ fn numeric_recursion_global_property_is_canonical(
 }
 
 ///|
+fn numeric_recursion_global_declaration_is_sealable(
+  global_object : ObjectData,
+  name : String,
+) -> Bool {
+  match ordinary_get_own_string_desc(global_object.bag, name) {
+    None => true
+    Some(_) =>
+      numeric_recursion_global_property_is_canonical(global_object, name)
+  }
+}
+
+///|
 #warnings("-unused_value")
 fn Interpreter::preflight_numeric_recursion_program(
   self : Interpreter,
@@ -187,6 +199,21 @@ fn Interpreter::preflight_numeric_recursion_program(
 ) -> NumericRecursionPreflight? {
   guard self.numeric_recursion_canonical_global_object()
     is Some(expected_global_object) else {
+    return None
+  }
+  let peer_declaration_is_sealable = match plan.peer {
+    Some(peer) =>
+      numeric_recursion_global_declaration_is_sealable(
+        expected_global_object,
+        peer.syntax.name,
+      )
+    None => true
+  }
+  guard numeric_recursion_global_declaration_is_sealable(
+      expected_global_object,
+      plan.entry.syntax.name,
+    ) &&
+    peer_declaration_is_sealable else {
     return None
   }
   let (entry_ok, previous_entry_object) = numeric_recursion_existing_binding_snapshot(

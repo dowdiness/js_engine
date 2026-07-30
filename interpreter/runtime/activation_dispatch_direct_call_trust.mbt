@@ -194,16 +194,14 @@ fn Interpreter::preflight_direct_numeric_recursion_call(
     CallbackFreeBindingUnsafe => return None
     _ => ()
   }
-  let expected_realm_protos = function_realm_protos_from_realm_state(
-    self.realm_state,
-  )
-  let expected_source_identity = self.realm_state.active_source_identity.val
+  let entry_realm_protos = callee_realm_protos(callee)
+  let entry_source_identity = function_source_identity(callee)
   guard self.snapshot_direct_numeric_recursion_function(
       plan.entry,
       callee,
       expected_global_object,
-      expected_realm_protos,
-      expected_source_identity,
+      entry_realm_protos,
+      entry_source_identity,
     )
     is Some(entry) else {
     return None
@@ -228,9 +226,11 @@ fn Interpreter::preflight_direct_numeric_recursion_call(
         reverse_name == plan.entry.name else {
         return None
       }
+      let peer_realm_protos = callee_realm_protos(peer_candidate)
+      let peer_source_identity = function_source_identity(peer_candidate)
       guard self.snapshot_direct_numeric_recursion_function(
-          peer_syntax, peer_candidate, expected_global_object, expected_realm_protos,
-          expected_source_identity,
+          peer_syntax, peer_candidate, expected_global_object, peer_realm_protos,
+          peer_source_identity,
         )
         is Some(peer_snapshot) else {
         return None
