@@ -165,6 +165,21 @@ fn Interpreter::numeric_recursion_canonical_global_object(
 }
 
 ///|
+fn numeric_recursion_global_property_is_canonical(
+  global_object : ObjectData,
+  name : String,
+) -> Bool {
+  match ordinary_get_own_string_desc(global_object.bag, name) {
+    Some(desc) =>
+      !desc.is_accessor &&
+      desc.writable &&
+      desc.enumerable &&
+      !desc.configurable
+    None => false
+  }
+}
+
+///|
 #warnings("-unused_value")
 fn Interpreter::preflight_numeric_recursion_program(
   self : Interpreter,
@@ -736,10 +751,13 @@ fn numeric_recursion_revalidate_trusted_function(
       "numeric recursion candidate diverged from its global binding",
     )
   }
-  guard interp.global_this is Object(global_object) &&
-    global_object.bag.properties.get(trusted.syntax.name)
+  guard actual_global_object.bag.properties.get(trusted.syntax.name)
     is Some(Object(mirrored)) &&
-    physical_equal(mirrored, actual) else {
+    physical_equal(mirrored, actual) &&
+    numeric_recursion_global_property_is_canonical(
+      actual_global_object,
+      trusted.syntax.name,
+    ) else {
     invalid_activation_dispatch_shell(
       "numeric recursion candidate diverged from its global mirror",
     )

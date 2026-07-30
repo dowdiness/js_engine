@@ -228,6 +228,56 @@ test "direct numeric recursion trust revalidates ThrowTypeError identity" {
 }
 
 ///|
+test "direct numeric recursion trust revalidates canonical global descriptors" {
+  let (configurable_interp, configurable_callee) = direct_numeric_recursion_trust_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}", "f",
+  )
+  let configurable_registry = direct_numeric_recursion_registry_or_fail(
+    configurable_interp, configurable_callee,
+  )
+  guard configurable_interp.global_this is Object(configurable_global) &&
+    configurable_global.bag.descriptors.get("f")
+    is Some(configurable_descriptor) else {
+    fail("expected the sealed global function descriptor")
+  }
+  configurable_descriptor.configurable = true
+  let configurable_result = try {
+    let _ = configurable_registry.require_named(configurable_interp, "f")
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+
+  let (accessor_interp, accessor_callee) = direct_numeric_recursion_trust_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}", "f",
+  )
+  let accessor_registry = direct_numeric_recursion_registry_or_fail(
+    accessor_interp, accessor_callee,
+  )
+  guard accessor_interp.global_this is Object(accessor_global) &&
+    accessor_global.bag.descriptors.get("f") is Some(accessor_descriptor) else {
+    fail("expected the sealed global function descriptor")
+  }
+  accessor_descriptor.is_accessor = true
+  accessor_descriptor.getter = Some(accessor_callee)
+  let accessor_result = try {
+    let _ = accessor_registry.require_callee(accessor_interp, accessor_callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+
+  inspect(
+    configurable_result,
+    content="numeric recursion candidate diverged from its global mirror",
+  )
+  inspect(
+    accessor_result,
+    content="numeric recursion candidate diverged from its global mirror",
+  )
+}
+
+///|
 test "direct numeric recursion abrupt exit restores activation lifecycle state" {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = Some("direct.js")

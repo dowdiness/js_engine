@@ -106,21 +106,6 @@ fn direct_numeric_recursion_plans_match(
 }
 
 ///|
-fn direct_numeric_recursion_global_property_is_canonical(
-  global_object : ObjectData,
-  name : String,
-) -> Bool {
-  match ordinary_get_own_string_desc(global_object.bag, name) {
-    Some(desc) =>
-      !desc.is_accessor &&
-      desc.writable &&
-      desc.enumerable &&
-      !desc.configurable
-    None => false
-  }
-}
-
-///|
 fn Interpreter::snapshot_direct_numeric_recursion_function(
   self : Interpreter,
   syntax : NumericRecursionFunctionSyntax,
@@ -144,10 +129,7 @@ fn Interpreter::snapshot_direct_numeric_recursion_function(
   }
   guard global_object.bag.properties.get(syntax.name) is Some(Object(mirrored)) &&
     physical_equal(mirrored, actual) &&
-    direct_numeric_recursion_global_property_is_canonical(
-      global_object,
-      syntax.name,
-    ) else {
+    numeric_recursion_global_property_is_canonical(global_object, syntax.name) else {
     return None
   }
   guard actual.callable is Some(UserFunc(data)) &&

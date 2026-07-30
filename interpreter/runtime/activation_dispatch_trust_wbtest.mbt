@@ -517,6 +517,51 @@ test "numeric recursion trust revalidates binding and mirror on every lookup" {
 }
 
 ///|
+test "numeric recursion trust revalidates canonical global descriptors on every lookup" {
+  let interp = Interpreter::new()
+  let (stmts, plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
+  let callee = registry.require_named(interp, "f")
+  guard interp.global_this is Object(global_object) &&
+    global_object.bag.descriptors.get("f") is Some(descriptor) else {
+    fail("expected the sealed global function descriptor")
+  }
+
+  descriptor.writable = false
+  let writable_result = try {
+    let _ = registry.require_named(interp, "f")
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  descriptor.writable = true
+
+  descriptor.enumerable = false
+  let enumerable_result = try {
+    let _ = registry.require_callee(interp, callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+
+  inspect(
+    writable_result,
+    content="numeric recursion candidate diverged from its global mirror",
+  )
+  inspect(
+    enumerable_result,
+    content="numeric recursion candidate diverged from its global mirror",
+  )
+}
+
+///|
 test "numeric recursion trust rejects a replacement canonical global on lookup" {
   let interp = Interpreter::new()
   let (stmts, plan) = numeric_recursion_trust_test_plan(
