@@ -226,6 +226,74 @@ fn DispatchNumericCallStart::DispatchNumericCallStart(
 }
 
 ///|
+#warnings("-unused_field")
+priv struct DispatchNumericProgramStart {
+  declaration_count : Int
+  expression : DispatchNumericExpression
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericProgramStart::DispatchNumericProgramStart(
+  declaration_count~ : Int,
+  expression~ : DispatchNumericExpression,
+) -> DispatchNumericProgramStart {
+  { declaration_count, expression }
+}
+
+///|
+#warnings("-unused_value")
+fn numeric_recursion_program_dispatch_start(
+  plan : NumericRecursionPlan,
+  capture : DispatchCalleeCaptureToken,
+) -> DispatchNumericProgramStart {
+  let declaration_count = match plan.peer {
+    Some(_) => 2
+    None => 1
+  }
+  DispatchNumericProgramStart(
+    declaration_count~,
+    expression=numeric_recursion_root_dispatch_expression(plan, capture),
+  )
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum DispatchNumericStatementObservation {
+  DispatchNumericObserveRootDeclaration(Int)
+  DispatchNumericObserveRootExpressionStatement
+  DispatchNumericObserveIfStatement
+  DispatchNumericObserveReturnStatement
+}
+
+///|
+#warnings("-unused_field")
+priv struct DispatchNumericRootDeclarationResume {
+  next_index : Int
+  remaining : Int
+  expression : DispatchNumericExpression
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericRootDeclarationResume::DispatchNumericRootDeclarationResume(
+  next_index~ : Int,
+  remaining~ : Int,
+  expression~ : DispatchNumericExpression,
+) -> DispatchNumericRootDeclarationResume {
+  { next_index, remaining, expression }
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum DispatchNumericStatementContinuation {
+  DispatchAfterNumericRootDeclaration(DispatchNumericRootDeclarationResume)
+  DispatchAfterNumericRootExpressionStatement(DispatchNumericExpression)
+  DispatchAfterNumericIfStatement(DispatchNumericCallStart)
+  DispatchAfterNumericReturnStatement(DispatchNumericExpression)
+}
+
+///|
 #warnings("-unused_constructor-unused_field")
 priv enum DispatchCallStart {
   DispatchCallBody(DispatchStatementCursor)
@@ -366,6 +434,45 @@ fn snapshot_dispatch_loop_resume(
 }
 
 ///|
+fn snapshot_dispatch_numeric_call_start(
+  start : DispatchNumericCallStart,
+) -> DispatchNumericCallStart {
+  DispatchNumericCallStart(
+    parameter=start.parameter,
+    recursive_callee=start.recursive_callee,
+    recipe=start.recipe,
+  )
+}
+
+///|
+fn snapshot_dispatch_numeric_statement_continuation(
+  continuation : DispatchNumericStatementContinuation,
+) -> DispatchNumericStatementContinuation {
+  match continuation {
+    DispatchAfterNumericRootDeclaration(progress) =>
+      DispatchAfterNumericRootDeclaration(
+        DispatchNumericRootDeclarationResume(
+          next_index=progress.next_index,
+          remaining=progress.remaining,
+          expression=snapshot_dispatch_numeric_expression(progress.expression),
+        ),
+      )
+    DispatchAfterNumericRootExpressionStatement(expression) =>
+      DispatchAfterNumericRootExpressionStatement(
+        snapshot_dispatch_numeric_expression(expression),
+      )
+    DispatchAfterNumericIfStatement(start) =>
+      DispatchAfterNumericIfStatement(
+        snapshot_dispatch_numeric_call_start(start),
+      )
+    DispatchAfterNumericReturnStatement(expression) =>
+      DispatchAfterNumericReturnStatement(
+        snapshot_dispatch_numeric_expression(expression),
+      )
+  }
+}
+
+///|
 fn snapshot_dispatch_continuation(
   continuation : DispatchContinuation,
 ) -> DispatchContinuation {
@@ -384,6 +491,10 @@ fn snapshot_dispatch_continuation(
     DispatchContinueNumericExpression(numeric) =>
       DispatchContinueNumericExpression(
         snapshot_dispatch_numeric_continuation(numeric),
+      )
+    DispatchContinueNumericStatement(numeric) =>
+      DispatchContinueNumericStatement(
+        snapshot_dispatch_numeric_statement_continuation(numeric),
       )
   }
 }
@@ -459,6 +570,7 @@ priv enum DispatchContinuation {
   DispatchCheckProxyGetResult(DispatchProxyGetResume)
   DispatchBindParameterDefault(DispatchParameterDefaultResume)
   DispatchContinueNumericExpression(DispatchNumericExpressionContinuation)
+  DispatchContinueNumericStatement(DispatchNumericStatementContinuation)
 }
 
 ///|
@@ -472,6 +584,7 @@ priv enum DispatchWork {
   DispatchNormalizeFunctionControl(DispatchCompletion)
   DispatchResumeContinuation(DispatchContinuation, Value)
   DispatchObserveExpressionStep(DispatchNumericExpressionObservation)
+  DispatchObserveStatementStep(DispatchNumericStatementObservation)
   DispatchReadNumericParameter(DispatchParameterBindingToken)
   DispatchCaptureTrustedCallee(DispatchCalleeCaptureToken)
   DispatchStartCapturedNumericCall(
@@ -525,6 +638,10 @@ priv enum DispatchEffect {
 #warnings("-unused_constructor")
 priv enum DispatchEffectResult {
   DispatchProgramAccepted(DispatchActivationCleanup)
+  DispatchNumericProgramAccepted(
+    DispatchActivationCleanup,
+    DispatchNumericProgramStart
+  )
   DispatchCallAccepted(DispatchActivationCleanup, DispatchCallStart)
   DispatchActivationRejected(
     DispatchRejectedEntryCleanup,
@@ -872,6 +989,122 @@ fn begin_dispatch_statements(
 }
 
 ///|
+fn begin_dispatch_numeric_statement_observation(
+  state : ActivationDispatchState,
+  observation : DispatchNumericStatementObservation,
+  continuation : DispatchNumericStatementContinuation,
+) -> (ActivationDispatchState, ActivationDispatchDecision) raise InvalidDispatchTransition {
+  guard state.phase is DispatchReady else {
+    invalid_dispatch_transition("numeric statement observation requires Ready")
+  }
+  schedule_dispatch_effect(
+    push_dispatch_frame(
+      state,
+      DispatchContinuationFrame(
+        DispatchContinueNumericStatement(
+          snapshot_dispatch_numeric_statement_continuation(continuation),
+        ),
+      ),
+    ),
+    DispatchRun(DispatchObserveStatementStep(observation)),
+  )
+}
+
+///|
+fn begin_dispatch_numeric_program(
+  state : ActivationDispatchState,
+  start : DispatchNumericProgramStart,
+) -> (ActivationDispatchState, ActivationDispatchDecision) raise InvalidDispatchTransition {
+  guard start.declaration_count > 0 else {
+    invalid_dispatch_transition(
+      "numeric root requires at least one declaration observation",
+    )
+  }
+  begin_dispatch_numeric_statement_observation(
+    state,
+    DispatchNumericObserveRootDeclaration(0),
+    DispatchAfterNumericRootDeclaration(
+      DispatchNumericRootDeclarationResume(
+        next_index=1,
+        remaining=start.declaration_count - 1,
+        expression=snapshot_dispatch_numeric_expression(start.expression),
+      ),
+    ),
+  )
+}
+
+///|
+fn resume_dispatch_numeric_statement(
+  state : ActivationDispatchState,
+  continuation : DispatchNumericStatementContinuation,
+  value : Value,
+) -> (ActivationDispatchState, ActivationDispatchDecision) raise InvalidDispatchTransition {
+  guard state.phase is DispatchReady else {
+    invalid_dispatch_transition("numeric statement resume requires Ready")
+  }
+  guard value is Undefined else {
+    invalid_dispatch_transition(
+      "numeric statement observation returned a non-sentinel value",
+    )
+  }
+  match continuation {
+    DispatchAfterNumericRootDeclaration(progress) => {
+      guard progress.next_index > 0 && progress.remaining >= 0 else {
+        invalid_dispatch_transition(
+          "numeric root declaration progress is invalid",
+        )
+      }
+      if progress.remaining > 0 {
+        begin_dispatch_numeric_statement_observation(
+          state,
+          DispatchNumericObserveRootDeclaration(progress.next_index),
+          DispatchAfterNumericRootDeclaration(
+            DispatchNumericRootDeclarationResume(
+              next_index=progress.next_index + 1,
+              remaining=progress.remaining - 1,
+              expression=progress.expression,
+            ),
+          ),
+        )
+      } else {
+        begin_dispatch_numeric_statement_observation(
+          state,
+          DispatchNumericObserveRootExpressionStatement,
+          DispatchAfterNumericRootExpressionStatement(progress.expression),
+        )
+      }
+    }
+    DispatchAfterNumericRootExpressionStatement(expression) =>
+      begin_dispatch_numeric_expression(state, expression)
+    DispatchAfterNumericIfStatement(start) => {
+      let waiting_condition = push_dispatch_frame(
+        state,
+        DispatchContinuationFrame(
+          DispatchContinueNumericExpression(
+            DispatchAfterNumericBaseCondition(start),
+          ),
+        ),
+      )
+      begin_dispatch_numeric_expression(
+        waiting_condition,
+        numeric_recursion_base_condition_dispatch_expression(
+          start.recipe,
+          start.parameter,
+        ),
+      )
+    }
+    DispatchAfterNumericReturnStatement(expression) =>
+      begin_dispatch_numeric_expression(
+        push_dispatch_frame(
+          state,
+          DispatchContinuationFrame(DispatchCompleteReturn),
+        ),
+        expression,
+      )
+  }
+}
+
+///|
 fn route_dispatch_completion(
   state : ActivationDispatchState,
   completion : DispatchCompletion,
@@ -907,6 +1140,8 @@ fn route_dispatch_completion(
                 return resume_dispatch_numeric_expression(
                   popped, numeric, value,
                 )
+              (DispatchContinueNumericStatement(numeric), DispatchNormal(value)) =>
+                return resume_dispatch_numeric_statement(popped, numeric, value)
               (consumer, DispatchNormal(value)) =>
                 return schedule_dispatch_effect(
                   popped,
@@ -1178,6 +1413,16 @@ fn complete_dispatch_effect(
       begin_dispatch_statements(entered, work)
     }
     (
+      DispatchPendingActivationEntry(_, DispatchPendingProgram(_)),
+      DispatchNumericProgramAccepted(cleanup, start),
+    ) => {
+      let entered = push_dispatch_frame(
+        ready,
+        DispatchActivationFrame(cleanup, DispatchRootExit),
+      )
+      begin_dispatch_numeric_program(entered, start)
+    }
+    (
       DispatchPendingActivationEntry(_, DispatchPendingCall),
       DispatchCallAccepted(cleanup, DispatchCallBody(work)),
     ) => {
@@ -1205,6 +1450,20 @@ fn complete_dispatch_effect(
             snapshot_dispatch_parameter_progress(progress),
           ),
         ),
+      )
+    }
+    (
+      DispatchPendingActivationEntry(_, DispatchPendingCall),
+      DispatchCallAccepted(cleanup, DispatchNumericCall(start)),
+    ) => {
+      let entered = push_dispatch_frame(
+        ready,
+        DispatchActivationFrame(cleanup, DispatchFunctionExit),
+      )
+      begin_dispatch_numeric_statement_observation(
+        entered,
+        DispatchNumericObserveIfStatement,
+        DispatchAfterNumericIfStatement(start),
       )
     }
     (

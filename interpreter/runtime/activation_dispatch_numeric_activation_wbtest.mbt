@@ -680,3 +680,313 @@ test "invalid numeric call envelopes do not acquire cleanup ownership" {
   inspect(shell.cleanup_stack.length(), content="0")
   dispatch_shell_test_expect_realm_sentinel(interp, 35)
 }
+
+///|
+fn numeric_root_activation_test_fixture(
+  source : String,
+) -> (
+  Interpreter,
+  PrimitiveProgramDispatchShell,
+  NumericRecursionPlan,
+  DispatchStatementCursor,
+) raise {
+  let interp = Interpreter::new()
+  let stmts = @parser.parse(source).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact numeric-recursion plan")
+  }
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free numeric preflight")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    numeric_root_preflight=Some(preflight),
+  )
+  let cursor = DispatchStatementCursor(
+    ctx={ strict: false, current_generator: None },
+    stmts~,
+    env=interp.global,
+  )
+  (interp, shell, plan, cursor)
+}
+
+///|
+test "numeric root owns its registry and child activations in LIFO order" {
+  let (interp, shell, plan, cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let previous_realm = active_realm_protos(interp.realm_state)
+  let (root_cleanup, root_capture) = match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(cursor)),
+    ) {
+    DispatchNumericProgramAccepted(cleanup, start) => {
+      inspect(start.declaration_count, content="1")
+      let capture = match start.expression {
+        DispatchNumericSingleArgumentCall(
+          capture,
+          DispatchNumericNumber(argument),
+          loc
+        ) => {
+          inspect(argument, content="256")
+          inspect(loc == plan.root_call_loc, content="true")
+          capture
+        }
+        _ => fail("expected the admitted root call expression")
+      }
+      (cleanup, capture)
+    }
+    _ => fail("expected a sealed numeric root activation")
+  }
+  inspect(shell.numeric_registry is Some(_), content="true")
+  inspect(shell.cleanup_stack.length(), content="1")
+  match
+    shell.perform_effect(
+      DispatchRun(DispatchCaptureTrustedCallee(root_capture)),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected root callee capture")
+  }
+  let child_request = match
+    shell.perform_effect(
+      DispatchRun(
+        DispatchStartCapturedNumericCall(
+          root_capture,
+          plan.initial_argument,
+          plan.root_call_loc,
+        ),
+      ),
+    ) {
+    DispatchWorkSuspended(DispatchSuspendCall(request, _)) => request
+    _ => fail("expected the admitted root call request")
+  }
+  let child_cleanup = match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchCallActivation(child_request)),
+    ) {
+    DispatchCallAccepted(cleanup, DispatchNumericCall(_)) => cleanup
+    _ => fail("expected the numeric child activation")
+  }
+  inspect(shell.cleanup_stack.length(), content="2")
+  let out_of_order = try {
+    numeric_activation_test_release(
+      shell,
+      root_cleanup,
+      DispatchNormal(Number(256.0)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+    _ => "wrong error"
+  }
+  inspect(out_of_order, content="rejected")
+  numeric_activation_test_release(
+    shell,
+    child_cleanup,
+    DispatchReturn(Number(256.0)),
+  )
+  inspect(shell.numeric_registry is Some(_), content="true")
+  numeric_activation_test_release(
+    shell,
+    root_cleanup,
+    DispatchNormal(Number(256.0)),
+  )
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(shell.numeric_registry is None, content="true")
+  inspect(
+    numeric_recursion_realm_protos_match(
+      previous_realm,
+      active_realm_protos(interp.realm_state),
+    ),
+    content="true",
+  )
+}
+
+///|
+test "numeric root seal failure remains owned until restore-all" {
+  let (interp, shell, _, cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let previous_realm = active_realm_protos(interp.realm_state)
+  cursor.stmts.clear()
+  let result = try {
+    let _ = shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(cursor)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(result, content="rejected")
+  inspect(shell.cleanup_stack.length(), content="1")
+  inspect(shell.numeric_registry is None, content="true")
+  shell.restore_all_cleanup()
+  inspect(shell.cleanup_stack.length(), content="0")
+  inspect(
+    numeric_recursion_realm_protos_match(
+      previous_realm,
+      active_realm_protos(interp.realm_state),
+    ),
+    content="true",
+  )
+}
+
+///|
+fn numeric_activation_test_apply_binary(
+  shell : PrimitiveProgramDispatchShell,
+  op : @ast.BinOp,
+  left : Value,
+  right : Value,
+) -> DispatchCompletion raise {
+  match
+    shell.perform_effect(
+      DispatchRun(
+        DispatchResumeContinuation(
+          DispatchApplyBinaryRight(
+            DispatchBinaryResume(op~, left~, loc=@token.Loc::default()),
+          ),
+          right,
+        ),
+      ),
+    ) {
+    DispatchWorkCompleted(completion) => completion
+    _ => fail("expected a closed numeric binary result")
+  }
+}
+
+///|
+test "numeric shell applies only the closed number binary operations" {
+  let shell = PrimitiveProgramDispatchShell(Interpreter::new())
+  expect_dispatch_number(
+    numeric_activation_test_apply_binary(
+      shell,
+      @ast.Add,
+      Number(2.0),
+      Number(3.0),
+    ),
+    5.0,
+  )
+  expect_dispatch_number(
+    numeric_activation_test_apply_binary(
+      shell,
+      @ast.Sub,
+      Number(5.0),
+      Number(2.0),
+    ),
+    3.0,
+  )
+  match
+    numeric_activation_test_apply_binary(
+      shell,
+      @ast.EqEqEq,
+      Number(3.0),
+      Number(3.0),
+    ) {
+    DispatchNormal(Bool(true)) => ()
+    _ => fail("expected closed numeric strict equality")
+  }
+  let invalid_operator = try {
+    let _ = numeric_activation_test_apply_binary(
+      shell,
+      @ast.Mul,
+      Number(2.0),
+      Number(3.0),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+    _ => "wrong error"
+  }
+  inspect(invalid_operator, content="rejected")
+  let invalid_operand = try {
+    let _ = numeric_activation_test_apply_binary(
+      shell,
+      @ast.Add,
+      String_("2"),
+      Number(3.0),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+    _ => "wrong error"
+  }
+  inspect(invalid_operand, content="rejected")
+}
+
+///|
+test "numeric root clears caller realm before sealing and restores it" {
+  let interp = Interpreter::new()
+  let caller_object_proto = make_object(
+    Map([]),
+    Null,
+    None,
+    "Object",
+    Map([]),
+    true,
+  )
+  apply_active_realm_protos(
+    interp.realm_state,
+    FunctionRealmProtos(object_proto=Some(caller_object_proto)),
+  )
+  let stmts = @parser.parse(
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+    ).stmts
+  let plan = match classify_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact numeric-recursion plan")
+  }
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free numeric preflight")
+  }
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let completed = try {
+    match
+      activation_dispatch_root_value(
+        interp.run_activation_dispatch_numeric_program(stmts, ctx, preflight),
+      ) {
+      Number(value) if value == 256.0 => true
+      _ => false
+    }
+  } catch {
+    _ => false
+  }
+  inspect(completed, content="true")
+  match
+    (active_realm_protos(interp.realm_state).object_proto, caller_object_proto) {
+    (Some(Object(actual)), Object(expected)) =>
+      inspect(physical_equal(actual, expected), content="true")
+    _ => fail("expected the caller realm override to be restored")
+  }
+}
+
+///|
+test "numeric route preserves statement execution-control observations" {
+  for
+    source in [
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+      "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+      "function g(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+    ] {
+    let interp = Interpreter::new()
+    let stmts = @parser.parse(source).stmts
+    let control = ExecutionControl(
+      remaining_steps=2567,
+      maximum_active_depth=1024,
+      interruption=ExecutionInterruptionRequest(),
+    )
+    let outcome = try {
+      let _ : Value = interp.with_execution_control(control, fn() raise {
+        interp.run(stmts)
+      })
+      "completed"
+    } catch {
+      ExecutionControlError(ExecutionLimit) => "execution-limit"
+      _ => "other-error"
+    }
+    inspect(outcome, content="execution-limit")
+    inspect(control.remaining_steps(), content="0")
+  }
+}

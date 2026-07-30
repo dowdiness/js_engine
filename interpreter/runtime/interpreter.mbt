@@ -675,21 +675,32 @@ pub fn Interpreter::run(
         self.run_activation_dispatch_leaf_program(stmts, ctx),
       )
     } else {
-      with_cleared_active_callee_realm(self.realm_state, fn() raise {
-        self.prepare_root_program_execution(stmts, self.global, strict)
-        let mut last : Value = Undefined
-        for stmt in stmts {
-          match self.exec_stmt(ctx, stmt, self.global) {
-            Normal(v) => last = v
-            ReturnSignal(_) =>
-              raise @errors.SyntaxError(
-                message="return statement outside of function",
-              )
-            sig => raise_if_break_continue(sig)
-          }
-        }
-        last
-      })
+      let numeric_preflight = match classify_numeric_recursion_program(stmts) {
+        Some(plan) => self.preflight_numeric_recursion_program(plan)
+        None => None
+      }
+      match numeric_preflight {
+        Some(preflight) =>
+          activation_dispatch_root_value(
+            self.run_activation_dispatch_numeric_program(stmts, ctx, preflight),
+          )
+        None =>
+          with_cleared_active_callee_realm(self.realm_state, fn() raise {
+            self.prepare_root_program_execution(stmts, self.global, strict)
+            let mut last : Value = Undefined
+            for stmt in stmts {
+              match self.exec_stmt(ctx, stmt, self.global) {
+                Normal(v) => last = v
+                ReturnSignal(_) =>
+                  raise @errors.SyntaxError(
+                    message="return statement outside of function",
+                  )
+                sig => raise_if_break_continue(sig)
+              }
+            }
+            last
+          })
+      }
     }
     result
   } catch {
