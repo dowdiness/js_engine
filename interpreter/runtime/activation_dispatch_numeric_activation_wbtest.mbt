@@ -805,6 +805,245 @@ test "numeric root owns its registry and child activations in LIFO order" {
 }
 
 ///|
+test "numeric catch binding is materialized and consumed exactly once" {
+  let (_, shell, _, cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch(e){e;}",
+  )
+  let (cleanup, catch_state) = match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(cursor)),
+    ) {
+    DispatchNumericProgramAccepted(cleanup, start) =>
+      (
+        cleanup,
+        DispatchNumericCatchResume(
+          token=start.catch_binding,
+          parameter=Some("e"),
+          body=NumericRecursionClosedBindingValue,
+        ),
+      )
+    _ => fail("expected a sealed protected numeric root")
+  }
+  match
+    shell.perform_effect(
+      DispatchRun(
+        DispatchEnterNumericCatch(catch_state, JsException(Number(9.0))),
+      ),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected numeric catch entry")
+  }
+  match
+    shell.perform_effect(
+      DispatchRun(DispatchReadNumericCatchBinding(catch_state.token)),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Number(value))) =>
+      inspect(value, content="9")
+    _ => fail("expected the materialized catch value")
+  }
+  let duplicate_read = try {
+    let _ = shell.perform_effect(
+      DispatchRun(DispatchReadNumericCatchBinding(catch_state.token)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(duplicate_read, content="rejected")
+  let duplicate_entry = try {
+    let _ = shell.perform_effect(
+      DispatchRun(
+        DispatchEnterNumericCatch(catch_state, JsException(Number(10.0))),
+      ),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(duplicate_entry, content="rejected")
+  numeric_activation_test_release(shell, cleanup, DispatchNormal(Number(9.0)))
+  let stale_read = try {
+    let _ = shell.perform_effect(
+      DispatchRun(DispatchReadNumericCatchBinding(catch_state.token)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(stale_read, content="rejected")
+}
+
+///|
+test "numeric catch entry converts typed errors and disables bindingless reads" {
+  let (_, typed_shell, _, typed_cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch(e){e;}",
+  )
+  let (typed_cleanup, typed_catch) = match
+    typed_shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(typed_cursor)),
+    ) {
+    DispatchNumericProgramAccepted(cleanup, start) =>
+      (
+        cleanup,
+        DispatchNumericCatchResume(
+          token=start.catch_binding,
+          parameter=Some("e"),
+          body=NumericRecursionClosedBindingValue,
+        ),
+      )
+    _ => fail("expected a sealed protected numeric root")
+  }
+  match
+    typed_shell.perform_effect(
+      DispatchRun(
+        DispatchEnterNumericCatch(
+          typed_catch,
+          @errors.TypeError(message="typed catch"),
+        ),
+      ),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected typed numeric catch entry")
+  }
+  match
+    typed_shell.perform_effect(
+      DispatchRun(DispatchReadNumericCatchBinding(typed_catch.token)),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Object(error))) => {
+      inspect(error.class_name, content="TypeError")
+      match error.bag.properties.get("message") {
+        Some(String_(message)) => inspect(message, content="typed catch")
+        _ => fail("typed JavaScript error must retain its message")
+      }
+    }
+    _ => fail("typed JS errors must become JavaScript Error objects")
+  }
+  numeric_activation_test_release(
+    typed_shell,
+    typed_cleanup,
+    DispatchNormal(Undefined),
+  )
+
+  let (_, bindingless_shell, _, bindingless_cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch{1;}",
+  )
+  let (bindingless_cleanup, bindingless_catch) = match
+    bindingless_shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(bindingless_cursor)),
+    ) {
+    DispatchNumericProgramAccepted(cleanup, start) =>
+      (
+        cleanup,
+        DispatchNumericCatchResume(
+          token=start.catch_binding,
+          parameter=None,
+          body=NumericRecursionClosedNumberValue(1.0),
+        ),
+      )
+    _ => fail("expected a sealed bindingless protected root")
+  }
+  match
+    bindingless_shell.perform_effect(
+      DispatchRun(
+        DispatchEnterNumericCatch(bindingless_catch, JsException(Number(9.0))),
+      ),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected bindingless numeric catch entry")
+  }
+  let bindingless_read = try {
+    let _ = bindingless_shell.perform_effect(
+      DispatchRun(DispatchReadNumericCatchBinding(bindingless_catch.token)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(bindingless_read, content="rejected")
+  numeric_activation_test_release(
+    bindingless_shell,
+    bindingless_cleanup,
+    DispatchNormal(Number(1.0)),
+  )
+}
+
+///|
+test "numeric root cleanup retires armed and unread catch bindings" {
+  let (_, armed_shell, _, armed_cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{f(256);}catch(e){}",
+  )
+  let (armed_cleanup, armed_token) = match
+    armed_shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(armed_cursor)),
+    ) {
+    DispatchNumericProgramAccepted(cleanup, start) =>
+      (cleanup, start.catch_binding)
+    _ => fail("expected a sealed protected numeric root")
+  }
+  let armed_capabilities = armed_shell.require_numeric_capabilities(
+    armed_token.id,
+  )
+  inspect(
+    armed_capabilities.catch_binding is DispatchNumericCatchBindingArmed,
+    content="true",
+  )
+  numeric_activation_test_release(
+    armed_shell,
+    armed_cleanup,
+    DispatchNormal(Number(256.0)),
+  )
+  inspect(
+    armed_capabilities.catch_binding is DispatchNumericCatchBindingConsumed,
+    content="true",
+  )
+
+  let (_, unread_shell, _, unread_cursor) = numeric_root_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch(e){}",
+  )
+  let (unread_cleanup, unread_catch) = match
+    unread_shell.perform_effect(
+      DispatchEnterActivation(DispatchProgramActivation(unread_cursor)),
+    ) {
+    DispatchNumericProgramAccepted(cleanup, start) =>
+      (
+        cleanup,
+        DispatchNumericCatchResume(
+          token=start.catch_binding,
+          parameter=Some("e"),
+          body=NumericRecursionClosedBodyEmpty,
+        ),
+      )
+    _ => fail("expected a sealed protected numeric root")
+  }
+  let unread_capabilities = unread_shell.require_numeric_capabilities(
+    unread_catch.token.id,
+  )
+  let _ = unread_shell.perform_effect(
+    DispatchRun(
+      DispatchEnterNumericCatch(unread_catch, JsException(Number(256.0))),
+    ),
+  )
+  inspect(
+    unread_capabilities.catch_binding is DispatchNumericCatchBindingAvailable(_),
+    content="true",
+  )
+  numeric_activation_test_release(
+    unread_shell,
+    unread_cleanup,
+    DispatchNormal(Undefined),
+  )
+  inspect(
+    unread_capabilities.catch_binding is DispatchNumericCatchBindingConsumed,
+    content="true",
+  )
+}
+
+///|
 test "numeric root seal failure remains owned until restore-all" {
   let (interp, shell, _, cursor) = numeric_root_activation_test_fixture(
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",

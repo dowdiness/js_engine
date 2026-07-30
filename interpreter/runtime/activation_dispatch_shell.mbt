@@ -48,17 +48,72 @@ fn DispatchNumericParameterCapability::DispatchNumericParameterCapability(
 }
 
 ///|
+#warnings("-unused_field")
+priv struct DispatchNumericCatchBindingCapability {
+  env : Environment
+  name : String
+}
+
+///|
+#warnings("-unused_value")
+fn DispatchNumericCatchBindingCapability::DispatchNumericCatchBindingCapability(
+  env~ : Environment,
+  name~ : String,
+) -> DispatchNumericCatchBindingCapability {
+  { env, name }
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum DispatchNumericCatchBindingState {
+  DispatchNumericCatchBindingDisabled
+  DispatchNumericCatchBindingArmed
+  DispatchNumericCatchBindingAvailable(DispatchNumericCatchBindingCapability)
+  DispatchNumericCatchBindingConsumed
+}
+
+///|
 priv struct DispatchNumericActivationCapabilities {
   parameter : DispatchNumericParameterCapability?
   mut recursive_callee : DispatchNumericCalleeCaptureState
+  mut catch_binding : DispatchNumericCatchBindingState
 }
 
 ///|
 fn DispatchNumericActivationCapabilities::DispatchNumericActivationCapabilities(
   parameter~ : DispatchNumericParameterCapability?,
   recursive_callee~ : DispatchNumericCalleeCaptureState,
+  catch_binding~ : DispatchNumericCatchBindingState,
 ) -> DispatchNumericActivationCapabilities {
-  { parameter, recursive_callee }
+  { parameter, recursive_callee, catch_binding }
+}
+
+///|
+fn numeric_recursion_root_catch_binding_state(
+  root_control : NumericRecursionRootControlRecipe,
+) -> DispatchNumericCatchBindingState {
+  match root_control {
+    NumericRecursionProtectedRoot(
+      { catch_recipe: NumericRecursionCatch(_, _), .. }
+    ) => DispatchNumericCatchBindingArmed
+    NumericRecursionDirectRoot
+    | NumericRecursionProtectedRoot(
+      { catch_recipe: NumericRecursionNoCatch, .. }
+    ) => DispatchNumericCatchBindingDisabled
+  }
+}
+
+///|
+fn retire_numeric_catch_binding(
+  capabilities : DispatchNumericActivationCapabilities,
+) -> Unit {
+  match capabilities.catch_binding {
+    DispatchNumericCatchBindingArmed
+    | DispatchNumericCatchBindingAvailable(_) =>
+      capabilities.catch_binding = DispatchNumericCatchBindingConsumed
+    DispatchNumericCatchBindingDisabled | DispatchNumericCatchBindingConsumed =>
+      ()
+  }
 }
 
 ///|
@@ -270,6 +325,10 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
   cleanup : ProgramRealmCleanup,
   failure : Error?,
 ) -> Unit {
+  match cleanup.capabilities {
+    Some(capabilities) => retire_numeric_catch_binding(capabilities)
+    None => ()
+  }
   match cleanup.resources {
     DispatchProgramRealmCleanup(previous_realm_protos) =>
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
@@ -381,6 +440,9 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
   let capabilities = DispatchNumericActivationCapabilities(
     parameter=None,
     recursive_callee=DispatchNumericCalleeUnresolved(preflight.plan.entry.name),
+    catch_binding=numeric_recursion_root_catch_binding_state(
+      preflight.plan.root_control,
+    ),
   )
   self.push_numeric_root_cleanup(id, previous_realm_protos, capabilities)
   let registry = self.interp.seal_numeric_recursion_registry(
@@ -523,6 +585,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
         recursive_callee=DispatchNumericCalleeUnresolved(
           syntax.recursive_callee,
         ),
+        catch_binding=DispatchNumericCatchBindingDisabled,
       )
       self.push_numeric_call_cleanup(
         id,
@@ -586,6 +649,81 @@ fn PrimitiveProgramDispatchShell::read_numeric_parameter(
     )
   }
   DispatchWorkCompleted(DispatchNormal(binding.value))
+}
+
+///|
+fn PrimitiveProgramDispatchShell::enter_numeric_catch(
+  self : PrimitiveProgramDispatchShell,
+  catch_state : DispatchNumericCatchResume,
+  error : Error,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let capabilities = self.require_numeric_capabilities(catch_state.token.id)
+  guard capabilities.catch_binding is DispatchNumericCatchBindingArmed else {
+    invalid_activation_dispatch_shell(
+      "numeric catch binding was entered more than once",
+    )
+  }
+  match catch_state.parameter {
+    None => capabilities.catch_binding = DispatchNumericCatchBindingConsumed
+    Some(name) => {
+      guard numeric_recursion_identifier_is_safe(name) else {
+        return invalid_activation_dispatch_shell(
+          "numeric catch binding lost its trusted identifier",
+        )
+      }
+      let catch_env = Environment::new(parent=Some(self.interp.global))
+      let caught = js_error_to_value_with_env(error, Some(self.interp.global))
+      let setup : Result[Unit, Error] = Ok(
+        catch_env.def(name, caught, LetBinding),
+      ) catch {
+        binding_error => Err(binding_error)
+      }
+      match setup {
+        Ok(_) =>
+          capabilities.catch_binding = DispatchNumericCatchBindingAvailable(
+            DispatchNumericCatchBindingCapability(env=catch_env, name~),
+          )
+        Err(_) =>
+          invalid_activation_dispatch_shell(
+            "numeric catch binding could not be initialized",
+          )
+      }
+    }
+  }
+  DispatchWorkCompleted(DispatchNormal(Undefined))
+}
+
+///|
+fn PrimitiveProgramDispatchShell::read_numeric_catch_binding(
+  self : PrimitiveProgramDispatchShell,
+  token : DispatchNumericCatchBindingToken,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let capabilities = self.require_numeric_capabilities(token.id)
+  let binding_capability = match capabilities.catch_binding {
+    DispatchNumericCatchBindingAvailable(found) => found
+    DispatchNumericCatchBindingDisabled
+    | DispatchNumericCatchBindingArmed
+    | DispatchNumericCatchBindingConsumed =>
+      invalid_activation_dispatch_shell(
+        "numeric catch binding is unavailable or already consumed",
+      )
+  }
+  guard binding_capability.env.parent is Some(parent) &&
+    physical_equal(parent, self.interp.global) &&
+    binding_capability.env.with_object is None &&
+    !binding_capability.env.is_var_scope &&
+    binding_capability.env.bindings.get(binding_capability.name)
+    is Some(binding) &&
+    binding.initialized &&
+    binding.kind == LetBinding &&
+    !binding.is_parameter else {
+    invalid_activation_dispatch_shell(
+      "numeric catch binding lost its trusted provenance",
+    )
+  }
+  let value = binding.value
+  capabilities.catch_binding = DispatchNumericCatchBindingConsumed
+  DispatchWorkCompleted(DispatchNormal(value))
 }
 
 ///|
@@ -719,6 +857,10 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     }
     DispatchRun(DispatchReadNumericParameter(token)) =>
       self.read_numeric_parameter(token)
+    DispatchRun(DispatchEnterNumericCatch(catch_state, error)) =>
+      self.enter_numeric_catch(catch_state, error)
+    DispatchRun(DispatchReadNumericCatchBinding(token)) =>
+      self.read_numeric_catch_binding(token)
     DispatchRun(DispatchCaptureTrustedCallee(token)) =>
       self.capture_numeric_callee(token)
     DispatchRun(DispatchStartCapturedNumericCall(token, argument, loc)) =>
