@@ -397,11 +397,14 @@ test "numeric setup rejection retains state until exactly one rollback" {
     active_realm~,
     parameter_gate~,
   )
+  let observation_probe = DispatchObservationProbe()
+  let observation = observe_activation_entry(observation_probe.port())
   let setup_error : Error = @errors.SyntaxError(message="numeric setup failed")
   let rejected = shell.complete_numeric_call_preparation(
     id,
     plan.entry,
     resources,
+    observation,
     Err(setup_error),
   )
   let cleanup = match rejected {
@@ -415,6 +418,10 @@ test "numeric setup rejection retains state until exactly one rollback" {
     _ => fail("expected a rejected numeric entry")
   }
   inspect(shell.cleanup_stack.length(), content="1")
+  inspect(observation_probe.attempts, content="1")
+  inspect(observation_probe.accepted, content="0")
+  inspect(observation_probe.rejected, content="1")
+  inspect(observation_probe.released, content="0")
   inspect(interp.in_nonarrow_param_default_eval, content="false")
   inspect(interp.param_default_eval_var_conflicts is None, content="true")
   let wrong_release = try {
@@ -440,6 +447,8 @@ test "numeric setup rejection retains state until exactly one rollback" {
     _ => fail("expected rejected numeric rollback")
   }
   inspect(shell.cleanup_stack.length(), content="0")
+  inspect(observation_probe.rejected, content="1")
+  inspect(observation_probe.released, content="0")
   dispatch_shell_test_expect_realm_sentinel(interp, 36)
   inspect(interp.in_nonarrow_param_default_eval, content="true")
   match interp.param_default_eval_var_conflicts {
