@@ -340,7 +340,6 @@ fn PrimitiveProgramDispatchShell::push_property_cleanup(
 }
 
 ///|
-#warnings("-unused_value")
 fn PrimitiveProgramDispatchShell::begin_property_scope(
   self : PrimitiveProgramDispatchShell,
 ) -> DispatchPropertyCleanup raise InvalidActivationDispatchShell {
@@ -348,6 +347,42 @@ fn PrimitiveProgramDispatchShell::begin_property_scope(
   let scope = begin_cleared_active_callee_realm(self.interp.realm_state)
   self.push_property_cleanup(id, scope)
   DispatchPropertyCleanup(id)
+}
+
+///|
+fn PrimitiveProgramDispatchShell::start_property(
+  self : PrimitiveProgramDispatchShell,
+  work : DispatchPropertyGetResume,
+  consumer : DispatchContinuation,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let cleanup = self.begin_property_scope()
+  DispatchWorkSuspended(DispatchSuspendProperty(cleanup, work, consumer))
+}
+
+///|
+fn execute_dispatch_ordinary_property(
+  work : DispatchPropertyGetResume,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  match dispatch_ordinary_property_lookup(work) {
+    DispatchOrdinaryPropertyValue(value) =>
+      DispatchWorkCompleted(DispatchNormal(value))
+    DispatchOrdinaryPropertyGetter(getter) =>
+      DispatchWorkSuspended(
+        DispatchSuspendCall(
+          DispatchCallRequest(
+            callee=getter,
+            this_value=work.receiver,
+            args=[],
+            loc=work.loc,
+          ),
+          DispatchDeliverAccessorResult(work),
+        ),
+      )
+    DispatchOrdinaryPropertyUnsupported =>
+      invalid_activation_dispatch_shell(
+        "property work requires an ordinary object and canonical string key",
+      )
+  }
 }
 
 ///|
@@ -927,6 +962,13 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.enter_numeric_catch(catch_state, error)
     DispatchRun(DispatchReadNumericCatchBinding(token)) =>
       self.read_numeric_catch_binding(token)
+    DispatchRun(DispatchStartProperty(work, consumer)) =>
+      self.start_property(work, consumer)
+    DispatchRun(DispatchExecuteProperty(work)) =>
+      execute_dispatch_ordinary_property(work)
+    DispatchRun(
+      DispatchResumeContinuation(DispatchDeliverAccessorResult(_), value)
+    ) => DispatchWorkCompleted(DispatchNormal(value))
     DispatchRun(DispatchCaptureTrustedCallee(token)) =>
       self.capture_numeric_callee(token)
     DispatchRun(DispatchStartCapturedNumericCall(token, argument, loc)) =>

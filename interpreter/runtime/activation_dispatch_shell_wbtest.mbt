@@ -540,3 +540,313 @@ test "property cleanup generation exhaustion preserves realm state" {
   inspect(outcome, content="exhausted")
   dispatch_shell_test_expect_realm_sentinel(interp, 15)
 }
+
+///|
+fn dispatch_shell_test_ordinary_object(
+  prototype : Value,
+  descriptor : PropDescriptor?,
+  property_value : Value?,
+) -> Value {
+  let bag = PropertyBag()
+  match descriptor {
+    Some(found) => bag.descriptors["x"] = found
+    None => ()
+  }
+  match property_value {
+    Some(found) => bag.properties["x"] = found
+    None => ()
+  }
+  Object({
+    bag,
+    prototype,
+    callable: None,
+    class_name: "Object",
+    extensible: true,
+    arraybuffer_state: None,
+  })
+}
+
+///|
+fn dispatch_shell_test_accessor_descriptor(getter : Value) -> PropDescriptor {
+  {
+    writable: false,
+    enumerable: true,
+    configurable: true,
+    getter: Some(getter),
+    setter: None,
+    is_accessor: true,
+  }
+}
+
+///|
+fn dispatch_shell_test_data_descriptor() -> PropDescriptor {
+  {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+}
+
+///|
+fn dispatch_shell_test_start_property(
+  shell : PrimitiveProgramDispatchShell,
+  work : DispatchPropertyGetResume,
+  consumer : DispatchContinuation,
+) -> (DispatchPropertyCleanup, DispatchPropertyGetResume, DispatchContinuation) raise {
+  match
+    shell.perform_effect(DispatchRun(DispatchStartProperty(work, consumer))) {
+    DispatchWorkSuspended(
+      DispatchSuspendProperty(cleanup, found_work, found_consumer)
+    ) => (cleanup, found_work, found_consumer)
+    _ => fail("expected property work to acquire a cleanup scope")
+  }
+}
+
+///|
+fn dispatch_shell_test_restore_property(
+  shell : PrimitiveProgramDispatchShell,
+  cleanup : DispatchPropertyCleanup,
+  completion : DispatchCompletion,
+) -> Unit raise {
+  match
+    shell.perform_effect(DispatchRestorePropertyScope(cleanup, completion)) {
+    DispatchCleanupCompleted => ()
+    _ => fail("expected property cleanup to restore its realm scope")
+  }
+}
+
+///|
+test "ordinary own accessor work suspends without invoking its getter" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 16)
+  let calls : Ref[Int] = { val: 0 }
+  let getter = make_native_func(name="x getter", _args => {
+    calls.val += 1
+    Number(99.0)
+  })
+  let receiver = dispatch_shell_test_ordinary_object(
+    Null,
+    Some(dispatch_shell_test_accessor_descriptor(getter)),
+    Some(Number(88.0)),
+  )
+  let work = DispatchPropertyGetResume(
+    target=receiver,
+    property_key=String_("x"),
+    receiver~,
+    loc=@token.Loc::default(),
+  )
+  let shell = PrimitiveProgramDispatchShell(interp)
+  let (cleanup, scoped_work, consumer) = dispatch_shell_test_start_property(
+    shell,
+    work,
+    DispatchDeliverCallResult,
+  )
+  dispatch_shell_test_expect_realm_cleared(interp)
+  let accessor_consumer = match
+    shell.perform_effect(DispatchRun(DispatchExecuteProperty(scoped_work))) {
+    DispatchWorkSuspended(DispatchSuspendCall(request, continuation)) => {
+      inspect(physical_equal(request.callee, getter), content="true")
+      inspect(physical_equal(request.this_value, receiver), content="true")
+      inspect(request.args.length(), content="0")
+      continuation
+    }
+    _ => fail("expected own accessor work to suspend at its getter call")
+  }
+  inspect(calls.val, content="0")
+  match
+    shell.perform_effect(
+      DispatchRun(DispatchResumeContinuation(accessor_consumer, Number(21.0))),
+    ) {
+    DispatchWorkCompleted(DispatchNormal(Number(value))) =>
+      inspect(value, content="21")
+    _ => fail("expected the accessor result to resume exactly once")
+  }
+  inspect(calls.val, content="0")
+  match consumer {
+    DispatchDeliverCallResult => ()
+    _ => fail("expected the outer property consumer to remain unchanged")
+  }
+  dispatch_shell_test_restore_property(
+    shell,
+    cleanup,
+    DispatchNormal(Number(21.0)),
+  )
+  dispatch_shell_test_expect_realm_sentinel(interp, 16)
+}
+
+///|
+test "ordinary prototype accessor work preserves the original receiver" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 17)
+  let getter = make_native_func(name="prototype x getter", _args => Undefined)
+  let prototype = dispatch_shell_test_ordinary_object(
+    Null,
+    Some(dispatch_shell_test_accessor_descriptor(getter)),
+    None,
+  )
+  let target = dispatch_shell_test_ordinary_object(prototype, None, None)
+  let receiver = dispatch_shell_test_ordinary_object(Null, None, None)
+  let work = DispatchPropertyGetResume(
+    target~,
+    property_key=String_("x"),
+    receiver~,
+    loc=@token.Loc::default(),
+  )
+  let shell = PrimitiveProgramDispatchShell(interp)
+  let (cleanup, scoped_work, _) = dispatch_shell_test_start_property(
+    shell,
+    work,
+    DispatchDeliverCallResult,
+  )
+  match
+    shell.perform_effect(DispatchRun(DispatchExecuteProperty(scoped_work))) {
+    DispatchWorkSuspended(DispatchSuspendCall(request, _)) => {
+      inspect(physical_equal(request.callee, getter), content="true")
+      inspect(physical_equal(request.this_value, receiver), content="true")
+    }
+    _ => fail("expected prototype accessor work to suspend at its getter call")
+  }
+  dispatch_shell_test_restore_property(
+    shell,
+    cleanup,
+    DispatchNormal(Undefined),
+  )
+  dispatch_shell_test_expect_realm_sentinel(interp, 17)
+}
+
+///|
+test "ordinary getterless accessor shadows a conflicting data slot" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 18)
+  let setter = make_native_func(name="x setter", _args => Undefined)
+  let descriptor : PropDescriptor = {
+    writable: false,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: Some(setter),
+    is_accessor: true,
+  }
+  let receiver = dispatch_shell_test_ordinary_object(
+    Null,
+    Some(descriptor),
+    Some(Number(55.0)),
+  )
+  let work = DispatchPropertyGetResume(
+    target=receiver,
+    property_key=String_("x"),
+    receiver~,
+    loc=@token.Loc::default(),
+  )
+  let shell = PrimitiveProgramDispatchShell(interp)
+  let (cleanup, scoped_work, _) = dispatch_shell_test_start_property(
+    shell,
+    work,
+    DispatchDeliverCallResult,
+  )
+  match
+    shell.perform_effect(DispatchRun(DispatchExecuteProperty(scoped_work))) {
+    DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
+    _ => fail("expected a getterless accessor to produce undefined")
+  }
+  dispatch_shell_test_restore_property(
+    shell,
+    cleanup,
+    DispatchNormal(Undefined),
+  )
+  dispatch_shell_test_expect_realm_sentinel(interp, 18)
+}
+
+///|
+test "ordinary data property work completes once through the reducer" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 19)
+  let receiver = dispatch_shell_test_ordinary_object(
+    Null,
+    Some(dispatch_shell_test_data_descriptor()),
+    Some(Number(34.0)),
+  )
+  let work = DispatchPropertyGetResume(
+    target=receiver,
+    property_key=String_("x"),
+    receiver~,
+    loc=@token.Loc::default(),
+  )
+  let shell = PrimitiveProgramDispatchShell(interp)
+  let (starting, start_decision) = schedule_dispatch_effect(
+    dispatch_test_ready_state(DispatchFrameStackEmpty),
+    DispatchRun(DispatchStartProperty(work, DispatchDeliverCallResult)),
+  )
+  let (start_ticket, start_effect) = match start_decision {
+    DispatchPerform(ticket, effect) => (ticket, effect)
+    _ => fail("expected the property start effect")
+  }
+  let start_result = shell.perform_effect(start_effect)
+  dispatch_shell_test_expect_realm_cleared(interp)
+  let (running, property_decision) = reduce_activation_dispatch(
+    starting,
+    DispatchEffectCompleted(start_ticket, start_result),
+  )
+  let (property_ticket, property_effect) = match property_decision {
+    DispatchPerform(ticket, effect) =>
+      match effect {
+        DispatchRun(DispatchExecuteProperty(_)) => (ticket, effect)
+        _ => fail("expected scoped property execution")
+      }
+    _ => fail("expected scoped property execution")
+  }
+  expect_invalid_dispatch(() => {
+    let _ = reduce_activation_dispatch(
+      running,
+      DispatchEffectCompleted(
+        start_ticket,
+        DispatchWorkCompleted(DispatchNormal(Undefined)),
+      ),
+    )
+  })
+  let property_result = shell.perform_effect(property_effect)
+  let (restoring, restore_decision) = reduce_activation_dispatch(
+    running,
+    DispatchEffectCompleted(property_ticket, property_result),
+  )
+  let (restore_ticket, restore_effect) = match restore_decision {
+    DispatchPerform(ticket, effect) =>
+      match effect {
+        DispatchRestorePropertyScope(_, DispatchNormal(Number(value))) => {
+          inspect(value, content="34")
+          (ticket, effect)
+        }
+        _ => fail("expected property cleanup after its exact value")
+      }
+    _ => fail("expected property cleanup after its exact value")
+  }
+  expect_invalid_dispatch(() => {
+    let _ = reduce_activation_dispatch(
+      restoring,
+      DispatchEffectCompleted(
+        property_ticket,
+        DispatchWorkCompleted(DispatchNormal(Number(99.0))),
+      ),
+    )
+  })
+  let restore_result = shell.perform_effect(restore_effect)
+  let (finished, finish_decision) = reduce_activation_dispatch(
+    restoring,
+    DispatchEffectCompleted(restore_ticket, restore_result),
+  )
+  match finish_decision {
+    DispatchFinish(DispatchNormal(Number(value))) =>
+      inspect(value, content="34")
+    _ => fail("expected the exact data property result")
+  }
+  expect_invalid_dispatch(() => {
+    let _ = reduce_activation_dispatch(
+      finished,
+      DispatchEffectCompleted(restore_ticket, DispatchCleanupCompleted),
+    )
+  })
+  dispatch_shell_test_expect_realm_sentinel(interp, 19)
+}

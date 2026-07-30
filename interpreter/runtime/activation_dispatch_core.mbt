@@ -689,6 +689,7 @@ priv enum DispatchWork {
   DispatchExecuteStatement(DispatchStatementStep)
   DispatchAdvanceParameters(DispatchParameterDefaultResume)
   DispatchAdvanceLoop(DispatchLoopResume)
+  DispatchStartProperty(DispatchPropertyGetResume, DispatchContinuation)
   DispatchExecuteProperty(DispatchPropertyGetResume)
   DispatchExecuteCatch(DispatchCatchResume, Error)
   DispatchEnterNumericCatch(DispatchNumericCatchResume, Error)
