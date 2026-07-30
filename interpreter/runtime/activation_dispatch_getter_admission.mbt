@@ -322,7 +322,7 @@ fn classify_getter_recursion_program(
 fn getter_recursion_plan_is_dispatchable(plan : GetterRecursionPlan) -> Bool {
   match plan.placement {
     GetterOwnAccessor => true
-    GetterDirectPrototypeAccessor(_) => false
+    GetterDirectPrototypeAccessor(_) => true
   }
 }
 

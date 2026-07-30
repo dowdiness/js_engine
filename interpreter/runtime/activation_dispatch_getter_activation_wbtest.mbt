@@ -6,7 +6,17 @@ fn getter_activation_test_source() -> String {
 }
 
 ///|
-fn getter_activation_test_fixture() -> (
+fn getter_activation_test_prototype_source() -> String {
+  "let n=256;" +
+  "let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+  "let o={__proto__:p};" +
+  "o.x;"
+}
+
+///|
+fn getter_activation_test_fixture_for(
+  source : String,
+) -> (
   Interpreter,
   PrimitiveProgramDispatchShell,
   TrustedGetterRecursionRegistry,
@@ -16,7 +26,7 @@ fn getter_activation_test_fixture() -> (
 ) raise {
   let interp = Interpreter::new()
   interp.realm_state.active_source_identity.val = Some("getter.js")
-  let stmts = @parser.parse(getter_activation_test_source()).stmts
+  let stmts = @parser.parse(source).stmts
   let plan = match classify_getter_recursion_program(stmts) {
     Some(found) => found
     None => fail("expected the exact getter-recursion plan")
@@ -27,7 +37,7 @@ fn getter_activation_test_fixture() -> (
   }
   let ctx : ExecContext = { strict: false, current_generator: None }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  for index in 0..<2 {
+  for index in 0..<(getter_recursion_seal_statement_index(plan) + 1) {
     match interp.exec_stmt(ctx, stmts[index], interp.global) {
       Normal(_) => ()
       _ => fail("exact getter root setup must complete normally")
@@ -35,8 +45,16 @@ fn getter_activation_test_fixture() -> (
   }
   let registry = interp.seal_getter_recursion_registry(preflight, stmts)
   let target = registry.require_target(interp)
-  guard target is Object(target_data) &&
-    target_data.bag.descriptors.get(plan.property_name) is Some(descriptor) &&
+  let holder = match
+    getter_recursion_binding_value(
+      interp,
+      getter_recursion_accessor_holder_name(plan),
+    ) {
+    Some(found) => found
+    None => fail("expected the getter accessor holder")
+  }
+  guard holder is Object(holder_data) &&
+    holder_data.bag.descriptors.get(plan.property_name) is Some(descriptor) &&
     descriptor.getter is Some(getter) else {
     fail("expected the sealed getter and receiver")
   }
@@ -45,6 +63,18 @@ fn getter_activation_test_fixture() -> (
     getter_registry=Some(registry),
   )
   (interp, shell, registry, plan, getter, target)
+}
+
+///|
+fn getter_activation_test_fixture() -> (
+  Interpreter,
+  PrimitiveProgramDispatchShell,
+  TrustedGetterRecursionRegistry,
+  GetterRecursionPlan,
+  Value,
+  Value,
+) raise {
+  getter_activation_test_fixture_for(getter_activation_test_source())
 }
 
 ///|
@@ -124,6 +154,35 @@ test "trusted getter entry owns its receiver and restores dynamic state" {
       inspect(physical_equal(found, saved_conflicts), content="true")
     None => fail("expected the caller parameter gate to be restored")
   }
+}
+
+///|
+test "direct prototype getter entry binds the target receiver" {
+  let (_, shell, _, plan, getter, target) = getter_activation_test_fixture_for(
+    getter_activation_test_prototype_source(),
+  )
+  guard target is Object(target_data) &&
+    target_data.prototype is Object(holder_data) else {
+    fail("expected the direct prototype holder")
+  }
+  let (cleanup, cursor) = getter_activation_test_enter(
+    shell, plan, getter, target,
+  )
+  guard cursor.env.bindings.get("this") is Some(this_binding) else {
+    fail("expected a getter this binding")
+  }
+  inspect(
+    getter_recursion_target_identity_matches(target, this_binding.value),
+    content="true",
+  )
+  inspect(
+    getter_recursion_target_identity_matches(
+      Object(holder_data),
+      this_binding.value,
+    ),
+    content="false",
+  )
+  getter_activation_test_release(shell, cleanup, DispatchReturn(Number(1.0)))
 }
 
 ///|

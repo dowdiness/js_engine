@@ -372,7 +372,7 @@ test "getter recursion admission recognizes the exact direct prototype accessor 
   inspect(plan.object_name, content="o")
   inspect(plan.property_name, content="x")
   inspect(plan.initial_count, content="256")
-  inspect(getter_recursion_plan_is_dispatchable(plan), content="false")
+  inspect(getter_recursion_plan_is_dispatchable(plan), content="true")
   for index, stmt in stmts {
     guard getter_recursion_root_statement_matches(plan, index, stmt) else {
       fail("expected every admitted prototype getter root statement to match")
