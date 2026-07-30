@@ -6,6 +6,14 @@ fn getter_recursion_trust_test_source() -> String {
 }
 
 ///|
+fn getter_recursion_trust_test_prototype_source() -> String {
+  "let n=256;" +
+  "let p={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+  "let o={__proto__:p};" +
+  "o.x;"
+}
+
+///|
 fn getter_recursion_trust_test_plan(
   source : String,
 ) -> (Array[@ast.Stmt], GetterRecursionPlan) raise {
@@ -20,10 +28,11 @@ fn getter_recursion_trust_test_plan(
 fn getter_recursion_trust_execute_root_setup(
   interp : Interpreter,
   stmts : Array[@ast.Stmt],
+  plan : GetterRecursionPlan,
 ) -> Unit raise {
   let ctx : ExecContext = { strict: false, current_generator: None }
   interp.prepare_root_program_execution(stmts, interp.global, false)
-  for index in 0..<2 {
+  for index in 0..<(getter_recursion_seal_statement_index(plan) + 1) {
     match interp.exec_stmt(ctx, stmts[index], interp.global) {
       Normal(_) => ()
       _ => fail("exact getter root setup must complete normally")
@@ -41,7 +50,7 @@ fn getter_recursion_trust_test_registry(
     Some(found) => found
     None => fail("expected callback-free getter preflight")
   }
-  getter_recursion_trust_execute_root_setup(interp, stmts)
+  getter_recursion_trust_execute_root_setup(interp, stmts, plan)
   interp.seal_getter_recursion_registry(preflight, stmts)
 }
 
@@ -57,6 +66,24 @@ test "getter recursion trust preflight accepts only fresh canonical bindings" {
   )
   let occupied = Interpreter::new()
   occupied.global.def("n", Number(1.0), LetBinding)
+  inspect(
+    occupied.preflight_getter_recursion_program(plan) is None,
+    content="true",
+  )
+}
+
+///|
+test "getter recursion trust preflight requires a fresh prototype holder binding" {
+  let (_, plan) = getter_recursion_trust_test_plan(
+    getter_recursion_trust_test_prototype_source(),
+  )
+  let fresh = Interpreter::new()
+  inspect(
+    fresh.preflight_getter_recursion_program(plan) is Some(_),
+    content="true",
+  )
+  let occupied = Interpreter::new()
+  occupied.global.def("p", Undefined, LetBinding)
   inspect(
     occupied.preflight_getter_recursion_program(plan) is None,
     content="true",
@@ -80,6 +107,114 @@ test "getter recursion trust seals target descriptor getter and receiver identit
   inspect(admitted.counter_name, content="n")
   inspect(admitted.object_name, content="o")
   inspect(admitted.property_name, content="x")
+}
+
+///|
+test "getter recursion trust seals direct prototype holder link and receiver" {
+  let interp = Interpreter::new()
+  let (stmts, plan) = getter_recursion_trust_test_plan(
+    getter_recursion_trust_test_prototype_source(),
+  )
+  let registry = getter_recursion_trust_test_registry(interp, stmts, plan)
+  let target = registry.require_target(interp)
+  guard target is Object(target_data) &&
+    target_data.prototype is Object(holder_data) &&
+    holder_data.bag.descriptors.get("x") is Some(descriptor) &&
+    descriptor.getter is Some(getter) else {
+    fail("expected the sealed direct prototype accessor")
+  }
+  let admitted = registry.require_getter(interp, getter, target)
+  inspect(admitted.object_name, content="o")
+  let holder_result = try {
+    let _ = registry.require_getter(interp, getter, Object(holder_data))
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(holder_result, content="rejected")
+}
+
+///|
+test "getter recursion trust rejects direct prototype link and descriptor drift" {
+  let interp = Interpreter::new()
+  let (stmts, plan) = getter_recursion_trust_test_plan(
+    getter_recursion_trust_test_prototype_source(),
+  )
+  let registry = getter_recursion_trust_test_registry(interp, stmts, plan)
+  let target = registry.require_target(interp)
+  guard target is Object(target_data) &&
+    target_data.prototype is Object(holder_data) &&
+    interp.global.bindings.get("p") is Some(holder_binding) &&
+    holder_data.bag.descriptors.get("x") is Some(descriptor) &&
+    descriptor.getter is Some(getter) &&
+    getter is Object(getter_data) &&
+    getter_data.callable is Some(UserFunc(data)) &&
+    data.closure.bindings.get("[[HomeObject]]") is Some(home_binding) else {
+    fail("expected sealed prototype getter storage")
+  }
+  let holder = target_data.prototype
+  target_data.prototype = Null
+  let link_result = try {
+    let _ = registry.require_target(interp)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  target_data.prototype = holder
+
+  holder_data.bag.descriptors["x"] = { ..descriptor, getter: None }
+  let descriptor_result = try {
+    let _ = registry.require_target(interp)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  holder_data.bag.descriptors["x"] = descriptor
+
+  holder_binding.value = Undefined
+  let holder_binding_result = try {
+    let _ = registry.require_target(interp)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  holder_binding.value = holder
+
+  let holder_prototype = holder_data.prototype
+  holder_data.prototype = target
+  let holder_prototype_result = try {
+    let _ = registry.require_target(interp)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  holder_data.prototype = holder_prototype
+
+  target_data.bag.properties["x"] = Number(1.0)
+  let own_property_result = try {
+    let _ = registry.require_target(interp)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  let _ = target_data.bag.properties.remove("x")
+
+  home_binding.value = target
+  let home_object_result = try {
+    let _ = registry.require_target(interp)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  home_binding.value = holder
+
+  inspect(link_result, content="rejected")
+  inspect(descriptor_result, content="rejected")
+  inspect(holder_binding_result, content="rejected")
+  inspect(holder_prototype_result, content="rejected")
+  inspect(own_property_result, content="rejected")
+  inspect(home_object_result, content="rejected")
+  let _ = registry.require_target(interp)
 }
 
 ///|
@@ -140,7 +275,7 @@ test "getter recursion trust rejects ThrowTypeError drift before sealing" {
     fail("expected the direct ThrowTypeError binding")
   }
   binding.value = replacement
-  getter_recursion_trust_execute_root_setup(interp, stmts)
+  getter_recursion_trust_execute_root_setup(interp, stmts, plan)
   let result = try {
     let _ = interp.seal_getter_recursion_registry(preflight, stmts)
     "accepted"
