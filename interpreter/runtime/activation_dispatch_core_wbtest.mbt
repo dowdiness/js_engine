@@ -1399,8 +1399,16 @@ test "throw-value continuation consumes one normal value" {
 }
 
 ///|
-test "Proxy invariant precedes property restore and parent release" {
-  let id = 1200
+fn start_proxy_invariant_dispatch(
+  id : Int,
+  post_trap : DispatchProxyGetResume,
+  trap_result : Value,
+) -> (
+  ActivationDispatchState,
+  DispatchTicket,
+  DispatchEffect,
+  DispatchPropertyCleanup,
+) raise {
   let (running_root, root_ticket) = start_accepted_dispatch_root(id)
   let property_cleanup = DispatchPropertyCleanup(id + 3)
   let (running_property, property_decision) = reduce_activation_dispatch(
@@ -1433,7 +1441,7 @@ test "Proxy invariant precedes property restore and parent release" {
       DispatchWorkSuspended(
         DispatchSuspendCall(
           dispatch_test_call_work(id + 5),
-          DispatchCheckProxyGetResult(dispatch_test_proxy_resume(id + 6)),
+          DispatchCheckProxyGetResult(post_trap),
         ),
       ),
     ),
@@ -1460,12 +1468,12 @@ test "Proxy invariant precedes property restore and parent release" {
     running_trap,
     DispatchEffectCompleted(
       trap_ticket,
-      DispatchWorkCompleted(DispatchReturn(Number(9.0))),
+      DispatchWorkCompleted(DispatchReturn(trap_result)),
     ),
   )
   let trap_release_ticket = match trap_release_decision {
-    DispatchPerform(ticket, DispatchReleaseActivation(_, completion)) => {
-      inspect(dispatch_completion_tag(completion), content="normal:9")
+    DispatchPerform(ticket, DispatchReleaseActivation(_, DispatchNormal(value))) => {
+      inspect(same_value(value, trap_result), content="true")
       ticket
     }
     _ => fail("expected trap release before invariant work")
@@ -1474,7 +1482,7 @@ test "Proxy invariant precedes property restore and parent release" {
     releasing_trap,
     DispatchEffectCompleted(trap_release_ticket, DispatchCleanupCompleted),
   )
-  let invariant_ticket = match invariant_decision {
+  let (invariant_ticket, invariant_effect) = match invariant_decision {
     DispatchPerform(
       ticket,
       DispatchRun(
@@ -1483,23 +1491,121 @@ test "Proxy invariant precedes property restore and parent release" {
     ) => {
       inspect(
         dispatch_test_property_key(work.property_key),
-        content="key:" + (id + 6).to_string(),
+        content=dispatch_test_property_key(post_trap.property_key),
       )
-      inspect(dispatch_test_value_tag(value), content="9")
-      ticket
+      inspect(same_value(work.target, post_trap.target), content="true")
+      inspect(same_value(work.receiver, post_trap.receiver), content="true")
+      inspect(same_value(value, trap_result), content="true")
+      (
+        ticket,
+        DispatchRun(
+          DispatchResumeContinuation(DispatchCheckProxyGetResult(work), value),
+        ),
+      )
     }
     _ => fail("expected Proxy invariant before property restore")
+  }
+  (running_invariant, invariant_ticket, invariant_effect, property_cleanup)
+}
+
+///|
+fn expect_proxy_invariant_error_route(
+  id : Int,
+  target : Value,
+  trap_result : Value,
+  expected_message : String,
+) -> Unit raise {
+  let post_trap = DispatchProxyGetResume(
+    target~,
+    property_key=String_("x"),
+    receiver=String_("receiver:" + id.to_string()),
+    loc=@token.Loc::default(),
+  )
+  let (running_invariant, invariant_ticket, invariant_effect, property_cleanup) = start_proxy_invariant_dispatch(
+    id, post_trap, trap_result,
+  )
+  let shell = PrimitiveProgramDispatchShell(Interpreter::new())
+  let invariant_result = shell.perform_effect(invariant_effect)
+  let invariant_error = match invariant_result {
+    DispatchWorkCompleted(DispatchThrow(error)) => {
+      match @errors.name_message_if_js_error(error) {
+        Some((name, message)) => {
+          inspect(name, content="TypeError")
+          inspect(message, content=expected_message)
+        }
+        None => fail("expected a JavaScript TypeError from Proxy validation")
+      }
+      error
+    }
+    _ => fail("expected Proxy validation to complete with a guest throw")
   }
   let (restoring_property, restore_decision) = reduce_activation_dispatch(
     running_invariant,
     DispatchEffectCompleted(
       invariant_ticket,
-      DispatchWorkCompleted(DispatchNormal(Number(9.0))),
+      DispatchWorkCompleted(DispatchThrow(invariant_error)),
+    ),
+  )
+  let restore_ticket = match restore_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRestorePropertyScope(found, DispatchThrow(error))
+    ) => {
+      inspect(found.id, content=property_cleanup.id.to_string())
+      inspect(physical_equal(error, invariant_error), content="true")
+      ticket
+    }
+    _ => fail("expected property restore after invariant error")
+  }
+  expect_invalid_dispatch(() => {
+    let _ = reduce_activation_dispatch(
+      restoring_property,
+      DispatchEffectCompleted(
+        invariant_ticket,
+        DispatchWorkCompleted(DispatchThrow(invariant_error)),
+      ),
+    )
+  })
+  let (releasing_root, root_release_decision) = reduce_activation_dispatch(
+    restoring_property,
+    DispatchEffectCompleted(restore_ticket, DispatchCleanupCompleted),
+  )
+  let root_release_ticket = match root_release_decision {
+    DispatchPerform(ticket, DispatchReleaseActivation(_, DispatchThrow(error))) => {
+      inspect(physical_equal(error, invariant_error), content="true")
+      ticket
+    }
+    _ => fail("expected parent release after property restore")
+  }
+  let (_, finish_decision) = reduce_activation_dispatch(
+    releasing_root,
+    DispatchEffectCompleted(root_release_ticket, DispatchCleanupCompleted),
+  )
+  match finish_decision {
+    DispatchFinish(DispatchThrow(error)) =>
+      inspect(physical_equal(error, invariant_error), content="true")
+    _ => fail("expected the Proxy invariant error to reach the root")
+  }
+}
+
+///|
+test "Proxy invariant precedes property restore and parent release" {
+  let id = 1200
+  let trap_result = Number(9.0)
+  let post_trap = dispatch_test_proxy_resume(id + 6)
+  let (running_invariant, invariant_ticket, _, property_cleanup) = start_proxy_invariant_dispatch(
+    id, post_trap, trap_result,
+  )
+  let (restoring_property, restore_decision) = reduce_activation_dispatch(
+    running_invariant,
+    DispatchEffectCompleted(
+      invariant_ticket,
+      DispatchWorkCompleted(DispatchNormal(trap_result)),
     ),
   )
   let restore_ticket = match restore_decision {
     DispatchPerform(ticket, DispatchRestorePropertyScope(found, completion)) => {
-      inspect(found.id, content=(id + 3).to_string())
+      inspect(found.id, content=property_cleanup.id.to_string())
       inspect(dispatch_completion_tag(completion), content="normal:9")
       ticket
     }
@@ -1531,6 +1637,48 @@ test "Proxy invariant precedes property restore and parent release" {
       inspect(dispatch_completion_tag(completion), content="return:9")
     _ => fail("expected Proxy result completion")
   }
+}
+
+///|
+test "Proxy frozen data invariant preserves post-trap error ordering" {
+  let descriptor : PropDescriptor = {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let target = dispatch_shell_test_ordinary_object(
+    Null,
+    Some(descriptor),
+    Some(Number(1.0)),
+  )
+  expect_proxy_invariant_error_route(
+    1210,
+    target,
+    Number(2.0),
+    "'get' on proxy: trap did not return the actual value of a read-only non-configurable target property",
+  )
+}
+
+///|
+test "Proxy getterless accessor invariant preserves post-trap error ordering" {
+  let descriptor : PropDescriptor = {
+    writable: false,
+    enumerable: true,
+    configurable: false,
+    getter: None,
+    setter: None,
+    is_accessor: true,
+  }
+  let target = dispatch_shell_test_ordinary_object(Null, Some(descriptor), None)
+  expect_proxy_invariant_error_route(
+    1220,
+    target,
+    Number(2.0),
+    "'get' on proxy: trap returned a value for a non-configurable target accessor without a getter",
+  )
 }
 
 ///|
