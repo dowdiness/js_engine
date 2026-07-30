@@ -35,6 +35,7 @@ fn GetterRecursionPreflight::GetterRecursionPreflight(
 priv struct TrustedGetterRecursionFunction {
   plan : GetterRecursionPlan
   target : Value
+  holder : Value
   getter : Value
   closure : Environment
   expected_source_text : String?
@@ -47,6 +48,7 @@ priv struct TrustedGetterRecursionFunction {
 fn TrustedGetterRecursionFunction::TrustedGetterRecursionFunction(
   plan~ : GetterRecursionPlan,
   target~ : Value,
+  holder~ : Value,
   getter~ : Value,
   closure~ : Environment,
   expected_source_text~ : String?,
@@ -57,6 +59,7 @@ fn TrustedGetterRecursionFunction::TrustedGetterRecursionFunction(
   {
     plan,
     target,
+    holder,
     getter,
     closure,
     expected_source_text,
@@ -112,7 +115,13 @@ fn Interpreter::preflight_getter_recursion_program(
   guard self.numeric_recursion_canonical_global_object()
     is Some(expected_global_object) &&
     !self.global.bindings.contains(plan.counter_name) &&
-    !self.global.bindings.contains(plan.object_name) else {
+    !self.global.bindings.contains(plan.object_name) &&
+    (
+      getter_recursion_accessor_holder_name(plan) == plan.object_name ||
+      !self.global.bindings.contains(
+        getter_recursion_accessor_holder_name(plan),
+      )
+    ) else {
     return None
   }
   let expected_realm_protos = function_realm_protos_from_realm_state(
@@ -163,7 +172,15 @@ fn getter_recursion_plans_match(
   expected.counter_name == actual.counter_name &&
   expected.object_name == actual.object_name &&
   expected.property_name == actual.property_name &&
-  same_value(Number(expected.initial_count), Number(actual.initial_count))
+  same_value(Number(expected.initial_count), Number(actual.initial_count)) &&
+  (match (expected.placement, actual.placement) {
+    (GetterOwnAccessor, GetterOwnAccessor) => true
+    (
+      GetterDirectPrototypeAccessor(expected_holder),
+      GetterDirectPrototypeAccessor(actual_holder),
+    ) => expected_holder == actual_holder
+    _ => false
+  })
 }
 
 ///|
@@ -220,6 +237,39 @@ fn getter_recursion_descriptor_matches(
 }
 
 ///|
+fn getter_recursion_target_and_holder_match(
+  trusted : TrustedGetterRecursionFunction,
+  target : Value,
+  holder : Value,
+) -> Bool {
+  guard getter_recursion_target_identity_matches(trusted.target, target) &&
+    getter_recursion_target_identity_matches(trusted.holder, holder) &&
+    target is Object(target_data) &&
+    target_data.class_name == "Object" &&
+    target_data.callable is None &&
+    holder is Object(holder_data) &&
+    holder_data.class_name == "Object" &&
+    holder_data.callable is None &&
+    same_value(holder_data.prototype, trusted.expected_object_prototype) &&
+    holder_data.bag.properties.get(trusted.plan.property_name)
+    is Some(Undefined) &&
+    holder_data.bag.descriptors.get(trusted.plan.property_name)
+    is Some(descriptor) &&
+    getter_recursion_descriptor_matches(descriptor, trusted.getter) else {
+    return false
+  }
+  match trusted.plan.placement {
+    GetterOwnAccessor =>
+      getter_recursion_target_identity_matches(target, holder)
+    GetterDirectPrototypeAccessor(_) =>
+      !getter_recursion_target_identity_matches(target, holder) &&
+      getter_recursion_target_identity_matches(holder, target_data.prototype) &&
+      target_data.bag.properties.get(trusted.plan.property_name) is None &&
+      target_data.bag.descriptors.get(trusted.plan.property_name) is None
+  }
+}
+
+///|
 fn getter_recursion_user_func_matches_syntax(
   interp : Interpreter,
   trusted : TrustedGetterRecursionFunction,
@@ -240,7 +290,7 @@ fn getter_recursion_user_func_matches_syntax(
     !data.closure.is_var_scope &&
     data.closure.bindings.get("[[HomeObject]]") is Some(home_binding) &&
     home_binding.initialized &&
-    getter_recursion_target_identity_matches(trusted.target, home_binding.value) else {
+    getter_recursion_target_identity_matches(trusted.holder, home_binding.value) else {
     return false
   }
   classify_getter_recursion_body(
@@ -274,18 +324,20 @@ fn getter_recursion_revalidate_trusted(
         "getter recursion object binding lost its trusted provenance",
       )
   }
-  guard getter_recursion_target_identity_matches(trusted.target, target) &&
-    target is Object(target_data) &&
-    target_data.class_name == "Object" &&
-    target_data.callable is None &&
-    same_value(target_data.prototype, trusted.expected_object_prototype) &&
-    target_data.bag.properties.get(trusted.plan.property_name)
-    is Some(Undefined) &&
-    target_data.bag.descriptors.get(trusted.plan.property_name)
-    is Some(descriptor) &&
-    getter_recursion_descriptor_matches(descriptor, trusted.getter) else {
+  let holder = match
+    getter_recursion_binding_value(
+      interp,
+      getter_recursion_accessor_holder_name(trusted.plan),
+    ) {
+    Some(found) => found
+    None =>
+      invalid_activation_dispatch_shell(
+        "getter recursion accessor holder lost its runtime provenance",
+      )
+  }
+  guard getter_recursion_target_and_holder_match(trusted, target, holder) else {
     invalid_activation_dispatch_shell(
-      "getter recursion target no longer has its exact own accessor",
+      "getter recursion target and accessor holder no longer match the sealed relation",
     )
   }
   guard trusted.getter is Object(getter_data) &&
@@ -325,6 +377,17 @@ fn getter_recursion_trusted_function(
         "getter recursion object binding was not initialized exactly once",
       )
   }
+  let holder = match
+    getter_recursion_binding_value(
+      interp,
+      getter_recursion_accessor_holder_name(preflight.plan),
+    ) {
+    Some(found) => found
+    None =>
+      invalid_activation_dispatch_shell(
+        "getter recursion accessor holder binding was not initialized exactly once",
+      )
+  }
   guard getter_recursion_binding_value(interp, preflight.plan.counter_name)
     is Some(Number(count)) &&
     same_value(Number(count), Number(preflight.plan.initial_count)) else {
@@ -332,17 +395,14 @@ fn getter_recursion_trusted_function(
       "getter recursion counter binding was not initialized exactly once",
     )
   }
-  guard target is Object(target_data) &&
-    target_data.class_name == "Object" &&
-    target_data.callable is None &&
-    same_value(target_data.prototype, preflight.expected_object_prototype) &&
-    target_data.bag.properties.get(preflight.plan.property_name)
+  guard holder is Object(holder_data) &&
+    holder_data.bag.properties.get(preflight.plan.property_name)
     is Some(Undefined) &&
-    target_data.bag.descriptors.get(preflight.plan.property_name)
+    holder_data.bag.descriptors.get(preflight.plan.property_name)
     is Some(descriptor) &&
     descriptor.getter is Some(getter) else {
     invalid_activation_dispatch_shell(
-      "getter recursion root did not create its exact own accessor",
+      "getter recursion root did not create its exact accessor holder",
     )
   }
   guard getter is Object(getter_data) &&
@@ -355,6 +415,7 @@ fn getter_recursion_trusted_function(
   let trusted = TrustedGetterRecursionFunction(
     plan=preflight.plan,
     target~,
+    holder~,
     getter~,
     closure=data.closure,
     expected_source_text=data.source_text,
@@ -362,7 +423,8 @@ fn getter_recursion_trusted_function(
     expected_realm_protos=preflight.expected_realm_protos,
     expected_source_identity=preflight.expected_source_identity,
   )
-  guard getter_recursion_descriptor_matches(descriptor, getter) &&
+  guard getter_recursion_target_and_holder_match(trusted, target, holder) &&
+    getter_recursion_descriptor_matches(descriptor, getter) &&
     getter_recursion_user_func_matches_syntax(interp, trusted, data) else {
     invalid_activation_dispatch_shell(
       "getter recursion root getter no longer matches its admitted syntax",
