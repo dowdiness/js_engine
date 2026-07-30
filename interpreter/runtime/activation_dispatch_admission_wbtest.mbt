@@ -330,3 +330,50 @@ test "numeric recursion admission rejects residual and lookalike shapes" {
     }
   }
 }
+
+///|
+fn getter_recursion_test_program(source : String) -> Array[@ast.Stmt] raise {
+  @parser.parse(source).stmts
+}
+
+///|
+test "getter recursion admission recognizes only the exact own accessor shape" {
+  let source = "let n=256;" +
+    "let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+    "o.x;"
+  let stmts = getter_recursion_test_program(source)
+  let plan = match classify_getter_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact #616 getter shape to be admitted")
+  }
+  inspect(plan.counter_name, content="n")
+  inspect(plan.object_name, content="o")
+  inspect(plan.property_name, content="x")
+  inspect(plan.initial_count, content="256")
+  inspect(getter_recursion_plan_is_dispatchable(plan), content="true")
+  guard classify_numeric_recursion_program(stmts) is None else {
+    fail("getter and numeric admission must remain disjoint")
+  }
+}
+
+///|
+test "getter recursion admission rejects residual and lookalike shapes" {
+  for
+    source in [
+      "let n=256;let o={x(){if(n===0)return 0;n=n-1;return 1+o.x;}};o.x;", "let n=256;let o={get ['x'](){if(n===0)return 0;n=n-1;return 1+o.x;}};o.x;",
+      "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 1+o['x'];}};o.x;",
+      "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};o['x'];",
+      "let n=255;let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};o.x;", "let n=256;let o={get x(){if(n===0)return 1;n=n-1;return 1+o.x;}};o.x;",
+      "let n=256;let o={get x(){if(n===0)return 0;n=n-2;return 1+o.x;}};o.x;", "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 2+o.x;}};o.x;",
+      "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};0;o.x;",
+      "let n=256;let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;},y:0};o.x;",
+      "let n=256;let p;p=new Proxy({},{get(t,k,r){if(n===0)return 0;n=n-1;return 1+p.x;}});p.x;",
+    ] {
+    guard classify_getter_recursion_program(
+        getter_recursion_test_program(source),
+      )
+      is None else {
+      fail("unexpectedly admitted getter lookalike: " + source)
+    }
+  }
+}
