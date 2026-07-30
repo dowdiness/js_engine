@@ -6,6 +6,7 @@ priv suberror DispatchObservationProbeError {
 ///|
 priv struct DispatchObservationProbe {
   deny_first : Bool
+  observed_interp : Interpreter?
   mut attempts : Int
   mut accepted : Int
   mut rejected : Int
@@ -13,14 +14,18 @@ priv struct DispatchObservationProbe {
   mut denied : Int
   mut active : Int
   mut maximum_active : Int
+  release_ordinals : Array[Int]
+  release_state_restored : Array[Bool]
 }
 
 ///|
 fn DispatchObservationProbe::DispatchObservationProbe(
   deny_first? : Bool = false,
+  observed_interp? : Interpreter? = None,
 ) -> DispatchObservationProbe {
   {
     deny_first,
+    observed_interp,
     attempts: 0,
     accepted: 0,
     rejected: 0,
@@ -28,6 +33,8 @@ fn DispatchObservationProbe::DispatchObservationProbe(
     denied: 0,
     active: 0,
     maximum_active: 0,
+    release_ordinals: [],
+    release_state_restored: [],
   }
 }
 
@@ -41,6 +48,19 @@ fn DispatchObservationProbe::port(
       if self.deny_first && self.attempts == 1 {
         raise DispatchObservationProbeError("entry denied")
       }
+      let ordinal = self.attempts
+      let state_before = match self.observed_interp {
+        Some(interp) =>
+          Some(
+            (
+              active_realm_protos(interp.realm_state).object_proto,
+              interp.realm_state.active_source_identity.val,
+              interp.in_nonarrow_param_default_eval,
+              interp.param_default_eval_var_conflicts,
+            ),
+          )
+        None => None
+      }
       ActivationObservationAttemptHooks(
         accepted=() => {
           self.accepted += 1
@@ -53,6 +73,43 @@ fn DispatchObservationProbe::port(
         released=() => {
           self.released += 1
           self.active -= 1
+          self.release_ordinals.push(ordinal)
+          match (self.observed_interp, state_before) {
+            (
+              Some(interp),
+              Some(
+                (
+                  object_proto_before,
+                  source_before,
+                  parameter_eval_before,
+                  conflicts_before,
+                )
+              ),
+            ) => {
+              let object_proto_restored = match
+                (
+                  object_proto_before,
+                  active_realm_protos(interp.realm_state).object_proto,
+                ) {
+                (None, None) => true
+                (Some(before), Some(after)) => same_value(before, after)
+                _ => false
+              }
+              let conflicts_restored = match
+                (conflicts_before, interp.param_default_eval_var_conflicts) {
+                (None, None) => true
+                (Some(before), Some(after)) => physical_equal(before, after)
+                _ => false
+              }
+              self.release_state_restored.push(
+                object_proto_restored &&
+                interp.realm_state.active_source_identity.val == source_before &&
+                interp.in_nonarrow_param_default_eval == parameter_eval_before &&
+                conflicts_restored,
+              )
+            }
+            _ => ()
+          }
         },
       )
     },
@@ -146,6 +203,14 @@ fn expect_nested_dispatch_observation_balanced(
   inspect(probe.denied, content="0")
   inspect(probe.active, content="0")
   inspect(probe.maximum_active, content="257")
+  inspect(probe.release_ordinals.length(), content="257")
+  let mut releases_are_strictly_lifo = true
+  for index in 0..<probe.release_ordinals.length() {
+    if probe.release_ordinals[index] != 257 - index {
+      releases_are_strictly_lifo = false
+    }
+  }
+  inspect(releases_are_strictly_lifo, content="true")
 }
 
 ///|
@@ -159,6 +224,45 @@ test "managed activation observation balances every nested numeric call" {
   }
   expect_nested_dispatch_observation_balanced(probe)
   inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "observed activation releases after restoring its owned runtime state" {
+  let (interp, _, registry, plan) = numeric_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  dispatch_shell_test_install_realm_sentinel(interp, 72)
+  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  saved_conflicts.add("observation-release")
+  interp.in_nonarrow_param_default_eval = true
+  interp.param_default_eval_var_conflicts = Some(saved_conflicts)
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    numeric_registry=Some(registry),
+    activation_observation_port=probe.port(),
+  )
+  let (cleanup, _) = numeric_activation_test_enter(
+    shell,
+    registry,
+    "f",
+    1.0,
+    plan.root_call_loc,
+  )
+  inspect(interp.in_nonarrow_param_default_eval, content="false")
+  inspect(interp.param_default_eval_var_conflicts is None, content="true")
+  numeric_activation_test_release(shell, cleanup, DispatchReturn(Number(1.0)))
+  inspect(probe.release_ordinals.length(), content="1")
+  inspect(probe.release_ordinals[0], content="1")
+  inspect(probe.release_state_restored.length(), content="1")
+  inspect(probe.release_state_restored[0], content="true")
+  dispatch_shell_test_expect_realm_sentinel(interp, 72)
+  inspect(interp.in_nonarrow_param_default_eval, content="true")
+  match interp.param_default_eval_var_conflicts {
+    Some(found) =>
+      inspect(physical_equal(found, saved_conflicts), content="true")
+    None => fail("expected the observation release to restore conflicts")
+  }
 }
 
 ///|
