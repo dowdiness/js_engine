@@ -311,7 +311,7 @@ fn classify_proxy_get_recursion_program(
 fn proxy_get_recursion_plan_is_dispatchable(
   _plan : ProxyGetRecursionPlan,
 ) -> Bool {
-  false
+  true
 }
 
 ///|
