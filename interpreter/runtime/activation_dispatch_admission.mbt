@@ -33,23 +33,36 @@ fn NumericRecursionExpressionRecipe::NumericRecursionExpressionRecipe(
 
 ///|
 #warnings("-unused_field")
-priv struct NumericRecursionFunctionPlan {
+priv struct NumericRecursionFunctionSyntax {
   name : String
   parameter : String
   recursive_callee : String
-  declaration_index : Int
   expression_recipe : NumericRecursionExpressionRecipe
 }
 
 ///|
-fn NumericRecursionFunctionPlan::NumericRecursionFunctionPlan(
+fn NumericRecursionFunctionSyntax::NumericRecursionFunctionSyntax(
   name~ : String,
   parameter~ : String,
   recursive_callee~ : String,
-  declaration_index~ : Int,
   expression_recipe~ : NumericRecursionExpressionRecipe,
+) -> NumericRecursionFunctionSyntax {
+  { name, parameter, recursive_callee, expression_recipe }
+}
+
+///|
+#warnings("-unused_field")
+priv struct NumericRecursionFunctionPlan {
+  syntax : NumericRecursionFunctionSyntax
+  declaration_index : Int
+}
+
+///|
+fn NumericRecursionFunctionPlan::NumericRecursionFunctionPlan(
+  syntax~ : NumericRecursionFunctionSyntax,
+  declaration_index~ : Int,
 ) -> NumericRecursionFunctionPlan {
-  { name, parameter, recursive_callee, declaration_index, expression_recipe }
+  { syntax, declaration_index }
 }
 
 ///|
@@ -239,25 +252,6 @@ fn classify_numeric_recursion_step_detail(
 }
 
 ///|
-fn exact_numeric_recursion_base_case(
-  stmt : @ast.Stmt,
-  parameter : String,
-) -> Bool {
-  numeric_recursion_base_condition_loc(stmt, parameter) is Some(_)
-}
-
-///|
-fn classify_numeric_recursion_step(
-  stmt : @ast.Stmt,
-  parameter : String,
-) -> String? {
-  match classify_numeric_recursion_step_detail(stmt, parameter) {
-    Some(detail) => Some(detail.recursive_callee)
-    None => None
-  }
-}
-
-///|
 fn classify_numeric_recursion_function(
   stmt : @ast.Stmt,
   declaration_index : Int,
@@ -289,11 +283,13 @@ fn classify_numeric_recursion_function(
       )
       Some(
         NumericRecursionFunctionPlan(
-          name~,
-          parameter~,
-          recursive_callee=step.recursive_callee,
+          syntax=NumericRecursionFunctionSyntax(
+            name~,
+            parameter~,
+            recursive_callee=step.recursive_callee,
+            expression_recipe~,
+          ),
           declaration_index~,
-          expression_recipe~,
         ),
       )
     }
@@ -506,7 +502,8 @@ fn classify_self_numeric_recursion_program(
     is Some((entry_name, initial_argument, root_call_loc, root_control)) else {
     return None
   }
-  guard entry.recursive_callee == entry.name && entry_name == entry.name else {
+  guard entry.syntax.recursive_callee == entry.syntax.name &&
+    entry_name == entry.syntax.name else {
     return None
   }
   Some(
@@ -534,12 +531,12 @@ fn classify_mutual_numeric_recursion_program(
     is Some((entry_name, initial_argument, root_call_loc, root_control)) else {
     return None
   }
-  guard entry.name != peer.name &&
-    entry.parameter != peer.name &&
-    peer.parameter != entry.name &&
-    entry.recursive_callee == peer.name &&
-    peer.recursive_callee == entry.name &&
-    entry_name == entry.name else {
+  guard entry.syntax.name != peer.syntax.name &&
+    entry.syntax.parameter != peer.syntax.name &&
+    peer.syntax.parameter != entry.syntax.name &&
+    entry.syntax.recursive_callee == peer.syntax.name &&
+    peer.syntax.recursive_callee == entry.syntax.name &&
+    entry_name == entry.syntax.name else {
     return None
   }
   Some(

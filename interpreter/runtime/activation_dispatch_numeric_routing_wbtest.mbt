@@ -41,7 +41,7 @@ fn numeric_routing_test_call_start(
   DispatchNumericCallStart(
     parameter=DispatchParameterBindingToken(id~),
     recursive_callee=DispatchCalleeCaptureToken(id~),
-    recipe=plan.entry.expression_recipe,
+    recipe=plan.entry.syntax.expression_recipe,
   )
 }
 

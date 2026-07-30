@@ -12,27 +12,8 @@ priv enum DirectNumericRecursionCycle {
 
 ///|
 #warnings("-unused_field")
-priv struct DirectNumericRecursionEntryPlan {
-  name : String
-  parameter : String
-  recursive_callee : String
-  expression_recipe : NumericRecursionExpressionRecipe
-}
-
-///|
-fn DirectNumericRecursionEntryPlan::DirectNumericRecursionEntryPlan(
-  name~ : String,
-  parameter~ : String,
-  recursive_callee~ : String,
-  expression_recipe~ : NumericRecursionExpressionRecipe,
-) -> DirectNumericRecursionEntryPlan {
-  { name, parameter, recursive_callee, expression_recipe }
-}
-
-///|
-#warnings("-unused_field")
 priv struct DirectNumericRecursionCallPlan {
-  entry : DirectNumericRecursionEntryPlan
+  entry : NumericRecursionFunctionSyntax
   cycle : DirectNumericRecursionCycle
   initial_argument : Double
   root_call_loc : @token.Loc
@@ -40,7 +21,7 @@ priv struct DirectNumericRecursionCallPlan {
 
 ///|
 fn DirectNumericRecursionCallPlan::DirectNumericRecursionCallPlan(
-  entry~ : DirectNumericRecursionEntryPlan,
+  entry~ : NumericRecursionFunctionSyntax,
   cycle~ : DirectNumericRecursionCycle,
   initial_argument~ : Double,
   root_call_loc~ : @token.Loc,
@@ -51,7 +32,7 @@ fn DirectNumericRecursionCallPlan::DirectNumericRecursionCallPlan(
 ///|
 fn classify_direct_numeric_recursion_user_func(
   data : FuncData,
-) -> (DirectNumericRecursionEntryPlan, DirectNumericRecursionCycle)? {
+) -> (NumericRecursionFunctionSyntax, DirectNumericRecursionCycle)? {
   guard data.name is Some(name) &&
     numeric_recursion_identifier_is_safe(name) &&
     data.params.length() == 1 &&
@@ -88,7 +69,7 @@ fn classify_direct_numeric_recursion_user_func(
   )
   Some(
     (
-      DirectNumericRecursionEntryPlan(
+      NumericRecursionFunctionSyntax(
         name~,
         parameter~,
         recursive_callee=step.recursive_callee,

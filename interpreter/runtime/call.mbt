@@ -807,6 +807,21 @@ pub fn Interpreter::call_value(
   args : Array[Value],
   loc : @token.Loc,
 ) -> Value raise Error {
+  match
+    self.preflight_direct_numeric_recursion_call(callee, this_val, args, loc) {
+    Some(preflight) => {
+      let registry = self.seal_direct_numeric_recursion_registry(
+        preflight, callee, this_val, args, loc,
+      )
+      return activation_dispatch_root_value(
+        self.run_activation_dispatch_numeric_call(
+          DispatchCallRequest(callee~, this_value=this_val, args~, loc~),
+          registry,
+        ),
+      )
+    }
+    None => ()
+  }
   // Fast path: skip both realm-proto wrapper layers when every active-override
   // slot is None and every callee stamped proto matches the main realm's (or is
   // absent). Checks every packed realm slot so it is safe even when

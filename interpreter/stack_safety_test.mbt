@@ -38,6 +38,45 @@ test "execution stack safety: mutual recursion at depth 256" {
 }
 
 ///|
+test "execution stack safety: public call_value self recursion at depth 256" {
+  let interp = new_interpreter()
+  let program = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}",
+  )
+  let _ = interp.run(program.stmts)
+  let result = interp.call_value(
+    interp.global.get("f"),
+    Value::Undefined,
+    [Value::Number(256.0)],
+    @token.Loc::default(),
+  )
+  match result {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: public call_value mutual recursion at depth 256" {
+  let interp = new_interpreter()
+  let program = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(n){if(n===0)return 0;return 1+f(n-1);}",
+  )
+  let _ = interp.run(program.stmts)
+  let result = interp.call_value(
+    interp.global.get("f"),
+    Value::Undefined,
+    [Value::Number(256.0)],
+    @token.Loc::default(),
+  )
+  match result {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
 test "execution stack safety: getter re-entry at depth 256" {
   match
     run(
