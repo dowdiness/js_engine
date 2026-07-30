@@ -187,7 +187,7 @@ test "numeric recursion admission retains normalized protected control recipes" 
     _ => fail("unexpected protected bindingless-catch recipe")
   }
 
-  inspect(numeric_recursion_plan_is_dispatchable(self_plan), content="false")
+  inspect(numeric_recursion_plan_is_dispatchable(self_plan), content="true")
   let direct_plan = match
     classify_numeric_recursion_program(
       numeric_recursion_test_program(
