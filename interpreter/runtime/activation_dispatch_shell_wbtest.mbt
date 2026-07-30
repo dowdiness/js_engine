@@ -389,3 +389,154 @@ test "program cleanup capabilities enforce nested LIFO ownership" {
   }
   dispatch_shell_test_expect_realm_sentinel(interp, 9)
 }
+
+///|
+fn dispatch_shell_test_route_property_completion(
+  completion : DispatchCompletion,
+  sentinel : Int,
+) -> DispatchCompletion raise {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, sentinel)
+  let shell = PrimitiveProgramDispatchShell(interp)
+  let cleanup = shell.begin_property_scope()
+  dispatch_shell_test_expect_realm_cleared(interp)
+  let (restoring, decision) = route_dispatch_completion(
+    dispatch_test_ready_state(
+      DispatchFrameStackNode(
+        DispatchPropertyScopeFrame(cleanup),
+        DispatchFrameStackEmpty,
+      ),
+    ),
+    completion,
+  )
+  let (ticket, effect) = match decision {
+    DispatchPerform(ticket, effect) =>
+      match effect {
+        DispatchRestorePropertyScope(found, routed) => {
+          inspect(found.id, content=cleanup.id.to_string())
+          inspect(
+            dispatch_completion_tag(routed),
+            content=dispatch_completion_tag(completion),
+          )
+          (ticket, effect)
+        }
+        _ => fail("expected property scope restoration before completion")
+      }
+    _ => fail("expected property scope restoration before completion")
+  }
+  let result = shell.perform_effect(effect)
+  dispatch_shell_test_expect_realm_sentinel(interp, sentinel)
+  let duplicate = try {
+    let _ = shell.perform_effect(effect)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(duplicate, content="rejected")
+  dispatch_shell_test_expect_realm_sentinel(interp, sentinel)
+  let (_, finish_decision) = reduce_activation_dispatch(
+    restoring,
+    DispatchEffectCompleted(ticket, result),
+  )
+  match finish_decision {
+    DispatchFinish(found) => found
+    _ => fail("expected the exact completion after property restoration")
+  }
+}
+
+///|
+test "property scope shell restores every completion category once" {
+  match
+    dispatch_shell_test_route_property_completion(
+      DispatchNormal(Number(7.0)),
+      10,
+    ) {
+    DispatchNormal(Number(value)) => inspect(value, content="7")
+    _ => fail("expected exact normal property completion")
+  }
+  let guest : Error = @errors.TypeError(message="property guest throw")
+  match
+    dispatch_shell_test_route_property_completion(DispatchThrow(guest), 11) {
+    DispatchThrow(found) =>
+      inspect(physical_equal(found, guest), content="true")
+    _ => fail("expected exact guest property completion")
+  }
+  let abrupt : Error = @errors.InternalError(message="property runtime abrupt")
+  match
+    dispatch_shell_test_route_property_completion(
+      DispatchRuntimeAbrupt(abrupt),
+      12,
+    ) {
+    DispatchRuntimeAbrupt(found) =>
+      inspect(physical_equal(found, abrupt), content="true")
+    _ => fail("expected exact runtime property completion")
+  }
+}
+
+///|
+test "property scope shell shares activation LIFO ownership" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 13)
+  let shell = PrimitiveProgramDispatchShell(interp)
+  let stmts = dispatch_shell_test_program("1")
+  let activation = match
+    shell.perform_effect(
+      DispatchEnterActivation(
+        DispatchProgramActivation(
+          DispatchStatementCursor(
+            ctx={ strict: false, current_generator: None },
+            stmts~,
+            env=interp.global,
+          ),
+        ),
+      ),
+    ) {
+    DispatchProgramAccepted(found) => found
+    _ => fail("expected activation cleanup ownership")
+  }
+  dispatch_shell_test_install_realm_sentinel(interp, 14)
+  let property = shell.begin_property_scope()
+  dispatch_shell_test_expect_realm_cleared(interp)
+  let out_of_order = try {
+    let _ = shell.perform_effect(
+      DispatchReleaseActivation(activation, DispatchNormal(Undefined)),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(out_of_order, content="rejected")
+  dispatch_shell_test_expect_realm_cleared(interp)
+  match
+    shell.perform_effect(
+      DispatchRestorePropertyScope(property, DispatchNormal(Undefined)),
+    ) {
+    DispatchCleanupCompleted => ()
+    _ => fail("expected inner property scope to restore first")
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 14)
+  match
+    shell.perform_effect(
+      DispatchReleaseActivation(activation, DispatchNormal(Undefined)),
+    ) {
+    DispatchCleanupCompleted => ()
+    _ => fail("expected outer activation to release last")
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 13)
+}
+
+///|
+test "property cleanup generation exhaustion preserves realm state" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 15)
+  let shell = PrimitiveProgramDispatchShell(interp)
+  shell.next_cleanup_id = MAX_DISPATCH_CLEANUP_ID
+  let outcome = try {
+    let _ = shell.begin_property_scope()
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "exhausted"
+  }
+  inspect(outcome, content="exhausted")
+  dispatch_shell_test_expect_realm_sentinel(interp, 15)
+}
