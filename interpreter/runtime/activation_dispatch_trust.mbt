@@ -477,7 +477,11 @@ fn numeric_recursion_function_syntaxes_match(
 ) -> Bool {
   expected.name == actual.name &&
   expected.parameter == actual.parameter &&
-  expected.recursive_callee == actual.recursive_callee
+  expected.recursive_callee == actual.recursive_callee &&
+  numeric_recursion_function_return_recipes_match(
+    expected.return_recipe,
+    actual.return_recipe,
+  )
 }
 
 ///|
@@ -498,6 +502,24 @@ fn numeric_recursion_closed_body_recipes_match(
       NumericRecursionClosedNumberThrow(expected),
       NumericRecursionClosedNumberThrow(actual),
     ) => same_value(Number(expected), Number(actual))
+    _ => false
+  }
+}
+
+///|
+fn numeric_recursion_function_return_recipes_match(
+  expected : NumericRecursionFunctionReturnRecipe,
+  actual : NumericRecursionFunctionReturnRecipe,
+) -> Bool {
+  match (expected, actual) {
+    (NumericRecursionDirectReturn, NumericRecursionDirectReturn) => true
+    (
+      NumericRecursionProtectedReturn(expected_finalizer),
+      NumericRecursionProtectedReturn(actual_finalizer),
+    ) =>
+      numeric_recursion_closed_body_recipes_match(
+        expected_finalizer, actual_finalizer,
+      )
     _ => false
   }
 }
@@ -695,8 +717,13 @@ fn numeric_recursion_user_func_matches_syntax(
     !data.is_method else {
     return false
   }
-  match classify_direct_numeric_recursion_user_func(data) {
-    Some((actual, _)) => direct_numeric_recursion_syntax_matches(syntax, actual)
+  match
+    classify_numeric_recursion_function_syntax(
+      syntax.name,
+      data.params,
+      data.body,
+    ) {
+    Some(actual) => direct_numeric_recursion_syntax_matches(syntax, actual)
     None => false
   }
 }

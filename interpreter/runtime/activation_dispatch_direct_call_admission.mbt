@@ -34,50 +34,24 @@ fn classify_direct_numeric_recursion_user_func(
   data : FuncData,
 ) -> (NumericRecursionFunctionSyntax, DirectNumericRecursionCycle)? {
   guard data.name is Some(name) &&
-    numeric_recursion_identifier_is_safe(name) &&
-    data.params.length() == 1 &&
-    data.body.length() == 2 &&
     !data.strict &&
     !data.has_name_binding &&
     !data.is_method else {
     return None
   }
-  let parameter = data.params[0]
-  guard numeric_recursion_identifier_is_safe(parameter) && parameter != name else {
+  guard classify_numeric_recursion_function_syntax(name, data.params, data.body)
+    is Some(entry) &&
+    entry.return_recipe is NumericRecursionDirectReturn &&
+    numeric_recursion_identifier_is_safe(entry.recursive_callee) &&
+    entry.recursive_callee != entry.parameter else {
     return None
   }
-  guard numeric_recursion_base_condition_loc(data.body[0], parameter)
-    is Some(base_condition_loc) else {
-    return None
-  }
-  guard classify_numeric_recursion_step_detail(data.body[1], parameter)
-    is Some(step) &&
-    numeric_recursion_identifier_is_safe(step.recursive_callee) &&
-    step.recursive_callee != parameter else {
-    return None
-  }
-  let cycle = if step.recursive_callee == name {
+  let cycle = if entry.recursive_callee == name {
     DirectNumericSelf
   } else {
-    DirectNumericMutualPeer(step.recursive_callee)
+    DirectNumericMutualPeer(entry.recursive_callee)
   }
-  let expression_recipe = NumericRecursionExpressionRecipe(
-    base_condition_loc~,
-    recursive_add_loc=step.recursive_add_loc,
-    recursive_call_loc=step.recursive_call_loc,
-    recursive_subtract_loc=step.recursive_subtract_loc,
-  )
-  Some(
-    (
-      NumericRecursionFunctionSyntax(
-        name~,
-        parameter~,
-        recursive_callee=step.recursive_callee,
-        expression_recipe~,
-      ),
-      cycle,
-    ),
-  )
+  Some((entry, cycle))
 }
 
 ///|

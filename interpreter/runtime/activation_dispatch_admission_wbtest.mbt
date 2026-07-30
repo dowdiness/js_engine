@@ -41,6 +41,92 @@ test "numeric recursion admission recognizes only the exact self shape" {
 }
 
 ///|
+test "numeric recursion admission recognizes exact protected return-finalizer bodies" {
+  for
+    source in [
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{0;}} f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{throw 7;}} f(256);",
+    ] {
+    let plan = match
+      classify_numeric_recursion_program(numeric_recursion_test_program(source)) {
+      Some(found) => found
+      None =>
+        fail("expected exact protected return-finalizer admission: " + source)
+    }
+    expect_numeric_recursion_function_plan(plan.entry, "f", "n", "f", 0)
+    guard plan.peer is None else {
+      fail("protected self recursion must not have a peer")
+    }
+  }
+}
+
+///|
+test "numeric recursion admission retains exact function finalizer recipes" {
+  let normal = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function f(n){if(n===0)return 0;" +
+        "try{return 1+f(n-1);}finally{0;}} f(256);",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the normal protected return recipe")
+  }
+  match normal.entry.syntax.return_recipe {
+    NumericRecursionProtectedReturn(NumericRecursionClosedNumberValue(value)) =>
+      inspect(value, content="0")
+    _ => fail("unexpected normal function finalizer recipe")
+  }
+
+  let abrupt = match
+    classify_numeric_recursion_program(
+      numeric_recursion_test_program(
+        "function f(n){if(n===0)return 0;" +
+        "try{return 1+f(n-1);}finally{throw 7;}} f(256);",
+      ),
+    ) {
+    Some(found) => found
+    None => fail("expected the abrupt protected return recipe")
+  }
+  match abrupt.entry.syntax.return_recipe {
+    NumericRecursionProtectedReturn(NumericRecursionClosedNumberThrow(value)) =>
+      inspect(value, content="7")
+    _ => fail("unexpected abrupt function finalizer recipe")
+  }
+}
+
+///|
+test "numeric recursion admission rejects open protected function effects" {
+  for
+    source in [
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}catch(e){return e;}finally{0;}}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}catch{return 0;}}f(256);",
+      "function f(n){if(n===0)return 0;" + "try{1+f(n-1);}finally{0;}}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);0;}finally{0;}}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{f(1);}}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{n;}}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{010;}}f(256);",
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{try{0;}finally{0;}}}f(256);",
+    ] {
+    guard classify_numeric_recursion_program(
+        numeric_recursion_test_program(source),
+      )
+      is None else {
+      fail("unexpectedly admitted an open protected function effect: " + source)
+    }
+  }
+}
+
+///|
 test "numeric recursion admission normalizes the exact mutual shape" {
   let plan = match
     classify_numeric_recursion_program(

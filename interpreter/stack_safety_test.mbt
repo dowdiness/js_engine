@@ -25,6 +25,43 @@ test "execution stack safety: self recursion at depth 256" {
 }
 
 ///|
+test "execution stack safety: recursive return crosses normal finally at depth 256" {
+  match
+    run(
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{0;}} f(256);",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected resumed 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: recursive return is replaced by abrupt finally" {
+  inspect(
+    run_throws(
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{throw 7;}} f(256);",
+    ),
+    content="7",
+  )
+}
+
+///|
+test "execution stack safety: guest throw crosses a normal recursive finalizer" {
+  inspect(
+    run_throws(
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+g(n-1);}finally{0;}}" +
+      "function g(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{throw 7;}}" +
+      "f(256);",
+    ),
+    content="7",
+  )
+}
+
+///|
 test "execution stack safety: mutual recursion at depth 256" {
   match
     run(

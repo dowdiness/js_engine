@@ -34,6 +34,18 @@ fn numeric_routing_test_protected_plan() -> NumericRecursionPlan raise {
 }
 
 ///|
+fn numeric_routing_test_protected_function_plan() -> NumericRecursionPlan raise {
+  let stmts = @parser.parse(
+      "function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{0;}}f(256);",
+    ).stmts
+  match classify_numeric_recursion_program(stmts) {
+    Some(plan) => plan
+    None => fail("expected the exact protected-function recursion plan")
+  }
+}
+
+///|
 fn numeric_routing_test_call_start(
   plan : NumericRecursionPlan,
   id : Int,
@@ -42,6 +54,7 @@ fn numeric_routing_test_call_start(
     parameter=DispatchParameterBindingToken(id~),
     recursive_callee=DispatchCalleeCaptureToken(id~),
     recipe=plan.entry.syntax.expression_recipe,
+    return_recipe=plan.entry.syntax.return_recipe,
   )
 }
 
@@ -240,6 +253,117 @@ test "numeric routing installs protected frames only after the root try observat
       )
     ) => ()
     _ => fail("protected frames must be installed before the inner statement")
+  }
+}
+
+///|
+test "numeric routing installs a function finalizer before evaluating its protected return" {
+  let plan = numeric_routing_test_protected_function_plan()
+  let cleanup = DispatchActivationCleanup(2725)
+  let start = numeric_routing_test_call_start(plan, cleanup.id)
+  let (observing_try, try_decision) = route_dispatch_completion(
+    numeric_routing_test_base_condition_state(start, cleanup),
+    DispatchNormal(Bool(false)),
+  )
+  let try_ticket = match try_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRun(
+        DispatchObserveStatementStep(DispatchNumericObserveFunctionTryStatement)
+      )
+    ) => ticket
+    _ => fail("expected the admitted function TryCatchStmt observation")
+  }
+  match observing_try.frames {
+    DispatchFrameStackNode(
+      DispatchContinuationFrame(
+        DispatchContinueNumericStatement(
+          DispatchAfterNumericFunctionTryStatement(_)
+        )
+      ),
+      DispatchFrameStackNode(
+        DispatchActivationFrame(_, DispatchFunctionExit),
+        DispatchFrameStackEmpty
+      )
+    ) => ()
+    _ => fail("function finalizer must not precede its try observation")
+  }
+
+  let (observing_return, return_decision) = reduce_activation_dispatch(
+    observing_try,
+    DispatchEffectCompleted(
+      try_ticket,
+      DispatchWorkCompleted(DispatchNormal(Undefined)),
+    ),
+  )
+  let return_ticket = match return_decision {
+    DispatchPerform(
+      ticket,
+      DispatchRun(
+        DispatchObserveStatementStep(
+          DispatchNumericObserveProtectedStatement(
+            DispatchNumericTryBody,
+            DispatchNumericReturnStatement
+          )
+        )
+      )
+    ) => ticket
+    _ => fail("expected the protected ReturnStmt observation")
+  }
+  match observing_return.frames {
+    DispatchFrameStackNode(
+      DispatchContinuationFrame(
+        DispatchContinueNumericStatement(DispatchAfterNumericReturnStatement(_))
+      ),
+      DispatchFrameStackNode(
+        DispatchNumericFinallyFrame(NumericRecursionClosedNumberValue(value)),
+        DispatchFrameStackNode(
+          DispatchActivationFrame(_, DispatchFunctionExit),
+          DispatchFrameStackEmpty
+        )
+      )
+    ) => inspect(value, content="0")
+    _ => fail("function finalizer must own the protected return")
+  }
+
+  let (observing_expression, expression_decision) = reduce_activation_dispatch(
+    observing_return,
+    DispatchEffectCompleted(
+      return_ticket,
+      DispatchWorkCompleted(DispatchNormal(Undefined)),
+    ),
+  )
+  match expression_decision {
+    DispatchPerform(
+      _,
+      DispatchRun(
+        DispatchObserveExpressionStep(
+          DispatchNumericObserveBinary(DispatchNumericAdd, _)
+        )
+      )
+    ) => ()
+    _ => fail("expected the protected return binary expression")
+  }
+  match observing_expression.frames {
+    DispatchFrameStackNode(
+      DispatchContinuationFrame(
+        DispatchContinueNumericExpression(
+          DispatchAfterNumericExpressionObservation(_)
+        )
+      ),
+      DispatchFrameStackNode(
+        DispatchContinuationFrame(DispatchCompleteReturn),
+        DispatchFrameStackNode(
+          DispatchNumericFinallyFrame(_),
+          DispatchFrameStackNode(
+            DispatchActivationFrame(_, DispatchFunctionExit),
+            DispatchFrameStackEmpty
+          )
+        )
+      )
+    ) => ()
+    _ =>
+      fail("return and finalizer continuations must survive expression entry")
   }
 }
 

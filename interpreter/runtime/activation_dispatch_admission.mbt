@@ -38,6 +38,7 @@ priv struct NumericRecursionFunctionSyntax {
   parameter : String
   recursive_callee : String
   expression_recipe : NumericRecursionExpressionRecipe
+  return_recipe : NumericRecursionFunctionReturnRecipe
 }
 
 ///|
@@ -46,8 +47,9 @@ fn NumericRecursionFunctionSyntax::NumericRecursionFunctionSyntax(
   parameter~ : String,
   recursive_callee~ : String,
   expression_recipe~ : NumericRecursionExpressionRecipe,
+  return_recipe? : NumericRecursionFunctionReturnRecipe = NumericRecursionDirectReturn,
 ) -> NumericRecursionFunctionSyntax {
-  { name, parameter, recursive_callee, expression_recipe }
+  { name, parameter, recursive_callee, expression_recipe, return_recipe }
 }
 
 ///|
@@ -80,6 +82,13 @@ priv enum NumericRecursionClosedBodyRecipe {
   NumericRecursionClosedNumberThrow(Double)
   NumericRecursionClosedBindingValue
   NumericRecursionClosedBindingThrow
+}
+
+///|
+#warnings("-unused_constructor-unused_field")
+priv enum NumericRecursionFunctionReturnRecipe {
+  NumericRecursionDirectReturn
+  NumericRecursionProtectedReturn(NumericRecursionClosedBodyRecipe)
 }
 
 ///|
@@ -252,47 +261,85 @@ fn classify_numeric_recursion_step_detail(
 }
 
 ///|
+fn classify_numeric_recursion_function_return(
+  stmt : @ast.Stmt,
+  parameter : String,
+) -> (NumericRecursionStepClassification, NumericRecursionFunctionReturnRecipe)? {
+  match classify_numeric_recursion_step_detail(stmt, parameter) {
+    Some(step) => Some((step, NumericRecursionDirectReturn))
+    None =>
+      match stmt {
+        @ast.TryCatchStmt(try_body, None, None, Some(finalizer_body), _) => {
+          guard try_body.length() == 1 &&
+            classify_numeric_recursion_step_detail(try_body[0], parameter)
+            is Some(step) else {
+            return None
+          }
+          match classify_numeric_recursion_closed_body(finalizer_body, None) {
+            Some(
+              NumericRecursionClosedBodyEmpty
+              | NumericRecursionClosedNumberValue(_)
+              | NumericRecursionClosedNumberThrow(_) as finalizer
+            ) => Some((step, NumericRecursionProtectedReturn(finalizer)))
+            _ => None
+          }
+        }
+        _ => None
+      }
+  }
+}
+
+///|
+fn classify_numeric_recursion_function_syntax(
+  name : String,
+  params : Array[String],
+  body : Array[@ast.Stmt],
+) -> NumericRecursionFunctionSyntax? {
+  guard numeric_recursion_identifier_is_safe(name) &&
+    params.length() == 1 &&
+    body.length() == 2 else {
+    return None
+  }
+  let parameter = params[0]
+  guard numeric_recursion_identifier_is_safe(parameter) && parameter != name else {
+    return None
+  }
+  guard numeric_recursion_base_condition_loc(body[0], parameter)
+    is Some(base_condition_loc) else {
+    return None
+  }
+  guard classify_numeric_recursion_function_return(body[1], parameter)
+    is Some((step, return_recipe)) else {
+    return None
+  }
+  Some(
+    NumericRecursionFunctionSyntax(
+      name~,
+      parameter~,
+      recursive_callee=step.recursive_callee,
+      expression_recipe=NumericRecursionExpressionRecipe(
+        base_condition_loc~,
+        recursive_add_loc=step.recursive_add_loc,
+        recursive_call_loc=step.recursive_call_loc,
+        recursive_subtract_loc=step.recursive_subtract_loc,
+      ),
+      return_recipe~,
+    ),
+  )
+}
+
+///|
 fn classify_numeric_recursion_function(
   stmt : @ast.Stmt,
   declaration_index : Int,
 ) -> NumericRecursionFunctionPlan? {
   match stmt {
-    @ast.FuncDecl(name, params, body, _, _) => {
-      guard numeric_recursion_identifier_is_safe(name) &&
-        params.length() == 1 &&
-        body.length() == 2 else {
-        return None
+    @ast.FuncDecl(name, params, body, _, _) =>
+      match classify_numeric_recursion_function_syntax(name, params, body) {
+        Some(syntax) =>
+          Some(NumericRecursionFunctionPlan(syntax~, declaration_index~))
+        None => None
       }
-      let parameter = params[0]
-      guard numeric_recursion_identifier_is_safe(parameter) && parameter != name else {
-        return None
-      }
-      guard numeric_recursion_base_condition_loc(body[0], parameter)
-        is Some(base_condition_loc) else {
-        return None
-      }
-      guard classify_numeric_recursion_step_detail(body[1], parameter)
-        is Some(step) else {
-        return None
-      }
-      let expression_recipe = NumericRecursionExpressionRecipe(
-        base_condition_loc~,
-        recursive_add_loc=step.recursive_add_loc,
-        recursive_call_loc=step.recursive_call_loc,
-        recursive_subtract_loc=step.recursive_subtract_loc,
-      )
-      Some(
-        NumericRecursionFunctionPlan(
-          syntax=NumericRecursionFunctionSyntax(
-            name~,
-            parameter~,
-            recursive_callee=step.recursive_callee,
-            expression_recipe~,
-          ),
-          declaration_index~,
-        ),
-      )
-    }
     _ => None
   }
 }

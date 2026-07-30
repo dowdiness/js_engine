@@ -73,6 +73,10 @@ fn direct_numeric_recursion_syntax_matches(
   expected.name == actual.name &&
   expected.parameter == actual.parameter &&
   expected.recursive_callee == actual.recursive_callee &&
+  numeric_recursion_function_return_recipes_match(
+    expected.return_recipe,
+    actual.return_recipe,
+  ) &&
   direct_numeric_recursion_recipe_matches(
     expected.expression_recipe,
     actual.expression_recipe,

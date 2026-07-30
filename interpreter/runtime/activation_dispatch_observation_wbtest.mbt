@@ -121,10 +121,9 @@ fn DispatchObservationProbe::port(
 fn dispatch_observation_numeric_fixture(
   interp : Interpreter,
   probe : DispatchObservationProbe,
+  source? : String = "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
 ) -> (PrimitiveProgramDispatchShell, Array[@ast.Stmt], ExecContext) raise {
-  let stmts = @parser.parse(
-      "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
-    ).stmts
+  let stmts = @parser.parse(source).stmts
   let preflight = match
     interp.preflight_dispatchable_numeric_recursion_program(stmts) {
     Some(found) => found
@@ -227,6 +226,45 @@ test "managed activation observation balances every nested numeric call" {
 }
 
 ///|
+test "managed activation observation releases protected returns in strict LIFO order" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe()
+  let (shell, stmts, ctx) = dispatch_observation_numeric_fixture(
+    interp,
+    probe,
+    source="function f(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{0;}}f(256);",
+  )
+  match activation_dispatch_root_value(shell.drive_root_program(stmts, ctx)) {
+    Number(value) => inspect(value, content="256")
+    other => fail("expected protected 256, got " + other.to_string())
+  }
+  expect_nested_dispatch_observation_balanced(probe)
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "guest throw crosses a normal finalizer before LIFO activation release" {
+  let interp = Interpreter::new()
+  let probe = DispatchObservationProbe()
+  let (shell, stmts, ctx) = dispatch_observation_numeric_fixture(
+    interp,
+    probe,
+    source="function f(n){if(n===0)return 0;" +
+      "try{return 1+g(n-1);}finally{0;}}" +
+      "function g(n){if(n===0)return 0;" +
+      "try{return 1+f(n-1);}finally{throw 7;}}" +
+      "f(256);",
+  )
+  match shell.drive_root_program(stmts, ctx) {
+    DispatchThrow(JsException(Number(value))) => inspect(value, content="7")
+    _ => fail("expected the finalizer guest throw to survive normal finalizers")
+  }
+  expect_nested_dispatch_observation_balanced(probe)
+  inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
 test "observed activation releases after restoring its owned runtime state" {
   let (interp, _, registry, plan) = numeric_activation_test_fixture(
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
@@ -287,6 +325,102 @@ test "runtime abrupt completion releases every observed numeric call" {
   inspect(probe.rejected, content="0")
   inspect(probe.active, content="0")
   inspect(shell.cleanup_stack.length(), content="0")
+}
+
+///|
+test "runtime abrupt skips catch, runs finalizers, and preserves identity before release" {
+  let interp = Interpreter::new()
+  let trace : Array[String] = []
+  let observed_steps : Ref[Int] = { val: 0 }
+  let runtime_failure : Error = ExecutionControlError(Interrupted)
+  interp.global.bindings[EXECUTION_CONTROL_BINDING] = {
+    value: make_object(
+      Map([]),
+      Null,
+      Some(
+        NonConstructableCallable("one-shot runtime abrupt", _args => {
+          observed_steps.val += 1
+          let step = observed_steps.val
+          trace.push("step:" + step.to_string())
+          if step == 12 {
+            trace.push("runtime-abrupt")
+            raise runtime_failure
+          }
+          Undefined
+        }),
+      ),
+      "Function",
+      Map([]),
+      true,
+    ),
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+  let attempts : Ref[Int] = { val: 0 }
+  let accepted : Ref[Int] = { val: 0 }
+  let rejected : Ref[Int] = { val: 0 }
+  let released : Ref[Int] = { val: 0 }
+  let denied : Ref[Int] = { val: 0 }
+  let observation_port = ActivationObservationPort(
+    begin_entry=() => {
+      attempts.val += 1
+      trace.push("activation-attempt")
+      ActivationObservationAttemptHooks(
+        accepted=() => {
+          accepted.val += 1
+          trace.push("activation-accepted")
+        },
+        rejected=() => {
+          rejected.val += 1
+          trace.push("activation-rejected")
+        },
+        released=() => {
+          released.val += 1
+          trace.push("activation-released")
+        },
+      )
+    },
+    denied=() => {
+      denied.val += 1
+      trace.push("activation-denied")
+    },
+  )
+  let source = "function f(n){if(n===0)return 0;" +
+    "try{return 1+f(n-1);}finally{0;}}" +
+    "try{f(256);}catch{throw 9;}finally{0;}"
+  let stmts = @parser.parse(source).stmts
+  let preflight = match
+    interp.preflight_dispatchable_numeric_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected protected runtime-abrupt preflight")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    numeric_root_preflight=Some(preflight),
+    activation_observation_port=observation_port,
+  )
+  let completion = shell.drive_root_program(stmts, {
+    strict: false,
+    current_generator: None,
+  })
+  match completion {
+    DispatchRuntimeAbrupt(found) =>
+      inspect(physical_equal(found, runtime_failure), content="true")
+    _ => fail("runtime abrupt must skip catch and survive both finalizers")
+  }
+  inspect(attempts.val, content="1")
+  inspect(accepted.val, content="1")
+  inspect(rejected.val, content="0")
+  inspect(released.val, content="1")
+  inspect(denied.val, content="0")
+  inspect(shell.cleanup_stack.length(), content="0")
+  json_inspect(trace, content=[
+    "step:1", "step:2", "step:3", "step:4", "step:5", "step:6", "activation-attempt",
+    "activation-accepted", "step:7", "step:8", "step:9", "step:10", "step:11", "step:12",
+    "runtime-abrupt", "step:13", "step:14", "activation-released", "step:15", "step:16",
+  ])
 }
 
 ///|
