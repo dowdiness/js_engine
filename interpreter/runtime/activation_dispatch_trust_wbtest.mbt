@@ -64,7 +64,7 @@ test "numeric recursion trust preflight accepts the canonical global without eff
 }
 
 ///|
-test "numeric recursion runtime preflight gates protected roots at its routing seam" {
+test "numeric recursion runtime preflight admits sealed protected roots" {
   let interp = Interpreter::new()
   let direct = @parser.parse(
       "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
@@ -80,7 +80,7 @@ test "numeric recursion runtime preflight gates protected roots at its routing s
   )
   inspect(
     interp.preflight_dispatchable_numeric_recursion_program(protected_stmts)
-    is None,
+    is Some(_),
     content="true",
   )
 }

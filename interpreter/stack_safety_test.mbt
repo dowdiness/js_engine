@@ -38,6 +38,41 @@ test "execution stack safety: mutual recursion at depth 256" {
 }
 
 ///|
+test "execution stack safety: protected catch resumes a deep throw" {
+  match
+    run(
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{throw f(256);}catch(e){e;}",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected caught 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: normal finally resumes a deep completion" {
+  match
+    run(
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{f(256);}finally{0;}",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected resumed 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: abrupt finally replaces a deep completion" {
+  inspect(
+    run_throws(
+      "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+      "try{throw f(256);}catch{1;}finally{throw 7;}",
+    ),
+    content="7",
+  )
+}
+
+///|
 test "post-parse stack safety: GeneratorFunction parameter Contains(YieldExpression)" {
   // Constructor integration reaches the parser's independent validation first;
   // generator_wbtest.mbt directly covers the private runtime walker.

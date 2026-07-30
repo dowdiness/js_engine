@@ -568,5 +568,7 @@ fn classify_numeric_recursion_program(
 ///|
 #warnings("-unused_value")
 fn numeric_recursion_plan_is_dispatchable(plan : NumericRecursionPlan) -> Bool {
-  plan.root_control is NumericRecursionDirectRoot
+  match plan.root_control {
+    NumericRecursionDirectRoot | NumericRecursionProtectedRoot(_) => true
+  }
 }
