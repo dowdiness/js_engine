@@ -1,64 +1,9 @@
 ///|
-fn setup_proxy_builtins(env : Environment) -> Unit {
-  let nf_desc : PropDescriptor = {
-    writable: false,
-    enumerable: false,
-    configurable: true,
-    getter: None,
-    setter: None,
-    is_accessor: false,
-  }
-  // Proxy constructor: new Proxy(target, handler)
-  let proxy_ctor : Value = Value::Object({
-    bag: {
-      properties: {
-        "name": Value::String_("Proxy"),
-        "length": Value::Number(2.0),
-      },
-      symbol_properties: Map([]),
-      descriptors: { "name": nf_desc, "length": nf_desc },
-      symbol_descriptors: Map([]),
-      internal_slots: Map([]),
-      host_slots: Map([]),
-    },
-    prototype: Null,
-    callable: Some(
-      ConstructorOnlyCallable("Proxy", fn(_interp, args) raise {
-        if args.length() < 2 {
-          raise @errors.TypeError(
-            message="Cannot create proxy with a non-object as target or handler",
-          )
-        }
-        let target = args[0]
-        let handler = args[1]
-        // Validate target is an object
-        match target {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot create proxy with a non-object as target or handler",
-            )
-        }
-        // Validate handler is an object
-        match handler {
-          Object(_) | Array(_) | Map(_) | Set(_) | Promise(_) | Proxy(_) => ()
-          _ =>
-            raise @errors.TypeError(
-              message="Cannot create proxy with a non-object as target or handler",
-            )
-        }
-        Value::Proxy({
-          target: Some(target),
-          handler: Some(handler),
-          is_callable: @runtime.is_callable(target),
-          is_constructor: @runtime.is_constructor_value(target),
-        })
-      }),
-    ),
-    class_name: "Function",
-    extensible: true,
-    arraybuffer_state: None,
-  })
+fn setup_proxy_builtins(
+  env : Environment,
+  realm_state : @runtime.RealmState,
+) -> Unit {
+  let proxy_ctor = @runtime.make_canonical_proxy_constructor(realm_state)
 
   // Proxy.revocable(target, handler)
   let revocable_func : Value = @runtime.make_native_func(

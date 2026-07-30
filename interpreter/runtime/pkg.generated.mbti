@@ -239,6 +239,8 @@ pub fn make_array_with_prototype(Array[Value], Value) -> Value
 
 pub fn make_bound_func(Value, Value, Array[Value], prototype~ : Value, name~ : String, length~ : Double, realm_state? : RealmState?) -> Value
 
+pub fn make_canonical_proxy_constructor(RealmState) -> Value
+
 pub fn make_func(FuncData) -> Value
 
 pub fn make_func_ext(FuncDataExt) -> Value
@@ -897,6 +899,7 @@ pub(all) struct RealmState {
   weakset_id_counter : @ref.Ref[Int]
   weakset_storage : Map[Int, Array[Value]]
   weakset_id_table : Array[(ObjectData, Int)]
+  // private fields
 }
 #alias(new)
 pub fn RealmState::RealmState() -> Self
