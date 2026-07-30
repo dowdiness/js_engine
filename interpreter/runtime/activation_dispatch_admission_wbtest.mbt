@@ -11,9 +11,9 @@ fn expect_numeric_recursion_function_plan(
   recursive_callee : String,
   declaration_index : Int,
 ) -> Unit raise {
-  inspect(plan.name, content=name)
-  inspect(plan.parameter, content=parameter)
-  inspect(plan.recursive_callee, content=recursive_callee)
+  inspect(plan.syntax.name, content=name)
+  inspect(plan.syntax.parameter, content=parameter)
+  inspect(plan.syntax.recursive_callee, content=recursive_callee)
   inspect(plan.declaration_index, content=declaration_index.to_string())
 }
 
@@ -251,7 +251,7 @@ test "numeric recursion admission retains an array-free expression location reci
       fail("expected the multiline numeric-recursion shape to be admitted")
   }
   stmts.clear()
-  let recipe = plan.entry.expression_recipe
+  let recipe = plan.entry.syntax.expression_recipe
   json_inspect(
     [
       recipe.base_condition_loc.line.to_string() +

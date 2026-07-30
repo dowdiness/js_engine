@@ -79,7 +79,7 @@ test "trusted numeric call entry returns capability-only activation state" {
   inspect(start.recursive_callee.id == cleanup.id, content="true")
   inspect(
     start.recipe.recursive_call_loc ==
-    plan.entry.expression_recipe.recursive_call_loc,
+    plan.entry.syntax.expression_recipe.recursive_call_loc,
     content="true",
   )
   numeric_activation_test_release(shell, cleanup, DispatchReturn(Number(7.0)))
@@ -142,7 +142,7 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
         DispatchStartCapturedNumericCall(
           start.recursive_callee,
           5.0,
-          plan.entry.expression_recipe.recursive_call_loc,
+          plan.entry.syntax.expression_recipe.recursive_call_loc,
         ),
       ),
     )
@@ -173,7 +173,7 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
         DispatchStartCapturedNumericCall(
           start.recursive_callee,
           5.0,
-          plan.entry.expression_recipe.recursive_call_loc,
+          plan.entry.syntax.expression_recipe.recursive_call_loc,
         ),
       ),
     ) {
@@ -191,7 +191,7 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   }
   inspect(child_argument, content="5")
   inspect(
-    child_request.loc == plan.entry.expression_recipe.recursive_call_loc,
+    child_request.loc == plan.entry.syntax.expression_recipe.recursive_call_loc,
     content="true",
   )
   let duplicate_start = try {
@@ -200,7 +200,7 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
         DispatchStartCapturedNumericCall(
           start.recursive_callee,
           4.0,
-          plan.entry.expression_recipe.recursive_call_loc,
+          plan.entry.syntax.expression_recipe.recursive_call_loc,
         ),
       ),
     )
@@ -248,7 +248,7 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
         DispatchStartCapturedNumericCall(
           parent_start.recursive_callee,
           2.0,
-          plan.entry.expression_recipe.recursive_call_loc,
+          plan.entry.syntax.expression_recipe.recursive_call_loc,
         ),
       ),
     ) {
@@ -267,7 +267,7 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
   }
   inspect(
     child_start.recipe.recursive_call_loc ==
-    peer.expression_recipe.recursive_call_loc,
+    peer.syntax.expression_recipe.recursive_call_loc,
     content="true",
   )
   match
@@ -308,7 +308,7 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
         DispatchStartCapturedNumericCall(
           child_start.recursive_callee,
           1.0,
-          peer.expression_recipe.recursive_call_loc,
+          peer.syntax.expression_recipe.recursive_call_loc,
         ),
       ),
     ) {
@@ -402,7 +402,7 @@ test "numeric setup rejection retains state until exactly one rollback" {
   let setup_error : Error = @errors.SyntaxError(message="numeric setup failed")
   let rejected = shell.complete_numeric_call_preparation(
     id,
-    plan.entry,
+    plan.entry.syntax,
     resources,
     observation,
     Err(setup_error),
@@ -546,7 +546,7 @@ test "numeric cleanup restores every nested activation after a shell failure" {
         DispatchStartCapturedNumericCall(
           parent_start.recursive_callee,
           1.0,
-          plan.entry.expression_recipe.recursive_call_loc,
+          plan.entry.syntax.expression_recipe.recursive_call_loc,
         ),
       ),
     ) {

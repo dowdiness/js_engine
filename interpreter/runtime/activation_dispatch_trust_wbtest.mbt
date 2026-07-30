@@ -58,9 +58,56 @@ test "numeric recursion trust preflight accepts the canonical global without eff
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
   )
   match interp.preflight_numeric_recursion_program(plan) {
-    Some(preflight) => inspect(preflight.plan.entry.name, content="f")
+    Some(preflight) => inspect(preflight.plan.entry.syntax.name, content="f")
     None => fail("the canonical interpreter global must be eligible")
   }
+}
+
+///|
+test "numeric recursion trust rejects configurable entry or peer before effects" {
+  let interp = Interpreter::new()
+  guard interp.global_this is Object(global_object) else {
+    fail("expected the canonical global object")
+  }
+  global_object.bag.properties["f"] = Number(0.0)
+  global_object.bag.descriptors["f"] = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let (_, plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  inspect(
+    interp.preflight_numeric_recursion_program(plan) is None,
+    content="true",
+  )
+
+  let mutual_interp = Interpreter::new()
+  guard mutual_interp.global_this is Object(mutual_global) else {
+    fail("expected the mutual canonical global object")
+  }
+  mutual_global.bag.properties["g"] = Number(0.0)
+  mutual_global.bag.descriptors["g"] = {
+    writable: true,
+    enumerable: true,
+    configurable: true,
+    getter: None,
+    setter: None,
+    is_accessor: false,
+  }
+  let (_, mutual_plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "f(256);",
+  )
+  inspect(
+    mutual_interp.preflight_numeric_recursion_program(mutual_plan) is None,
+    content="true",
+  )
 }
 
 ///|
@@ -248,7 +295,8 @@ test "numeric recursion trust ignores preflight locations and retains sealed loc
   )
   interp.prepare_root_program_execution(stmts, interp.global, false)
   let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
-  let recipe = registry.plan.entry.expression_recipe
+  let sealed_plan = registry.require_program_plan()
+  let recipe = sealed_plan.entry.syntax.expression_recipe
   json_inspect(
     [
       recipe.base_condition_loc.line.to_string() +
@@ -263,9 +311,9 @@ test "numeric recursion trust ignores preflight locations and retains sealed loc
       recipe.recursive_subtract_loc.line.to_string() +
       ":" +
       recipe.recursive_subtract_loc.col.to_string(),
-      registry.plan.root_call_loc.line.to_string() +
+      sealed_plan.root_call_loc.line.to_string() +
       ":" +
-      registry.plan.root_call_loc.col.to_string(),
+      sealed_plan.root_call_loc.col.to_string(),
     ],
     content=["3:5", "5:5", "6:7", "8:9", "11:2"],
   )
@@ -283,7 +331,7 @@ test "numeric recursion trust seals protected control and rejects semantic drift
   }
   interp.prepare_root_program_execution(stmts, interp.global, false)
   let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
-  match registry.plan.root_control {
+  match registry.require_program_plan().root_control {
     NumericRecursionProtectedRoot(
       {
         try_completion: NumericRecursionRootCallThrow,
@@ -511,6 +559,51 @@ test "numeric recursion trust revalidates binding and mirror on every lookup" {
   )
   inspect(
     mirror_result,
+    content="numeric recursion candidate diverged from its global mirror",
+  )
+}
+
+///|
+test "numeric recursion trust revalidates canonical global descriptors on every lookup" {
+  let interp = Interpreter::new()
+  let (stmts, plan) = numeric_recursion_trust_test_plan(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let preflight = match interp.preflight_numeric_recursion_program(plan) {
+    Some(found) => found
+    None => fail("expected callback-free preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let registry = interp.seal_numeric_recursion_registry(preflight, stmts)
+  let callee = registry.require_named(interp, "f")
+  guard interp.global_this is Object(global_object) &&
+    global_object.bag.descriptors.get("f") is Some(descriptor) else {
+    fail("expected the sealed global function descriptor")
+  }
+
+  descriptor.writable = false
+  let writable_result = try {
+    let _ = registry.require_named(interp, "f")
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+  descriptor.writable = true
+
+  descriptor.enumerable = false
+  let enumerable_result = try {
+    let _ = registry.require_callee(interp, callee)
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(message) => message
+  }
+
+  inspect(
+    writable_result,
+    content="numeric recursion candidate diverged from its global mirror",
+  )
+  inspect(
+    enumerable_result,
     content="numeric recursion candidate diverged from its global mirror",
   )
 }

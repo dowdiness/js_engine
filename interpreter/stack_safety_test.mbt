@@ -38,6 +38,89 @@ test "execution stack safety: mutual recursion at depth 256" {
 }
 
 ///|
+test "execution stack safety: public call_value self recursion at depth 256" {
+  let interp = new_interpreter()
+  let program = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}",
+  )
+  let _ = interp.run(program.stmts)
+  let result = interp.call_value(
+    interp.global.get("f"),
+    Value::Undefined,
+    [Value::Number(256.0)],
+    @token.Loc::default(),
+  )
+  match result {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: public call_value preserves stamped source provenance" {
+  let interp = new_interpreter()
+  let program = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}",
+  )
+  @runtime.with_source_identity(interp.realm_state, Some("direct.js"), () => {
+    ignore(interp.run(program.stmts))
+  })
+  let result = interp.call_value(
+    interp.global.get("f"),
+    Value::Undefined,
+    [Value::Number(256.0)],
+    @token.Loc::default(),
+  )
+  match result {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: public call_value mutual recursion at depth 256" {
+  let interp = new_interpreter()
+  let program = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(n){if(n===0)return 0;return 1+f(n-1);}",
+  )
+  let _ = interp.run(program.stmts)
+  let result = interp.call_value(
+    interp.global.get("f"),
+    Value::Undefined,
+    [Value::Number(256.0)],
+    @token.Loc::default(),
+  )
+  match result {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: public call_value preserves mutual source provenance" {
+  let interp = new_interpreter()
+  let entry = @parser.parse("function f(n){if(n===0)return 0;return 1+g(n-1);}")
+  @runtime.with_source_identity(interp.realm_state, Some("entry.js"), () => {
+    ignore(interp.run(entry.stmts))
+  })
+  let peer = @parser.parse("function g(n){if(n===0)return 0;return 1+f(n-1);}")
+  @runtime.with_source_identity(interp.realm_state, Some("peer.js"), () => {
+    ignore(interp.run(peer.stmts))
+  })
+  let result = interp.call_value(
+    interp.global.get("f"),
+    Value::Undefined,
+    [Value::Number(256.0)],
+    @token.Loc::default(),
+  )
+  match result {
+    Value::Number(256.0) => ()
+    other => fail("expected 256, got " + other.to_string())
+  }
+}
+
+///|
 test "execution stack safety: getter re-entry at depth 256" {
   match
     run(

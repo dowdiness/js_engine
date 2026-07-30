@@ -128,7 +128,7 @@ test "numeric base condition reads its parameter only after observation" {
   }
   let parameter = DispatchParameterBindingToken(id=2000)
   let expression = numeric_recursion_base_condition_dispatch_expression(
-    plan.entry.expression_recipe,
+    plan.entry.syntax.expression_recipe,
     parameter,
   )
   stmts.clear()
@@ -289,7 +289,7 @@ test "numeric recursive result preserves source order across child activation" {
   let parameter = DispatchParameterBindingToken(id=2200)
   let capture = DispatchCalleeCaptureToken(id=2201)
   let expression = numeric_recursion_recursive_result_dispatch_expression(
-    plan.entry.expression_recipe,
+    plan.entry.syntax.expression_recipe,
     parameter,
     capture,
   )
@@ -530,7 +530,7 @@ test "numeric recursive result preserves source order across child activation" {
     callee=String_("captured:f"),
     this_value=Undefined,
     args=[Number(2.0)],
-    loc=plan.entry.expression_recipe.recursive_call_loc,
+    loc=plan.entry.syntax.expression_recipe.recursive_call_loc,
   )
   let (entering_child, child_entry_decision) = reduce_activation_dispatch(
     starting_call,
@@ -835,7 +835,7 @@ test "mutual recursion expression retains only the selected peer recipe and toke
     None => fail("expected a peer function plan")
   }
   let expression = numeric_recursion_recursive_result_dispatch_expression(
-    peer.expression_recipe,
+    peer.syntax.expression_recipe,
     DispatchParameterBindingToken(id=2600),
     DispatchCalleeCaptureToken(id=2601),
   )

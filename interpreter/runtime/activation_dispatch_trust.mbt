@@ -20,41 +20,64 @@ priv struct NumericRecursionPreflight {
 
 ///|
 priv struct TrustedNumericRecursionFunction {
-  syntax : NumericRecursionFunctionPlan
+  syntax : NumericRecursionFunctionSyntax
   callee : Value
+  params : Array[String]
+  body : Array[@ast.Stmt]
+  source_text : String?
   expected_realm_protos : FunctionRealmProtos
   expected_source_identity : String?
 }
 
 ///|
 fn TrustedNumericRecursionFunction::TrustedNumericRecursionFunction(
-  syntax~ : NumericRecursionFunctionPlan,
+  syntax~ : NumericRecursionFunctionSyntax,
   callee~ : Value,
+  params~ : Array[String],
+  body~ : Array[@ast.Stmt],
+  source_text~ : String?,
   expected_realm_protos~ : FunctionRealmProtos,
   expected_source_identity~ : String?,
 ) -> TrustedNumericRecursionFunction {
-  { syntax, callee, expected_realm_protos, expected_source_identity }
+  {
+    syntax,
+    callee,
+    params,
+    body,
+    source_text,
+    expected_realm_protos,
+    expected_source_identity,
+  }
 }
 
 ///|
 #warnings("-unused_field")
 priv struct TrustedNumericRecursionRegistry {
-  plan : NumericRecursionPlan
+  program_plan : NumericRecursionPlan?
   entry : TrustedNumericRecursionFunction
   peer : TrustedNumericRecursionFunction?
   throw_type_error : Value?
+  throw_type_error_snapshot : CallbackFreeBindingSnapshot
   expected_global_object : ObjectData
 }
 
 ///|
 fn TrustedNumericRecursionRegistry::TrustedNumericRecursionRegistry(
-  plan~ : NumericRecursionPlan,
+  program_plan? : NumericRecursionPlan? = None,
   entry~ : TrustedNumericRecursionFunction,
   peer~ : TrustedNumericRecursionFunction?,
   throw_type_error~ : Value?,
+  throw_type_error_snapshot~ : CallbackFreeBindingSnapshot,
   expected_global_object~ : ObjectData,
 ) -> TrustedNumericRecursionRegistry {
-  { plan, entry, peer, throw_type_error, expected_global_object }
+  {
+    program_plan,
+    entry,
+    peer,
+    throw_type_error,
+    throw_type_error_snapshot,
+    expected_global_object,
+  }
 }
 
 ///|
@@ -142,6 +165,33 @@ fn Interpreter::numeric_recursion_canonical_global_object(
 }
 
 ///|
+fn numeric_recursion_global_property_is_canonical(
+  global_object : ObjectData,
+  name : String,
+) -> Bool {
+  match ordinary_get_own_string_desc(global_object.bag, name) {
+    Some(desc) =>
+      !desc.is_accessor &&
+      desc.writable &&
+      desc.enumerable &&
+      !desc.configurable
+    None => false
+  }
+}
+
+///|
+fn numeric_recursion_global_declaration_is_sealable(
+  global_object : ObjectData,
+  name : String,
+) -> Bool {
+  match ordinary_get_own_string_desc(global_object.bag, name) {
+    None => true
+    Some(_) =>
+      numeric_recursion_global_property_is_canonical(global_object, name)
+  }
+}
+
+///|
 #warnings("-unused_value")
 fn Interpreter::preflight_numeric_recursion_program(
   self : Interpreter,
@@ -151,14 +201,29 @@ fn Interpreter::preflight_numeric_recursion_program(
     is Some(expected_global_object) else {
     return None
   }
+  let peer_declaration_is_sealable = match plan.peer {
+    Some(peer) =>
+      numeric_recursion_global_declaration_is_sealable(
+        expected_global_object,
+        peer.syntax.name,
+      )
+    None => true
+  }
+  guard numeric_recursion_global_declaration_is_sealable(
+      expected_global_object,
+      plan.entry.syntax.name,
+    ) &&
+    peer_declaration_is_sealable else {
+    return None
+  }
   let (entry_ok, previous_entry_object) = numeric_recursion_existing_binding_snapshot(
     self.global,
-    plan.entry.name,
+    plan.entry.syntax.name,
   )
   guard entry_ok else { return None }
   let (peer_ok, previous_peer_object) = match plan.peer {
     Some(peer) =>
-      numeric_recursion_existing_binding_snapshot(self.global, peer.name)
+      numeric_recursion_existing_binding_snapshot(self.global, peer.syntax.name)
     None => (true, None)
   }
   guard peer_ok else { return None }
@@ -305,24 +370,24 @@ fn numeric_recursion_realm_protos_match(
 ///|
 fn numeric_recursion_trusted_declaration(
   interp : Interpreter,
-  syntax : NumericRecursionFunctionPlan,
+  plan : NumericRecursionFunctionPlan,
   previous_object~ : ObjectData?,
   expected_realm_protos~ : FunctionRealmProtos,
   expected_source_identity~ : String?,
   stmts~ : Array[@ast.Stmt],
 ) -> TrustedNumericRecursionFunction raise InvalidActivationDispatchShell {
-  guard syntax.declaration_index >= 0 &&
-    syntax.declaration_index < stmts.length() else {
+  guard plan.declaration_index >= 0 && plan.declaration_index < stmts.length() else {
     invalid_activation_dispatch_shell(
       "numeric recursion declaration index is outside the admitted program",
     )
   }
-  guard stmts[syntax.declaration_index]
+  guard stmts[plan.declaration_index]
     is @ast.FuncDecl(ast_name, ast_params, ast_body, _, ast_source_text) else {
     invalid_activation_dispatch_shell(
       "numeric recursion declaration no longer matches its admitted syntax",
     )
   }
+  let syntax = plan.syntax
   guard interp.global.bindings.get(syntax.name) is Some(binding) &&
     binding.initialized &&
     binding.kind == VarBinding else {
@@ -388,6 +453,9 @@ fn numeric_recursion_trusted_declaration(
   TrustedNumericRecursionFunction(
     syntax~,
     callee~,
+    params=data.params,
+    body=data.body,
+    source_text=data.source_text,
     expected_realm_protos=realm_protos,
     expected_source_identity=source_identity,
   )
@@ -398,36 +466,18 @@ fn numeric_recursion_function_plans_match(
   expected : NumericRecursionFunctionPlan,
   actual : NumericRecursionFunctionPlan,
 ) -> Bool {
-  let {
-    name: expected_name,
-    parameter: expected_parameter,
-    recursive_callee: expected_recursive_callee,
-    declaration_index: expected_declaration_index,
-    expression_recipe: expected_expression_recipe,
-  } = expected
-  let {
-    name: actual_name,
-    parameter: actual_parameter,
-    recursive_callee: actual_recursive_callee,
-    declaration_index: actual_declaration_index,
-    expression_recipe: actual_expression_recipe,
-  } = actual
-  let {
-    base_condition_loc: _expected_base_condition_loc,
-    recursive_add_loc: _expected_recursive_add_loc,
-    recursive_call_loc: _expected_recursive_call_loc,
-    recursive_subtract_loc: _expected_recursive_subtract_loc,
-  } = expected_expression_recipe
-  let {
-    base_condition_loc: _actual_base_condition_loc,
-    recursive_add_loc: _actual_recursive_add_loc,
-    recursive_call_loc: _actual_recursive_call_loc,
-    recursive_subtract_loc: _actual_recursive_subtract_loc,
-  } = actual_expression_recipe
-  expected_name == actual_name &&
-  expected_parameter == actual_parameter &&
-  expected_recursive_callee == actual_recursive_callee &&
-  expected_declaration_index == actual_declaration_index
+  numeric_recursion_function_syntaxes_match(expected.syntax, actual.syntax) &&
+  expected.declaration_index == actual.declaration_index
+}
+
+///|
+fn numeric_recursion_function_syntaxes_match(
+  expected : NumericRecursionFunctionSyntax,
+  actual : NumericRecursionFunctionSyntax,
+) -> Bool {
+  expected.name == actual.name &&
+  expected.parameter == actual.parameter &&
+  expected.recursive_callee == actual.recursive_callee
 }
 
 ///|
@@ -620,10 +670,11 @@ fn Interpreter::seal_numeric_recursion_registry(
     None => None
   }
   TrustedNumericRecursionRegistry(
-    plan=sealed_plan,
+    program_plan=Some(sealed_plan),
     entry~,
     peer~,
     throw_type_error~,
+    throw_type_error_snapshot~,
     expected_global_object=preflight.expected_global_object,
   )
 }
@@ -631,7 +682,7 @@ fn Interpreter::seal_numeric_recursion_registry(
 ///|
 fn numeric_recursion_user_func_matches_syntax(
   interp : Interpreter,
-  syntax : NumericRecursionFunctionPlan,
+  syntax : NumericRecursionFunctionSyntax,
   data : FuncData,
 ) -> Bool {
   guard data.name == Some(syntax.name) &&
@@ -644,9 +695,46 @@ fn numeric_recursion_user_func_matches_syntax(
     !data.is_method else {
     return false
   }
-  exact_numeric_recursion_base_case(data.body[0], syntax.parameter) &&
-  classify_numeric_recursion_step(data.body[1], syntax.parameter) ==
-  Some(syntax.recursive_callee)
+  match classify_direct_numeric_recursion_user_func(data) {
+    Some((actual, _)) => direct_numeric_recursion_syntax_matches(syntax, actual)
+    None => false
+  }
+}
+
+///|
+fn TrustedNumericRecursionRegistry::revalidate_metadata(
+  self : TrustedNumericRecursionRegistry,
+  interp : Interpreter,
+) -> Unit raise InvalidActivationDispatchShell {
+  guard interp.numeric_recursion_canonical_global_object()
+    is Some(actual_global_object) &&
+    physical_equal(actual_global_object, self.expected_global_object) else {
+    invalid_activation_dispatch_shell(
+      "numeric recursion trusted global changed after sealing",
+    )
+  }
+  guard numeric_recursion_callback_free_binding_snapshots_match(
+    self.throw_type_error_snapshot,
+    numeric_recursion_callback_free_throw_type_error(interp.global),
+  ) else {
+    invalid_activation_dispatch_shell(
+      "numeric recursion ThrowTypeError binding changed after sealing",
+    )
+  }
+}
+
+///|
+#warnings("-unused_value")
+fn TrustedNumericRecursionRegistry::require_program_plan(
+  self : TrustedNumericRecursionRegistry,
+) -> NumericRecursionPlan raise InvalidActivationDispatchShell {
+  match self.program_plan {
+    Some(plan) => plan
+    None =>
+      invalid_activation_dispatch_shell(
+        "direct numeric call registry has no program plan",
+      )
+  }
 }
 
 ///|
@@ -690,15 +778,21 @@ fn numeric_recursion_revalidate_trusted_function(
       "numeric recursion candidate diverged from its global binding",
     )
   }
-  guard interp.global_this is Object(global_object) &&
-    global_object.bag.properties.get(trusted.syntax.name)
+  guard actual_global_object.bag.properties.get(trusted.syntax.name)
     is Some(Object(mirrored)) &&
-    physical_equal(mirrored, actual) else {
+    physical_equal(mirrored, actual) &&
+    numeric_recursion_global_property_is_canonical(
+      actual_global_object,
+      trusted.syntax.name,
+    ) else {
     invalid_activation_dispatch_shell(
       "numeric recursion candidate diverged from its global mirror",
     )
   }
   guard actual.callable is Some(UserFunc(data)) &&
+    physical_equal(data.params, trusted.params) &&
+    physical_equal(data.body, trusted.body) &&
+    data.source_text == trusted.source_text &&
     numeric_recursion_user_func_matches_syntax(interp, trusted.syntax, data) else {
     invalid_activation_dispatch_shell(
       "numeric recursion candidate no longer has exact UserFunc provenance",
@@ -726,6 +820,7 @@ fn TrustedNumericRecursionRegistry::require_named(
   interp : Interpreter,
   name : String,
 ) -> Value raise InvalidActivationDispatchShell {
+  self.revalidate_metadata(interp)
   let trusted = if name == self.entry.syntax.name {
     self.entry
   } else {
@@ -752,7 +847,8 @@ fn TrustedNumericRecursionRegistry::require_callee(
   self : TrustedNumericRecursionRegistry,
   interp : Interpreter,
   callee : Value,
-) -> NumericRecursionFunctionPlan raise InvalidActivationDispatchShell {
+) -> NumericRecursionFunctionSyntax raise InvalidActivationDispatchShell {
+  self.revalidate_metadata(interp)
   guard callee is Object(actual) else {
     invalid_activation_dispatch_shell(
       "numeric recursion call target is not a trusted function object",

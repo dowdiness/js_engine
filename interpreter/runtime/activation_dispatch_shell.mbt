@@ -924,7 +924,9 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   let capabilities = DispatchNumericActivationCapabilities(
     parameter=None,
-    recursive_callee=DispatchNumericCalleeUnresolved(preflight.plan.entry.name),
+    recursive_callee=DispatchNumericCalleeUnresolved(
+      preflight.plan.entry.syntax.name,
+    ),
     catch_binding=numeric_recursion_root_catch_binding_state(
       preflight.plan.root_control,
     ),
@@ -938,7 +940,10 @@ fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
   let capture = DispatchCalleeCaptureToken(id~)
   DispatchNumericProgramAccepted(
     DispatchActivationCleanup(id),
-    numeric_recursion_program_dispatch_start(registry.plan, capture),
+    numeric_recursion_program_dispatch_start(
+      registry.require_program_plan(),
+      capture,
+    ),
   )
 }
 
@@ -1268,7 +1273,7 @@ fn PrimitiveProgramDispatchShell::enter_managed_call(
 fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
   self : PrimitiveProgramDispatchShell,
   id : Int,
-  syntax : NumericRecursionFunctionPlan,
+  syntax : NumericRecursionFunctionSyntax,
   resources : DispatchNumericCallRealmCleanup,
   observation : ActivationEntryAttempt,
   setup : Result[PreparedUserFuncActivation, Error],
@@ -1995,6 +2000,27 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::drive_root_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+) -> DispatchCompletion raise Error {
+  try {
+    let completion = self.drive(DispatchCallActivation(request))
+    guard self.cleanup_stack.is_empty() else {
+      invalid_activation_dispatch_shell(
+        "direct call dispatch finished while cleanup ownership remained",
+      )
+    }
+    completion
+  } catch {
+    error => {
+      self.restore_all_cleanup(failure=Some(error))
+      raise error
+    }
+  }
+}
+
+///|
 fn Interpreter::run_activation_dispatch_leaf_program(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
@@ -2025,6 +2051,27 @@ fn Interpreter::run_activation_dispatch_numeric_program(
       "numeric registry outlived its root activation",
     )
   }
+  completion
+}
+
+///|
+#warnings("-unused_value")
+fn Interpreter::run_activation_dispatch_numeric_call(
+  self : Interpreter,
+  request : DispatchCallRequest,
+  registry : TrustedNumericRecursionRegistry,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    numeric_registry=Some(registry),
+  )
+  let completion = shell.drive_root_call(request)
+  guard shell.numeric_registry is Some(_) else {
+    invalid_activation_dispatch_shell(
+      "direct call registry was released by a non-root activation",
+    )
+  }
+  shell.numeric_registry = None
   completion
 }
 
