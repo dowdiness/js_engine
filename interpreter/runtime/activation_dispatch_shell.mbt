@@ -21,6 +21,8 @@ priv enum ProgramCleanupOwner {
   RejectedProgram
   AcceptedNumericCall
   RejectedNumericCall
+  AcceptedGetterCall
+  RejectedGetterCall
   PropertyAccessCleanup
 }
 
@@ -134,10 +136,28 @@ fn DispatchNumericCallRealmCleanup::DispatchNumericCallRealmCleanup(
 }
 
 ///|
+priv struct DispatchGetterCallRealmCleanup {
+  cleared_realm : ClearedActiveCalleeRealmScope
+  active_realm : ActiveCalleeRealmValueScope
+  parameter_gate : SimpleUserFuncParameterGateScope
+}
+
+///|
+fn DispatchGetterCallRealmCleanup::DispatchGetterCallRealmCleanup(
+  cleared_realm~ : ClearedActiveCalleeRealmScope,
+  active_realm~ : ActiveCalleeRealmValueScope,
+  parameter_gate~ : SimpleUserFuncParameterGateScope,
+) -> DispatchGetterCallRealmCleanup {
+  { cleared_realm, active_realm, parameter_gate }
+}
+
+///|
 priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
   DispatchNumericRootRealmCleanup(FunctionRealmProtos)
+  DispatchGetterRootRealmCleanup(FunctionRealmProtos)
   DispatchNumericRealmCleanup(DispatchNumericCallRealmCleanup)
+  DispatchGetterRealmCleanup(DispatchGetterCallRealmCleanup)
   DispatchPropertyRealmCleanup(ClearedActiveCalleeRealmScope)
 }
 
@@ -155,6 +175,9 @@ priv struct PrimitiveProgramDispatchShell {
   cleanup_stack : Array[ProgramRealmCleanup]
   numeric_root_preflight : NumericRecursionPreflight?
   mut numeric_registry : TrustedNumericRecursionRegistry?
+  getter_root_preflight : GetterRecursionPreflight?
+  getter_root_stmts : Array[@ast.Stmt]?
+  mut getter_registry : TrustedGetterRecursionRegistry?
   mut next_cleanup_id : Int
 }
 
@@ -163,12 +186,18 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   interp : Interpreter,
   numeric_root_preflight? : NumericRecursionPreflight? = None,
   numeric_registry? : TrustedNumericRecursionRegistry? = None,
+  getter_root_preflight? : GetterRecursionPreflight? = None,
+  getter_root_stmts? : Array[@ast.Stmt]? = None,
+  getter_registry? : TrustedGetterRecursionRegistry? = None,
 ) -> PrimitiveProgramDispatchShell {
   {
     interp,
     cleanup_stack: [],
     numeric_root_preflight,
     numeric_registry,
+    getter_root_preflight,
+    getter_root_stmts: getter_root_stmts.map(stmts => stmts.copy()),
+    getter_registry,
     next_cleanup_id: 0,
   }
 }
@@ -250,7 +279,11 @@ fn dispatch_signal_completion(signal : Signal) -> DispatchCompletion {
 fn activation_cleanup_owner_is_accepted(owner : ProgramCleanupOwner) -> Bool {
   match owner {
     AcceptedProgram | AcceptedNumericCall => true
-    RejectedProgram | RejectedNumericCall | PropertyAccessCleanup => false
+    RejectedProgram
+    | RejectedNumericCall
+    | AcceptedGetterCall
+    | RejectedGetterCall
+    | PropertyAccessCleanup => false
   }
 }
 
@@ -260,8 +293,12 @@ fn activation_cleanup_owner_matches(
   accepted : Bool,
 ) -> Bool {
   match (owner, accepted) {
-    (AcceptedProgram, true) | (AcceptedNumericCall, true) => true
-    (RejectedProgram, false) | (RejectedNumericCall, false) => true
+    (AcceptedProgram, true)
+    | (AcceptedNumericCall, true)
+    | (AcceptedGetterCall, true) => true
+    (RejectedProgram, false)
+    | (RejectedNumericCall, false)
+    | (RejectedGetterCall, false) => true
     _ => false
   }
 }
@@ -322,6 +359,35 @@ fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
     owner,
     resources: DispatchNumericRealmCleanup(resources),
     capabilities,
+  })
+}
+
+///|
+fn PrimitiveProgramDispatchShell::push_getter_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchGetterRootRealmCleanup(previous_realm_protos),
+    capabilities: None,
+  })
+}
+
+///|
+fn PrimitiveProgramDispatchShell::push_getter_call_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  owner : ProgramCleanupOwner,
+  resources : DispatchGetterCallRealmCleanup,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner,
+    resources: DispatchGetterRealmCleanup(resources),
+    capabilities: None,
   })
 }
 
@@ -410,7 +476,25 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       self.numeric_registry = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
     }
+    DispatchGetterRootRealmCleanup(previous_realm_protos) => {
+      self.getter_registry = None
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchNumericRealmCleanup(resources) => {
+      self.interp.finish_simple_user_func_parameter_gate(
+        resources.parameter_gate,
+      )
+      finish_active_callee_realm_value(
+        self.interp.realm_state,
+        resources.active_realm,
+        failure~,
+      )
+      finish_cleared_active_callee_realm(
+        self.interp.realm_state,
+        resources.cleared_realm,
+      )
+    }
+    DispatchGetterRealmCleanup(resources) => {
       self.interp.finish_simple_user_func_parameter_gate(
         resources.parameter_gate,
       )
@@ -506,6 +590,19 @@ fn PrimitiveProgramDispatchShell::require_numeric_registry(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::require_getter_registry(
+  self : PrimitiveProgramDispatchShell,
+) -> TrustedGetterRecursionRegistry raise InvalidActivationDispatchShell {
+  match self.getter_registry {
+    Some(registry) => registry
+    None =>
+      invalid_activation_dispatch_shell(
+        "getter activation requires a sealed runtime registry",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -580,15 +677,23 @@ fn PrimitiveProgramDispatchShell::enter_program(
   }
   match setup {
     Ok(_) =>
-      match self.numeric_root_preflight {
-        Some(preflight) =>
+      match (self.numeric_root_preflight, self.getter_root_preflight) {
+        (Some(preflight), None) =>
           self.complete_numeric_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        None => {
+        (None, Some(_)) => {
+          self.push_getter_root_cleanup(id, previous_realm_protos)
+          DispatchProgramAccepted(DispatchActivationCleanup(id))
+        }
+        (None, None) => {
           self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
+        (Some(_), Some(_)) =>
+          invalid_activation_dispatch_shell(
+            "program cannot own numeric and getter admission together",
+          )
       }
     Err(error) => {
       self.push_program_cleanup(id, RejectedProgram, previous_realm_protos)
@@ -660,6 +765,96 @@ fn PrimitiveProgramDispatchShell::enter_numeric_call(
     parameter_gate~,
   )
   self.complete_numeric_call_preparation(id, syntax, resources, setup)
+}
+
+///|
+fn PrimitiveProgramDispatchShell::enter_getter_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_getter_registry()
+  guard request.args.is_empty() else {
+    invalid_activation_dispatch_shell(
+      "getter activation requires exactly zero arguments",
+    )
+  }
+  let _ = registry.require_getter(
+    self.interp,
+    request.callee,
+    request.this_value,
+  )
+  guard request.callee is Object(callee_object) &&
+    callee_object.callable is Some(UserFunc(data)) else {
+    invalid_activation_dispatch_shell(
+      "getter activation lost its exact UserFunc provenance",
+    )
+  }
+  let id = self.reserve_program_cleanup_id()
+  let cleared_realm = begin_cleared_active_callee_realm(self.interp.realm_state)
+  let active_realm = begin_active_callee_realm_value(
+    self.interp.realm_state,
+    request.callee,
+  )
+  let parameter_gate = self.interp.begin_simple_user_func_parameter_gate()
+  let setup : Result[PreparedUserFuncActivation, Error] = Ok(
+    self.interp.prepare_user_func_activation(
+      request.callee,
+      request.this_value,
+      [],
+      data,
+      throw_type_error_source=UsePreResolvedThrowTypeError(
+        registry.throw_type_error,
+      ),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  let resources = DispatchGetterCallRealmCleanup(
+    cleared_realm~,
+    active_realm~,
+    parameter_gate~,
+  )
+  match setup {
+    Ok(prepared) => {
+      self.push_getter_call_cleanup(id, AcceptedGetterCall, resources)
+      DispatchCallAccepted(
+        DispatchActivationCleanup(id),
+        DispatchCallBody(
+          DispatchStatementCursor(
+            ctx=prepared.ctx,
+            stmts=data.body,
+            env=prepared.env,
+          ),
+        ),
+      )
+    }
+    Err(error) => {
+      self.push_getter_call_cleanup(id, RejectedGetterCall, resources)
+      DispatchActivationRejected(
+        DispatchRejectedEntryCleanup(id),
+        dispatch_entry_rejection(error),
+      )
+    }
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::enter_managed_call(
+  self : PrimitiveProgramDispatchShell,
+  request : DispatchCallRequest,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  match (self.numeric_registry, self.getter_registry) {
+    (Some(_), None) => self.enter_numeric_call(request)
+    (None, Some(_)) => self.enter_getter_call(request)
+    (None, None) =>
+      invalid_activation_dispatch_shell(
+        "managed call requires one sealed runtime registry",
+      )
+    (Some(_), Some(_)) =>
+      invalid_activation_dispatch_shell(
+        "managed call cannot select two runtime registries",
+      )
+  }
 }
 
 ///|
@@ -916,15 +1111,10 @@ fn PrimitiveProgramDispatchShell::apply_numeric_binary(
 }
 
 ///|
-fn PrimitiveProgramDispatchShell::execute_leaf_statement(
+fn PrimitiveProgramDispatchShell::execute_statement_with_legacy_adapter(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
-) -> DispatchEffectResult raise InvalidActivationDispatchShell {
-  guard activation_dispatch_leaf_statement_is_admissible(step.stmt) else {
-    invalid_activation_dispatch_shell(
-      "managed leaf execution received an unsupported statement",
-    )
-  }
+) -> DispatchEffectResult {
   let result : Result[Signal, Error] = Ok(
     self.interp.exec_stmt(step.ctx, step.stmt, step.env),
   ) catch {
@@ -937,6 +1127,174 @@ fn PrimitiveProgramDispatchShell::execute_leaf_statement(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::observe_getter_execution_steps(
+  self : PrimitiveProgramDispatchShell,
+  count : Int,
+) -> DispatchCompletion? {
+  for _ in 0..<count {
+    let observed : Result[Unit, Error] = Ok(
+      self.interp.observe_execution_step(),
+    ) catch {
+      error => Err(error)
+    }
+    match observed {
+      Ok(_) => ()
+      Err(error) => return Some(dispatch_work_error_completion(error))
+    }
+  }
+  None
+}
+
+///|
+fn PrimitiveProgramDispatchShell::getter_root_stmts_or_fail(
+  self : PrimitiveProgramDispatchShell,
+) -> Array[@ast.Stmt] raise InvalidActivationDispatchShell {
+  match self.getter_root_stmts {
+    Some(stmts) => stmts
+    None =>
+      invalid_activation_dispatch_shell(
+        "getter root statements were not retained by admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_getter_root_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  preflight : GetterRecursionPreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  guard physical_equal(step.env, self.interp.global) &&
+    getter_recursion_root_statement_matches(
+      preflight.plan,
+      step.index,
+      step.stmt,
+    ) else {
+    invalid_activation_dispatch_shell(
+      "getter root statement no longer matches exact admission",
+    )
+  }
+  match step.index {
+    0 => self.execute_statement_with_legacy_adapter(step)
+    1 => {
+      let result = self.execute_statement_with_legacy_adapter(step)
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) => {
+          let registry = self.interp.seal_getter_recursion_registry(
+            preflight,
+            self.getter_root_stmts_or_fail(),
+          )
+          self.getter_registry = Some(registry)
+        }
+        _ => ()
+      }
+      result
+    }
+    2 => {
+      match self.observe_getter_execution_steps(3) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let registry = self.require_getter_registry()
+      let target = registry.require_target(self.interp)
+      self.start_property(
+        DispatchPropertyGetResume(
+          target~,
+          property_key=String_(preflight.plan.property_name),
+          receiver=target,
+          loc=preflight.plan.recipe.root_member_loc,
+        ),
+        DispatchDeliverCallResult,
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "getter root statement index is outside exact admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_getter_body_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  registry : TrustedGetterRecursionRegistry,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let plan = registry.plan
+  guard getter_recursion_body_statement_matches(plan, step.index, step.stmt) &&
+    step.env.parent is Some(parent) &&
+    physical_equal(parent, registry.trusted.closure) &&
+    step.env.with_object is None &&
+    step.env.is_var_scope &&
+    step.env.bindings.get("this") is Some(this_binding) &&
+    this_binding.initialized &&
+    getter_recursion_target_identity_matches(
+      registry.trusted.target,
+      this_binding.value,
+    ) else {
+    invalid_activation_dispatch_shell(
+      "getter body statement lost its activation provenance",
+    )
+  }
+  match step.index {
+    0 | 1 => self.execute_statement_with_legacy_adapter(step)
+    2 => {
+      match self.observe_getter_execution_steps(5) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      let target = registry.require_target(self.interp)
+      DispatchWorkSuspended(
+        DispatchSuspendContinue(
+          DispatchCompleteReturn,
+          DispatchStartProperty(
+            DispatchPropertyGetResume(
+              target~,
+              property_key=String_(plan.property_name),
+              receiver=target,
+              loc=plan.recipe.recursive_member_loc,
+            ),
+            DispatchApplyBinaryRight(
+              DispatchBinaryResume(
+                op=@ast.Add,
+                left=Number(NUMERIC_RECURSION_STEP),
+                loc=plan.recipe.recursive_add_loc,
+              ),
+            ),
+          ),
+        ),
+      )
+    }
+    _ =>
+      invalid_activation_dispatch_shell(
+        "getter body statement index is outside exact admission",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_managed_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  if activation_dispatch_leaf_statement_is_admissible(step.stmt) {
+    return self.execute_statement_with_legacy_adapter(step)
+  }
+  match self.getter_root_preflight {
+    Some(preflight) =>
+      if physical_equal(step.env, self.interp.global) {
+        self.execute_getter_root_statement(step, preflight)
+      } else {
+        self.execute_getter_body_statement(step, self.require_getter_registry())
+      }
+    None =>
+      invalid_activation_dispatch_shell(
+        "managed statement is outside admitted execution",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::perform_effect(
   self : PrimitiveProgramDispatchShell,
   effect : DispatchEffect,
@@ -945,9 +1303,9 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     DispatchEnterActivation(DispatchProgramActivation(cursor)) =>
       self.enter_program(cursor)
     DispatchEnterActivation(DispatchCallActivation(request)) =>
-      self.enter_numeric_call(request)
+      self.enter_managed_call(request)
     DispatchRun(DispatchExecuteStatement(step)) =>
-      self.execute_leaf_statement(step)
+      self.execute_managed_statement(step)
     DispatchRun(DispatchObserveExpressionStep(observation)) => {
       ignore(observation)
       self.observe_numeric_execution_step()
@@ -1074,6 +1432,27 @@ fn Interpreter::run_activation_dispatch_numeric_program(
   guard shell.numeric_registry is None else {
     invalid_activation_dispatch_shell(
       "numeric registry outlived its root activation",
+    )
+  }
+  completion
+}
+
+///|
+fn Interpreter::run_activation_dispatch_getter_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : GetterRecursionPreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    getter_root_preflight=Some(preflight),
+    getter_root_stmts=Some(stmts),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.getter_registry is None else {
+    invalid_activation_dispatch_shell(
+      "getter registry outlived its root activation",
     )
   }
   completion
