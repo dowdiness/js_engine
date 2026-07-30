@@ -675,10 +675,9 @@ pub fn Interpreter::run(
         self.run_activation_dispatch_leaf_program(stmts, ctx),
       )
     } else {
-      let numeric_preflight = match classify_numeric_recursion_program(stmts) {
-        Some(plan) => self.preflight_numeric_recursion_program(plan)
-        None => None
-      }
+      let numeric_preflight = self.preflight_dispatchable_numeric_recursion_program(
+        stmts,
+      )
       match numeric_preflight {
         Some(preflight) =>
           activation_dispatch_root_value(
