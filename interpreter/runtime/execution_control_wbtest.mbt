@@ -114,7 +114,7 @@ test "execution control normal activation exit restores depth" {
     maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
-  let depth_inside : Ref[Int] = { val: -1 }
+  let depth_inside : Ref[Int64] = { val: -1L }
   match
     control.with_activation(() => {
       depth_inside.val = control.active_depth()
@@ -269,6 +269,8 @@ test "execution control activation port releases rejected setup without a token"
     )
     inspect(control.active_depth(), content="1")
     attempt.reject()
+    inspect(control.active_depth(), content="1")
+    attempt.release_after_rejection()
     inspect(control.active_depth(), content="0")
     inspect(control.remaining_steps(), content="9")
   })
@@ -294,4 +296,185 @@ test "execution control activation port denies at the boundary without release" 
   inspect(outcome, content="stack-depth-limit")
   inspect(control.active_depth(), content="0")
   inspect(control.remaining_steps(), content="10")
+}
+
+///|
+test "execution control stale release preserves zero depth" {
+  let control = ExecutionControl(
+    remaining_steps=10,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  match control.release_activation() {
+    Err(ExecutionControlFailure::StaleActivationRelease) => ()
+    _ => fail("stale release must surface without mutating depth")
+  }
+  inspect(control.active_depth(), content="0")
+  inspect(control.remaining_steps(), content="10")
+}
+
+///|
+test "execution control rejects negative step budget before carrier creation" {
+  let outcome = try {
+    let _ = ExecutionControl(
+      remaining_steps=-1L,
+      maximum_active_depth=1L,
+      interruption=ExecutionInterruptionRequest(),
+    )
+    "accepted"
+  } catch {
+    InvalidExecutionControlConfiguration(StepBudget, value) => value.to_string()
+    _ => "wrong-error"
+  }
+  inspect(outcome, content="-1")
+}
+
+///|
+test "execution control rejects negative stack depth before carrier creation" {
+  let outcome = try {
+    let _ = ExecutionControl(
+      remaining_steps=1L,
+      maximum_active_depth=-1L,
+      interruption=ExecutionInterruptionRequest(),
+    )
+    "accepted"
+  } catch {
+    InvalidExecutionControlConfiguration(StackDepth, value) => value.to_string()
+    _ => "wrong-error"
+  }
+  inspect(outcome, content="-1")
+}
+
+///|
+test "execution control rejects above-maximum step budget before carrier creation" {
+  let outcome = try {
+    let _ = ExecutionControl(
+      remaining_steps=2147483648L,
+      maximum_active_depth=1L,
+      interruption=ExecutionInterruptionRequest(),
+    )
+    "accepted"
+  } catch {
+    InvalidExecutionControlConfiguration(StepBudget, value) => value.to_string()
+    _ => "wrong-error"
+  }
+  inspect(outcome, content="2147483648")
+}
+
+///|
+test "execution control rejects above-maximum depth before carrier creation" {
+  let outcome = try {
+    let _ = ExecutionControl(
+      remaining_steps=1L,
+      maximum_active_depth=2147483648L,
+      interruption=ExecutionInterruptionRequest(),
+    )
+    "accepted"
+  } catch {
+    InvalidExecutionControlConfiguration(StackDepth, value) => value.to_string()
+    _ => "wrong-error"
+  }
+  inspect(outcome, content="2147483648")
+}
+
+///|
+test "execution control accepts the maximum portable limits without wrapping" {
+  let control = ExecutionControl(
+    remaining_steps=2147483647L,
+    maximum_active_depth=2147483647L,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  match control.observe_step() {
+    Ok(_) => ()
+    Err(_) => fail("maximum portable step budget must be accepted")
+  }
+  inspect(control.remaining_steps(), content="2147483646")
+  match control.observe_activation() {
+    Ok(_) => ()
+    Err(_) => fail("maximum portable depth must be accepted")
+  }
+  inspect(control.active_depth(), content="1")
+  let _ = control.release_activation()
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "execution control reducer returns immutable next state and decision" {
+  let initial : ExecutionControlState = {
+    remaining_steps: 2L,
+    maximum_active_depth: 1L,
+    active_depth: 0L,
+  }
+  let (next, decision) = reduce_execution_control(initial, ObserveStep(false))
+  match decision {
+    ExecutionControlDecision::StepObserved => ()
+    _ => fail("step transition must report an observed step")
+  }
+  inspect(initial.remaining_steps, content="2")
+  inspect(next.remaining_steps, content="1")
+  inspect(next.active_depth, content="0")
+}
+
+///|
+test "execution control reducer preserves exact rejection state at boundaries" {
+  let depth_limited : ExecutionControlState = {
+    remaining_steps: 7L,
+    maximum_active_depth: 3L,
+    active_depth: 3L,
+  }
+  let (depth_next, depth_decision) = reduce_execution_control(
+    depth_limited,
+    ObserveActivation(false),
+  )
+  match depth_decision {
+    ExecutionControlDecision::Rejected(StackDepthLimit) => ()
+    _ => fail("exact depth rejection must preserve the counters")
+  }
+  inspect(depth_next.remaining_steps, content="7")
+  inspect(depth_next.active_depth, content="3")
+
+  let budget_limited : ExecutionControlState = {
+    remaining_steps: 0L,
+    maximum_active_depth: 4L,
+    active_depth: 2L,
+  }
+  let (budget_next, budget_decision) = reduce_execution_control(
+    budget_limited,
+    ObserveActivation(false),
+  )
+  match budget_decision {
+    ExecutionControlDecision::Rejected(ExecutionLimit) => ()
+    _ => fail("exact budget rejection must preserve the counters")
+  }
+  inspect(budget_next.remaining_steps, content="0")
+  inspect(budget_next.active_depth, content="2")
+}
+
+///|
+test "execution control reducer reaches maximum depth without wraparound" {
+  let before_maximum : ExecutionControlState = {
+    remaining_steps: 1L,
+    maximum_active_depth: 2147483647L,
+    active_depth: 2147483646L,
+  }
+  let (at_maximum, accepted) = reduce_execution_control(
+    before_maximum,
+    ObserveActivation(false),
+  )
+  match accepted {
+    ExecutionControlDecision::ActivationObserved => ()
+    _ => fail("the maximum portable depth must be reachable")
+  }
+  inspect(at_maximum.remaining_steps, content="0")
+  inspect(at_maximum.active_depth, content="2147483647")
+  let (after_rejection, rejected) = reduce_execution_control(
+    at_maximum,
+    ObserveActivation(false),
+  )
+  match rejected {
+    ExecutionControlDecision::Rejected(StackDepthLimit) => ()
+    _ => fail("the maximum portable depth must reject without wrapping")
+  }
+  inspect(after_rejection.remaining_steps, content="0")
+  inspect(after_rejection.active_depth, content="2147483647")
 }

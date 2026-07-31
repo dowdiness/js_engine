@@ -8,11 +8,147 @@ priv enum ExecutionControlFailure {
   Interrupted
   StackDepthLimit
   ExecutionLimit
+  StaleActivationRelease
 }
 
 ///|
 priv suberror ExecutionControlError {
   ExecutionControlError(ExecutionControlFailure)
+}
+
+///|
+#warnings("-unused_constructor")
+priv enum ExecutionControlConfigurationParameter {
+  StepBudget
+  StackDepth
+}
+
+///|
+priv suberror ExecutionControlConfigurationError {
+  InvalidExecutionControlConfiguration(
+    ExecutionControlConfigurationParameter,
+    Int64
+  )
+}
+
+///|
+const MAX_PORTABLE_EXECUTION_COUNT : Int64 = 2147483647L
+
+///|
+priv struct ExecutionControlConfiguration {
+  remaining_steps : Int64
+  maximum_active_depth : Int64
+}
+
+///|
+fn validate_execution_control_limit(
+  parameter : ExecutionControlConfigurationParameter,
+  value : Int64,
+) -> Int64 raise ExecutionControlConfigurationError {
+  guard value >= 0L && value <= MAX_PORTABLE_EXECUTION_COUNT else {
+    raise InvalidExecutionControlConfiguration(parameter, value)
+  }
+  value
+}
+
+///|
+fn ExecutionControlConfiguration::ExecutionControlConfiguration(
+  remaining_steps~ : Int64,
+  maximum_active_depth~ : Int64,
+) -> ExecutionControlConfiguration raise ExecutionControlConfigurationError {
+  {
+    remaining_steps: validate_execution_control_limit(
+      StepBudget,
+      remaining_steps,
+    ),
+    maximum_active_depth: validate_execution_control_limit(
+      StackDepth,
+      maximum_active_depth,
+    ),
+  }
+}
+
+///|
+priv struct ExecutionControlState {
+  remaining_steps : Int64
+  maximum_active_depth : Int64
+  active_depth : Int64
+}
+
+///|
+priv enum ExecutionControlEvent {
+  ObserveStep(Bool)
+  ObserveActivation(Bool)
+  ReleaseActivation
+}
+
+// Tail replacement is intentionally not an event in this slice. A future
+// valid tail replacement must carry the retained `active_depth` forward and
+// must not emit another `ObserveActivation` acquisition.
+
+///|
+priv enum ExecutionControlDecision {
+  StepObserved
+  ActivationObserved
+  ActivationReleased
+  Rejected(ExecutionControlFailure)
+}
+
+///|
+// Pure execution-control transition core. Interruption visibility is supplied
+// by the imperative shell; the reducer owns all precedence and counter
+// arithmetic without mutating the caller's state.
+fn reduce_execution_control(
+  state : ExecutionControlState,
+  event : ExecutionControlEvent,
+) -> (ExecutionControlState, ExecutionControlDecision) {
+  match event {
+    ObserveStep(interrupted) =>
+      if interrupted {
+        (state, Rejected(Interrupted))
+      } else if state.remaining_steps == 0L {
+        (state, Rejected(ExecutionLimit))
+      } else {
+        (
+          {
+            remaining_steps: state.remaining_steps - 1L,
+            maximum_active_depth: state.maximum_active_depth,
+            active_depth: state.active_depth,
+          },
+          StepObserved,
+        )
+      }
+    ObserveActivation(interrupted) =>
+      if interrupted {
+        (state, Rejected(Interrupted))
+      } else if state.active_depth >= state.maximum_active_depth {
+        (state, Rejected(StackDepthLimit))
+      } else if state.remaining_steps == 0L {
+        (state, Rejected(ExecutionLimit))
+      } else {
+        (
+          {
+            remaining_steps: state.remaining_steps - 1L,
+            maximum_active_depth: state.maximum_active_depth,
+            active_depth: state.active_depth + 1L,
+          },
+          ActivationObserved,
+        )
+      }
+    ReleaseActivation =>
+      if state.active_depth == 0L {
+        (state, Rejected(StaleActivationRelease))
+      } else {
+        (
+          {
+            remaining_steps: state.remaining_steps,
+            maximum_active_depth: state.maximum_active_depth,
+            active_depth: state.active_depth - 1L,
+          },
+          ActivationReleased,
+        )
+      }
+  }
 }
 
 ///|
@@ -58,37 +194,51 @@ fn ExecutionInterruptionRequest::is_requested(
 
 ///|
 priv struct ExecutionControl {
-  mut remaining_steps_ : Int
-  maximum_active_depth : Int
-  mut active_depth_ : Int
+  mut state : ExecutionControlState
   interruption : ExecutionInterruptionRequest
 }
 
 ///|
 #warnings("-unused_value")
 fn ExecutionControl::ExecutionControl(
-  remaining_steps~ : Int,
-  maximum_active_depth~ : Int,
+  remaining_steps~ : Int64,
+  maximum_active_depth~ : Int64,
   interruption~ : ExecutionInterruptionRequest,
-) -> ExecutionControl {
+) -> ExecutionControl raise ExecutionControlConfigurationError {
+  let configuration = ExecutionControlConfiguration(
+    remaining_steps~,
+    maximum_active_depth~,
+  )
   {
-    remaining_steps_: remaining_steps,
-    maximum_active_depth,
-    active_depth_: 0,
+    state: {
+      remaining_steps: configuration.remaining_steps,
+      maximum_active_depth: configuration.maximum_active_depth,
+      active_depth: 0L,
+    },
     interruption,
   }
 }
 
 ///|
 #warnings("-unused_value")
-fn ExecutionControl::remaining_steps(self : ExecutionControl) -> Int {
-  self.remaining_steps_
+fn ExecutionControl::remaining_steps(self : ExecutionControl) -> Int64 {
+  self.state.remaining_steps
 }
 
 ///|
 #warnings("-unused_value")
-fn ExecutionControl::active_depth(self : ExecutionControl) -> Int {
-  self.active_depth_
+fn ExecutionControl::active_depth(self : ExecutionControl) -> Int64 {
+  self.state.active_depth
+}
+
+///|
+fn ExecutionControl::transition(
+  self : ExecutionControl,
+  event : ExecutionControlEvent,
+) -> ExecutionControlDecision {
+  let (next_state, decision) = reduce_execution_control(self.state, event)
+  self.state = next_state
+  decision
 }
 
 ///|
@@ -96,13 +246,10 @@ fn ExecutionControl::active_depth(self : ExecutionControl) -> Int {
 fn ExecutionControl::observe_step(
   self : ExecutionControl,
 ) -> Result[Unit, ExecutionControlFailure] {
-  if self.interruption.is_requested() {
-    Err(Interrupted)
-  } else if self.remaining_steps_ == 0 {
-    Err(ExecutionLimit)
-  } else {
-    self.remaining_steps_ = self.remaining_steps_ - 1
-    Ok(())
+  match self.transition(ObserveStep(self.interruption.is_requested())) {
+    StepObserved => Ok(())
+    Rejected(failure) => Err(failure)
+    _ => Err(ExecutionLimit)
   }
 }
 
@@ -121,10 +268,11 @@ fn execution_control_observer(control : ExecutionControl) -> Value {
               Ok(_) => Undefined
               Err(failure) => raise ExecutionControlError(failure)
             }
-          [String_(operation)] if operation == EXECUTION_CONTROL_RELEASE => {
-            control.release_activation()
-            Undefined
-          }
+          [String_(operation)] if operation == EXECUTION_CONTROL_RELEASE =>
+            match control.release_activation() {
+              Ok(_) => Undefined
+              Err(failure) => raise ExecutionControlError(failure)
+            }
           _ =>
             match control.observe_step() {
               Ok(_) => Undefined
@@ -191,9 +339,9 @@ fn Interpreter::observe_execution_activation(
 }
 
 ///|
-// Release is an ownership-only lifecycle hook. The active-depth transition is
-// infallible once entry has been accepted; any stale carrier is ignored because
-// unbounded execution has no activation policy to release.
+// Release is an ownership-only lifecycle hook. Valid dispatcher ownership
+// always releases an acquired unit; the reducer rejects a stale zero-depth
+// release without mutating state.
 fn Interpreter::release_execution_activation(self : Interpreter) -> Unit {
   match self.global.bindings.get(EXECUTION_CONTROL_BINDING) {
     Some(binding) =>
@@ -246,22 +394,22 @@ fn[T] Interpreter::with_execution_control(
 fn ExecutionControl::observe_activation(
   self : ExecutionControl,
 ) -> Result[Unit, ExecutionControlFailure] {
-  if self.interruption.is_requested() {
-    Err(Interrupted)
-  } else if self.active_depth_ == self.maximum_active_depth {
-    Err(StackDepthLimit)
-  } else if self.remaining_steps_ == 0 {
-    Err(ExecutionLimit)
-  } else {
-    self.active_depth_ = self.active_depth_ + 1
-    self.remaining_steps_ = self.remaining_steps_ - 1
-    Ok(())
+  match self.transition(ObserveActivation(self.interruption.is_requested())) {
+    ActivationObserved => Ok(())
+    Rejected(failure) => Err(failure)
+    _ => Err(ExecutionLimit)
   }
 }
 
 ///|
-fn ExecutionControl::release_activation(self : ExecutionControl) -> Unit {
-  self.active_depth_ = self.active_depth_ - 1
+fn ExecutionControl::release_activation(
+  self : ExecutionControl,
+) -> Result[Unit, ExecutionControlFailure] {
+  match self.transition(ReleaseActivation) {
+    ActivationReleased => Ok(())
+    Rejected(failure) => Err(failure)
+    _ => Err(StaleActivationRelease)
+  }
 }
 
 ///|
@@ -276,7 +424,9 @@ fn Interpreter::execution_control_activation_observation_port(
       self.observe_execution_activation()
       ActivationObservationAttemptHooks(
         accepted=() => (),
-        rejected=() => self.release_execution_activation(),
+        // Setup rejection records the acquired attempt; the dispatcher
+        // releases it only after restoring the owned runtime state.
+        rejected=() => (),
         released=() => self.release_execution_activation(),
       )
     },
@@ -290,17 +440,18 @@ fn[T] ExecutionControl::with_activation(
   self : ExecutionControl,
   action : () -> T raise Error,
 ) -> Result[T, ExecutionControlFailure] raise Error {
-  let previous_depth = self.active_depth_
   match self.observe_activation() {
     Err(failure) => Err(failure)
     Ok(_) =>
       try {
         let result = action()
-        self.active_depth_ = previous_depth
-        Ok(result)
+        match self.release_activation() {
+          Ok(_) => Ok(result)
+          Err(failure) => Err(failure)
+        }
       } catch {
         error => {
-          self.active_depth_ = previous_depth
+          let _ = self.release_activation()
           raise error
         }
       }
