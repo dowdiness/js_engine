@@ -152,6 +152,22 @@ test "pre-requested interruption wins over budget and depth" {
 }
 
 ///|
+test "bounded rejection preserves pending jobs in its diagnostic" {
+  let engine = @js_engine.Engine()
+  engine.eval("queueMicrotask(() => {});")
+  let diagnostic = expect_guardrail(
+    engine.eval_bounded(
+      "globalThis.touched=1;",
+      policy(0L, 10L, @js_engine.InterruptionHandle()),
+      source_id="pending.js",
+    ),
+    "execution-limit",
+    "pending.js",
+  )
+  assert_true(diagnostic.pending_jobs() is @js_engine.PendingJobs::Present)
+}
+
+///|
 test "guest lookalike remains a JavaScript exception while caught depth succeeds" {
   let engine = @js_engine.Engine()
   match
@@ -183,6 +199,20 @@ test "invalid policy values fail before source execution" {
     Ok(_) => fail("negative step budget must be rejected")
     Err(error) => {
       inspect(error.parameter_code(), content="step-budget")
+      assert_true(error.message().length() > 0)
+    }
+  }
+  match @js_engine.ExecutionPolicy::new(2147483648L, 1L, handle) {
+    Ok(_) => fail("oversized step budget must be rejected")
+    Err(error) => {
+      inspect(error.parameter_code(), content="step-budget")
+      assert_true(error.message().length() > 0)
+    }
+  }
+  match @js_engine.ExecutionPolicy::new(1L, -1L, handle) {
+    Ok(_) => fail("negative stack depth must be rejected")
+    Err(error) => {
+      inspect(error.parameter_code(), content="stack-depth")
       assert_true(error.message().length() > 0)
     }
   }

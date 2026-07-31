@@ -75,11 +75,15 @@ pub fn InterruptionHandle::InterruptionHandle() -> InterruptionHandle
 pub fn InterruptionHandle::request(Self) -> Unit
 pub fn InterruptionHandle::is_requested(Self) -> Bool
 
-pub fn ExecutionPolicy::ExecutionPolicy(
+pub fn ExecutionPolicy::new(
   step_budget : Int64,
   stack_depth_limit : Int64,
   interruption : InterruptionHandle,
 ) -> Result[ExecutionPolicy, ExecutionPolicyError]
+
+MoonBit constructor naming correction for #702: the public constructor is
+`ExecutionPolicy::new(...)`; `ExecutionPolicy::ExecutionPolicy(...)` is not a
+valid callable constructor form for this struct shape.
 
 pub fn ExecutionPolicyError::parameter_code(Self) -> String
 pub fn ExecutionPolicyError::message(Self) -> String
