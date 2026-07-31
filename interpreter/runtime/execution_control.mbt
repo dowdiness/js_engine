@@ -22,6 +22,15 @@ priv suberror ExecutionControlError {
 const EXECUTION_CONTROL_BINDING = "[[ExecutionControl]]"
 
 ///|
+const EXECUTION_CONTROL_ACTIVATION = "activation"
+
+///|
+const EXECUTION_CONTROL_RELEASE = "release"
+
+///|
+const STACK_DEPTH_LIMIT_MESSAGE = "Maximum call stack size exceeded"
+
+///|
 priv struct ExecutionInterruptionRequest {
   requested : Ref[Bool]
 }
@@ -104,11 +113,23 @@ fn execution_control_observer(control : ExecutionControl) -> Value {
     Null,
     Some(
       NonConstructableCallable("[[execution-control-observer]]", fn(
-        _args,
+        args,
       ) raise {
-        match control.observe_step() {
-          Ok(_) => Undefined
-          Err(failure) => raise ExecutionControlError(failure)
+        match args {
+          [String_(operation)] if operation == EXECUTION_CONTROL_ACTIVATION =>
+            match control.observe_activation() {
+              Ok(_) => Undefined
+              Err(failure) => raise ExecutionControlError(failure)
+            }
+          [String_(operation)] if operation == EXECUTION_CONTROL_RELEASE => {
+            control.release_activation()
+            Undefined
+          }
+          _ =>
+            match control.observe_step() {
+              Ok(_) => Undefined
+              Err(failure) => raise ExecutionControlError(failure)
+            }
         }
       }),
     ),
@@ -141,6 +162,50 @@ fn Interpreter::observe_execution_step(self : Interpreter) -> Unit raise Error {
             Some(NonConstructableCallable(_, observe)) => {
               let _ = observe([])
             }
+            _ => ()
+          }
+        _ => ()
+      }
+    None => ()
+  }
+}
+
+///|
+fn Interpreter::observe_execution_activation(
+  self : Interpreter,
+) -> Unit raise Error {
+  match self.global.bindings.get(EXECUTION_CONTROL_BINDING) {
+    Some(binding) =>
+      match binding.value {
+        Object(data) =>
+          match data.callable {
+            Some(NonConstructableCallable(_, observe)) => {
+              let _ = observe([String_(EXECUTION_CONTROL_ACTIVATION)])
+            }
+            _ => ()
+          }
+        _ => ()
+      }
+    None => ()
+  }
+}
+
+///|
+// Release is an ownership-only lifecycle hook. The active-depth transition is
+// infallible once entry has been accepted; any stale carrier is ignored because
+// unbounded execution has no activation policy to release.
+fn Interpreter::release_execution_activation(self : Interpreter) -> Unit {
+  match self.global.bindings.get(EXECUTION_CONTROL_BINDING) {
+    Some(binding) =>
+      match binding.value {
+        Object(data) =>
+          match data.callable {
+            Some(NonConstructableCallable(_, observe)) =>
+              try {
+                let _ = observe([String_(EXECUTION_CONTROL_RELEASE)])
+              } catch {
+                _ => ()
+              }
             _ => ()
           }
         _ => ()
@@ -192,6 +257,31 @@ fn ExecutionControl::observe_activation(
     self.remaining_steps_ = self.remaining_steps_ - 1
     Ok(())
   }
+}
+
+///|
+fn ExecutionControl::release_activation(self : ExecutionControl) -> Unit {
+  self.active_depth_ = self.active_depth_ - 1
+}
+
+///|
+// Adapt the deterministic depth policy to the policy-free lifecycle port. The
+// shell owns cleanup ordering; this adapter only acquires depth at entry and
+// releases it on rejected setup or final activation cleanup.
+fn Interpreter::execution_control_activation_observation_port(
+  self : Interpreter,
+) -> ActivationObservationPort {
+  ActivationObservationPort(
+    begin_entry=() => {
+      self.observe_execution_activation()
+      ActivationObservationAttemptHooks(
+        accepted=() => (),
+        rejected=() => self.release_execution_activation(),
+        released=() => self.release_execution_activation(),
+      )
+    },
+    denied=() => (),
+  )
 }
 
 ///|
