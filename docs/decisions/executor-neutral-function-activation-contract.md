@@ -30,6 +30,13 @@ does not expose its instruction pointer, operand stack, tree cursor, locals, or
 other representation through the neutral contract. Mutable collections handed
 across the boundary use owned snapshots or defensive copies.
 
+The runtime function object retains a runtime-owned `ExecutorCallableData`
+payload rather than erasing the capability into a final-value callback. Direct
+dependents can classify that neutral callable, ask runtime to prepare an
+ordinary activation, and start its private frame without executing the body.
+The payload exposes no compiler representation; observable activation metadata
+remains runtime-owned.
+
 The existing synchronous API is a root adapter around this explicit
 activation. The adapter is not a continuation and is not evidence that nested
 bytecode calls are stack-safe. Once downstream work admits a nested operation

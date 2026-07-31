@@ -76,6 +76,75 @@ pub(open) trait ExecutorCode {
 }
 
 ///|
+// Runtime-owned metadata for a callable executor body. The code capability is
+// mode-neutral and remains recoverable before entry so a managed dispatcher can
+// start the private executor frame without invoking a final-value callback.
+pub struct ExecutorCallableData {
+  priv name : String
+  priv params : Array[String]
+  priv closure : Environment
+  priv strict : Bool
+  priv code : &ExecutorCode
+  priv rest_param : String?
+  priv constructable : Bool
+  priv self_name : String?
+  priv define_arguments_object : Bool
+}
+
+///|
+pub fn ExecutorCallableData::name(self : ExecutorCallableData) -> String {
+  self.name
+}
+
+///|
+pub fn ExecutorCallableData::length(self : ExecutorCallableData) -> Int {
+  self.params.length()
+}
+
+///|
+pub fn ExecutorCallableData::is_constructable(
+  self : ExecutorCallableData,
+) -> Bool {
+  self.constructable
+}
+
+///|
+pub fn ExecutorCallableData::start_frame(
+  self : ExecutorCallableData,
+  interp : Interpreter,
+  prepared : PreparedExecutorActivation,
+) -> &ExecutorActivationFrame raise Error {
+  self.code.start(interp, prepared)
+}
+
+///|
+// Prepare an ordinary call without entering executor code. This is the
+// hand-off used by a managed dispatcher: runtime owns observable activation
+// semantics, while the caller may push the private frame returned by
+// `start_frame` instead of invoking the synchronous compatibility adapter.
+pub fn Interpreter::prepare_executor_callable_call(
+  self : Interpreter,
+  executable : ExecutorCallableData,
+  callee : Value,
+  this_value : Value,
+  args : Array[Value],
+) -> PreparedExecutorActivation raise Error {
+  self.prepare_executor_activation(
+    callee,
+    this_value,
+    args,
+    executable.params,
+    executable.rest_param,
+    executable.closure,
+    executable.strict,
+    None,
+    !executable.constructable,
+    executable.self_name,
+    executable.define_arguments_object,
+  )
+}
+
+///|
 fn Interpreter::drive_executor_activation(
   self : Interpreter,
   code : &ExecutorCode,
@@ -198,18 +267,11 @@ fn executor_construct_completion(
 ///|
 fn Interpreter::run_executor_function(
   self : Interpreter,
-  code : &ExecutorCode,
+  executable : ExecutorCallableData,
   callee : Value,
   context : CallContext,
   this_value : Value,
   args : Array[Value],
-  params : Array[String],
-  rest_param : String?,
-  closure : Environment,
-  strict : Bool,
-  is_method : Bool,
-  self_name : String?,
-  define_arguments_object : Bool,
 ) -> Value raise Error {
   let saved_in_default = self.in_nonarrow_param_default_eval
   self.in_nonarrow_param_default_eval = false
@@ -225,34 +287,26 @@ fn Interpreter::run_executor_function(
         callee,
         instance,
         args,
-        params,
-        rest_param,
-        closure,
-        strict,
+        executable.params,
+        executable.rest_param,
+        executable.closure,
+        executable.strict,
         Some(new_target),
-        is_method,
-        self_name,
-        define_arguments_object,
+        !executable.constructable,
+        executable.self_name,
+        executable.define_arguments_object,
       )
       executor_construct_completion(
-        self.drive_executor_activation(code, prepared),
+        self.drive_executor_activation(executable.code, prepared),
         instance,
       )
     } else {
-      let prepared = self.prepare_executor_activation(
-        callee,
-        this_value,
-        args,
-        params,
-        rest_param,
-        closure,
-        strict,
-        None,
-        is_method,
-        self_name,
-        define_arguments_object,
+      let prepared = self.prepare_executor_callable_call(
+        executable, callee, this_value, args,
       )
-      executor_call_completion(self.drive_executor_activation(code, prepared))
+      executor_call_completion(
+        self.drive_executor_activation(executable.code, prepared),
+      )
     }
   } catch {
     error => {
@@ -282,35 +336,23 @@ pub fn[T : ExecutorCode] make_executor_function(
   }
   let function_name = name.unwrap_or("")
   let self_name = if call_self_name { name } else { None }
-  let executable = code as &ExecutorCode
-  let function_ref : Ref[Value?] = { val: None }
+  let executable : ExecutorCallableData = {
+    name: function_name,
+    params: params.copy(),
+    closure,
+    strict,
+    code: code as &ExecutorCode,
+    rest_param,
+    constructable,
+    self_name,
+    define_arguments_object,
+  }
   let function = build_func_object(
     function_name,
     params.length(),
-    InterpreterCallableWithContext(function_name, fn(
-      interp,
-      context,
-      this_value,
-      args,
-    ) raise {
-      interp.run_executor_function(
-        executable,
-        function_ref.val.unwrap_or(Undefined),
-        context,
-        this_value,
-        args,
-        params,
-        rest_param,
-        closure,
-        strict,
-        !constructable,
-        self_name,
-        define_arguments_object,
-      )
-    }),
+    ExecutorCallable(executable),
     realm_state~,
   )
-  function_ref.val = Some(function)
   if constructable {
     let prototype = make_constructor_instance(
       get_obj_proto(realm_state~),

@@ -1525,28 +1525,28 @@ fn call_compiled_func(
   interp.in_nonarrow_param_default_eval = false
   let result : Value = try {
     let func_ctx : ExecContext = { strict, current_generator: None }
-        let func_env = Environment::new(parent=Some(closure))
-        func_env.is_var_scope = true
-        func_env.def_builtin("[[EvalMethodContext]]", Value::Bool(is_method))
-        let effective_this = if strict {
-          this_val
-        } else {
-          match this_val {
-            Value::Undefined | Value::Null => interp.global_this
-            _ => this_val
-          }
-        }
-        func_env.def("this", effective_this, BindingKind::LetBinding)
-        func_env.def(
-          "<new.target>",
-          new_target.unwrap_or(Value::Undefined),
-          BindingKind::LetBinding,
-        )
+    let func_env = Environment::new(parent=Some(closure))
+    func_env.is_var_scope = true
+    func_env.def_builtin("[[EvalMethodContext]]", Value::Bool(is_method))
+    let effective_this = if strict {
+      this_val
+    } else {
+      match this_val {
+        Value::Undefined | Value::Null => interp.global_this
+        _ => this_val
+      }
+    }
+    func_env.def("this", effective_this, BindingKind::LetBinding)
+    func_env.def(
+      "<new.target>",
+      new_target.unwrap_or(Value::Undefined),
+      BindingKind::LetBinding,
+    )
     bind_simple_params(func_env, params, args)
-              interp.define_simple_arguments_object(
-                func_env, args, callee, strict, params,
-              )
-            match body {
+    interp.define_simple_arguments_object(
+      func_env, args, callee, strict, params,
+    )
+    match body {
       Some(compiled_body) =>
         reduce_body_signal((compiled_body.0)(interp, func_ctx, func_env))
       None => abort("call_compiled_func: body is required")

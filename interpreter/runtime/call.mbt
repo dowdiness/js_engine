@@ -1369,6 +1369,8 @@ fn Interpreter::call_value_impl(
         Some(InterpreterCallable(_, func)) => func(self, this_val, args)
         Some(InterpreterCallableWithContext(_, func)) =>
           func(self, Call, this_val, args)
+        Some(ExecutorCallable(executable)) =>
+          self.run_executor_function(executable, callee, Call, this_val, args)
         Some(NonConstructableInterpreterCallable(_, func)) => func(self, args)
         Some(ConstructorOnlyCallable(name, _)) =>
           raise @errors.TypeError(

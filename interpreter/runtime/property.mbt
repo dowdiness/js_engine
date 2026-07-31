@@ -62,6 +62,11 @@ fn callable_to_source_string(data : ObjectData, callable : Callable) -> String {
         Some(String_(text)) => text
         _ => "function " + n + "() { [native code] }"
       }
+    ExecutorCallable(executable) =>
+      match data.bag.internal_slots.get(SourceText) {
+        Some(String_(text)) => text
+        _ => "function " + executable.name() + "() { [native code] }"
+      }
     NonConstructableInterpreterCallable(n, _) =>
       "function " + n + "() { [native code] }"
     ConstructorOnlyCallable(n, _) => "function " + n + "() { [native code] }"
@@ -505,6 +510,7 @@ fn Interpreter::get_property_of_object(
               MethodCallable(n, _) => n
               InterpreterCallable(n, _)
               | InterpreterCallableWithContext(n, _) => n
+              ExecutorCallable(executable) => executable.name()
               NonConstructableInterpreterCallable(n, _) => n
               ConstructorOnlyCallable(n, _) => n
               ClassConstructor({ name: n, .. }) => n
@@ -538,6 +544,7 @@ fn Interpreter::get_property_of_object(
               | MethodCallable(_, _)
               | InterpreterCallable(_, _)
               | InterpreterCallableWithContext(_, _) => false
+              ExecutorCallable(executable) => executable.is_constructable()
             }
             if !is_constructable || callable is ConstructorOnlyCallable(_, _) {
               return Undefined
@@ -1131,6 +1138,7 @@ fn Interpreter::get_computed_property_impl(
                   MethodCallable(n, _) => n
                   InterpreterCallable(n, _)
                   | InterpreterCallableWithContext(n, _) => n
+                  ExecutorCallable(executable) => executable.name()
                   NonConstructableInterpreterCallable(n, _) => n
                   ConstructorOnlyCallable(n, _) => n
                   ClassConstructor({ name: n, .. }) => n
@@ -1164,6 +1172,7 @@ fn Interpreter::get_computed_property_impl(
                   | MethodCallable(_, _)
                   | InterpreterCallable(_, _)
                   | InterpreterCallableWithContext(_, _) => false
+                  ExecutorCallable(executable) => executable.is_constructable()
                 }
                 if !is_constructable ||
                   callable is ConstructorOnlyCallable(_, _) {

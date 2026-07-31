@@ -502,6 +502,7 @@ pub(all) enum Callable {
   MethodCallable(String, (Value, Array[Value]) -> Value raise)
   InterpreterCallable(String, (Interpreter, Value, Array[Value]) -> Value raise)
   InterpreterCallableWithContext(String, (Interpreter, CallContext, Value, Array[Value]) -> Value raise)
+  ExecutorCallable(ExecutorCallableData)
   NonConstructableInterpreterCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ConstructorOnlyCallable(String, (Interpreter, Array[Value]) -> Value raise)
   ClassConstructor(ClassConstructorData)
@@ -563,6 +564,14 @@ pub enum ExecutorActivationStep {
   ExecutorActivationNormal(Value)
   ExecutorActivationReturn(Value)
 }
+
+pub struct ExecutorCallableData {
+  // private fields
+}
+pub fn ExecutorCallableData::is_constructable(Self) -> Bool
+pub fn ExecutorCallableData::length(Self) -> Int
+pub fn ExecutorCallableData::name(Self) -> String
+pub fn ExecutorCallableData::start_frame(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
 
 pub(all) struct FuncData {
   name : String?
@@ -748,6 +757,7 @@ pub fn Interpreter::ordinary_define_own_property(Self, Value, Value, PartialDesc
 pub fn Interpreter::own_property_keys(Self, Value) -> Array[Value] raise
 pub fn Interpreter::partial_descriptor_from_attrs(Self, Value, @token.Loc) -> PartialDescriptor raise
 pub fn Interpreter::perform_eval(Self, String, Environment, Bool, caller_strict? : Bool) -> Value raise
+pub fn Interpreter::prepare_executor_callable_call(Self, ExecutorCallableData, Value, Value, Array[Value]) -> PreparedExecutorActivation raise
 pub fn Interpreter::register_module(Self, String, Map[String, Value]) -> Unit
 pub fn Interpreter::run(Self, Array[@ast.Stmt]) -> Value raise
 pub fn Interpreter::run_compiled_script(Self, Array[@ast.Stmt], (ExecContext, Environment) -> Value raise) -> Value raise

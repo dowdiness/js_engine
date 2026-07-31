@@ -142,12 +142,7 @@ test "executor-neutral shell preserves abrupt error and restores dynamic gate" {
   )
   interp.in_nonarrow_param_default_eval = true
   let caught : Error? = try {
-    let _ = interp.call_value(
-      function,
-      Undefined,
-      [],
-      @token.Loc::default(),
-    )
+    let _ = interp.call_value(function, Undefined, [], @token.Loc::default())
     None
   } catch {
     error => Some(error)
@@ -157,4 +152,35 @@ test "executor-neutral shell preserves abrupt error and restores dynamic gate" {
     None => fail("expected executor frame to raise")
   }
   assert_true(interp.in_nonarrow_param_default_eval)
+}
+
+///|
+test "executor function retains an inspectable neutral payload before entry" {
+  let interp = Interpreter::new()
+  let starts : Ref[Int] = { val: 0 }
+  let steps : Ref[Int] = { val: 0 }
+  let function = make_executor_function(
+    Some("inspectable"),
+    ["x"],
+    interp.global,
+    false,
+    ExecutorActivationTestCode(starts~, steps~),
+    constructable=false,
+  )
+  match function {
+    Object({ callable: Some(ExecutorCallable(executable)), .. }) => {
+      inspect(starts.val, content="0")
+      inspect(steps.val, content="0")
+      let prepared = interp.prepare_executor_callable_call(
+        executable,
+        function,
+        Undefined,
+        [Number(1.0)],
+      )
+      let _ = executable.start_frame(interp, prepared)
+      inspect(starts.val, content="1")
+      inspect(steps.val, content="0")
+    }
+    _ => fail("executor code must remain available as a neutral payload")
+  }
 }

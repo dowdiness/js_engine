@@ -7,6 +7,17 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
+test "executor-neutral bytecode function keeps a classifiable runtime payload" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(interp, "function retained() {}")
+  match interp.global.get("retained") {
+    Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
+      inspect(executable.name(), content="retained")
+    _ => fail("bytecode function must expose the neutral executor payload")
+  }
+}
+
+///|
 test "executor-neutral bytecode method activation preserves receiver" {
   let interp = @interpreter.new_interpreter()
   let result = run_executor_neutral_bytecode(
@@ -22,13 +33,10 @@ test "executor-neutral bytecode method activation preserves receiver" {
 test "executor-neutral bytecode activation preserves construct and new.target" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
-    interp,
-    "function C(x) { this.x = x; this.same = new.target === C; }",
+    interp, "function C(x) { this.x = x; this.same = new.target === C; }",
   )
   let result = interp.run(
-    @parser.parse(
-      "var value = new C(7); value.x + (value.same ? 1 : 0);",
-    ).stmts,
+    @parser.parse("var value = new C(7); value.x + (value.same ? 1 : 0);").stmts,
   )
   inspect(result.to_string(), content="8")
 }
@@ -37,8 +45,7 @@ test "executor-neutral bytecode activation preserves construct and new.target" {
 test "executor-neutral bytecode activation preserves arguments aliasing" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
-    interp,
-    "function f(a) { arguments[0] = 7; return a + arguments.length; }",
+    interp, "function f(a) { arguments[0] = 7; return a + arguments.length; }",
   )
   let result = interp.run(@parser.parse("f(1, 2);").stmts)
   inspect(result.to_string(), content="9")
