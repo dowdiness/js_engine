@@ -27,6 +27,7 @@ priv struct DispatchStatementCursor {
   env : Environment
   index : Int
   last_value : Value
+  production : Bool
 }
 
 ///|
@@ -37,8 +38,9 @@ fn DispatchStatementCursor::DispatchStatementCursor(
   env~ : Environment,
   index? : Int = 0,
   last_value? : Value = Undefined,
+  production? : Bool = false,
 ) -> DispatchStatementCursor {
-  { ctx, stmts: stmts.copy(), env, index, last_value }
+  { ctx, stmts: stmts.copy(), env, index, last_value, production }
 }
 
 ///|
@@ -474,6 +476,7 @@ priv struct DispatchLoopResume {
   ctx : ExecContext
   label : String?
   completion : Value
+  production : Bool
 }
 
 ///|
@@ -483,8 +486,9 @@ fn DispatchLoopResume::DispatchLoopResume(
   ctx~ : ExecContext,
   label~ : String?,
   completion~ : Value,
+  production? : Bool = false,
 ) -> DispatchLoopResume {
-  { kind, ctx, label, completion }
+  { kind, ctx, label, completion, production }
 }
 
 ///|
@@ -497,6 +501,7 @@ fn snapshot_dispatch_statement_cursor(
     env=cursor.env,
     index=cursor.index,
     last_value=cursor.last_value,
+    production=cursor.production,
   )
 }
 
@@ -557,6 +562,7 @@ fn snapshot_dispatch_loop_resume(
     ctx=loop_state.ctx,
     label=loop_state.label,
     completion=loop_state.completion,
+    production=loop_state.production,
   )
 }
 
@@ -641,6 +647,8 @@ fn snapshot_dispatch_continuation(
     DispatchCompleteThrow => DispatchCompleteThrow
     DispatchDeliverCallResult => DispatchDeliverCallResult
     DispatchApplyBinaryRight(binary) => DispatchApplyBinaryRight(binary)
+    DispatchApplyPropertyBinaryRight(binary) =>
+      DispatchApplyPropertyBinaryRight(binary)
     DispatchApplyNumericBinaryRight(binary) =>
       DispatchApplyNumericBinaryRight(binary)
     DispatchDeliverAccessorResult(accessor) =>
@@ -729,6 +737,7 @@ priv enum DispatchContinuation {
   DispatchCompleteThrow
   DispatchDeliverCallResult
   DispatchApplyBinaryRight(DispatchBinaryResume)
+  DispatchApplyPropertyBinaryRight(DispatchBinaryResume)
   DispatchApplyNumericBinaryRight(DispatchBinaryResume)
   DispatchDeliverAccessorResult(DispatchPropertyGetResume)
   DispatchResolveProxyGetTrap(DispatchProxyGetTrapLookupResume)
@@ -739,7 +748,7 @@ priv enum DispatchContinuation {
 }
 
 ///|
-#warnings("-unused_constructor")
+#warnings("-unused_constructor-unused_field")
 priv enum DispatchWork {
   DispatchExecuteStatement(DispatchStatementStep)
   DispatchAdvanceParameters(DispatchParameterDefaultResume)
@@ -752,6 +761,9 @@ priv enum DispatchWork {
 ///|
 #warnings("-unused_constructor")
 priv enum DispatchProductionWork {
+  DispatchExecuteStatement(DispatchStatementStep)
+  DispatchAdvanceLoop(DispatchLoopResume)
+  DispatchPropertyApplyBinaryRight(DispatchBinaryResume, Value)
   DispatchNumericObserveExpressionStep(DispatchNumericExpressionObservation)
   DispatchNumericObserveStatementStep(DispatchNumericStatementObservation)
   DispatchNumericReadParameter(DispatchParameterBindingToken)
@@ -1188,10 +1200,21 @@ fn begin_dispatch_statements(
     env: cursor.env,
     index: cursor.index,
   }
-  schedule_dispatch_effect(
-    push_dispatch_frame(state, DispatchStatementFrame(statement_resume)),
-    DispatchRun(DispatchExecuteStatement(step)),
+  let with_frame = push_dispatch_frame(
+    state,
+    DispatchStatementFrame(statement_resume),
   )
+  if cursor.production {
+    schedule_dispatch_production_work(
+      with_frame,
+      DispatchExecuteStatement(step),
+    )
+  } else {
+    schedule_dispatch_effect(
+      with_frame,
+      DispatchRun(DispatchExecuteStatement(step)),
+    )
+  }
 }
 
 ///|
@@ -1519,6 +1542,11 @@ fn route_dispatch_completion(
                   popped,
                   DispatchNumericApplyBinaryRight(binary, value),
                 )
+              (DispatchApplyPropertyBinaryRight(binary), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchPropertyApplyBinaryRight(binary, value),
+                )
               (DispatchDeliverAccessorResult(accessor), DispatchNormal(value)) =>
                 return schedule_dispatch_production_work(
                   popped,
@@ -1600,10 +1628,17 @@ fn route_dispatch_completion(
                   ..loop_state,
                   completion: value,
                 }
-                return schedule_dispatch_effect(
-                  popped,
-                  DispatchRun(DispatchAdvanceLoop(next_loop)),
-                )
+                if loop_state.production {
+                  return schedule_dispatch_production_work(
+                    popped,
+                    DispatchAdvanceLoop(next_loop),
+                  )
+                } else {
+                  return schedule_dispatch_effect(
+                    popped,
+                    DispatchRun(DispatchAdvanceLoop(next_loop)),
+                  )
+                }
               }
               DispatchContinue(value, label) =>
                 if dispatch_loop_label_matches(label, loop_state.label) {
@@ -1614,10 +1649,17 @@ fn route_dispatch_completion(
                       loop_state.completion,
                     ),
                   }
-                  return schedule_dispatch_effect(
-                    popped,
-                    DispatchRun(DispatchAdvanceLoop(next_loop)),
-                  )
+                  if loop_state.production {
+                    return schedule_dispatch_production_work(
+                      popped,
+                      DispatchAdvanceLoop(next_loop),
+                    )
+                  } else {
+                    return schedule_dispatch_effect(
+                      popped,
+                      DispatchRun(DispatchAdvanceLoop(next_loop)),
+                    )
+                  }
                 } else {
                   routed = DispatchContinue(value, label)
                 }
