@@ -39,7 +39,9 @@ JavaScript-visible effects, sealed against runtime identity and shape, executed
 without recursive fallback, and reachable through `Interpreter::run` or the
 exact direct `Interpreter::call_value` adapter.
 
-The authoritative boundaries are the classifiers in
+The authoritative root ordering and legacy disposition live in
+[`activation_dispatch_root_admission.mbt`](../../interpreter/runtime/activation_dispatch_root_admission.mbt).
+The exact recipe boundaries remain the classifiers in
 [`activation_dispatch_admission.mbt`](../../interpreter/runtime/activation_dispatch_admission.mbt),
 [`activation_dispatch_direct_call_admission.mbt`](../../interpreter/runtime/activation_dispatch_direct_call_admission.mbt),
 [`activation_dispatch_getter_admission.mbt`](../../interpreter/runtime/activation_dispatch_getter_admission.mbt),
