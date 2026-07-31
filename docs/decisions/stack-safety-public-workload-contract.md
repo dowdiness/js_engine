@@ -16,12 +16,14 @@ required only when its owning implementation has supplied the evidence for its
 class. A deferred workload is absent from the required set; it is never encoded
 as a skipped required test or replaced by a lookalike source.
 
-## Workload ownership
+## Public acceptance workload ownership
 
 Each row has one evidence class and one owning issue. #616 is closed provenance
 for the historical reproducers, not an additional owner. #619 consumes the
-required rows as a cross-target/profile gate; it does not widen the production
-scope of another issue.
+required public rows as a cross-target/profile gate; it does not widen the
+production scope of another issue. This table is limited to #692's four public
+acceptance evidence classes. It is not a complete inventory of the supporting
+focused and core evidence that #619 also requires.
 
 | Workload | Evidence class | Owning issue | #619 disposition |
 |---|---|---|---|
@@ -30,11 +32,27 @@ scope of another issue.
 | Exact ordinary getter re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact Proxy `get` re-entry at depth 256, returning `256` | Production-admitted exact slice | #630 | Required |
 | Exact protected normal/abrupt completion, control, and lifecycle cases | Production-admitted exact slice | #630 | Required |
-| Deep comma input traversed by post-parse early-error validation, including the 512-level phase-isolation case | Post-parse phase-isolation | #614 | Required |
-| Finite-below-limit execution and engine-owned exhaustion at the logical activation boundary | Activation-depth policy | #617 | Required after #617 lands; pending before then |
+| Strict-mode source `"use strict"; ` + `nested_comma_source(512, "eval = 0")`, with `SyntaxError: Unexpected eval or arguments in strict mode` before runtime evaluation | Post-parse phase-isolation | #614 | Required |
+| Finite-below-limit execution and engine-owned exhaustion at the logical activation boundary | Production-admitted exact slice (policy pending) | #617 | Required after #617 lands; pending before then |
 | Shallow release-profile controls for unchanged legacy behavior | Legacy compatibility control | #619 | Required |
 | The #616 mixed call-plus-expression generator (`"0,"` repeated 263 times, followed by `"7"`) with the recursive `step(256, ...)` wrapper, expected guest value `263` | #608 residual; deferred public graduation evidence | #608 | Deferred; absent from the required set |
 | The success-valued 512-comma runtime case (`"0,"` repeated 512 times, followed by `"7"`), expected guest value `7` | #608 residual; deferred public graduation evidence | #608 | Deferred; absent from the required set |
+
+## Supporting required evidence outside the public workload classes
+
+The following evidence is required by #619 but is deliberately not another
+public workload class:
+
+| Supporting evidence | Evidence owner | #619 disposition |
+|---|---|---|
+| A continuation-only chain of at least 10,000 frames, including representative statement, numeric-resume, handler/finalizer, abrupt-replacement, and exactly-once cleanup routing, drained with a source-backed progress argument | #661 | Required focused/core evidence; not a public workload and not production-admitted behavior |
+| One resource-bounded production dispatcher/shell depth stress exercising the actual production path, with its exact bounded depth and source fixed by #619's gate contract and measured CI cost | #619 | Required gate evidence; not a separate public workload class |
+
+The #661 chain must remain independent of guest activation depth. Its passing
+result is core evidence for the reducer and does not make a public workload or
+an unadmitted runtime path production-admitted. The production-path stress is a
+separate #619 shell check; this contract records its ownership without
+inventing a second depth or source that could drift from the gate.
 
 The post-parse 512-level traversal and the success-valued 512-comma runtime
 case are deliberately different workloads. #614 owns the former's early-error
