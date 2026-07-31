@@ -8,6 +8,7 @@ const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 
 const DIFF = path.join(__dirname, "test262_failing_diff.js");
+const GATE = path.join(__dirname, "test262_regression_check.sh");
 
 function artifact(status, { mode = "strict", pathname = "test262/test/built-ins/encodeURI/case.js" } = {}) {
   return {
@@ -44,6 +45,68 @@ function runDiff(baseline, candidate, options = {}) {
     fs.writeFileSync(candidatePath, JSON.stringify(artifact(candidate, options)));
     return spawnSync(process.execPath, [DIFF, baselinePath, candidatePath], {
       encoding: "utf8",
+    });
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+function runGate(baselineStatus, candidateStatus, failure = "") {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "test262-regression-gate-"));
+  const baselineRoot = path.join(root, "baseline");
+  const binRoot = path.join(root, "bin");
+  fs.mkdirSync(baselineRoot);
+  fs.mkdirSync(binRoot);
+  for (const mode of ["strict", "non-strict"]) {
+    fs.writeFileSync(
+      path.join(baselineRoot, `test262-${mode}-results.json`),
+      JSON.stringify(artifact(baselineStatus, { mode })),
+    );
+    fs.writeFileSync(
+      path.join(root, `test262-${mode}-results.json`),
+      JSON.stringify(artifact(candidateStatus, { mode })),
+    );
+  }
+  fs.writeFileSync(
+    path.join(binRoot, "gh"),
+    `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "api" ]]; then
+  [[ "\${FAKE_GH_FAILURE:-}" != "lookup" ]] || exit 17
+  printf '123\\n'
+  exit 0
+fi
+if [[ "\${1:-}" == "run" && "\${2:-}" == "download" ]]; then
+  [[ "\${FAKE_GH_FAILURE:-}" != "download" ]] || exit 19
+  destination=""
+  while [[ "\$#" -gt 0 ]]; do
+    if [[ "\$1" == "--dir" ]]; then
+      destination="\$2"
+      shift 2
+    else
+      shift
+    fi
+  done
+  cp "\$FAKE_BASELINE_DIR"/test262-strict-results.json "\$destination"/
+  cp "\$FAKE_BASELINE_DIR"/test262-non-strict-results.json "\$destination"/
+  exit 0
+fi
+exit 21
+`,
+    { mode: 0o755 },
+  );
+  try {
+    return spawnSync(GATE, {
+      cwd: root,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${binRoot}${path.delimiter}${process.env.PATH}`,
+        GITHUB_REPOSITORY: "dowdiness/js_engine",
+        CURRENT_RUN_ID: "999",
+        FAKE_BASELINE_DIR: baselineRoot,
+        FAKE_GH_FAILURE: failure,
+      },
     });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -111,5 +174,22 @@ test("the required workflow invokes the per-test regression policy", () => {
     path.join(__dirname, "..", ".github", "workflows", "test262.yml"),
     "utf8",
   );
-  assert.match(workflow, /node scripts\/test262_failing_diff\.js/);
+  assert.match(workflow, /run: scripts\/test262_regression_check\.sh/);
+});
+
+test("the exact workflow gate fails regressions, passes clean results, and fails closed", () => {
+  assert.equal(runGate("pass", "timeout").status, 1);
+  assert.equal(runGate("pass", "pass").status, 0);
+  assert.notEqual(runGate("pass", "pass", "lookup").status, 0);
+  assert.notEqual(runGate("pass", "pass", "download").status, 0);
+});
+
+test("test262-required propagates regression-check failure", () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "..", ".github", "workflows", "test262.yml"),
+    "utf8",
+  );
+  assert.match(workflow, /REGRESSION_RESULT: \$\{\{ needs\.regression-check\.result \}\}/);
+  assert.ok(workflow.includes('            "$REGRESSION_RESULT"\n          do'));
+  assert.ok(workflow.includes('            if [[ "$result" != "success" ]]'));
 });
