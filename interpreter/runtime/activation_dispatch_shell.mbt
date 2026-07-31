@@ -304,10 +304,10 @@ fn Interpreter::prepare_root_program_execution(
 ///|
 fn dispatch_entry_rejection(error : Error) -> DispatchEntryRejection {
   match error {
-    ExecutionControlError(StackDepthLimit) =>
-      DispatchEntryGuestThrow(
-        @errors.RangeError(message=STACK_DEPTH_LIMIT_MESSAGE),
-      )
+    // Keep the private engine-origin error intact until JS translation. The
+    // translation layer attaches a non-observable marker so the host boundary
+    // can distinguish it from a guest-created lookalike without message tests.
+    ExecutionControlError(StackDepthLimit) => DispatchEntryGuestThrow(error)
     _ =>
       if is_js_catchable_error(error) {
         DispatchEntryGuestThrow(error)

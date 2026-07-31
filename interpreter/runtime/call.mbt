@@ -813,12 +813,24 @@ pub fn Interpreter::call_value(
       let registry = self.seal_direct_numeric_recursion_registry(
         preflight, callee, this_val, args, loc,
       )
-      return activation_dispatch_root_value(
-        self.run_activation_dispatch_numeric_call(
-          DispatchCallRequest(callee~, this_value=this_val, args~, loc~),
-          registry,
-        ),
+      let completion = self.run_activation_dispatch_numeric_call(
+        DispatchCallRequest(callee~, this_value=this_val, args~, loc~),
+        registry,
       )
+      return activation_dispatch_root_value(completion) catch {
+        ExecutionControlError(StackDepthLimit) as depth_error => {
+          let translated = JsException(
+            js_error_to_value_with_env(depth_error, Some(self.global)),
+          )
+          remap_observed_source_failure(
+            self.realm_state,
+            depth_error,
+            translated,
+          )
+          raise translated
+        }
+        error => raise error
+      }
     }
     None => ()
   }
