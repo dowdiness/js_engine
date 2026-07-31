@@ -20,6 +20,19 @@ fn dispatch_shell_test_completion(
 }
 
 ///|
+fn dispatch_shell_test_structural_completion(
+  interp : Interpreter,
+  source : String,
+) -> DispatchCompletion raise Error {
+  let stmts = dispatch_shell_test_program(source)
+  let ctx : ExecContext = {
+    strict: @static_semantics.has_use_strict(stmts),
+    current_generator: None,
+  }
+  PrimitiveProgramDispatchShell(interp).drive_root_program(stmts, ctx)
+}
+
+///|
 fn dispatch_shell_test_install_realm_sentinel(
   interp : Interpreter,
   id : Int,
@@ -65,6 +78,34 @@ test "leaf program shell returns its last value and restores realm state" {
     _ => fail("expected an empty program to complete with undefined")
   }
   dispatch_shell_test_expect_realm_sentinel(interp, 1)
+}
+
+///|
+test "structural shell routes labelled break through its closed finalizer" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 15)
+  match
+    dispatch_shell_test_structural_completion(
+      interp, "outer: try { break outer; } finally { 1; } 9;",
+    ) {
+    DispatchNormal(Number(value)) => inspect(value, content="9")
+    _ => fail("expected the label to consume break after its finalizer")
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 15)
+}
+
+///|
+test "structural shell advances bounded continue after its closed finalizer" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 16)
+  match
+    dispatch_shell_test_structural_completion(
+      interp, "do try { continue; } finally { 2; } while(false); 8;",
+    ) {
+    DispatchNormal(Number(value)) => inspect(value, content="8")
+    _ => fail("expected the loop to consume continue after its finalizer")
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 16)
 }
 
 ///|
