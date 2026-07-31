@@ -1,7 +1,10 @@
 // Executor-neutral function activation seam. Runtime owns observable function
 // setup and completion normalization; executor packages supply only opaque code
-// and private resumable frames. A frame step may advance guest execution, but
-// it cannot return a host-language continuation or expose executor state.
+// and private resumable frames. The neutral step surface returns neither a
+// host-language continuation nor executor state. Until #631 migrates nested
+// guest entry, individual executor steps may still cross the documented
+// synchronous compatibility boundary; no stack-safety claim covers those
+// operations.
 
 ///|
 pub enum ExecutorActivationStep {
