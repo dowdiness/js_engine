@@ -170,6 +170,12 @@ fn DispatchProxyCallRealmCleanup::DispatchProxyCallRealmCleanup(
 }
 
 ///|
+priv enum DispatchActivationObservation {
+  AcceptedActivationObservation(ActivationObservationToken)
+  RejectedActivationObservation(ActivationEntryAttempt)
+}
+
+///|
 priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
   DispatchControlRootRealmCleanup(FunctionRealmProtos)
@@ -189,7 +195,7 @@ priv struct ProgramRealmCleanup {
   owner : ProgramCleanupOwner
   resources : DispatchShellCleanupResources
   capabilities : DispatchNumericActivationCapabilities?
-  observation : ActivationObservationToken?
+  observation : DispatchActivationObservation?
 }
 
 ///|
@@ -501,7 +507,7 @@ fn PrimitiveProgramDispatchShell::push_numeric_call_cleanup(
   owner : ProgramCleanupOwner,
   resources : DispatchNumericCallRealmCleanup,
   capabilities : DispatchNumericActivationCapabilities?,
-  observation : ActivationObservationToken?,
+  observation : DispatchActivationObservation?,
 ) -> Unit {
   self.cleanup_stack.push({
     id,
@@ -533,7 +539,7 @@ fn PrimitiveProgramDispatchShell::push_getter_call_cleanup(
   id : Int,
   owner : ProgramCleanupOwner,
   resources : DispatchGetterCallRealmCleanup,
-  observation : ActivationObservationToken?,
+  observation : DispatchActivationObservation?,
 ) -> Unit {
   self.cleanup_stack.push({
     id,
@@ -565,7 +571,7 @@ fn PrimitiveProgramDispatchShell::push_proxy_call_cleanup(
   id : Int,
   owner : ProgramCleanupOwner,
   resources : DispatchProxyCallRealmCleanup,
-  observation : ActivationObservationToken?,
+  observation : DispatchActivationObservation?,
 ) -> Unit {
   self.cleanup_stack.push({
     id,
@@ -824,7 +830,15 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
       finish_cleared_active_callee_realm(self.interp.realm_state, scope)
   }
   match cleanup.observation {
-    Some(token) => release_managed_activation_observation(token)
+    Some(AcceptedActivationObservation(token)) =>
+      release_managed_activation_observation(token)
+    Some(RejectedActivationObservation(attempt)) =>
+      attempt.release_after_rejection() catch {
+        InvalidActivationObservationTransition(message) =>
+          invalid_activation_dispatch_shell(
+            "managed rejected activation release is invalid: " + message,
+          )
+      }
     None => ()
   }
 }
@@ -1218,7 +1232,7 @@ fn PrimitiveProgramDispatchShell::enter_getter_call(
         id,
         AcceptedGetterCall,
         resources,
-        Some(token),
+        Some(AcceptedActivationObservation(token)),
       )
       DispatchCallAccepted(
         DispatchActivationCleanup(id),
@@ -1233,7 +1247,12 @@ fn PrimitiveProgramDispatchShell::enter_getter_call(
     }
     Err(error) => {
       reject_managed_activation_observation(observation)
-      self.push_getter_call_cleanup(id, RejectedGetterCall, resources, None)
+      self.push_getter_call_cleanup(
+        id,
+        RejectedGetterCall,
+        resources,
+        Some(RejectedActivationObservation(observation)),
+      )
       DispatchActivationRejected(
         DispatchRejectedEntryCleanup(id),
         dispatch_entry_rejection(error),
@@ -1297,7 +1316,7 @@ fn PrimitiveProgramDispatchShell::enter_proxy_call(
         id,
         AcceptedProxyCall,
         resources,
-        Some(token),
+        Some(AcceptedActivationObservation(token)),
       )
       DispatchCallAccepted(
         DispatchActivationCleanup(id),
@@ -1312,7 +1331,12 @@ fn PrimitiveProgramDispatchShell::enter_proxy_call(
     }
     Err(error) => {
       reject_managed_activation_observation(observation)
-      self.push_proxy_call_cleanup(id, RejectedProxyCall, resources, None)
+      self.push_proxy_call_cleanup(
+        id,
+        RejectedProxyCall,
+        resources,
+        Some(RejectedActivationObservation(observation)),
+      )
       DispatchActivationRejected(
         DispatchRejectedEntryCleanup(id),
         dispatch_entry_rejection(error),
@@ -1374,7 +1398,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
         AcceptedNumericCall,
         resources,
         Some(capabilities),
-        Some(token),
+        Some(AcceptedActivationObservation(token)),
       )
       DispatchCallAccepted(
         DispatchActivationCleanup(id),
@@ -1395,7 +1419,7 @@ fn PrimitiveProgramDispatchShell::complete_numeric_call_preparation(
         RejectedNumericCall,
         resources,
         None,
-        None,
+        Some(RejectedActivationObservation(observation)),
       )
       DispatchActivationRejected(
         DispatchRejectedEntryCleanup(id),
