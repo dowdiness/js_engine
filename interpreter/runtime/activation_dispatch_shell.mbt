@@ -1754,9 +1754,9 @@ fn PrimitiveProgramDispatchShell::execute_getter_body_statement(
       }
       let target = registry.require_target(self.interp)
       DispatchWorkSuspended(
-        DispatchSuspendContinue(
+        DispatchSuspendContinueProduction(
           DispatchCompleteReturn,
-          DispatchStartProperty(
+          DispatchPropertyStart(
             DispatchPropertyGetResume(
               target~,
               property_key=String_(plan.property_name),
@@ -1902,9 +1902,9 @@ fn PrimitiveProgramDispatchShell::execute_proxy_body_statement(
       }
       let proxy = registry.require_proxy(self.interp)
       DispatchWorkSuspended(
-        DispatchSuspendContinue(
+        DispatchSuspendContinueProduction(
           DispatchCompleteReturn,
-          DispatchStartProperty(
+          DispatchPropertyStart(
             DispatchPropertyGetResume(
               target=proxy,
               property_key=String_(plan.property_name),
@@ -2232,6 +2232,16 @@ fn PrimitiveProgramDispatchShell::perform_production_work(
       self.start_captured_numeric_call(token, argument, loc)
     DispatchNumericApplyBinaryRight(binary, right) =>
       self.apply_numeric_binary(binary, right)
+    DispatchPropertyStart(work, consumer) => self.start_property(work, consumer)
+    DispatchPropertyExecute(work) => self.execute_dispatch_property(work)
+    DispatchPropertyDeliverAccessorResult(accessor, value) => {
+      ignore(accessor)
+      DispatchWorkCompleted(DispatchNormal(value))
+    }
+    DispatchPropertyResolveProxyGetTrap(lookup, value) =>
+      self.resume_proxy_get_trap(lookup, value)
+    DispatchPropertyCheckProxyGetResult(work, value) =>
+      self.resume_proxy_get_result(work, value)
   }
 }
 
@@ -2250,19 +2260,6 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.execute_managed_statement(step)
     DispatchRun(DispatchAdvanceLoop(loop_state)) =>
       self.advance_control_loop(loop_state)
-    DispatchRun(DispatchStartProperty(work, consumer)) =>
-      self.start_property(work, consumer)
-    DispatchRun(DispatchExecuteProperty(work)) =>
-      self.execute_dispatch_property(work)
-    DispatchRun(
-      DispatchResumeContinuation(DispatchDeliverAccessorResult(_), value)
-    ) => DispatchWorkCompleted(DispatchNormal(value))
-    DispatchRun(
-      DispatchResumeContinuation(DispatchResolveProxyGetTrap(lookup), value)
-    ) => self.resume_proxy_get_trap(lookup, value)
-    DispatchRun(
-      DispatchResumeContinuation(DispatchCheckProxyGetResult(work), value)
-    ) => self.resume_proxy_get_result(work, value)
     DispatchRun(
       DispatchResumeContinuation(DispatchApplyBinaryRight(binary), right)
     ) => self.apply_numeric_binary(binary, right)

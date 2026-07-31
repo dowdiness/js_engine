@@ -744,8 +744,6 @@ priv enum DispatchWork {
   DispatchExecuteStatement(DispatchStatementStep)
   DispatchAdvanceParameters(DispatchParameterDefaultResume)
   DispatchAdvanceLoop(DispatchLoopResume)
-  DispatchStartProperty(DispatchPropertyGetResume, DispatchContinuation)
-  DispatchExecuteProperty(DispatchPropertyGetResume)
   DispatchExecuteCatch(DispatchCatchResume, Error)
   DispatchNormalizeFunctionControl(DispatchCompletion)
   DispatchResumeContinuation(DispatchContinuation, Value)
@@ -766,6 +764,11 @@ priv enum DispatchProductionWork {
     @token.Loc
   )
   DispatchNumericApplyBinaryRight(DispatchBinaryResume, Value)
+  DispatchPropertyStart(DispatchPropertyGetResume, DispatchContinuation)
+  DispatchPropertyExecute(DispatchPropertyGetResume)
+  DispatchPropertyDeliverAccessorResult(DispatchPropertyGetResume, Value)
+  DispatchPropertyResolveProxyGetTrap(DispatchProxyGetTrapLookupResume, Value)
+  DispatchPropertyCheckProxyGetResult(DispatchProxyGetResume, Value)
 }
 
 ///|
@@ -774,6 +777,10 @@ priv enum DispatchSuspension {
   DispatchSuspendStatements(DispatchStatementCursor)
   DispatchSuspendParameters(DispatchParameterDefaultResume)
   DispatchSuspendContinue(DispatchContinuation, DispatchWork)
+  DispatchSuspendContinueProduction(
+    DispatchContinuation,
+    DispatchProductionWork
+  )
   DispatchSuspendCall(DispatchCallRequest, DispatchContinuation)
   DispatchSuspendNumericExpression(
     DispatchNumericExpression,
@@ -1512,6 +1519,21 @@ fn route_dispatch_completion(
                   popped,
                   DispatchNumericApplyBinaryRight(binary, value),
                 )
+              (DispatchDeliverAccessorResult(accessor), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchPropertyDeliverAccessorResult(accessor, value),
+                )
+              (DispatchResolveProxyGetTrap(lookup), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchPropertyResolveProxyGetTrap(lookup, value),
+                )
+              (DispatchCheckProxyGetResult(work), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchPropertyCheckProxyGetResult(work, value),
+                )
               (DispatchContinueNumericStatement(numeric), DispatchNormal(value)) =>
                 match numeric {
                   DispatchAfterNumericCatchEntry(catch_state) =>
@@ -1746,6 +1768,16 @@ fn suspend_dispatch_work(
         ),
         DispatchRun(work),
       )
+    DispatchSuspendContinueProduction(continuation, work) =>
+      schedule_dispatch_production_work(
+        push_dispatch_frame(
+          state,
+          DispatchContinuationFrame(
+            snapshot_dispatch_continuation(continuation),
+          ),
+        ),
+        work,
+      )
     DispatchSuspendCall(request, continuation) =>
       schedule_dispatch_effect(
         push_dispatch_frame(
@@ -1820,7 +1852,7 @@ fn suspend_dispatch_work(
       )
       schedule_dispatch_effect(
         with_scope,
-        DispatchRun(DispatchExecuteProperty(work)),
+        DispatchRunProduction(DispatchPropertyExecute(work)),
       )
     }
   }
