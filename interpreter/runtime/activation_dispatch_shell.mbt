@@ -2060,12 +2060,15 @@ fn PrimitiveProgramDispatchShell::execute_control_statement(
           "control lifecycle abrupt statement lost its try ownership",
         )
       }
+      // The core already owns the pending finally frame. Even when statement
+      // observation itself becomes runtime-abrupt, the next managed statement
+      // is therefore the finalizer rather than a retry of this control node.
+      self.control_try_env = None
+      self.advance_control_phase(plan, ControlAbruptRole)
       match self.observe_managed_execution_steps(1) {
         Some(completion) => return DispatchWorkCompleted(completion)
         None => ()
       }
-      self.control_try_env = None
-      self.advance_control_phase(plan, ControlAbruptRole)
       match (plan, step.stmt) {
         (ControlLabelledBreak(expected), @ast.BreakStmt(Some(actual), _)) if actual ==
           expected => DispatchWorkCompleted(DispatchBreak(None, Some(actual)))

@@ -253,6 +253,61 @@ test "structural shell preserves exact statement and condition step counts" {
 }
 
 ///|
+fn install_one_shot_control_step_failure(
+  interp : Interpreter,
+  failure_ordinal : Int,
+  runtime_failure : Error,
+) -> Ref[Int] {
+  let calls : Ref[Int] = { val: 0 }
+  let observer = make_object(
+    Map([]),
+    Null,
+    Some(
+      NonConstructableCallable("[[one-shot-control-observer]]", fn(_) raise {
+        calls.val = calls.val + 1
+        if calls.val == failure_ordinal {
+          raise runtime_failure
+        }
+        Undefined
+      }),
+    ),
+    "Function",
+    Map([]),
+    true,
+  )
+  interp.global.bindings[EXECUTION_CONTROL_BINDING] = {
+    value: observer,
+    kind: VarBinding,
+    initialized: true,
+    annex_b_hoisted: false,
+    is_parameter: false,
+  }
+  calls
+}
+
+///|
+test "runtime abrupt at control statement observation still runs finally" {
+  for
+    source in [
+      "outer: try { break outer; } finally { 1; } 9;", "do try { continue; } finally { 2; } while(false); 8;",
+    ] {
+    let interp = Interpreter::new()
+    dispatch_shell_test_install_realm_sentinel(interp, 19)
+    let runtime_failure : Error = ExecutionControlError(Interrupted)
+    let calls = install_one_shot_control_step_failure(
+      interp, 3, runtime_failure,
+    )
+    match dispatch_shell_test_structural_completion(interp, source) {
+      DispatchRuntimeAbrupt(found) =>
+        inspect(physical_equal(found, runtime_failure), content="true")
+      _ => fail("expected the original one-shot runtime abrupt completion")
+    }
+    inspect(calls.val, content="5")
+    dispatch_shell_test_expect_realm_sentinel(interp, 19)
+  }
+}
+
+///|
 test "control preflight rejects cross-plan and source drift before execution" {
   let admitted = dispatch_shell_test_program(
     "outer: try { break outer; } finally { 1; } 9;",
