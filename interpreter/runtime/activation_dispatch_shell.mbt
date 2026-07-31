@@ -225,7 +225,7 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   proxy_root_preflight? : ProxyGetRecursionPreflight? = None,
   proxy_root_stmts? : Array[@ast.Stmt]? = None,
   proxy_registry? : TrustedProxyGetRecursionRegistry? = None,
-  activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
+  activation_observation_port? : ActivationObservationPort = interp.execution_control_activation_observation_port(),
 ) -> PrimitiveProgramDispatchShell {
   {
     interp,
@@ -295,10 +295,17 @@ fn Interpreter::prepare_root_program_execution(
 
 ///|
 fn dispatch_entry_rejection(error : Error) -> DispatchEntryRejection {
-  if is_js_catchable_error(error) {
-    DispatchEntryGuestThrow(error)
-  } else {
-    DispatchEntryRuntimeAbrupt(error)
+  match error {
+    ExecutionControlError(StackDepthLimit) =>
+      DispatchEntryRuntimeAbrupt(
+        @errors.RangeError(message=STACK_DEPTH_LIMIT_MESSAGE),
+      )
+    _ =>
+      if is_js_catchable_error(error) {
+        DispatchEntryGuestThrow(error)
+      } else {
+        DispatchEntryRuntimeAbrupt(error)
+      }
   }
 }
 
@@ -2399,6 +2406,7 @@ fn Interpreter::run_activation_dispatch_numeric_program(
   let shell = PrimitiveProgramDispatchShell(
     self,
     numeric_root_preflight=Some(preflight),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
   guard shell.numeric_registry is None else {
@@ -2419,6 +2427,7 @@ fn Interpreter::run_activation_dispatch_numeric_call(
   let shell = PrimitiveProgramDispatchShell(
     self,
     numeric_registry=Some(registry),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_call(request)
   guard shell.numeric_registry is Some(_) else {
