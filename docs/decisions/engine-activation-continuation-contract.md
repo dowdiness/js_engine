@@ -16,6 +16,12 @@ may-call-user-code migration retained by #608. It does not classify tail
 positions, require bytecode, or claim that every runtime path capable of
 entering guest code is stack-safe.
 
+The public workload and evidence-ownership boundary for the permanent #619
+gate is recorded in the [stack-safe public workload contract](stack-safety-public-workload-contract.md).
+That contract keeps the exact #630 slices and #614 phase-isolation evidence
+required while naming the #616 mixed workload and success-valued 512-comma
+runtime case as deferred #608 graduation evidence.
+
 #630 applies the general model below to a conservatively admitted set of exact
 recipes. Admission and runtime provenance checks establish the complete managed
 closure before effects cross the dispatcher boundary. Programs and calls that
