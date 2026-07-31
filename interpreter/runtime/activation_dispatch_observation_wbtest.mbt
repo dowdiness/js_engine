@@ -502,3 +502,102 @@ test "cleanup generation exhaustion precedes activation observation" {
   inspect(probe.released, content="0")
   inspect(shell.cleanup_stack.length(), content="0")
 }
+
+///|
+test "restore all cleanup releases nested observations after state restoration" {
+  let (interp, _, registry, plan) = numeric_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(m){if(m===0)return 0;return 1+f(m-1);}" +
+    "f(256);",
+  )
+  dispatch_shell_test_install_realm_sentinel(interp, 73)
+  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  saved_conflicts.add("restore-all-observation")
+  interp.in_nonarrow_param_default_eval = true
+  interp.param_default_eval_var_conflicts = Some(saved_conflicts)
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    numeric_registry=Some(registry),
+    activation_observation_port=probe.port(),
+  )
+  let (_, parent_start) = numeric_activation_test_enter(
+    shell,
+    registry,
+    "f",
+    2.0,
+    plan.root_call_loc,
+  )
+  let _ = shell.perform_effect(
+    DispatchRun(DispatchCaptureTrustedCallee(parent_start.recursive_callee)),
+  )
+  let child_request = match
+    shell.perform_effect(
+      DispatchRun(
+        DispatchStartCapturedNumericCall(
+          parent_start.recursive_callee,
+          1.0,
+          plan.entry.syntax.expression_recipe.recursive_call_loc,
+        ),
+      ),
+    ) {
+    DispatchWorkSuspended(DispatchSuspendCall(request, _)) => request
+    _ => fail("expected the nested numeric request")
+  }
+  match
+    shell.perform_effect(
+      DispatchEnterActivation(DispatchCallActivation(child_request)),
+    ) {
+    DispatchCallAccepted(_, DispatchNumericCall(_)) => ()
+    _ => fail("expected the nested numeric activation")
+  }
+  inspect(shell.cleanup_stack.length(), content="2")
+
+  shell.restore_all_cleanup()
+
+  inspect(probe.attempts, content="2")
+  inspect(probe.accepted, content="2")
+  inspect(probe.rejected, content="0")
+  inspect(probe.released, content="2")
+  inspect(probe.denied, content="0")
+  inspect(probe.active, content="0")
+  inspect(probe.maximum_active, content="2")
+  json_inspect(probe.release_ordinals, content=[2, 1])
+  json_inspect(probe.release_state_restored, content=[true, true])
+  inspect(shell.cleanup_stack.length(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 73)
+  inspect(interp.in_nonarrow_param_default_eval, content="true")
+  match interp.param_default_eval_var_conflicts {
+    Some(found) =>
+      inspect(physical_equal(found, saved_conflicts), content="true")
+    None => fail("expected the outer parameter gate after full restoration")
+  }
+}
+
+///|
+test "direct numeric root call reports every managed activation in strict LIFO order" {
+  let (interp, callee) = direct_numeric_recursion_trust_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}", "f",
+  )
+  let registry = direct_numeric_recursion_registry_or_fail(interp, callee)
+  let probe = DispatchObservationProbe()
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    numeric_registry=Some(registry),
+    activation_observation_port=probe.port(),
+  )
+  let completion = shell.drive_root_call(
+    DispatchCallRequest(
+      callee~,
+      this_value=Undefined,
+      args=[Number(256.0)],
+      loc=@token.Loc::default(),
+    ),
+  )
+  match activation_dispatch_root_value(completion) {
+    Number(value) => inspect(value, content="256")
+    other => fail("expected direct 256, got " + other.to_string())
+  }
+  expect_nested_dispatch_observation_balanced(probe)
+  inspect(shell.cleanup_stack.length(), content="0")
+}
