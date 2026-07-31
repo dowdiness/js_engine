@@ -9,5 +9,6 @@ Architecture-decision-record-style documents and project contracts.
 - [engine-json-injection-contract.md](engine-json-injection-contract.md) — immutable host-owned JSON injection, collision policy, and structured failure contract.
 - [engine-execution-guardrail-contract.md](engine-execution-guardrail-contract.md) — accepted operation-scoped guardrail contract; private state transitions and statement/expression observation are staged, while bounded APIs and complete accounting remain pending.
 - [engine-activation-continuation-contract.md](engine-activation-continuation-contract.md) — accepted continuation-aware activation dispatcher contract for #630, including explicit handler/finalizer and activation-cleanup ownership.
+- [stack-safety-public-workload-contract.md](stack-safety-public-workload-contract.md) — reconciled #619 required workloads, #608 deferred graduation evidence, and one-owner evidence classification.
 - [tooling-migration-contracts.md](tooling-migration-contracts.md) — parity contract for migrating Python scripts to MoonBit.
 - [bytecode-execution-representation-contract.md](bytecode-execution-representation-contract.md) — proposed bytecode execution representation contract for #601: deepen existing stack bytecode as the sole long-term compiled executable representation; reject separate ExecutionIR and register/basic-block alternatives.
