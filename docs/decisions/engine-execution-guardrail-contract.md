@@ -64,7 +64,11 @@ The policy is passed for each operation; it is not a default captured by the
 Engine and is not mutable Engine configuration. The bounded variants return the
 existing `EngineDiagnostic` model.
 
-The public shape is fixed by this decision:
+The public shape is fixed by this decision.
+
+MoonBit constructor naming correction for #702: the public constructor is
+`ExecutionPolicy::new(...)`; `ExecutionPolicy::ExecutionPolicy(...)` is not a
+valid callable constructor form for this struct shape.
 
 ```moonbit nocheck
 pub struct ExecutionPolicy
@@ -80,10 +84,6 @@ pub fn ExecutionPolicy::new(
   stack_depth_limit : Int64,
   interruption : InterruptionHandle,
 ) -> Result[ExecutionPolicy, ExecutionPolicyError]
-
-MoonBit constructor naming correction for #702: the public constructor is
-`ExecutionPolicy::new(...)`; `ExecutionPolicy::ExecutionPolicy(...)` is not a
-valid callable constructor form for this struct shape.
 
 pub fn ExecutionPolicyError::parameter_code(Self) -> String
 pub fn ExecutionPolicyError::message(Self) -> String
