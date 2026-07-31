@@ -10,6 +10,40 @@ const test = require("node:test");
 const DIFF = path.join(__dirname, "test262_failing_diff.js");
 const GATE = path.join(__dirname, "test262_regression_check.sh");
 
+const EXPECTED_TEST262_SHARD_INVOCATION = [
+  "./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \\",
+  "--test262 ./test262 \\",
+  "--mode ${{ matrix.mode }} \\",
+  "--shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} \\",
+  "--threads 4 \\",
+  "--timeout 12 \\",
+  "--output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \\",
+  "--summary",
+];
+
+function assertWorkflowUsesTimeout12(workflow) {
+  const lines = workflow.split("\n").map(line => line.trim());
+  const stepStart = lines.findIndex(line => line.startsWith("- name: Run Test262 ("));
+  assert.ok(stepStart >= 0, "Test262 shard step is missing");
+  const stepEnd = lines.findIndex(
+    (line, index) => index > stepStart && line.startsWith("- name:"),
+  );
+  const invocationStart = lines.findIndex(
+    (line, index) =>
+      index > stepStart && index < stepEnd && line === EXPECTED_TEST262_SHARD_INVOCATION[0],
+  );
+  assert.ok(invocationStart >= 0, "authoritative Test262 shard invocation is missing");
+  const invocation = lines.slice(
+    invocationStart,
+    invocationStart + EXPECTED_TEST262_SHARD_INVOCATION.length,
+  );
+  assert.deepEqual(
+    invocation,
+    EXPECTED_TEST262_SHARD_INVOCATION,
+    "authoritative Test262 shard invocation must remain exact",
+  );
+}
+
 function artifact(status, { mode = "strict", pathname = "test262/test/built-ins/encodeURI/case.js" } = {}) {
   return {
     engine: "moonbit-js-engine",
@@ -182,7 +216,30 @@ test("the Test262 shard keeps bounded RegExp headroom", () => {
     path.join(__dirname, "..", ".github", "workflows", "test262.yml"),
     "utf8",
   );
-  assert.match(workflow, /--threads 4 \\\n\s+--timeout 12 \\\n/);
+  assertWorkflowUsesTimeout12(workflow);
+});
+
+test("the timeout assertion rejects a wrong authoritative command despite a decoy", () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "..", ".github", "workflows", "test262.yml"),
+    "utf8",
+  );
+  const wrongAuthoritativeTimeout = workflow.replace(
+    "            --timeout 12 \\\n",
+    "            --timeout 8 \\\n",
+  );
+  const decoy = [
+    "",
+    "# unrelated command that must not satisfy the workflow contract",
+    "./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \\",
+    "  --threads 4 \\",
+    "  --timeout 12 \\",
+    "",
+  ].join("\n");
+  assert.throws(
+    () => assertWorkflowUsesTimeout12(wrongAuthoritativeTimeout + decoy),
+    /authoritative Test262 shard invocation must remain exact/,
+  );
 });
 
 test("the exact workflow gate fails regressions, passes clean results, and fails closed", () => {

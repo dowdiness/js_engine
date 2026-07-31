@@ -10,6 +10,7 @@ const { spawnSync } = require("node:child_process");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const BENCHMARK = path.join(REPO_ROOT, "scripts", "test262_uri_load_repro.js");
+const HARNESS_TIMEOUT_SECONDS = 12;
 
 function writeFile(file, content, mode) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -42,15 +43,17 @@ const value = name => args[args.indexOf(name) + 1];
 const mode = value("--mode");
 const testsFile = value("--tests-file");
 const output = value("--output");
+const timeout = Number(value("--timeout"));
 const entries = fs.readFileSync(testsFile, "utf8").split(/\\n/).filter(Boolean);
 const scenario = process.env.FAKE_SCENARIO || "";
 const isControl = entries.some(path => path.includes("known-hang.js"));
 const results = entries.map(path => ({
   path,
   mode,
+  timeout_seconds: timeout,
   status: path.includes("known-hang.js") ? "timeout" : "pass",
-  reason: path.includes("known-hang.js") ? "Exceeded 5s timeout" : "",
-  duration_ms: path.includes("known-hang.js") ? 5000 : 2,
+  reason: path.includes("known-hang.js") ? \`Exceeded \${timeout}s timeout\` : "",
+  duration_ms: path.includes("known-hang.js") ? timeout * 1000 : 2,
 }));
 if (isControl && scenario === "control-missing") results.splice(0);
 if (isControl && scenario === "control-extra") results.push({ ...results[0] });
@@ -70,7 +73,7 @@ fs.writeFileSync(output, JSON.stringify({
   categories: {},
   results,
 }));
-process.stdout.write(JSON.stringify({ mode, threads: Number(value("--threads")) }) + "\\n");
+process.stdout.write(JSON.stringify({ mode, threads: Number(value("--threads")), timeout }) + "\\n");
 `,
     0o755,
   );
@@ -91,7 +94,7 @@ process.stdout.write(JSON.stringify({ mode, threads: Number(value("--threads")) 
     "--iterations",
     "1",
     "--timeout",
-    "5",
+    String(HARNESS_TIMEOUT_SECONDS),
     "--output",
     output,
   ];
@@ -117,12 +120,35 @@ process.stdout.write(JSON.stringify({ mode, threads: Number(value("--threads")) 
     ],
   );
   assert.ok(artifact.runs.every(run => run.process_exit === 0));
-  assert.ok(artifact.runs.every(run => run.results.length === 4));
+  const measuredRuns = [...artifact.runs, ...artifact.controls];
+  assert.ok(
+    measuredRuns.every(run =>
+      run.timeout_seconds === HARNESS_TIMEOUT_SECONDS &&
+      run.results.every(result => result.timeout_seconds === HARNESS_TIMEOUT_SECONDS),
+    ),
+    "every measured run must receive the explicit 12-second timeout",
+  );
+  assert.ok(
+    artifact.runs.every(run =>
+      run.results.length === 4 &&
+      run.results.every(result =>
+        result.status === "pass" && result.mode === run.mode &&
+        result.reason === "" && result.duration_ms === 2 &&
+        result.timeout_seconds === HARNESS_TIMEOUT_SECONDS,
+      ),
+    ),
+    "URI cases must pass in every mode and load condition",
+  );
   assert.equal(artifact.controls.length, 4, "control runs cover both modes/conditions");
   assert.ok(artifact.controls.every(run => run.process_exit === 0));
   assert.ok(
     artifact.controls.every(run =>
-      run.results.length === 1 && run.results[0].status === "timeout" && run.results[0].mode === run.mode,
+      run.results.length === 1 &&
+      run.results[0].status === "timeout" &&
+      run.results[0].mode === run.mode &&
+      run.results[0].reason === "Exceeded 12s timeout" &&
+      run.results[0].duration_ms === HARNESS_TIMEOUT_SECONDS * 1000 &&
+      run.results[0].timeout_seconds === HARNESS_TIMEOUT_SECONDS,
     ),
   );
   assert.ok(artifact.assessment.result);
