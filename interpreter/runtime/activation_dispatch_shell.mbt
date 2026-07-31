@@ -225,7 +225,9 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   proxy_root_preflight? : ProxyGetRecursionPreflight? = None,
   proxy_root_stmts? : Array[@ast.Stmt]? = None,
   proxy_registry? : TrustedProxyGetRecursionRegistry? = None,
-  activation_observation_port? : ActivationObservationPort = interp.execution_control_activation_observation_port(),
+  // The shell lifecycle is policy-free; admitted production roots inject the
+  // execution-control port explicitly below.
+  activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
 ) -> PrimitiveProgramDispatchShell {
   {
     interp,
@@ -2450,6 +2452,7 @@ fn Interpreter::run_activation_dispatch_getter_program(
     self,
     getter_root_preflight=Some(preflight),
     getter_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
   guard shell.getter_registry is None else {
@@ -2471,6 +2474,7 @@ fn Interpreter::run_activation_dispatch_proxy_program(
     self,
     proxy_root_preflight=Some(preflight),
     proxy_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
   guard shell.proxy_registry is None else {
