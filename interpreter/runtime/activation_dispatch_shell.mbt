@@ -2359,6 +2359,38 @@ fn Interpreter::run_activation_dispatch_leaf_program(
 }
 
 ///|
+#warnings("-unused_value")
+fn Interpreter::run_activation_dispatch_control_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : ControlLifecyclePreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    control_root_preflight=Some(preflight),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.control_registry is None &&
+    shell.control_try_env is None &&
+    shell.control_finalizer_env is None else {
+    invalid_activation_dispatch_shell(
+      "control lifecycle ownership outlived its root activation",
+    )
+  }
+  match completion {
+    DispatchNormal(_) =>
+      if !(shell.control_phase is ControlFinished) {
+        invalid_activation_dispatch_shell(
+          "normal control lifecycle completion skipped an admitted phase",
+        )
+      }
+    _ => ()
+  }
+  completion
+}
+
+///|
 fn Interpreter::run_activation_dispatch_numeric_program(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
