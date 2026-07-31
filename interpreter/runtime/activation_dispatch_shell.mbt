@@ -1227,6 +1227,7 @@ fn PrimitiveProgramDispatchShell::enter_getter_call(
             ctx=prepared.ctx,
             stmts=data.body,
             env=prepared.env,
+            production=true,
           ),
         ),
       )
@@ -1306,6 +1307,7 @@ fn PrimitiveProgramDispatchShell::enter_proxy_call(
             ctx=prepared.ctx,
             stmts=data.body,
             env=prepared.env,
+            production=true,
           ),
         ),
       )
@@ -1763,7 +1765,7 @@ fn PrimitiveProgramDispatchShell::execute_getter_body_statement(
               receiver=target,
               loc=plan.recipe.recursive_member_loc,
             ),
-            DispatchApplyBinaryRight(
+            DispatchApplyPropertyBinaryRight(
               DispatchBinaryResume(
                 op=@ast.Add,
                 left=Number(NUMERIC_RECURSION_STEP),
@@ -1911,7 +1913,7 @@ fn PrimitiveProgramDispatchShell::execute_proxy_body_statement(
               receiver=proxy,
               loc=plan.recipe.recursive_member_loc,
             ),
-            DispatchApplyBinaryRight(
+            DispatchApplyPropertyBinaryRight(
               DispatchBinaryResume(
                 op=@ast.Add,
                 left=Number(NUMERIC_RECURSION_STEP),
@@ -1996,7 +1998,12 @@ fn PrimitiveProgramDispatchShell::execute_control_statement(
           DispatchWorkSuspended(
             DispatchSuspendLabel(
               actual,
-              DispatchStatementCursor(ctx=step.ctx, stmts=[body], env=step.env),
+              DispatchStatementCursor(
+                ctx=step.ctx,
+                stmts=[body],
+                env=step.env,
+                production=true,
+              ),
             ),
           )
         }
@@ -2006,11 +2013,17 @@ fn PrimitiveProgramDispatchShell::execute_control_statement(
             ctx=step.ctx,
             label=None,
             completion=Undefined,
+            production=true,
           )
           DispatchWorkSuspended(
             DispatchSuspendLoopIteration(
               loop_state,
-              DispatchStatementCursor(ctx=step.ctx, stmts=[body], env=step.env),
+              DispatchStatementCursor(
+                ctx=step.ctx,
+                stmts=[body],
+                env=step.env,
+                production=true,
+              ),
             ),
           )
         }
@@ -2045,13 +2058,19 @@ fn PrimitiveProgramDispatchShell::execute_control_statement(
       self.advance_control_phase(plan, ControlProtectedRole)
       DispatchWorkSuspended(
         DispatchSuspendProtected(
-          DispatchStatementCursor(ctx=step.ctx, stmts=try_body, env=try_env),
+          DispatchStatementCursor(
+            ctx=step.ctx,
+            stmts=try_body,
+            env=try_env,
+            production=true,
+          ),
           None,
           Some(
             DispatchStatementCursor(
               ctx=step.ctx,
               stmts=finalizer_body,
               env=finalizer_env,
+              production=true,
             ),
           ),
         ),
@@ -2213,6 +2232,10 @@ fn PrimitiveProgramDispatchShell::perform_production_work(
   work : DispatchProductionWork,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
   match work {
+    DispatchExecuteStatement(step) => self.execute_managed_statement(step)
+    DispatchAdvanceLoop(loop_state) => self.advance_control_loop(loop_state)
+    DispatchPropertyApplyBinaryRight(binary, right) =>
+      self.apply_numeric_binary(binary, right)
     DispatchNumericObserveExpressionStep(observation) => {
       ignore(observation)
       self.observe_numeric_execution_step()
@@ -2256,14 +2279,35 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     DispatchEnterActivation(DispatchCallActivation(request)) =>
       self.enter_managed_call(request)
     DispatchRunProduction(work) => self.perform_production_work(work)
-    DispatchRun(DispatchExecuteStatement(step)) =>
-      self.execute_managed_statement(step)
-    DispatchRun(DispatchAdvanceLoop(loop_state)) =>
-      self.advance_control_loop(loop_state)
-    DispatchRun(
-      DispatchResumeContinuation(DispatchApplyBinaryRight(binary), right)
-    ) => self.apply_numeric_binary(binary, right)
-    DispatchRun(_) =>
+    DispatchRun(DispatchExecuteStatement(_))
+    | DispatchRun(DispatchAdvanceLoop(_))
+    | DispatchRun(DispatchAdvanceParameters(_))
+    | DispatchRun(DispatchExecuteCatch(_, _))
+    | DispatchRun(DispatchNormalizeFunctionControl(_))
+    | DispatchRun(DispatchResumeContinuation(DispatchCompleteReturn, _))
+    | DispatchRun(DispatchResumeContinuation(DispatchCompleteThrow, _))
+    | DispatchRun(DispatchResumeContinuation(DispatchDeliverCallResult, _))
+    | DispatchRun(DispatchResumeContinuation(DispatchApplyBinaryRight(_), _))
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchApplyPropertyBinaryRight(_), _)
+    )
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchApplyNumericBinaryRight(_), _)
+    )
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchDeliverAccessorResult(_), _)
+    )
+    | DispatchRun(DispatchResumeContinuation(DispatchResolveProxyGetTrap(_), _))
+    | DispatchRun(DispatchResumeContinuation(DispatchCheckProxyGetResult(_), _))
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchBindParameterDefault(_), _)
+    )
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchContinueNumericExpression(_), _)
+    )
+    | DispatchRun(
+      DispatchResumeContinuation(DispatchContinueNumericStatement(_), _)
+    ) =>
       invalid_activation_dispatch_shell(
         "program shell received unsupported managed work",
       )
@@ -2320,10 +2364,20 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
         None => ()
       }
   }
+  let production = self.control_root_preflight is Some(_) ||
+    self.numeric_root_preflight is Some(_) ||
+    self.getter_root_preflight is Some(_) ||
+    self.proxy_root_preflight is Some(_) ||
+    activation_dispatch_leaf_program_is_admissible(stmts)
   try {
     let completion = self.drive(
       DispatchProgramActivation(
-        DispatchStatementCursor(ctx~, stmts~, env=self.interp.global),
+        DispatchStatementCursor(
+          ctx~,
+          stmts~,
+          env=self.interp.global,
+          production~,
+        ),
       ),
     )
     guard self.cleanup_stack.is_empty() else {
