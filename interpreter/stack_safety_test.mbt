@@ -48,6 +48,35 @@ test "execution stack safety: recursive return is replaced by abrupt finally" {
 }
 
 ///|
+test "execution stack safety: labelled break crosses a closed finalizer" {
+  match run("outer: try { break outer; } finally { 1; } 9;") {
+    Value::Number(9.0) => ()
+    other => fail("expected 9 after labelled break, got " + other.to_string())
+  }
+}
+
+///|
+test "execution stack safety: bounded continue crosses a closed finalizer" {
+  match run("do try { continue; } finally { 2; } while(false); 8;") {
+    Value::Number(8.0) => ()
+    other => fail("expected 8 after bounded continue, got " + other.to_string())
+  }
+}
+
+///|
+test "execution dispatch preserves structural control lookalike behavior" {
+  match run("outer: try { break outer; } finally { 1; 2; } 9;") {
+    Value::Number(9.0) => ()
+    other => fail("expected legacy labelled-break 9, got " + other.to_string())
+  }
+  match run("do try { continue; } finally { 2; 3; } while(false); 8;") {
+    Value::Number(8.0) => ()
+    other =>
+      fail("expected legacy bounded-continue 8, got " + other.to_string())
+  }
+}
+
+///|
 test "execution stack safety: guest throw crosses a normal recursive finalizer" {
   inspect(
     run_throws(

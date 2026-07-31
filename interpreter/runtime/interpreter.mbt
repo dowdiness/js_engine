@@ -675,56 +675,67 @@ pub fn Interpreter::run(
         self.run_activation_dispatch_leaf_program(stmts, ctx),
       )
     } else {
-      let numeric_preflight = self.preflight_dispatchable_numeric_recursion_program(
-        stmts,
-      )
-      match numeric_preflight {
+      let control_preflight = preflight_control_lifecycle_program(stmts)
+      match control_preflight {
         Some(preflight) =>
           activation_dispatch_root_value(
-            self.run_activation_dispatch_numeric_program(stmts, ctx, preflight),
+            self.run_activation_dispatch_control_program(stmts, ctx, preflight),
           )
         None => {
-          let getter_preflight = self.preflight_dispatchable_getter_recursion_program(
+          let numeric_preflight = self.preflight_dispatchable_numeric_recursion_program(
             stmts,
           )
-          match getter_preflight {
+          match numeric_preflight {
             Some(preflight) =>
               activation_dispatch_root_value(
-                self.run_activation_dispatch_getter_program(
+                self.run_activation_dispatch_numeric_program(
                   stmts, ctx, preflight,
                 ),
               )
             None => {
-              let proxy_preflight = self.preflight_dispatchable_proxy_get_recursion_program(
+              let getter_preflight = self.preflight_dispatchable_getter_recursion_program(
                 stmts,
               )
-              match proxy_preflight {
+              match getter_preflight {
                 Some(preflight) =>
                   activation_dispatch_root_value(
-                    self.run_activation_dispatch_proxy_program(
+                    self.run_activation_dispatch_getter_program(
                       stmts, ctx, preflight,
                     ),
                   )
-                None =>
-                  with_cleared_active_callee_realm(self.realm_state, () => {
-                    self.prepare_root_program_execution(
-                      stmts,
-                      self.global,
-                      strict,
-                    )
-                    let mut last : Value = Undefined
-                    for stmt in stmts {
-                      match self.exec_stmt(ctx, stmt, self.global) {
-                        Normal(v) => last = v
-                        ReturnSignal(_) =>
-                          raise @errors.SyntaxError(
-                            message="return statement outside of function",
-                          )
-                        sig => raise_if_break_continue(sig)
-                      }
-                    }
-                    last
-                  })
+                None => {
+                  let proxy_preflight = self.preflight_dispatchable_proxy_get_recursion_program(
+                    stmts,
+                  )
+                  match proxy_preflight {
+                    Some(preflight) =>
+                      activation_dispatch_root_value(
+                        self.run_activation_dispatch_proxy_program(
+                          stmts, ctx, preflight,
+                        ),
+                      )
+                    None =>
+                      with_cleared_active_callee_realm(self.realm_state, () => {
+                        self.prepare_root_program_execution(
+                          stmts,
+                          self.global,
+                          strict,
+                        )
+                        let mut last : Value = Undefined
+                        for stmt in stmts {
+                          match self.exec_stmt(ctx, stmt, self.global) {
+                            Normal(v) => last = v
+                            ReturnSignal(_) =>
+                              raise @errors.SyntaxError(
+                                message="return statement outside of function",
+                              )
+                            sig => raise_if_break_continue(sig)
+                          }
+                        }
+                        last
+                      })
+                  }
+                }
               }
             }
           }
