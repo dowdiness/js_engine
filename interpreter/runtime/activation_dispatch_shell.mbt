@@ -297,7 +297,7 @@ fn Interpreter::prepare_root_program_execution(
 fn dispatch_entry_rejection(error : Error) -> DispatchEntryRejection {
   match error {
     ExecutionControlError(StackDepthLimit) =>
-      DispatchEntryRuntimeAbrupt(
+      DispatchEntryGuestThrow(
         @errors.RangeError(message=STACK_DEPTH_LIMIT_MESSAGE),
       )
     _ =>

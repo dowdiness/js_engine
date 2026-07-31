@@ -332,6 +332,34 @@ test "public direct recursion rejects at the logical depth boundary" {
 }
 
 ///|
+test "public protected recursion catches the logical depth RangeError" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let result = run_dispatch_source(
+    interp,
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch(e){e;}",
+    control,
+  )
+  match result {
+    Object(data) => {
+      inspect(data.class_name, content="RangeError")
+      match data.bag.properties.get("message") {
+        Some(String_(message)) =>
+          inspect(message, content="Maximum call stack size exceeded")
+        _ => fail("expected the engine-owned depth-limit message")
+      }
+    }
+    _ => fail("expected catch to consume the logical depth RangeError")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
 test "public direct recursion below the logical limit preserves its value" {
   let interp = Interpreter::new()
   let control = ExecutionControl(
