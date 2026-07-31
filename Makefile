@@ -1,4 +1,4 @@
-.PHONY: build test external-consumer-test embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test external-consumer-test stack-safety-test stack-safety-validate embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
@@ -22,6 +22,28 @@ external-consumer-test:
 	cd integration/external_consumer && \
 		moon check --target $(TARGET) . && \
 		moon test --target $(TARGET) .
+
+# Run only the permanent stack-safety gate for one target and profile.
+# PROFILE is either debug (the default) or release; CI invokes both profiles
+# for native, js, wasm, and wasm-gc without host stack overrides.
+PROFILE ?= debug
+stack-safety-test:
+	@case "$(PROFILE)" in \
+		debug) release=;; \
+		release) release=--release;; \
+		*) echo "PROFILE must be debug or release (got $(PROFILE))" >&2; exit 2;; \
+	esac; \
+	moon test --target "$(TARGET)" $$release \
+		interpreter/stack_safety_test.mbt \
+		interpreter/runtime/activation_dispatch_stack_safety_wbtest.mbt \
+		interpreter/runtime/execution_control_dispatch_wbtest.mbt; \
+	(cd integration/external_consumer && \
+		moon check --target "$(TARGET)" . && \
+		moon test --target "$(TARGET)" $$release stack_safety_test.mbt)
+
+# Check the permanent gate's source, Make, and workflow contract.
+stack-safety-validate:
+	bash scripts/test_stack_safety_gate.sh
 
 # Reproduce the stable embedding usage baselines with recorded run metadata.
 embedding-baseline:
