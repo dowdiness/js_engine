@@ -12,6 +12,20 @@ From the repository root, run:
 make external-consumer-test TARGET=native
 ```
 
+The permanent stack-safety gate runs only the focused engine and facade suites
+for one target/profile. `PROFILE` defaults to `debug`; use `release` for the
+release profile:
+
+```bash
+make stack-safety-test TARGET=js PROFILE=debug
+make stack-safety-test TARGET=js PROFILE=release
+```
+
+The adoption workflow runs both profiles for `native`, `js`, `wasm`, and
+`wasm-gc`. Each profile uses the same checked-in JavaScript source and expected
+result. The gate deliberately does not include the deferred #608 mixed-call or
+success-valued 512-comma runtime workloads.
+
 The adoption workflow repeats this repository command for `native`, `js`,
 `wasm`, and `wasm-gc`. The repository architecture-boundary audit permits this
 fixture to import only the root facade; direct imports of interpreter, runtime,
