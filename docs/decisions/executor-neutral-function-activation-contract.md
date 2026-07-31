@@ -37,6 +37,14 @@ ordinary activation, and start its private frame without executing the body.
 The payload exposes no compiler representation; observable activation metadata
 remains runtime-owned.
 
+Bytecode arrow bodies use the same retained executable payload and private
+frame seam. Runtime distinguishes arrow activation only to preserve its
+observable call rules: it creates the parameter environment over the captured
+lexical environment, does not create own `this`, `arguments`, or `new.target`
+bindings, remains non-constructable, and returns the arrow body's normal value.
+The compiler supplies code and frame state but does not wrap the body in a
+final-value callback.
+
 The existing synchronous API is a root adapter around this explicit
 activation. The adapter is not a continuation and is not evidence that nested
 bytecode calls are stack-safe. Once downstream work admits a nested operation

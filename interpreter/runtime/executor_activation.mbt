@@ -76,6 +76,12 @@ pub(open) trait ExecutorCode {
 }
 
 ///|
+priv enum ExecutorCallableKind {
+  OrdinaryExecutorCallable
+  ArrowExecutorCallable
+}
+
+///|
 // Runtime-owned metadata for a callable executor body. The code capability is
 // mode-neutral and remains recoverable before entry so a managed dispatcher can
 // start the private executor frame without invoking a final-value callback.
@@ -89,6 +95,7 @@ pub struct ExecutorCallableData {
   priv constructable : Bool
   priv self_name : String?
   priv define_arguments_object : Bool
+  priv kind : ExecutorCallableKind
 }
 
 ///|
@@ -129,19 +136,23 @@ pub fn Interpreter::prepare_executor_callable_call(
   this_value : Value,
   args : Array[Value],
 ) -> PreparedExecutorActivation raise Error {
-  self.prepare_executor_activation(
-    callee,
-    this_value,
-    args,
-    executable.params,
-    executable.rest_param,
-    executable.closure,
-    executable.strict,
-    None,
-    !executable.constructable,
-    executable.self_name,
-    executable.define_arguments_object,
-  )
+  match executable.kind {
+    OrdinaryExecutorCallable =>
+      self.prepare_executor_activation(
+        callee,
+        this_value,
+        args,
+        executable.params,
+        executable.rest_param,
+        executable.closure,
+        executable.strict,
+        None,
+        !executable.constructable,
+        executable.self_name,
+        executable.define_arguments_object,
+      )
+    ArrowExecutorCallable => prepare_executor_arrow_activation(executable, args)
+  }
 }
 
 ///|
@@ -197,6 +208,24 @@ fn bind_executor_rest_parameter(
 }
 
 ///|
+fn prepare_executor_arrow_activation(
+  executable : ExecutorCallableData,
+  args : Array[Value],
+) -> PreparedExecutorActivation raise Error {
+  let ctx : ExecContext = { strict: executable.strict, current_generator: None }
+  let env = Environment::new(parent=Some(executable.closure))
+  env.is_var_scope = true
+  bind_executor_parameters(env, executable.params, args)
+  bind_executor_rest_parameter(
+    env,
+    executable.params.length(),
+    executable.rest_param,
+    args,
+  )
+  PreparedExecutorActivation(ctx~, env~, args~)
+}
+
+///|
 fn Interpreter::prepare_executor_activation(
   self : Interpreter,
   callee : Value,
@@ -241,11 +270,23 @@ fn Interpreter::prepare_executor_activation(
 }
 
 ///|
-fn executor_call_completion(step : ExecutorActivationStep) -> Value {
-  match step {
-    ExecutorActivationContinue => Undefined
-    ExecutorActivationNormal(_) => Undefined
-    ExecutorActivationReturn(value) => value
+fn executor_call_completion(
+  kind : ExecutorCallableKind,
+  step : ExecutorActivationStep,
+) -> Value {
+  match kind {
+    OrdinaryExecutorCallable =>
+      match step {
+        ExecutorActivationContinue => Undefined
+        ExecutorActivationNormal(_) => Undefined
+        ExecutorActivationReturn(value) => value
+      }
+    ArrowExecutorCallable =>
+      match step {
+        ExecutorActivationContinue => Undefined
+        ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
+          value
+      }
   }
 }
 
@@ -305,6 +346,7 @@ fn Interpreter::run_executor_function(
         executable, callee, this_value, args,
       )
       executor_call_completion(
+        executable.kind,
         self.drive_executor_activation(executable.code, prepared),
       )
     }
@@ -346,6 +388,7 @@ pub fn[T : ExecutorCode] make_executor_function(
     constructable,
     self_name,
     define_arguments_object,
+    kind: OrdinaryExecutorCallable,
   }
   let function = build_func_object(
     function_name,
@@ -388,4 +431,36 @@ pub fn[T : ExecutorCode] make_executor_function(
     }
   }
   function
+}
+
+///|
+pub fn[T : ExecutorCode] make_executor_arrow_function(
+  params : Array[String],
+  closure : Environment,
+  strict : Bool,
+  code : T,
+  rest_param? : String? = None,
+) -> Value {
+  let realm_state = match closure.interpreter_context {
+    Some(interp) => Some(interp.realm_state)
+    None => closure.realm_state
+  }
+  let executable : ExecutorCallableData = {
+    name: "",
+    params: params.copy(),
+    closure,
+    strict,
+    code: code as &ExecutorCode,
+    rest_param,
+    constructable: false,
+    self_name: None,
+    define_arguments_object: false,
+    kind: ArrowExecutorCallable,
+  }
+  build_func_object(
+    "",
+    params.length(),
+    ExecutorCallable(executable),
+    realm_state~,
+  )
 }

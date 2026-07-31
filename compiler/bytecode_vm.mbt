@@ -427,59 +427,6 @@ fn bytecode_ext_params_from_names(params : Array[String]) -> Array[@ast.Param] {
 }
 
 ///|
-fn bind_bytecode_arrow_params(
-  env : Environment,
-  params : Array[String],
-  rest_param : String?,
-  args : Array[Value],
-) -> Unit raise Error {
-  bind_simple_params(env, params, args)
-  match rest_param {
-    Some(name) => {
-      let rest_elements : Array[Value] = []
-      for i = params.length(); i < args.length(); i = i + 1 {
-        rest_elements.push(args[i])
-      }
-      env.def_parameter(name, @runtime.make_array(rest_elements))
-    }
-    None => ()
-  }
-}
-
-///|
-fn call_bytecode_arrow_func(
-  interp : Interpreter,
-  args : Array[Value],
-  func_def : BytecodeFunction,
-  closure : Environment,
-  strict : Bool,
-) -> Value raise Error {
-  let saved_in_default = interp.in_nonarrow_param_default_eval
-  interp.in_nonarrow_param_default_eval = false
-  let result : Value = try {
-    let func_env = Environment::new(parent=Some(closure))
-    func_env.is_var_scope = true
-    let func_ctx : ExecContext = { strict, current_generator: None }
-    bind_bytecode_arrow_params(
-      func_env,
-      func_def.params,
-      func_def.rest_param,
-      args,
-    )
-    match run_bytecode_function(interp, func_ctx, func_env, func_def) {
-      BytecodeNormal(value) | BytecodeReturn(value) => value
-    }
-  } catch {
-    err => {
-      interp.in_nonarrow_param_default_eval = saved_in_default
-      raise err
-    }
-  }
-  interp.in_nonarrow_param_default_eval = saved_in_default
-  result
-}
-
-///|
 fn make_bytecode_arrow_func(
   func_def : BytecodeFunction,
   closure : Environment,
@@ -503,17 +450,12 @@ fn make_bytecode_arrow_func(
       )
   }
   let strict = enclosing_ctx.strict || func_def.body_has_use_strict
-  let realm_state = match closure.interpreter_context {
-    Some(interp) => Some(interp.realm_state)
-    None => closure.realm_state
-  }
-  @runtime.make_interp_method_func(
-    name="",
-    length=func_def.params.length(),
-    realm_state~,
-    fn(interp, _this_val, args) raise {
-      call_bytecode_arrow_func(interp, args, func_def, closure, strict)
-    },
+  @runtime.make_executor_arrow_function(
+    func_def.params,
+    closure,
+    strict,
+    BytecodeExecutorCode(func_def~),
+    rest_param=func_def.rest_param,
   )
 }
 

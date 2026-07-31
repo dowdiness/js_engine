@@ -18,6 +18,19 @@ test "executor-neutral bytecode function keeps a classifiable runtime payload" {
 }
 
 ///|
+test "executor-neutral bytecode arrow keeps a classifiable runtime payload" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp, "var retainedArrow = (value) => value + 1;",
+  )
+  match interp.global.get("retainedArrow") {
+    Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
+      inspect(executable.name(), content="")
+    _ => fail("bytecode arrow must expose the neutral executor payload")
+  }
+}
+
+///|
 test "executor-neutral bytecode method activation preserves receiver" {
   let interp = @interpreter.new_interpreter()
   let result = run_executor_neutral_bytecode(
