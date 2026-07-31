@@ -9,6 +9,7 @@
   },
   "test262_directory": "../../test262",
   "test262_revision": "2b2ecead6e82",
+  "test262_revision_source": "environment:TEST262_COMMIT",
   "runner": {
     "executable": "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
     "timeout_seconds": 5,
@@ -1198,5 +1199,6 @@
     },
     "load_to_isolated_duration_ratio": 1.3
   },
-  "execution_errors": []
+  "execution_errors": [],
+  "evidence_errors": []
 }

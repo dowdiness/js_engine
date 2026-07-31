@@ -43,6 +43,8 @@ const mode = value("--mode");
 const testsFile = value("--tests-file");
 const output = value("--output");
 const entries = fs.readFileSync(testsFile, "utf8").split(/\\n/).filter(Boolean);
+const scenario = process.env.FAKE_SCENARIO || "";
+const isControl = entries.some(path => path.includes("known-hang.js"));
 const results = entries.map(path => ({
   path,
   mode,
@@ -50,10 +52,21 @@ const results = entries.map(path => ({
   reason: path.includes("known-hang.js") ? "Exceeded 5s timeout" : "",
   duration_ms: path.includes("known-hang.js") ? 5000 : 2,
 }));
+if (isControl && scenario === "control-missing") results.splice(0);
+if (isControl && scenario === "control-extra") results.push({ ...results[0] });
+if (isControl && scenario === "control-mode") {
+  results[0].mode = mode === "strict" ? "non-strict" : "strict";
+}
+if (!isControl && scenario === "uri-missing") results.splice(-1);
+if (!isControl && scenario === "uri-extra") results.push({ ...results[0], path: results[0].path + ".extra" });
+if (!isControl && scenario === "uri-fail") {
+  results[0].status = "fail";
+  results[0].reason = "fake URI failure";
+}
 const counts = status => results.filter(result => result.status === status).length;
 fs.writeFileSync(output, JSON.stringify({
   engine: "fake",
-  summary: { total: results.length, passed: counts("pass"), failed: 0, skipped: 0, timeout: counts("timeout"), error: 0 },
+  summary: { total: results.length, passed: counts("pass"), failed: counts("fail"), skipped: counts("skip"), timeout: counts("timeout"), error: counts("error") },
   categories: {},
   results,
 }));
@@ -63,31 +76,36 @@ process.stdout.write(JSON.stringify({ mode, threads: Number(value("--threads")) 
   );
 
   const output = path.join(root, "result.json");
-  const run = spawnSync(
-    process.execPath,
-    [
-      BENCHMARK,
-      "--runner",
-      fakeRunner,
-      "--engine",
-      "fake",
-      "--test262",
-      suite,
-      "--control",
-      control,
-      "--iterations",
-      "1",
-      "--timeout",
-      "5",
-      "--output",
-      output,
-    ],
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  const benchmarkArgs = [
+    BENCHMARK,
+    "--runner",
+    fakeRunner,
+    "--engine",
+    "fake",
+    "--test262",
+    suite,
+    "--test262-revision",
+    "fake-test262",
+    "--control",
+    control,
+    "--iterations",
+    "1",
+    "--timeout",
+    "5",
+    "--output",
+    output,
+  ];
+  const run = spawnSync(process.execPath, benchmarkArgs, {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
   assert.equal(run.status, 0, run.stderr || run.stdout);
 
   const artifact = JSON.parse(fs.readFileSync(output, "utf8"));
   assert.equal(artifact.ticket, 695);
+  assert.match(artifact.git_commit, /^[0-9a-f]{40}$/);
+  assert.equal(artifact.test262_revision, "fake-test262");
+  assert.equal(artifact.test262_revision_source, "argument:--test262-revision");
   assert.equal(artifact.runs.length, 4, "one isolated/load run per mode");
   assert.deepEqual(
     artifact.runs.map(run => [run.condition, run.mode, run.threads]),
@@ -108,6 +126,90 @@ process.stdout.write(JSON.stringify({ mode, threads: Number(value("--threads")) 
     ),
   );
   assert.ok(artifact.assessment.result);
+
+  const missingRevisionOutput = path.join(root, "missing-revision.json");
+  const missingRevisionArgs = benchmarkArgs
+    .filter(value => value !== "--test262-revision" && value !== "fake-test262")
+    .map(value => (value === output ? missingRevisionOutput : value));
+  const cleanEnv = { ...process.env };
+  delete cleanEnv.TEST262_REVISION;
+  delete cleanEnv.TEST262_COMMIT;
+  const missingRevision = spawnSync(process.execPath, missingRevisionArgs, {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: cleanEnv,
+  });
+  assert.equal(missingRevision.status, 2, "missing Test262 provenance must fail before measuring");
+
+  const gitSuite = path.join(root, "test262-git");
+  fs.cpSync(suite, gitSuite, { recursive: true });
+  const gitEnv = {
+    ...cleanEnv,
+    GIT_AUTHOR_NAME: "issue-695-test",
+    GIT_AUTHOR_EMAIL: "issue-695-test@example.invalid",
+    GIT_COMMITTER_NAME: "issue-695-test",
+    GIT_COMMITTER_EMAIL: "issue-695-test@example.invalid",
+  };
+  const runGit = args => {
+    const result = spawnSync("git", ["-C", gitSuite, ...args], {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: gitEnv,
+    });
+    assert.equal(result.status, 0, result.stderr);
+  };
+  runGit(["init", "--quiet"]);
+  runGit(["add", "."]);
+  runGit(["commit", "--quiet", "-m", "fixture"]);
+  const gitHead = spawnSync("git", ["-C", gitSuite, "rev-parse", "HEAD"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: gitEnv,
+  }).stdout.trim();
+  const gitOutput = path.join(root, "git-suite.json");
+  const gitArgs = benchmarkArgs
+    .filter(value => value !== "--test262-revision" && value !== "fake-test262")
+    .map(value => {
+      if (value === suite) return gitSuite;
+      if (value === output) return gitOutput;
+      return value;
+    });
+  const gitRun = spawnSync(process.execPath, gitArgs, {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    env: cleanEnv,
+  });
+  assert.equal(gitRun.status, 0, gitRun.stderr || gitRun.stdout);
+  const gitArtifact = JSON.parse(fs.readFileSync(gitOutput, "utf8"));
+  assert.equal(gitArtifact.test262_revision, gitHead);
+  assert.equal(gitArtifact.test262_revision_source, "git");
+
+  for (const scenario of [
+    "control-missing",
+    "control-extra",
+    "control-mode",
+    "uri-missing",
+    "uri-extra",
+    "uri-fail",
+  ]) {
+    const scenarioOutput = path.join(root, `${scenario}.json`);
+    const scenarioArgs = benchmarkArgs.map(value =>
+      value === output ? scenarioOutput : value,
+    );
+    const invalid = spawnSync(process.execPath, scenarioArgs, {
+      cwd: REPO_ROOT,
+      encoding: "utf8",
+      env: { ...process.env, FAKE_SCENARIO: scenario },
+    });
+    assert.notEqual(
+      invalid.status,
+      0,
+      `${scenario} must fail the evidence contract despite runner exit 0`,
+    );
+    const invalidArtifact = JSON.parse(fs.readFileSync(scenarioOutput, "utf8"));
+    assert.equal(invalidArtifact.assessment.result, "invalid");
+    assert.ok(invalidArtifact.evidence_errors.length > 0);
+  }
 }
 
 main();

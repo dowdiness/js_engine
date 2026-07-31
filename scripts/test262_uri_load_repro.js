@@ -33,6 +33,38 @@ function defaultEngine(root) {
   return `node ${path.join(root, "_build/js/release/build/cmd/main/main.js")}`;
 }
 
+function gitOutput(cwd, args) {
+  const result = spawnSync("git", ["-C", cwd, ...args], {
+    cwd,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) return null;
+  const value = result.stdout.trim();
+  return value === "" ? null : value;
+}
+
+function resolveRepositoryRevision(root) {
+  const revision = gitOutput(root, ["rev-parse", "HEAD"]);
+  if (revision === null) {
+    throw new Error(`cannot resolve repository HEAD in ${root}`);
+  }
+  return revision;
+}
+
+function resolveTest262Revision(options) {
+  const checkoutRoot = gitOutput(options.test262, ["rev-parse", "--show-toplevel"]);
+  if (checkoutRoot !== null && path.resolve(checkoutRoot) === path.resolve(options.test262)) {
+    const revision = gitOutput(options.test262, ["rev-parse", "HEAD"]);
+    if (revision !== null) return { revision, source: "git" };
+  }
+  if (options.test262Revision !== "") {
+    return { revision: options.test262Revision, source: options.test262RevisionSource };
+  }
+  throw new Error(
+    "Test262 is not a standalone git checkout; provide --test262-revision or TEST262_REVISION/TEST262_COMMIT",
+  );
+}
+
 function usage() {
   return `Usage: node scripts/test262_uri_load_repro.js [options]
 
@@ -41,6 +73,7 @@ Options:
   --engine COMMAND    runner --engine command (default: JS release bundle)
   --profile NAME      engine target/profile label (default: js-release)
   --test262 DIR       Test262 checkout (default: ./test262)
+  --test262-revision  Test262 revision when DIR is not its own git checkout
   --control FILE      known-hang control test
   --iterations N      repeats per mode/condition (default: 3)
   --timeout N         runner timeout in seconds (default: 5)
@@ -72,6 +105,12 @@ function parseArgs(argv) {
     engine: defaultEngine(root),
     profile: "js-release",
     test262: path.join(root, "test262"),
+    test262Revision: process.env.TEST262_REVISION || process.env.TEST262_COMMIT || "",
+    test262RevisionSource: process.env.TEST262_REVISION
+      ? "environment:TEST262_REVISION"
+      : process.env.TEST262_COMMIT
+        ? "environment:TEST262_COMMIT"
+        : "",
     control: path.join(root, "scripts/test262_uri_load/known_hang.js"),
     iterations: 3,
     timeout: 5,
@@ -83,6 +122,7 @@ function parseArgs(argv) {
     "--engine",
     "--profile",
     "--test262",
+    "--test262-revision",
     "--control",
     "--iterations",
     "--timeout",
@@ -109,6 +149,10 @@ function parseArgs(argv) {
         break;
       case "--test262":
         options.test262 = path.resolve(value);
+        break;
+      case "--test262-revision":
+        options.test262Revision = value.trim();
+        options.test262RevisionSource = "argument:--test262-revision";
         break;
       case "--control":
         options.control = path.resolve(value);
@@ -217,6 +261,8 @@ function invokeRunner(options, temporary, descriptor, entries, threads) {
   const artifact = readRunnerArtifact(resultFile);
   const processExit = Number.isInteger(completed.status) ? completed.status : null;
   const outerTimeout = completed.error?.code === "ETIMEDOUT";
+  const artifactError = artifact?.parse_error ??
+    (artifact && !Array.isArray(artifact.results) ? "runner results must be an array" : null);
   return {
     id: descriptor.id,
     condition: descriptor.condition,
@@ -235,8 +281,8 @@ function invokeRunner(options, temporary, descriptor, entries, threads) {
     stdout: completed.stdout ?? "",
     stderr: completed.stderr ?? "",
     summary: artifact?.summary ?? null,
-    results: artifact?.results ?? [],
-    artifact_error: artifact?.parse_error ?? null,
+    results: Array.isArray(artifact?.results) ? artifact.results : [],
+    artifact_error: artifactError,
   };
 }
 
@@ -272,7 +318,7 @@ function durationStatistics(runs) {
   };
 }
 
-function assessment(runs) {
+function assessment(runs, evidenceErrors = []) {
   const isolated = runs.filter(run => run.condition === "isolated");
   const load = runs.filter(run => run.condition === "load");
   const isolatedTimeouts = countStatus(isolated, "timeout");
@@ -283,6 +329,24 @@ function assessment(runs) {
     isolatedDurations.mean_ms && loadDurations.mean_ms
       ? roundMilliseconds(loadDurations.mean_ms / isolatedDurations.mean_ms)
       : null;
+  const base = {
+    isolated_uri_timeouts: isolatedTimeouts,
+    load_uri_timeouts: loadTimeouts,
+    isolated_uri_passes: countStatus(isolated, "pass"),
+    load_uri_passes: countStatus(load, "pass"),
+    isolated_uri_durations_ms: isolatedDurations,
+    load_uri_durations_ms: loadDurations,
+    load_to_isolated_duration_ratio: slowdownRatio,
+  };
+  if (evidenceErrors.length > 0) {
+    return {
+      ...base,
+      result: "invalid",
+      rationale:
+        "Evidence contract invalid; no CPU/scheduling conclusion is permitted.",
+      evidence_errors: evidenceErrors,
+    };
+  }
   let result;
   let rationale;
   if (loadTimeouts > isolatedTimeouts) {
@@ -303,15 +367,9 @@ function assessment(runs) {
       "Timeout counts were equal across conditions; repeat with the same release profile before choosing a mitigation.";
   }
   return {
+    ...base,
     result,
     rationale,
-    isolated_uri_timeouts: isolatedTimeouts,
-    load_uri_timeouts: loadTimeouts,
-    isolated_uri_passes: countStatus(isolated, "pass"),
-    load_uri_passes: countStatus(load, "pass"),
-    isolated_uri_durations_ms: isolatedDurations,
-    load_uri_durations_ms: loadDurations,
-    load_to_isolated_duration_ratio: slowdownRatio,
   };
 }
 
@@ -327,6 +385,99 @@ function invocationError(run) {
   return null;
 }
 
+function resultPath(root, value) {
+  if (typeof value !== "string" || value === "") return null;
+  return path.normalize(path.isAbsolute(value) ? value : path.resolve(root, value));
+}
+
+function uriCaseForResult(value) {
+  if (typeof value !== "string") return null;
+  const normalized = value.replaceAll("\\", "/");
+  for (const relative of URI_CASES) {
+    if (
+      normalized === relative ||
+      normalized.endsWith(`/test/${relative}`) ||
+      normalized.endsWith(`/${relative}`)
+    ) {
+      return relative;
+    }
+  }
+  return null;
+}
+
+function validateUriRun(run) {
+  const errors = [];
+  const expected = new Map();
+  for (const relative of uriTasks()) {
+    expected.set(relative, (expected.get(relative) || 0) + 1);
+  }
+  if (run.results.length !== uriTasks().length) {
+    errors.push(`${run.id}: expected ${uriTasks().length} URI results, got ${run.results.length}`);
+  }
+  const actual = new Map();
+  for (const [index, result] of run.results.entries()) {
+    const label = `${run.id} result ${index + 1}`;
+    if (result === null || typeof result !== "object") {
+      errors.push(`${label}: result is not an object`);
+      continue;
+    }
+    if (result.mode !== run.mode) {
+      errors.push(`${label}: mode ${JSON.stringify(result.mode)} != ${run.mode}`);
+    }
+    if (result.status !== "pass" && result.status !== "timeout") {
+      errors.push(`${label}: invalid URI status ${JSON.stringify(result.status)}`);
+    }
+    const relative = uriCaseForResult(result.path);
+    if (relative === null) {
+      errors.push(`${label}: unexpected URI path ${JSON.stringify(result.path)}`);
+    } else {
+      actual.set(relative, (actual.get(relative) || 0) + 1);
+    }
+  }
+  for (const [relative, count] of expected) {
+    if ((actual.get(relative) || 0) !== count) {
+      errors.push(`${run.id}: URI case ${relative} expected ${count}, got ${actual.get(relative) || 0}`);
+    }
+  }
+  return errors;
+}
+
+function validateControlRun(run, options) {
+  const errors = [];
+  if (run.results.length !== 1) {
+    errors.push(`${run.id}: expected exactly one control result, got ${run.results.length}`);
+  }
+  const result = run.results[0];
+  if (!result) return errors;
+  if (result.mode !== run.mode) {
+    errors.push(`${run.id}: control mode ${JSON.stringify(result.mode)} != ${run.mode}`);
+  }
+  if (result.status !== "timeout") {
+    errors.push(`${run.id}: control status must be timeout, got ${JSON.stringify(result.status)}`);
+  }
+  const expectedPath = path.normalize(options.control);
+  const actualPath = resultPath(options.repoRoot, result.path);
+  if (actualPath !== expectedPath) {
+    errors.push(`${run.id}: control path ${JSON.stringify(result.path)} != ${expectedPath}`);
+  }
+  return errors;
+}
+
+function validateEvidence(runs, controls, options) {
+  const errors = [];
+  const expectedRuns = MODES.length * 2 * options.iterations;
+  const expectedControls = MODES.length * 2;
+  if (runs.length !== expectedRuns) {
+    errors.push(`expected ${expectedRuns} URI runs, got ${runs.length}`);
+  }
+  if (controls.length !== expectedControls) {
+    errors.push(`expected ${expectedControls} control runs, got ${controls.length}`);
+  }
+  for (const run of runs) errors.push(...validateUriRun(run));
+  for (const run of controls) errors.push(...validateControlRun(run, options));
+  return errors;
+}
+
 function main() {
   let options;
   try {
@@ -336,6 +487,10 @@ function main() {
       return;
     }
     validateInputs(options);
+    options.repoRevision = resolveRepositoryRevision(options.repoRoot);
+    const test262Provenance = resolveTest262Revision(options);
+    options.test262Revision = test262Provenance.revision;
+    options.test262RevisionSource = test262Provenance.source;
   } catch (error) {
     process.stderr.write(`error: ${error.message}\n\n${usage()}`);
     process.exitCode = 2;
@@ -377,17 +532,25 @@ function main() {
     fs.rmSync(temporary, { recursive: true, force: true });
   }
 
+  const executionErrors = [...runs, ...controls]
+    .map(invocationError)
+    .filter(error => error !== null);
+  const evidenceErrors = [
+    ...executionErrors,
+    ...validateEvidence(runs, controls, options),
+  ];
   const artifact = {
     schema_version: 1,
     ticket: TICKET,
     generated_at: new Date().toISOString(),
-    git_commit: process.env.GITHUB_SHA || "unknown",
+    git_commit: options.repoRevision,
     engine: {
       command: options.engine,
       profile: options.profile,
     },
     test262_directory: reviewPath(options.repoRoot, options.test262),
-    test262_revision: process.env.TEST262_COMMIT || "unknown",
+    test262_revision: options.test262Revision,
+    test262_revision_source: options.test262RevisionSource,
     runner: {
       executable: reviewPath(options.repoRoot, options.runner),
       timeout_seconds: options.timeout,
@@ -399,17 +562,16 @@ function main() {
     known_hang_control: reviewPath(options.repoRoot, options.control),
     runs,
     controls,
-    assessment: assessment(runs),
+    assessment: assessment(runs, evidenceErrors),
   };
-  artifact.execution_errors = [...runs, ...controls]
-    .map(invocationError)
-    .filter(error => error !== null);
+  artifact.execution_errors = executionErrors;
+  artifact.evidence_errors = evidenceErrors;
   fs.mkdirSync(path.dirname(options.output), { recursive: true });
   fs.writeFileSync(options.output, `${JSON.stringify(artifact, null, 2)}\n`);
   process.stdout.write(
     `#695 wrote ${options.output} (${runs.length} URI runs, ${controls.length} controls)\n`,
   );
-  if (artifact.execution_errors.length > 0) process.exitCode = 1;
+  if (artifact.evidence_errors.length > 0) process.exitCode = 1;
 }
 
 main();

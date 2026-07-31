@@ -25,6 +25,7 @@ node scripts/test262_uri_load_repro.js \
   --runner ./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \
   --engine 'node _build/js/release/build/cmd/main/main.js' \
   --test262 ./test262 \
+  --test262-revision 2b2ecead6e82 \
   --iterations 3 \
   --output docs/decisions/issue-695-uri-load-reproduction.json
 ```
@@ -36,6 +37,12 @@ timeout counts between conditions; it is evidence for #707, not a mitigation
 decision. The committed result below was recorded from the #695 baseline
 (`ae6172ffe1d385b8297198d2ad5947542b642c21`) with the repository's JS release
 profile and the configured Test262 revision.
+
+The harness records the repository `HEAD` via `git rev-parse` and records
+Test262 `HEAD` when `--test262` is a standalone checkout. For a vendored or
+otherwise non-git Test262 directory, `--test262-revision` (or
+`TEST262_REVISION`/`TEST262_COMMIT`) is mandatory; the harness rejects missing
+provenance before starting a measurement.
 
 Recorded baseline outcome: all 24 URI tasks in each condition passed in both
 modes, with zero URI timeouts. The four-worker per-test mean was 2,535.8 ms
