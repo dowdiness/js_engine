@@ -131,11 +131,19 @@ impl @runtime.ExecutorActivationFrame for BytecodeFrame with fn step(
   self,
   interp,
 ) {
-  match self.step_bytecode(interp) {
-    BytecodeFrameContinue => @runtime.executor_activation_continue()
-    BytecodeFrameNormal(value) => @runtime.executor_activation_normal(value)
-    BytecodeFrameReturn(value) => @runtime.executor_activation_return(value)
+  // Cross the neutral seam only at completion or an explicit suspension point.
+  // #631 will add the first suspension result; continuing one opcode at a time
+  // would make executor-neutral dispatch part of the bytecode inner loop.
+  while true {
+    match self.step_bytecode(interp) {
+      BytecodeFrameContinue => ()
+      BytecodeFrameNormal(value) =>
+        return @runtime.executor_activation_normal(value)
+      BytecodeFrameReturn(value) =>
+        return @runtime.executor_activation_return(value)
+    }
   }
+  @runtime.executor_activation_normal(Value::Undefined)
 }
 
 ///|
