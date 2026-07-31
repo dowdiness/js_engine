@@ -208,7 +208,7 @@ test "production control trace completes finalizer before loop advance" {
 ///|
 fn expect_control_lifecycle_step_parity(
   source : String,
-  steps : Int,
+  steps : Int64,
   expected : Double,
 ) -> Unit raise {
   let exact_interp = Interpreter::new()
@@ -228,7 +228,7 @@ fn expect_control_lifecycle_step_parity(
   inspect(exact.remaining_steps(), content="0")
   let short_interp = Interpreter::new()
   let short = ExecutionControl(
-    remaining_steps=steps - 1,
+    remaining_steps=steps - 1L,
     maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )

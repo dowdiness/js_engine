@@ -72,6 +72,18 @@ test "activation observation rejects an unacquired entry without release" {
 }
 
 ///|
+test "activation observation defers acquired rejection release" {
+  let events : Array[String] = []
+  let attempt = observe_activation_entry(
+    activation_observation_probe_port(events, true),
+  )
+  attempt.reject()
+  attempt.release_after_rejection()
+  json_inspect(events, content=["attempt", "rejected", "released"])
+  expect_invalid_activation_observation(() => attempt.release_after_rejection())
+}
+
+///|
 test "activation observation reports a denied attempt without issuing a token" {
   let events : Array[String] = []
   let observed : Result[ActivationEntryAttempt, Error] = Ok(

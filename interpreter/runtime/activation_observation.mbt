@@ -21,6 +21,7 @@ priv enum ActivationObservationEvent {
   AcceptActivationEntry
   RejectActivationEntry
   ReleaseObservedActivation
+  ReleaseRejectedActivation
 }
 
 ///|
@@ -48,6 +49,8 @@ fn reduce_activation_observation(
     (ActivationEntryAttempted, RejectActivationEntry) =>
       (ActivationEntryRejected, EmitActivationRejected)
     (ActivationEntryAccepted, ReleaseObservedActivation) =>
+      (ActivationReleased, EmitActivationReleased)
+    (ActivationEntryRejected, ReleaseRejectedActivation) =>
       (ActivationReleased, EmitActivationReleased)
     _ =>
       invalid_activation_observation_transition(
@@ -162,6 +165,28 @@ fn ActivationEntryAttempt::reject(
     _ =>
       invalid_activation_observation_transition(
         "reject entry produced an invalid observation decision",
+      )
+  }
+}
+
+///|
+// Setup rejection is distinct from denial: the entry observation may already
+// have acquired an activation unit. The shell records the rejected attempt,
+// restores its owned runtime state, and calls this method exactly once after
+// restoration so the release hook observes the restored state.
+fn ActivationEntryAttempt::release_after_rejection(
+  self : ActivationEntryAttempt,
+) -> Unit raise InvalidActivationObservationTransition {
+  let (next_phase, decision) = reduce_activation_observation(
+    self.phase.val,
+    ReleaseRejectedActivation,
+  )
+  self.phase.val = next_phase
+  match decision {
+    EmitActivationReleased => (self.hooks.released)()
+    _ =>
+      invalid_activation_observation_transition(
+        "rejected activation release produced an invalid observation decision",
       )
   }
 }
