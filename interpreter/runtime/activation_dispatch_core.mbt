@@ -641,6 +641,8 @@ fn snapshot_dispatch_continuation(
     DispatchCompleteThrow => DispatchCompleteThrow
     DispatchDeliverCallResult => DispatchDeliverCallResult
     DispatchApplyBinaryRight(binary) => DispatchApplyBinaryRight(binary)
+    DispatchApplyNumericBinaryRight(binary) =>
+      DispatchApplyNumericBinaryRight(binary)
     DispatchDeliverAccessorResult(accessor) =>
       DispatchDeliverAccessorResult(accessor)
     DispatchResolveProxyGetTrap(lookup) => DispatchResolveProxyGetTrap(lookup)
@@ -727,6 +729,7 @@ priv enum DispatchContinuation {
   DispatchCompleteThrow
   DispatchDeliverCallResult
   DispatchApplyBinaryRight(DispatchBinaryResume)
+  DispatchApplyNumericBinaryRight(DispatchBinaryResume)
   DispatchDeliverAccessorResult(DispatchPropertyGetResume)
   DispatchResolveProxyGetTrap(DispatchProxyGetTrapLookupResume)
   DispatchCheckProxyGetResult(DispatchProxyGetResume)
@@ -744,19 +747,25 @@ priv enum DispatchWork {
   DispatchStartProperty(DispatchPropertyGetResume, DispatchContinuation)
   DispatchExecuteProperty(DispatchPropertyGetResume)
   DispatchExecuteCatch(DispatchCatchResume, Error)
-  DispatchEnterNumericCatch(DispatchNumericCatchResume, Error)
   DispatchNormalizeFunctionControl(DispatchCompletion)
   DispatchResumeContinuation(DispatchContinuation, Value)
-  DispatchObserveExpressionStep(DispatchNumericExpressionObservation)
-  DispatchObserveStatementStep(DispatchNumericStatementObservation)
-  DispatchReadNumericParameter(DispatchParameterBindingToken)
-  DispatchReadNumericCatchBinding(DispatchNumericCatchBindingToken)
-  DispatchCaptureTrustedCallee(DispatchCalleeCaptureToken)
-  DispatchStartCapturedNumericCall(
+}
+
+///|
+#warnings("-unused_constructor")
+priv enum DispatchProductionWork {
+  DispatchNumericObserveExpressionStep(DispatchNumericExpressionObservation)
+  DispatchNumericObserveStatementStep(DispatchNumericStatementObservation)
+  DispatchNumericReadParameter(DispatchParameterBindingToken)
+  DispatchNumericEnterCatch(DispatchNumericCatchResume, Error)
+  DispatchNumericReadCatchBinding(DispatchNumericCatchBindingToken)
+  DispatchNumericCaptureTrustedCallee(DispatchCalleeCaptureToken)
+  DispatchNumericStartCapturedCall(
     DispatchCalleeCaptureToken,
     Double,
     @token.Loc
   )
+  DispatchNumericApplyBinaryRight(DispatchBinaryResume, Value)
 }
 
 ///|
@@ -790,6 +799,7 @@ priv enum DispatchSuspension {
 priv enum DispatchEffect {
   DispatchEnterActivation(DispatchActivationRequest)
   DispatchRun(DispatchWork)
+  DispatchRunProduction(DispatchProductionWork)
   DispatchReleaseActivation(DispatchActivationCleanup, DispatchCompletion)
   DispatchRestorePropertyScope(DispatchPropertyCleanup, DispatchCompletion)
   DispatchRollbackRejectedEntry(
@@ -1055,7 +1065,7 @@ fn schedule_dispatch_effect(
       }
       DispatchPendingActivationEntry(ticket, activation)
     }
-    DispatchRun(_) => DispatchPendingWork(ticket)
+    DispatchRun(_) | DispatchRunProduction(_) => DispatchPendingWork(ticket)
     DispatchReleaseActivation(_, completion) =>
       DispatchPendingActivationRelease(ticket, completion)
     DispatchRestorePropertyScope(_, completion) =>
@@ -1073,6 +1083,14 @@ fn schedule_dispatch_effect(
     ticket_cursor: next_cursor,
   }
   (next, DispatchPerform(ticket, effect))
+}
+
+///|
+fn schedule_dispatch_production_work(
+  state : ActivationDispatchState,
+  work : DispatchProductionWork,
+) -> (ActivationDispatchState, ActivationDispatchDecision) raise InvalidDispatchTransition {
+  schedule_dispatch_effect(state, DispatchRunProduction(work))
 }
 
 ///|
@@ -1178,7 +1196,7 @@ fn begin_dispatch_numeric_statement_observation(
   guard state.phase is DispatchReady else {
     invalid_dispatch_transition("numeric statement observation requires Ready")
   }
-  schedule_dispatch_effect(
+  schedule_dispatch_production_work(
     push_dispatch_frame(
       state,
       DispatchContinuationFrame(
@@ -1187,7 +1205,7 @@ fn begin_dispatch_numeric_statement_observation(
         ),
       ),
     ),
-    DispatchRun(DispatchObserveStatementStep(observation)),
+    DispatchNumericObserveStatementStep(observation),
   )
 }
 
@@ -1489,6 +1507,11 @@ fn route_dispatch_completion(
                   DispatchResumeDecision(next_state, decision) =>
                     return (next_state, decision)
                 }
+              (DispatchApplyNumericBinaryRight(binary), DispatchNormal(value)) =>
+                return schedule_dispatch_production_work(
+                  popped,
+                  DispatchNumericApplyBinaryRight(binary, value),
+                )
               (DispatchContinueNumericStatement(numeric), DispatchNormal(value)) =>
                 match numeric {
                   DispatchAfterNumericCatchEntry(catch_state) =>
@@ -1614,7 +1637,7 @@ fn route_dispatch_completion(
           DispatchNumericCatchFrame(catch_work) =>
             match routed {
               DispatchThrow(value) =>
-                return schedule_dispatch_effect(
+                return schedule_dispatch_production_work(
                   push_dispatch_frame(
                     popped,
                     DispatchContinuationFrame(
@@ -1623,7 +1646,7 @@ fn route_dispatch_completion(
                       ),
                     ),
                   ),
-                  DispatchRun(DispatchEnterNumericCatch(catch_work, value)),
+                  DispatchNumericEnterCatch(catch_work, value),
                 )
               other => routed = other
             }
