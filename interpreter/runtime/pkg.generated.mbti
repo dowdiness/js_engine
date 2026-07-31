@@ -838,7 +838,7 @@ pub struct PreparedExecutorActivation {
   env : Environment
   args : Array[Value]
 }
-pub fn PreparedExecutorActivation::arguments(Self) -> Array[Value]
+pub fn PreparedExecutorActivation::arguments(Self) -> ArrayView[Value]
 pub fn PreparedExecutorActivation::context(Self) -> ExecContext
 pub fn PreparedExecutorActivation::environment(Self) -> Environment
 

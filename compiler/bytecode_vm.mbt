@@ -30,7 +30,7 @@ fn BytecodeFrame::BytecodeFrame(
   func_def : BytecodeFunction,
   env : Environment,
   ctx : ExecContext,
-  direct_args? : Array[Value]? = None,
+  direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeFrame raise Error {
   let locals = Array::make(func_def.local_names.length(), Value::Undefined)
   match direct_args {
@@ -94,7 +94,7 @@ fn start_bytecode_frame(
   ctx : ExecContext,
   env : Environment,
   func_def : BytecodeFunction,
-  direct_args : Array[Value]?,
+  direct_args : ArrayView[Value]?,
 ) -> BytecodeFrame raise Error {
   let frame = BytecodeFrame(func_def, env, ctx, direct_args~)
   // needs_own_env=false implies all four hoist calls are provably no-ops.
@@ -458,7 +458,7 @@ fn run_bytecode_function(
   ctx : ExecContext,
   env : Environment,
   func_def : BytecodeFunction,
-  direct_args? : Array[Value]? = None,
+  direct_args? : ArrayView[Value]? = None,
 ) -> BytecodeRunResult raise Error {
   let frame = start_bytecode_frame(interp, ctx, env, func_def, direct_args)
   match frame.step_bytecode(interp) {

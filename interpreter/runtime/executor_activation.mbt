@@ -61,8 +61,8 @@ pub fn PreparedExecutorActivation::environment(
 ///|
 pub fn PreparedExecutorActivation::arguments(
   self : PreparedExecutorActivation,
-) -> Array[Value] {
-  self.args.copy()
+) -> ArrayView[Value] {
+  self.args.view()
 }
 
 ///|

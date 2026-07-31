@@ -63,11 +63,10 @@ impl ExecutorCode for ExecutorActivationTestCode with fn start(
     Number(value) => inspect(value, content="1")
     _ => fail("runtime must bind parameters before executor entry")
   }
-  let first_arguments = prepared.arguments()
-  first_arguments[0] = Number(99.0)
-  match prepared.arguments() {
+  let arguments : ArrayView[Value] = prepared.arguments()
+  match arguments {
     [Number(value)] => inspect(value, content="1")
-    _ => fail("executor arguments must be returned as a defensive copy")
+    _ => fail("executor arguments must be exposed through an immutable view")
   }
   ExecutorActivationTestFrame(self.steps) as &ExecutorActivationFrame
 }
@@ -171,12 +170,14 @@ test "executor function retains an inspectable neutral payload before entry" {
     Object({ callable: Some(ExecutorCallable(executable)), .. }) => {
       inspect(starts.val, content="0")
       inspect(steps.val, content="0")
+      let source_args = [Number(1.0)]
       let prepared = interp.prepare_executor_callable_call(
         executable,
         function,
         Undefined,
-        [Number(1.0)],
+        source_args,
       )
+      source_args[0] = Number(99.0)
       let _ = executable.start_frame(interp, prepared)
       inspect(starts.val, content="1")
       inspect(steps.val, content="0")
