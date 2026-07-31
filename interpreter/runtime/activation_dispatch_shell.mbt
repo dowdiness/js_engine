@@ -172,6 +172,7 @@ fn DispatchProxyCallRealmCleanup::DispatchProxyCallRealmCleanup(
 ///|
 priv enum DispatchShellCleanupResources {
   DispatchProgramRealmCleanup(FunctionRealmProtos)
+  DispatchControlRootRealmCleanup(FunctionRealmProtos)
   DispatchNumericRootRealmCleanup(FunctionRealmProtos)
   DispatchGetterRootRealmCleanup(FunctionRealmProtos)
   DispatchProxyRootRealmCleanup(FunctionRealmProtos)
@@ -195,6 +196,11 @@ priv struct ProgramRealmCleanup {
 priv struct PrimitiveProgramDispatchShell {
   interp : Interpreter
   cleanup_stack : Array[ProgramRealmCleanup]
+  mut control_root_preflight : ControlLifecyclePreflight?
+  mut control_registry : TrustedControlLifecycleProgram?
+  mut control_phase : ControlLifecyclePhase
+  mut control_try_env : Environment?
+  mut control_finalizer_env : Environment?
   numeric_root_preflight : NumericRecursionPreflight?
   mut numeric_registry : TrustedNumericRecursionRegistry?
   getter_root_preflight : GetterRecursionPreflight?
@@ -210,6 +216,7 @@ priv struct PrimitiveProgramDispatchShell {
 ///|
 fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   interp : Interpreter,
+  control_root_preflight? : ControlLifecyclePreflight? = None,
   numeric_root_preflight? : NumericRecursionPreflight? = None,
   numeric_registry? : TrustedNumericRecursionRegistry? = None,
   getter_root_preflight? : GetterRecursionPreflight? = None,
@@ -223,6 +230,11 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   {
     interp,
     cleanup_stack: [],
+    control_root_preflight,
+    control_registry: None,
+    control_phase: ControlAwaitRoot,
+    control_try_env: None,
+    control_finalizer_env: None,
     numeric_root_preflight,
     numeric_registry,
     getter_root_preflight,
@@ -437,6 +449,21 @@ fn PrimitiveProgramDispatchShell::push_program_cleanup(
     id,
     owner,
     resources: DispatchProgramRealmCleanup(previous_realm_protos),
+    capabilities: None,
+    observation: None,
+  })
+}
+
+///|
+fn PrimitiveProgramDispatchShell::push_control_root_cleanup(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  previous_realm_protos : FunctionRealmProtos,
+) -> Unit {
+  self.cleanup_stack.push({
+    id,
+    owner: AcceptedProgram,
+    resources: DispatchControlRootRealmCleanup(previous_realm_protos),
     capabilities: None,
     observation: None,
   })
@@ -723,6 +750,12 @@ fn PrimitiveProgramDispatchShell::restore_cleanup_record(
   match cleanup.resources {
     DispatchProgramRealmCleanup(previous_realm_protos) =>
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    DispatchControlRootRealmCleanup(previous_realm_protos) => {
+      self.control_registry = None
+      self.control_try_env = None
+      self.control_finalizer_env = None
+      apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
+    }
     DispatchNumericRootRealmCleanup(previous_realm_protos) => {
       self.numeric_registry = None
       apply_active_realm_protos(self.interp.realm_state, previous_realm_protos)
@@ -851,6 +884,19 @@ fn PrimitiveProgramDispatchShell::restore_all_cleanup(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::require_control_registry(
+  self : PrimitiveProgramDispatchShell,
+) -> TrustedControlLifecycleProgram raise InvalidActivationDispatchShell {
+  match self.control_registry {
+    Some(registry) => registry
+    None =>
+      invalid_activation_dispatch_shell(
+        "control lifecycle registry is unavailable",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::require_numeric_registry(
   self : PrimitiveProgramDispatchShell,
 ) -> TrustedNumericRecursionRegistry raise InvalidActivationDispatchShell {
@@ -915,6 +961,22 @@ fn PrimitiveProgramDispatchShell::require_numeric_capabilities(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::complete_control_root_preparation(
+  self : PrimitiveProgramDispatchShell,
+  id : Int,
+  cursor : DispatchStatementCursor,
+  previous_realm_protos : FunctionRealmProtos,
+  preflight : ControlLifecyclePreflight,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  self.push_control_root_cleanup(id, previous_realm_protos)
+  self.control_registry = Some(
+    seal_control_lifecycle_program(preflight, cursor.stmts, cursor.env),
+  )
+  self.control_phase = ControlAwaitRoot
+  DispatchProgramAccepted(DispatchActivationCleanup(id))
+}
+
+///|
 fn PrimitiveProgramDispatchShell::complete_numeric_root_preparation(
   self : PrimitiveProgramDispatchShell,
   id : Int,
@@ -971,23 +1033,28 @@ fn PrimitiveProgramDispatchShell::enter_program(
     Ok(_) =>
       match
         (
+          self.control_root_preflight,
           self.numeric_root_preflight,
           self.getter_root_preflight,
           self.proxy_root_preflight,
         ) {
-        (Some(preflight), None, None) =>
+        (Some(preflight), None, None, None) =>
+          self.complete_control_root_preparation(
+            id, cursor, previous_realm_protos, preflight,
+          )
+        (None, Some(preflight), None, None) =>
           self.complete_numeric_root_preparation(
             id, cursor, previous_realm_protos, preflight,
           )
-        (None, Some(_), None) => {
+        (None, None, Some(_), None) => {
           self.push_getter_root_cleanup(id, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
-        (None, None, Some(_)) => {
+        (None, None, None, Some(_)) => {
           self.push_proxy_root_cleanup(id, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
-        (None, None, None) => {
+        (None, None, None, None) => {
           self.push_program_cleanup(id, AcceptedProgram, previous_realm_protos)
           DispatchProgramAccepted(DispatchActivationCleanup(id))
         }
@@ -1854,10 +1921,216 @@ fn PrimitiveProgramDispatchShell::execute_proxy_body_statement(
 }
 
 ///|
+fn control_lifecycle_child_env_matches(
+  actual : Environment,
+  expected : Environment?,
+  root : Environment,
+) -> Bool {
+  match (expected, actual.parent) {
+    (Some(owned), Some(parent)) =>
+      physical_equal(actual, owned) &&
+      physical_equal(parent, root) &&
+      !actual.is_var_scope &&
+      actual.with_object is None
+    _ => false
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::advance_control_phase(
+  self : PrimitiveProgramDispatchShell,
+  plan : ControlLifecyclePlan,
+  role : ControlLifecycleRole,
+) -> Unit raise InvalidActivationDispatchShell {
+  match advance_control_lifecycle_phase(plan, self.control_phase, role) {
+    Some(next) => self.control_phase = next
+    None =>
+      invalid_activation_dispatch_shell(
+        "control lifecycle effect arrived outside its admitted order",
+      )
+  }
+}
+
+///|
+fn PrimitiveProgramDispatchShell::execute_control_statement(
+  self : PrimitiveProgramDispatchShell,
+  step : DispatchStatementStep,
+  registry : TrustedControlLifecycleProgram,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let plan = registry.plan
+  guard step.ctx.current_generator is None && !step.ctx.strict else {
+    invalid_activation_dispatch_shell(
+      "control lifecycle statement lost its root execution context",
+    )
+  }
+  match self.control_phase {
+    ControlAwaitRoot => {
+      guard step.index == 0 &&
+        physical_equal(step.env, registry.root_env) &&
+        control_lifecycle_root_matches(plan, step.stmt) else {
+        invalid_activation_dispatch_shell(
+          "control lifecycle root no longer matches exact admission",
+        )
+      }
+      match self.observe_managed_execution_steps(1) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      self.advance_control_phase(plan, ControlRootRole)
+      match (plan, step.stmt) {
+        (ControlLabelledBreak(expected), @ast.LabeledStmt(actual, body, _)) => {
+          guard actual == expected else {
+            invalid_activation_dispatch_shell(
+              "control lifecycle label changed after admission",
+            )
+          }
+          DispatchWorkSuspended(
+            DispatchSuspendLabel(
+              actual,
+              DispatchStatementCursor(ctx=step.ctx, stmts=[body], env=step.env),
+            ),
+          )
+        }
+        (ControlBoundedContinue, @ast.DoWhileStmt(body, condition, _)) => {
+          let loop_state = DispatchLoopResume(
+            kind=DispatchDoWhileLoop(body, condition, step.env),
+            ctx=step.ctx,
+            label=None,
+            completion=Undefined,
+          )
+          DispatchWorkSuspended(
+            DispatchSuspendLoopIteration(
+              loop_state,
+              DispatchStatementCursor(ctx=step.ctx, stmts=[body], env=step.env),
+            ),
+          )
+        }
+        _ =>
+          invalid_activation_dispatch_shell(
+            "control lifecycle root lost its admitted representation",
+          )
+      }
+    }
+    ControlAwaitProtected => {
+      guard step.index == 0 &&
+        physical_equal(step.env, registry.root_env) &&
+        control_lifecycle_try_matches(plan, step.stmt) else {
+        invalid_activation_dispatch_shell(
+          "control lifecycle protected statement lost its provenance",
+        )
+      }
+      match self.observe_managed_execution_steps(1) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      guard step.stmt
+        is @ast.TryCatchStmt(try_body, None, None, Some(finalizer_body), _) else {
+        invalid_activation_dispatch_shell(
+          "control lifecycle protected statement lost its exact shape",
+        )
+      }
+      let try_env = Environment::new(parent=Some(step.env))
+      let finalizer_env = Environment::new(parent=Some(step.env))
+      self.control_try_env = Some(try_env)
+      self.control_finalizer_env = Some(finalizer_env)
+      self.advance_control_phase(plan, ControlProtectedRole)
+      DispatchWorkSuspended(
+        DispatchSuspendProtected(
+          DispatchStatementCursor(ctx=step.ctx, stmts=try_body, env=try_env),
+          None,
+          Some(
+            DispatchStatementCursor(
+              ctx=step.ctx,
+              stmts=finalizer_body,
+              env=finalizer_env,
+            ),
+          ),
+        ),
+      )
+    }
+    ControlAwaitAbrupt => {
+      guard step.index == 0 &&
+        control_lifecycle_child_env_matches(
+          step.env,
+          self.control_try_env,
+          registry.root_env,
+        ) &&
+        control_lifecycle_abrupt_matches(plan, step.stmt) else {
+        invalid_activation_dispatch_shell(
+          "control lifecycle abrupt statement lost its try ownership",
+        )
+      }
+      match self.observe_managed_execution_steps(1) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
+      self.control_try_env = None
+      self.advance_control_phase(plan, ControlAbruptRole)
+      match (plan, step.stmt) {
+        (ControlLabelledBreak(expected), @ast.BreakStmt(Some(actual), _)) if actual ==
+          expected => DispatchWorkCompleted(DispatchBreak(None, Some(actual)))
+        (ControlBoundedContinue, @ast.ContinueStmt(None, _)) =>
+          DispatchWorkCompleted(DispatchContinue(None, None))
+        _ =>
+          invalid_activation_dispatch_shell(
+            "control lifecycle abrupt statement changed after validation",
+          )
+      }
+    }
+    ControlAwaitFinalizer => {
+      guard step.index == 0 &&
+        control_lifecycle_child_env_matches(
+          step.env,
+          self.control_finalizer_env,
+          registry.root_env,
+        ) &&
+        control_lifecycle_finalizer_matches(plan, step.stmt) else {
+        invalid_activation_dispatch_shell(
+          "control lifecycle finalizer lost its owned child environment",
+        )
+      }
+      let result = self.execute_statement_with_legacy_adapter(step)
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) => {
+          self.control_finalizer_env = None
+          self.advance_control_phase(plan, ControlFinalizerRole)
+        }
+        _ => ()
+      }
+      result
+    }
+    ControlAwaitTerminal => {
+      guard step.index == 1 &&
+        physical_equal(step.env, registry.root_env) &&
+        control_lifecycle_terminal_matches(plan, step.stmt) else {
+        invalid_activation_dispatch_shell(
+          "control lifecycle terminal statement lost its root provenance",
+        )
+      }
+      let result = self.execute_statement_with_legacy_adapter(step)
+      match result {
+        DispatchWorkCompleted(DispatchNormal(_)) =>
+          self.advance_control_phase(plan, ControlTerminalRole)
+        _ => ()
+      }
+      result
+    }
+    ControlAwaitLoopAdvance | ControlFinished =>
+      invalid_activation_dispatch_shell(
+        "control lifecycle received a statement outside its admitted phase",
+      )
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::execute_managed_statement(
   self : PrimitiveProgramDispatchShell,
   step : DispatchStatementStep,
 ) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  match self.control_registry {
+    Some(registry) => return self.execute_control_statement(step, registry)
+    None => ()
+  }
   if activation_dispatch_leaf_statement_is_admissible(step.stmt) {
     return self.execute_statement_with_legacy_adapter(step)
   }
@@ -1886,6 +2159,43 @@ fn PrimitiveProgramDispatchShell::execute_managed_statement(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::advance_control_loop(
+  self : PrimitiveProgramDispatchShell,
+  loop_state : DispatchLoopResume,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  let registry = self.require_control_registry()
+  guard registry.plan is ControlBoundedContinue &&
+    self.control_phase is ControlAwaitLoopAdvance &&
+    loop_state.label is None &&
+    loop_state.ctx.current_generator is None &&
+    !loop_state.ctx.strict &&
+    loop_state.kind is DispatchDoWhileLoop(body, condition, env) &&
+    physical_equal(env, registry.root_env) &&
+    control_lifecycle_try_matches(registry.plan, body) &&
+    condition is @ast.BoolLit(false, _) else {
+    invalid_activation_dispatch_shell(
+      "control lifecycle loop advance no longer matches exact admission",
+    )
+  }
+  let condition_result : Result[Value, Error] = Ok(
+    self.interp.eval_expr(loop_state.ctx, condition, env),
+  ) catch {
+    error => Err(error)
+  }
+  match condition_result {
+    Ok(Bool(false)) => {
+      self.advance_control_phase(registry.plan, ControlLoopAdvanceRole)
+      DispatchWorkCompleted(DispatchNormal(loop_state.completion))
+    }
+    Ok(_) =>
+      invalid_activation_dispatch_shell(
+        "control lifecycle false condition changed during evaluation",
+      )
+    Err(error) => DispatchWorkCompleted(dispatch_work_error_completion(error))
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::perform_effect(
   self : PrimitiveProgramDispatchShell,
   effect : DispatchEffect,
@@ -1897,6 +2207,8 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.enter_managed_call(request)
     DispatchRun(DispatchExecuteStatement(step)) =>
       self.execute_managed_statement(step)
+    DispatchRun(DispatchAdvanceLoop(loop_state)) =>
+      self.advance_control_loop(loop_state)
     DispatchRun(DispatchObserveExpressionStep(observation)) => {
       ignore(observation)
       self.observe_numeric_execution_step()
@@ -1980,6 +2292,14 @@ fn PrimitiveProgramDispatchShell::drive_root_program(
   stmts : Array[@ast.Stmt],
   ctx : ExecContext,
 ) -> DispatchCompletion raise Error {
+  match self.control_root_preflight {
+    Some(_) => ()
+    None =>
+      match preflight_control_lifecycle_program(stmts) {
+        Some(preflight) => self.control_root_preflight = Some(preflight)
+        None => ()
+      }
+  }
   try {
     let completion = self.drive(
       DispatchProgramActivation(
@@ -2033,6 +2353,37 @@ fn Interpreter::run_activation_dispatch_leaf_program(
     )
   }
   PrimitiveProgramDispatchShell(self).drive_root_program(stmts, ctx)
+}
+
+///|
+fn Interpreter::run_activation_dispatch_control_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  preflight : ControlLifecyclePreflight,
+) -> DispatchCompletion raise Error {
+  let shell = PrimitiveProgramDispatchShell(
+    self,
+    control_root_preflight=Some(preflight),
+  )
+  let completion = shell.drive_root_program(stmts, ctx)
+  guard shell.control_registry is None &&
+    shell.control_try_env is None &&
+    shell.control_finalizer_env is None else {
+    invalid_activation_dispatch_shell(
+      "control lifecycle ownership outlived its root activation",
+    )
+  }
+  match completion {
+    DispatchNormal(_) =>
+      if !(shell.control_phase is ControlFinished) {
+        invalid_activation_dispatch_shell(
+          "normal control lifecycle completion skipped an admitted phase",
+        )
+      }
+    _ => ()
+  }
+  completion
 }
 
 ///|

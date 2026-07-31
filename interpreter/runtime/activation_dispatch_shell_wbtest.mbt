@@ -109,6 +109,264 @@ test "structural shell advances bounded continue after its closed finalizer" {
 }
 
 ///|
+fn control_lifecycle_trace_effect(
+  shell : PrimitiveProgramDispatchShell,
+  effect : DispatchEffect,
+) -> String raise {
+  match effect {
+    DispatchEnterActivation(DispatchProgramActivation(_)) => "enter"
+    DispatchRun(DispatchExecuteStatement(_)) =>
+      match shell.control_phase {
+        ControlAwaitRoot => "root"
+        ControlAwaitProtected => "protected"
+        ControlAwaitAbrupt => "abrupt"
+        ControlAwaitFinalizer => "finalizer"
+        ControlAwaitTerminal => "terminal"
+        ControlAwaitLoopAdvance | ControlFinished =>
+          fail("statement arrived outside an admitted control phase")
+      }
+    DispatchRun(DispatchAdvanceLoop(_)) => "advance-loop"
+    DispatchReleaseActivation(_, _) => "release"
+    _ => fail("unexpected effect in exact control lifecycle trace")
+  }
+}
+
+///|
+fn trace_control_lifecycle_program(
+  source : String,
+) -> (DispatchCompletion, Array[String]) raise Error {
+  let interp = Interpreter::new()
+  let stmts = dispatch_shell_test_program(source)
+  let preflight = match preflight_control_lifecycle_program(stmts) {
+    Some(found) => found
+    None => fail("expected an exact control lifecycle preflight")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    control_root_preflight=Some(preflight),
+  )
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let mut state = ActivationDispatchState::ActivationDispatchState()
+  let mut event = DispatchStart(
+    DispatchProgramActivation(
+      DispatchStatementCursor(ctx~, stmts~, env=interp.global),
+    ),
+  )
+  let trace : Array[String] = []
+  for ;; {
+    let (next_state, decision) = reduce_activation_dispatch(state, event)
+    state = next_state
+    match decision {
+      DispatchFinish(completion) => return (completion, trace)
+      DispatchPerform(ticket, effect) => {
+        let tag = control_lifecycle_trace_effect(shell, effect)
+        trace.push(tag)
+        let result = shell.perform_effect(effect)
+        if tag == "protected" {
+          guard shell.control_try_env is Some(try_env) &&
+            shell.control_finalizer_env is Some(finalizer_env) &&
+            !physical_equal(try_env, finalizer_env) else {
+            fail("try and finally must own distinct child environments")
+          }
+        }
+        event = DispatchEffectCompleted(ticket, result)
+      }
+    }
+  }
+  fail("control lifecycle trace did not terminate")
+}
+
+///|
+test "production control trace completes finalizer before label consumption" {
+  let (completion, trace) = trace_control_lifecycle_program(
+    "outer: try { break outer; } finally { 1; } 9;",
+  )
+  match completion {
+    DispatchNormal(Number(value)) => inspect(value, content="9")
+    _ => fail("expected normal labelled-break completion")
+  }
+  json_inspect(trace, content=[
+    "enter", "root", "protected", "abrupt", "finalizer", "terminal", "release",
+  ])
+}
+
+///|
+test "production control trace completes finalizer before loop advance" {
+  let (completion, trace) = trace_control_lifecycle_program(
+    "do try { continue; } finally { 2; } while(false); 8;",
+  )
+  match completion {
+    DispatchNormal(Number(value)) => inspect(value, content="8")
+    _ => fail("expected normal bounded-continue completion")
+  }
+  json_inspect(trace, content=[
+    "enter", "root", "protected", "abrupt", "finalizer", "advance-loop", "terminal",
+    "release",
+  ])
+}
+
+///|
+fn expect_control_lifecycle_step_parity(
+  source : String,
+  steps : Int,
+  expected : Double,
+) -> Unit raise {
+  let exact_interp = Interpreter::new()
+  let exact = ExecutionControl(
+    remaining_steps=steps,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let exact_completion = exact_interp.with_execution_control(exact, () => {
+    dispatch_shell_test_structural_completion(exact_interp, source)
+  })
+  match exact_completion {
+    DispatchNormal(Number(value)) =>
+      inspect(value, content=expected.to_string())
+    _ => fail("exact control step budget must complete normally")
+  }
+  inspect(exact.remaining_steps(), content="0")
+  let short_interp = Interpreter::new()
+  let short = ExecutionControl(
+    remaining_steps=steps - 1,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let short_completion = short_interp.with_execution_control(short, () => {
+    dispatch_shell_test_structural_completion(short_interp, source)
+  })
+  guard short_completion
+    is DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit)) else {
+    fail("one-short control step budget must stop before completion")
+  }
+  inspect(short.remaining_steps(), content="0")
+}
+
+///|
+test "structural shell preserves exact statement and condition step counts" {
+  expect_control_lifecycle_step_parity(
+    "outer: try { break outer; } finally { 1; } 9;", 7, 9.0,
+  )
+  expect_control_lifecycle_step_parity(
+    "do try { continue; } finally { 2; } while(false); 8;", 8, 8.0,
+  )
+}
+
+///|
+test "control preflight rejects cross-plan and source drift before execution" {
+  let admitted = dispatch_shell_test_program(
+    "outer: try { break outer; } finally { 1; } 9;",
+  )
+  let preflight = match preflight_control_lifecycle_program(admitted) {
+    Some(found) => found
+    None => fail("expected labelled-break preflight")
+  }
+  for
+    source in [
+      "outer: try { break outer; } finally { 2; } 9;", "do try { continue; } finally { 2; } while(false); 8;",
+    ] {
+    let interp = Interpreter::new()
+    dispatch_shell_test_install_realm_sentinel(interp, 17)
+    let control = ExecutionControl(
+      remaining_steps=1,
+      maximum_active_depth=1,
+      interruption=ExecutionInterruptionRequest(),
+    )
+    let outcome = interp.with_execution_control(control, () => {
+      let stmts = dispatch_shell_test_program(source)
+      let shell = PrimitiveProgramDispatchShell(
+        interp,
+        control_root_preflight=Some(preflight),
+      )
+      let ctx : ExecContext = { strict: false, current_generator: None }
+      try {
+        ignore(shell.drive_root_program(stmts, ctx))
+        "accepted"
+      } catch {
+        InvalidActivationDispatchShell(_) => "rejected"
+        _ => "wrong error"
+      }
+    })
+    inspect(outcome, content="rejected")
+    inspect(control.remaining_steps(), content="1")
+    dispatch_shell_test_expect_realm_sentinel(interp, 17)
+  }
+}
+
+///|
+test "control shell rejects a direct invalid loop advance without evaluation" {
+  let interp = Interpreter::new()
+  dispatch_shell_test_install_realm_sentinel(interp, 18)
+  let stmts = dispatch_shell_test_program(
+    "do try { continue; } finally { 2; } while(false); 8;",
+  )
+  let preflight = match preflight_control_lifecycle_program(stmts) {
+    Some(found) => found
+    None => fail("expected bounded-continue preflight")
+  }
+  guard stmts[0] is @ast.DoWhileStmt(body, _, _) else {
+    fail("expected a do-while root")
+  }
+  let shell = PrimitiveProgramDispatchShell(
+    interp,
+    control_root_preflight=Some(preflight),
+  )
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let cleanup = match
+    shell.perform_effect(
+      DispatchEnterActivation(
+        DispatchProgramActivation(
+          DispatchStatementCursor(ctx~, stmts~, env=interp.global),
+        ),
+      ),
+    ) {
+    DispatchProgramAccepted(found) => found
+    _ => fail("expected accepted control root ownership")
+  }
+  shell.control_phase = ControlAwaitLoopAdvance
+  let control = ExecutionControl(
+    remaining_steps=1,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = interp.with_execution_control(control, () => {
+    try {
+      ignore(
+        shell.perform_effect(
+          DispatchRun(
+            DispatchAdvanceLoop(
+              DispatchLoopResume(
+                kind=DispatchDoWhileLoop(
+                  body,
+                  @ast.BoolLit(true, @token.Loc::default()),
+                  interp.global,
+                ),
+                ctx~,
+                label=None,
+                completion=Undefined,
+              ),
+            ),
+          ),
+        ),
+      )
+      "accepted"
+    } catch {
+      InvalidActivationDispatchShell(_) => "rejected"
+    }
+  })
+  inspect(outcome, content="rejected")
+  inspect(control.remaining_steps(), content="1")
+  match
+    shell.perform_effect(
+      DispatchReleaseActivation(cleanup, DispatchNormal(Undefined)),
+    ) {
+    DispatchCleanupCompleted => ()
+    _ => fail("expected control cleanup release")
+  }
+  dispatch_shell_test_expect_realm_sentinel(interp, 18)
+}
+
+///|
 test "leaf program shell preserves a raw guest throw until root translation" {
   let interp = Interpreter::new()
   dispatch_shell_test_install_realm_sentinel(interp, 2)
