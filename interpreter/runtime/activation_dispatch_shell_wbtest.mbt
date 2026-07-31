@@ -115,7 +115,7 @@ fn control_lifecycle_trace_effect(
 ) -> String raise {
   match effect {
     DispatchEnterActivation(DispatchProgramActivation(_)) => "enter"
-    DispatchRun(DispatchExecuteStatement(_)) =>
+    DispatchRunProduction(DispatchExecuteStatement(_)) =>
       match shell.control_phase {
         ControlAwaitRoot => "root"
         ControlAwaitProtected => "protected"
@@ -125,7 +125,7 @@ fn control_lifecycle_trace_effect(
         ControlAwaitLoopAdvance | ControlFinished =>
           fail("statement arrived outside an admitted control phase")
       }
-    DispatchRun(DispatchAdvanceLoop(_)) => "advance-loop"
+    DispatchRunProduction(DispatchAdvanceLoop(_)) => "advance-loop"
     DispatchReleaseActivation(_, _) => "release"
     _ => fail("unexpected effect in exact control lifecycle trace")
   }
@@ -149,7 +149,7 @@ fn trace_control_lifecycle_program(
   let mut state = ActivationDispatchState::ActivationDispatchState()
   let mut event = DispatchStart(
     DispatchProgramActivation(
-      DispatchStatementCursor(ctx~, stmts~, env=interp.global),
+      DispatchStatementCursor(ctx~, stmts~, env=interp.global, production=true),
     ),
   )
   let trace : Array[String] = []
@@ -208,7 +208,7 @@ test "production control trace completes finalizer before loop advance" {
 ///|
 fn expect_control_lifecycle_step_parity(
   source : String,
-  steps : Int,
+  steps : Int64,
   expected : Double,
 ) -> Unit raise {
   let exact_interp = Interpreter::new()
@@ -228,7 +228,7 @@ fn expect_control_lifecycle_step_parity(
   inspect(exact.remaining_steps(), content="0")
   let short_interp = Interpreter::new()
   let short = ExecutionControl(
-    remaining_steps=steps - 1,
+    remaining_steps=steps - 1L,
     maximum_active_depth=1,
     interruption=ExecutionInterruptionRequest(),
   )
@@ -388,7 +388,7 @@ test "control shell rejects a direct invalid loop advance without evaluation" {
     try {
       ignore(
         shell.perform_effect(
-          DispatchRun(
+          DispatchRunProduction(
             DispatchAdvanceLoop(
               DispatchLoopResume(
                 kind=DispatchDoWhileLoop(
@@ -419,6 +419,33 @@ test "control shell rejects a direct invalid loop advance without evaluation" {
     _ => fail("expected control cleanup release")
   }
   dispatch_shell_test_expect_realm_sentinel(interp, 18)
+}
+
+///|
+test "production shell rejects generic managed work" {
+  let interp = Interpreter::new()
+  let shell = PrimitiveProgramDispatchShell(interp)
+  let binary = DispatchBinaryResume(
+    op=@ast.Add,
+    left=Number(1.0),
+    loc=@token.Loc::default(),
+  )
+  let outcome = try {
+    ignore(
+      shell.perform_effect(
+        DispatchRun(
+          DispatchResumeContinuation(
+            DispatchApplyBinaryRight(binary),
+            Number(2.0),
+          ),
+        ),
+      ),
+    )
+    "accepted"
+  } catch {
+    InvalidActivationDispatchShell(_) => "rejected"
+  }
+  inspect(outcome, content="rejected")
 }
 
 ///|

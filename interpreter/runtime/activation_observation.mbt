@@ -21,6 +21,7 @@ priv enum ActivationObservationEvent {
   AcceptActivationEntry
   RejectActivationEntry
   ReleaseObservedActivation
+  ReleaseRejectedActivation
 }
 
 ///|
@@ -49,6 +50,8 @@ fn reduce_activation_observation(
       (ActivationEntryRejected, EmitActivationRejected)
     (ActivationEntryAccepted, ReleaseObservedActivation) =>
       (ActivationReleased, EmitActivationReleased)
+    (ActivationEntryRejected, ReleaseRejectedActivation) =>
+      (ActivationReleased, EmitActivationReleased)
     _ =>
       invalid_activation_observation_transition(
         "activation observation capability is stale or out of order",
@@ -58,6 +61,7 @@ fn reduce_activation_observation(
 
 ///|
 priv struct ActivationObservationAttemptHooks {
+  acquired : () -> Unit
   accepted : () -> Unit
   rejected : () -> Unit
   released : () -> Unit
@@ -65,11 +69,12 @@ priv struct ActivationObservationAttemptHooks {
 
 ///|
 fn ActivationObservationAttemptHooks::ActivationObservationAttemptHooks(
+  acquired? : () -> Unit = () => (),
   accepted~ : () -> Unit,
   rejected~ : () -> Unit,
   released~ : () -> Unit,
 ) -> ActivationObservationAttemptHooks {
-  { accepted, rejected, released }
+  { acquired, accepted, rejected, released }
 }
 
 ///|
@@ -124,6 +129,10 @@ fn observe_activation_entry(
       raise error
     }
   }
+  // A successful begin_entry owns one unit even when later setup rejects the
+  // entry. Outcome hooks remain reserved for setup acceptance or rejection;
+  // release pairs with this acquisition after owned cleanup.
+  (hooks.acquired)()
   ActivationEntryAttempt(hooks)
 }
 
@@ -162,6 +171,28 @@ fn ActivationEntryAttempt::reject(
     _ =>
       invalid_activation_observation_transition(
         "reject entry produced an invalid observation decision",
+      )
+  }
+}
+
+///|
+// Setup rejection is distinct from denial: the entry observation may already
+// have acquired an activation unit. The shell records the rejected attempt,
+// restores its owned runtime state, and calls this method exactly once after
+// restoration so the release hook observes the restored state.
+fn ActivationEntryAttempt::release_after_rejection(
+  self : ActivationEntryAttempt,
+) -> Unit raise InvalidActivationObservationTransition {
+  let (next_phase, decision) = reduce_activation_observation(
+    self.phase.val,
+    ReleaseRejectedActivation,
+  )
+  self.phase.val = next_phase
+  match decision {
+    EmitActivationReleased => (self.hooks.released)()
+    _ =>
+      invalid_activation_observation_transition(
+        "rejected activation release produced an invalid observation decision",
       )
   }
 }

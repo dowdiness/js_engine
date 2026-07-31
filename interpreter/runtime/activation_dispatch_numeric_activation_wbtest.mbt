@@ -398,6 +398,8 @@ test "numeric setup rejection retains state until exactly one rollback" {
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
   let callee = registry.require_named(interp, "f")
+  let observation_probe = DispatchObservationProbe(observed_interp=Some(interp))
+  let observation = observe_activation_entry(observation_probe.port())
   let id = shell.reserve_program_cleanup_id()
   let cleared_realm = begin_cleared_active_callee_realm(interp.realm_state)
   let active_realm = begin_active_callee_realm_value(interp.realm_state, callee)
@@ -407,8 +409,6 @@ test "numeric setup rejection retains state until exactly one rollback" {
     active_realm~,
     parameter_gate~,
   )
-  let observation_probe = DispatchObservationProbe()
-  let observation = observe_activation_entry(observation_probe.port())
   let setup_error : Error = @errors.SyntaxError(message="numeric setup failed")
   let rejected = shell.complete_numeric_call_preparation(
     id,
@@ -429,6 +429,7 @@ test "numeric setup rejection retains state until exactly one rollback" {
   }
   inspect(shell.cleanup_stack.length(), content="1")
   inspect(observation_probe.attempts, content="1")
+  inspect(observation_probe.acquired, content="1")
   inspect(observation_probe.accepted, content="0")
   inspect(observation_probe.rejected, content="1")
   inspect(observation_probe.released, content="0")
@@ -457,8 +458,17 @@ test "numeric setup rejection retains state until exactly one rollback" {
     _ => fail("expected rejected numeric rollback")
   }
   inspect(shell.cleanup_stack.length(), content="0")
+  inspect(observation_probe.acquired, content="1")
   inspect(observation_probe.rejected, content="1")
-  inspect(observation_probe.released, content="0")
+  inspect(observation_probe.released, content="1")
+  inspect(observation_probe.active, content="0")
+  inspect(interp.in_nonarrow_param_default_eval, content="true")
+  inspect(interp.param_default_eval_var_conflicts is Some(_), content="true")
+  inspect(
+    active_realm_protos(interp.realm_state).object_proto is Some(_),
+    content="true",
+  )
+  inspect(observation_probe.release_state_restored[0], content="true")
   dispatch_shell_test_expect_realm_sentinel(interp, 36)
   inspect(interp.in_nonarrow_param_default_eval, content="true")
   match interp.param_default_eval_var_conflicts {

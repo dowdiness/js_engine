@@ -8,6 +8,7 @@ priv struct DispatchObservationProbe {
   deny_first : Bool
   observed_interp : Interpreter?
   mut attempts : Int
+  mut acquired : Int
   mut accepted : Int
   mut rejected : Int
   mut released : Int
@@ -27,6 +28,7 @@ fn DispatchObservationProbe::DispatchObservationProbe(
     deny_first,
     observed_interp,
     attempts: 0,
+    acquired: 0,
     accepted: 0,
     rejected: 0,
     released: 0,
@@ -62,13 +64,14 @@ fn DispatchObservationProbe::port(
         None => None
       }
       ActivationObservationAttemptHooks(
-        accepted=() => {
-          self.accepted += 1
+        acquired=() => {
+          self.acquired += 1
           self.active += 1
           if self.active > self.maximum_active {
             self.maximum_active = self.active
           }
         },
+        accepted=() => self.accepted += 1,
         rejected=() => self.rejected += 1,
         released=() => {
           self.released += 1
@@ -196,6 +199,7 @@ fn expect_nested_dispatch_observation_balanced(
   probe : DispatchObservationProbe,
 ) -> Unit raise {
   inspect(probe.attempts, content="257")
+  inspect(probe.acquired, content="257")
   inspect(probe.accepted, content="257")
   inspect(probe.rejected, content="0")
   inspect(probe.released, content="257")
@@ -321,6 +325,7 @@ test "runtime abrupt completion releases every observed numeric call" {
     _ => fail("expected the execution limit to leave the managed cycle")
   }
   inspect(probe.accepted > 0, content="true")
+  inspect(probe.acquired == probe.released, content="true")
   inspect(probe.accepted == probe.released, content="true")
   inspect(probe.rejected, content="0")
   inspect(probe.active, content="0")
@@ -461,6 +466,7 @@ test "denied managed activation installs no call ownership" {
   }
   inspect(failure, content="entry denied")
   inspect(probe.attempts, content="1")
+  inspect(probe.acquired, content="0")
   inspect(probe.accepted, content="0")
   inspect(probe.rejected, content="0")
   inspect(probe.released, content="0")
@@ -497,6 +503,7 @@ test "cleanup generation exhaustion precedes activation observation" {
   }
   inspect(failure, content="cleanup generation is exhausted")
   inspect(probe.attempts, content="0")
+  inspect(probe.acquired, content="0")
   inspect(probe.accepted, content="0")
   inspect(probe.rejected, content="0")
   inspect(probe.released, content="0")
@@ -565,6 +572,7 @@ test "restore all cleanup releases nested observations after state restoration" 
   shell.restore_all_cleanup()
 
   inspect(probe.attempts, content="2")
+  inspect(probe.acquired, content="2")
   inspect(probe.accepted, content="2")
   inspect(probe.rejected, content="0")
   inspect(probe.released, content="2")
