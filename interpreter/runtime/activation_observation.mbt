@@ -61,6 +61,7 @@ fn reduce_activation_observation(
 
 ///|
 priv struct ActivationObservationAttemptHooks {
+  acquired : () -> Unit
   accepted : () -> Unit
   rejected : () -> Unit
   released : () -> Unit
@@ -68,11 +69,12 @@ priv struct ActivationObservationAttemptHooks {
 
 ///|
 fn ActivationObservationAttemptHooks::ActivationObservationAttemptHooks(
+  acquired? : () -> Unit = () => (),
   accepted~ : () -> Unit,
   rejected~ : () -> Unit,
   released~ : () -> Unit,
 ) -> ActivationObservationAttemptHooks {
-  { accepted, rejected, released }
+  { acquired, accepted, rejected, released }
 }
 
 ///|
@@ -127,6 +129,10 @@ fn observe_activation_entry(
       raise error
     }
   }
+  // A successful begin_entry owns one unit even when later setup rejects the
+  // entry. Outcome hooks remain reserved for setup acceptance or rejection;
+  // release pairs with this acquisition after owned cleanup.
+  (hooks.acquired)()
   ActivationEntryAttempt(hooks)
 }
 

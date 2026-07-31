@@ -429,6 +429,7 @@ test "numeric setup rejection retains state until exactly one rollback" {
   }
   inspect(shell.cleanup_stack.length(), content="1")
   inspect(observation_probe.attempts, content="1")
+  inspect(observation_probe.acquired, content="1")
   inspect(observation_probe.accepted, content="0")
   inspect(observation_probe.rejected, content="1")
   inspect(observation_probe.released, content="0")
@@ -457,8 +458,10 @@ test "numeric setup rejection retains state until exactly one rollback" {
     _ => fail("expected rejected numeric rollback")
   }
   inspect(shell.cleanup_stack.length(), content="0")
+  inspect(observation_probe.acquired, content="1")
   inspect(observation_probe.rejected, content="1")
   inspect(observation_probe.released, content="1")
+  inspect(observation_probe.active, content="0")
   inspect(interp.in_nonarrow_param_default_eval, content="true")
   inspect(interp.param_default_eval_var_conflicts is Some(_), content="true")
   inspect(

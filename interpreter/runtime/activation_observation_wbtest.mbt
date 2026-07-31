@@ -15,6 +15,7 @@ fn activation_observation_probe_port(
         raise ActivationObservationProbeError("entry rejected")
       }
       ActivationObservationAttemptHooks(
+        acquired=() => events.push("acquired"),
         accepted=() => events.push("accepted"),
         rejected=() => events.push("rejected"),
         released=() => events.push("released"),
@@ -43,17 +44,17 @@ test "activation observation accepts then releases exactly once" {
   let attempt = observe_activation_entry(
     activation_observation_probe_port(events, true),
   )
-  json_inspect(events, content=["attempt"])
+  json_inspect(events, content=["attempt", "acquired"])
   let token = attempt.accept()
-  json_inspect(events, content=["attempt", "accepted"])
+  json_inspect(events, content=["attempt", "acquired", "accepted"])
   token.release()
-  json_inspect(events, content=["attempt", "accepted", "released"])
+  json_inspect(events, content=["attempt", "acquired", "accepted", "released"])
   expect_invalid_activation_observation(() => token.release())
   expect_invalid_activation_observation(() => {
     let _ = attempt.accept()
   })
   expect_invalid_activation_observation(() => attempt.reject())
-  json_inspect(events, content=["attempt", "accepted", "released"])
+  json_inspect(events, content=["attempt", "acquired", "accepted", "released"])
 }
 
 ///|
@@ -63,12 +64,12 @@ test "activation observation rejects an unacquired entry without release" {
     activation_observation_probe_port(events, true),
   )
   attempt.reject()
-  json_inspect(events, content=["attempt", "rejected"])
+  json_inspect(events, content=["attempt", "acquired", "rejected"])
   expect_invalid_activation_observation(() => attempt.reject())
   expect_invalid_activation_observation(() => {
     let _ = attempt.accept()
   })
-  json_inspect(events, content=["attempt", "rejected"])
+  json_inspect(events, content=["attempt", "acquired", "rejected"])
 }
 
 ///|
@@ -79,7 +80,7 @@ test "activation observation defers acquired rejection release" {
   )
   attempt.reject()
   attempt.release_after_rejection()
-  json_inspect(events, content=["attempt", "rejected", "released"])
+  json_inspect(events, content=["attempt", "acquired", "rejected", "released"])
   expect_invalid_activation_observation(() => attempt.release_after_rejection())
 }
 
