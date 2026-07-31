@@ -9,6 +9,7 @@ priv enum ControlLifecyclePlan {
 }
 
 ///|
+#warnings("-unused_field")
 priv struct ControlLifecyclePreflight {
   plan : ControlLifecyclePlan
 }
@@ -21,12 +22,14 @@ fn ControlLifecyclePreflight::ControlLifecyclePreflight(
 }
 
 ///|
+#warnings("-unused_field")
 priv struct TrustedControlLifecycleProgram {
   plan : ControlLifecyclePlan
   root_env : Environment
 }
 
 ///|
+#warnings("-unused_value")
 fn TrustedControlLifecycleProgram::TrustedControlLifecycleProgram(
   plan~ : ControlLifecyclePlan,
   root_env~ : Environment,
@@ -35,6 +38,7 @@ fn TrustedControlLifecycleProgram::TrustedControlLifecycleProgram(
 }
 
 ///|
+#warnings("-unused_constructor")
 priv enum ControlLifecyclePhase {
   ControlAwaitRoot
   ControlAwaitProtected
@@ -46,6 +50,7 @@ priv enum ControlLifecyclePhase {
 }
 
 ///|
+#warnings("-unused_constructor")
 priv enum ControlLifecycleRole {
   ControlRootRole
   ControlProtectedRole
@@ -100,6 +105,7 @@ fn control_lifecycle_root_matches(
 }
 
 ///|
+#warnings("-unused_value")
 fn control_lifecycle_abrupt_matches(
   plan : ControlLifecyclePlan,
   stmt : @ast.Stmt,
@@ -113,6 +119,7 @@ fn control_lifecycle_abrupt_matches(
 }
 
 ///|
+#warnings("-unused_value")
 fn control_lifecycle_finalizer_matches(
   plan : ControlLifecyclePlan,
   stmt : @ast.Stmt,
@@ -174,6 +181,7 @@ fn classify_control_lifecycle_program(
 }
 
 ///|
+#warnings("-unused_value")
 fn preflight_control_lifecycle_program(
   stmts : Array[@ast.Stmt],
 ) -> ControlLifecyclePreflight? {
@@ -183,6 +191,7 @@ fn preflight_control_lifecycle_program(
 }
 
 ///|
+#warnings("-unused_value")
 fn seal_control_lifecycle_program(
   preflight : ControlLifecyclePreflight,
   stmts : Array[@ast.Stmt],
@@ -198,6 +207,7 @@ fn seal_control_lifecycle_program(
 }
 
 ///|
+#warnings("-unused_value")
 fn advance_control_lifecycle_phase(
   plan : ControlLifecyclePlan,
   phase : ControlLifecyclePhase,
