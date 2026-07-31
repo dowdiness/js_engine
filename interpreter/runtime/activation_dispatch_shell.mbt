@@ -2473,6 +2473,27 @@ fn Interpreter::run_activation_dispatch_proxy_program(
 }
 
 ///|
+fn Interpreter::run_activation_dispatch_root_program(
+  self : Interpreter,
+  stmts : Array[@ast.Stmt],
+  ctx : ExecContext,
+  root : ActivationDispatchManagedRoot,
+) -> DispatchCompletion raise Error {
+  match root {
+    ActivationDispatchLeafRoot =>
+      self.run_activation_dispatch_leaf_program(stmts, ctx)
+    ActivationDispatchControlRoot(preflight) =>
+      self.run_activation_dispatch_control_program(stmts, ctx, preflight)
+    ActivationDispatchNumericRoot(preflight) =>
+      self.run_activation_dispatch_numeric_program(stmts, ctx, preflight)
+    ActivationDispatchGetterRoot(preflight) =>
+      self.run_activation_dispatch_getter_program(stmts, ctx, preflight)
+    ActivationDispatchProxyRoot(preflight) =>
+      self.run_activation_dispatch_proxy_program(stmts, ctx, preflight)
+  }
+}
+
+///|
 fn activation_dispatch_root_value(
   completion : DispatchCompletion,
 ) -> Value raise Error {

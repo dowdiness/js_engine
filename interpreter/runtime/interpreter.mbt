@@ -670,77 +670,28 @@ pub fn Interpreter::run(
   let strict = @static_semantics.has_use_strict(stmts)
   let ctx : ExecContext = { strict, current_generator: None }
   try {
-    let result = if activation_dispatch_leaf_program_is_admissible(stmts) {
-      activation_dispatch_root_value(
-        self.run_activation_dispatch_leaf_program(stmts, ctx),
-      )
-    } else {
-      let control_preflight = preflight_control_lifecycle_program(stmts)
-      match control_preflight {
-        Some(preflight) =>
-          activation_dispatch_root_value(
-            self.run_activation_dispatch_control_program(stmts, ctx, preflight),
-          )
-        None => {
-          let numeric_preflight = self.preflight_dispatchable_numeric_recursion_program(
-            stmts,
-          )
-          match numeric_preflight {
-            Some(preflight) =>
-              activation_dispatch_root_value(
-                self.run_activation_dispatch_numeric_program(
-                  stmts, ctx, preflight,
-                ),
-              )
-            None => {
-              let getter_preflight = self.preflight_dispatchable_getter_recursion_program(
-                stmts,
-              )
-              match getter_preflight {
-                Some(preflight) =>
-                  activation_dispatch_root_value(
-                    self.run_activation_dispatch_getter_program(
-                      stmts, ctx, preflight,
-                    ),
-                  )
-                None => {
-                  let proxy_preflight = self.preflight_dispatchable_proxy_get_recursion_program(
-                    stmts,
-                  )
-                  match proxy_preflight {
-                    Some(preflight) =>
-                      activation_dispatch_root_value(
-                        self.run_activation_dispatch_proxy_program(
-                          stmts, ctx, preflight,
-                        ),
-                      )
-                    None =>
-                      with_cleared_active_callee_realm(self.realm_state, () => {
-                        self.prepare_root_program_execution(
-                          stmts,
-                          self.global,
-                          strict,
-                        )
-                        let mut last : Value = Undefined
-                        for stmt in stmts {
-                          match self.exec_stmt(ctx, stmt, self.global) {
-                            Normal(v) => last = v
-                            ReturnSignal(_) =>
-                              raise @errors.SyntaxError(
-                                message="return statement outside of function",
-                              )
-                            sig => raise_if_break_continue(sig)
-                          }
-                        }
-                        last
-                      })
-                  }
-                }
-              }
+    let admission = self.classify_activation_dispatch_root_program(stmts)
+    let result = match admission {
+      ActivationDispatchManagedRoot(root) =>
+        activation_dispatch_root_value(
+          self.run_activation_dispatch_root_program(stmts, ctx, root),
+        )
+      ActivationDispatchLegacyRoot =>
+        with_cleared_active_callee_realm(self.realm_state, () => {
+          self.prepare_root_program_execution(stmts, self.global, strict)
+          let mut last : Value = Undefined
+          for stmt in stmts {
+            match self.exec_stmt(ctx, stmt, self.global) {
+              Normal(v) => last = v
+              ReturnSignal(_) =>
+                raise @errors.SyntaxError(
+                  message="return statement outside of function",
+                )
+              sig => raise_if_break_continue(sig)
             }
           }
-        }
-      }
+          last
+        })
     }
     result
   } catch {
