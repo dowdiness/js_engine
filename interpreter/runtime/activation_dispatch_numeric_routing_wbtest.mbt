@@ -79,6 +79,42 @@ fn numeric_routing_test_base_condition_state(
 }
 
 ///|
+test "numeric routing emits production work for root observations" {
+  let plan = numeric_routing_test_plan()
+  let initial = ActivationDispatchState::ActivationDispatchState()
+  let (waiting, enter_decision) = reduce_activation_dispatch(
+    initial,
+    DispatchStart(dispatch_test_program_request(2760)),
+  )
+  let entry_ticket = match enter_decision {
+    DispatchPerform(ticket, DispatchEnterActivation(_)) => ticket
+    _ => fail("expected numeric root entry")
+  }
+  let start = numeric_recursion_program_dispatch_start(
+    plan,
+    DispatchCalleeCaptureToken(id=2761),
+  )
+  let (_, declaration_decision) = reduce_activation_dispatch(
+    waiting,
+    DispatchEffectCompleted(
+      entry_ticket,
+      DispatchNumericProgramAccepted(DispatchActivationCleanup(2761), start),
+    ),
+  )
+  match declaration_decision {
+    DispatchPerform(
+      _,
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
+          DispatchNumericObserveRootDeclaration(0)
+        )
+      )
+    ) => ()
+    _ => fail("expected numeric root observation to use production work")
+  }
+}
+
+///|
 test "numeric routing root observes statements before the admitted call" {
   let plan = numeric_routing_test_plan()
   let initial = ActivationDispatchState::ActivationDispatchState()
@@ -104,8 +140,8 @@ test "numeric routing root observes statements before the admitted call" {
   let declaration_ticket = match declaration_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveRootDeclaration(index)
         )
       )
@@ -125,8 +161,8 @@ test "numeric routing root observes statements before the admitted call" {
   let root_statement_ticket = match root_statement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveRootExpressionStatement
         )
       )
@@ -143,8 +179,8 @@ test "numeric routing root observes statements before the admitted call" {
   match call_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveCall(loc))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(DispatchNumericObserveCall(loc))
       )
     ) => inspect(loc == plan.root_call_loc, content="true")
     _ => fail("expected the admitted root call observation")
@@ -177,8 +213,10 @@ test "numeric routing installs protected frames only after the root try observat
   let declaration_ticket = match declaration_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(DispatchNumericObserveRootDeclaration(0))
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
+          DispatchNumericObserveRootDeclaration(0)
+        )
       )
     ) => ticket
     _ => fail("expected protected root declaration observation")
@@ -193,8 +231,10 @@ test "numeric routing installs protected frames only after the root try observat
   let try_ticket = match try_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(DispatchNumericObserveRootTryStatement)
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
+          DispatchNumericObserveRootTryStatement
+        )
       )
     ) => ticket
     _ => fail("expected the outer TryCatchStmt observation")
@@ -223,8 +263,8 @@ test "numeric routing installs protected frames only after the root try observat
   match inner_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveProtectedStatement(
             DispatchNumericTryBody,
             DispatchNumericThrowStatement
@@ -268,8 +308,10 @@ test "numeric routing installs a function finalizer before evaluating its protec
   let try_ticket = match try_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(DispatchNumericObserveFunctionTryStatement)
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
+          DispatchNumericObserveFunctionTryStatement
+        )
       )
     ) => ticket
     _ => fail("expected the admitted function TryCatchStmt observation")
@@ -299,8 +341,8 @@ test "numeric routing installs a function finalizer before evaluating its protec
   let return_ticket = match return_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveProtectedStatement(
             DispatchNumericTryBody,
             DispatchNumericReturnStatement
@@ -336,8 +378,8 @@ test "numeric routing installs a function finalizer before evaluating its protec
   match expression_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveBinary(DispatchNumericAdd, _)
         )
       )
@@ -406,7 +448,9 @@ test "numeric routing catch rethrow is replaced by an abrupt finalizer" {
   let catch_ticket = match catch_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(DispatchEnterNumericCatch(found, JsException(Number(value))))
+      DispatchRunProduction(
+        DispatchNumericEnterCatch(found, JsException(Number(value)))
+      )
     ) => {
       inspect(found.token.id, content="2730")
       inspect(value, content="256")
@@ -424,8 +468,8 @@ test "numeric routing catch rethrow is replaced by an abrupt finalizer" {
   let catch_statement_ticket = match catch_statement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveProtectedStatement(
             DispatchNumericCatchBody,
             DispatchNumericThrowStatement
@@ -445,8 +489,10 @@ test "numeric routing catch rethrow is replaced by an abrupt finalizer" {
   let binding_observation_ticket = match binding_observation_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveCatchBinding(found))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveCatchBinding(found)
+        )
       )
     ) => {
       inspect(found.id, content="2730")
@@ -462,7 +508,10 @@ test "numeric routing catch rethrow is replaced by an abrupt finalizer" {
     ),
   )
   let binding_read_ticket = match binding_read_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchReadNumericCatchBinding(found))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericReadCatchBinding(found))
+    ) => {
       inspect(found.id, content="2730")
       ticket
     }
@@ -478,8 +527,8 @@ test "numeric routing catch rethrow is replaced by an abrupt finalizer" {
   let finalizer_statement_ticket = match finalizer_statement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveProtectedStatement(
             DispatchNumericFinalizerBody,
             DispatchNumericThrowStatement
@@ -499,8 +548,10 @@ test "numeric routing catch rethrow is replaced by an abrupt finalizer" {
   let finalizer_value_ticket = match finalizer_value_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => {
       inspect(value, content="7")
@@ -571,8 +622,8 @@ test "numeric routing runtime abrupt skips catch and crosses a normal finalizer"
   let statement_ticket = match statement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveProtectedStatement(
             DispatchNumericFinalizerBody,
             DispatchNumericExpressionStatement
@@ -592,8 +643,10 @@ test "numeric routing runtime abrupt skips catch and crosses a normal finalizer"
   let value_ticket = match value_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => {
       inspect(value, content="0")
@@ -648,8 +701,8 @@ test "numeric routing mutual root observes both declarations in source order" {
   let first_ticket = match first_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveRootDeclaration(index)
         )
       )
@@ -669,8 +722,8 @@ test "numeric routing mutual root observes both declarations in source order" {
   match second_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchObserveStatementStep(
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
           DispatchNumericObserveRootDeclaration(index)
         )
       )
@@ -705,8 +758,8 @@ test "numeric routing call observes IfStmt before its base condition" {
   let if_ticket = match if_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(DispatchNumericObserveIfStatement)
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(DispatchNumericObserveIfStatement)
       )
     ) => ticket
     _ => fail("expected the numeric IfStmt observation")
@@ -721,8 +774,8 @@ test "numeric routing call observes IfStmt before its base condition" {
   match condition_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveBinary(DispatchNumericStrictEqual, loc)
         )
       )
@@ -743,8 +796,10 @@ test "numeric routing base condition observes ReturnStmt before its expression" 
   let base_statement_ticket = match base_statement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(DispatchNumericObserveReturnStatement)
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
+          DispatchNumericObserveReturnStatement
+        )
       )
     ) => ticket
     _ => fail("expected the base ReturnStmt observation")
@@ -759,8 +814,10 @@ test "numeric routing base condition observes ReturnStmt before its expression" 
   match base_expression_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => inspect(value, content="0")
     _ => fail("expected the numeric base result")
@@ -772,8 +829,10 @@ test "numeric routing base condition observes ReturnStmt before its expression" 
   let recursive_statement_ticket = match recursive_statement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(DispatchNumericObserveReturnStatement)
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(
+          DispatchNumericObserveReturnStatement
+        )
       )
     ) => ticket
     _ => fail("expected the recursive ReturnStmt observation")
@@ -788,8 +847,8 @@ test "numeric routing base condition observes ReturnStmt before its expression" 
   match recursive_expression_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveBinary(DispatchNumericAdd, loc)
         )
       )
@@ -877,8 +936,8 @@ test "numeric routing abrupt statement observation releases exactly once" {
   let statement_ticket = match statement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveStatementStep(DispatchNumericObserveIfStatement)
+      DispatchRunProduction(
+        DispatchNumericObserveStatementStep(DispatchNumericObserveIfStatement)
       )
     ) => ticket
     _ => fail("expected the numeric IfStmt observation")

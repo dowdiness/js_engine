@@ -36,8 +36,8 @@ test "numeric root expression observes callee before its argument" {
   let call_ticket = match call_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveCall(loc))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(DispatchNumericObserveCall(loc))
       )
     ) => {
       inspect(loc.line, content="1")
@@ -55,8 +55,8 @@ test "numeric root expression observes callee before its argument" {
   let callee_ticket = match callee_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveTrustedCallee(found)
         )
       )
@@ -74,7 +74,10 @@ test "numeric root expression observes callee before its argument" {
     ),
   )
   let capture_ticket = match capture_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchCaptureTrustedCallee(found))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericCaptureTrustedCallee(found))
+    ) => {
       inspect(found.id, content="1900")
       ticket
     }
@@ -90,8 +93,10 @@ test "numeric root expression observes callee before its argument" {
   let argument_ticket = match argument_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => {
       inspect(value, content="256")
@@ -109,7 +114,7 @@ test "numeric root expression observes callee before its argument" {
   match start_decision {
     DispatchPerform(
       _,
-      DispatchRun(DispatchStartCapturedNumericCall(found, value, loc))
+      DispatchRunProduction(DispatchNumericStartCapturedCall(found, value, loc))
     ) => {
       inspect(found.id, content="1900")
       inspect(value, content="256")
@@ -143,8 +148,8 @@ test "numeric base condition reads its parameter only after observation" {
   let binary_ticket = match binary_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveBinary(DispatchNumericStrictEqual, loc)
         )
       )
@@ -164,8 +169,10 @@ test "numeric base condition reads its parameter only after observation" {
   let parameter_ticket = match parameter_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveParameter(found))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveParameter(found)
+        )
       )
     ) => {
       inspect(found.id, content="2000")
@@ -181,7 +188,10 @@ test "numeric base condition reads its parameter only after observation" {
     ),
   )
   let read_ticket = match read_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchReadNumericParameter(found))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericReadParameter(found))
+    ) => {
       inspect(found.id, content="2000")
       ticket
     }
@@ -197,8 +207,10 @@ test "numeric base condition reads its parameter only after observation" {
   let zero_ticket = match zero_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => {
       inspect(value, content="0")
@@ -216,11 +228,8 @@ test "numeric base condition reads its parameter only after observation" {
   match apply_decision {
     DispatchPerform(
       _,
-      DispatchRun(
-        DispatchResumeContinuation(
-          DispatchApplyBinaryRight(binary),
-          Number(right)
-        )
+      DispatchRunProduction(
+        DispatchNumericApplyBinaryRight(binary, Number(right))
       )
     ) => {
       inspect(binary.op == @ast.EqEqEq, content="true")
@@ -254,8 +263,10 @@ test "numeric base result completes return only after literal observation" {
   let observation_ticket = match observation_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => {
       inspect(value, content="0")
@@ -311,8 +322,8 @@ test "numeric recursive result preserves source order across child activation" {
   let add_observation_ticket = match add_observation_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveBinary(DispatchNumericAdd, loc)
         )
       )
@@ -333,8 +344,10 @@ test "numeric recursive result preserves source order across child activation" {
   let increment_ticket = match increment_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => {
       trace.push("observe:1-left")
@@ -353,8 +366,8 @@ test "numeric recursive result preserves source order across child activation" {
   let call_ticket = match call_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveCall(loc))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(DispatchNumericObserveCall(loc))
       )
     ) => {
       trace.push("observe:call")
@@ -373,8 +386,8 @@ test "numeric recursive result preserves source order across child activation" {
   let callee_ticket = match callee_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveTrustedCallee(found)
         )
       )
@@ -393,7 +406,10 @@ test "numeric recursive result preserves source order across child activation" {
     ),
   )
   let capture_ticket = match capture_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchCaptureTrustedCallee(found))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericCaptureTrustedCallee(found))
+    ) => {
       trace.push("capture:callee")
       inspect(found.id, content="2201")
       ticket
@@ -410,8 +426,8 @@ test "numeric recursive result preserves source order across child activation" {
   let subtract_ticket = match subtract_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveBinary(DispatchNumericSubtract, loc)
         )
       )
@@ -432,8 +448,10 @@ test "numeric recursive result preserves source order across child activation" {
   let parameter_ticket = match parameter_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveParameter(found))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveParameter(found)
+        )
       )
     ) => {
       trace.push("observe:parameter")
@@ -450,7 +468,10 @@ test "numeric recursive result preserves source order across child activation" {
     ),
   )
   let read_ticket = match read_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchReadNumericParameter(found))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericReadParameter(found))
+    ) => {
       trace.push("read:parameter")
       inspect(found.id, content="2200")
       ticket
@@ -467,8 +488,10 @@ test "numeric recursive result preserves source order across child activation" {
   let decrement_ticket = match decrement_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(value))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveNumber(value)
+        )
       )
     ) => {
       trace.push("observe:1-right")
@@ -487,11 +510,8 @@ test "numeric recursive result preserves source order across child activation" {
   let subtract_apply_ticket = match subtract_apply_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchResumeContinuation(
-          DispatchApplyBinaryRight(binary),
-          Number(right)
-        )
+      DispatchRunProduction(
+        DispatchNumericApplyBinaryRight(binary, Number(right))
       )
     ) => {
       trace.push("apply:subtract")
@@ -516,7 +536,9 @@ test "numeric recursive result preserves source order across child activation" {
   let start_ticket = match start_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(DispatchStartCapturedNumericCall(found, argument, loc))
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(found, argument, loc)
+      )
     ) => {
       trace.push("start:call")
       inspect(found.id, content="2201")
@@ -596,11 +618,8 @@ test "numeric recursive result preserves source order across child activation" {
   let add_apply_ticket = match add_apply_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchResumeContinuation(
-          DispatchApplyBinaryRight(binary),
-          Number(right)
-        )
+      DispatchRunProduction(
+        DispatchNumericApplyBinaryRight(binary, Number(right))
       )
     ) => {
       trace.push("apply:add")
@@ -660,8 +679,8 @@ test "numeric expression work rejects invalid payloads and propagates abrupt obs
   let literal_ticket = match literal_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveNumber(0.0))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(DispatchNumericObserveNumber(0.0))
       )
     ) => ticket
     _ => fail("expected numeric literal observation")
@@ -710,8 +729,10 @@ test "numeric expression work rejects invalid payloads and propagates abrupt obs
   let parameter_ticket = match parameter_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(DispatchNumericObserveParameter(found))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
+          DispatchNumericObserveParameter(found)
+        )
       )
     ) => {
       inspect(found.id, content="2400")
@@ -727,7 +748,10 @@ test "numeric expression work rejects invalid payloads and propagates abrupt obs
     ),
   )
   let read_ticket = match read_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchReadNumericParameter(found))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericReadParameter(found))
+    ) => {
       inspect(found.id, content="2400")
       ticket
     }
@@ -763,7 +787,9 @@ test "numeric expression work rejects invalid payloads and propagates abrupt obs
   let call_ticket = match call_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(DispatchObserveExpressionStep(DispatchNumericObserveCall(_)))
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(DispatchNumericObserveCall(_))
+      )
     ) => ticket
     _ => fail("expected call observation")
   }
@@ -777,8 +803,8 @@ test "numeric expression work rejects invalid payloads and propagates abrupt obs
   let callee_ticket = match callee_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchObserveExpressionStep(
+      DispatchRunProduction(
+        DispatchNumericObserveExpressionStep(
           DispatchNumericObserveTrustedCallee(found)
         )
       )
@@ -796,7 +822,10 @@ test "numeric expression work rejects invalid payloads and propagates abrupt obs
     ),
   )
   let capture_ticket = match capture_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchCaptureTrustedCallee(found))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchNumericCaptureTrustedCallee(found))
+    ) => {
       inspect(found.id, content="2500")
       ticket
     }

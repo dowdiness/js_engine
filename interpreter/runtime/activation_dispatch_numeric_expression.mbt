@@ -263,7 +263,7 @@ fn begin_dispatch_numeric_expression(
     invalid_dispatch_transition("numeric expression dispatch requires Ready")
   }
   let retained = snapshot_dispatch_numeric_expression(expression)
-  schedule_dispatch_effect(
+  schedule_dispatch_production_work(
     push_dispatch_frame(
       state,
       DispatchContinuationFrame(
@@ -272,10 +272,8 @@ fn begin_dispatch_numeric_expression(
         ),
       ),
     ),
-    DispatchRun(
-      DispatchObserveExpressionStep(
-        dispatch_numeric_expression_observation(retained),
-      ),
+    DispatchNumericObserveExpressionStep(
+      dispatch_numeric_expression_observation(retained),
     ),
   )
 }
@@ -337,7 +335,7 @@ fn resume_dispatch_numeric_expression_effect(
             "numeric literal completion must remain in the routing loop",
           )
         DispatchNumericParameter(token) =>
-          schedule_dispatch_effect(
+          schedule_dispatch_production_work(
             push_dispatch_frame(
               state,
               DispatchContinuationFrame(
@@ -346,10 +344,10 @@ fn resume_dispatch_numeric_expression_effect(
                 ),
               ),
             ),
-            DispatchRun(DispatchReadNumericParameter(token)),
+            DispatchNumericReadParameter(token),
           )
         DispatchNumericCatchBinding(token) =>
-          schedule_dispatch_effect(
+          schedule_dispatch_production_work(
             push_dispatch_frame(
               state,
               DispatchContinuationFrame(
@@ -358,15 +356,15 @@ fn resume_dispatch_numeric_expression_effect(
                 ),
               ),
             ),
-            DispatchRun(DispatchReadNumericCatchBinding(token)),
+            DispatchNumericReadCatchBinding(token),
           )
         // SingleArgumentCall is the only producer of this internal node. It
         // pushes the matching NumericCallCallee frame before capture starts,
         // so the sentinel completion deliberately resumes that paired frame.
         DispatchNumericTrustedCallee(token) =>
-          schedule_dispatch_effect(
+          schedule_dispatch_production_work(
             state,
-            DispatchRun(DispatchCaptureTrustedCallee(token)),
+            DispatchNumericCaptureTrustedCallee(token),
           )
         DispatchNumericBinary(operator, left, right, loc) =>
           begin_dispatch_numeric_expression(
@@ -456,7 +454,7 @@ fn resume_dispatch_numeric_expression_effect(
         push_dispatch_frame(
           state,
           DispatchContinuationFrame(
-            DispatchApplyBinaryRight(
+            DispatchApplyNumericBinaryRight(
               DispatchBinaryResume(
                 op=dispatch_numeric_binary_operator_to_ast(operator),
                 left=value,
@@ -492,9 +490,9 @@ fn resume_dispatch_numeric_expression_effect(
           "numeric call argument completed with a non-number",
         )
       }
-      schedule_dispatch_effect(
+      schedule_dispatch_production_work(
         state,
-        DispatchRun(DispatchStartCapturedNumericCall(token, argument, loc)),
+        DispatchNumericStartCapturedCall(token, argument, loc),
       )
     }
   }

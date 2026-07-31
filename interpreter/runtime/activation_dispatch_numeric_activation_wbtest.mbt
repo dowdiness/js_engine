@@ -99,7 +99,7 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   )
   match
     shell.perform_effect(
-      DispatchRun(DispatchReadNumericParameter(start.parameter)),
+      DispatchRunProduction(DispatchNumericReadParameter(start.parameter)),
     ) {
     DispatchWorkCompleted(DispatchNormal(Number(value))) =>
       inspect(value, content="7")
@@ -116,7 +116,7 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   binding.value = Number(6.0)
   match
     shell.perform_effect(
-      DispatchRun(DispatchReadNumericParameter(start.parameter)),
+      DispatchRunProduction(DispatchNumericReadParameter(start.parameter)),
     ) {
     DispatchWorkCompleted(DispatchNormal(Number(value))) =>
       inspect(value, content="6")
@@ -125,8 +125,8 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
 
   let foreign_read = try {
     let _ = shell.perform_effect(
-      DispatchRun(
-        DispatchReadNumericParameter(
+      DispatchRunProduction(
+        DispatchNumericReadParameter(
           DispatchParameterBindingToken(id=start.parameter.id + 1),
         ),
       ),
@@ -138,8 +138,8 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   inspect(foreign_read, content="rejected")
   let before_capture = try {
     let _ = shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           start.recursive_callee,
           5.0,
           plan.entry.syntax.expression_recipe.recursive_call_loc,
@@ -153,14 +153,18 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   inspect(before_capture, content="rejected")
   match
     shell.perform_effect(
-      DispatchRun(DispatchCaptureTrustedCallee(start.recursive_callee)),
+      DispatchRunProduction(
+        DispatchNumericCaptureTrustedCallee(start.recursive_callee),
+      ),
     ) {
     DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
     _ => fail("expected trusted callee capture")
   }
   let duplicate_capture = try {
     let _ = shell.perform_effect(
-      DispatchRun(DispatchCaptureTrustedCallee(start.recursive_callee)),
+      DispatchRunProduction(
+        DispatchNumericCaptureTrustedCallee(start.recursive_callee),
+      ),
     )
     "accepted"
   } catch {
@@ -169,8 +173,8 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   inspect(duplicate_capture, content="rejected")
   let child_request = match
     shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           start.recursive_callee,
           5.0,
           plan.entry.syntax.expression_recipe.recursive_call_loc,
@@ -196,8 +200,8 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   )
   let duplicate_start = try {
     let _ = shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           start.recursive_callee,
           4.0,
           plan.entry.syntax.expression_recipe.recursive_call_loc,
@@ -212,7 +216,7 @@ test "numeric parameter and callee capabilities enforce live one-owner use" {
   numeric_activation_test_release(shell, cleanup, DispatchReturn(Number(7.0)))
   let stale_read = try {
     let _ = shell.perform_effect(
-      DispatchRun(DispatchReadNumericParameter(start.parameter)),
+      DispatchRunProduction(DispatchNumericReadParameter(start.parameter)),
     )
     "accepted"
   } catch {
@@ -240,12 +244,14 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
     plan.root_call_loc,
   )
   let _ = shell.perform_effect(
-    DispatchRun(DispatchCaptureTrustedCallee(parent_start.recursive_callee)),
+    DispatchRunProduction(
+      DispatchNumericCaptureTrustedCallee(parent_start.recursive_callee),
+    ),
   )
   let child_request = match
     shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           parent_start.recursive_callee,
           2.0,
           plan.entry.syntax.expression_recipe.recursive_call_loc,
@@ -272,7 +278,7 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
   )
   match
     shell.perform_effect(
-      DispatchRun(DispatchReadNumericParameter(child_start.parameter)),
+      DispatchRunProduction(DispatchNumericReadParameter(child_start.parameter)),
     ) {
     DispatchWorkCompleted(DispatchNormal(Number(value))) =>
       inspect(value, content="2")
@@ -280,7 +286,9 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
   }
   let shadowed_parent_token = try {
     let _ = shell.perform_effect(
-      DispatchRun(DispatchReadNumericParameter(parent_start.parameter)),
+      DispatchRunProduction(
+        DispatchNumericReadParameter(parent_start.parameter),
+      ),
     )
     "accepted"
   } catch {
@@ -300,12 +308,14 @@ test "mutual numeric calls retain child-to-parent LIFO ownership" {
   }
   inspect(out_of_order, content="rejected")
   let _ = shell.perform_effect(
-    DispatchRun(DispatchCaptureTrustedCallee(child_start.recursive_callee)),
+    DispatchRunProduction(
+      DispatchNumericCaptureTrustedCallee(child_start.recursive_callee),
+    ),
   )
   let grandchild_request = match
     shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           child_start.recursive_callee,
           1.0,
           peer.syntax.expression_recipe.recursive_call_loc,
@@ -538,12 +548,14 @@ test "numeric cleanup restores every nested activation after a shell failure" {
     plan.root_call_loc,
   )
   let _ = shell.perform_effect(
-    DispatchRun(DispatchCaptureTrustedCallee(parent_start.recursive_callee)),
+    DispatchRunProduction(
+      DispatchNumericCaptureTrustedCallee(parent_start.recursive_callee),
+    ),
   )
   let child_request = match
     shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           parent_start.recursive_callee,
           1.0,
           plan.entry.syntax.expression_recipe.recursive_call_loc,
@@ -582,8 +594,10 @@ test "numeric expression observation consumes exactly one execution step" {
   interp.with_execution_control(control, () => {
     match
       shell.perform_effect(
-        DispatchRun(
-          DispatchObserveExpressionStep(DispatchNumericObserveNumber(1.0)),
+        DispatchRunProduction(
+          DispatchNumericObserveExpressionStep(
+            DispatchNumericObserveNumber(1.0),
+          ),
         ),
       ) {
       DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
@@ -592,8 +606,10 @@ test "numeric expression observation consumes exactly one execution step" {
     inspect(control.remaining_steps(), content="0")
     match
       shell.perform_effect(
-        DispatchRun(
-          DispatchObserveExpressionStep(DispatchNumericObserveNumber(2.0)),
+        DispatchRunProduction(
+          DispatchNumericObserveExpressionStep(
+            DispatchNumericObserveNumber(2.0),
+          ),
         ),
       ) {
       DispatchWorkCompleted(
@@ -753,15 +769,15 @@ test "numeric root owns its registry and child activations in LIFO order" {
   inspect(shell.cleanup_stack.length(), content="1")
   match
     shell.perform_effect(
-      DispatchRun(DispatchCaptureTrustedCallee(root_capture)),
+      DispatchRunProduction(DispatchNumericCaptureTrustedCallee(root_capture)),
     ) {
     DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
     _ => fail("expected root callee capture")
   }
   let child_request = match
     shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           root_capture,
           plan.initial_argument,
           plan.root_call_loc,
@@ -836,8 +852,8 @@ test "numeric catch binding is materialized and consumed exactly once" {
   }
   match
     shell.perform_effect(
-      DispatchRun(
-        DispatchEnterNumericCatch(catch_state, JsException(Number(9.0))),
+      DispatchRunProduction(
+        DispatchNumericEnterCatch(catch_state, JsException(Number(9.0))),
       ),
     ) {
     DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
@@ -845,7 +861,7 @@ test "numeric catch binding is materialized and consumed exactly once" {
   }
   match
     shell.perform_effect(
-      DispatchRun(DispatchReadNumericCatchBinding(catch_state.token)),
+      DispatchRunProduction(DispatchNumericReadCatchBinding(catch_state.token)),
     ) {
     DispatchWorkCompleted(DispatchNormal(Number(value))) =>
       inspect(value, content="9")
@@ -853,7 +869,7 @@ test "numeric catch binding is materialized and consumed exactly once" {
   }
   let duplicate_read = try {
     let _ = shell.perform_effect(
-      DispatchRun(DispatchReadNumericCatchBinding(catch_state.token)),
+      DispatchRunProduction(DispatchNumericReadCatchBinding(catch_state.token)),
     )
     "accepted"
   } catch {
@@ -862,8 +878,8 @@ test "numeric catch binding is materialized and consumed exactly once" {
   inspect(duplicate_read, content="rejected")
   let duplicate_entry = try {
     let _ = shell.perform_effect(
-      DispatchRun(
-        DispatchEnterNumericCatch(catch_state, JsException(Number(10.0))),
+      DispatchRunProduction(
+        DispatchNumericEnterCatch(catch_state, JsException(Number(10.0))),
       ),
     )
     "accepted"
@@ -874,7 +890,7 @@ test "numeric catch binding is materialized and consumed exactly once" {
   numeric_activation_test_release(shell, cleanup, DispatchNormal(Number(9.0)))
   let stale_read = try {
     let _ = shell.perform_effect(
-      DispatchRun(DispatchReadNumericCatchBinding(catch_state.token)),
+      DispatchRunProduction(DispatchNumericReadCatchBinding(catch_state.token)),
     )
     "accepted"
   } catch {
@@ -906,8 +922,8 @@ test "numeric catch entry converts typed errors and disables bindingless reads" 
   }
   match
     typed_shell.perform_effect(
-      DispatchRun(
-        DispatchEnterNumericCatch(
+      DispatchRunProduction(
+        DispatchNumericEnterCatch(
           typed_catch,
           @errors.TypeError(message="typed catch"),
         ),
@@ -918,7 +934,7 @@ test "numeric catch entry converts typed errors and disables bindingless reads" 
   }
   match
     typed_shell.perform_effect(
-      DispatchRun(DispatchReadNumericCatchBinding(typed_catch.token)),
+      DispatchRunProduction(DispatchNumericReadCatchBinding(typed_catch.token)),
     ) {
     DispatchWorkCompleted(DispatchNormal(Object(error))) => {
       inspect(error.class_name, content="TypeError")
@@ -956,8 +972,8 @@ test "numeric catch entry converts typed errors and disables bindingless reads" 
   }
   match
     bindingless_shell.perform_effect(
-      DispatchRun(
-        DispatchEnterNumericCatch(bindingless_catch, JsException(Number(9.0))),
+      DispatchRunProduction(
+        DispatchNumericEnterCatch(bindingless_catch, JsException(Number(9.0))),
       ),
     ) {
     DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
@@ -965,7 +981,9 @@ test "numeric catch entry converts typed errors and disables bindingless reads" 
   }
   let bindingless_read = try {
     let _ = bindingless_shell.perform_effect(
-      DispatchRun(DispatchReadNumericCatchBinding(bindingless_catch.token)),
+      DispatchRunProduction(
+        DispatchNumericReadCatchBinding(bindingless_catch.token),
+      ),
     )
     "accepted"
   } catch {
@@ -1033,8 +1051,8 @@ test "numeric root cleanup retires armed and unread catch bindings" {
     unread_catch.token.id,
   )
   let _ = unread_shell.perform_effect(
-    DispatchRun(
-      DispatchEnterNumericCatch(unread_catch, JsException(Number(256.0))),
+    DispatchRunProduction(
+      DispatchNumericEnterCatch(unread_catch, JsException(Number(256.0))),
     ),
   )
   inspect(
@@ -1090,11 +1108,9 @@ fn numeric_activation_test_apply_binary(
 ) -> DispatchCompletion raise {
   match
     shell.perform_effect(
-      DispatchRun(
-        DispatchResumeContinuation(
-          DispatchApplyBinaryRight(
-            DispatchBinaryResume(op~, left~, loc=@token.Loc::default()),
-          ),
+      DispatchRunProduction(
+        DispatchNumericApplyBinaryRight(
+          DispatchBinaryResume(op~, left~, loc=@token.Loc::default()),
           right,
         ),
       ),
