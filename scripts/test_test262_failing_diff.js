@@ -177,6 +177,14 @@ test("the required workflow invokes the per-test regression policy", () => {
   assert.match(workflow, /run: scripts\/test262_regression_check\.sh/);
 });
 
+test("the Test262 shard keeps bounded RegExp headroom", () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "..", ".github", "workflows", "test262.yml"),
+    "utf8",
+  );
+  assert.match(workflow, /--threads 4 \\\n\s+--timeout 12 \\\n/);
+});
+
 test("the exact workflow gate fails regressions, passes clean results, and fails closed", () => {
   assert.equal(runGate("pass", "timeout").status, 1);
   assert.equal(runGate("pass", "pass").status, 0);
