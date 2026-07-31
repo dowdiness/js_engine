@@ -290,6 +290,7 @@ test "bounded loop termination is deterministic" {
 ///|
 test "public direct recursion rejects at the logical depth boundary" {
   let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = Some("caller.js")
   let parsed = @parser.parse(
     "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
   )
@@ -323,6 +324,10 @@ test "public direct recursion rejects at the logical depth boundary" {
     _ => "other-error"
   }
   inspect(outcome, content="RangeError:Maximum call stack size exceeded")
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("depth rejection must preserve the caller source identity")
+  }
   inspect(control.active_depth(), content="0")
 }
 
