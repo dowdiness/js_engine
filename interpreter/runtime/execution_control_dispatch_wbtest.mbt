@@ -286,3 +286,439 @@ test "bounded loop termination is deterministic" {
   inspect(first.1, content="2")
   inspect(second.1, content="2")
 }
+
+///|
+test "public direct recursion rejects at the logical depth boundary" {
+  let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = Some("caller.js")
+  let parsed = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  inspect(
+    interp.preflight_dispatchable_numeric_recursion_program(parsed.stmts)
+    is Some(_),
+    content="true",
+  )
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = try {
+    let value = run_dispatch_source(
+      interp, "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);", control,
+    )
+    match value {
+      Number(value) => "completed:" + value.to_string()
+      _ => "completed:other"
+    }
+  } catch {
+    JsException(Object(data)) => {
+      let message = match data.bag.properties.get("message") {
+        Some(String_(value)) => value
+        _ => "missing-message"
+      }
+      data.class_name + ":" + message
+    }
+    ExecutionControlError(ExecutionLimit) => "execution-limit"
+    _ => "other-error"
+  }
+  inspect(outcome, content="RangeError:Maximum call stack size exceeded")
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="caller.js")
+    None => fail("depth rejection must preserve the caller source identity")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public protected recursion catches the logical depth RangeError" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let result = run_dispatch_source(
+    interp,
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch(e){e;}",
+    control,
+  )
+  match result {
+    Object(data) => {
+      inspect(data.class_name, content="RangeError")
+      match data.bag.properties.get("message") {
+        Some(String_(message)) =>
+          inspect(message, content="Maximum call stack size exceeded")
+        _ => fail("expected the engine-owned depth-limit message")
+      }
+    }
+    _ => fail("expected catch to consume the logical depth RangeError")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public mutual recursion catches the logical depth RangeError" {
+  let interp = Interpreter::new()
+  let source = "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "try{throw f(256);}catch(e){e;}"
+  let parsed = @parser.parse(source)
+  inspect(
+    interp.preflight_dispatchable_numeric_recursion_program(parsed.stmts)
+    is Some(_),
+    content="true",
+  )
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let result = run_dispatch_source(interp, source, control)
+  match result {
+    Object(data) => {
+      inspect(data.class_name, content="RangeError")
+      match data.bag.properties.get("message") {
+        Some(String_(message)) =>
+          inspect(message, content="Maximum call stack size exceeded")
+        _ => fail("expected the engine-owned depth-limit message")
+      }
+    }
+    _ => fail("expected catch to consume the logical depth RangeError")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public mutual recursion below the logical limit preserves its value" {
+  let interp = Interpreter::new()
+  let source = "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(n){if(n===0)return 0;return 1+f(n-1);}" +
+    "f(8);"
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=9,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let result = run_dispatch_source(interp, source, control)
+  match result {
+    Number(value) => inspect(value, content="8")
+    _ => fail("expected finite mutual recursion result")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public getter recursion rejects at the logical depth boundary" {
+  let interp = Interpreter::new()
+  let source = "let n=256;" +
+    "let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+    "o.x;"
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = try {
+    let _ = run_dispatch_source(interp, source, control)
+    "completed"
+  } catch {
+    JsException(Object(data)) => {
+      let message = match data.bag.properties.get("message") {
+        Some(String_(value)) => value
+        _ => "missing-message"
+      }
+      data.class_name + ":" + message
+    }
+    other => "host-error:" + other.to_string()
+  }
+  inspect(outcome, content="RangeError:Maximum call stack size exceeded")
+  match interp.global.get("n") {
+    Number(value) => inspect(value, content="255")
+    _ => fail("getter entry must run before its recursive child is rejected")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public getter recursion preserves finite result below logical limit" {
+  let interp = Interpreter::new()
+  let source = "let n=8;" +
+    "let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+    "o.x;"
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=9,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let result = run_dispatch_source(interp, source, control)
+  match result {
+    Number(value) => inspect(value, content="8")
+    _ => fail("expected finite getter result")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public Proxy get recursion rejects at the logical depth boundary" {
+  let interp = proxy_get_recursion_trust_test_interpreter()
+  let source = "let n=256;" +
+    "let p;" +
+    "p=new Proxy({},{get(t,k,r){" +
+    "if(n===0)return 0;n=n-1;return 1+p.x;" +
+    "}});" +
+    "p.x;"
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = try {
+    let _ = run_dispatch_source(interp, source, control)
+    "completed"
+  } catch {
+    JsException(Object(data)) => {
+      let message = match data.bag.properties.get("message") {
+        Some(String_(value)) => value
+        _ => "missing-message"
+      }
+      data.class_name + ":" + message
+    }
+    other => "host-error:" + other.to_string()
+  }
+  inspect(outcome, content="RangeError:Maximum call stack size exceeded")
+  match interp.global.get("n") {
+    Number(value) => inspect(value, content="255")
+    _ =>
+      fail("Proxy trap entry must run before its recursive child is rejected")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public getter depth rejection preserves guest source identity" {
+  let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = Some("getter.js")
+  let source = "let n=256;" +
+    "let o={get x(){if(n===0)return 0;n=n-1;return 1+o.x;}};" +
+    "o.x;"
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let observed = observe_source_failure(interp.realm_state, () => {
+    let _ = run_dispatch_source(interp, source, control)
+    ()
+  })
+  match observed {
+    Err(failure) =>
+      match failure.source_identity() {
+        Some(source_identity) => inspect(source_identity, content="getter.js")
+        None => fail("depth rejection must preserve the getter source identity")
+      }
+    Ok(_) => fail("expected getter depth rejection")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public Proxy depth rejection preserves guest source identity" {
+  let interp = proxy_get_recursion_trust_test_interpreter()
+  interp.realm_state.active_source_identity.val = Some("proxy.js")
+  let source = "let n=256;" +
+    "let p;" +
+    "p=new Proxy({},{get(t,k,r){" +
+    "if(n===0)return 0;n=n-1;return 1+p.x;" +
+    "}});" +
+    "p.x;"
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let observed = observe_source_failure(interp.realm_state, () => {
+    let _ = run_dispatch_source(interp, source, control)
+    ()
+  })
+  match observed {
+    Err(failure) =>
+      match failure.source_identity() {
+        Some(source_identity) => inspect(source_identity, content="proxy.js")
+        None => fail("depth rejection must preserve the Proxy source identity")
+      }
+    Ok(_) => fail("expected Proxy depth rejection")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public call_value mutual recursion rejects at the logical depth boundary" {
+  let interp = Interpreter::new()
+  let program = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+g(n-1);}" +
+    "function g(n){if(n===0)return 0;return 1+f(n-1);}",
+  )
+  ignore(interp.run(program.stmts))
+  let callee = interp.global.get("f")
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = try {
+    let _ = interp.with_execution_control(control, () => {
+      interp.call_value(
+        callee,
+        Undefined,
+        [Number(256.0)],
+        @token.Loc::default(),
+      )
+    })
+    "completed"
+  } catch {
+    @errors.RangeError(message~) => "RangeError:" + message
+    JsException(Object(data)) => {
+      let message = match data.bag.properties.get("message") {
+        Some(String_(value)) => value
+        _ => "missing-message"
+      }
+      data.class_name + ":" + message
+    }
+    other => "host-error:" + other.to_string()
+  }
+  inspect(outcome, content="RangeError:Maximum call stack size exceeded")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public mutual depth rejection preserves the entry source identity" {
+  let interp = Interpreter::new()
+  let entry = @parser.parse("function f(n){if(n===0)return 0;return 1+g(n-1);}")
+  interp.realm_state.active_source_identity.val = Some("entry.js")
+  ignore(interp.run(entry.stmts))
+  let peer = @parser.parse("function g(n){if(n===0)return 0;return 1+f(n-1);}")
+  interp.realm_state.active_source_identity.val = Some("peer.js")
+  ignore(interp.run(peer.stmts))
+  let callee = interp.global.get("f")
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let observed = observe_source_failure(interp.realm_state, () => {
+    let _ = interp.with_execution_control(control, () => {
+      interp.call_value(
+        callee,
+        Undefined,
+        [Number(256.0)],
+        @token.Loc::default(),
+      )
+    })
+    ()
+  })
+  match observed {
+    Err(failure) =>
+      match failure.source_identity() {
+        Some(source_identity) => inspect(source_identity, content="entry.js")
+        None => fail("depth rejection must preserve the mutual entry identity")
+      }
+    Ok(_) => fail("expected mutual depth rejection")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public direct recursion below the logical limit preserves its value" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=257,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let value = run_dispatch_source(
+    interp, "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);", control,
+  )
+  match value {
+    Number(value) => inspect(value, content="256")
+    _ => fail("expected the finite direct recursion result")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "execution control adapter observes activation through the carrier" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = interp.with_execution_control(control, () => {
+    let _ = observe_activation_entry(
+      interp.execution_control_activation_observation_port(),
+    )
+    "accepted"
+  }) catch {
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    _ => "other"
+  }
+  inspect(outcome, content="stack-depth-limit")
+}
+
+///|
+test "dispatch shell default observation is policy-free" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = interp.with_execution_control(control, () => {
+    let shell = PrimitiveProgramDispatchShell(interp)
+    let attempt = observe_activation_entry(shell.activation_observation_port)
+    let token = attempt.accept()
+    token.release()
+    "accepted"
+  }) catch {
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    _ => "other"
+  }
+  inspect(outcome, content="accepted")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "direct activation releases logical depth after a guest throw" {
+  let (interp, _, registry, plan) = numeric_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  interp.with_execution_control(control, () => {
+    let shell = PrimitiveProgramDispatchShell(
+      interp,
+      numeric_registry=Some(registry),
+      activation_observation_port=interp.execution_control_activation_observation_port(),
+    )
+    let (cleanup, _) = numeric_activation_test_enter(
+      shell,
+      registry,
+      "f",
+      1.0,
+      plan.root_call_loc,
+    )
+    inspect(control.active_depth(), content="1")
+    numeric_activation_test_release(
+      shell,
+      cleanup,
+      DispatchThrow(@errors.RangeError(message="guest sentinel")),
+    )
+  })
+  inspect(control.active_depth(), content="0")
+}

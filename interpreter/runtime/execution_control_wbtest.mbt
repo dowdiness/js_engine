@@ -234,3 +234,64 @@ test "execution control decrements maximum portable counter without overflow" {
   inspect(control.remaining_steps(), content="2147483646")
   inspect(control.active_depth(), content="0")
 }
+
+///|
+test "execution control activation port releases accepted entry exactly once" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=10,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  interp.with_execution_control(control, () => {
+    let attempt = observe_activation_entry(
+      interp.execution_control_activation_observation_port(),
+    )
+    inspect(control.active_depth(), content="1")
+    let token = attempt.accept()
+    token.release()
+    inspect(control.active_depth(), content="0")
+    inspect(control.remaining_steps(), content="9")
+  })
+}
+
+///|
+test "execution control activation port releases rejected setup without a token" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=10,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  interp.with_execution_control(control, () => {
+    let attempt = observe_activation_entry(
+      interp.execution_control_activation_observation_port(),
+    )
+    inspect(control.active_depth(), content="1")
+    attempt.reject()
+    inspect(control.active_depth(), content="0")
+    inspect(control.remaining_steps(), content="9")
+  })
+}
+
+///|
+test "execution control activation port denies at the boundary without release" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=10,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = interp.with_execution_control(control, () => {
+    let _ = observe_activation_entry(
+      interp.execution_control_activation_observation_port(),
+    )
+    "accepted"
+  }) catch {
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    _ => "other"
+  }
+  inspect(outcome, content="stack-depth-limit")
+  inspect(control.active_depth(), content="0")
+  inspect(control.remaining_steps(), content="10")
+}

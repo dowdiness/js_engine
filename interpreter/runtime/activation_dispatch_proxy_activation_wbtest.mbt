@@ -259,7 +259,9 @@ test "Proxy property shell preserves captured work across trap continuations" {
     DispatchDeliverCallResult,
   )
   let (inner_cleanup, handler_work, resolver) = match
-    shell.perform_effect(DispatchRun(DispatchExecuteProperty(scoped_outer))) {
+    shell.perform_effect(
+      DispatchRunProduction(DispatchPropertyExecute(scoped_outer)),
+    ) {
     DispatchWorkSuspended(DispatchSuspendProperty(cleanup, work, continuation)) =>
       (cleanup, work, continuation)
     _ => fail("expected nested handler get-trap lookup")
@@ -272,7 +274,9 @@ test "Proxy property shell preserves captured work across trap continuations" {
   inspect(same_value(lookup.handler, capture.handler), content="true")
   inspect(same_value(lookup.post_trap.target, capture.target), content="true")
   let candidate = match
-    shell.perform_effect(DispatchRun(DispatchExecuteProperty(handler_work))) {
+    shell.perform_effect(
+      DispatchRunProduction(DispatchPropertyExecute(handler_work)),
+    ) {
     DispatchWorkCompleted(DispatchNormal(found)) => found
     _ => fail("expected the exact handler data property")
   }
@@ -286,7 +290,9 @@ test "Proxy property shell preserves captured work across trap continuations" {
 
   let (request, result_consumer) = match
     shell.perform_effect(
-      DispatchRun(DispatchResumeContinuation(resolver, candidate)),
+      DispatchRunProduction(
+        DispatchPropertyResolveProxyGetTrap(lookup, candidate),
+      ),
     ) {
     DispatchWorkSuspended(DispatchSuspendCall(found, continuation)) =>
       (found, continuation)
@@ -311,9 +317,15 @@ test "Proxy property shell preserves captured work across trap continuations" {
     DispatchReturn(Number(9.0)),
   )
   dispatch_shell_test_expect_realm_cleared(interp)
+  let result_work = match result_consumer {
+    DispatchCheckProxyGetResult(found) => found
+    _ => fail("expected the Proxy result continuation")
+  }
   match
     shell.perform_effect(
-      DispatchRun(DispatchResumeContinuation(result_consumer, Number(9.0))),
+      DispatchRunProduction(
+        DispatchPropertyCheckProxyGetResult(result_work, Number(9.0)),
+      ),
     ) {
     DispatchWorkCompleted(DispatchNormal(Number(value))) =>
       inspect(value, content="9")

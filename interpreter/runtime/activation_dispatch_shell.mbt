@@ -225,6 +225,8 @@ fn PrimitiveProgramDispatchShell::PrimitiveProgramDispatchShell(
   proxy_root_preflight? : ProxyGetRecursionPreflight? = None,
   proxy_root_stmts? : Array[@ast.Stmt]? = None,
   proxy_registry? : TrustedProxyGetRecursionRegistry? = None,
+  // The shell lifecycle is policy-free; admitted production roots inject the
+  // execution-control port explicitly below.
   activation_observation_port? : ActivationObservationPort = allow_all_activation_observation_port(),
 ) -> PrimitiveProgramDispatchShell {
   {
@@ -295,10 +297,17 @@ fn Interpreter::prepare_root_program_execution(
 
 ///|
 fn dispatch_entry_rejection(error : Error) -> DispatchEntryRejection {
-  if is_js_catchable_error(error) {
-    DispatchEntryGuestThrow(error)
-  } else {
-    DispatchEntryRuntimeAbrupt(error)
+  match error {
+    ExecutionControlError(StackDepthLimit) =>
+      DispatchEntryGuestThrow(
+        @errors.RangeError(message=STACK_DEPTH_LIMIT_MESSAGE),
+      )
+    _ =>
+      if is_js_catchable_error(error) {
+        DispatchEntryGuestThrow(error)
+      } else {
+        DispatchEntryRuntimeAbrupt(error)
+      }
   }
 }
 
@@ -1745,9 +1754,9 @@ fn PrimitiveProgramDispatchShell::execute_getter_body_statement(
       }
       let target = registry.require_target(self.interp)
       DispatchWorkSuspended(
-        DispatchSuspendContinue(
+        DispatchSuspendContinueProduction(
           DispatchCompleteReturn,
-          DispatchStartProperty(
+          DispatchPropertyStart(
             DispatchPropertyGetResume(
               target~,
               property_key=String_(plan.property_name),
@@ -1893,9 +1902,9 @@ fn PrimitiveProgramDispatchShell::execute_proxy_body_statement(
       }
       let proxy = registry.require_proxy(self.interp)
       DispatchWorkSuspended(
-        DispatchSuspendContinue(
+        DispatchSuspendContinueProduction(
           DispatchCompleteReturn,
-          DispatchStartProperty(
+          DispatchPropertyStart(
             DispatchPropertyGetResume(
               target=proxy,
               property_key=String_(plan.property_name),
@@ -2199,6 +2208,44 @@ fn PrimitiveProgramDispatchShell::advance_control_loop(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::perform_production_work(
+  self : PrimitiveProgramDispatchShell,
+  work : DispatchProductionWork,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  match work {
+    DispatchNumericObserveExpressionStep(observation) => {
+      ignore(observation)
+      self.observe_numeric_execution_step()
+    }
+    DispatchNumericObserveStatementStep(observation) => {
+      ignore(observation)
+      self.observe_numeric_execution_step()
+    }
+    DispatchNumericReadParameter(token) => self.read_numeric_parameter(token)
+    DispatchNumericEnterCatch(catch_state, error) =>
+      self.enter_numeric_catch(catch_state, error)
+    DispatchNumericReadCatchBinding(token) =>
+      self.read_numeric_catch_binding(token)
+    DispatchNumericCaptureTrustedCallee(token) =>
+      self.capture_numeric_callee(token)
+    DispatchNumericStartCapturedCall(token, argument, loc) =>
+      self.start_captured_numeric_call(token, argument, loc)
+    DispatchNumericApplyBinaryRight(binary, right) =>
+      self.apply_numeric_binary(binary, right)
+    DispatchPropertyStart(work, consumer) => self.start_property(work, consumer)
+    DispatchPropertyExecute(work) => self.execute_dispatch_property(work)
+    DispatchPropertyDeliverAccessorResult(accessor, value) => {
+      ignore(accessor)
+      DispatchWorkCompleted(DispatchNormal(value))
+    }
+    DispatchPropertyResolveProxyGetTrap(lookup, value) =>
+      self.resume_proxy_get_trap(lookup, value)
+    DispatchPropertyCheckProxyGetResult(work, value) =>
+      self.resume_proxy_get_result(work, value)
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::perform_effect(
   self : PrimitiveProgramDispatchShell,
   effect : DispatchEffect,
@@ -2208,41 +2255,11 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.enter_program(cursor)
     DispatchEnterActivation(DispatchCallActivation(request)) =>
       self.enter_managed_call(request)
+    DispatchRunProduction(work) => self.perform_production_work(work)
     DispatchRun(DispatchExecuteStatement(step)) =>
       self.execute_managed_statement(step)
     DispatchRun(DispatchAdvanceLoop(loop_state)) =>
       self.advance_control_loop(loop_state)
-    DispatchRun(DispatchObserveExpressionStep(observation)) => {
-      ignore(observation)
-      self.observe_numeric_execution_step()
-    }
-    DispatchRun(DispatchObserveStatementStep(observation)) => {
-      ignore(observation)
-      self.observe_numeric_execution_step()
-    }
-    DispatchRun(DispatchReadNumericParameter(token)) =>
-      self.read_numeric_parameter(token)
-    DispatchRun(DispatchEnterNumericCatch(catch_state, error)) =>
-      self.enter_numeric_catch(catch_state, error)
-    DispatchRun(DispatchReadNumericCatchBinding(token)) =>
-      self.read_numeric_catch_binding(token)
-    DispatchRun(DispatchStartProperty(work, consumer)) =>
-      self.start_property(work, consumer)
-    DispatchRun(DispatchExecuteProperty(work)) =>
-      self.execute_dispatch_property(work)
-    DispatchRun(
-      DispatchResumeContinuation(DispatchDeliverAccessorResult(_), value)
-    ) => DispatchWorkCompleted(DispatchNormal(value))
-    DispatchRun(
-      DispatchResumeContinuation(DispatchResolveProxyGetTrap(lookup), value)
-    ) => self.resume_proxy_get_trap(lookup, value)
-    DispatchRun(
-      DispatchResumeContinuation(DispatchCheckProxyGetResult(work), value)
-    ) => self.resume_proxy_get_result(work, value)
-    DispatchRun(DispatchCaptureTrustedCallee(token)) =>
-      self.capture_numeric_callee(token)
-    DispatchRun(DispatchStartCapturedNumericCall(token, argument, loc)) =>
-      self.start_captured_numeric_call(token, argument, loc)
     DispatchRun(
       DispatchResumeContinuation(DispatchApplyBinaryRight(binary), right)
     ) => self.apply_numeric_binary(binary, right)
@@ -2399,6 +2416,7 @@ fn Interpreter::run_activation_dispatch_numeric_program(
   let shell = PrimitiveProgramDispatchShell(
     self,
     numeric_root_preflight=Some(preflight),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
   guard shell.numeric_registry is None else {
@@ -2419,6 +2437,7 @@ fn Interpreter::run_activation_dispatch_numeric_call(
   let shell = PrimitiveProgramDispatchShell(
     self,
     numeric_registry=Some(registry),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_call(request)
   guard shell.numeric_registry is Some(_) else {
@@ -2441,6 +2460,7 @@ fn Interpreter::run_activation_dispatch_getter_program(
     self,
     getter_root_preflight=Some(preflight),
     getter_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
   guard shell.getter_registry is None else {
@@ -2462,6 +2482,7 @@ fn Interpreter::run_activation_dispatch_proxy_program(
     self,
     proxy_root_preflight=Some(preflight),
     proxy_root_stmts=Some(stmts),
+    activation_observation_port=self.execution_control_activation_observation_port(),
   )
   let completion = shell.drive_root_program(stmts, ctx)
   guard shell.proxy_registry is None else {

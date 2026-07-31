@@ -1425,7 +1425,10 @@ fn start_proxy_invariant_dispatch(
     ),
   )
   let property_ticket = match property_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(work))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchPropertyExecute(work))
+    ) => {
       inspect(
         dispatch_test_property_key(work.property_key),
         content="key:" + (id + 4).to_string(),
@@ -1485,9 +1488,7 @@ fn start_proxy_invariant_dispatch(
   let (invariant_ticket, invariant_effect) = match invariant_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchResumeContinuation(DispatchCheckProxyGetResult(work), value)
-      )
+      DispatchRunProduction(DispatchPropertyCheckProxyGetResult(work, value))
     ) => {
       inspect(
         dispatch_test_property_key(work.property_key),
@@ -1498,9 +1499,7 @@ fn start_proxy_invariant_dispatch(
       inspect(same_value(value, trap_result), content="true")
       (
         ticket,
-        DispatchRun(
-          DispatchResumeContinuation(DispatchCheckProxyGetResult(work), value),
-        ),
+        DispatchRunProduction(DispatchPropertyCheckProxyGetResult(work, value)),
       )
     }
     _ => fail("expected Proxy invariant before property restore")
@@ -1701,7 +1700,8 @@ test "Proxy handler lookup restores its nested property scope before trap resolu
     ),
   )
   let outer_ticket = match outer_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(_))) => ticket
+    DispatchPerform(ticket, DispatchRunProduction(DispatchPropertyExecute(_))) =>
+      ticket
     _ => fail("expected outer Proxy property work")
   }
   let inner_cleanup = DispatchPropertyCleanup(id + 12)
@@ -1721,7 +1721,10 @@ test "Proxy handler lookup restores its nested property scope before trap resolu
     ),
   )
   let handler_ticket = match handler_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(work))) => {
+    DispatchPerform(
+      ticket,
+      DispatchRunProduction(DispatchPropertyExecute(work))
+    ) => {
       inspect(
         dispatch_test_property_key(work.property_key),
         content="key:" + (id + 13).to_string(),
@@ -1756,9 +1759,7 @@ test "Proxy handler lookup restores its nested property scope before trap resolu
   let trap_resolution_ticket = match trap_resolution_decision {
     DispatchPerform(
       ticket,
-      DispatchRun(
-        DispatchResumeContinuation(DispatchResolveProxyGetTrap(found), value)
-      )
+      DispatchRunProduction(DispatchPropertyResolveProxyGetTrap(found, value))
     ) => {
       inspect(
         dispatch_test_value_tag(found.proxy),
@@ -1844,7 +1845,8 @@ test "abrupt Proxy handler lookup restores inner and outer property scopes" {
     ),
   )
   let outer_ticket = match outer_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(_))) => ticket
+    DispatchPerform(ticket, DispatchRunProduction(DispatchPropertyExecute(_))) =>
+      ticket
     _ => fail("expected outer Proxy property work")
   }
   let inner_cleanup = DispatchPropertyCleanup(id + 12)
@@ -1864,7 +1866,8 @@ test "abrupt Proxy handler lookup restores inner and outer property scopes" {
     ),
   )
   let handler_ticket = match handler_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(_))) => ticket
+    DispatchPerform(ticket, DispatchRunProduction(DispatchPropertyExecute(_))) =>
+      ticket
     _ => fail("expected handler get-trap lookup work")
   }
   let lookup_error : Error = JsException(String_("handler lookup failed"))
@@ -1943,7 +1946,8 @@ test "abrupt property work restores its scope before activation release" {
     ),
   )
   let property_ticket = match property_decision {
-    DispatchPerform(ticket, DispatchRun(DispatchExecuteProperty(_))) => ticket
+    DispatchPerform(ticket, DispatchRunProduction(DispatchPropertyExecute(_))) =>
+      ticket
     _ => fail("expected property work")
   }
   let runtime_error : Error = @errors.InternalError(message="property failed")
@@ -2755,7 +2759,7 @@ fn request_test_continuation_resume(
   id : Int,
   continuation : DispatchContinuation,
   value : Value,
-) -> DispatchWork raise {
+) -> DispatchEffect raise {
   let (running, root_ticket) = start_accepted_dispatch_root(id)
   let (running_value, value_decision) = reduce_activation_dispatch(
     running,
@@ -2781,7 +2785,7 @@ fn request_test_continuation_resume(
     ),
   )
   match resume_decision {
-    DispatchPerform(_, DispatchRun(work)) => work
+    DispatchPerform(_, effect) => effect
     _ => fail("expected semantic continuation resume work")
   }
 }
@@ -2799,7 +2803,9 @@ test "binary accessor and parameter continuations retain semantic payloads" {
       DispatchApplyBinaryRight(binary),
       Number(2.0),
     ) {
-    DispatchResumeContinuation(DispatchApplyBinaryRight(found), Number(right)) => {
+    DispatchRun(
+      DispatchResumeContinuation(DispatchApplyBinaryRight(found), Number(right))
+    ) => {
       inspect(found.op == @ast.Add, content="true")
       inspect(dispatch_test_value_tag(found.left), content="1")
       inspect(right, content="2")
@@ -2813,9 +2819,8 @@ test "binary accessor and parameter continuations retain semantic payloads" {
       DispatchDeliverAccessorResult(accessor),
       Number(3.0),
     ) {
-    DispatchResumeContinuation(
-      DispatchDeliverAccessorResult(found),
-      Number(value)
+    DispatchRunProduction(
+      DispatchPropertyDeliverAccessorResult(found, Number(value))
     ) => {
       inspect(
         dispatch_test_property_key(found.property_key),
@@ -2842,9 +2847,11 @@ test "binary accessor and parameter continuations retain semantic payloads" {
       DispatchBindParameterDefault(parameter),
       Number(4.0),
     ) {
-    DispatchResumeContinuation(
-      DispatchBindParameterDefault(found),
-      Number(value)
+    DispatchRun(
+      DispatchResumeContinuation(
+        DispatchBindParameterDefault(found),
+        Number(value)
+      )
     ) => {
       inspect(found.next_index, content="4")
       inspect(found.effective_param_count, content="3")
@@ -2859,4 +2866,31 @@ test "binary accessor and parameter continuations retain semantic payloads" {
     }
     _ => fail("expected parameter-default semantic resume")
   }
+}
+
+///|
+test "property work enters the production seam" {
+  let id = 1900
+  let (running_root, root_ticket) = start_accepted_dispatch_root(id)
+  let property_cleanup = DispatchPropertyCleanup(id + 1)
+  let property_work = dispatch_test_property_resume(id + 2)
+  let (_, property_decision) = reduce_activation_dispatch(
+    running_root,
+    DispatchEffectCompleted(
+      root_ticket,
+      DispatchWorkSuspended(
+        DispatchSuspendProperty(
+          property_cleanup,
+          property_work,
+          DispatchDeliverAccessorResult(property_work),
+        ),
+      ),
+    ),
+  )
+  let production = match property_decision {
+    DispatchPerform(_, DispatchRunProduction(_)) => true
+    DispatchPerform(_, DispatchRun(_)) => false
+    _ => false
+  }
+  inspect(production, content="true")
 }
