@@ -161,6 +161,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Validate focused stack-safety wiring
+        run: make stack-safety-validate
+
       - name: Cache MoonBit toolchain
         id: toolchain-cache
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
