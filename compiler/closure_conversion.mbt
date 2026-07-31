@@ -1321,11 +1321,7 @@ fn make_compiled_func(
   closure : Environment,
   strict : Bool,
   body? : CompiledBody? = None,
-  rest_param? : String? = None,
   constructable? : Bool = true,
-  call_self_name? : Bool = false,
-  define_arguments_object? : Bool = true,
-  bytecode_func? : BytecodeFunction? = None,
 ) -> Value {
   let realm_state = match closure.interpreter_context {
     Some(interp) => Some(interp.realm_state)
@@ -1407,12 +1403,8 @@ fn make_compiled_func(
               closure,
               strict,
               body~,
-              rest_param~,
               new_target~,
-              call_self_name~,
-              define_arguments_object~,
               is_method=!constructable,
-              bytecode_func~,
             )
             if is_constructor_return_object(result) {
               result
@@ -1429,11 +1421,7 @@ fn make_compiled_func(
               closure,
               strict,
               body~,
-              rest_param~,
-              call_self_name~,
-              define_arguments_object~,
               is_method=!constructable,
-              bytecode_func~,
             )
           }
         }),
@@ -1530,33 +1518,13 @@ fn call_compiled_func(
   closure : Environment,
   strict : Bool,
   body? : CompiledBody? = None,
-  rest_param? : String? = None,
   new_target? : Value? = None,
-  call_self_name? : Bool = false,
-  define_arguments_object? : Bool = true,
   is_method? : Bool = false,
-  bytecode_func? : BytecodeFunction? = None,
 ) -> Value raise Error {
   let saved_in_default = interp.in_nonarrow_param_default_eval
   interp.in_nonarrow_param_default_eval = false
   let result : Value = try {
     let func_ctx : ExecContext = { strict, current_generator: None }
-    // Leaf-function fast path: skip Environment::new (2 HashMap allocs) and
-    // this/new.target inserts. All params are local slots filled by direct_args.
-    match bytecode_func {
-      Some(bf) if !bf.needs_own_env =>
-        match
-          run_bytecode_function(
-            interp,
-            func_ctx,
-            closure,
-            bf,
-            direct_args=Some(args),
-          ) {
-          BytecodeNormal(_) => Value::Undefined
-          BytecodeReturn(value) => value
-        }
-      _ => {
         let func_env = Environment::new(parent=Some(closure))
         func_env.is_var_scope = true
         func_env.def_builtin("[[EvalMethodContext]]", Value::Bool(is_method))
@@ -1574,61 +1542,14 @@ fn call_compiled_func(
           new_target.unwrap_or(Value::Undefined),
           BindingKind::LetBinding,
         )
-        // Bind positional params: fast path skips env for params in local_names;
-        // slow path writes all params through the env HashMap.
-        match bytecode_func {
-          Some(bf) =>
-            // Only bind params NOT in local_names to env (env_slot_names and
-            // params in neither list still need env for bind_env_slots/LoadName).
-            bind_params_to_env_skip_locals(
-              func_env,
-              params,
-              args,
-              bf.local_indices,
-            )
-          None => bind_simple_params(func_env, params, args)
-        }
-        bind_rest_param(func_env, params.length(), rest_param, args)
-        if define_arguments_object {
-          match rest_param {
-            Some(_) =>
-              if !compiled_params_include_arguments(params, rest_param) {
-                interp.define_unmapped_arguments_object(
-                  func_env, args, callee, strict,
-                )
-              }
-            None =>
+    bind_simple_params(func_env, params, args)
               interp.define_simple_arguments_object(
                 func_env, args, callee, strict, params,
               )
-          }
-        }
-        if call_self_name {
-          func_env.def_builtin("[[BytecodeCallee]]", callee)
-        }
-        match bytecode_func {
-          Some(bf) =>
-            match
-              run_bytecode_function(
-                interp,
-                func_ctx,
-                func_env,
-                bf,
-                direct_args=Some(args),
-              ) {
-              BytecodeNormal(_) => Value::Undefined
-              BytecodeReturn(value) => value
-            }
-          None =>
             match body {
-              Some(b) => reduce_body_signal((b.0)(interp, func_ctx, func_env))
-              None =>
-                abort(
-                  "call_compiled_func: body required when bytecode_func=None",
-                )
-            }
-        }
-      }
+      Some(compiled_body) =>
+        reduce_body_signal((compiled_body.0)(interp, func_ctx, func_env))
+      None => abort("call_compiled_func: body is required")
     }
   } catch {
     err => {
@@ -1665,57 +1586,6 @@ fn call_compiled_arrow_func(
   }
   interp.in_nonarrow_param_default_eval = saved_in_default
   result
-}
-
-///|
-fn compiled_params_include_arguments(
-  params : Array[String],
-  rest_param : String?,
-) -> Bool {
-  for param in params {
-    if param == "arguments" {
-      return true
-    }
-  }
-  rest_param is Some("arguments")
-}
-
-///|
-fn bind_rest_param(
-  env : Environment,
-  positional_count : Int,
-  rest_param : String?,
-  args : Array[Value],
-) -> Unit raise Error {
-  match rest_param {
-    Some(name) => {
-      let rest_elements : Array[Value] = []
-      for i = positional_count; i < args.length(); i = i + 1 {
-        rest_elements.push(args[i])
-      }
-      env.def_parameter(name, @runtime.make_array(rest_elements))
-    }
-    None => ()
-  }
-}
-
-///|
-fn bind_params_to_env_skip_locals(
-  env : Environment,
-  params : Array[String],
-  args : Array[Value],
-  local_indices : Map[String, Int],
-) -> Unit raise Error {
-  for i, param in params {
-    if !local_indices.contains(param) {
-      let value = args.get(i).unwrap_or(Value::Undefined)
-      if env.bindings.contains(param) {
-        env.assign(param, value)
-      } else {
-        env.def_parameter(param, value)
-      }
-    }
-  }
 }
 
 ///|

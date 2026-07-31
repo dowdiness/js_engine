@@ -77,6 +77,12 @@ pub fn eval_this_value(Environment) -> Value raise
 
 pub fn eval_unary_value_op(@ast.UnaryOp, Value, @token.Loc, interp? : Interpreter?) -> Value raise
 
+pub fn executor_activation_continue() -> ExecutorActivationStep
+
+pub fn executor_activation_normal(Value) -> ExecutorActivationStep
+
+pub fn executor_activation_return(Value) -> ExecutorActivationStep
+
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
 
 pub fn fulfill_promise(Interpreter, PromiseData, Value) -> Unit
@@ -240,6 +246,8 @@ pub fn make_array_with_prototype(Array[Value], Value) -> Value
 pub fn make_bound_func(Value, Value, Array[Value], prototype~ : Value, name~ : String, length~ : Double, realm_state? : RealmState?) -> Value
 
 pub fn make_canonical_proxy_constructor(RealmState) -> Value
+
+pub fn[T : ExecutorCode] make_executor_function(String?, Array[String], Environment, Bool, T, rest_param? : String?, constructable? : Bool, call_self_name? : Bool, define_arguments_object? : Bool) -> Value
 
 pub fn make_func(FuncData) -> Value
 
@@ -550,6 +558,12 @@ pub(all) struct ExecContext {
   current_generator : GeneratorObject?
 }
 
+pub enum ExecutorActivationStep {
+  ExecutorActivationContinue
+  ExecutorActivationNormal(Value)
+  ExecutorActivationReturn(Value)
+}
+
 pub(all) struct FuncData {
   name : String?
   params : Array[String]
@@ -806,6 +820,15 @@ pub fn PartialDescriptor::is_accessor(Self) -> Bool
 pub fn PartialDescriptor::is_data(Self) -> Bool
 pub fn PartialDescriptor::is_generic(Self) -> Bool
 pub fn PartialDescriptor::value_only(Value) -> Self
+
+pub struct PreparedExecutorActivation {
+  ctx : ExecContext
+  env : Environment
+  args : Array[Value]
+}
+pub fn PreparedExecutorActivation::arguments(Self) -> Array[Value]
+pub fn PreparedExecutorActivation::context(Self) -> ExecContext
+pub fn PreparedExecutorActivation::environment(Self) -> Environment
 
 pub(all) struct PromiseData {
   mut state : PromiseState
@@ -1072,4 +1095,11 @@ pub(all) struct WellKnownSymbols {
 // Type aliases
 
 // Traits
+pub(open) trait ExecutorActivationFrame {
+  fn step(Self, Interpreter) -> ExecutorActivationStep raise
+}
+
+pub(open) trait ExecutorCode {
+  fn start(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
+}
 
