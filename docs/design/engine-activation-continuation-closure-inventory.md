@@ -1,6 +1,7 @@
 # Activation-continuation closure inventory
 
-Date: 2026-07-29.
+Date: 2026-07-29. Reconciled against the production admission boundary on
+2026-07-31.
 
 This is the source-backed implementation inventory required by #630. It maps
 the accepted
@@ -16,35 +17,54 @@ programs reach. The survey used `moon ide outline`, `moon ide peek-def`, and
 `moon ide find-references` for semantic discovery, plus a complete textual
 audit of `call_value` references under `interpreter/`.
 
-Each edge has one of three dispositions:
+The inventory uses four labels rather than treating reducer support as
+production migration. The first is an evidence qualifier; the remaining three
+are production dispositions. A core-representable edge remains a #608 residual
+until exact production admission is added:
 
-- **migrate in #630**: the dispatcher owns the activation, continuation, or
-  cleanup before the edge may suspend;
-- **synchronous leaf**: the observed runtime type cannot enter interpreted
-  guest code and may complete in the imperative shell; or
-- **#608 residual**: the broader may-call-user-code path remains explicitly
-  outside the Milestone 10 stack-safety claim.
+- **core-representable only**: the deterministic reducer has state for the
+  continuation or completion, but no production admission, imperative-shell
+  implementation, or public adapter proves that a real program uses it;
+- **production-admitted exact slice**: callback-free classification, runtime
+  provenance sealing, shell execution, and a public root adapter all agree on
+  one closed input family;
+- **synchronous proven leaf**: the exact observed runtime value cannot enter
+  interpreted guest code and may complete in the imperative shell; or
+- **#608 residual**: the broader may-call-user-code path remains outside the
+  Milestone 10 stack-safety claim.
 
-A residual must stay named at its call site or adapter boundary. It must not be
-presented as a migrated path or hidden behind a generic recursive fallback.
-Finding a residual on one of the four concrete paths invalidates this inventory
-and stops implementation until the closure or design is revised.
+Reducer transitions and white-box fixtures are not production coverage by
+themselves. A path is production-admitted only when it is selected before
+JavaScript-visible effects, sealed against runtime identity and shape, executed
+without recursive fallback, and reachable through `Interpreter::run` or the
+exact direct `Interpreter::call_value` adapter.
+
+The authoritative boundaries are the classifiers in
+[`activation_dispatch_admission.mbt`](../../interpreter/runtime/activation_dispatch_admission.mbt),
+[`activation_dispatch_direct_call_admission.mbt`](../../interpreter/runtime/activation_dispatch_direct_call_admission.mbt),
+[`activation_dispatch_getter_admission.mbt`](../../interpreter/runtime/activation_dispatch_getter_admission.mbt),
+[`activation_dispatch_proxy_admission.mbt`](../../interpreter/runtime/activation_dispatch_proxy_admission.mbt),
+and
+[`activation_dispatch_control_admission.mbt`](../../interpreter/runtime/activation_dispatch_control_admission.mbt),
+together with their trust modules, the production shell, and the public
+selection in [`interpreter.mbt`](../../interpreter/runtime/interpreter.mbt) and
+[`call.mbt`](../../interpreter/runtime/call.mbt).
 
 ### Managed-cycle admission invariant
 
 A named residual is not a permitted fallback after managed execution starts.
-Before any JavaScript-visible effect, a conservative eligibility check must
-prove that the root request and every activation admitted to the managed cycle
-use only classified continuations and synchronous leaves. An ineligible root
-stays on the existing synchronous path from its beginning; execution never
-switches from managed state back to that path after observing effects.
+Before any JavaScript-visible effect, an exact eligibility check must prove that
+the root request and every activation admitted to the managed cycle use only
+sealed continuations and synchronous proven leaves. An ineligible root stays on
+the existing synchronous path from its beginning and is outside the #630
+stack-safety claim; execution never switches to that path after managed effects
+have started.
 
 The proof may use syntax shape, callable family, and already-established
-runtime types, but it may not speculatively execute guest code. If the proof
-cannot exclude a residual before admission, that edge joins #630's migrated
-closure. Encountering a residual after admission is an implementation
-invariant failure that blocks integration, not a new JavaScript-visible error
-or authorization for recursive `call_value`.
+runtime types, but it may not speculatively execute guest code. Encountering an
+unsealed edge after admission is an implementation invariant failure that
+blocks integration, not a new JavaScript-visible error or a basis for recursive
+`call_value`.
 
 ## Concrete path and runtime-type proof
 
@@ -63,99 +83,123 @@ reported 20 tests, 16 passed and exactly these four failed with the host
 PR while red. The tests ultimately live in `interpreter/stack_safety_test.mbt`
 and must return the exact value `256`.
 
-## Migrated continuation closure
+## Production-admitted exact slice
 
-| Source edge or state owner | Possible callee or completion kinds | Consumer retained across suspension | Effects that must not replay | Disposition and focused coverage |
-|---|---|---|---|---|
-| `Interpreter::run` and direct `Interpreter::call_value` | Root program; interpreted or synchronous callable root; final normal or abrupt completion | Public synchronous result/error translation | Early-error validation, hoisting, source observation, and root realm setup | **Migrate in #630** as the only root-request/final-completion adapters; existing public signatures remain unchanged |
-| `eval_call` to `call_value` | `Object` callable, callable `Proxy`, or non-callable `Value` | The call result as the enclosing expression value | Callee evaluation, receiver selection, and argument evaluation | **Migrate in #630** for interpreted `UserFunc`, `ArrowFunc`, `UserFuncExt`, and `ArrowFuncExt`; exact self/mutual tests cover direct functions |
-| Interpreted branch of `call_value_impl` | The four interpreted callable forms; normal, return, guest throw, or runtime abrupt completion | Function-call return rule and owning activation | Environment creation, `this`, `arguments`, name binding, hoisting, and body effects | **Migrate in #630** into explicit activation preparation/body states; lifecycle tests cover normal, return, throw, and runtime abrupt exit |
-| `BoundFunc` and `FuncCallMethod` forwarding | Interpreted, synchronous-native, Proxy, or non-callable target | Forwarded result with adjusted receiver/arguments | Bound argument concatenation and receiver selection | **Migrate in #630** when the resolved target is otherwise in the migrated closure; shallow forwarding regressions pin compatibility |
-| `FuncApplyMethod` argument-list construction | Array-like data slots or observable getters/Proxy reads | Materialized argument list for a separate target-call continuation | Array-like length/index reads | Plain, non-observable construction is a **synchronous leaf**; observable traversal is a named **#608 residual** and makes the activation ineligible unless migrated |
-| `FuncApplyMethod` target forwarding | Interpreted, synchronous-native, Proxy, or non-callable target | Forwarded result after the argument list is fixed | Target/receiver selection and completed argument construction | **Migrate in #630** when the target belongs to the migrated call closure; it is never classified as a leaf merely because argument construction was synchronous |
-| `ReturnStmt` expression | Any completion produced by the expression | `Return(value)` for the owning activation | The expression and any preceding effects in the statement | **Migrate in #630** as a one-time return continuation; direct, mutual, getter, Proxy, and return-from-try tests cover it |
-| `ThrowStmt` expression | Normal value, guest throw, or runtime abrupt completion from the expression | A resumed normal value wrapped as `Throw(value)` for handler routing | The expression and every effect before its result | **Migrate in #630** as a one-time throw continuation; `throw f()` crossing an activation into `catch` covers call-result-to-throw routing |
-| `eval_binary` right operand | Primitive result, guest throw, or runtime abrupt completion | Saved operator, left value, location, and enclosing continuation | Left evaluation and all effects before the right operand | **Migrate in #630** for the primitive operator paths reached by #616; exact tests cover numeric `+` and `-` |
-| `eval_binary_op` coercion | `Object`/`Proxy` conversion methods may be interpreted, native, Proxy, or non-callable | Operator work after each conversion result | `@@toPrimitive`, `valueOf`, `toString`, and their property lookups | Primitive-only branches are **synchronous leaves**; user-code conversion is a named **#608 residual** with its current shallow semantics retained |
-| In-scope `exec_stmts` and `exec_stmt` states | Normal, return, labelled/unlabelled break/continue, guest throw, runtime abrupt | Statement-list position, last completion value, environment, and owning activation | Completed statements and `UpdateEmpty` state | **Migrate in #630** for the #616 statement shapes and required non-generator handler/finalizer traces; iterator, setter, and other residual-bearing shapes are excluded by admission unless their continuations migrate |
-| `exec_try_catch` | Catchable guest throw, non-catchable runtime abrupt, or any `Signal` | Applicable catch, saved completion, and pending finalizer | Try/catch effects, catch binding, and finalizer entry | **Migrate in #630** for non-generator execution with explicit handler/finalizer continuations; generator resume state remains #608 |
-| Simple parameter-default evaluation | Interpreted/native/Proxy call result, getter result, or abrupt completion from the default expression | Parameter cursor, target binding, remaining parameters, and body-entry continuation | Earlier parameter declarations/defaults and default-expression effects | **Migrate in #630** for admitted simple bindings; resumed values initialize exactly once before parameter progress continues |
-| Own accessor lookup in `property.mbt` | Interpreted/native/Proxy getter or invalid callable value | Getter result delivered to the original property operation and its enclosing expression | Descriptor lookup and original receiver selection | **Migrate in #630** for ordinary `Object`, `Array`, `Map`, `Set`, and `Promise` own accessors; getter exact and receiver-order tests cover it |
-| Prototype accessor lookup in `property.mbt` | Same getter categories | Getter result delivered with the original receiver | Traversed prototype prefix and descriptor selection | **Migrate in #630** through the receiver-aware property continuation; prototype getter order tests cover it |
-| `with_active_property_access_value` | Normal getter/trap result or abrupt completion | Restoration of the caller's active realm before property continuation resume | Clearing and restoring active callee-realm overrides | **Migrate in #630** into property-operation cleanup data; normal and abrupt getter/Proxy tests assert source and realm behavior |
-| `get_proxy_trap` handler data/accessor lookup for `get` | Own/prototype data value, interpreted/native getter, or abrupt completion | Trap value validation and the pending Proxy `get` operation | Handler lookup, getter effect, revocation checks, and receiver | Reuse the **migrated #630 getter continuation**; focused own/prototype handler-accessor order coverage is required |
-| Proxy handler `get` lookup and trap-less forwarding | Handler Proxy with an in-scope `get` trap or a nested trap-less Proxy chain | The outer trap lookup, original receiver, and eventual trap value validation | Every handler-Proxy lookup/trap and traversed forwarding prefix | **Migrate in #630** through the same iterative Proxy-`get` continuation; focused trapped and trap-less nested-handler tests prevent recursive fallback |
-| `proxy_get_key` trap call | Interpreted/native/Proxy callable or non-callable trap | Target, canonical key, receiver, trap result, and pending invariant work | Revocation checks, handler lookup, trap arguments, and trap body | **Migrate in #630** for interpreted traps and synchronous native leaves; the exact Proxy test covers recursive interpreted traps |
-| Proxy `get` invariant processing | Ordinary/exotic target descriptor/value pair or abrupt completion | Trap result after invariant validation | Trap execution and target/key/receiver capture | **Migrate in #630** for ordinary non-Proxy targets; frozen data/accessor tests prove invariant errors occur after the trap exactly once |
-| `call_value` realm wrappers | Normal or abrupt activation completion | Previous realm overrides, source identity, callee identity, and failure-observation state | Installing the callee realm and recording source failure | **Migrate in #630** into activation cleanup; borrowed-realm and source-identity regressions cover normal and abrupt exits |
-| Parameter-default save/restore | Simple/extended interpreted call; normal, guest throw, or runtime abrupt default evaluation | Previous `in_nonarrow_param_default_eval` and conflict set | Reset on entry, default-expression effects, and exact restoration | **Migrate in #630** into activation/setup cleanup and explicit parameter progress; nested-default and rejected/abrupt cleanup tests cover it |
-| #617 observation seam | Entry accepted, entry rejected, or activation released | Whether acquisition completed and the opaque cleanup/observer token | Entry observation and exactly one matching release | **Migrate in #630** as policy-free entry/release decisions; pure counter probes cover acquired/rejected/duplicate-consume behavior before #617 wires policy |
+| Boundary | Production claim | What remains outside the claim |
+|---|---|---|
+| `Interpreter::run` | Literal-only leaf programs and the exact numeric, getter, Proxy `get`, and protected-control classifiers enter `PrimitiveProgramDispatchShell` from the root | Every program rejected by those preflights starts on the legacy `exec_stmt` path |
+| Direct `Interpreter::call_value` | `this` is `Undefined`, the sole argument is `Number(256)`, and the sealed callee is the exact self/mutual numeric `Object(UserFunc)` recipe | Every other direct call uses the legacy `call_value_impl` path |
+| Managed guest activation | A sealed registry admits only the exact `Object(UserFunc)` identities created by the admitted numeric declaration, ordinary getter, or Proxy handler method | General `UserFunc`, `ArrowFunc`, `UserFuncExt`, `ArrowFuncExt`, callable Proxy, and interpreter-backed native callables are not admitted |
+| Call, return, and binary work | The exact numeric recipe retains the left `Number`, performs `+`, `-`, or `===` in the closed numeric set, delivers the callee result once, and routes the admitted return | Arbitrary calls, arguments, operators, coercions, return expressions, and throw expressions are residuals |
+| Protected numeric completion | The admitted root may evaluate or throw the exact `f(256)` call; catch/finally bodies are empty or one closed numeric/binding value or throw. A recursive function return may cross one closed finalizer | General statement bodies, catch bindings, handlers, and finalizers are not production-admitted merely because the reducer can represent their completions |
+| Protected structural control | Exactly `label: try { break label; } finally { 1; } 9;` and `do try { continue; } finally { 2; } while (false); 8;` use the control lifecycle shell | Other labels, loops, conditions, catch clauses, finalizer bodies, and break/continue shapes remain on the legacy path |
+| Ordinary getter | One ordinary non-callable `Object` owns the exact accessor, or another ordinary `Object` has that holder as its direct prototype. The getter is the sealed zero-argument `Object(UserFunc)` recipe | `Array`, `Map`, `Set`, `Promise`, deeper or exotic prototype chains, Proxy receivers, and other getter callable families are residuals |
+| Proxy `get` | The canonical native Proxy constructor creates a non-callable Proxy with an extensible empty ordinary `Object` target and an ordinary handler whose sole `get` entry is an own data property containing the sealed `Object(UserFunc)` trap | Handler accessors/prototypes, nested handler Proxies, trap-less Proxy forwarding, other trap callable families, and non-empty or exotic targets are residuals |
+| Activation cleanup | Exact admitted `UserFunc` activations own LIFO restoration of active realm prototypes, source/callee identity, and the simple-parameter gate. Return, guest throw, runtime abrupt completion, and admitted protected routing consume the activation cleanup once | Generic `call_value` and `construct_value` realm wrappers still own their cleanup on the host stack |
+| Property cleanup | Exact getter and Proxy property operations own separate dispatcher-managed LIFO scopes, restored before their owning activation is released | General `with_active_property_access_value` remains the legacy host wrapper |
+| #617 observation seam | Entry attempt, acceptance/rejection, and exactly one release are observed for exact admitted guest activations; cleanup restoration precedes release observation | Legacy activations do not pass through this seam yet; #617 may add policy but does not broaden admission |
+| Synchronous leaves | Literal expression/throw statements in the closed leaf set and the canonical native Proxy-construction setup cannot enter guest code | A MoonBit/native callable is not a leaf merely because it is host-implemented; it needs an exact no-guest-entry proof |
+
+## Core-representable only
+
+[`activation_dispatch_core.mbt`](../../interpreter/runtime/activation_dispatch_core.mbt)
+deliberately models more than the current production shell admits. Its state can
+represent all completion categories, parameter-default progress, statement and
+loop cursors, catch/finalizer routing, nested property scopes, Proxy trap result
+work, and abrupt replacement. Those states establish the continuation contract
+and make transition rules testable; they do not establish a production path.
+
+In particular:
+
+- parameter-default call/resume state has reducer coverage, while production
+  still evaluates `UserFuncExt` and `ArrowFuncExt` defaults through the legacy
+  evaluator;
+- general label, loop, switch, try/catch/finally, and abrupt-replacement tests
+  establish completion semantics, while production admits only the closed
+  numeric recipes and the two exact protected-control roots above;
+- nested Proxy-handler lookup and frozen-data/getter-less invariant fixtures
+  establish ordering in the core or shared invariant helper, while production
+  Proxy admission still requires an own-data handler and an empty ordinary
+  target; and
+- shallow bound/call/apply, accessor, or Proxy lookalike tests prove legacy
+  compatibility and fallback selection, not managed stack-safe execution.
 
 ## Explicit residuals transferred to #608
 
-These paths occur in the shared runtime but are not reached with a
-may-call-user-code runtime type by the four concrete #616 programs:
+The following paths exist in the shared runtime but are outside the exact
+production admission above:
 
-- callable Proxy `apply` and Proxy traps other than the in-scope `get` trap;
-- a Proxy target reached by post-`get` invariant `[[GetOwnProperty]]`, which may
-  invoke `getOwnPropertyDescriptor` guest code;
-- constructors other than the exact native Proxy-constructor setup leaf;
-- setters, destructuring/iterator closure, spread arguments, iterator methods,
-  and built-in callback loops;
+- root programs and direct calls outside the sealed recipes, including general
+  `UserFunc`, `ArrowFunc`, `UserFuncExt`, and `ArrowFuncExt` activations;
+- `BoundFunc`, `FuncCallMethod`, and `FuncApplyMethod` target forwarding;
+  observable `apply` length/index reads are residual too, while a separately
+  proven plain argument-list construction may remain a synchronous leaf;
+- arbitrary call arguments, return/throw expressions, binary/coercing
+  operators, statement lists, labels, loops, switches, and try/catch/finally
+  bodies outside the exact recipes;
+- default-expression evaluation, rest and destructuring parameters, and catch
+  destructuring whose property or iterator operations may enter guest code;
+- own accessors on `Array`, `Map`, `Set`, and `Promise`, plus deeper ordinary,
+  exotic, or Proxy prototype chains and the general active-property realm
+  wrapper;
+- Proxy `get` through a handler accessor or prototype, a nested handler Proxy,
+  trap-less nested forwarding, a non-`UserFunc` or callable-Proxy trap, or a
+  non-empty/frozen/getter-less/exotic target;
+- post-`get` invariant `[[GetOwnProperty]]` on a Proxy target, which may invoke
+  the `getOwnPropertyDescriptor` trap, callable Proxy `apply`, and every Proxy
+  trap other than the exact `get` slice;
+- constructors other than the canonical no-callback Proxy setup leaf, including
+  user constructors, Proxy `construct`, `super`, species, and reflective
+  construction;
+- setters, conversion hooks reached by `ToPrimitive`, `ToPropertyKey`,
+  `ToNumber`, or string conversion, spread arguments, iterator acquisition,
+  iterator step/value/close, and destructuring iteration;
 - `InterpreterCallable`, `InterpreterCallableWithContext`, and
   `NonConstructableInterpreterCallable` branches whose native algorithm may
-  invoke guest code before it returns;
-- conversion hooks reached by `ToPrimitive`, `ToPropertyKey`, `ToNumber`, or
-  string conversion;
-- direct/indirect `eval`, generators, async functions/jobs, promises, timers,
-  and module execution;
-- catch-parameter or formal-parameter destructuring whose property/iterator
-  operations enter guest code; an activation containing such a pattern is not
-  admissible until #608 or an inventory expansion supplies its continuations;
-- bytecode activation suspension/resumption, owned by #631.
+  invoke guest code, together with built-in callback loops in Array, TypedArray,
+  Map, Set, JSON, Promise, and related libraries; and
+- direct/indirect `eval`, generator and async resume, async jobs, promises and
+  reaction jobs, microtasks, timers, and module execution.
 
-Native callable variants without a guest-entry capability may finish in the
-imperative shell. A callable that receives or captures an `Interpreter` is not
-assumed to be a leaf merely because its body is implemented in MoonBit. Before
-adding one to a managed path, the implementation must either prove that exact
-callable cannot invoke guest code or add its post-call work to this inventory.
+Bytecode activation suspension/resumption remains owned by #631 rather than
+#608. Native callable variants without a guest-entry capability may finish in
+the imperative shell, but each exact callable needs a no-guest-entry proof
+before it is classified as a synchronous leaf.
 
 ## Cleanup snapshot
 
-An acquired activation owns one immutable snapshot or opaque shell token with:
+For an exact admitted guest activation, reducer frames own the activation
+environment, execution context, and pending semantic continuations. Separately,
+one immutable snapshot or opaque shell cleanup token owns:
 
 - the previous packed active realm-prototype overrides;
 - the previous active source identity and the callee source identity needed for
   failure observation;
-- the previous parameter-default flag and conflict set;
-- the activation environment/context and continuation owner; and
+- the previous simple-parameter gate flag and conflict set;
 - whether the #617 observation accepted entry.
 
-Handler and finalizer routing does not consume this token. Leaving the owning
-activation consumes it once. Rejected entry restores state installed while
-preparing the attempt but never emits a release for an activation that was not
-acquired.
+Handler and finalizer routing within an admitted recipe does not consume this
+token. Leaving the owning activation consumes it once. Rejected entry restores
+state installed while preparing the attempt but never emits a release for an
+activation that was not acquired. This snapshot does not imply that
+parameter-default expressions themselves are production-dispatched.
 
-A property operation owns a separate dispatcher-managed LIFO scope token for
-its active-callee-realm clear. That token survives handler lookup, a suspended
-getter or Proxy trap activation, and post-trap invariant work. Normal or abrupt
-completion of the property operation consumes it once. If an activation exits
-with property operations still outstanding, those operation scopes unwind in
-LIFO order before the activation cleanup token is consumed and release is
-observed.
+An exact admitted getter or Proxy property operation owns a separate
+dispatcher-managed LIFO scope token for its active-callee-realm clear. That
+token survives the admitted handler lookup, a suspended getter or Proxy trap
+activation, and post-trap invariant work. Normal or abrupt completion consumes
+it once. Outstanding property scopes unwind in LIFO order before activation
+cleanup and release observation. General property operations still use the
+legacy `with_active_property_access_value` wrapper and remain #608 work.
 
-## Focused test ledger
+## Focused test evidence
 
-| Slice | Required observable tests |
-|---|---|
-| Red evidence | The four exact #616 sources fail before implementation and later return `256` through `Interpreter::run` |
-| Transition core | Entry/rejection, value resume, every completion category, catch selection, normal-finally resume, abrupt-finally replacement, and duplicate continuation/cleanup consumption |
-| Ordinary activation | Direct and mutual depth 256, nested ordinary result delivery, explicit return, non-callable error, and shallow bound/call/apply forwarding |
-| Lifecycle | Normal, return, guest throw, runtime abrupt, rejected entry, realm/source restoration, simple parameter-default call/resume/restoration, exactly one release per acquired activation, and release occurring only after finalizer effects |
-| Handlers/finalizers | Call returning from `try`, `throw f()` crossing an activation into `catch`, break and continue through `finally`, normal/return/throw/runtime-abrupt finalization, runtime-abrupt plus abrupt-finally replacement, and general abrupt-finally replacement |
-| Getter | Own and prototype receiver identity, depth 256, exact effect order, abrupt getter, and realm/source restoration |
-| Proxy `get` | Depth 256, own/prototype handler accessor order, trapped and trap-less nested-handler forwarding, exact trap side-effect order, frozen-data and getter-less-accessor invariants after the trap, and abrupt trap/invariant behavior |
-| Compatibility | Existing interpreter, error-ordering, borrowed-realm, source-identity, and bytecode-equivalence suites |
+| Evidence class | What it proves | What it does not prove |
+|---|---|---|
+| Public production | The four exact #616 depth-256 programs, exact direct numeric `call_value`, admitted protected numeric completions, and the two exact protected-control roots pass through public adapters | General programs or callable families are stack-safe |
+| Direct shell and lifecycle | Exact admission/sealing, activation identity, normal/return/guest-throw/runtime-abrupt cleanup, property-scope LIFO restoration, observation acceptance/rejection/release, and finalizer-before-release ordering | A shell state without public admission is production reachable |
+| Core representability | Every completion category, parameter-default resume, general handler/finalizer precedence, loop/label routing, nested property cleanup, and Proxy invariant ordering reduce deterministically | The production shell implements or admits every represented state |
+| Legacy compatibility | Shallow bound/call/apply, accessor/Proxy lookalikes, existing interpreter behavior, error ordering, borrowed realm, source identity, and bytecode equivalence do not regress | Those fallback paths use managed continuation execution |
 
 ## Stop conditions
 

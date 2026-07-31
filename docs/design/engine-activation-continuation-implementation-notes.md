@@ -1,165 +1,139 @@
 # Activation continuation implementation notes
 
-Date: 2026-07-29.
+Date: 2026-07-29. Revised 2026-07-31 after reconciling the notes with the
+implemented #630 closure.
 
 This note maps the accepted
 [activation and continuation contract](../decisions/engine-activation-continuation-contract.md)
-to the current tree-walking interpreter. It supplies concrete implementation
-guidance for #630, while the linked decision holds the architecture contract.
+to the tree-walking interpreter. The contract defines the general reducer and
+ownership model. Production execution currently enters that model only through
+the exact recipes recorded in the
+[continuation-closure inventory](engine-activation-continuation-closure-inventory.md).
 Code remains authoritative when names or call paths change.
 
-## Current synchronous paths
+Design acceptance is not a claim that the general may-call-user-code migration
+is complete. A private reducer may represent more completion and continuation
+states than production admission can currently reach. Core representation,
+white-box coverage, and production stack-safety coverage must therefore be
+reported separately.
 
-The return-and-binary reproducer in #616 currently retains a chain of MoonBit
-frames while the callee runs:
+## Current execution structure
 
-```text
-exec_stmt(ReturnStmt)
-  -> eval_expr(Binary)
-  -> eval_expr(Call or Member)
-  -> call_value
-  -> call_value_impl
-  -> exec_stmts
-  -> exec_stmt(...)
-```
+Each #630 production slice follows the same boundary:
 
-Accessor and Proxy paths retain different result consumers after invoking guest
-code:
+1. **Exact admission** classifies a callback-free source recipe and checks the
+   initial runtime conditions before managed effects begin.
+2. **Runtime sealing** captures the identities and provenance needed by that
+   recipe. Later managed entries revalidate the sealed envelope rather than
+   trusting mutable bindings or object graphs.
+3. **Iterative dispatch** stores activations, value consumers, handlers,
+   finalizers, property work, and cleanup as engine-owned data. A deterministic
+   reducer selects the next decision; a thin shell performs evaluator and
+   runtime effects and returns their results to the reducer.
+4. **Completion routing** carries normal, return, break, continue, guest throw,
+   and runtime-abrupt outcomes until a continuation consumes them or the root
+   adapter translates the final outcome.
+5. **Public adaptation** preserves the synchronous facade. An exact root enters
+   the dispatcher; an ineligible root remains on the legacy path from its start.
 
-```text
-get_property_of_object -> call_value(getter) -> Value
-proxy_get_key -> call_value(trap) -> invariant checks -> Value
-```
+Once managed execution begins, an unsupported edge is an internal invariant
+failure. It is never permission to fall back to a recursive public adapter or
+to replay an enclosing statement.
 
-Advancing only the statement index loses the pending binary operation and
-`ReturnSignal`. Replaying the statement repeats effects such as `n = n - 1`.
-The Proxy path cannot return the trap result before its invariant checks have
-run. These consumers therefore belong in the first continuation-closure
-inventory.
+## Exact #630 production closure
 
-## Candidate private representation
+The production claim is limited to these admitted recipes:
 
-The names below make the required distinctions visible during implementation;
-they are not prescribed by the architecture contract.
+- exact numeric self and mutual recursion entered through a program root or an
+  exact direct-call root, including the required return and binary consumers;
+- exact protected numeric recipes that exercise catch selection, saved
+  completion resumption, normal finalization, abrupt replacement, guest throw,
+  and runtime-abrupt routing;
+- exact ordinary-object own getters and direct one-hop ordinary prototype
+  getters, retaining the original receiver and enclosing property consumer;
+- the exact Proxy `get` recursion recipe with an own data trap on the admitted
+  handler, a callback-free ordinary target, captured trap inputs, and post-trap
+  invariant work;
+- exact labelled-break and bounded-continue program roots routed through a
+  closed finalizer; and
+- realm/value, source, simple-parameter, property-scope, and observation cleanup
+  required by those recipes.
 
-```moonbit
-priv enum GuestCompletion {
-  Normal(Value)
-  Return(Value)
-  Break(Value?, String?)
-  Continue(Value?, String?)
-  Throw(Value)
-  RuntimeAbrupt(Error)
-}
+Invariant parity tests may use target descriptors broader than the exact Proxy
+root admits. Those tests prove the shared post-trap continuation and error
+ordering; they do not widen production admission.
 
-priv enum DispatchEvent {
-  Start(ExecutionRequest)
-  ValueReady(Value)
-  CompletionReady(GuestCompletion)
-  ActivationRejected(ExecutionControlFailure)
-}
+Similarly, the reducer can model parameter-default resumption, but #630
+production recipes only own and restore the simple-parameter lifecycle state.
+Evaluation of a default expression that may enter guest code remains outside
+the admitted closure.
 
-priv enum DispatchDecision {
-  Evaluate(EvalWork)
-  InvokeNative(NativeCall)
-  EnterActivation(CallRequest)
-  Resume(Continuation, GuestCompletion)
-  ReleaseActivation(ActivationCleanup, GuestCompletion)
-  Finish(GuestCompletion)
-}
-```
+## Cleanup and observation ownership
 
-`RuntimeAbrupt` may map to one private variant or several. In either case, the
-implementation must retain whether a failure is guest-catchable, an engine
-control failure, or a non-catchable host/runtime failure.
+An admitted activation captures its caller-visible dynamic state before
+installing callee state. Nested activations own distinct cleanup capabilities.
+Property access owns a separate scope capability when its restoration must
+survive a suspended getter or Proxy trap.
 
-A possible activation record starts with the state currently retained by the
-recursive evaluator:
+Completion routing retains activation cleanup while a handler or finalizer can
+still run. On exit, the shell restores parameter, source, realm, and property
+state before releasing the activation observation. Emergency unwinding follows
+the same LIFO order. A rejected entry restores partial setup but has no release
+event because no activation was acquired.
 
-```moonbit
-priv struct ActivationFrame {
-  body : Array[@ast.Stmt]
-  statement_index : Int
-  env : Environment
-  ctx : ExecContext
-  last_value : Value
-  cleanup : ActivationCleanup
-}
-```
+The observation port is policy-free and covers guest activations admitted by
+#630. It does not make legacy call paths observable or stack-safe. #617 owns the
+logical-depth policy, configuration validation, and engine-created error that
+will consume this seam.
 
-The record must not retain a `Ref[Value]` whose writer belongs to an abandoned
-host frame. Returned values and completions instead travel through dispatcher-
-owned continuation state.
+## Residual migration retained by #608
 
-## Cleanup inventory
+The following paths remain outside #630 even when the reducer has a state that
+could eventually represent their continuation:
 
-The initial cleanup token must account for the state currently restored by
-host-stack callbacks:
+- general interpreted functions, arrow and extended callable forms, bound
+  calls, and call/apply forwarding;
+- general statements, expressions, loops, labels, catch/finally shapes, and
+  parameter-default or destructuring evaluation;
+- accessors on other object families, deeper or exotic prototype paths,
+  handler accessors, nested Proxy handlers, and setters;
+- callable Proxy application, callback-capable Proxy targets, and Proxy traps
+  other than the exact admitted `get` recipe;
+- constructors, conversion hooks, direct or indirect evaluation, generators,
+  async execution, iteration, promises and jobs, timers, modules, and built-in
+  callback loops; and
+- native/runtime adapters whose implementation can re-enter guest code.
 
-- active value and active callee realm overrides;
-- `in_nonarrow_param_default_eval`;
-- `param_default_eval_var_conflicts`;
-- whether #617 activation observation completed; and
-- any additional per-call state discovered while tracing the #616 paths.
+These are named #608 residuals, not recursive fallbacks inside the #630 managed
+cycle. Adding one requires a focused failing test, a source-backed consumer and
+effect inventory, an exact admission boundary, and a continuation/runtime
+adapter before the production claim expands.
 
-Entry captures the prior state before installing overrides. Nested activations
-own separate tokens. A rejected entry restores installed state without
-releasing an activation that was never pushed.
+## Compatibility and adjacent work
 
-Cleanup tests must count acquisition and release. A matching final environment
-cannot detect a duplicate release that happened to restore the same values.
-The tests cover ordinary completion, explicit return, break and continue
-through `finally`, guest throw, runtime abrupt completion, and rejected entry.
-Handler and finalizer cases must show that cleanup remains owned while the
-activation is resumable and is consumed once when that activation ends.
+The public synchronous run and call entry points, execution context, completion
+signals, environments, source attribution, realm behavior, and JavaScript error
+behavior remain compatible. Compatibility does not imply stack safety for an
+ineligible legacy path.
 
-## Continuation-closure inventory
+#619 owns the permanent debug/release target matrix after #630 and #617 are
+complete. The cross-target tests run while landing #630 are implementation
+evidence, not a substitute for that final gate. #631 owns any bytecode-VM
+adapter to the same root-request/final-completion seam; it need not share the
+tree-walker continuation representation. Proper Tail Calls and activation
+replacement remain separate downstream work.
 
-Start from every `call_value` reference reachable from the four #616 programs.
-For each caller, record:
+## Verification and maintenance
 
-1. the possible callee kinds (`Object` interpreted/native callable, `Proxy`, or
-   non-callable error);
-2. the value or abrupt completion consumed after the call;
-3. effects that must not be replayed;
-4. whether #630 migrates the caller, proves it outside the managed cycle, or
-   retains it as a named #608 residual; and
-5. the focused test that covers the classification.
+The four exact #616 programs supply the end-to-end red-to-green evidence.
+Reducer tests separately cover deterministic transition, pathological
+continuation depth, handler/finalizer precedence, and one-time ownership. Shell
+tests cover effect order, runtime provenance, cleanup restoration, and adapter
+connection.
 
-The first pass includes ordinary calls, `ReturnStmt`, binary expressions,
-own/prototype getters, Proxy `get` invariant processing, `exec_try_catch`,
-active-value and callee-realm scopes, and parameter-default save/restore.
-Finding another guest-call edge or host-stack-owned cleanup action on one of
-these paths expands the migrated closure; it does not justify a recursive
-fallback.
-
-Unmigrated constructors, conversions, generators, async jobs, iterators,
-built-in callbacks, setters, and other Proxy traps remain #608 work unless the
-inventory proves that #630 reaches them.
-
-## Adapter compatibility
-
-The public `Interpreter::run(...) -> Value raise Error` and
-`Interpreter::call_value(...) -> Value raise Error` entry points remain
-synchronous adapters, while `ExecContext`, `Signal`, and `Environment` remain
-compatible during #630; migrated internal paths cannot recursively re-enter
-either public adapter.
-
-The bytecode VM may later adapt its instruction pointer and operand stack to the
-same root-request/final-completion seam without sharing the tree-walker frame
-representation. That adapter remains #631 work.
-
-## Implementation sequence
-
-1. Commit the four exact #616 programs as red end-to-end tests.
-2. Add pure transition tests for entry, resume, handler selection, finalizer
-   precedence, release, and one-time continuation and cleanup consumption.
-3. Move activation lifecycle state out of host-stack callbacks.
-4. Migrate ordinary and mutual non-tail calls, including binary and return
-   resumption.
-5. Migrate `try`/`catch`/`finally` handler and finalizer state.
-6. Migrate getter result resumption.
-7. Migrate Proxy `get` result resumption and invariant checks.
-8. Connect #617 activation observation at the sole entry and release owner.
-9. Run interpreter, bytecode-equivalence, error-ordering, focused cleanup, and
-   cross-target tests after every slice.
+When production admission changes, update the closure inventory in the same
+slice. Verify the exact public behavior first, then transition and shell
+behavior, cleanup and observation order, legacy lookalike compatibility,
+cross-target execution, public interfaces, formatting, and architecture
+boundaries. Do not infer a generalized stack-safety claim from a passing core
+test or from an unadmitted continuation variant.

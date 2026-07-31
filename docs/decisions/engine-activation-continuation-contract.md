@@ -1,27 +1,35 @@
 # Stack-safe engine activation and continuation contract
 
-Date: 2026-07-29. Revised 2026-07-29 after validating the suspension seam
-against the minimized #616 programs and the current evaluator.
+Date: 2026-07-29. Revised 2026-07-31 after reconciling the accepted model with
+the exact production recipes implemented for #630.
 
 ## Status
 
-Accepted. Acceptance of this contract is recorded by the merge that introduces
-this document. The original #618 exploration is superseded: retaining only a
-statement position could preserve where a callee started, but not the caller
-computation waiting for the callee's result.
+Accepted as the design contract. Acceptance records agreement on the reducer,
+continuation, and ownership model; it does not mean that every operation that
+may call guest code has been migrated. The original #618 exploration is
+superseded: retaining only a statement position could preserve where a callee
+started, but not the caller computation waiting for the callee's result.
 
 This contract remains narrower than Proper Tail Calls (#607) and the complete
 may-call-user-code migration retained by #608. It does not classify tail
 positions, require bytecode, or claim that every runtime path capable of
 entering guest code is stack-safe.
 
+#630 applies the general model below to a conservatively admitted set of exact
+recipes. Admission and runtime provenance checks establish the complete managed
+closure before effects cross the dispatcher boundary. Programs and calls that
+do not satisfy an exact recipe remain on the legacy synchronous path from their
+start and are residual #608 work; they are not covered by #630's stack-safety
+claim.
+
 ## Context
 
-The current tree-walking interpreter propagates nested call results through the
-host call stack. A statement position appears to identify enough state to pause
-execution. The #616 programs disprove that expectation: a call may suspend
-inside an expression whose result still has to be combined, returned, checked,
-or delivered to another language operation.
+At the time of the decision, the tree-walking interpreter propagated the #616
+nested call results through the host call stack. A statement position appeared
+to identify enough state to pause execution. The #616 programs disproved that
+expectation: a call may suspend inside an expression whose result still has to
+be combined, returned, checked, or delivered to another language operation.
 
 The pending work is observable. Re-entering the enclosing statement can repeat
 an assignment, argument evaluation, accessor effect, or Proxy trap. Advancing
@@ -34,16 +42,16 @@ walking is not itself the claim addressed here. The failure occurs when a guest
 activation is entered synchronously beneath evaluator and runtime-operation
 frames that still owe semantic work.
 
-How many such consumers lie on the four #616 paths is not established by the
-examples alone. The implementation begins with those observed paths, but the
-reachable-call inventory decides whether the focused slice must expand.
+The examples alone did not establish how many such consumers lay on the four
+#616 paths. The source-backed reachable-call inventory defines the exact #630
+closure and names every broader path retained by #608.
 
 ## Decision: one deep execution module
 
-Introduce one private execution module whose interface accepts a root execution
+Use one private execution module whose interface accepts a root execution
 request and returns a final completion. Behind that small interface, the module
 owns guest activations, pending value consumers, handler and finalizer state,
-and activation cleanup.
+and activation cleanup for every admitted recipe.
 
 Existing synchronous entry points remain adapters at this seam. Once execution
 has entered the managed module, an internal path that needs to invoke guest code
@@ -109,7 +117,7 @@ A semantic continuation records what remains after a suspended guest call
 produces a completion. The execution module owns this data and captures no
 host-language continuation.
 
-The initial #630 slice must preserve the pending work for:
+The reducer model can represent the pending work for:
 
 - returning a resumed expression result;
 - combining the right operand of an expression with its saved left operand;
@@ -131,10 +139,10 @@ not learn the internal frame taxonomy.
 
 ## Suspension and dispatch
 
-When a managed evaluator or runtime operation would invoke interpreted guest
-code, it yields a call request and the continuation that will consume the
-result. The dispatcher retains that continuation, enters the callee activation,
-and resumes the saved consumer after the callee completes.
+When an admitted managed evaluator or runtime operation would invoke
+interpreted guest code, it yields a call request and the continuation that will
+consume the result. The dispatcher retains that continuation, enters the callee
+activation, and resumes the saved consumer after the callee completes.
 
 A native operation that cannot enter guest code may complete in the shell. A
 native or runtime adapter that can enter guest code cannot be treated this way
@@ -151,9 +159,10 @@ The dispatcher follows these ownership rules:
 6. translate only the final root completion through the public synchronous
    adapter.
 
-No ordinary call is resumed by replaying its enclosing statement. Argument
-evaluation, assignments, accessor effects, Proxy trap effects, handler entry,
-and finalizer entry therefore occur in source order and at most once.
+No admitted managed call is resumed by replaying its enclosing statement.
+Argument evaluation, assignments, accessor effects, Proxy trap effects,
+handler entry, and finalizer entry in an admitted recipe therefore occur in
+source order and at most once.
 
 ## Required semantic traces
 
@@ -216,8 +225,8 @@ eventual activation exit.
 
 ## Reachable-call closure
 
-Before implementation, inspect every guest-call edge reachable from the four
-#616 programs. For each edge, record:
+The inventory records every guest-call edge reachable from the four #616
+programs. For each edge, it records:
 
 1. the possible categories of callee;
 2. the value or abrupt completion consumed afterward;
@@ -226,24 +235,27 @@ Before implementation, inspect every guest-call edge reachable from the four
    retains it as a named #608 residual; and
 5. the focused test that covers the classification.
 
-The inventory includes ordinary calls, returns, binary expressions,
-own/prototype accessors, Proxy result invariants, handler and finalizer routing,
-realm state, and parameter-default state. If another guest-call edge or
-host-stack-owned cleanup action is reachable, the migrated closure expands.
-Recursive fallback is not an acceptable substitute.
+The inventory includes the exact ordinary calls, returns, binary expressions,
+ordinary-object accessors, Proxy result invariants, handler and finalizer
+routing, realm state, and simple-parameter cleanup reached by the admitted
+recipes. A newly discovered guest-call edge or host-stack-owned cleanup action
+on one of those recipes expands the migrated closure. Recursive fallback is not
+an acceptable substitute.
 
-Constructors, conversions, generators, async jobs, iterators, built-in
-callbacks, setters, and other Proxy operations remain #608 work unless the
-inventory proves that #630 reaches them. Until that inventory is complete, the
-current evaluator determines the size of the first implementation slice. This
-contract does not fix that size in advance.
+General callable families, bound and forwarding calls, parameter-default
+expressions, constructors, conversions, generators, async jobs, iterators,
+built-in callbacks, setters, broader accessor paths, and other Proxy operations
+remain #608 work. The inventory is the authority for the exact transfer
+boundary.
 
 ## Migration and compatibility
 
 Migration proceeds in behavioral slices. Each slice first establishes a failing
 end-to-end case, then adds deterministic transition coverage, then replaces the
 recursive path without changing evaluation order, error order, source identity,
-realm behavior, or public synchronous behavior.
+realm behavior, or public synchronous behavior. Production admission remains
+exact and closed until that slice has both semantic and runtime-provenance
+evidence.
 
 The public synchronous interface remains compatible. That compatibility does
 not permit a migrated internal path to re-enter the adapter recursively. Direct
@@ -251,23 +263,24 @@ evaluation and generator behavior must not regress; if preserving either
 requires another reachable edge to migrate, the inventory and scope record must
 expand together.
 
-The concrete current-code mapping and suggested implementation order live in
+The concrete current-code mapping and migration boundaries live in
 [the implementation notes](../design/engine-activation-continuation-implementation-notes.md).
 Those notes may change with the source tree without changing this contract's
 ownership and completion invariants.
 
 ## Scope boundary
 
-| In scope (#630) | Retained by later work |
+| In scope (#630 exact recipes) | Retained by later work |
 |---|---|
-| One activation dispatcher behind a private continuation seam | Complete may-call-user-code migration (#608) |
-| Ordinary and mutual non-tail calls | Proper Tail Calls and activation replacement (#611) |
-| Return and binary-result continuation required by #616 | Constructors and conversion hooks not reached by the slice |
-| Own/prototype getter result continuation | Generator and async suspension integration |
-| Proxy `get` trap result and invariant continuation | Other Proxy traps and built-in callback loops |
-| Handler, finalizer, and completion continuation | Full bytecode call convention (#631) |
-| Realm, parameter-default, normal, and abrupt cleanup | Direct evaluation paths not reached by the slice |
-| Activation-depth observation seam for #617 | Final target/profile CI gate (#619) |
+| One deterministic reducer and iterative shell behind private root adapters | Complete may-call-user-code migration (#608) |
+| Exact numeric self/mutual program roots and exact direct-call roots | General interpreted callable families, bound calls, and call/apply forwarding (#608) |
+| Exact numeric return/binary and admitted protected catch/finally recipes | General expression, statement, and protected-control shapes (#608) |
+| Exact labelled-break and bounded-continue roots through a closed finalizer | Arbitrary labels, loops, and finalizers that may reach guest code (#608) |
+| Exact ordinary-object own and direct-prototype getter recipes | Other object families, deeper or exotic property paths, and setters (#608) |
+| Exact Proxy `get` recipe, captured trap result, and post-trap invariant continuation | Handler accessors, nested Proxies, callback-capable targets, and other Proxy traps (#608) |
+| Realm/value and simple-parameter lifecycle cleanup for admitted activations | Parameter-default expression resumption, destructuring, constructors, conversions, iteration, async/jobs, timers, and built-in callbacks (#608) |
+| Policy-free observation of #630-admitted guest activation entry/release | Logical activation-depth policy and error behavior (#617) |
+| Existing synchronous facade preserved around exact adapters | Full bytecode call convention (#631) and final target/profile gate (#619) |
 
 The first unresolved edge decides the boundary. If a required #616 path cannot
 preserve existing semantics without another migration, that dependency joins
@@ -304,8 +317,10 @@ Tail-call replacement cannot repair them.
 ## Interaction with adjacent work
 
 #617 owns the logical activation-depth policy and the JavaScript error exposed
-when its budget rejects entry. #630 owns the sole observation seam and balanced
-entry/release lifecycle. A rejected activation is never partially acquired.
+when its budget rejects entry. #630 owns the policy-free observation seam and
+balanced entry/release lifecycle for guest activations admitted by #630. A
+rejected admitted activation is never partially acquired. Broader activations
+join this seam only as #608 migrates them.
 
 Future #611 work may replace the current activation for a valid tail call
 without increasing retained depth. #630 reserves room for that transition but
@@ -319,25 +334,28 @@ continuation representation. #631 owns that adapter.
 
 - The four exact #616 programs are committed as failing tests before
   implementation and pass afterward with exact results and side-effect order.
-- No host evaluator frame is retained across a managed guest activation.
-- Return, binary, getter, and Proxy results resume through explicit, one-time
-  semantic continuations.
-- Proxy result invariants execute after the trap result and preserve existing
-  error behavior.
-- Handler and finalizer routing preserves catchability, return, break, continue,
-  completion replacement, and source order.
-- Cleanup remains owned during handler and finalizer processing and is released
-  exactly once when the activation ends.
-- Focused lifecycle tests cover ordinary completion, return, break and continue
-  through a finalizer, guest throw, runtime failure, and rejected entry. Each
-  test observes balanced acquisition and exactly one release for every acquired
-  activation.
-- The reachable-call inventory names every migrated and residual path; no
-  migrated path silently falls back to recursive guest entry.
-- Activation-depth observation occurs only at the dispatcher-owned lifecycle
-  seam.
-- Existing evaluation order, source identity, realm behavior, JavaScript errors,
-  and bytecode-equivalence behavior do not regress.
+- No host evaluator frame is retained across a guest activation admitted to the
+  #630 managed cycle.
+- Return, binary, getter, and Proxy results in the admitted exact recipes resume
+  through explicit, one-time semantic continuations.
+- The admitted Proxy recipe retains post-trap invariant work, and focused shell
+  parity tests preserve existing invariant error behavior.
+- Admitted protected numeric and structural-control recipes preserve
+  catchability, return, break, continue, finalizer replacement, and source
+  order through explicit routing.
+- Cleanup for an admitted activation remains owned during handler and finalizer
+  processing and is released exactly once when that activation ends.
+- Focused lifecycle tests for admitted recipes cover ordinary completion,
+  return, break and continue through a finalizer, guest throw, runtime failure,
+  and rejected entry. Every acquired admitted activation has one release.
+- The reachable-call inventory names every exact migrated path and every #608
+  residual; no admitted managed path silently falls back to recursive guest
+  entry.
+- Activation observation for #630-admitted guest calls occurs only at the
+  dispatcher-owned lifecycle seam. The depth policy remains #617 work.
+- Exact adapters preserve existing evaluation order, source identity, realm
+  behavior, JavaScript errors, and bytecode-equivalence behavior. Legacy paths
+  remain compatible but are not claimed stack-safe by #630.
 
 ## Related issues
 
