@@ -2359,7 +2359,6 @@ fn Interpreter::run_activation_dispatch_leaf_program(
 }
 
 ///|
-#warnings("-unused_value")
 fn Interpreter::run_activation_dispatch_control_program(
   self : Interpreter,
   stmts : Array[@ast.Stmt],
