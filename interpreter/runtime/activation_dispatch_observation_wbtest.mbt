@@ -513,6 +513,7 @@ test "restore all cleanup releases nested observations after state restoration" 
   dispatch_shell_test_install_realm_sentinel(interp, 73)
   let saved_conflicts : @set.Set[String] = @set.Set::default()
   saved_conflicts.add("restore-all-observation")
+  interp.realm_state.active_source_identity.val = Some("restore-all-caller.js")
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(saved_conflicts)
   let probe = DispatchObservationProbe(observed_interp=Some(interp))
@@ -528,6 +529,12 @@ test "restore all cleanup releases nested observations after state restoration" 
     2.0,
     plan.root_call_loc,
   )
+  dispatch_shell_test_install_realm_sentinel(interp, 74)
+  let nested_conflicts : @set.Set[String] = @set.Set::default()
+  nested_conflicts.add("nested-restore-all-observation")
+  interp.realm_state.active_source_identity.val = Some("nested-caller.js")
+  interp.in_nonarrow_param_default_eval = true
+  interp.param_default_eval_var_conflicts = Some(nested_conflicts)
   let _ = shell.perform_effect(
     DispatchRun(DispatchCaptureTrustedCallee(parent_start.recursive_callee)),
   )
@@ -566,6 +573,10 @@ test "restore all cleanup releases nested observations after state restoration" 
   json_inspect(probe.release_state_restored, content=[true, true])
   inspect(shell.cleanup_stack.length(), content="0")
   dispatch_shell_test_expect_realm_sentinel(interp, 73)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="restore-all-caller.js")
+    None => fail("expected the restore-all caller source after restoration")
+  }
   inspect(interp.in_nonarrow_param_default_eval, content="true")
   match interp.param_default_eval_var_conflicts {
     Some(found) =>
@@ -580,7 +591,13 @@ test "direct numeric root call reports every managed activation in strict LIFO o
     "function f(n){if(n===0)return 0;return 1+f(n-1);}", "f",
   )
   let registry = direct_numeric_recursion_registry_or_fail(interp, callee)
-  let probe = DispatchObservationProbe()
+  dispatch_shell_test_install_realm_sentinel(interp, 75)
+  let saved_conflicts : @set.Set[String] = @set.Set::default()
+  saved_conflicts.add("direct-root-observation")
+  interp.realm_state.active_source_identity.val = Some("direct-root-caller.js")
+  interp.in_nonarrow_param_default_eval = true
+  interp.param_default_eval_var_conflicts = Some(saved_conflicts)
+  let probe = DispatchObservationProbe(observed_interp=Some(interp))
   let shell = PrimitiveProgramDispatchShell(
     interp,
     numeric_registry=Some(registry),
@@ -599,5 +616,24 @@ test "direct numeric root call reports every managed activation in strict LIFO o
     other => fail("expected direct 256, got " + other.to_string())
   }
   expect_nested_dispatch_observation_balanced(probe)
+  inspect(probe.release_state_restored.length(), content="257")
+  let mut every_release_followed_restoration = true
+  for restored in probe.release_state_restored {
+    if !restored {
+      every_release_followed_restoration = false
+    }
+  }
+  inspect(every_release_followed_restoration, content="true")
   inspect(shell.cleanup_stack.length(), content="0")
+  dispatch_shell_test_expect_realm_sentinel(interp, 75)
+  match interp.realm_state.active_source_identity.val {
+    Some(source) => inspect(source, content="direct-root-caller.js")
+    None => fail("expected the direct root caller source after restoration")
+  }
+  inspect(interp.in_nonarrow_param_default_eval, content="true")
+  match interp.param_default_eval_var_conflicts {
+    Some(found) =>
+      inspect(physical_equal(found, saved_conflicts), content="true")
+    None => fail("expected direct root caller conflicts after restoration")
+  }
 }
