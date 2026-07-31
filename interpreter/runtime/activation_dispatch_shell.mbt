@@ -2208,6 +2208,34 @@ fn PrimitiveProgramDispatchShell::advance_control_loop(
 }
 
 ///|
+fn PrimitiveProgramDispatchShell::perform_production_work(
+  self : PrimitiveProgramDispatchShell,
+  work : DispatchProductionWork,
+) -> DispatchEffectResult raise InvalidActivationDispatchShell {
+  match work {
+    DispatchNumericObserveExpressionStep(observation) => {
+      ignore(observation)
+      self.observe_numeric_execution_step()
+    }
+    DispatchNumericObserveStatementStep(observation) => {
+      ignore(observation)
+      self.observe_numeric_execution_step()
+    }
+    DispatchNumericReadParameter(token) => self.read_numeric_parameter(token)
+    DispatchNumericEnterCatch(catch_state, error) =>
+      self.enter_numeric_catch(catch_state, error)
+    DispatchNumericReadCatchBinding(token) =>
+      self.read_numeric_catch_binding(token)
+    DispatchNumericCaptureTrustedCallee(token) =>
+      self.capture_numeric_callee(token)
+    DispatchNumericStartCapturedCall(token, argument, loc) =>
+      self.start_captured_numeric_call(token, argument, loc)
+    DispatchNumericApplyBinaryRight(binary, right) =>
+      self.apply_numeric_binary(binary, right)
+  }
+}
+
+///|
 fn PrimitiveProgramDispatchShell::perform_effect(
   self : PrimitiveProgramDispatchShell,
   effect : DispatchEffect,
@@ -2217,24 +2245,11 @@ fn PrimitiveProgramDispatchShell::perform_effect(
       self.enter_program(cursor)
     DispatchEnterActivation(DispatchCallActivation(request)) =>
       self.enter_managed_call(request)
+    DispatchRunProduction(work) => self.perform_production_work(work)
     DispatchRun(DispatchExecuteStatement(step)) =>
       self.execute_managed_statement(step)
     DispatchRun(DispatchAdvanceLoop(loop_state)) =>
       self.advance_control_loop(loop_state)
-    DispatchRun(DispatchObserveExpressionStep(observation)) => {
-      ignore(observation)
-      self.observe_numeric_execution_step()
-    }
-    DispatchRun(DispatchObserveStatementStep(observation)) => {
-      ignore(observation)
-      self.observe_numeric_execution_step()
-    }
-    DispatchRun(DispatchReadNumericParameter(token)) =>
-      self.read_numeric_parameter(token)
-    DispatchRun(DispatchEnterNumericCatch(catch_state, error)) =>
-      self.enter_numeric_catch(catch_state, error)
-    DispatchRun(DispatchReadNumericCatchBinding(token)) =>
-      self.read_numeric_catch_binding(token)
     DispatchRun(DispatchStartProperty(work, consumer)) =>
       self.start_property(work, consumer)
     DispatchRun(DispatchExecuteProperty(work)) =>
@@ -2248,10 +2263,6 @@ fn PrimitiveProgramDispatchShell::perform_effect(
     DispatchRun(
       DispatchResumeContinuation(DispatchCheckProxyGetResult(work), value)
     ) => self.resume_proxy_get_result(work, value)
-    DispatchRun(DispatchCaptureTrustedCallee(token)) =>
-      self.capture_numeric_callee(token)
-    DispatchRun(DispatchStartCapturedNumericCall(token, argument, loc)) =>
-      self.start_captured_numeric_call(token, argument, loc)
     DispatchRun(
       DispatchResumeContinuation(DispatchApplyBinaryRight(binary), right)
     ) => self.apply_numeric_binary(binary, right)

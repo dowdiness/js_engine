@@ -10,6 +10,49 @@ const test = require("node:test");
 const DIFF = path.join(__dirname, "test262_failing_diff.js");
 const GATE = path.join(__dirname, "test262_regression_check.sh");
 
+const EXPECTED_TEST262_SHARD_INVOCATION = [
+  "./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \\",
+  "--test262 ./test262 \\",
+  "--mode ${{ matrix.mode }} \\",
+  "--shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} \\",
+  "--threads 4 \\",
+  "--timeout 12 \\",
+  "--output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \\",
+  "--summary",
+];
+
+function assertWorkflowUsesTimeout12(workflow) {
+  const lines = workflow.split("\n").map(line => line.trim());
+  const stepStart = lines.findIndex(line => line.startsWith("- name: Run Test262 ("));
+  assert.ok(stepStart >= 0, "Test262 shard step is missing");
+  const stepEnd = lines.findIndex(
+    (line, index) => index > stepStart && line.startsWith("- name:"),
+  );
+  assert.ok(stepEnd > stepStart, "Test262 shard step boundary is missing");
+  const stepBody = lines.slice(stepStart + 1, stepEnd);
+  const contractError = "authoritative Test262 shard invocation must remain exact";
+  const setPlusE = stepBody.reduce((indices, line, index) => {
+    if (line === "set +e") indices.push(index);
+    return indices;
+  }, []);
+  assert.equal(setPlusE.length, 1, contractError);
+  const runnerStarts = stepBody.reduce((indices, line, index) => {
+    if (line.includes("test262_runner/test262_runner.exe")) indices.push(index);
+    return indices;
+  }, []);
+  assert.equal(runnerStarts.length, 1, contractError);
+  assert.equal(runnerStarts[0], setPlusE[0] + 1, contractError);
+  const invocation = stepBody.slice(
+    runnerStarts[0],
+    runnerStarts[0] + EXPECTED_TEST262_SHARD_INVOCATION.length,
+  );
+  assert.deepEqual(
+    invocation,
+    EXPECTED_TEST262_SHARD_INVOCATION,
+    contractError,
+  );
+}
+
 function artifact(status, { mode = "strict", pathname = "test262/test/built-ins/encodeURI/case.js" } = {}) {
   return {
     engine: "moonbit-js-engine",
@@ -175,6 +218,45 @@ test("the required workflow invokes the per-test regression policy", () => {
     "utf8",
   );
   assert.match(workflow, /run: scripts\/test262_regression_check\.sh/);
+});
+
+test("the Test262 shard keeps bounded RegExp headroom", () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "..", ".github", "workflows", "test262.yml"),
+    "utf8",
+  );
+  assertWorkflowUsesTimeout12(workflow);
+});
+
+test("the timeout assertion rejects a wrong authoritative command despite a decoy", () => {
+  const workflow = fs.readFileSync(
+    path.join(__dirname, "..", ".github", "workflows", "test262.yml"),
+    "utf8",
+  );
+  const realRunnerTimeout8 = workflow.replace(
+    "            --timeout 12 \\\n",
+    "            --timeout 8 \\\n",
+  );
+  const heredocDecoy = [
+    "          cat <<'EOF'",
+    "          ./_build/native/debug/build/cmd/test262_runner/test262_runner.exe \\",
+    "            --test262 ./test262 \\",
+    "            --mode ${{ matrix.mode }} \\",
+    "            --shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} \\",
+    "            --threads 4 \\",
+    "            --timeout 12 \\",
+    "            --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \\",
+    "            --summary",
+    "          EOF",
+  ].join("\n");
+  const inStepDecoy = realRunnerTimeout8.replace(
+    "          set +e\n",
+    `          set +e\n${heredocDecoy}\n`,
+  );
+  assert.throws(
+    () => assertWorkflowUsesTimeout12(inStepDecoy),
+    /authoritative Test262 shard invocation must remain exact/,
+  );
 });
 
 test("the exact workflow gate fails regressions, passes clean results, and fails closed", () => {

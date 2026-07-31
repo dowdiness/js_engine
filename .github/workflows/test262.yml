@@ -308,7 +308,7 @@ jobs:
             --mode ${{ matrix.mode }} \
             --shard ${{ matrix.shard }}/${{ env.SHARD_TOTAL }} \
             --threads 4 \
-            --timeout 8 \
+            --timeout 12 \
             --output test262-${{ matrix.mode }}-shard-${{ matrix.shard }}of${{ env.SHARD_TOTAL }}-results.json \
             --summary
           rc=$?

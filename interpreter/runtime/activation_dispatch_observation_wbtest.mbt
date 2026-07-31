@@ -536,12 +536,14 @@ test "restore all cleanup releases nested observations after state restoration" 
   interp.in_nonarrow_param_default_eval = true
   interp.param_default_eval_var_conflicts = Some(nested_conflicts)
   let _ = shell.perform_effect(
-    DispatchRun(DispatchCaptureTrustedCallee(parent_start.recursive_callee)),
+    DispatchRunProduction(
+      DispatchNumericCaptureTrustedCallee(parent_start.recursive_callee),
+    ),
   )
   let child_request = match
     shell.perform_effect(
-      DispatchRun(
-        DispatchStartCapturedNumericCall(
+      DispatchRunProduction(
+        DispatchNumericStartCapturedCall(
           parent_start.recursive_callee,
           1.0,
           plan.entry.syntax.expression_recipe.recursive_call_loc,
