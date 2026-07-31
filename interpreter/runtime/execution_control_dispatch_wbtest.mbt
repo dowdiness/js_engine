@@ -286,3 +286,112 @@ test "bounded loop termination is deterministic" {
   inspect(first.1, content="2")
   inspect(second.1, content="2")
 }
+
+///|
+test "public direct recursion rejects at the logical depth boundary" {
+  let interp = Interpreter::new()
+  let parsed = @parser.parse(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  inspect(
+    interp.preflight_dispatchable_numeric_recursion_program(parsed.stmts)
+    is Some(_),
+    content="true",
+  )
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = try {
+    let value = run_dispatch_source(
+      interp, "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);", control,
+    )
+    match value {
+      Number(value) => "completed:" + value.to_string()
+      _ => "completed:other"
+    }
+  } catch {
+    JsException(Object(data)) => {
+      let message = match data.bag.properties.get("message") {
+        Some(String_(value)) => value
+        _ => "missing-message"
+      }
+      data.class_name + ":" + message
+    }
+    ExecutionControlError(ExecutionLimit) => "execution-limit"
+    _ => "other-error"
+  }
+  inspect(outcome, content="RangeError:Maximum call stack size exceeded")
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "public direct recursion below the logical limit preserves its value" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=100000,
+    maximum_active_depth=257,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let value = run_dispatch_source(
+    interp, "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);", control,
+  )
+  match value {
+    Number(value) => inspect(value, content="256")
+    _ => fail("expected the finite direct recursion result")
+  }
+  inspect(control.active_depth(), content="0")
+}
+
+///|
+test "execution control adapter observes activation through the carrier" {
+  let interp = Interpreter::new()
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=0,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let outcome = interp.with_execution_control(control, () => {
+    let _ = observe_activation_entry(
+      interp.execution_control_activation_observation_port(),
+    )
+    "accepted"
+  }) catch {
+    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    _ => "other"
+  }
+  inspect(outcome, content="stack-depth-limit")
+}
+
+///|
+test "direct activation releases logical depth after a guest throw" {
+  let (interp, _, registry, plan) = numeric_activation_test_fixture(
+    "function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);",
+  )
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  interp.with_execution_control(control, () => {
+    let shell = PrimitiveProgramDispatchShell(
+      interp,
+      numeric_registry=Some(registry),
+    )
+    let (cleanup, _) = numeric_activation_test_enter(
+      shell,
+      registry,
+      "f",
+      1.0,
+      plan.root_call_loc,
+    )
+    inspect(control.active_depth(), content="1")
+    numeric_activation_test_release(
+      shell,
+      cleanup,
+      DispatchThrow(@errors.RangeError(message="guest sentinel")),
+    )
+  })
+  inspect(control.active_depth(), content="0")
+}
