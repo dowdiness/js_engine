@@ -951,7 +951,9 @@ fn dispatch_shell_test_start_property(
   consumer : DispatchContinuation,
 ) -> (DispatchPropertyCleanup, DispatchPropertyGetResume, DispatchContinuation) raise {
   match
-    shell.perform_effect(DispatchRun(DispatchStartProperty(work, consumer))) {
+    shell.perform_effect(
+      DispatchRunProduction(DispatchPropertyStart(work, consumer)),
+    ) {
     DispatchWorkSuspended(
       DispatchSuspendProperty(cleanup, found_work, found_consumer)
     ) => (cleanup, found_work, found_consumer)
@@ -1000,7 +1002,9 @@ test "ordinary own accessor work suspends without invoking its getter" {
   )
   dispatch_shell_test_expect_realm_cleared(interp)
   let accessor_consumer = match
-    shell.perform_effect(DispatchRun(DispatchExecuteProperty(scoped_work))) {
+    shell.perform_effect(
+      DispatchRunProduction(DispatchPropertyExecute(scoped_work)),
+    ) {
     DispatchWorkSuspended(DispatchSuspendCall(request, continuation)) => {
       inspect(physical_equal(request.callee, getter), content="true")
       inspect(physical_equal(request.this_value, receiver), content="true")
@@ -1010,9 +1014,15 @@ test "ordinary own accessor work suspends without invoking its getter" {
     _ => fail("expected own accessor work to suspend at its getter call")
   }
   inspect(calls.val, content="0")
+  let accessor_work = match accessor_consumer {
+    DispatchDeliverAccessorResult(found) => found
+    _ => fail("expected the accessor result continuation")
+  }
   match
     shell.perform_effect(
-      DispatchRun(DispatchResumeContinuation(accessor_consumer, Number(21.0))),
+      DispatchRunProduction(
+        DispatchPropertyDeliverAccessorResult(accessor_work, Number(21.0)),
+      ),
     ) {
     DispatchWorkCompleted(DispatchNormal(Number(value))) =>
       inspect(value, content="21")
@@ -1056,7 +1066,9 @@ test "ordinary prototype accessor work preserves the original receiver" {
     DispatchDeliverCallResult,
   )
   match
-    shell.perform_effect(DispatchRun(DispatchExecuteProperty(scoped_work))) {
+    shell.perform_effect(
+      DispatchRunProduction(DispatchPropertyExecute(scoped_work)),
+    ) {
     DispatchWorkSuspended(DispatchSuspendCall(request, _)) => {
       inspect(physical_equal(request.callee, getter), content="true")
       inspect(physical_equal(request.this_value, receiver), content="true")
@@ -1102,7 +1114,9 @@ test "ordinary getterless accessor shadows a conflicting data slot" {
     DispatchDeliverCallResult,
   )
   match
-    shell.perform_effect(DispatchRun(DispatchExecuteProperty(scoped_work))) {
+    shell.perform_effect(
+      DispatchRunProduction(DispatchPropertyExecute(scoped_work)),
+    ) {
     DispatchWorkCompleted(DispatchNormal(Undefined)) => ()
     _ => fail("expected a getterless accessor to produce undefined")
   }
@@ -1132,7 +1146,9 @@ test "ordinary data property work completes once through the reducer" {
   let shell = PrimitiveProgramDispatchShell(interp)
   let (starting, start_decision) = schedule_dispatch_effect(
     dispatch_test_ready_state(DispatchFrameStackEmpty),
-    DispatchRun(DispatchStartProperty(work, DispatchDeliverCallResult)),
+    DispatchRunProduction(
+      DispatchPropertyStart(work, DispatchDeliverCallResult),
+    ),
   )
   let (start_ticket, start_effect) = match start_decision {
     DispatchPerform(ticket, effect) => (ticket, effect)
@@ -1147,7 +1163,7 @@ test "ordinary data property work completes once through the reducer" {
   let (property_ticket, property_effect) = match property_decision {
     DispatchPerform(ticket, effect) =>
       match effect {
-        DispatchRun(DispatchExecuteProperty(_)) => (ticket, effect)
+        DispatchRunProduction(DispatchPropertyExecute(_)) => (ticket, effect)
         _ => fail("expected scoped property execution")
       }
     _ => fail("expected scoped property execution")

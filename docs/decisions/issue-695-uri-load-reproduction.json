@@ -1,0 +1,1204 @@
+{
+  "schema_version": 1,
+  "ticket": 695,
+  "generated_at": "2026-07-31T08:47:56.114Z",
+  "git_commit": "ae6172ffe1d385b8297198d2ad5947542b642c21",
+  "engine": {
+    "command": "node _build/js/release/build/cmd/main/main.js",
+    "profile": "js-release"
+  },
+  "test262_directory": "../../test262",
+  "test262_revision": "2b2ecead6e82",
+  "test262_revision_source": "environment:TEST262_COMMIT",
+  "runner": {
+    "executable": "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+    "timeout_seconds": 5,
+    "isolated_workers": 1,
+    "load_workers": 4,
+    "iterations": 3
+  },
+  "uri_cases": [
+    "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+    "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+  ],
+  "known_hang_control": "scripts/test262_uri_load/known_hang.js",
+  "runs": [
+    {
+      "id": "isolated-strict-1",
+      "condition": "isolated",
+      "mode": "strict",
+      "iteration": 1,
+      "threads": 1,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 6915,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/isolated-strict-1.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 6.7s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/isolated-strict-1.json\n",
+      "stderr": "[1/4] 25% ETA: 4s\n[2/4] 50% ETA: 3s\n[3/4] 75% ETA: 1s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1655,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1630,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1697,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1735,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "isolated-strict-2",
+      "condition": "isolated",
+      "mode": "strict",
+      "iteration": 2,
+      "threads": 1,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 6951.7,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/isolated-strict-2.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 6.8s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/isolated-strict-2.json\n",
+      "stderr": "[1/4] 25% ETA: 5s\n[2/4] 50% ETA: 3s\n[3/4] 75% ETA: 1s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1681,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1686,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1674,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1707,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "isolated-strict-3",
+      "condition": "isolated",
+      "mode": "strict",
+      "iteration": 3,
+      "threads": 1,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 6920.2,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/isolated-strict-3.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 6.7s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/isolated-strict-3.json\n",
+      "stderr": "[1/4] 25% ETA: 5s\n[2/4] 50% ETA: 3s\n[3/4] 75% ETA: 1s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1686,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1660,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1690,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 1666,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "load-strict-1",
+      "condition": "load",
+      "mode": "strict",
+      "iteration": 1,
+      "threads": 4,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 2448.8,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/load-strict-1.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 2.2s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/load-strict-1.json\n",
+      "stderr": "[1/4] 25% ETA: 6s\n[2/4] 50% ETA: 2s\n[3/4] 75% ETA: 0s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2203,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2245,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2234,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2226,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "load-strict-2",
+      "condition": "load",
+      "mode": "strict",
+      "iteration": 2,
+      "threads": 4,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 2480.8,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/load-strict-2.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 2.3s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/load-strict-2.json\n",
+      "stderr": "[1/4] 25% ETA: 6s\n[2/4] 50% ETA: 2s\n[3/4] 75% ETA: 0s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2179,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2185,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2208,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2266,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "load-strict-3",
+      "condition": "load",
+      "mode": "strict",
+      "iteration": 3,
+      "threads": 4,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 2387.6,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/load-strict-3.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 2.2s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/load-strict-3.json\n",
+      "stderr": "[1/4] 25% ETA: 6s\n[2/4] 50% ETA: 2s\n[3/4] 75% ETA: 0s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2048,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2079,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2176,
+          "mode": "strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2076,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "isolated-non-strict-1",
+      "condition": "isolated",
+      "mode": "non-strict",
+      "iteration": 1,
+      "threads": 1,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 8363.3,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/isolated-non-strict-1.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, non-strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 8.2s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/isolated-non-strict-1.json\n",
+      "stderr": "[1/4] 25% ETA: 6s\n[2/4] 50% ETA: 4s\n[3/4] 75% ETA: 2s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2011,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2024,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2039,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2083,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "isolated-non-strict-2",
+      "condition": "isolated",
+      "mode": "non-strict",
+      "iteration": 2,
+      "threads": 1,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 8586.5,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/isolated-non-strict-2.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, non-strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 8.4s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/isolated-non-strict-2.json\n",
+      "stderr": "[1/4] 25% ETA: 6s\n[2/4] 50% ETA: 4s\n[3/4] 75% ETA: 2s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2143,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2010,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2137,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2083,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "isolated-non-strict-3",
+      "condition": "isolated",
+      "mode": "non-strict",
+      "iteration": 3,
+      "threads": 1,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 9146.8,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/isolated-non-strict-3.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, non-strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 8.9s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/isolated-non-strict-3.json\n",
+      "stderr": "[1/4] 25% ETA: 6s\n[2/4] 50% ETA: 4s\n[3/4] 75% ETA: 2s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2248,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2188,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2200,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2299,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "load-non-strict-1",
+      "condition": "load",
+      "mode": "non-strict",
+      "iteration": 1,
+      "threads": 4,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 3189.6,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/load-non-strict-1.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, non-strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 3.0s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/load-non-strict-1.json\n",
+      "stderr": "[1/4] 25% ETA: 7s\n[2/4] 50% ETA: 2s\n[3/4] 75% ETA: 0s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2637,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2653,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2908,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2970,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "load-non-strict-2",
+      "condition": "load",
+      "mode": "non-strict",
+      "iteration": 2,
+      "threads": 4,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 3445.9,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/load-non-strict-2.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, non-strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 3.2s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/load-non-strict-2.json\n",
+      "stderr": "[1/4] 25% ETA: 9s\n[2/4] 50% ETA: 3s\n[3/4] 75% ETA: 1s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 3102,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 3225,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 3157,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 3108,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "load-non-strict-3",
+      "condition": "load",
+      "mode": "non-strict",
+      "iteration": 3,
+      "threads": 4,
+      "tests": [
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+        "built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+        "built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 3023.4,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/load-non-strict-3.tests.txt...\nLoaded 4 test files\nRunning 4 test tasks (4 files, non-strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 2.8s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 4\n  Skipped:               0\n  Executed:              4\n  Passed:                4\n  Failed:                0\n  Timeouts:              0\n  Errors:                0\n\n  Pass rate:             100.0% (4/4)\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  built-ins/encodeURI                          2     0     0  100.0%\n  built-ins/encodeURIComponent                 2     0     0  100.0%\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/load-non-strict-3.json\n",
+      "stderr": "[1/4] 25% ETA: 7s\n[2/4] 50% ETA: 2s\n[3/4] 75% ETA: 0s\n[4/4] 100%\n",
+      "summary": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 0,
+        "error": 0,
+        "pass_rate": 100
+      },
+      "results": [
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2751,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2809,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURI/S15.1.3.3_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2761,
+          "mode": "non-strict"
+        },
+        {
+          "path": "../../test262/test/built-ins/encodeURIComponent/S15.1.3.4_A2.3_T1.js",
+          "status": "pass",
+          "reason": "",
+          "duration_ms": 2652,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    }
+  ],
+  "controls": [
+    {
+      "id": "control-isolated-strict",
+      "condition": "isolated",
+      "mode": "strict",
+      "iteration": null,
+      "threads": 1,
+      "tests": [
+        "<control-file>"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 5215.1,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/control-isolated-strict.tests.txt...\nLoaded 1 test files\nRunning 1 test tasks (1 files, strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 5.0s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 1\n  Skipped:               0\n  Executed:              0\n  Passed:                0\n  Failed:                0\n  Timeouts:              1\n  Errors:                0\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  home/antisatori                              0     0     0     N/A\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/control-isolated-strict.json\n",
+      "stderr": "[1/1] 100%\n",
+      "summary": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 1,
+        "error": 0,
+        "pass_rate": 0
+      },
+      "results": [
+        {
+          "path": "scripts/test262_uri_load/known_hang.js",
+          "status": "timeout",
+          "reason": "Exceeded 5s timeout",
+          "duration_ms": 5016,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "control-load-strict",
+      "condition": "load",
+      "mode": "strict",
+      "iteration": null,
+      "threads": 4,
+      "tests": [
+        "<control-file>"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 5217.3,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/control-load-strict.tests.txt...\nLoaded 1 test files\nRunning 1 test tasks (1 files, strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 5.0s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 1\n  Skipped:               0\n  Executed:              0\n  Passed:                0\n  Failed:                0\n  Timeouts:              1\n  Errors:                0\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  home/antisatori                              0     0     0     N/A\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/control-load-strict.json\n",
+      "stderr": "[1/1] 100%\n",
+      "summary": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 1,
+        "error": 0,
+        "pass_rate": 0
+      },
+      "results": [
+        {
+          "path": "scripts/test262_uri_load/known_hang.js",
+          "status": "timeout",
+          "reason": "Exceeded 5s timeout",
+          "duration_ms": 5015,
+          "mode": "strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "control-isolated-non-strict",
+      "condition": "isolated",
+      "mode": "non-strict",
+      "iteration": null,
+      "threads": 1,
+      "tests": [
+        "<control-file>"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "1",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 5246.8,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/control-isolated-non-strict.tests.txt...\nLoaded 1 test files\nRunning 1 test tasks (1 files, non-strict)\nUsing 1 parallel worker(s) with 5s timeout per test\n\nCompleted in 5.0s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 1\n  Skipped:               0\n  Executed:              0\n  Passed:                0\n  Failed:                0\n  Timeouts:              1\n  Errors:                0\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  home/antisatori                              0     0     0     N/A\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/control-isolated-non-strict.json\n",
+      "stderr": "[1/1] 100%\n",
+      "summary": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 1,
+        "error": 0,
+        "pass_rate": 0
+      },
+      "results": [
+        {
+          "path": "scripts/test262_uri_load/known_hang.js",
+          "status": "timeout",
+          "reason": "Exceeded 5s timeout",
+          "duration_ms": 5018,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    },
+    {
+      "id": "control-load-non-strict",
+      "condition": "load",
+      "mode": "non-strict",
+      "iteration": null,
+      "threads": 4,
+      "tests": [
+        "<control-file>"
+      ],
+      "command": [
+        "_build/native/debug/build/cmd/test262_runner/test262_runner.exe",
+        "--engine",
+        "node _build/js/release/build/cmd/main/main.js",
+        "--test262",
+        "../../test262",
+        "--tests-file",
+        "<tests-file>",
+        "--mode",
+        "non-strict",
+        "--threads",
+        "4",
+        "--timeout",
+        "5",
+        "--output",
+        "<result-file>",
+        "--summary"
+      ],
+      "timeout_seconds": 5,
+      "wall_duration_ms": 5223.2,
+      "process_exit": 0,
+      "signal": null,
+      "outer_timeout": false,
+      "stdout": "Verifying engine...\nLoading tests from /tmp/issue-695-uri-load-P6AHf0/control-load-non-strict.tests.txt...\nLoaded 1 test files\nRunning 1 test tasks (1 files, non-strict)\nUsing 4 parallel worker(s) with 5s timeout per test\n\nCompleted in 5.0s\n\n========================================================================\n  Test262 ECMAScript Conformance Report\n  Engine: MoonBit JS Engine\n  Date: 1970-01-01 00:00:00\n========================================================================\n\n  Total tests discovered: 1\n  Skipped:               0\n  Executed:              0\n  Passed:                0\n  Failed:                0\n  Timeouts:              1\n  Errors:                0\n\n────────────────────────────────────────────────────────────────────────\n  Category                                  Pass  Fail  Skip    Rate\n────────────────────────────────────────────────────────────────────────\n  home/antisatori                              0     0     0     N/A\n────────────────────────────────────────────────────────────────────────\n\n  Results saved to: /tmp/issue-695-uri-load-P6AHf0/control-load-non-strict.json\n",
+      "stderr": "[1/1] 100%\n",
+      "summary": {
+        "total": 1,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "timeout": 1,
+        "error": 0,
+        "pass_rate": 0
+      },
+      "results": [
+        {
+          "path": "scripts/test262_uri_load/known_hang.js",
+          "status": "timeout",
+          "reason": "Exceeded 5s timeout",
+          "duration_ms": 5012,
+          "mode": "non-strict"
+        }
+      ],
+      "artifact_error": null
+    }
+  ],
+  "assessment": {
+    "result": "not_reproduced",
+    "rationale": "Neither condition timed out in this sample; the reported contention hypothesis was not reproduced.",
+    "isolated_uri_timeouts": 0,
+    "load_uri_timeouts": 0,
+    "isolated_uri_passes": 24,
+    "load_uri_passes": 24,
+    "isolated_uri_durations_ms": {
+      "count": 24,
+      "min_ms": 1630,
+      "max_ms": 2299,
+      "mean_ms": 1901.3
+    },
+    "load_uri_durations_ms": {
+      "count": 24,
+      "min_ms": 2048,
+      "max_ms": 3225,
+      "mean_ms": 2535.8
+    },
+    "load_to_isolated_duration_ratio": 1.3
+  },
+  "execution_errors": [],
+  "evidence_errors": []
+}
