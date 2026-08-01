@@ -69,6 +69,8 @@ make stack-safety-test TARGET=<native|js|wasm|wasm-gc> PROFILE=<debug|release>
 The target and profile are required command-line arguments; omission or any
 other value fails before MoonBit is invoked. The adoption workflow runs both
 profiles for every supported target, without host stack-size overrides.
+Its eight matrix cells feed the stable `stack-safety-required` check, which
+fails unless the matrix result is exactly `success`.
 Validate that the Make target, workflow matrix, selected suites, and deferred
 workload boundaries remain wired as intended with:
 
