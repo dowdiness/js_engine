@@ -71,6 +71,27 @@ test "bytecode spread recursion reaches the synchronous final call boundary" {
   }
   assert_true(saw_arg_spread)
   assert_true(saw_call_spread)
+  let mut saw_count_child = false
+  let mut saw_recursive_arg_spread = false
+  let mut saw_recursive_call_spread = false
+  for child in lowered.main.children {
+    match child.name {
+      Some(name) if name == "count" => {
+        saw_count_child = true
+        for instr in child.code {
+          match instr {
+            ArgPushSpread(_) => saw_recursive_arg_spread = true
+            CallSpread(_) => saw_recursive_call_spread = true
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_true(saw_count_child)
+  assert_true(saw_recursive_arg_spread)
+  assert_true(saw_recursive_call_spread)
   let interp = @interpreter.new_interpreter()
   let result = run_executor_neutral_bytecode(interp, source)
   inspect(result.to_string(), content="321")
