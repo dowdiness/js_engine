@@ -245,6 +245,10 @@ test "receiver recursion admission rejects excluded lookalikes" {
       "let receiver={[Symbol(\"marker\")]:0,[Symbol(\"step\")]:step};receiver[Symbol(\"step\")](256);",
       "function step(n){if(n===0)return this[0];return 1+this[1](n-1);}" +
       "let receiver={[0]:0,[1]:step};receiver[1](256);",
+      "function step(n){if(n===0)return this[\"mark\\\"er\"];return 1+this[\"st\\\"ep\"](n-1);}" +
+      "let receiver={[\"mark\\\"er\"]:0,[\"st\\\"ep\"]:step};receiver[\"st\\\"ep\"](256);",
+      "function step(n){if(n===0)return this[\"mark\\\\er\"];return 1+this[\"st\\\\ep\"](n-1);}" +
+      "let receiver={[\"mark\\\\er\"]:0,[\"st\\\\ep\"]:step};receiver[\"st\\\\ep\"](256);",
       "function step(n){if(n===0)return this[\"marker\"];return 1+this[\"step\"](n-1);}" +
       "let receiver={marker:0,[\"step\"]:step};receiver[\"step\"](256);",
       "function step(n){if(n===0)return this[\"marker\"];return 1+this.step(n-1);}" +
