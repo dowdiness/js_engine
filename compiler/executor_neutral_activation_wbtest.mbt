@@ -8,8 +8,7 @@ fn run_executor_neutral_bytecode(
 
 ///|
 test "RED: static own accessor reads lower through GetProperty" {
-  let source =
-    "let remaining = 320;" +
+  let source = "let remaining = 320;" +
     "let receiver = { get x() {" +
     "if (remaining === 0) return 0;" +
     "remaining--;" +
@@ -21,9 +20,7 @@ test "RED: static own accessor reads lower through GetProperty" {
   for instr in lowered.main.code {
     match instr {
       GetProperty("x", _) => root_get = true
-      PreparePropertyCall(_, _)
-      | GetComputed(_)
-      | PrepareComputedCall(_) =>
+      PreparePropertyCall(_, _) | GetComputed(_) | PrepareComputedCall(_) =>
         fail("static accessor read selected another property opcode")
       _ => ()
     }
@@ -33,10 +30,10 @@ test "RED: static own accessor reads lower through GetProperty" {
     for instr in child.code {
       match instr {
         GetProperty("x", _) => getter_get = true
-        PreparePropertyCall(_, _)
-        | GetComputed(_)
-        | PrepareComputedCall(_) =>
-          fail("recursive static accessor read selected another property opcode")
+        PreparePropertyCall(_, _) | GetComputed(_) | PrepareComputedCall(_) =>
+          fail(
+            "recursive static accessor read selected another property opcode",
+          )
         _ => ()
       }
     }
@@ -47,8 +44,7 @@ test "RED: static own accessor reads lower through GetProperty" {
 
 ///|
 test "RED: bytecode static own accessor recursion reaches the synchronous boundary" {
-  let source =
-    "let remaining = 320;" +
+  let source = "let remaining = 320;" +
     "let receiver = { get x() {" +
     "if (remaining === 0) return 0;" +
     "remaining--;" +
@@ -60,6 +56,138 @@ test "RED: bytecode static own accessor recursion reaches the synchronous bounda
     source,
   )
   inspect(result.to_string(), content="320")
+}
+
+///|
+test "static property lowering keeps non-read property families residual" {
+  let lowered = parse_bytecode_for_wb(
+    "function C() {}; var base = { x: 1 }; var key = 'x'; " +
+    "base.x; base.x(); base[key]; base.x = 2; base.x += 1; " +
+    "base.x++; delete base.x; ({ ...base }); [ ...base ]; " +
+    "function child() {}; child(...base); new C(); eval('base.x');",
+  )
+  let mut saw_get = false
+  let mut saw_prepare = false
+  let mut saw_computed = false
+  let mut saw_assign_read = false
+  let mut saw_set = false
+  let mut saw_update = false
+  let mut saw_delete = false
+  let mut saw_object_spread = false
+  let mut saw_array_spread = false
+  let mut saw_arg_spread = false
+  let mut saw_construct = false
+  let mut saw_eval = false
+  for instr in lowered.main.code {
+    match instr {
+      GetProperty("x", _) => saw_get = true
+      PreparePropertyCall("x", _) => saw_prepare = true
+      GetComputed(_) => saw_computed = true
+      ReadPropertyForAssign("x", _) => saw_assign_read = true
+      SetProperty("x", _) => saw_set = true
+      UpdateProperty("x", _, _, _, _) => saw_update = true
+      DeleteProperty("x") => saw_delete = true
+      ObjectSpread(_) => saw_object_spread = true
+      ArrayPushSpread(_) => saw_array_spread = true
+      ArgPushSpread(_) => saw_arg_spread = true
+      Construct(_, _) => saw_construct = true
+      CallDirectEval(_) => saw_eval = true
+      _ => ()
+    }
+  }
+  assert_true(saw_get)
+  assert_true(saw_prepare)
+  assert_true(saw_computed)
+  assert_true(saw_assign_read)
+  assert_true(saw_set)
+  assert_true(saw_update)
+  assert_true(saw_delete)
+  assert_true(saw_object_spread)
+  assert_true(saw_array_spread)
+  assert_true(saw_arg_spread)
+  assert_true(saw_construct)
+  assert_true(saw_eval)
+}
+
+///|
+test "bytecode static own accessor mutual recursion completes deeply" {
+  let source = "let remaining = 320;" +
+    "let left = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + right.x;" +
+    "} };" +
+    "let right = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + left.x;" +
+    "} };" +
+    "left.x;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode static own accessor preserves receiver and empty arguments" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let receiver = { marker: 41, get x() {" +
+    "return this === receiver && arguments.length === 0 ? this.marker : -1;" +
+    "} }; receiver.x;",
+  )
+  inspect(result.to_string(), content="41")
+}
+
+///|
+test "bytecode static own accessor preserves strict and arrow this" {
+  let strict_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let receiver = { get x() { 'use strict'; return this === receiver; } };" +
+    "receiver.x;",
+  )
+  inspect(strict_result.to_string(), content="true")
+  let arrow_result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let lexical = this; let getter = () => lexical; let receiver = {};" +
+    "Object.defineProperty(receiver, 'x', { get: getter });" +
+    "receiver.x === lexical;",
+  )
+  inspect(arrow_result.to_string(), content="true")
+}
+
+///|
+test "bytecode static own accessor preserves returned identity" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "let receiver = { get x() { return receiver; } };" +
+    "receiver.x === receiver;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode static own accessor propagates guest throw without replay" {
+  let interp = @interpreter.new_interpreter()
+  let caught : Error? = try {
+    let _ = run_executor_neutral_bytecode(
+      interp,
+      "let entries = 0;" +
+      "let receiver = { get x() { entries++; throw \"boom\"; } };" +
+      "receiver.x;",
+    )
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(_) => ()
+    None => fail("executor getter throw must reach the caller")
+  }
+  let result = run_executor_neutral_bytecode(interp, "entries;")
+  inspect(result.to_string(), content="1")
 }
 
 ///|
@@ -786,30 +914,39 @@ test "ordinary bytecode call consumes its result once at the advanced IP" {
 }
 
 ///|
-test "bytecode frame accepts one pending call result" {
+test "bytecode frame accepts one pending activation result" {
   let interp = @interpreter.new_interpreter()
   let program = parse_bytecode_for_wb("0;")
   let frame = BytecodeFrame(program.main, interp.global, {
     strict: false,
     current_generator: None,
   })
-  frame.pending_call_result = true
-  @runtime.ExecutorActivationFrame::deliver_call_result(frame, Number(7.0))
+  frame.pending_activation_result = true
+  @runtime.ExecutorActivationFrame::deliver_activation_result(
+    frame,
+    Number(7.0),
+  )
   inspect(frame.stack.length(), content="1")
   match frame.peek() {
     Number(value) => inspect(value, content="7")
-    _ => fail("pending call result must be pushed onto the operand stack")
+    _ => fail("pending activation result must be pushed onto the operand stack")
   }
   let second_delivery : Error? = try {
-    @runtime.ExecutorActivationFrame::deliver_call_result(frame, Number(8.0))
+    @runtime.ExecutorActivationFrame::deliver_activation_result(
+      frame,
+      Number(8.0),
+    )
     None
   } catch {
     error => Some(error)
   }
   match second_delivery {
     Some(@errors.InternalError(message~)) =>
-      inspect(message, content="bytecode call result has no pending consumer")
-    _ => fail("duplicate call result delivery must be rejected")
+      inspect(
+        message,
+        content="bytecode activation result has no pending consumer",
+      )
+    _ => fail("duplicate activation result delivery must be rejected")
   }
   inspect(frame.stack.length(), content="1")
 }
