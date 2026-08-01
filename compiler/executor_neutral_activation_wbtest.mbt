@@ -861,6 +861,255 @@ test "bytecode construct recursion reaches the synchronous constructor boundary"
 }
 
 ///|
+test "bytecode construct spread recursion lowers and completes deeply" {
+  let source = "function Step(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Step(...[n - 1]); " +
+    "this.value = child.value + 1; }\n" +
+    "new Step(...[320]).value;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_arg_spread = false
+  let mut saw_root_construct_spread = false
+  let mut saw_root_fixed_construct = false
+  let mut saw_root_call_spread = false
+  let mut saw_root_receiver_spread = false
+  let mut saw_root_direct_eval = false
+  for instr in lowered.main.code {
+    match instr {
+      ArgPushSpread(_) => saw_root_arg_spread = true
+      ConstructSpread(_) => saw_root_construct_spread = true
+      Construct(_, _) => saw_root_fixed_construct = true
+      CallSpread(_) => saw_root_call_spread = true
+      CallSpreadWithReceiver(_) => saw_root_receiver_spread = true
+      CallDirectEval(_) => saw_root_direct_eval = true
+      _ => ()
+    }
+  }
+  assert_true(saw_root_arg_spread)
+  assert_true(saw_root_construct_spread)
+  assert_false(saw_root_fixed_construct)
+  assert_false(saw_root_call_spread)
+  assert_false(saw_root_receiver_spread)
+  assert_false(saw_root_direct_eval)
+  let mut saw_step_child = false
+  let mut saw_child_arg_spread = false
+  let mut saw_child_construct = false
+  let mut saw_child_fixed_construct = false
+  let mut saw_child_call_spread = false
+  let mut saw_child_receiver_spread = false
+  let mut saw_child_direct_eval = false
+  for child in lowered.main.children {
+    match child.name {
+      Some(name) if name == "Step" => {
+        saw_step_child = true
+        for instr in child.code {
+          match instr {
+            ArgPushSpread(_) => saw_child_arg_spread = true
+            ConstructSpread(_) => saw_child_construct = true
+            Construct(_, _) => saw_child_fixed_construct = true
+            CallSpread(_) => saw_child_call_spread = true
+            CallSpreadWithReceiver(_) => saw_child_receiver_spread = true
+            CallDirectEval(_) => saw_child_direct_eval = true
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_true(saw_step_child)
+  assert_true(saw_child_arg_spread)
+  assert_true(saw_child_construct)
+  assert_false(saw_child_fixed_construct)
+  assert_false(saw_child_call_spread)
+  assert_false(saw_child_receiver_spread)
+  assert_false(saw_child_direct_eval)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode construct spread mutual recursion completes deeply" {
+  let source = "function Left(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Right(...[n - 1]); " +
+    "this.value = child.value + 1; }\n" +
+    "function Right(n) { " +
+    "if (n === 0) { this.value = 0; return; } " +
+    "let child = new Left(...[n - 1]); " +
+    "this.value = child.value + 1; }\n" +
+    "new Left(...[320]).value;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode construct spread preserves activation and replacement semantics" {
+  let source = "let closed = 5;\n" +
+    "function C(a, b) { " +
+    "this.self = this; this.sum = a + b + closed; " +
+    "this.same = new.target === C; " +
+    "this.args = arguments.length === 2 && arguments[0] === a && " +
+    "arguments[1] === b; " +
+    "if (a === 1) return { replaced: 9 }; return 7; }\n" +
+    "var kept = new C(...[2, 3]); " +
+    "var replacement = new C(...[1, 2]);\n" +
+    "kept.sum === 10 && kept.self === kept && kept.same && kept.args && " +
+    "Object.getPrototypeOf(kept) === C.prototype && " +
+    "kept !== replacement && replacement.replaced === 9;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode construct spread drains iterator effects once before entry" {
+  let source = "var log = ''; var entered = 0; " +
+    "var iterator_return_calls = 0;\n" +
+    "function C(value) { entered = entered + 1; log = log + 'b'; " +
+    "this.value = value; }\n" +
+    "function makeIterable() { log = log + 'a'; var iterable = {}; " +
+    "iterable[Symbol.iterator] = function() { log = log + 'i'; " +
+    "var index = 0; var iterator = { next: function() { " +
+    "log = log + 'n'; if (index === 0) { index = 1; " +
+    "var result = { done: false }; Object.defineProperty(result, 'value', " +
+    "{ get: function() { log = log + 'v'; return 7; } }); " +
+    "return result; } return { done: true }; } }; " +
+    "iterator.return = function() { iterator_return_calls = " +
+    "iterator_return_calls + 1; log = log + 'r'; }; return iterator; }; " +
+    "return iterable; }\n" +
+    "var value = new (log = log + 'c', C)(...makeIterable());\n" +
+    "value.value === 7 && entered === 1 && log === 'cainvnb' && " +
+    "iterator_return_calls === 0;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode construct spread iterator abrupt preserves identity" {
+  let source = "var marker = {}; var entered = 0; var iterator_gets = 0; " +
+    "var next_calls = 0; var iterator_return_calls = 0;\n" +
+    "var iterable = {}; iterable[Symbol.iterator] = function() { " +
+    "iterator_gets = iterator_gets + 1; var iterator = {}; " +
+    "iterator.next = function() { next_calls = next_calls + 1; " +
+    "throw marker; }; iterator.return = function() { " +
+    "iterator_return_calls = iterator_return_calls + 1; }; return iterator; };\n" +
+    "function C() { entered = entered + 1; }\n" +
+    "function invoke() { new C(...iterable); }"
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(interp, source)
+  let result = interp.run(
+    @parser.parse(
+      "var same = false; try { invoke(); } catch (error) { " +
+      "same = error === marker; }\n" +
+      "same && iterator_gets === 1 && next_calls === 1 && " +
+      "iterator_return_calls === 0 && entered === 0;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bytecode construct spread throw releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {};\n" +
+    "function Inner() { throw marker; }\n" +
+    "function Outer() { new Inner(...[]); }\n" +
+    "function invokeThrow() { new Outer(...[]); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf(...[]).value; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false; " +
+      "try { invokeThrow(); } catch (error) { caught = error === marker; } " +
+      "caught ? laterLeaf() : -1;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bytecode construct spread depth rejection releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var innerEntered = 0;\n" +
+    "function Inner() { innerEntered = innerEntered + 1; }\n" +
+    "function Outer() { new Inner(...[]); }\n" +
+    "function invokeDepth() { new Outer(...[]); }\n" +
+    "function Leaf() { this.value = 42; }\n" +
+    "function laterLeaf() { return new Leaf(...[]).value; }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let caught : Error? = try {
+    let _ = interp.run_bounded(@parser.parse("invokeDepth();").stmts, policy)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) =>
+      fail(
+        "expected a classified JavaScript depth exception, got " +
+        error.to_string(),
+      )
+    None => fail("bounded spread constructor must be rejected before entry")
+  }
+  let result = interp.run(
+    @parser.parse("innerEntered === 0 ? laterLeaf() : -1;").stmts,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bytecode construct spread preserves bound proxy native and arrow fallbacks" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "function C(x) { this.x = x; }\n" +
+    "var Bound = C.bind(null, 4);\n" +
+    "var proxyCalls = 0;\n" +
+    "var ProxyCtor = new Proxy(C, { construct: function(target, args) { " +
+    "proxyCalls = proxyCalls + 1; return { x: args[0] + 1 }; } });\n" +
+    "var arrow = () => 1;\n" +
+    "var boundValue = new Bound(...[]);\n" +
+    "var proxyValue = new ProxyCtor(...[5]);\n" +
+    "var nativeValue = new Object(...[7]);\n" +
+    "function invokeArrow() { new arrow(...[]); }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var nonConstructableError = false; " +
+      "try { invokeArrow(); } catch (error) { " +
+      "nonConstructableError = error instanceof TypeError; } " +
+      "boundValue.x + proxyValue.x + proxyCalls + Number(nativeValue) + " +
+      "(nonConstructableError ? 1 : 0);",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="19")
+}
+
+///|
 test "bytecode mutual constructor recursion stays on the activation stack" {
   let source = "function Left(n) { " +
     "if (n === 0) { this.value = 0; return; } " +
