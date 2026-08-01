@@ -101,7 +101,13 @@
       "package": "dowdiness/js_engine",
       "symbol": "Engine::eval_bounded",
       "category": "stable_embedding",
-      "reason": "documented operation-scoped bounded evaluation entry point"
+      "reason": "staged Stage 4 operation-scoped bounded evaluation availability slice"
+    },
+    {
+      "package": "dowdiness/js_engine",
+      "symbol": "Engine::call_json_bounded",
+      "category": "stable_embedding",
+      "reason": "staged Stage 4 operation-scoped bounded JSON-call availability slice"
     },
     {
       "package": "dowdiness/js_engine",

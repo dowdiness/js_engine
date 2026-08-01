@@ -63,6 +63,36 @@
       "public_facade_evidence": ["pkg.generated.mbti#Engine::eval_bounded"]
     },
     {
+      "id": "bounded-json-call-control-scope",
+      "accounting_entry_id": "bounded-json-call-control-scope-entry",
+      "operation_family": "bounded evaluation",
+      "entry_category": "JSON-boundary call operation-scoped execution-control installation",
+      "contract_observation_category": "fixed-size-bookkeeping",
+      "current_accounting_owner": "engine_diagnostic.mbt#Engine::call_json_bounded",
+      "intended_final_accounting_owner": "bounded-json-call-control-context",
+      "status": "bounded-by-proof",
+      "duplicate_charge_risk": "Lookup, direct conversion, target execution, and result conversion share one fresh carrier; the call path must not delegate to a diagnostic operation that snapshots state before control unwinds.",
+      "owning_implementation_or_issue": "engine_diagnostic.mbt#Engine::call_json_bounded",
+      "focused_evidence": ["engine_diagnostic.mbt#Engine::bounded_call_outcome", "interpreter/runtime/execution_policy.mbt#Interpreter::with_execution_policy", "docs/decisions/engine-execution-guardrail-contract.md#Public-operation scope"],
+      "public_facade_evidence_required": true,
+      "public_facade_evidence": ["pkg.generated.mbti#Engine::call_json_bounded"]
+    },
+    {
+      "id": "bounded-json-call-direct-bridge-exclusion",
+      "accounting_entry_id": "bounded-json-call-direct-bridge-exclusion-entry",
+      "operation_family": "bounded evaluation",
+      "entry_category": "direct host JSON argument and result conversion exclusion",
+      "contract_observation_category": "host-json-conversion",
+      "current_accounting_owner": "interpreter/runtime/json_bridge.mbt#json_to_realm_value and realm_value_to_json",
+      "intended_final_accounting_owner": "bounded-json-call-direct-bridge-exclusion",
+      "status": "bounded-by-proof",
+      "duplicate_charge_risk": "The bridge may scale with host input or returned data. Bounded-by-proof records only that this contract-excluded work executes no JavaScript hooks or control observations; it is not fixed-size or an end-to-end work bound.",
+      "owning_implementation_or_issue": "interpreter/runtime/json_bridge.mbt",
+      "focused_evidence": ["interpreter/runtime/json_bridge.mbt#json_to_realm_value", "interpreter/runtime/json_bridge.mbt#realm_value_to_json", "docs/decisions/engine-execution-guardrail-contract.md#Public-operation scope"],
+      "public_facade_evidence_required": true,
+      "public_facade_evidence": ["pkg.generated.mbti#Engine::call_json_bounded"]
+    },
+    {
       "id": "activation-dispatch-admitted-entry",
       "accounting_entry_id": "activation-dispatch-admitted-entry-entry",
       "operation_family": "activation dispatch",

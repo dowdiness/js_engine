@@ -808,6 +808,7 @@ pub fn Interpreter::typeof_compiled_name(Self, ExecContext, Environment, String)
 pub fn Interpreter::update_compiled_name(Self, ExecContext, Environment, String, @ast.UpdateOp, Bool, @token.Loc) -> Value raise
 pub fn Interpreter::validate_block_early_errors(Self, Array[@ast.Stmt], Bool) -> Unit raise
 pub fn Interpreter::with_active_value(Self, () -> Value raise) -> Value raise
+pub fn[T] Interpreter::with_execution_policy(Self, ExecutionPolicy, () -> T raise) -> T raise
 
 pub(all) struct InterruptionHandle {
   // private fields
