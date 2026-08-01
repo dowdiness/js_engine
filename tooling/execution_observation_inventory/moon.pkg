@@ -1,0 +1,12 @@
+import {
+  "moonbitlang/core/json",
+  "moonbitlang/x/fs",
+  "dowdiness/js_engine/tooling/path_utils",
+}
+
+import {
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+} for "wbtest"
+
+supported_targets = "+native"
