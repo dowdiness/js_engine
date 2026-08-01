@@ -435,7 +435,8 @@ test "spread receiver mutual recursion completes deeply" {
 test "receiver spread materializes a custom iterator once in order" {
   let result = run_executor_neutral_bytecode(
     @interpreter.new_interpreter(),
-    "var iterator_gets = 0; var next_calls = 0; var invoked = 0;\n" +
+    "var iterator_gets = 0; var next_calls = 0; var return_calls = 0; " +
+    "var invoked = 0;\n" +
     "var receiver = { base: 40, read: function(first, second) { " +
     "invoked = invoked + 1; return this.base + first * 10 + second; } };\n" +
     "var iterable = {}; iterable[Symbol.iterator] = function() { " +
@@ -443,9 +444,10 @@ test "receiver spread materializes a custom iterator once in order" {
     "next: function() { next_calls = next_calls + 1; " +
     "if (index === 0) { index = 1; return { value: 1, done: false }; } " +
     "if (index === 1) { index = 2; return { value: 2, done: false }; } " +
-    "return { done: true }; } }; };\n" +
+    "return { done: true }; }, return: function() { " +
+    "return_calls = return_calls + 1; return { done: true }; } }; };\n" +
     "receiver.read(...iterable) === 52 && iterator_gets === 1 && " +
-    "next_calls === 3 && invoked === 1;",
+    "next_calls === 3 && return_calls === 0 && invoked === 1;",
   )
   inspect(result.to_string(), content="true")
 }
@@ -456,12 +458,14 @@ test "receiver spread iterator throw preserves identity without invocation or re
   let _ = run_executor_neutral_bytecode(
     interp,
     "var marker = {}; var iterator_gets = 0; var next_calls = 0; " +
-    "var invoked = 0;\n" +
+    "var return_calls = 0; var invoked = 0;\n" +
     "var receiver = { read: function() { invoked = invoked + 1; } };\n" +
     "var iterable = {}; iterable[Symbol.iterator] = function() { " +
     "iterator_gets = iterator_gets + 1; return { next: function() { " +
     "next_calls = next_calls + 1; if (next_calls === 1) " +
-    "return { value: 1, done: false }; throw marker; } }; };\n" +
+    "return { value: 1, done: false }; throw marker; }, " +
+    "return: function() { return_calls = return_calls + 1; " +
+    "return { done: true }; } }; };\n" +
     "function attempt() { receiver.read(...iterable); }\n" +
     "function leaf() { return 42; }",
   )
@@ -470,7 +474,7 @@ test "receiver spread iterator throw preserves identity without invocation or re
       "var same = false;\n" +
       "try { attempt(); } catch (error) { same = error === marker; }\n" +
       "same && iterator_gets === 1 && next_calls === 2 && " +
-      "invoked === 0 && leaf() === 42;",
+      "return_calls === 0 && invoked === 0 && leaf() === 42;",
     ).stmts,
   )
   inspect(result.to_string(), content="true")
