@@ -1,4 +1,4 @@
-.PHONY: build test external-consumer-test stack-safety-test stack-safety-validate embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
+.PHONY: build test external-consumer-test stack-safety-test stack-safety-validate embedding-baseline bench-focus bench-focus-mbt subprocess-helpers-mbt-test architecture-audit architecture-boundary-audit architecture-boundary-audit-mbt architecture-boundary-audit-mbt-test architecture-state-audit architecture-state-audit-mbt architecture-state-audit-mbt-test execution-observation-inventory execution-observation-inventory-mbt execution-observation-inventory-mbt-test compat-table compat-table-download compat-table-test test262 test262-metadata-test test262-metadata-mbt-test test262-metadata-tools-mbt-test test262-utils-test test262-utils-mbt-test test262-utils-corpus-mbt test262-runner-test test262-runner-mbt-test test262-runner-mbt test262-quick test262-filter test262-analyze test262-analyze-mbt test262-validate-skips test262-validate-skips-mbt test262-classify-by-edition-mbt classify-by-edition-mbt test262-download test262-report test262-report-test test262-report-mbt test262-skip-report test262-feature-gap test262-feature-gap-test validate-docs-skip-policy validate-docs-skip-policy-test unicode-tables unicode-tables-mbt clean
 
 TEST262_COMMIT ?= main
 COMPAT_TABLE_COMMIT ?= $(shell sed -n '1p' scripts/compat_table_version.txt)
@@ -114,6 +114,16 @@ architecture-boundary-audit-mbt: architecture-boundary-audit-mbt-test
 
 architecture-boundary-audit-mbt-test:
 	moon test --target native tooling/architecture_boundary_audit
+
+# Validate the checked-in Stage 4 execution observation inventory.
+execution-observation-inventory: execution-observation-inventory-mbt
+
+execution-observation-inventory-mbt: execution-observation-inventory-mbt-test
+	moon build --target native cmd/execution_observation_inventory
+	./_build/native/debug/build/cmd/execution_observation_inventory/execution_observation_inventory.exe --root .
+
+execution-observation-inventory-mbt-test:
+	moon test --target native tooling/execution_observation_inventory
 
 # Download the pinned compat-table data set. The path includes the commit, so a
 # revision bump never reuses stale data from an older checkout.

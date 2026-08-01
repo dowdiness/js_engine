@@ -1,0 +1,18 @@
+import {
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/json",
+  "moonbitlang/x/fs",
+  "dowdiness/js_engine/tooling/path_utils",
+}
+
+import {
+  "moonbitlang/core/env",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x/fs",
+} for "wbtest"
+
+supported_targets = "+native"
+
+options(
+  "native-stub": [ "realpath.c" ],
+)
