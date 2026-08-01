@@ -2415,13 +2415,12 @@ pub fn regex_match_at(
 }
 
 ///|
-pub fn regex_search(
-  pattern : String,
+fn regex_search_parsed(
+  parsed : ParsedRegex,
   flags : String,
   input : String,
-  start_pos? : Int = 0,
-) -> RegexMatch? raise Error {
-  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
+  start_pos : Int,
+) -> RegexMatch? {
   let input_chars = input.to_array()
   let rflags = make_regex_flags(flags)
   let is_sticky = flags.contains("y")
@@ -2481,6 +2480,17 @@ pub fn regex_search(
     }
     None
   }
+}
+
+///|
+pub fn regex_search(
+  pattern : String,
+  flags : String,
+  input : String,
+  start_pos? : Int = 0,
+) -> RegexMatch? raise Error {
+  let parsed = parse_regex(pattern, unicode=flags.contains("u"))
+  regex_search_parsed(parsed, flags, input, start_pos)
 }
 
 ///|
@@ -2609,7 +2619,9 @@ pub fn make_regex_match_array(m : RegexMatch, input : String) -> Value {
   @runtime.set_array_named_prop(
     arr_data,
     "index",
-    Value::Number(m.start.to_double()),
+    Value::Number(
+      regexp_char_index_to_code_unit_index(input, m.start).to_double(),
+    ),
   )
   @runtime.set_array_named_prop(arr_data, "input", Value::String_(input))
   // Build groups object if named groups exist
@@ -2660,6 +2672,10 @@ const REGEXP_ORIGINAL_FLAGS_SYMBOL_ID = -121
 
 ///|
 const REGEXP_INTRINSIC_CONSTRUCTOR_SYMBOL_ID = -122
+
+///|
+// Engine-private callable matcher retained by each RegExp instance.
+const REGEXP_MATCHER_SYMBOL_ID = -129
 
 ///|
 // Engine-private negative symbol IDs for RegExp String Iterator internal slots.
@@ -2766,12 +2782,12 @@ fn normalize_regexp_flags(flags : String) -> String raise Error {
 }
 
 ///|
-fn validate_regexp_pattern(
+fn parse_validated_regexp(
   pattern : String,
   flags : String,
-) -> Unit raise Error {
-  let _valid : Unit = try {
-    let _parsed = RegexParser::new(pattern, unicode=flags.contains("u")).parse()
+) -> ParsedRegex raise Error {
+  try {
+    parse_regex(pattern, unicode=flags.contains("u"))
   } catch {
     @errors.SyntaxError(message=msg) =>
       raise @errors.SyntaxError(
@@ -2785,17 +2801,6 @@ fn validate_regexp_pattern(
           e.to_string(),
       )
   }
-  _valid
-}
-
-///|
-fn normalize_and_validate_regexp(
-  pattern : String,
-  flags : String,
-) -> String raise Error {
-  let sorted_flags = normalize_regexp_flags(flags)
-  validate_regexp_pattern(pattern, sorted_flags)
-  sorted_flags
 }
 
 ///|
@@ -2814,6 +2819,7 @@ fn regexp_internal_slot_descriptor() -> PropDescriptor {
 fn set_regexp_internal_slot_descriptors(data : ObjectData) -> Unit {
   data.bag.symbol_descriptors[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   data.bag.symbol_descriptors[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  data.bag.symbol_descriptors[REGEXP_MATCHER_SYMBOL_ID] = regexp_internal_slot_descriptor()
 }
 
 ///|
@@ -2832,14 +2838,56 @@ fn set_regexp_original_source_flags(
   source : String,
   flags : String,
 ) -> Unit raise Error {
-  let sorted_flags = normalize_and_validate_regexp(source, flags)
+  let sorted_flags = normalize_regexp_flags(flags)
+  let parsed = parse_validated_regexp(source, sorted_flags)
   data.bag.symbol_properties[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(
     source,
   )
   data.bag.symbol_properties[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(
     sorted_flags,
   )
+  data.bag.symbol_properties[REGEXP_MATCHER_SYMBOL_ID] = make_regexp_matcher(
+    parsed,
+    sorted_flags,
+  )
   set_regexp_internal_slot_descriptors(data)
+}
+
+///|
+fn make_regexp_matcher_result(m : RegexMatch, input : String) -> Value {
+  @runtime.make_array([
+    make_regex_match_array(m, input),
+    Value::Number(m.end_.to_double()),
+  ])
+}
+
+///|
+fn make_regexp_matcher(parsed : ParsedRegex, flags : String) -> Value {
+  Value::Object({
+    bag: @runtime.PropertyBag(),
+    prototype: Null,
+    callable: Some(
+      NonConstructableCallable(
+        "RegExpMatcher",
+        fn(args) raise {
+          match args {
+            [String_(input), Number(start), ..] =>
+              match regex_search_parsed(parsed, flags, input, start.to_int()) {
+                Some(m) => make_regexp_matcher_result(m, input)
+                None => Null
+              }
+            _ =>
+              raise @errors.TypeError(
+                message="RegExp matcher capability called with invalid arguments",
+              )
+          }
+        },
+      ),
+    ),
+    class_name: "RegExpMatcher",
+    extensible: false,
+    arraybuffer_state: None,
+  })
 }
 
 ///|
@@ -3294,7 +3342,9 @@ fn make_regexp_object_with_proto(
   flags : String,
   prototype : Value,
 ) -> Value raise Error {
-  let sorted_flags = normalize_and_validate_regexp(pattern, flags)
+  let sorted_flags = normalize_regexp_flags(flags)
+  let parsed = parse_validated_regexp(pattern, sorted_flags)
+  let matcher = make_regexp_matcher(parsed, sorted_flags)
   let props : Map[String, Value] = Map([])
   props["lastIndex"] = Value::Number(0.0)
   // RegExp instance state is stored as hidden internal slots. Public accessors
@@ -3302,6 +3352,7 @@ fn make_regexp_object_with_proto(
   let sym_props : Map[Int, Value] = Map([])
   sym_props[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = Value::String_(pattern)
   sym_props[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = Value::String_(sorted_flags)
+  sym_props[REGEXP_MATCHER_SYMBOL_ID] = matcher
 
   // Create descriptor map for the only RegExp instance own property.
   let re_descs : Map[String, PropDescriptor] = Map([])
@@ -3318,6 +3369,7 @@ fn make_regexp_object_with_proto(
   let re_sym_descs : Map[Int, PropDescriptor] = Map([])
   re_sym_descs[REGEXP_ORIGINAL_SOURCE_SYMBOL_ID] = regexp_internal_slot_descriptor()
   re_sym_descs[REGEXP_ORIGINAL_FLAGS_SYMBOL_ID] = regexp_internal_slot_descriptor()
+  re_sym_descs[REGEXP_MATCHER_SYMBOL_ID] = regexp_internal_slot_descriptor()
 
   Value::Object({
     bag: {
@@ -3463,16 +3515,44 @@ fn regexp_char_index_to_code_unit_index(
 }
 
 ///|
+fn regexp_code_unit_length(input : String) -> Int {
+  regexp_char_index_to_code_unit_index(input, input.to_array().length())
+}
+
+///|
+fn regexp_code_unit_index_to_char_index(
+  input : String,
+  code_unit_index : Int,
+) -> Int {
+  if code_unit_index <= 0 {
+    return 0
+  }
+  let chars = input.to_array()
+  let mut units = 0
+  for i, ch in chars {
+    if units >= code_unit_index {
+      return i
+    }
+    let width = if ch.to_int() > 0xFFFF { 2 } else { 1 }
+    if units + width > code_unit_index {
+      return i
+    }
+    units += width
+  }
+  chars.length()
+}
+
+///|
 fn regexp_builtin_exec(
   interp : Interpreter,
   rx : Value,
   input : String,
   loc : @token.Loc,
 ) -> Value raise Error {
-  let (pat, fl) = match rx {
+  let (fl, matcher) = match rx {
     Object(data) if data.class_name == "RegExp" => {
-      let pat = match regexp_original_source_from_data(data) {
-        Some(s) => s
+      let _ = match regexp_original_source_from_data(data) {
+        Some(_) => ()
         None =>
           raise @errors.TypeError(
             message="RegExp method called on incompatible receiver",
@@ -3480,9 +3560,28 @@ fn regexp_builtin_exec(
       }
       let fl = match regexp_original_flags_from_data(data) {
         Some(s) => s
-        None => ""
+        None =>
+          raise @errors.TypeError(
+            message="RegExp method called on incompatible receiver",
+          )
       }
-      (pat, fl)
+      let matcher = match data.bag.symbol_properties.get(
+        REGEXP_MATCHER_SYMBOL_ID,
+      ) {
+        Some(Object(matcher_data)) =>
+          match matcher_data.callable {
+            Some(NonConstructableCallable(_, f)) => f
+            _ =>
+              raise @errors.TypeError(
+                message="RegExp method called on incompatible receiver",
+              )
+          }
+        _ =>
+          raise @errors.TypeError(
+            message="RegExp method called on incompatible receiver",
+          )
+      }
+      (fl, matcher)
     }
     _ =>
       raise @errors.TypeError(
@@ -3495,7 +3594,8 @@ fn regexp_builtin_exec(
     interp.get_property(rx, "lastIndex", loc),
     interp,
   )
-  if (has_global || has_sticky) && last_index > input.length().to_double() {
+  if (has_global || has_sticky) &&
+    last_index > regexp_code_unit_length(input).to_double() {
     let _ = interp.set_property(
       rx,
       "lastIndex",
@@ -3505,15 +3605,28 @@ fn regexp_builtin_exec(
     )
     return Null
   }
-  let start = if has_global || has_sticky { last_index.to_int() } else { 0 }
-  match regex_search(pat, fl, input, start_pos=start) {
-    Some(m) => {
+  let start_code_unit = if has_global || has_sticky {
+    last_index.to_int()
+  } else {
+    0
+  }
+  let start = if fl.contains("u") || fl.contains("v") {
+    regexp_code_unit_index_to_char_index(input, start_code_unit)
+  } else {
+    start_code_unit
+  }
+  match matcher([String_(input), Number(start.to_double())]) {
+    Array(result) if result.elements.length() == 2 => {
+      let match_value = result.elements[0]
+      let end_pos = match result.elements[1] {
+        Number(n) => n.to_int()
+        _ =>
+          raise @errors.TypeError(
+            message="RegExp method called on incompatible receiver",
+          )
+      }
       if has_global || has_sticky {
-        let last_index = if fl.contains("u") || fl.contains("v") {
-          regexp_char_index_to_code_unit_index(input, m.end_)
-        } else {
-          m.end_
-        }
+        let last_index = regexp_char_index_to_code_unit_index(input, end_pos)
         let _ = interp.set_property(
           rx,
           "lastIndex",
@@ -3522,9 +3635,9 @@ fn regexp_builtin_exec(
           strict=true,
         )
       }
-      make_regex_match_array(m, input)
+      match_value
     }
-    None => {
+    Null => {
       if has_global || has_sticky {
         let _ = interp.set_property(
           rx,
@@ -3536,6 +3649,10 @@ fn regexp_builtin_exec(
       }
       Null
     }
+    _ =>
+      raise @errors.TypeError(
+        message="RegExp method called on incompatible receiver",
+      )
   }
 }
 
