@@ -194,21 +194,28 @@ test "spread bytecode non-receiver calls preserve strict and sloppy this" {
 ///|
 test "spread lowering keeps receiver construct and direct-eval opcodes residual" {
   let lowered = parse_bytecode_for_wb(
-    "var obj = { call: function() {} }; var xs = []; " +
-    "obj.call(...xs); new Object(...xs); eval(...xs);",
+    "function plain() {}; var obj = { call: function() {} }; var xs = []; " +
+    "plain(...xs); obj.call(...xs); obj.call(); new Object(...xs); " +
+    "eval(...xs);",
   )
+  let mut saw_call_spread = false
   let mut saw_receiver = false
+  let mut saw_fixed_receiver = false
   let mut saw_construct = false
   let mut saw_direct_eval = false
   for instr in lowered.main.code {
     match instr {
+      CallSpread(_) => saw_call_spread = true
       CallSpreadWithReceiver(_) => saw_receiver = true
+      CallWithReceiver(_, _) => saw_fixed_receiver = true
       ConstructSpread(_) => saw_construct = true
       CallDirectEval(_) => saw_direct_eval = true
       _ => ()
     }
   }
+  assert_true(saw_call_spread)
   assert_true(saw_receiver)
+  assert_true(saw_fixed_receiver)
   assert_true(saw_construct)
   assert_true(saw_direct_eval)
 }
@@ -329,6 +336,303 @@ test "bytecode receiver recursion reaches the synchronous call boundary" {
     ");"
   let result = run_executor_neutral_bytecode(interp, source)
   inspect(result.to_string(), content="320")
+}
+
+///|
+test "bytecode receiver spread reaches the synchronous final call boundary" {
+  let source = "function step(n) { if (n === 0) return this.marker; " +
+    "return 1 + this.step(n - 1, ...[]); }\n" +
+    "let receiver = { marker: 0, step: step };\n" +
+    "receiver.step(320, ...[]);"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_main_spread = false
+  let mut saw_main_receiver_call = false
+  for instr in lowered.main.code {
+    match instr {
+      ArgPushSpread(_) => saw_main_spread = true
+      CallSpreadWithReceiver(_) => saw_main_receiver_call = true
+      _ => ()
+    }
+  }
+  assert_true(saw_main_spread)
+  assert_true(saw_main_receiver_call)
+  let mut saw_step_child = false
+  let mut saw_child_spread = false
+  let mut saw_child_receiver_call = false
+  for child in lowered.main.children {
+    match child.name {
+      Some(name) if name == "step" => {
+        saw_step_child = true
+        for instr in child.code {
+          match instr {
+            ArgPushSpread(_) => saw_child_spread = true
+            CallSpreadWithReceiver(_) => saw_child_receiver_call = true
+            _ => ()
+          }
+        }
+      }
+      _ => ()
+    }
+  }
+  assert_true(saw_step_child)
+  assert_true(saw_child_spread)
+  assert_true(saw_child_receiver_call)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
+test "spread receiver calls preserve this identity and ordered arguments" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var receiver = { marker: 40 };\n" +
+    "function read(first, second) { " +
+    "return this === receiver && this.marker + first + second === 43; }\n" +
+    "receiver.read = read; receiver.read(1, ...[2]);",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread receiver mutual recursion completes deeply" {
+  let source = "var left = 'left'; var right = 'right';\n" +
+    "var receiver = { " +
+    "left: function(n) { if (n === 0) return 1; " +
+    "return this[right](n - 1, ...[]) + 1; }, " +
+    "right: function(n) { if (n === 0) return 0; " +
+    "return this[left](n - 1, ...[]) + 1; } };\n" +
+    "receiver[left](2000, ...[]);"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut saw_root_receiver_spread = false
+  let mut child_receiver_spreads = 0
+  for instr in lowered.main.code {
+    match instr {
+      CallSpreadWithReceiver(_) => saw_root_receiver_spread = true
+      _ => ()
+    }
+  }
+  for child in lowered.main.children {
+    for instr in child.code {
+      match instr {
+        CallSpreadWithReceiver(_) => child_receiver_spreads += 1
+        _ => ()
+      }
+    }
+  }
+  assert_true(saw_root_receiver_spread)
+  assert_true(child_receiver_spreads >= 2)
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="2001")
+}
+
+///|
+test "receiver spread materializes a custom iterator once in order" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var iterator_gets = 0; var next_calls = 0; var return_calls = 0; " +
+    "var invoked = 0;\n" +
+    "var receiver = { base: 40, read: function(first, second) { " +
+    "invoked = invoked + 1; return this.base + first * 10 + second; } };\n" +
+    "var iterable = {}; iterable[Symbol.iterator] = function() { " +
+    "iterator_gets = iterator_gets + 1; var index = 0; return { " +
+    "next: function() { next_calls = next_calls + 1; " +
+    "if (index === 0) { index = 1; return { value: 1, done: false }; } " +
+    "if (index === 1) { index = 2; return { value: 2, done: false }; } " +
+    "return { done: true }; }, return: function() { " +
+    "return_calls = return_calls + 1; return { done: true }; } }; };\n" +
+    "receiver.read(...iterable) === 52 && iterator_gets === 1 && " +
+    "next_calls === 3 && return_calls === 0 && invoked === 1;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "receiver spread iterator throw preserves identity without invocation or replay" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var iterator_gets = 0; var next_calls = 0; " +
+    "var return_calls = 0; var invoked = 0;\n" +
+    "var receiver = { read: function() { invoked = invoked + 1; } };\n" +
+    "var iterable = {}; iterable[Symbol.iterator] = function() { " +
+    "iterator_gets = iterator_gets + 1; return { next: function() { " +
+    "next_calls = next_calls + 1; if (next_calls === 1) " +
+    "return { value: 1, done: false }; throw marker; }, " +
+    "return: function() { return_calls = return_calls + 1; " +
+    "return { done: true }; } }; };\n" +
+    "function attempt() { receiver.read(...iterable); }\n" +
+    "function leaf() { return 42; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var same = false;\n" +
+      "try { attempt(); } catch (error) { same = error === marker; }\n" +
+      "same && iterator_gets === 1 && next_calls === 2 && " +
+      "return_calls === 0 && invoked === 0 && leaf() === 42;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread receiver preparation does not replay static lookup or arguments" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var lookups = 0; var factories = 0; var invoked = 0;\n" +
+    "var receiver = { base: 40 };\n" +
+    "Object.defineProperty(receiver, 'read', { get: function() { " +
+    "lookups = lookups + 1; return function(value) { " +
+    "invoked = invoked + 1; return this.base + value; }; } });\n" +
+    "function make() { factories = factories + 1; return [2]; }\n" +
+    "receiver.read(...make()) === 42 && lookups === 1 && " +
+    "factories === 1 && invoked === 1;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread computed receiver preparation does not replay key or arguments" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var key_reads = 0; var factories = 0; var invoked = 0;\n" +
+    "var receiver = { base: 40, read: function(value) { " +
+    "invoked = invoked + 1; return this.base + value; } };\n" +
+    "function key() { key_reads = key_reads + 1; return 'read'; }\n" +
+    "function make() { factories = factories + 1; return [2]; }\n" +
+    "receiver[key()](...make()) === 42 && key_reads === 1 && " +
+    "factories === 1 && invoked === 1;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread receiver abrupt argument evaluation preserves the thrown value" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var attempts = 0; var invoked = 0;\n" +
+    "var receiver = { read: function() { invoked = invoked + 1; } };\n" +
+    "function boom() { attempts = attempts + 1; throw marker; }\n" +
+    "function attempt() { receiver.read(...boom()); }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var same = false;\n" +
+      "try { attempt(); } catch (error) { same = error === marker; }\n" +
+      "same && attempts === 1 && invoked === 0;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread receiver calls clean up after guest throw and resume later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var calls = 0;\n" +
+    "function child(mode) { calls = calls + 1; " +
+    "if (mode === 1) throw marker; return this.base + mode; }\n" +
+    "var receiver = { base: 6, child: child };\n" +
+    "function invoke(mode) { return receiver.child(...[mode]); }\n" +
+    "function leaf() { return 42; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false;\n" +
+      "try { invoke(1); } catch (error) { caught = error === marker; }\n" +
+      "caught && invoke(2) === 8 && leaf() === 42 && calls === 2;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread receiver logical depth rejection happens before child body" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var caller_entered = 0; var child_entered = 0;\n" +
+    "function child() { child_entered = child_entered + 1; return 1; }\n" +
+    "var receiver = { child: child };\n" +
+    "function caller() { caller_entered = caller_entered + 1; " +
+    "return receiver.child(...[]); }\n" +
+    "function outer() { return caller(...[]); }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let caught : Error? = try {
+    let _ = interp.run_bounded(@parser.parse("outer();").stmts, policy)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) =>
+      fail(
+        "expected a classified JavaScript depth exception, got " +
+        error.to_string(),
+      )
+    None => fail("bounded receiver spread child must be rejected before entry")
+  }
+  let result = interp.run(
+    @parser.parse("caller_entered === 1 && child_entered === 0;").stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread receiver runtime abrupt fallback releases before a later leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var receiver = { bad: 1 };\n" +
+    "function attempt() { receiver.bad(...[]); }\n" +
+    "function leaf() { return 42; }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false;\n" +
+      "try { attempt(); } catch (error) { caught = true; }\n" +
+      "caught && leaf() === 42;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread receiver final invocation preserves tree and native fallbacks" {
+  let interp = @interpreter.new_interpreter()
+  let _ = interp.run(
+    @parser.parse("function treeAdd(value) { return this.base + value; }").stmts,
+  )
+  interp.global.def_builtin(
+    "nativeAdd",
+    @runtime.make_native_func(name="nativeAdd", args => {
+      match args {
+        [Number(left), Number(right)] => Number(left + right)
+        _ => Value::Undefined
+      }
+    }),
+  )
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "var treeHolder = { base: 4, read: treeAdd };\n" +
+    "var nativeHolder = { read: nativeAdd };\n" +
+    "treeHolder.read(...[3]) + nativeHolder.read(...[4, 5]);",
+  )
+  inspect(result.to_string(), content="16")
 }
 
 ///|
