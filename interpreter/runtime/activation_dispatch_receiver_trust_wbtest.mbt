@@ -45,6 +45,29 @@ fn receiver_recursion_computed_sealed_fixture(
 }
 
 ///|
+fn receiver_recursion_escaped_computed_sealed_fixture(
+  source_identity? : String? = None,
+) -> (Interpreter, Array[@ast.Stmt], TrustedReceiverRecursionRegistry) raise {
+  let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = source_identity
+  let stmts = @parser.parse(
+      "function step(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x73tep\"](n-1);}" +
+      "let receiver={[\"\\x6darker\"]:0,[\"\\x73tep\"]:step};receiver[\"\\x73tep\"](256);",
+    ).stmts
+  let preflight = match
+    interp.preflight_dispatchable_receiver_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected callback-free escaped computed receiver preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
+  let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
+  let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
+  (interp, stmts, registry)
+}
+
+///|
 fn receiver_recursion_rejection(
   action : () -> Unit raise InvalidActivationDispatchShell,
 ) -> String {
@@ -99,6 +122,61 @@ fn receiver_recursion_recipe_with_access(
 }
 
 ///|
+fn receiver_recursion_access_with_escape(
+  access : ReceiverRecursionAccessKind,
+  has_escape : Bool,
+) -> ReceiverRecursionAccessKind {
+  match access {
+    ReceiverRecursionStatic => ReceiverRecursionStatic
+    ReceiverRecursionComputedLiteral(loc, _) =>
+      ReceiverRecursionComputedLiteral(loc, has_escape)
+  }
+}
+
+///|
+fn receiver_recursion_recipe_with_escape(
+  original : ReceiverRecursionExpressionRecipe,
+  drift_index : Int,
+) -> ReceiverRecursionExpressionRecipe {
+  let drifted = (access : ReceiverRecursionAccessKind) =>
+    receiver_recursion_access_with_escape(access, false)
+  ReceiverRecursionExpressionRecipe(
+    base_condition_loc=original.base_condition_loc,
+    marker_property_access=if drift_index == 0 {
+      drifted(original.marker_property_access)
+    } else {
+      original.marker_property_access
+    },
+    marker_member_loc=original.marker_member_loc,
+    marker_access=if drift_index == 1 {
+      drifted(original.marker_access)
+    } else {
+      original.marker_access
+    },
+    recursive_add_loc=original.recursive_add_loc,
+    property_access=if drift_index == 2 {
+      drifted(original.property_access)
+    } else {
+      original.property_access
+    },
+    recursive_member_loc=original.recursive_member_loc,
+    recursive_access=if drift_index == 3 {
+      drifted(original.recursive_access)
+    } else {
+      original.recursive_access
+    },
+    recursive_call_loc=original.recursive_call_loc,
+    recursive_subtract_loc=original.recursive_subtract_loc,
+    root_access=if drift_index == 4 {
+      drifted(original.root_access)
+    } else {
+      original.root_access
+    },
+    root_member_loc=original.root_member_loc,
+  )
+}
+
+///|
 fn receiver_recursion_drift_computed_property_key(
   stmts : Array[@ast.Stmt],
   key_loc : @token.Loc,
@@ -110,6 +188,110 @@ fn receiver_recursion_drift_computed_property_key(
   properties[1] = {
     ..property,
     key: @ast.StringLit("step", false, @token.LexForm::LexNormal, key_loc),
+  }
+}
+
+///|
+fn receiver_recursion_toggle_escaped_access(
+  stmts : Array[@ast.Stmt],
+  drift_index : Int,
+) -> Unit raise {
+  fn toggle_key(key : @ast.Expr) -> @ast.Expr raise {
+    match key {
+      @ast.StringLit(name, _, lex_form, key_loc) =>
+        @ast.StringLit(name, false, lex_form, key_loc)
+      _ => fail("expected an escaped string key")
+    }
+  }
+  if drift_index == 0 || drift_index == 2 {
+    guard stmts[1] is @ast.VarDecl(_, _, Some(@ast.ObjectLit(properties, _)), _) else {
+      fail("expected the receiver object declaration")
+    }
+    let property_index = if drift_index == 0 { 0 } else { 1 }
+    let property = properties[property_index]
+    properties[property_index] = { ..property, key: toggle_key(property.key) }
+  } else if drift_index == 1 || drift_index == 3 {
+    guard stmts[0] is @ast.FuncDecl(_, _, body, _, _) else {
+      fail("expected the receiver function declaration")
+    }
+    if drift_index == 1 {
+      match body[0] {
+        @ast.IfStmt(
+          condition,
+          @ast.ReturnStmt(
+            Some(@ast.ComputedMember(base, key, member_loc)),
+            return_loc,
+          ),
+          alternate,
+          stmt_loc
+        ) => {
+          body[0] = @ast.IfStmt(
+            condition,
+            @ast.ReturnStmt(
+              Some(@ast.ComputedMember(base, toggle_key(key), member_loc)),
+              return_loc,
+            ),
+            alternate,
+            stmt_loc,
+          )
+        }
+        _ => fail("expected the escaped marker member")
+      }
+    } else {
+      match body[1] {
+        @ast.ReturnStmt(
+          Some(
+            @ast.Binary(
+              op,
+              increment,
+              @ast.Call(
+                @ast.ComputedMember(base, key, member_loc),
+                args,
+                call_loc,
+              ),
+              add_loc,
+            ),
+          ),
+          return_loc,
+        ) => {
+          body[1] = @ast.ReturnStmt(
+            Some(
+              @ast.Binary(
+                op,
+                increment,
+                @ast.Call(
+                  @ast.ComputedMember(base, toggle_key(key), member_loc),
+                  args,
+                  call_loc,
+                ),
+                add_loc,
+              ),
+            ),
+            return_loc,
+          )
+        }
+        _ => fail("expected the escaped recursive member")
+      }
+    }
+  } else {
+    guard stmts[2] is @ast.ExprStmt(
+      @ast.Call(
+        @ast.ComputedMember(base, key, member_loc),
+        args,
+        call_loc,
+      ),
+      stmt_loc,
+    ) else {
+      fail("expected the escaped root member call")
+    }
+    stmts[2] = @ast.ExprStmt(
+      @ast.Call(
+        @ast.ComputedMember(base, toggle_key(key), member_loc),
+        args,
+        call_loc,
+      ),
+      stmt_loc,
+    )
   }
 }
 
@@ -159,29 +341,62 @@ test "receiver recursion trust seals the exact object and UserFunc identities" {
 test "receiver recursion trust seals computed-literal key locations" {
   let (interp, _, registry) = receiver_recursion_computed_sealed_fixture()
   match registry.plan.recipe.marker_property_access {
-    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionComputedLiteral(_, _) => ()
     ReceiverRecursionStatic =>
       fail("expected computed marker property provenance")
   }
   match registry.plan.recipe.property_access {
-    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionComputedLiteral(_, _) => ()
     ReceiverRecursionStatic => fail("expected computed property provenance")
   }
   match registry.plan.recipe.marker_access {
-    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionComputedLiteral(_, _) => ()
     ReceiverRecursionStatic =>
       fail("expected computed marker access provenance")
   }
   match registry.plan.recipe.recursive_access {
-    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionComputedLiteral(_, _) => ()
     ReceiverRecursionStatic =>
       fail("expected computed recursive access provenance")
   }
   match registry.plan.recipe.root_access {
-    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionComputedLiteral(_, _) => ()
     ReceiverRecursionStatic => fail("expected computed root access provenance")
   }
   ignore(registry.require_receiver(interp))
+}
+
+///|
+test "receiver recursion trust seals escaped computed provenance" {
+  let (interp, _, registry) = receiver_recursion_escaped_computed_sealed_fixture()
+  let accesses = [
+    registry.plan.recipe.marker_property_access,
+    registry.plan.recipe.property_access,
+    registry.plan.recipe.marker_access,
+    registry.plan.recipe.recursive_access,
+    registry.plan.recipe.root_access,
+  ]
+  for access in accesses {
+    match access {
+      ReceiverRecursionComputedLiteral(_, has_escape) =>
+        inspect(has_escape, content="true")
+      ReceiverRecursionStatic => fail("expected escaped computed provenance")
+    }
+  }
+  ignore(registry.require_receiver(interp))
+}
+
+///|
+test "receiver recursion trust rejects same-location escaped-mode drift" {
+  let (_, _, registry) = receiver_recursion_escaped_computed_sealed_fixture()
+  let recipe = registry.plan.recipe
+  for drift_index in 0..<5 {
+    let candidate = receiver_recursion_recipe_with_escape(recipe, drift_index)
+    inspect(
+      receiver_recursion_recipe_matches(recipe, candidate),
+      content="false",
+    )
+  }
 }
 
 ///|
@@ -221,6 +436,33 @@ test "receiver recursion trust rejects computed key drift at seal" {
     }),
     content="rejected",
   )
+}
+
+///|
+test "receiver recursion trust rejects escaped-mode drift at every access site" {
+  for drift_index in 0..<5 {
+    let interp = Interpreter::new()
+    let stmts = @parser.parse(
+        "function step(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x73tep\"](n-1);}" +
+        "let receiver={[\"\\x6darker\"]:0,[\"\\x73tep\"]:step};receiver[\"\\x73tep\"](256);",
+      ).stmts
+    let preflight = match
+      interp.preflight_dispatchable_receiver_recursion_program(stmts) {
+      Some(found) => found
+      None => fail("expected escaped computed receiver preflight")
+    }
+    receiver_recursion_toggle_escaped_access(stmts, drift_index)
+    interp.prepare_root_program_execution(stmts, interp.global, false)
+    let ctx : ExecContext = { strict: false, current_generator: None }
+    let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
+    let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
+    inspect(
+      receiver_recursion_rejection(() => {
+        ignore(interp.seal_receiver_recursion_registry(preflight, stmts))
+      }),
+      content="rejected",
+    )
+  }
 }
 
 ///|
