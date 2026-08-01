@@ -7,6 +7,62 @@ fn run_executor_neutral_bytecode(
 }
 
 ///|
+test "RED: static own accessor reads lower through GetProperty" {
+  let source =
+    "let remaining = 320;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + receiver.x;" +
+    "} };" +
+    "receiver.x;"
+  let lowered = parse_bytecode_for_wb(source)
+  let mut root_get = false
+  for instr in lowered.main.code {
+    match instr {
+      GetProperty("x", _) => root_get = true
+      PreparePropertyCall(_, _)
+      | GetComputed(_)
+      | PrepareComputedCall(_) =>
+        fail("static accessor read selected another property opcode")
+      _ => ()
+    }
+  }
+  let mut getter_get = false
+  for child in lowered.main.children {
+    for instr in child.code {
+      match instr {
+        GetProperty("x", _) => getter_get = true
+        PreparePropertyCall(_, _)
+        | GetComputed(_)
+        | PrepareComputedCall(_) =>
+          fail("recursive static accessor read selected another property opcode")
+        _ => ()
+      }
+    }
+  }
+  assert_true(root_get)
+  assert_true(getter_get)
+}
+
+///|
+test "RED: bytecode static own accessor recursion reaches the synchronous boundary" {
+  let source =
+    "let remaining = 320;" +
+    "let receiver = { get x() {" +
+    "if (remaining === 0) return 0;" +
+    "remaining--;" +
+    "return 1 + receiver.x;" +
+    "} };" +
+    "receiver.x;"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="320")
+}
+
+///|
 test "executor-neutral bytecode function keeps a classifiable runtime payload" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(interp, "function retained() {}")
