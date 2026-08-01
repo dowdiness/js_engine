@@ -37,6 +37,22 @@ test "execution stack safety: ordinary own-data receiver recursion at depth 256"
 }
 
 ///|
+test "execution dispatch preserves legacy receiver argument ordering" {
+  match
+    run(
+      "let receiver={step:0};let evaluated=0;" +
+      "try{receiver.step(evaluated=1);}catch{} evaluated;",
+    ) {
+    Value::Number(1.0) => ()
+    other =>
+      fail(
+        "expected the receiver argument to evaluate before TypeError, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
 test "execution stack safety: recursive return crosses normal finally at depth 256" {
   match
     run(
