@@ -36,32 +36,33 @@ pub impl Show for JsError with fn output(self, logger) {
   logger.write_string(self.get_message())
 }
 
+// Canonical single source of truth for (name, message) pair.
+// name() and get_message() delegate here; name_message_if_js_error cannot
+// reuse this because it takes Error (not JsError) and MoonBit suberror
+// variants cannot be pattern-matched as a group from the Error base type.
+
 ///|
-pub fn JsError::name(self : JsError) -> String noraise {
+fn JsError::parts(self : JsError) -> (String, String) noraise {
   match self {
-    TypeError(_) => "TypeError"
-    ReferenceError(_) => "ReferenceError"
-    SyntaxError(_) => "SyntaxError"
-    RangeError(_) => "RangeError"
-    URIError(_) => "URIError"
-    EvalError(_) => "EvalError"
-    AggregateError(_) => "AggregateError"
-    InternalError(_) => "InternalError"
+    TypeError(message~) => ("TypeError", message)
+    ReferenceError(message~) => ("ReferenceError", message)
+    SyntaxError(message~) => ("SyntaxError", message)
+    RangeError(message~) => ("RangeError", message)
+    URIError(message~) => ("URIError", message)
+    EvalError(message~) => ("EvalError", message)
+    AggregateError(message~, errors=_) => ("AggregateError", message)
+    InternalError(message~) => ("InternalError", message)
   }
 }
 
 ///|
+pub fn JsError::name(self : JsError) -> String noraise {
+  self.parts().0
+}
+
+///|
 pub fn JsError::get_message(self : JsError) -> String noraise {
-  match self {
-    TypeError(message~)
-    | ReferenceError(message~)
-    | SyntaxError(message~)
-    | RangeError(message~)
-    | URIError(message~)
-    | EvalError(message~)
-    | InternalError(message~)
-    | AggregateError(message~, errors=_) => message
-  }
+  self.parts().1
 }
 
 ///|
