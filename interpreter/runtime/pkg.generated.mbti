@@ -87,6 +87,8 @@ pub fn executor_activation_continue() -> ExecutorActivationStep
 
 pub fn executor_activation_normal(Value) -> ExecutorActivationStep
 
+pub fn executor_activation_property_get(Value, String, @token.Loc) -> ExecutorActivationStep
+
 pub fn executor_activation_return(Value) -> ExecutorActivationStep
 
 pub fn flatten_array_val(Array[Value], Int, Array[Value]) -> Unit
@@ -588,6 +590,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationReturn(Value)
   ExecutorActivationCall(ExecutorCallRequest)
   ExecutorActivationConstruct(ExecutorConstructRequest)
+  ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
 }
 
 pub struct ExecutorCallRequest {
@@ -603,6 +606,10 @@ pub fn ExecutorCallableData::name(Self) -> String
 pub fn ExecutorCallableData::start_frame(Self, Interpreter, PreparedExecutorActivation) -> &ExecutorActivationFrame raise
 
 pub struct ExecutorConstructRequest {
+  // private fields
+}
+
+pub struct ExecutorPropertyGetRequest {
   // private fields
 }
 
@@ -1150,7 +1157,7 @@ pub(all) struct WellKnownSymbols {
 // Traits
 pub(open) trait ExecutorActivationFrame {
   fn step(Self, Interpreter) -> ExecutorActivationStep raise
-  fn deliver_call_result(Self, Value) -> Unit raise
+  fn deliver_activation_result(Self, Value) -> Unit raise
 }
 
 pub(open) trait ExecutorCode {

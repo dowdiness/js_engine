@@ -13,6 +13,7 @@ pub enum ExecutorActivationStep {
   ExecutorActivationReturn(Value)
   ExecutorActivationCall(ExecutorCallRequest)
   ExecutorActivationConstruct(ExecutorConstructRequest)
+  ExecutorActivationPropertyGet(ExecutorPropertyGetRequest)
 }
 
 ///|
@@ -44,6 +45,36 @@ pub fn executor_activation_call(
   loc : @token.Loc,
 ) -> ExecutorActivationStep {
   ExecutorActivationCall(ExecutorCallRequest(callee~, this_value~, args~, loc~))
+}
+
+///|
+// A closed static property-get request. Runtime owns property lookup and
+// accessor admission; executors only provide the already-evaluated target and
+// the static property name.
+pub struct ExecutorPropertyGetRequest {
+  priv target : Value
+  priv property_name : String
+  priv loc : @token.Loc
+}
+
+///|
+fn ExecutorPropertyGetRequest::ExecutorPropertyGetRequest(
+  target~ : Value,
+  property_name~ : String,
+  loc~ : @token.Loc,
+) -> ExecutorPropertyGetRequest {
+  { target, property_name, loc }
+}
+
+///|
+pub fn executor_activation_property_get(
+  target : Value,
+  property_name : String,
+  loc : @token.Loc,
+) -> ExecutorActivationStep {
+  ExecutorActivationPropertyGet(
+    ExecutorPropertyGetRequest(target~, property_name~, loc~),
+  )
 }
 
 ///|
@@ -129,7 +160,7 @@ pub fn PreparedExecutorActivation::arguments(
 ///|
 pub(open) trait ExecutorActivationFrame {
   fn step(Self, Interpreter) -> ExecutorActivationStep raise Error
-  fn deliver_call_result(Self, Value) -> Unit raise Error
+  fn deliver_activation_result(Self, Value) -> Unit raise Error
 }
 
 ///|
@@ -191,6 +222,7 @@ priv struct ExecutorActivationCleanup {
   observation : ActivationObservationToken
   cleared_realm : ClearedActiveCalleeRealmScope
   active_realm : ActiveCalleeRealmValueScope
+  property_scope : ClearedActiveCalleeRealmScope?
   saved_in_default : Bool
   saved_param_default_conflicts : @set.Set[String]?
 }
@@ -242,11 +274,24 @@ fn Interpreter::finish_executor_activation(
     cleanup.saved_param_default_conflicts,
     failure,
   )
-  cleanup.observation.release() catch {
+  let release_error : Error? = try {
+    cleanup.observation.release()
+    None
+  } catch {
     InvalidActivationObservationTransition(message) =>
-      raise @errors.InternalError(
-        message="executor activation release is invalid: " + message,
+      Some(
+        @errors.InternalError(
+          message="executor activation release is invalid: " + message,
+        ),
       )
+  }
+  match cleanup.property_scope {
+    Some(scope) => finish_cleared_active_callee_realm(self.realm_state, scope)
+    None => ()
+  }
+  match release_error {
+    Some(error) => raise error
+    None => ()
   }
 }
 
@@ -288,12 +333,22 @@ fn Interpreter::start_executor_activation(
   self : Interpreter,
   executable : ExecutorCallableData,
   start : ExecutorActivationStart,
+  property_scope : ClearedActiveCalleeRealmScope?,
 ) -> ExecutorActivationStackEntry raise Error {
   let callee = match start {
     ExecutorStartCall(request) => request.callee
     ExecutorStartConstruct(request) => request.ctor
   }
-  let observation = observe_executor_activation_entry(self)
+  let observation = observe_executor_activation_entry(self) catch {
+    error => {
+      match property_scope {
+        Some(scope) =>
+          finish_cleared_active_callee_realm(self.realm_state, scope)
+        None => ()
+      }
+      raise error
+    }
+  }
   let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
   let active_realm = begin_active_callee_realm_value(self.realm_state, callee)
   let saved_in_default = self.in_nonarrow_param_default_eval
@@ -352,8 +407,21 @@ fn Interpreter::start_executor_activation(
         saved_param_default_conflicts,
         Some(error),
       )
-      release_rejected_executor_activation_observation(observation)
-      raise error
+      let release_error : Error? = try {
+        release_rejected_executor_activation_observation(observation)
+        None
+      } catch {
+        error => Some(error)
+      }
+      match property_scope {
+        Some(scope) =>
+          finish_cleared_active_callee_realm(self.realm_state, scope)
+        None => ()
+      }
+      match release_error {
+        Some(cleanup_error) => raise cleanup_error
+        None => raise error
+      }
     }
     Ok((frame, completion)) => {
       let accepted = observation.accept()
@@ -364,6 +432,7 @@ fn Interpreter::start_executor_activation(
           observation: accepted,
           cleared_realm,
           active_realm,
+          property_scope,
           saved_in_default,
           saved_param_default_conflicts,
         }),
@@ -390,7 +459,7 @@ fn Interpreter::complete_executor_child(
     None => ()
   }
   let parent = stack[stack.length() - 1].frame
-  parent.deliver_call_result(completion)
+  parent.deliver_activation_result(completion)
 }
 
 ///|
@@ -414,9 +483,40 @@ fn direct_executor_constructor_with_data_prototype(
 }
 
 ///|
+// Callback-free admission for the one iterative static-property slice. The
+// object and its own descriptor are inspected directly so no guest code runs
+// before the property scope and executor activation are installed.
+fn direct_executor_property_getter(
+  target : Value,
+  property_name : String,
+) -> (Value, ExecutorCallableData)? {
+  match target {
+    Object(data) if data.class_name == "Object" &&
+      data.callable is None &&
+      data.arraybuffer_state is None &&
+      data.bag.internal_slots.is_empty() &&
+      data.bag.host_slots.is_empty() =>
+      match data.bag.descriptors.get(property_name) {
+        Some(descriptor) if descriptor.is_accessor =>
+          match descriptor.getter {
+            Some(getter) =>
+              match getter {
+                Object({ callable: Some(ExecutorCallable(executable)), .. }) =>
+                  Some((getter, executable))
+                _ => None
+              }
+            None => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
 // Drive one root executor frame and every exact executor-backed ordinary call
-// it requests. The root is top-level script state and therefore has no
-// activation observation or cleanup record of its own.
+// or static property getter it requests. The root is top-level script state
+// and therefore has no activation observation or cleanup record of its own.
 pub fn Interpreter::run_executor_activation_coordinator(
   self : Interpreter,
   root : &ExecutorActivationFrame,
@@ -452,6 +552,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
                 self.start_executor_activation(
                   executable,
                   ExecutorStartCall(request),
+                  None,
                 ),
               )
             _ => {
@@ -461,7 +562,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
                 request.args,
                 request.loc,
               )
-              frame.deliver_call_result(value)
+              frame.deliver_activation_result(value)
             }
           }
         ExecutorActivationConstruct(request) =>
@@ -471,6 +572,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
                 self.start_executor_activation(
                   executable,
                   ExecutorStartConstruct(request),
+                  None,
                 ),
               )
             None => {
@@ -479,7 +581,40 @@ pub fn Interpreter::run_executor_activation_coordinator(
                 request.args,
                 request.loc,
               )
-              frame.deliver_call_result(value)
+              frame.deliver_activation_result(value)
+            }
+          }
+        ExecutorActivationPropertyGet(request) =>
+          match
+            direct_executor_property_getter(
+              request.target,
+              request.property_name,
+            ) {
+            Some((getter, executable)) => {
+              let property_scope = begin_cleared_active_callee_realm(
+                self.realm_state,
+              )
+              let call_request = ExecutorCallRequest(
+                callee=getter,
+                this_value=request.target,
+                args=[],
+                loc=request.loc,
+              )
+              stack.push(
+                self.start_executor_activation(
+                  executable,
+                  ExecutorStartCall(call_request),
+                  Some(property_scope),
+                ),
+              )
+            }
+            None => {
+              let value = self.get_property(
+                request.target,
+                request.property_name,
+                request.loc,
+              )
+              frame.deliver_activation_result(value)
             }
           }
       }
@@ -648,14 +783,18 @@ fn executor_call_completion(
         ExecutorActivationContinue => Undefined
         ExecutorActivationNormal(_) => Undefined
         ExecutorActivationReturn(value) => value
-        ExecutorActivationCall(_) | ExecutorActivationConstruct(_) => Undefined
+        ExecutorActivationCall(_)
+        | ExecutorActivationConstruct(_)
+        | ExecutorActivationPropertyGet(_) => Undefined
       }
     ArrowExecutorCallable =>
       match step {
         ExecutorActivationContinue => Undefined
         ExecutorActivationNormal(value) | ExecutorActivationReturn(value) =>
           value
-        ExecutorActivationCall(_) | ExecutorActivationConstruct(_) => Undefined
+        ExecutorActivationCall(_)
+        | ExecutorActivationConstruct(_)
+        | ExecutorActivationPropertyGet(_) => Undefined
       }
   }
 }
@@ -673,7 +812,8 @@ fn executor_construct_completion(
     | ExecutorActivationNormal(_)
     | ExecutorActivationReturn(_)
     | ExecutorActivationCall(_)
-    | ExecutorActivationConstruct(_) => instance
+    | ExecutorActivationConstruct(_)
+    | ExecutorActivationPropertyGet(_) => instance
   }
 }
 
