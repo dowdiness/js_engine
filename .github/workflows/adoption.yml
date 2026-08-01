@@ -201,3 +201,20 @@ jobs:
 
       - name: Run focused stack-safety gate
         run: make stack-safety-test TARGET=${{ matrix.target }} PROFILE=${{ matrix.profile }}
+
+  stack-safety-required:
+    name: Stack safety required
+    needs: [stack-safety]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Require every stack-safety cell to succeed
+        env:
+          STACK_SAFETY_RESULT: ${{ needs.stack-safety.result }}
+        run: |
+          test "$STACK_SAFETY_RESULT" = success || {
+            echo "stack-safety matrix result was $STACK_SAFETY_RESULT" >&2
+            exit 1
+          }
