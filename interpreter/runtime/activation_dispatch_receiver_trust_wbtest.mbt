@@ -667,3 +667,15 @@ test "receiver recursion trust rejects source and realm metadata drift" {
     content="rejected",
   )
 }
+
+///|
+test "mutual receiver recursion preflight seals both function identities" {
+  let interp = Interpreter::new()
+  let stmts = @parser.parse(MUTUAL_RECEIVER_RECURSION_SOURCE).stmts
+  let preflight = match
+    interp.preflight_dispatchable_receiver_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected the exact mutual receiver preflight")
+  }
+  let _ = interp.seal_receiver_recursion_registry(preflight, stmts)
+}

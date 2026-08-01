@@ -17,6 +17,20 @@ fn nested_array_pattern_source(depth : Int, inner : String) -> String {
 }
 
 ///|
+const MUTUAL_RECEIVER_RECURSION_SOURCE =
+  #|function left(n){if(n===0)return this["\x6darker"];return 1+this["\x72ight"](n-1);}
+  #|function right(n){if(n===0)return this["\x6darker"];return 1+this["\x6ceft"](n-1);}
+  #|let receiver={["\x6darker"]:0,["\x6ceft"]:left,["\x72ight"]:right};
+  #|receiver["\x6ceft"](256);
+
+///|
+const REVERSED_MUTUAL_RECEIVER_RECURSION_SOURCE =
+  #|function left(n){if(n===0)return this["\x6darker"];return 1+this["\x72ight"](n-1);}
+  #|function right(n){if(n===0)return this["\x6darker"];return 1+this["\x6ceft"](n-1);}
+  #|let receiver={["\x6darker"]:0,["\x6ceft"]:left,["\x72ight"]:right};
+  #|receiver["\x72ight"](256);
+
+///|
 test "execution stack safety: self recursion at depth 256" {
   match run("function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);") {
     Value::Number(256.0) => ()
@@ -62,6 +76,23 @@ test "execution stack safety: escaped computed own-data receiver recursion at de
         "expected escaped computed receiver recursion 256, got " +
         other.to_string(),
       )
+  }
+}
+
+///|
+test "execution stack safety: escaped computed mutual receiver recursion at depth 256" {
+  for source in [
+    MUTUAL_RECEIVER_RECURSION_SOURCE,
+    REVERSED_MUTUAL_RECEIVER_RECURSION_SOURCE,
+  ] {
+    match run(source) {
+      Value::Number(256.0) => ()
+      other =>
+        fail(
+          "expected escaped computed mutual receiver recursion 256, got " +
+          other.to_string(),
+        )
+    }
   }
 }
 
