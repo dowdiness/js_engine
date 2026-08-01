@@ -22,6 +22,29 @@ fn receiver_recursion_sealed_fixture(
 }
 
 ///|
+fn receiver_recursion_computed_sealed_fixture(
+  source_identity? : String? = None,
+) -> (Interpreter, Array[@ast.Stmt], TrustedReceiverRecursionRegistry) raise {
+  let interp = Interpreter::new()
+  interp.realm_state.active_source_identity.val = source_identity
+  let stmts = @parser.parse(
+      "function step(n){if(n===0)return this[\"marker\"];return 1+this[\"step\"](n-1);}" +
+      "let receiver={[\"marker\"]:0,[\"step\"]:step};receiver[\"step\"](256);",
+    ).stmts
+  let preflight = match
+    interp.preflight_dispatchable_receiver_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected callback-free computed receiver preflight")
+  }
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
+  let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
+  let registry = interp.seal_receiver_recursion_registry(preflight, stmts)
+  (interp, stmts, registry)
+}
+
+///|
 fn receiver_recursion_rejection(
   action : () -> Unit raise InvalidActivationDispatchShell,
 ) -> String {
@@ -30,6 +53,63 @@ fn receiver_recursion_rejection(
     "accepted"
   } catch {
     InvalidActivationDispatchShell(_) => "rejected"
+  }
+}
+
+///|
+fn receiver_recursion_recipe_with_access(
+  original : ReceiverRecursionExpressionRecipe,
+  drift_index : Int,
+) -> ReceiverRecursionExpressionRecipe {
+  let static_access = ReceiverRecursionStatic
+  ReceiverRecursionExpressionRecipe(
+    base_condition_loc=original.base_condition_loc,
+    marker_property_access=if drift_index == 0 {
+      static_access
+    } else {
+      original.marker_property_access
+    },
+    marker_member_loc=original.marker_member_loc,
+    marker_access=if drift_index == 1 {
+      static_access
+    } else {
+      original.marker_access
+    },
+    recursive_add_loc=original.recursive_add_loc,
+    property_access=if drift_index == 2 {
+      static_access
+    } else {
+      original.property_access
+    },
+    recursive_member_loc=original.recursive_member_loc,
+    recursive_access=if drift_index == 3 {
+      static_access
+    } else {
+      original.recursive_access
+    },
+    recursive_call_loc=original.recursive_call_loc,
+    recursive_subtract_loc=original.recursive_subtract_loc,
+    root_access=if drift_index == 4 {
+      static_access
+    } else {
+      original.root_access
+    },
+    root_member_loc=original.root_member_loc,
+  )
+}
+
+///|
+fn receiver_recursion_drift_computed_property_key(
+  stmts : Array[@ast.Stmt],
+  key_loc : @token.Loc,
+) -> Unit raise {
+  guard stmts[1] is @ast.VarDecl(_, _, Some(@ast.ObjectLit(properties, _)), _) else {
+    fail("expected the receiver object declaration")
+  }
+  let property = properties[1]
+  properties[1] = {
+    ..property,
+    key: @ast.StringLit("step", false, @token.LexForm::LexNormal, key_loc),
   }
 }
 
@@ -73,6 +153,97 @@ test "receiver recursion trust seals the exact object and UserFunc identities" {
     }
     _ => fail("trusted callee must retain its UserFunc capability")
   }
+}
+
+///|
+test "receiver recursion trust seals computed-literal key locations" {
+  let (interp, _, registry) = receiver_recursion_computed_sealed_fixture()
+  match registry.plan.recipe.marker_property_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic =>
+      fail("expected computed marker property provenance")
+  }
+  match registry.plan.recipe.property_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic => fail("expected computed property provenance")
+  }
+  match registry.plan.recipe.marker_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic =>
+      fail("expected computed marker access provenance")
+  }
+  match registry.plan.recipe.recursive_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic =>
+      fail("expected computed recursive access provenance")
+  }
+  match registry.plan.recipe.root_access {
+    ReceiverRecursionComputedLiteral(_) => ()
+    ReceiverRecursionStatic => fail("expected computed root access provenance")
+  }
+  ignore(registry.require_receiver(interp))
+}
+
+///|
+test "receiver recursion trust rejects preflight access provenance drift" {
+  let (_, _, registry) = receiver_recursion_computed_sealed_fixture()
+  let recipe = registry.plan.recipe
+  for drift_index in 0..<5 {
+    let candidate = receiver_recursion_recipe_with_access(recipe, drift_index)
+    inspect(
+      receiver_recursion_recipe_matches(recipe, candidate),
+      content="false",
+    )
+  }
+}
+
+///|
+test "receiver recursion trust rejects computed key drift at seal" {
+  let interp = Interpreter::new()
+  let stmts = @parser.parse(
+      "function step(n){if(n===0)return this[\"marker\"];return 1+this[\"step\"](n-1);}" +
+      "let receiver={[\"marker\"]:0,[\"step\"]:step};receiver[\"step\"](256);",
+    ).stmts
+  let preflight = match
+    interp.preflight_dispatchable_receiver_recursion_program(stmts) {
+    Some(found) => found
+    None => fail("expected callback-free computed receiver preflight")
+  }
+  let drift_loc : @token.Loc = { line: 99, col: 7, offset: 9999 }
+  receiver_recursion_drift_computed_property_key(stmts, drift_loc)
+  interp.prepare_root_program_execution(stmts, interp.global, false)
+  let ctx : ExecContext = { strict: false, current_generator: None }
+  let _ = interp.exec_stmt(ctx, stmts[0], interp.global)
+  let _ = interp.exec_stmt(ctx, stmts[1], interp.global)
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(interp.seal_receiver_recursion_registry(preflight, stmts))
+    }),
+    content="rejected",
+  )
+}
+
+///|
+test "receiver recursion trust rejects computed body key location drift" {
+  let (body_interp, _, body_registry) = receiver_recursion_computed_sealed_fixture()
+  guard body_registry.trusted.callee
+    is Object({ callable: Some(UserFunc(body_data)), .. }) else {
+    fail("expected the sealed computed UserFunc")
+  }
+  let shifted_body = match
+    @parser.parse(
+      "function step(n){\n\nif(n===0)return this[\"marker\"];return 1+this[\"step\"](n-1);}",
+    ).stmts[0] {
+    @ast.FuncDecl(_, _, body, _, _) => body
+    _ => fail("expected an equivalent computed function declaration")
+  }
+  body_data.body[0] = shifted_body[0]
+  inspect(
+    receiver_recursion_rejection(() => {
+      ignore(body_registry.require_receiver(body_interp))
+    }),
+    content="rejected",
+  )
 }
 
 ///|

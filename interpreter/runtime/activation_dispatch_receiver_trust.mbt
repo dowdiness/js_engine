@@ -333,11 +333,28 @@ fn receiver_recursion_recipe_matches(
   actual : ReceiverRecursionExpressionRecipe,
 ) -> Bool {
   expected.base_condition_loc == actual.base_condition_loc &&
+  receiver_recursion_access_matches(
+    expected.marker_property_access,
+    actual.marker_property_access,
+  ) &&
   expected.marker_member_loc == actual.marker_member_loc &&
+  receiver_recursion_access_matches(
+    expected.property_access,
+    actual.property_access,
+  ) &&
+  receiver_recursion_access_matches(
+    expected.marker_access,
+    actual.marker_access,
+  ) &&
   expected.recursive_add_loc == actual.recursive_add_loc &&
+  receiver_recursion_access_matches(
+    expected.recursive_access,
+    actual.recursive_access,
+  ) &&
   expected.recursive_member_loc == actual.recursive_member_loc &&
   expected.recursive_call_loc == actual.recursive_call_loc &&
   expected.recursive_subtract_loc == actual.recursive_subtract_loc &&
+  receiver_recursion_access_matches(expected.root_access, actual.root_access) &&
   expected.root_member_loc == actual.root_member_loc
 }
 
