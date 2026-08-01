@@ -50,6 +50,19 @@ test "execution stack safety: computed-literal own-data receiver recursion at de
 }
 
 ///|
+test "execution stack safety: escaped computed own-data receiver recursion at depth 256" {
+  match
+    run(
+      "function step(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x73tep\"](n-1);}" +
+      "let receiver={[\"\\x6darker\"]:0,[\"\\x73tep\"]:step};receiver[\"\\x73tep\"](256);",
+    ) {
+    Value::Number(256.0) => ()
+    other =>
+      fail("expected escaped computed receiver recursion 256, got " + other.to_string())
+  }
+}
+
+///|
 test "execution dispatch preserves legacy receiver argument ordering" {
   match
     run(
