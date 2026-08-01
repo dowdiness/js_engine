@@ -287,3 +287,34 @@ test "receiver root runtime abrupt preserves identity and balances cleanup" {
       )
   }
 }
+
+///|
+test "receiver body observes five expression steps before recursive call" {
+  let (interp, shell, _, plan, callee, receiver) = receiver_activation_test_fixture()
+  let control = ExecutionControl(
+    remaining_steps=4,
+    maximum_active_depth=10,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  interp.with_execution_control(control, () => {
+    let (cleanup, cursor) = receiver_activation_test_enter(
+      shell, plan, callee, receiver,
+    )
+    let result = shell.execute_receiver_body_statement(
+      { ctx: cursor.ctx, stmt: cursor.stmts[1], env: cursor.env, index: 1 },
+      shell.require_receiver_registry(),
+    ) catch {
+      InvalidActivationDispatchShell(message) =>
+        fail("receiver body dispatch rejected the trusted cursor: " + message)
+    }
+    let completion = match result {
+      DispatchWorkCompleted(
+        DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit))
+      ) => DispatchRuntimeAbrupt(ExecutionControlError(ExecutionLimit))
+      _ => fail("expected the fifth receiver expression step to hit the limit")
+    }
+    inspect(control.remaining_steps(), content="0")
+    receiver_activation_test_release(shell, cleanup, completion)
+    inspect(shell.cleanup_stack.length(), content="0")
+  })
+}

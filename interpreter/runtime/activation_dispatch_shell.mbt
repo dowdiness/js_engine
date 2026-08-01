@@ -2037,6 +2037,10 @@ fn PrimitiveProgramDispatchShell::execute_receiver_body_statement(
   match step.index {
     0 => self.execute_statement_with_legacy_adapter(step)
     1 => {
+      match self.observe_managed_execution_steps(5) {
+        Some(completion) => return DispatchWorkCompleted(completion)
+        None => ()
+      }
       let argument = Number(
         receiver_recursion_parameter_value(step.env, plan.parameter) -
         NUMERIC_RECURSION_STEP,
