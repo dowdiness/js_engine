@@ -74,14 +74,48 @@ test "ordinary bytecode arrow calls complete at deep finite depth" {
 }
 
 ///|
+test "tree adapter trampolines nested ordinary bytecode calls" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp, "function count(n) { if (n === 0) return 0; return count(n - 1) + 1; }",
+  )
+  let result = interp.run(@parser.parse("count(2000);").stmts)
+  inspect(result.to_string(), content="2000")
+}
+
+///|
 test "ordinary bytecode call consumes its result once at the advanced IP" {
   let interp = @interpreter.new_interpreter()
   let source = "var calls = 0;\n" +
     "function child() { calls = calls + 1; return 2; }\n" +
-    "function caller() { child(); return calls; }\n" +
+    "function caller() { return child() + calls; }\n" +
     "caller();"
   let result = run_executor_neutral_bytecode(interp, source)
-  inspect(result.to_string(), content="1")
+  inspect(result.to_string(), content="3")
+}
+
+///|
+test "nested ordinary bytecode calls own child arguments" {
+  let interp = @interpreter.new_interpreter()
+  let source = "function child(value) { arguments[0] = 7; " +
+    "return value + arguments.length; }\n" +
+    "function caller() { return child(1, 2); }\n" +
+    "caller();"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="9")
+}
+
+///|
+test "nested ordinary bytecode calls preserve guest throw identity" {
+  let interp = @interpreter.new_interpreter()
+  let source = "var marker = {};\n" +
+    "function child() { throw marker; }\n" +
+    "function caller() { child(); }"
+  let _ = run_executor_neutral_bytecode(interp, source)
+  let result = interp.run(
+    @parser.parse("try { caller(); } catch (error) { error === marker; }").stmts,
+  )
+  inspect(result.to_string(), content="true")
 }
 
 ///|

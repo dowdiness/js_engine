@@ -234,14 +234,25 @@ fn release_rejected_executor_activation_observation(
 }
 
 ///|
+fn observe_executor_activation_entry(
+  interp : Interpreter,
+) -> ActivationEntryAttempt raise Error {
+  observe_activation_entry(
+    interp.execution_control_activation_observation_port(),
+  ) catch {
+    ExecutionControlError(StackDepthLimit) =>
+      raise @errors.RangeError(message=STACK_DEPTH_LIMIT_MESSAGE)
+    error => raise error
+  }
+}
+
+///|
 fn Interpreter::start_executor_activation(
   self : Interpreter,
   executable : ExecutorCallableData,
   request : ExecutorCallRequest,
 ) -> ExecutorActivationStackEntry raise Error {
-  let observation = observe_activation_entry(
-    self.execution_control_activation_observation_port(),
-  )
+  let observation = observe_executor_activation_entry(self)
   let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
   let active_realm = begin_active_callee_realm_value(
     self.realm_state,
@@ -414,23 +425,7 @@ fn Interpreter::drive_executor_activation(
   prepared : PreparedExecutorActivation,
 ) -> ExecutorActivationStep raise Error {
   let frame = code.start(self, prepared)
-  while true {
-    match frame.step(self) {
-      ExecutorActivationContinue => ()
-      ExecutorActivationNormal(value) => return ExecutorActivationNormal(value)
-      ExecutorActivationReturn(value) => return ExecutorActivationReturn(value)
-      ExecutorActivationCall(request) => {
-        let value = self.call_value(
-          request.callee,
-          request.this_value,
-          request.args,
-          request.loc,
-        )
-        frame.deliver_call_result(value)
-      }
-    }
-  }
-  ExecutorActivationNormal(Undefined)
+  self.run_executor_activation_coordinator(frame)
 }
 
 ///|

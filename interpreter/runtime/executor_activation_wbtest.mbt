@@ -334,18 +334,26 @@ test "activation coordinator unwinds child errors and restores dynamic state" {
       loc=@token.Loc::default(),
     )
     as &ExecutorActivationFrame
-  interp.in_nonarrow_param_default_eval = true
-  let caught : Error? = try {
-    let _ = interp.run_executor_activation_coordinator(root)
-    None
-  } catch {
-    error => Some(error)
-  }
+  let control = ExecutionControl(
+    remaining_steps=100,
+    maximum_active_depth=1,
+    interruption=ExecutionInterruptionRequest(),
+  )
+  let caught : Error? = interp.with_execution_control(control, () => {
+    interp.in_nonarrow_param_default_eval = true
+    try {
+      let _ = interp.run_executor_activation_coordinator(root)
+      None
+    } catch {
+      error => Some(error)
+    }
+  })
   match caught {
     Some(error) => assert_true(physical_equal(error, sentinel))
     None => fail("expected child error to unwind the coordinator")
   }
   assert_true(interp.in_nonarrow_param_default_eval)
+  inspect(control.active_depth(), content="0")
 }
 
 ///|
@@ -391,10 +399,10 @@ test "activation coordinator rejects depth before child preparation" {
     let _ = interp.run_executor_activation_coordinator(root)
     "completed"
   }) catch {
-    ExecutionControlError(StackDepthLimit) => "stack-depth-limit"
+    @errors.RangeError(message~) => "range-error:" + message
     _ => "other-error"
   }
-  inspect(outcome, content="stack-depth-limit")
+  inspect(outcome, content="range-error:Maximum call stack size exceeded")
   inspect(starts.val, content="0")
   inspect(control.active_depth(), content="0")
 }
