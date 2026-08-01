@@ -70,8 +70,7 @@ test "bytecode receiver recursion reaches the synchronous call boundary" {
 ///|
 test "bytecode computed receiver mutual recursion completes deeply" {
   let interp = @interpreter.new_interpreter()
-  let source =
-    "var left = 'left'; var right = 'right';\n" +
+  let source = "var left = 'left'; var right = 'right';\n" +
     "var receiver = { " +
     "left: function(n) { if (n === 0) return 1; " +
     "return receiver[right](n - 1) + 1; }, " +
@@ -297,6 +296,20 @@ test "executor-neutral mixed bytecode to tree call preserves return" {
 }
 
 ///|
+test "executor-neutral foreign realm receiver call preserves this" {
+  let callee_interp = @interpreter.new_interpreter()
+  let caller_interp = @interpreter.new_interpreter()
+  let foreign_read = run_executor_neutral_bytecode(
+    callee_interp, "function read() { return this.tag; } read;",
+  )
+  caller_interp.global.def_builtin("foreignRead", foreign_read)
+  let result = run_executor_neutral_bytecode(
+    caller_interp, "var holder = { tag: 'foreign-ok', read: foreignRead }; holder.read();",
+  )
+  inspect(result.to_string(), content="foreign-ok")
+}
+
+///|
 test "executor-neutral bytecode to native call preserves arguments" {
   let interp = @interpreter.new_interpreter()
   interp.global.def_builtin(
@@ -310,6 +323,21 @@ test "executor-neutral bytecode to native call preserves arguments" {
   )
   let result = run_executor_neutral_bytecode(interp, "nativeAdd(2, 3);")
   inspect(result.to_string(), content="5")
+}
+
+///|
+test "executor-neutral fixed receiver call falls back for native targets" {
+  let interp = @interpreter.new_interpreter()
+  interp.global.def_builtin(
+    "nativeRead",
+    @runtime.make_native_func(name="nativeRead", _args => {
+      Value::String_("native-ok")
+    }),
+  )
+  let result = run_executor_neutral_bytecode(
+    interp, "var holder = { read: nativeRead }; holder.read();",
+  )
+  inspect(result.to_string(), content="native-ok")
 }
 
 ///|
