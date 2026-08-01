@@ -29,6 +29,12 @@ const SELF_RECURSION_SOURCE =
   #|function f(n){if(n===0)return 0;return 1+f(n-1);}f(256);
 
 ///|
+const RECEIVER_RECURSION_SOURCE =
+  #|function step(n){if(n===0)return this.marker;return 1+this.step(n-1);}
+  #|let receiver={marker:0,step:step};
+  #|receiver.step(256);
+
+///|
 const MUTUAL_RECURSION_SOURCE =
   #|function f(n){if(n===0)return 0;return 1+g(n-1);}
   #|function g(n){if(n===0)return 0;return 1+f(n-1);}
@@ -96,6 +102,7 @@ const PROXY_GET_LOOKALIKE_SOURCE =
 ///|
 test "stack safety public facade: exact production-admitted depth-256 values" {
   inspect(run_value(SELF_RECURSION_SOURCE), content="256")
+  inspect(run_value(RECEIVER_RECURSION_SOURCE), content="256")
   inspect(run_value(MUTUAL_RECURSION_SOURCE), content="256")
   inspect(run_value(GETTER_REENTRY_SOURCE), content="256")
   inspect(run_value(PROXY_REENTRY_SOURCE), content="256")

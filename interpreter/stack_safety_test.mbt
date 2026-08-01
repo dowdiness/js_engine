@@ -25,6 +25,18 @@ test "execution stack safety: self recursion at depth 256" {
 }
 
 ///|
+test "execution stack safety: ordinary own-data receiver recursion at depth 256" {
+  match
+    run(
+      "function step(n){if(n===0)return this.marker;return 1+this.step(n-1);}" +
+      "let receiver={marker:0,step:step};receiver.step(256);",
+    ) {
+    Value::Number(256.0) => ()
+    other => fail("expected receiver recursion 256, got " + other.to_string())
+  }
+}
+
+///|
 test "execution stack safety: recursive return crosses normal finally at depth 256" {
   match
     run(
