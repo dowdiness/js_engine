@@ -56,8 +56,7 @@ test "ordinary bytecode recursive calls complete at finite depth" {
 
 ///|
 test "bytecode spread recursion reaches the synchronous final call boundary" {
-  let source =
-    "function count(n) { if (n === 0) return 0; " +
+  let source = "function count(n) { if (n === 0) return 0; " +
     "return count(n - 1, ...[]) + 1; }\n" +
     "count(321, ...[]);"
   let lowered = parse_bytecode_for_wb(source)
@@ -79,8 +78,7 @@ test "bytecode spread recursion reaches the synchronous final call boundary" {
 
 ///|
 test "spread bytecode mutual calls complete at deep finite depth" {
-  let source =
-    "function even(n) { if (n === 0) return true; " +
+  let source = "function even(n) { if (n === 0) return true; " +
     "return odd(n - 1, ...[]); }\n" +
     "function odd(n) { if (n === 0) return false; " +
     "return even(n - 1, ...[]); }\n" +
@@ -152,8 +150,7 @@ test "spread bytecode final invocation keeps tree and native fallbacks" {
     }),
   )
   let result = run_executor_neutral_bytecode(
-    interp,
-    "treeAdd(...[2]) + nativeAdd(...[3, 4]);",
+    interp, "treeAdd(...[2]) + nativeAdd(...[3, 4]);",
   )
   inspect(result.to_string(), content="10")
 }
@@ -272,7 +269,11 @@ test "bounded spread rejection happens before child body" {
   match caught {
     Some(@runtime.JsException(value)) =>
       assert_true(@runtime.is_engine_stack_depth_error(value))
-    Some(error) => fail("expected a classified JavaScript depth exception, got " + error.to_string())
+    Some(error) =>
+      fail(
+        "expected a classified JavaScript depth exception, got " +
+        error.to_string(),
+      )
     None => fail("bounded spread child must be rejected before entry")
   }
   let result = interp.run(
