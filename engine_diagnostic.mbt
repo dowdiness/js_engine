@@ -714,6 +714,215 @@ pub fn Engine::call_json_diagnostic(
 }
 
 ///|
+/// Call a JSON-boundary function under one explicitly supplied,
+/// operation-scoped execution policy. The same fresh control carrier spans
+/// global lookup and target execution; direct JSON copying does not execute
+/// JavaScript and therefore does not consume steps.
+priv enum BoundedCallFailure {
+  Expected(String, String, String)
+  JsonConversion(String, String)
+  Observed(String, @runtime.SourceObservedFailure)
+  Unexpected(String, Error)
+}
+
+///|
+priv enum BoundedCallOutcome {
+  Success(Json)
+  Failure(BoundedCallFailure)
+}
+
+///|
+/// Perform the bounded call while returning only private outcome descriptors.
+/// The caller deliberately materializes diagnostics after the execution-control
+/// carrier has been restored.
+fn Engine::bounded_call_outcome(
+  self : Engine,
+  name : String,
+  args : Array[Json],
+) -> BoundedCallOutcome {
+  let lookup_result = @runtime.observe_source_failure(self.interp.realm_state, () => {
+    self.get_global_export_for_diagnostic(name)
+  })
+  let callee = match lookup_result {
+    Ok(callee) => callee
+    Err(failure) =>
+      return match failure.cause() {
+        MissingGlobal(message) =>
+          Failure(
+            BoundedCallFailure::Expected("missing-global", message, "lookup"),
+          )
+        _ => Failure(BoundedCallFailure::Observed("lookup", failure))
+      }
+  }
+  guard @runtime.is_callable(callee) else {
+    return Failure(BoundedCallFailure::Expected("not-callable", name, "lookup"))
+  }
+  let runtime_args : Array[@runtime.Value] = []
+  for arg in args {
+    let converted = @runtime.json_to_realm_value(self.interp.realm_state, arg) catch {
+      @runtime.JsonBridgeFailure(message) =>
+        return Failure(
+          BoundedCallFailure::JsonConversion("argument-conversion", message),
+        )
+    }
+    runtime_args.push(converted)
+  }
+  let call_result = @runtime.observe_source_failure(self.interp.realm_state, () => {
+    self.interp.call_value(
+      callee,
+      @runtime.Undefined,
+      runtime_args,
+      @token.Loc::default(),
+    )
+  })
+  let result = match call_result {
+    Ok(value) => value
+    Err(failure) =>
+      return Failure(BoundedCallFailure::Observed("execute", failure))
+  }
+  let json = @runtime.realm_value_to_json(self.interp.realm_state, result) catch {
+    @runtime.JsonBridgeFailure(message) =>
+      return Failure(
+        BoundedCallFailure::JsonConversion("result-conversion", message),
+      )
+  }
+  Success(json)
+}
+
+///|
+fn bounded_call_guardrail_message(kind : String) -> String {
+  match kind {
+    "interrupted" => "Execution interrupted"
+    "execution-limit" => "Execution limit exceeded"
+    "stack-depth-limit" => @runtime.stack_depth_limit_message()
+    _ => "Execution guardrail rejected the operation"
+  }
+}
+
+///|
+fn Engine::bounded_call_observed_diagnostic(
+  self : Engine,
+  phase : String,
+  failure : @runtime.SourceObservedFailure,
+) -> EngineDiagnostic {
+  let cause = failure.cause()
+  let source_identity = failure.source_identity()
+  match @runtime.execution_control_failure_code(cause) {
+    Some(kind) =>
+      make_engine_diagnostic(
+        failure_kind_code=kind,
+        message=bounded_call_guardrail_message(kind),
+        operation_code="call-json",
+        phase_code=phase,
+        source_identity~,
+        engine_integrity=EngineIntegrity::Unknown,
+        retained_effects=RetainedEffects::MayRemain,
+        pending_jobs=self.pending_jobs_snapshot(),
+      )
+    None =>
+      match cause {
+        @runtime.JsException(value) if @runtime.is_engine_stack_depth_error(
+            value,
+          ) =>
+          make_engine_diagnostic(
+            failure_kind_code="stack-depth-limit",
+            message=@runtime.stack_depth_limit_message(),
+            operation_code="call-json",
+            phase_code=phase,
+            source_identity~,
+            engine_integrity=EngineIntegrity::Unknown,
+            retained_effects=RetainedEffects::MayRemain,
+            pending_jobs=self.pending_jobs_snapshot(),
+          )
+        _ =>
+          runtime_engine_diagnostic(
+            cause,
+            operation="call-json",
+            phase~,
+            source_identity~,
+            javascript_integrity=EngineIntegrity::Reusable,
+            javascript_effects=RetainedEffects::MayRemain,
+            javascript_jobs=self.pending_jobs_snapshot(),
+            internal_integrity=EngineIntegrity::Discard,
+          )
+      }
+  }
+}
+
+///|
+fn Engine::bounded_call_diagnostic(
+  self : Engine,
+  failure : BoundedCallFailure,
+) -> EngineDiagnostic {
+  match failure {
+    Expected(kind, message, phase) =>
+      make_engine_diagnostic(
+        failure_kind_code=kind,
+        message~,
+        operation_code="call-json",
+        phase_code=phase,
+        source_identity=None,
+        engine_integrity=EngineIntegrity::Reusable,
+        retained_effects=if kind == "missing-global" {
+          RetainedEffects::None
+        } else {
+          RetainedEffects::MayRemain
+        },
+        pending_jobs=self.pending_jobs_snapshot(),
+      )
+    JsonConversion(phase, message) =>
+      make_engine_diagnostic(
+        failure_kind_code="json-conversion-error",
+        message~,
+        operation_code="call-json",
+        phase_code=phase,
+        source_identity=None,
+        engine_integrity=EngineIntegrity::Reusable,
+        retained_effects=RetainedEffects::MayRemain,
+        pending_jobs=self.pending_jobs_snapshot(),
+      )
+    Observed(phase, failure) =>
+      self.bounded_call_observed_diagnostic(phase, failure)
+    Unexpected(phase, error) =>
+      runtime_engine_diagnostic(
+        error,
+        operation="call-json",
+        phase~,
+        source_identity=None,
+        javascript_integrity=EngineIntegrity::Discard,
+        javascript_effects=RetainedEffects::Unknown,
+        javascript_jobs=PendingJobs::Unknown,
+        internal_integrity=EngineIntegrity::Discard,
+      )
+  }
+}
+
+///|
+/// Call a JSON-boundary function under one explicitly supplied,
+/// operation-scoped execution policy. The same fresh control carrier spans
+/// global lookup, direct JSON conversion, target execution, and direct result
+/// conversion. The direct bridge itself does not execute JavaScript.
+pub fn Engine::call_json_bounded(
+  self : Engine,
+  name : String,
+  args : Array[Json],
+  policy : @runtime.ExecutionPolicy,
+) -> Result[Json, EngineDiagnostic] {
+  let outcome = self.interp.with_execution_policy(policy, () => {
+    self.bounded_call_outcome(name, args)
+  }) catch {
+    error =>
+      BoundedCallOutcome::Failure(
+        BoundedCallFailure::Unexpected("lookup", error),
+      )
+  }
+  match outcome {
+    Success(json) => Ok(json)
+    Failure(failure) => Err(self.bounded_call_diagnostic(failure))
+  }
+}
+
+///|
 /// Run a microtask checkpoint while returning operation-aware failure details.
 pub fn Engine::run_microtask_checkpoint_diagnostic(
   self : Engine,

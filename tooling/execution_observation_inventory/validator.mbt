@@ -179,6 +179,7 @@ fn validate_row_metadata(
     Ok(
       "dispatch-point"
       | "host-source-parsing"
+      | "host-json-conversion"
       | "fixed-size-bookkeeping"
       | "already-observed-loop"
       | "script-controlled-execution-time-loop"

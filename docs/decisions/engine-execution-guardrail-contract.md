@@ -5,20 +5,21 @@ Date: 2026-07-26
 ## Status
 
 Accepted for staged implementation. Private execution-control state transitions
-and statement/expression dispatch observation are implemented internally. One
-public bounded-evaluation slice now provides a validated operation-scoped
-budget/depth policy and host-owned monotonic interruption. Bounded JSON calls,
-bounded queue checkpoints, and complete execution accounting remain deferred.
+and statement/expression dispatch observation are implemented internally.
+Public bounded-evaluation and bounded JSON-call slices now provide a validated
+operation-scoped budget/depth policy and host-owned monotonic interruption.
+Bounded queue checkpoints and complete execution accounting remain deferred.
 Existing unbounded operations retain their compatibility behavior.
 
 ## Context
 
 The stable `Engine` facade lets a host evaluate source, call synchronous
 JSON-boundary functions, and explicitly advance microtask and timer queues. The
-[embedding guide](../EMBEDDING.md) currently states that it provides neither an
-execution budget nor interruption. The [roadmap](../ROADMAP.md) requires the
-execution contract to be decided before the Stage 4 implementation and before
-synchronous host capabilities are added in Stage 5.
+[embedding guide](../EMBEDDING.md) labels the bounded operations as staged
+availability slices rather than complete execution guardrails. The
+[roadmap](../ROADMAP.md) requires the execution contract to be decided before
+Stage 4 completion and before synchronous host capabilities are added in Stage
+5.
 
 The current execution paths do not pass through one universal helper:
 

@@ -148,3 +148,16 @@ pub fn Interpreter::run_bounded(
   let control = policy.to_execution_control()
   self.with_execution_control(control, () => self.run(stmts))
 }
+
+///|
+/// Run one internal operation under a fresh execution-control carrier.
+/// Stable root-facade operations use this shell to keep one policy active
+/// across multiple runtime phases without exposing the private control type.
+pub fn[T] Interpreter::with_execution_policy(
+  self : Interpreter,
+  policy : ExecutionPolicy,
+  action : () -> T raise Error,
+) -> T raise Error {
+  let control = policy.to_execution_control()
+  self.with_execution_control(control, action)
+}
