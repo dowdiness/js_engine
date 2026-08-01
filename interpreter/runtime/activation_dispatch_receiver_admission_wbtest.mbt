@@ -118,9 +118,18 @@ test "receiver recursion admission accepts decoded Unicode escaped literals" {
 test "receiver recursion admission accepts line-continuation escaped literals" {
   let marker = "mark\\" + "\ner"
   let step = "st\\" + "\nep"
-  let source =
-    "function step(n){if(n===0)return this[\"" + marker + "\"];return 1+this[\"" + step + "\"](n-1);}" +
-    "let receiver={[\"" + marker + "\"]:0,[\"" + step + "\"]:step};receiver[\"" + step + "\"](256);"
+  let source = "function step(n){if(n===0)return this[\"" +
+    marker +
+    "\"];return 1+this[\"" +
+    step +
+    "\"](n-1);}" +
+    "let receiver={[\"" +
+    marker +
+    "\"]:0,[\"" +
+    step +
+    "\"]:step};receiver[\"" +
+    step +
+    "\"](256);"
   let stmts = receiver_recursion_test_program(source)
   let plan = match classify_receiver_recursion_program(stmts) {
     Some(found) => found
