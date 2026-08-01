@@ -374,6 +374,7 @@ pub fn Interpreter::run_timers(self : Interpreter) -> Unit raise Error {
 ///|
 /// Failure phase retained for the stable root facade's diagnostic adapter.
 pub enum TimerRunFailurePhase {
+  TimerQueueDispatch
   TimerCallback
   IntervalCallback
   MicrotaskCheckpoint
@@ -425,9 +426,21 @@ pub fn Interpreter::run_timers_observed(
       TIMER_SAFETY_LIMIT,
     )
     while true {
-      let timer = match policy.select_next() {
+      match policy.readiness() {
+        TimerQueueEmpty | TimerQueueSafetyLimit => break
+        TimerQueueObservationRequired => ()
+      }
+      self.observe_execution_step() catch {
+        error => {
+          policy.reject_dispatch_observation()
+          return Err(
+            TimerRunFailure(error, TimerRunFailurePhase::TimerQueueDispatch, None),
+          )
+        }
+      }
+      let timer = match policy.commit_next() {
         Some(timer) => timer
-        None => break
+        None => continue
       }
       // Execute the timer callback
       let loc = @token.Loc::default()
