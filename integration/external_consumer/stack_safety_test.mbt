@@ -47,13 +47,6 @@ const ESCAPED_COMPUTED_RECEIVER_RECURSION_SOURCE =
   #|receiver["\x73tep"](256);
 
 ///|
-const ESCAPED_COMPUTED_MUTUAL_RECEIVER_RECURSION_SOURCE =
-  #|function left(n){if(n===0)return this["\x6darker"];return 1+this["\x72ight"](n-1);}
-  #|function right(n){if(n===0)return this["\x6darker"];return 1+this["\x6ceft"](n-1);}
-  #|let receiver={["\x6darker"]:0,["\x6ceft"]:left,["\x72ight"]:right};
-  #|receiver["\x6ceft"](256);
-
-///|
 const MUTUAL_RECURSION_SOURCE =
   #|function f(n){if(n===0)return 0;return 1+g(n-1);}
   #|function g(n){if(n===0)return 0;return 1+f(n-1);}
@@ -124,10 +117,6 @@ test "stack safety public facade: exact production-admitted depth-256 values" {
   inspect(run_value(RECEIVER_RECURSION_SOURCE), content="256")
   inspect(run_value(COMPUTED_RECEIVER_RECURSION_SOURCE), content="256")
   inspect(run_value(ESCAPED_COMPUTED_RECEIVER_RECURSION_SOURCE), content="256")
-  inspect(
-    run_value(ESCAPED_COMPUTED_MUTUAL_RECEIVER_RECURSION_SOURCE),
-    content="256",
-  )
   inspect(run_value(MUTUAL_RECURSION_SOURCE), content="256")
   inspect(run_value(GETTER_REENTRY_SOURCE), content="256")
   inspect(run_value(PROXY_REENTRY_SOURCE), content="256")

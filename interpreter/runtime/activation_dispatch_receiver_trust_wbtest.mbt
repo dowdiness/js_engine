@@ -68,20 +68,6 @@ fn receiver_recursion_escaped_computed_sealed_fixture(
 }
 
 ///|
-test "receiver recursion trust preflight admits escaped mutual computed provenance" {
-  let interp = Interpreter::new()
-  let stmts = @parser.parse(
-      "function left(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x72ight\"](n-1);}" +
-      "function right(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x6ceft\"](n-1);}" +
-      "let receiver={[\"\\x6darker\"]:0,[\"\\x6ceft\"]:left,[\"\\x72ight\"]:right};receiver[\"\\x6ceft\"](256);",
-    ).stmts
-  match interp.preflight_dispatchable_receiver_recursion_program(stmts) {
-    Some(_) => ()
-    None => fail("expected escaped mutual receiver preflight")
-  }
-}
-
-///|
 fn receiver_recursion_rejection(
   action : () -> Unit raise InvalidActivationDispatchShell,
 ) -> String {

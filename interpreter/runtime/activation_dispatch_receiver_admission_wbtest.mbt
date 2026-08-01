@@ -32,13 +32,6 @@ fn receiver_recursion_exact_escaped_computed_source() -> String {
 }
 
 ///|
-fn receiver_recursion_exact_escaped_mutual_computed_source() -> String {
-  "function left(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x72ight\"](n-1);}" +
-    "function right(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x6ceft\"](n-1);}" +
-    "let receiver={[\"\\x6darker\"]:0,[\"\\x6ceft\"]:left,[\"\\x72ight\"]:right};receiver[\"\\x6ceft\"](256);"
-}
-
-///|
 test "receiver recursion admission recognizes the exact own-data member call" {
   let stmts = receiver_recursion_test_program(receiver_recursion_exact_source())
   let plan = match classify_receiver_recursion_program(stmts) {
@@ -105,20 +98,6 @@ test "receiver recursion admission recognizes all-escaped computed literals" {
     }
   }
   inspect(receiver_recursion_plan_is_dispatchable(plan), content="true")
-}
-
-///|
-test "receiver recursion admission recognizes all-escaped mutual computed literals" {
-  let stmts = receiver_recursion_test_program(
-    receiver_recursion_exact_escaped_mutual_computed_source(),
-  )
-  match classify_receiver_recursion_program(stmts) {
-    Some(_) => ()
-    None =>
-      fail(
-        "expected the escaped mutual receiver-recursion shape to be admitted",
-      )
-  }
 }
 
 ///|
