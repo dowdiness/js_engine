@@ -3804,6 +3804,28 @@ test "RegExp exec retains parsed matcher semantics across repeated calls" {
 }
 
 ///|
+test "RegExp non-unicode matching stays in UTF-16 code-unit space" {
+  let src =
+    #|function describe(match, re) {
+    #|  if (match === null) return "null:" + re.lastIndex;
+    #|  return match[0].charCodeAt(0) + ":" + match.index + ":" + match[0].length + ":" + re.lastIndex;
+    #|}
+    #|var global = /./g;
+    #|var input = "😀x";
+    #|console.log(describe(global.exec(input), global));
+    #|console.log(describe(global.exec(input), global));
+    #|console.log(describe(global.exec(input), global));
+    #|console.log(describe(global.exec(input), global));
+    #|var sticky = /./y;
+    #|sticky.lastIndex = 1;
+    #|console.log(describe(sticky.exec(input), sticky));
+  let output = run_output(src)
+  json_inspect(output, content=[
+    "55357:0:1:1", "56832:1:1:2", "120:2:1:3", "null:0", "56832:1:1:2",
+  ])
+}
+
+///|
 test "RegExp compile failure preserves the complete prior matcher state" {
   let src =
     #|var re = /a/g;
@@ -3827,6 +3849,14 @@ test "RegExp private matcher state is invisible to reflective own-key APIs" {
   json_inspect(output, content=[
     "lastIndex", "0", "0,length,index,input,groups", "0",
   ])
+}
+
+///|
+test "RegExp prototype exec rejects objects without private matcher" {
+  let src =
+    #|try { RegExp.prototype.exec.call({}); } catch (e) { console.log(e instanceof TypeError); }
+  let output = run_output(src)
+  json_inspect(output, content=["true"])
 }
 
 ///|
@@ -7785,6 +7815,17 @@ test "string replace with capture group" {
     #|console.log(result);
   let output = run_output(src)
   json_inspect(output, content=["Smith John"])
+}
+
+///|
+test "unicode regexp replacement keeps UTF-16 result positions" {
+  let src =
+    #|var input = "😀x!";
+    #|console.log(input.replace(/x/u, "Y"));
+    #|console.log(input.replace(/x/u, function(match, offset) { return String(offset); }));
+    #|console.log(input.replace(/x/u, "$`|$'"));
+  let output = run_output(src)
+  json_inspect(output, content=["😀Y!", "😀2!", "😀😀|!!"])
 }
 
 ///|
