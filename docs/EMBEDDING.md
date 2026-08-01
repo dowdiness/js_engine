@@ -5,9 +5,10 @@ a MoonBit application. It uses only the root `@js_engine` facade and does not
 require `Interpreter`, runtime `Value`, parser, AST, or realm internals.
 
 Trusted scripts receive the JavaScript runtime and built-ins configured by
-`js_engine`. This API is **not a security sandbox**: it does not provide an
-execution budget, interruption, process or address-space isolation, or
-capability filtering.
+`js_engine`. This API is **not a security sandbox**: it does not provide
+process or address-space isolation or capability filtering. The bounded
+operations described below are staged Stage 4 availability slices, not complete
+execution guardrails or security isolation.
 
 ## Choose one-shot or persistent execution
 
@@ -55,6 +56,7 @@ or experimental execution paths and are not used by this guide.
 |---|---|
 | **Stable embedding** | `run`; `EngineError`; `Engine`, `Engine::Engine`, `Engine::eval`, `Engine::call_json`, `Engine::inject_json`, `Engine::take_output`, `Engine::has_pending_microtasks`, `Engine::has_pending_timers`, `Engine::run_microtask_checkpoint`, `Engine::run_timer_checkpoint` |
 | **Stable diagnostics** | `run_diagnostic`; `Engine::eval_diagnostic`, `Engine::call_json_diagnostic`, `Engine::run_microtask_checkpoint_diagnostic`, `Engine::run_timer_checkpoint_diagnostic`; `EngineDiagnostic` and its accessors; `EngineIntegrity`, `RetainedEffects`, `PendingJobs`; `SourceLocation`, `SourcePosition` |
+| **Staged Stage 4 availability** | `Engine::eval_bounded`, `Engine::call_json_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, `InterruptionHandle` |
 | **Compatibility** | `run_module`, `run_modules` |
 | **Advanced/internal** | `run_compiled`, `run_with_event_loop`, `has_pending_microtasks`, `has_pending_timers`, `run_microtask_checkpoint`, `run_timer_checkpoint` |
 
@@ -62,6 +64,25 @@ or experimental execution paths and are not used by this guide.
 contain raw runtime `Value`s. The module-level event-loop helpers are
 advanced/internal because they accept or return a raw `Interpreter`.
 `run_compiled` is an opt-in closure-conversion prototype.
+
+## Staged Stage 4 bounded operations
+
+`Engine::eval_bounded` and `Engine::call_json_bounded` are staged Stage 4
+availability slices. They install one fresh operation-scoped policy around the
+currently observed runtime paths and return structured guardrail diagnostics.
+They do **not** claim complete execution accounting, protection from every
+native or host loop, rollback, process isolation, or security against hostile
+JavaScript. Hosts should treat `EngineIntegrity::Unknown` guardrail failures as
+discard-and-recreate outcomes.
+
+`Engine::call_json_bounded` keeps one policy across global lookup, lookup
+getters, direct host-JSON argument copying, target execution, and direct result
+copying. Direct JSON copying remains outside execution accounting and does not
+consult mutable `JSON`, invoke `toJSON`, getters, or Proxy traps. Guardrail
+failures report operation `call-json`, phase `lookup` or `execute`, integrity
+`unknown`, retained effects `may-remain`, and the actual pending-job snapshot
+made after control unwinds. Existing `call_json`, `call_json_diagnostic`, and
+`EngineError` behavior is unchanged.
 
 ## Strict JSON boundary
 
@@ -210,8 +231,10 @@ Use `run_microtask_checkpoint()` and `run_timer_checkpoint()` when the surviving
 jobs should run. Neither `eval` nor `call_json` runs them automatically.
 
 Recovery from `InternalError` is not supported. As described above, an error
-raised by a queue checkpoint also requires discarding the `Engine`. Interruption
-and execution-budget failures are not part of the current API.
+raised by a queue checkpoint also requires discarding the `Engine`. The staged
+bounded slices report interruption and execution-budget failures through
+`EngineDiagnostic`; the unbounded compatibility APIs do not gain implicit
+limits.
 
 The [failure/reuse decision record](decisions/engine-failure-reuse-matrix.md)
 explains why this behavior is part of the embedding baseline.

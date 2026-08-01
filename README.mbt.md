@@ -73,8 +73,11 @@ test "README one-shot facade" {
 The public entry points are defined in [`js_engine.mbt`](js_engine.mbt) and
 classified in the stable guide:
 
-- **Stable embedding:** `run`, `Engine`, `EngineError`, and the `Engine::*`
-  methods.
+- **Stable embedding:** `run`, `Engine`, `EngineError`, and the unbounded
+  persistent `Engine` methods listed in the guide.
+- **Staged Stage 4 availability:** `Engine::eval_bounded`,
+  `Engine::call_json_bounded`, `ExecutionPolicy`, `ExecutionPolicyError`, and
+  `InterruptionHandle`.
 - **Compatibility:** `run_module` / `run_modules`; their export maps expose
   raw runtime values.
 - **Advanced/internal:** `run_compiled` and the module-level event-loop APIs
