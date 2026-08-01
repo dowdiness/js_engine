@@ -3677,11 +3677,6 @@ fn regexp_char_index_to_code_unit_index(
 }
 
 ///|
-fn regexp_code_unit_length(input : String) -> Int {
-  regexp_char_index_to_code_unit_index(input, input.to_array().length())
-}
-
-///|
 fn regexp_code_unit_index_to_char_index(
   input : String,
   code_unit_index : Int,
@@ -3756,7 +3751,7 @@ fn regexp_builtin_exec(
     interp,
   )
   if (has_global || has_sticky) &&
-    last_index > regexp_code_unit_length(input).to_double() {
+    last_index > @runtime.utf16_length(input).to_double() {
     let _ = interp.set_property(
       rx,
       "lastIndex",
