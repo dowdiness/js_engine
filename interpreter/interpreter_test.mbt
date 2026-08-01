@@ -3789,12 +3789,16 @@ test "RegExp exec retains parsed matcher semantics across repeated calls" {
     #|var dot = /./gu;
     #|console.log(dot.exec("😀x")[0].length + ":" + dot.lastIndex);
     #|console.log(dot.exec("😀x")[0] + ":" + dot.lastIndex);
+    #|var boundary = /./uy;
+    #|boundary.lastIndex = 1;
+    #|var boundaryMatch = boundary.exec("😀");
+    #|console.log(boundaryMatch.index + ":" + boundaryMatch[0].length + ":" + boundary.lastIndex);
     #|var compiled = /x/g;
     #|console.log(compiled.compile("z", "u") === compiled);
     #|console.log(compiled.source + ":" + compiled.flags + ":" + compiled.exec("z")[0]);
   let output = run_output(src)
   json_inspect(output, content=[
-    "2:ab:a:b:a", "4", "5:ab:7", "a:2", "true", "0", "2:2", "x:3", "true",
+    "2:ab:a:b:a", "4", "5:ab:7", "a:2", "true", "0", "2:2", "x:3", "0:2:2", "true",
     "z:u:z",
   ])
 }
