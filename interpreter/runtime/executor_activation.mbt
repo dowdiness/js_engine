@@ -295,56 +295,48 @@ fn Interpreter::start_executor_activation(
   }
   let observation = observe_executor_activation_entry(self)
   let cleared_realm = begin_cleared_active_callee_realm(self.realm_state)
-  let active_realm = begin_active_callee_realm_value(
-    self.realm_state,
-    callee,
-  )
+  let active_realm = begin_active_callee_realm_value(self.realm_state, callee)
   let saved_in_default = self.in_nonarrow_param_default_eval
   let saved_param_default_conflicts = self.param_default_eval_var_conflicts
   self.in_nonarrow_param_default_eval = false
   self.param_default_eval_var_conflicts = None
-  let setup : Result[
-    (&ExecutorActivationFrame, ExecutorChildCompletion),
-    Error,
-  ] = Ok(
-    {
-      match start {
-        ExecutorStartCall(request) => {
-          let prepared = self.prepare_executor_callable_call(
-            executable,
-            request.callee,
-            request.this_value,
-            request.args,
-          )
-          (
-            executable.start_frame(self, prepared),
-            ExecutorChildCall(executable.kind),
-          )
-        }
-        ExecutorStartConstruct(request) => {
-          let proto = self.get_prototype_from_constructor(
-            request.ctor,
-            request.loc,
-          )
-          let instance = make_constructor_instance(proto, "Object")
-          let prepared = self.prepare_executor_activation(
-            request.ctor,
-            instance,
-            request.args,
-            executable.params,
-            executable.rest_param,
-            executable.closure,
-            executable.strict,
-            Some(request.ctor),
-            !executable.constructable,
-            executable.self_name,
-            executable.define_arguments_object,
-          )
-          (
-            executable.start_frame(self, prepared),
-            ExecutorChildConstruct(instance),
-          )
-        }
+  let setup : Result[(&ExecutorActivationFrame, ExecutorChildCompletion), Error] = Ok(
+    match start {
+      ExecutorStartCall(request) => {
+        let prepared = self.prepare_executor_callable_call(
+          executable,
+          request.callee,
+          request.this_value,
+          request.args,
+        )
+        (
+          executable.start_frame(self, prepared),
+          ExecutorChildCall(executable.kind),
+        )
+      }
+      ExecutorStartConstruct(request) => {
+        let proto = self.get_prototype_from_constructor(
+          request.ctor,
+          request.loc,
+        )
+        let instance = make_constructor_instance(proto, "Object")
+        let prepared = self.prepare_executor_activation(
+          request.ctor,
+          instance,
+          request.args,
+          executable.params,
+          executable.rest_param,
+          executable.closure,
+          executable.strict,
+          Some(request.ctor),
+          !executable.constructable,
+          executable.self_name,
+          executable.define_arguments_object,
+        )
+        (
+          executable.start_frame(self, prepared),
+          ExecutorChildConstruct(instance),
+        )
       }
     },
   ) catch {
@@ -473,9 +465,7 @@ pub fn Interpreter::run_executor_activation_coordinator(
             }
           }
         ExecutorActivationConstruct(request) =>
-          match direct_executor_constructor_with_data_prototype(
-            request.ctor,
-          ) {
+          match direct_executor_constructor_with_data_prototype(request.ctor) {
             Some(executable) =>
               stack.push(
                 self.start_executor_activation(
