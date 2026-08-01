@@ -347,7 +347,7 @@ fn Engine::bounded_eval_guardrail_failure(
 }
 
 ///|
-fn bounded_eval_guardrail_message(kind : String) -> String {
+fn execution_guardrail_message(kind : String) -> String {
   match kind {
     "interrupted" => "Execution interrupted"
     "execution-limit" => "Execution limit exceeded"
@@ -398,7 +398,7 @@ pub fn Engine::eval_bounded(
           Err(
             self.bounded_eval_guardrail_failure(
               kind,
-              bounded_eval_guardrail_message(kind),
+              execution_guardrail_message(kind),
               failure_source,
             ),
           )
@@ -923,42 +923,91 @@ pub fn Engine::call_json_bounded(
 }
 
 ///|
+fn Engine::microtask_checkpoint_failure_diagnostic(
+  self : Engine,
+  error : Error,
+  source_identity : String?,
+) -> EngineDiagnostic {
+  let guardrail_kind = match @runtime.execution_control_failure_code(error) {
+    Some(kind) => Some(kind)
+    None =>
+      match error {
+        @runtime.JsException(value) if @runtime.is_engine_stack_depth_error(
+            value,
+          ) => Some("stack-depth-limit")
+        _ => None
+      }
+  }
+  match guardrail_kind {
+    Some(kind) =>
+      make_engine_diagnostic(
+        failure_kind_code=kind,
+        message=execution_guardrail_message(kind),
+        operation_code="microtask-checkpoint",
+        phase_code="microtask-dispatch",
+        source_identity~,
+        engine_integrity=EngineIntegrity::Discard,
+        retained_effects=RetainedEffects::MayRemain,
+        pending_jobs=self.pending_jobs_snapshot(),
+      )
+    None =>
+      runtime_engine_diagnostic(
+        error,
+        operation="microtask-checkpoint",
+        phase="microtask-dispatch",
+        source_identity~,
+        javascript_integrity=EngineIntegrity::Discard,
+        javascript_effects=RetainedEffects::MayRemain,
+        javascript_jobs=self.pending_jobs_snapshot(),
+        internal_integrity=EngineIntegrity::Discard,
+      )
+  }
+}
+
+///|
 /// Run a microtask checkpoint while returning operation-aware failure details.
 pub fn Engine::run_microtask_checkpoint_diagnostic(
   self : Engine,
 ) -> Result[Bool, EngineDiagnostic] {
   let observed = self.interp.run_microtasks_observed() catch {
-    err =>
-      return Err(
-        runtime_engine_diagnostic(
-          err,
-          operation="microtask-checkpoint",
-          phase="microtask-dispatch",
-          source_identity=None,
-          javascript_integrity=EngineIntegrity::Discard,
-          javascript_effects=RetainedEffects::MayRemain,
-          javascript_jobs=self.pending_jobs_snapshot(),
-          internal_integrity=EngineIntegrity::Discard,
-        ),
-      )
+    error =>
+      return Err(self.microtask_checkpoint_failure_diagnostic(error, None))
   }
   match observed {
-    Ok(_) => ()
+    Ok(_) => Ok(self.has_pending_microtasks())
     Err(failure) =>
-      return Err(
-        runtime_engine_diagnostic(
+      Err(
+        self.microtask_checkpoint_failure_diagnostic(
           failure.cause(),
-          operation="microtask-checkpoint",
-          phase="microtask-dispatch",
-          source_identity=failure.source_identity(),
-          javascript_integrity=EngineIntegrity::Discard,
-          javascript_effects=RetainedEffects::MayRemain,
-          javascript_jobs=self.pending_jobs_snapshot(),
-          internal_integrity=EngineIntegrity::Discard,
+          failure.source_identity(),
         ),
       )
   }
-  Ok(self.has_pending_microtasks())
+}
+
+///|
+/// Run one microtask checkpoint under a fresh operation-scoped execution
+/// policy. Empty-queue detection is outside the execution-step budget.
+pub fn Engine::run_microtask_checkpoint_bounded(
+  self : Engine,
+  policy : @runtime.ExecutionPolicy,
+) -> Result[Bool, EngineDiagnostic] {
+  let observed = self.interp.with_execution_policy(policy, () => {
+    self.interp.run_microtasks_observed()
+  }) catch {
+    error =>
+      return Err(self.microtask_checkpoint_failure_diagnostic(error, None))
+  }
+  match observed {
+    Ok(_) => Ok(self.has_pending_microtasks())
+    Err(failure) =>
+      Err(
+        self.microtask_checkpoint_failure_diagnostic(
+          failure.cause(),
+          failure.source_identity(),
+        ),
+      )
+  }
 }
 
 ///|
