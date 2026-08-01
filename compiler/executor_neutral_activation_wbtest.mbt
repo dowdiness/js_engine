@@ -78,6 +78,210 @@ test "bytecode spread recursion reaches the synchronous final call boundary" {
 }
 
 ///|
+test "spread bytecode mutual calls complete at deep finite depth" {
+  let source =
+    "function even(n) { if (n === 0) return true; " +
+    "return odd(n - 1, ...[]); }\n" +
+    "function odd(n) { if (n === 0) return false; " +
+    "return even(n - 1, ...[]); }\n" +
+    "even(2000, ...[]);"
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    source,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread bytecode calls preserve ordered owned arguments" {
+  let interp = @interpreter.new_interpreter()
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "var trace = ''; var extras = [2, 3];\n" +
+    "function first() { trace = trace + 'f'; return 1; }\n" +
+    "function last() { trace = trace + 'l'; return 4; }\n" +
+    "function child(a, b, c, d) { return a * 1000 + b * 100 + c * 10 + d; }\n" +
+    "child(first(), ...extras, last()) === 1234 && trace === 'fl';",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread bytecode iterator evaluation occurs exactly once" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var iterator_gets = 0; var next_calls = 0; var values = 0;\n" +
+    "var iterable = {};\n" +
+    "iterable[Symbol.iterator] = function() { iterator_gets = iterator_gets + 1; " +
+    "var index = 0; return { next: function() { next_calls = next_calls + 1; " +
+    "if (index === 0) { index = 1; values = values + 1; " +
+    "return { value: 7, done: false }; } return { done: true }; } }; };\n" +
+    "function child(value) { return value; }\n" +
+    "child(...iterable) === 7 && iterator_gets === 1 && " +
+    "next_calls === 2 && values === 1;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread bytecode calls own arguments before guest mutation" {
+  let result = run_executor_neutral_bytecode(
+    @interpreter.new_interpreter(),
+    "var extras = [2, 3];\n" +
+    "function child(a) { arguments[0] = 9; " +
+    "return a + arguments[1] + arguments[2]; }\n" +
+    "var answer = child(1, ...extras);\n" +
+    "answer === 14 && extras[0] === 2 && extras[1] === 3;",
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread bytecode final invocation keeps tree and native fallbacks" {
+  let interp = @interpreter.new_interpreter()
+  let _ = interp.run(
+    @parser.parse("function treeAdd(value) { return value + 1; }").stmts,
+  )
+  interp.global.def_builtin(
+    "nativeAdd",
+    @runtime.make_native_func(name="nativeAdd", args => {
+      match args {
+        [Number(left), Number(right)] => Number(left + right)
+        _ => Value::Undefined
+      }
+    }),
+  )
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "treeAdd(...[2]) + nativeAdd(...[3, 4]);",
+  )
+  inspect(result.to_string(), content="10")
+}
+
+///|
+test "spread lowering keeps receiver construct and direct-eval opcodes residual" {
+  let lowered = parse_bytecode_for_wb(
+    "var obj = { call: function() {} }; var xs = []; " +
+    "obj.call(...xs); new Object(...xs); eval(...xs);",
+  )
+  let mut saw_receiver = false
+  let mut saw_construct = false
+  let mut saw_direct_eval = false
+  for instr in lowered.main.code {
+    match instr {
+      CallSpreadWithReceiver(_) => saw_receiver = true
+      ConstructSpread(_) => saw_construct = true
+      CallDirectEval(_) => saw_direct_eval = true
+      _ => ()
+    }
+  }
+  assert_true(saw_receiver)
+  assert_true(saw_construct)
+  assert_true(saw_direct_eval)
+}
+
+///|
+test "spread evaluation abrupt completion does not invoke or replay" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var attempts = 0; var invoked = 0;\n" +
+    "function boom() { attempts = attempts + 1; throw marker; }\n" +
+    "function child() { invoked = invoked + 1; }\n" +
+    "function attempt() { child(...boom()); }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var same = false;\n" +
+      "try { attempt(); } catch (error) { same = error === marker; }\n" +
+      "same && attempts === 1 && invoked === 0;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "spread bytecode normal and guest throw results clean up once" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var calls = 0;\n" +
+    "function child(mode) { calls = calls + 1; " +
+    "if (mode === 1) throw marker; return 7; }\n" +
+    "function invoke(mode) { return child(...[mode]); }",
+  )
+  let result = interp.run(
+    @parser.parse(
+      "var caught = false;\n" +
+      "try { invoke(1); } catch (error) { caught = error === marker; }\n" +
+      "caught && invoke(2) === 7 && calls === 2;",
+    ).stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "bounded spread throw releases before a later spread leaf" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {}; var entered = 0;\n" +
+    "function fail() { entered = entered + 1; throw marker; }\n" +
+    "function caller() { fail(...[]); }\n" +
+    "function leaf() { return 42; }\n" +
+    "function probe() { return leaf(...[]); }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let result = interp.run_bounded(
+    @parser.parse(
+      "var caught = false;\n" +
+      "try { caller(); } catch (error) { caught = error === marker; }\n" +
+      "caught && entered === 1 ? probe() : -1;",
+    ).stmts,
+    policy,
+  )
+  inspect(result.to_string(), content="42")
+}
+
+///|
+test "bounded spread rejection happens before child body" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var caller_entered = 0; var child_entered = 0;\n" +
+    "function child() { child_entered = child_entered + 1; return 1; }\n" +
+    "function caller() { caller_entered = caller_entered + 1; " +
+    "return child(...[]); }\n" +
+    "function outer() { return caller(...[]); }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let caught : Error? = try {
+    let _ = interp.run_bounded(@parser.parse("outer();").stmts, policy)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) => fail("expected a classified JavaScript depth exception, got " + error.to_string())
+    None => fail("bounded spread child must be rejected before entry")
+  }
+  let result = interp.run(
+    @parser.parse("caller_entered === 1 && child_entered === 0;").stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
 test "bytecode receiver recursion reaches the synchronous call boundary" {
   let interp = @interpreter.new_interpreter()
   let depth = 320
