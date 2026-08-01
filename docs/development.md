@@ -57,6 +57,25 @@ style rules.
 changes, especially for `@js_engine`, `@js_engine/token`, `@js_engine/ast`,
 and `@js_engine/interpreter/runtime`.
 
+## Focused Stack-Safety Gate
+
+Run the permanent engine and stable-root-facade stack-safety suites for one
+target and profile with:
+
+```bash
+make stack-safety-test TARGET=<native|js|wasm|wasm-gc> PROFILE=<debug|release>
+```
+
+The target and profile are required command-line arguments; omission or any
+other value fails before MoonBit is invoked. The adoption workflow runs both
+profiles for every supported target, without host stack-size overrides.
+Validate that the Make target, workflow matrix, selected suites, and deferred
+workload boundaries remain wired as intended with:
+
+```bash
+make stack-safety-validate
+```
+
 ## Test262
 
 The authoritative full-suite workflow is `.github/workflows/test262.yml`.

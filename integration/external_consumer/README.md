@@ -13,8 +13,8 @@ make external-consumer-test TARGET=native
 ```
 
 The permanent stack-safety gate runs only the focused engine and facade suites
-for one target/profile. `PROFILE` defaults to `debug`; use `release` for the
-release profile:
+for one explicitly supplied target/profile. `TARGET` accepts `native`, `js`,
+`wasm`, or `wasm-gc`; `PROFILE` accepts `debug` or `release`:
 
 ```bash
 make stack-safety-test TARGET=js PROFILE=debug
