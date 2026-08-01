@@ -66,6 +66,23 @@ test "execution stack safety: escaped computed own-data receiver recursion at de
 }
 
 ///|
+test "execution stack safety: escaped computed mutual receiver recursion at depth 256" {
+  match
+    run(
+      "function left(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x72ight\"](n-1);}" +
+      "function right(n){if(n===0)return this[\"\\x6darker\"];return 1+this[\"\\x6ceft\"](n-1);}" +
+      "let receiver={[\"\\x6darker\"]:0,[\"\\x6ceft\"]:left,[\"\\x72ight\"]:right};receiver[\"\\x6ceft\"](256);",
+    ) {
+    Value::Number(256.0) => ()
+    other =>
+      fail(
+        "expected escaped computed mutual receiver recursion 256, got " +
+        other.to_string(),
+      )
+  }
+}
+
+///|
 test "execution dispatch preserves legacy receiver argument ordering" {
   match
     run(
