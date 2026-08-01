@@ -3824,7 +3824,9 @@ test "RegExp private matcher state is invisible to reflective own-key APIs" {
     #|console.log(Reflect.ownKeys(match).join(","));
     #|console.log(Object.getOwnPropertySymbols(match).length);
   let output = run_output(src)
-  json_inspect(output, content=["lastIndex", "0", "0,length,index,input,groups", "0"])
+  json_inspect(output, content=[
+    "lastIndex", "0", "0,length,index,input,groups", "0",
+  ])
 }
 
 ///|

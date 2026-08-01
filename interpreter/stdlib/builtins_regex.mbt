@@ -2786,9 +2786,7 @@ fn parse_validated_regexp(
   pattern : String,
   flags : String,
 ) -> ParsedRegex raise Error {
-  try {
-    parse_regex(pattern, unicode=flags.contains("u"))
-  } catch {
+  parse_regex(pattern, unicode=flags.contains("u")) catch {
     @errors.SyntaxError(message=msg) =>
       raise @errors.SyntaxError(
         message="Invalid regular expression: /" + pattern + "/: " + msg,
@@ -2847,8 +2845,7 @@ fn set_regexp_original_source_flags(
     sorted_flags,
   )
   data.bag.symbol_properties[REGEXP_MATCHER_SYMBOL_ID] = make_regexp_matcher(
-    parsed,
-    sorted_flags,
+    parsed, sorted_flags,
   )
   set_regexp_internal_slot_descriptors(data)
 }
@@ -2867,22 +2864,19 @@ fn make_regexp_matcher(parsed : ParsedRegex, flags : String) -> Value {
     bag: @runtime.PropertyBag(),
     prototype: Null,
     callable: Some(
-      NonConstructableCallable(
-        "RegExpMatcher",
-        fn(args) raise {
-          match args {
-            [String_(input), Number(start), ..] =>
-              match regex_search_parsed(parsed, flags, input, start.to_int()) {
-                Some(m) => make_regexp_matcher_result(m, input)
-                None => Null
-              }
-            _ =>
-              raise @errors.TypeError(
-                message="RegExp matcher capability called with invalid arguments",
-              )
-          }
-        },
-      ),
+      NonConstructableCallable("RegExpMatcher", fn(args) raise {
+        match args {
+          [String_(input), Number(start), ..] =>
+            match regex_search_parsed(parsed, flags, input, start.to_int()) {
+              Some(m) => make_regexp_matcher_result(m, input)
+              None => Null
+            }
+          _ =>
+            raise @errors.TypeError(
+              message="RegExp matcher capability called with invalid arguments",
+            )
+        }
+      }),
     ),
     class_name: "RegExpMatcher",
     extensible: false,
@@ -3565,9 +3559,8 @@ fn regexp_builtin_exec(
             message="RegExp method called on incompatible receiver",
           )
       }
-      let matcher = match data.bag.symbol_properties.get(
-        REGEXP_MATCHER_SYMBOL_ID,
-      ) {
+      let matcher = match
+        data.bag.symbol_properties.get(REGEXP_MATCHER_SYMBOL_ID) {
         Some(Object(matcher_data)) =>
           match matcher_data.callable {
             Some(NonConstructableCallable(_, f)) => f
