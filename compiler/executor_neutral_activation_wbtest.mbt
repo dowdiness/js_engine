@@ -43,6 +43,150 @@ test "executor-neutral bytecode method activation preserves receiver" {
 }
 
 ///|
+test "ordinary bytecode recursive calls complete at finite depth" {
+  let interp = @interpreter.new_interpreter()
+  let depth = 97
+  let source = "function count(n) { if (n === 0) return 0; return count(n - 1) + 1; }\n" +
+    "count(" +
+    depth.to_string() +
+    ");"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="97")
+}
+
+///|
+test "ordinary bytecode mutual calls complete at deep finite depth" {
+  let interp = @interpreter.new_interpreter()
+  let source = "function even(n) { if (n === 0) return true; return odd(n - 1); }\n" +
+    "function odd(n) { if (n === 0) return false; return even(n - 1); }\n" +
+    "even(2000);"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "ordinary bytecode arrow calls complete at deep finite depth" {
+  let interp = @interpreter.new_interpreter()
+  let source = "var count = (n) => n === 0 ? 0 : count(n - 1) + 1;\n" +
+    "count(2000);"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="2000")
+}
+
+///|
+test "tree adapter trampolines nested ordinary bytecode calls" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp, "function count(n) { if (n === 0) return 0; return count(n - 1) + 1; }",
+  )
+  let result = interp.run(@parser.parse("count(2000);").stmts)
+  inspect(result.to_string(), content="2000")
+}
+
+///|
+test "bounded compiled ordinary calls preserve the engine depth marker" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp, "function count(n) { if (n === 0) return 0; return count(n - 1) + 1; }",
+  )
+  let policy = match
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
+    Ok(policy) => policy
+    Err(_) => fail("expected a valid bounded policy")
+  }
+  let caught : Error? = try {
+    let _ = interp.run_bounded(@parser.parse("count(2);").stmts, policy)
+    None
+  } catch {
+    error => Some(error)
+  }
+  match caught {
+    Some(@runtime.JsException(value)) =>
+      assert_true(@runtime.is_engine_stack_depth_error(value))
+    Some(error) =>
+      fail(
+        "expected a classified JavaScript depth exception, got " +
+        error.to_string(),
+      )
+    None => fail("bounded compiled recursion must reject at the depth limit")
+  }
+}
+
+///|
+test "ordinary bytecode call consumes its result once at the advanced IP" {
+  let interp = @interpreter.new_interpreter()
+  let source = "var calls = 0;\n" +
+    "function child() { calls = calls + 1; return 2; }\n" +
+    "function caller() { return child() + calls; }\n" +
+    "caller();"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="3")
+}
+
+///|
+test "bytecode frame accepts one pending call result" {
+  let interp = @interpreter.new_interpreter()
+  let program = parse_bytecode_for_wb("0;")
+  let frame = BytecodeFrame(program.main, interp.global, {
+    strict: false,
+    current_generator: None,
+  })
+  frame.pending_call_result = true
+  @runtime.ExecutorActivationFrame::deliver_call_result(frame, Number(7.0))
+  inspect(frame.stack.length(), content="1")
+  match frame.peek() {
+    Number(value) => inspect(value, content="7")
+    _ => fail("pending call result must be pushed onto the operand stack")
+  }
+  let second_delivery : Error? = try {
+    @runtime.ExecutorActivationFrame::deliver_call_result(frame, Number(8.0))
+    None
+  } catch {
+    error => Some(error)
+  }
+  match second_delivery {
+    Some(@errors.InternalError(message~)) =>
+      inspect(message, content="bytecode call result has no pending consumer")
+    _ => fail("duplicate call result delivery must be rejected")
+  }
+  inspect(frame.stack.length(), content="1")
+}
+
+///|
+test "nested ordinary bytecode calls own child arguments" {
+  let interp = @interpreter.new_interpreter()
+  let source = "function child(value) { arguments[0] = 7; " +
+    "return value + arguments.length; }\n" +
+    "function caller() { return child(1, 2); }\n" +
+    "caller();"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="9")
+}
+
+///|
+test "nested ordinary bytecode calls preserve guest throw identity" {
+  let interp = @interpreter.new_interpreter()
+  let source = "var marker = {};\n" +
+    "function child() { throw marker; }\n" +
+    "function caller() { child(); }"
+  let _ = run_executor_neutral_bytecode(interp, source)
+  let result = interp.run(
+    @parser.parse("try { caller(); } catch (error) { error === marker; }").stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "ordinary bytecode call normalizes fallthrough and arrow expression results" {
+  let interp = @interpreter.new_interpreter()
+  let source = "function noResult() { var local = 1; }\n" +
+    "var arrow = () => 3;\n" +
+    "noResult(); arrow();"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="3")
+}
+
+///|
 test "executor-neutral bytecode activation preserves construct and new.target" {
   let interp = @interpreter.new_interpreter()
   let _ = run_executor_neutral_bytecode(
