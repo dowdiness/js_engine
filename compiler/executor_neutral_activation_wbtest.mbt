@@ -226,7 +226,7 @@ test "nested receiver bytecode calls release before a later bounded leaf" {
     "function probe() { return leaf(); }",
   )
   let policy = match
-    @runtime.ExecutionPolicy::new(100000L, 2L, @runtime.InterruptionHandle()) {
+    @runtime.ExecutionPolicy::new(100000L, 1L, @runtime.InterruptionHandle()) {
     Ok(policy) => policy
     Err(_) => fail("expected a valid bounded policy")
   }
