@@ -68,6 +68,21 @@ test "bytecode receiver recursion reaches the synchronous call boundary" {
 }
 
 ///|
+test "bytecode computed receiver mutual recursion completes deeply" {
+  let interp = @interpreter.new_interpreter()
+  let source =
+    "var left = 'left'; var right = 'right';\n" +
+    "var receiver = { " +
+    "left: function(n) { if (n === 0) return 1; " +
+    "return receiver[right](n - 1) + 1; }, " +
+    "right: function(n) { if (n === 0) return 0; " +
+    "return receiver[left](n - 1) + 1; } };\n" +
+    "receiver[left](2000);"
+  let result = run_executor_neutral_bytecode(interp, source)
+  inspect(result.to_string(), content="2001")
+}
+
+///|
 test "ordinary bytecode mutual calls complete at deep finite depth" {
   let interp = @interpreter.new_interpreter()
   let source = "function even(n) { if (n === 0) return true; return odd(n - 1); }\n" +
@@ -84,6 +99,17 @@ test "ordinary bytecode arrow calls complete at deep finite depth" {
     "count(2000);"
   let result = run_executor_neutral_bytecode(interp, source)
   inspect(result.to_string(), content="2000")
+}
+
+///|
+test "executor-neutral bytecode arrow receiver call keeps lexical this" {
+  let interp = @interpreter.new_interpreter()
+  let result = run_executor_neutral_bytecode(
+    interp,
+    "var expected = this; var arrow = () => this;\n" +
+    "var holder = { arrow: arrow }; holder.arrow() === expected;",
+  )
+  inspect(result.to_string(), content="true")
 }
 
 ///|
@@ -183,6 +209,21 @@ test "nested ordinary bytecode calls preserve guest throw identity" {
     "function child() { throw marker; }\n" +
     "function caller() { child(); }"
   let _ = run_executor_neutral_bytecode(interp, source)
+  let result = interp.run(
+    @parser.parse("try { caller(); } catch (error) { error === marker; }").stmts,
+  )
+  inspect(result.to_string(), content="true")
+}
+
+///|
+test "nested receiver bytecode calls preserve guest throw identity" {
+  let interp = @interpreter.new_interpreter()
+  let _ = run_executor_neutral_bytecode(
+    interp,
+    "var marker = {};\n" +
+    "var receiver = { fail: function() { throw marker; } };\n" +
+    "function caller() { receiver.fail(); }",
+  )
   let result = interp.run(
     @parser.parse("try { caller(); } catch (error) { error === marker; }").stmts,
   )
